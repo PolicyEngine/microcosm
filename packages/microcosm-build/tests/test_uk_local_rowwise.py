@@ -12,7 +12,9 @@ one area).
 
 from __future__ import annotations
 
+import json
 from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -22,9 +24,12 @@ from microcosm.build.uk_runtime import (
     UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE,
     UK_LOCAL_MAX_WEIGHT_RATIO,
     UK_LOCAL_TARGET_LOSS_CAP,
+    UKRowwiseNationalRows,
     build_uk_rowwise_local_matrix,
+    build_uk_rowwise_local_surface_matrix,
     load_uk_local_target_census,
     require_adjudicated_uk_local_binding,
+    rotated_uk_local_holdout,
     rowwise_area_support_summary,
     rowwise_calibration_mass_reason,
     solve_uk_rowwise_weights_under_doctrine,
@@ -36,6 +41,8 @@ from microcosm.build.uk_runtime import (
 from microcosm.build.uk_runtime.weighted_integrity import (
     load_uk_reviewed_exclusion_register,
 )
+from microcosm.calibrate.registry import TargetRegistry, TargetSpec
+from microcosm.calibrate.target import TargetSet
 from microcosm.frame import WeightKind
 
 
@@ -142,6 +149,274 @@ def test_matrix_builder_places_support_only_in_assigned_area() -> None:
     assert frame["area_type"].unique().tolist() == ["constituency"]
 
 
+def test_surface_builder_omits_absent_cells_and_uses_canonical_order() -> None:
+    constituency_metrics = _metrics()
+    la_metrics = pd.DataFrame(
+        {
+            "households": [1.0, 1.0, 1.0],
+            "income/employment": [10.0, 20.0, 30.0],
+        },
+        index=constituency_metrics.index,
+    )
+    surface = pd.DataFrame(
+        [
+            {
+                "area_type": "la",
+                "area_code": "L2",
+                "metric": "households",
+                "value": 1.0,
+                "target_name": "external:census_households/households@L2",
+                "family": "census_households",
+            },
+            {
+                "area_type": "constituency",
+                "area_code": "S001",
+                "metric": "households",
+                "value": 1.0,
+                "target_name": "external:census_households/households@S001",
+                "family": "census_households",
+            },
+            {
+                "area_type": "constituency",
+                "area_code": "E001",
+                "metric": "tenure/social_rent",
+                "value": 1.0,
+                "target_name": "contract:tenure@E001",
+                "family": "tenure",
+            },
+            {
+                "area_type": "constituency",
+                "area_code": "E001",
+                "metric": "households",
+                "value": 2.0,
+                "target_name": "external:census_households/households@E001",
+                "family": "census_households",
+            },
+            {
+                "area_type": "la",
+                "area_code": "L1",
+                "metric": "income/employment",
+                "value": 30.0,
+                "target_name": "contract:income@L1",
+                "family": "income",
+            },
+            {
+                "area_type": "la",
+                "area_code": "L1",
+                "metric": "households",
+                "value": 2.0,
+                "target_name": "external:census_households/households@L1",
+                "family": "census_households",
+            },
+        ]
+    )
+
+    problem = build_uk_rowwise_local_surface_matrix(
+        {
+            "constituency": constituency_metrics,
+            "la": la_metrics,
+        },
+        {
+            "constituency": _assigned(),
+            "la": pd.Series(["L1", "L1", "L2"], index=constituency_metrics.index),
+        },
+        surface,
+        area_codes_by_grain={
+            "constituency": ("E001", "S001"),
+            "la": ("L1", "L2"),
+        },
+    )
+
+    assert problem.matrix.shape == (6, 3)
+    assert list(
+        problem.target_frame[["area_type", "metric", "area_code"]].itertuples(
+            index=False, name=None
+        )
+    ) == [
+        ("constituency", "households", "E001"),
+        ("constituency", "households", "S001"),
+        ("constituency", "tenure/social_rent", "E001"),
+        ("la", "households", "L1"),
+        ("la", "households", "L2"),
+        ("la", "income/employment", "L1"),
+    ]
+    assert not (
+        (problem.target_frame["area_type"] == "constituency")
+        & (problem.target_frame["area_code"] == "S001")
+        & (problem.target_frame["metric"] == "tenure/social_rent")
+    ).any()
+
+
+def test_surface_builder_refuses_roster_coverage_and_unreachable_rows() -> None:
+    base = pd.DataFrame(
+        [
+            {
+                "area_type": "constituency",
+                "area_code": "E001",
+                "metric": "households",
+                "value": 1.0,
+                "target_name": "households@E001",
+                "family": "census_households",
+            }
+        ]
+    )
+    kwargs = {
+        "metrics_by_grain": {"constituency": _metrics()},
+        "assigned_by_grain": {"constituency": _assigned()},
+        "area_codes_by_grain": {"constituency": ("E001", "S001")},
+    }
+    with pytest.raises(ValueError, match="assigned area.*S001"):
+        build_uk_rowwise_local_surface_matrix(surface=base, **kwargs)
+
+    relaxed = build_uk_rowwise_local_surface_matrix(
+        surface=base,
+        require_every_assigned_area_covered=False,
+        **kwargs,
+    )
+    assert relaxed.matrix.shape == (1, 3)
+
+    off_roster = base.assign(area_code="X999")
+    with pytest.raises(ValueError, match="roster"):
+        build_uk_rowwise_local_surface_matrix(
+            surface=off_roster,
+            require_every_assigned_area_covered=False,
+            **kwargs,
+        )
+
+    unreachable = base.assign(
+        area_code="S001",
+        metric="tenure/social_rent",
+        value=1.0,
+    )
+    zero_metrics = _metrics().assign(**{"tenure/social_rent": 0.0})
+    with pytest.raises(ValueError, match="zero household support"):
+        build_uk_rowwise_local_surface_matrix(
+            metrics_by_grain={"constituency": zero_metrics},
+            assigned_by_grain={"constituency": _assigned()},
+            surface=unreachable,
+            area_codes_by_grain={"constituency": ("E001", "S001")},
+            require_every_assigned_area_covered=False,
+        )
+
+
+def test_registry_surface_names_periods_and_lazy_masks_match_sparse_matrix() -> None:
+    import microcosm.build.uk_runtime.local_rowwise as local_rowwise
+
+    spec = TargetSpec(
+        name="contract:ons.households@E001",
+        entity="household",
+        value=4.0,
+        measure="households",
+        period=2025,
+        source="ONS",
+        family="census_households",
+        metadata={"contract_target_id": "ons.households"},
+    )
+    surface = pd.DataFrame(
+        [
+            {
+                "area_type": "constituency",
+                "area_code": "E001",
+                "metric": "households",
+                "value": spec.value,
+                "target_name": spec.name,
+                "family": spec.family,
+                "period": spec.period,
+                "source": spec.source,
+                "contract_target_id": spec.metadata["contract_target_id"],
+            }
+        ]
+    )
+    problem = build_uk_rowwise_local_surface_matrix(
+        {"constituency": _metrics()},
+        {"constituency": _assigned()},
+        surface,
+        area_codes_by_grain={"constituency": ("E001", "S001")},
+        require_every_assigned_area_covered=False,
+    )
+    target = tuple(local_rowwise._rowwise_target_set(problem))[0]
+
+    assert target.row_name == spec.to_target().row_name
+    assert target.metadata == {
+        "area_type": "constituency",
+        "area_code": "E001",
+        "metric": "households",
+        "family": "census_households",
+        "target_name": spec.name,
+        "contract_target_id": "ons.households",
+    }
+    expected = np.asarray(target.measure(_clone_frame())) * np.asarray(
+        target.filter(_clone_frame())
+    )
+    np.testing.assert_allclose(expected, problem.matrix.toarray()[0])
+
+
+def test_bound_family_derivation_accepts_multiple_families_per_grain() -> None:
+    import microcosm.build.uk_runtime.local_rowwise as local_rowwise
+
+    frame = pd.DataFrame(
+        {
+            "area_type": ["constituency", "constituency", "la"],
+            "metric": ["households", "households", "households"],
+            "family": ["census_households", "tenure", "census_households"],
+        }
+    )
+    families = local_rowwise._derive_uk_local_bound_families_from_target_frame(
+        frame,
+        family_rows={
+            "census_households": {},
+            "tenure": {},
+        },
+    )
+    assert families == [
+        "census_households/constituency",
+        "census_households/la",
+        "tenure/constituency",
+    ]
+
+
+def test_dense_wrapper_and_long_format_builder_agree() -> None:
+    dense = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
+    surface_rows = []
+    for _, row in _targets().iterrows():
+        for metric in _metrics().columns:
+            surface_rows.append(
+                {
+                    "area_type": "constituency",
+                    "area_code": row["code"],
+                    "metric": metric,
+                    "value": row[metric],
+                    "target_name": f"constituency/{row['code']}/{metric}",
+                    "family": (
+                        "census_households" if metric == "households" else "tenure"
+                    ),
+                }
+            )
+    surface = build_uk_rowwise_local_surface_matrix(
+        {"constituency": _metrics()},
+        {"constituency": _assigned()},
+        pd.DataFrame(surface_rows),
+        area_codes_by_grain={"constituency": ("E001", "S001")},
+    )
+
+    # The long-format core is metric-major; the legacy dense wrapper preserves
+    # its established area-major row order while sharing the same assembler.
+    dense_by_cell = dense.target_frame.set_index(["area_type", "area_code", "metric"])
+    surface_by_cell = surface.target_frame.set_index(
+        ["area_type", "area_code", "metric"]
+    )
+    pd.testing.assert_series_equal(
+        dense_by_cell["value"].sort_index(),
+        surface_by_cell["value"].sort_index(),
+    )
+    np.testing.assert_allclose(
+        dense.matrix.toarray()[
+            dense.target_frame.sort_values(["area_type", "metric", "area_code"]).index
+        ],
+        surface.matrix.toarray(),
+    )
+
+
 def test_matrix_builder_fails_closed_on_uncovered_assigned_area() -> None:
     assigned = pd.Series(["E001", "E001", "X999"], index=[101, 102, 103])
     with pytest.raises(ValueError, match="X999"):
@@ -205,8 +480,7 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
     )
     receipt = result.binding_adjudications
     assert (
-        receipt["register_resource"]
-        == UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE
+        receipt["register_resource"] == UK_LOCAL_BINDING_ADJUDICATION_REGISTER_RESOURCE
     )
     assert receipt["dormant"] == []
     stood_on = receipt["stood_on"]["census_households/constituency"]
@@ -216,6 +490,187 @@ def test_rowwise_doctrine_solve_uses_base_weights_directly() -> None:
     assert seed["approved_on"] == "2026-08-31"
     assert seed["expires_on"] == "2026-11-30"
     assert receipt["stood_on"]["tenure/constituency"] == {}
+
+
+def test_joint_doctrine_solve_compiles_local_then_national_once_and_restores() -> None:
+    import microcosm.build.uk_runtime.local_rowwise as local_rowwise
+
+    base = _clone_frame()
+    household = base.table("household").copy()
+    household["national/ones"] = 1.0
+    prepared = uk_national_frame(
+        person=base.table("person"),
+        benunit=base.table("benunit"),
+        household=household,
+        household_weights=base.weights_for("household").values,
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+    )
+    spec = TargetSpec(
+        name="national/households",
+        entity="household",
+        value=3.0,
+        measure="national/ones",
+        period=0,
+        source="synthetic national fixture",
+        family="national_fixture",
+    )
+    registry = TargetRegistry([spec], country="uk")
+    national = UKRowwiseNationalRows(
+        targets=registry.to_target_set(),
+        registry=registry,
+        families=("national_fixture",),
+    )
+    calls = 0
+    real_calibrate = local_rowwise.calibrate
+
+    def spy(frame, targets, **kwargs):
+        nonlocal calls
+        calls += 1
+        assert [target.name for target in targets][-1] == "national/households"
+        return real_calibrate(frame, targets, **kwargs)
+
+    def restore(frame):
+        restored_household = frame.table("household").drop(columns=["national/ones"])
+        restored_household["household_weight"] = frame.weights_for("household").values
+        return uk_national_frame(
+            person=frame.table("person"),
+            benunit=frame.table("benunit"),
+            household=restored_household,
+            household_weights=frame.weights_for("household").values,
+            time_period="2023",
+            weight_kind=WeightKind.CALIBRATED,
+            mass_log=frame.mass_log,
+        )
+
+    local_rowwise.calibrate = spy
+    try:
+        result = solve_uk_rowwise_weights_under_doctrine(
+            prepared,
+            build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets()),
+            bound_families=[
+                "census_households/constituency",
+                "tenure/constituency",
+                "national/national_fixture",
+            ],
+            national_rows=national,
+            restore=restore,
+            epochs=2,
+        )
+    finally:
+        local_rowwise.calibrate = real_calibrate
+
+    assert calls == 1
+    assert len(result.diagnostics) == 4
+    assert result.national_diagnostics["name"].tolist() == [spec.to_target().row_name]
+    assert result.all_past_cap_census["n_targets"] == 5
+    assert result.national_past_cap_census["n_targets"] == 1
+    assert "national/national_fixture" in result.frame.mass_log[-1].reason
+    assert "national/ones" not in result.frame.table("household").columns
+
+
+def test_joint_doctrine_solve_refuses_national_registry_misalignment() -> None:
+    spec = TargetSpec(
+        name="national/households",
+        entity="household",
+        value=3.0,
+        measure="household_weight",
+        source="synthetic national fixture",
+        family="national_fixture",
+    )
+    registry = TargetRegistry([spec], country="uk")
+    wrong = TargetSpec(
+        name="national/wrong",
+        entity="household",
+        value=3.0,
+        measure="household_weight",
+        source="synthetic national fixture",
+        family="national_fixture",
+    )
+    national = UKRowwiseNationalRows(
+        targets=TargetSet([wrong.to_target()]),
+        registry=registry,
+        families=("national_fixture",),
+    )
+    with pytest.raises(ValueError, match="not aligned"):
+        solve_uk_rowwise_weights_under_doctrine(
+            _clone_frame(),
+            build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets()),
+            bound_families=[
+                "census_households/constituency",
+                "tenure/constituency",
+                "national/national_fixture",
+            ],
+            national_rows=national,
+            epochs=1,
+        )
+
+
+def test_rotated_holdout_keeps_national_rows_in_every_training_fold(
+    monkeypatch,
+) -> None:
+    import microcosm.build.uk_runtime.local_rowwise as local_rowwise
+
+    metrics = pd.DataFrame(
+        {
+            "households": [1.0, 1.0, 1.0],
+            "tenure/social_rent": [1.0, 1.0, 1.0],
+        },
+        index=[101, 102, 103],
+    )
+    assigned = pd.Series(["A", "B", "C"], index=metrics.index)
+    targets = pd.DataFrame(
+        {
+            "code": ["A", "B", "C"],
+            "households": [1.0, 1.0, 1.0],
+            "tenure/social_rent": [1.0, 1.0, 1.0],
+        }
+    )
+    problem = build_uk_rowwise_local_matrix(metrics, assigned, targets)
+    spec = TargetSpec(
+        name="national/households",
+        entity="household",
+        value=3.0,
+        measure="household_weight",
+        source="synthetic national fixture",
+        family="national_fixture",
+    )
+    registry = TargetRegistry([spec], country="uk")
+    national = UKRowwiseNationalRows(
+        targets=registry.to_target_set(),
+        registry=registry,
+        families=("national_fixture",),
+    )
+    calls = []
+
+    def fake_solve(frame, training_problem, **kwargs):
+        calls.append(kwargs["national_rows"])
+        return type("Solve", (), {"weights": np.ones(3)})()
+
+    monkeypatch.setattr(
+        local_rowwise, "solve_uk_rowwise_weights_under_doctrine", fake_solve
+    )
+    receipt = rotated_uk_local_holdout(
+        _clone_frame(),
+        problem,
+        bound_families=[
+            "census_households/constituency",
+            "tenure/constituency",
+            "national/national_fixture",
+        ],
+        national_rows=national,
+        epochs=1,
+        learning_rate=0.1,
+        conserve_mass=False,
+        target_records=None,
+        l0_lambda=0.0,
+        budget_iters=1,
+        solve_seed=7,
+    )
+
+    assert calls == [national] * 5
+    assert receipt["n_folds"] == 5
+    assert all(fold["training_national_rows"] == 1 for fold in receipt["folds"])
 
 
 def test_rowwise_binding_refuses_unadjudicated_committed_fence() -> None:
@@ -685,4 +1140,73 @@ def test_doctrine_solve_refuses_reordered_diagnostics(monkeypatch) -> None:
                 "tenure/constituency",
             ],
             epochs=1,
+        )
+
+
+def test_dense_builder_result_equals_frozen_pre_pr_fixture() -> None:
+    """Exact equality against the result main's builder produced on this fixture.
+
+    The golden was generated from ``origin/main``'s ``local_rowwise.py`` before
+    the long-format assembler landed, so this pins the bit-for-bit claim rather
+    than restating the delegation.
+    """
+
+    golden = json.loads(
+        (
+            Path(__file__).parent / "golden" / "uk_local_rowwise_dense_fixture.json"
+        ).read_text(encoding="utf-8")
+    )
+    dense = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
+    matrix = dense.matrix.tocsr()
+    assert matrix.indptr.tolist() == golden["indptr"]
+    assert matrix.indices.tolist() == golden["indices"]
+    assert matrix.data.tolist() == golden["data"]
+    assert list(dense.targets) == golden["targets"]
+    assert list(dense.area_codes) == golden["area_codes"]
+    assert list(dense.assigned_areas) == golden["assigned_areas"]
+    assert list(dense.household_ids) == golden["household_ids"]
+    assert list(dense.metric_names) == golden["metric_names"]
+    assert np.asarray(dense.metric_values).tolist() == golden["metric_values"]
+    frozen = pd.DataFrame(golden["target_frame"])
+    common = [column for column in frozen.columns if column in dense.target_frame]
+    assert common == list(frozen.columns)
+    pd.testing.assert_frame_equal(
+        dense.target_frame[common].reset_index(drop=True),
+        frozen[common].reset_index(drop=True),
+        check_dtype=False,
+    )
+
+
+def test_doctrine_solve_refuses_a_reordering_restore() -> None:
+    from types import SimpleNamespace
+
+    base = _clone_frame()
+    household = base.table("household").copy()
+    household["national/ones"] = 1.0
+    prepared = uk_national_frame(
+        person=base.table("person"),
+        benunit=base.table("benunit"),
+        household=household,
+        household_weights=base.weights_for("household").values,
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+    )
+
+    def reordering_restore(frame):
+        # uk_national_frame refuses an unsorted id column, so a reordered
+        # frame cannot be built through it; the guard must catch the stand-in
+        # before anything else reads the restored result.
+        reversed_household = frame.table("household").iloc[::-1].reset_index(drop=True)
+        return SimpleNamespace(
+            table=lambda entity: reversed_household,
+            entities=("household",),
+        )
+
+    with pytest.raises(ValueError, match="same ids, same order"):
+        solve_uk_rowwise_weights_under_doctrine(
+            prepared,
+            build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets()),
+            bound_families=["census_households/constituency", "tenure/constituency"],
+            restore=reordering_restore,
+            epochs=2,
         )

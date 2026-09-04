@@ -38,6 +38,7 @@ __all__ = [
     "UK_DIAGNOSTICS_SCHEMA_VERSION",
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
+    "uk_support_limited_misses",
     "uk_target_geography_levels",
     "uk_weakest_areas_by_fit",
     "uk_weakest_families",
@@ -181,11 +182,14 @@ def uk_weakest_areas_by_fit(
     for row in target_rows:
         metadata = row.get("metadata")
         if not isinstance(metadata, Mapping):
-            raise ValueError("UK area rollups require target metadata.")
-        level = _normalize_geography_level(metadata.get("area_type"))
+            continue
+        area_type = metadata.get("area_type")
+        if area_type is None:
+            continue
+        level = _normalize_geography_level(area_type)
         area_code = str(metadata.get("area_code") or "")
         if level not in {"constituency", "local_authority"} or not area_code:
-            raise ValueError("UK area rollups require local target area metadata.")
+            continue
         name, error = _finite_target_error(row)
         grouped.setdefault((level, area_code), []).append(
             (name, abs(error), _finite_loss_contribution(row))
@@ -278,6 +282,133 @@ def _country_for_area(area_code: str) -> str:
         raise ValueError(
             f"Cannot derive UK country from area code {area_code!r}."
         ) from error
+
+
+def _local_grain_column(frame: pd.DataFrame) -> str:
+    for column in ("grain", "area_type", "geography_level"):
+        if column in frame.columns:
+            return column
+    raise ValueError(
+        "UK local diagnostics require a grain, area_type, or geography_level column."
+    )
+
+
+def uk_support_limited_misses(
+    local_diagnostics: pd.DataFrame,
+    area_support: Mapping[str, pd.DataFrame],
+    *,
+    max_abs_relative_error: float,
+) -> dict[str, dict[str, object]]:
+    """Relate failing local cells to each area's measured support."""
+
+    if not math.isfinite(max_abs_relative_error) or max_abs_relative_error < 0:
+        raise ValueError("max_abs_relative_error must be finite and non-negative.")
+    required = {"area_code", "abs_relative_error"}
+    missing = sorted(required - set(local_diagnostics.columns))
+    if missing:
+        raise ValueError(f"UK local diagnostics are missing columns {missing}.")
+    grain_column = _local_grain_column(local_diagnostics)
+    result: dict[str, dict[str, object]] = {}
+    for raw_grain, support in sorted(area_support.items()):
+        grain = str(raw_grain)
+        required_support = {
+            "area_code",
+            "assigned_households",
+            "effective_sample_size",
+            "nonzero_source_households",
+        }
+        support_missing = sorted(required_support - set(support.columns))
+        if support_missing:
+            raise ValueError(
+                f"UK area support for {grain!r} is missing columns {support_missing}."
+            )
+        grain_aliases = {grain}
+        if grain == "la":
+            grain_aliases.add("local_authority")
+        elif grain == "local_authority":
+            grain_aliases.add("la")
+        cells = local_diagnostics.loc[
+            local_diagnostics[grain_column].astype(str).isin(grain_aliases)
+            & local_diagnostics["area_code"].notna()
+        ].copy()
+        cells["abs_relative_error"] = pd.to_numeric(
+            cells["abs_relative_error"], errors="raise"
+        )
+        failing = cells.loc[cells["abs_relative_error"] > max_abs_relative_error]
+        support_rows = support.copy()
+        support_rows["area_code"] = support_rows["area_code"].astype(str)
+        support_rows["effective_sample_size"] = pd.to_numeric(
+            support_rows["effective_sample_size"], errors="raise"
+        )
+        bottom_cutoff = (
+            float(support_rows["effective_sample_size"].quantile(0.1))
+            if len(support_rows)
+            else None
+        )
+        failing_with_support = failing.merge(
+            support_rows, on="area_code", how="left", validate="many_to_one"
+        )
+        if (
+            len(failing_with_support)
+            and failing_with_support["effective_sample_size"].isna().any()
+        ):
+            missing_areas = sorted(
+                failing_with_support.loc[
+                    failing_with_support["effective_sample_size"].isna(), "area_code"
+                ]
+                .astype(str)
+                .unique()
+            )
+            raise ValueError(
+                f"UK area support for {grain!r} is missing failing areas {missing_areas}."
+            )
+        share_bottom = (
+            float(
+                (failing_with_support["effective_sample_size"] <= bottom_cutoff).mean()
+            )
+            if len(failing_with_support)
+            else None
+        )
+        worst = (
+            cells.groupby("area_code", sort=True)["abs_relative_error"]
+            .max()
+            .reset_index(name="worst_abs_relative_error")
+            .merge(support_rows, on="area_code", how="left", validate="one_to_one")
+        )
+        correlation = (
+            float(
+                worst["worst_abs_relative_error"].corr(
+                    worst["effective_sample_size"], method="spearman"
+                )
+            )
+            if len(worst) > 1
+            else None
+        )
+        if correlation is not None and not math.isfinite(correlation):
+            correlation = None
+        elif correlation is not None and math.isclose(abs(correlation), 1.0):
+            correlation = math.copysign(1.0, correlation)
+        worst = worst.sort_values(
+            ["worst_abs_relative_error", "area_code"],
+            ascending=[False, True],
+            kind="stable",
+        ).head(10)
+        result[grain] = {
+            "n_failing_cells": int(len(failing)),
+            "share_failing_cells_in_bottom_ess_decile": share_bottom,
+            "spearman_worst_abs_relative_error_vs_ess": correlation,
+            "worst_areas": [
+                {
+                    "area_code": str(row["area_code"]),
+                    "worst_abs_relative_error": float(row["worst_abs_relative_error"]),
+                    "rows": int(row["assigned_households"]),
+                    "ess": float(row["effective_sample_size"]),
+                    "sources": int(row["nonzero_source_households"]),
+                }
+                for _, row in worst.iterrows()
+            ],
+        }
+    return result
 
 
 def _as_weights(values: Sequence[float] | np.ndarray) -> np.ndarray:

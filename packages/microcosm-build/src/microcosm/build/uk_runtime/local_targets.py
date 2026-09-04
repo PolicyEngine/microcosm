@@ -198,11 +198,13 @@ def compute_household_metrics(
     household_ids: Sequence[Any] | None = None,
     target_profile: Mapping[str, Any] | Any | None = None,
 ) -> pd.DataFrame:
-    """Compute local calibration metrics at household grain.
+    """Compute local calibration metrics on household rows.
 
     ``sim`` must provide ``calculate(variable, period=...)`` and
     ``map_result(values, from_entity, to_entity)`` methods compatible with
-    PolicyEngine-UK's microsimulation API.
+    PolicyEngine-UK's microsimulation API. UC child-band membership is
+    evaluated for each benefit unit and summed onto its household row, so a
+    multi-benefit-unit household can contribute to more than one band.
     """
 
     _validate_area_type(area_type)
@@ -241,15 +243,21 @@ def compute_household_metrics(
     matrix["uc_households"] = on_uc_hh
 
     if area_type == "constituency":
-        is_child = _values(_calculate(sim, "is_child", period))
-        children_per_hh = _map_result(sim, is_child, "person", "household")
-        on_uc_bool = on_uc_hh > 0
-        matrix["uc_hh_0_children"] = (on_uc_bool & (children_per_hh == 0)).astype(float)
-        matrix["uc_hh_1_child"] = (on_uc_bool & (children_per_hh == 1)).astype(float)
-        matrix["uc_hh_2_children"] = (on_uc_bool & (children_per_hh == 2)).astype(float)
-        matrix["uc_hh_3plus_children"] = (on_uc_bool & (children_per_hh >= 3)).astype(
-            float
+        num_children = _values(_calculate(sim, "num_children", period))
+        on_uc_bool = on_uc > 0
+        child_bands = (
+            ("uc_hh_0_children", num_children == 0),
+            ("uc_hh_1_child", num_children == 1),
+            ("uc_hh_2_children", num_children == 2),
+            ("uc_hh_3plus_children", num_children >= 3),
         )
+        for metric, in_band in child_bands:
+            matrix[metric] = _map_result(
+                sim,
+                on_uc_bool & in_band,
+                "benunit",
+                "household",
+            )
 
     if area_type == "la":
         hbai_net_income = _values(

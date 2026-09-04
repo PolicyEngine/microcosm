@@ -1,0 +1,5 @@
+{
+  "schema_version": 2,
+  "description": "Reviewed UK local-area support-floor exclusions. The register ships empty in PR A; each future entry must carry measured shortfalls and an in-force adjudication.",
+  "exclusions": {}
+}

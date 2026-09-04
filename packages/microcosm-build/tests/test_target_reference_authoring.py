@@ -54,6 +54,8 @@ def test_author_area_target_references_fans_out_roster_and_resolves_operations()
             aggregation="mean",
         ),
     ]
+    for fact in facts:
+        fact["period"]["value"] = 2024
 
     authored = author_area_target_references(
         contract,
@@ -90,6 +92,44 @@ def test_author_area_target_references_fans_out_roster_and_resolves_operations()
     assert amount_reference["measure"] == "hmrc/employment_income/amount"
     assert amount_reference["ledger_selector"]["geography_id"] == "A1"
     assert amount_reference["value_operation"] == "count_x_mean"
+    assert authored.membership_report["uprating_holds"] == [
+        {
+            "name": "ons.age.0_10@A1",
+            "target_id": "ons.age.0_10",
+            "geography_level": "constituency",
+            "geography_id": "A1",
+            "from": "2024",
+            "to": "2025",
+        },
+        {
+            "name": "ons.age.0_10@A2",
+            "target_id": "ons.age.0_10",
+            "geography_level": "constituency",
+            "geography_id": "A2",
+            "from": "2024",
+            "to": "2025",
+        },
+        {
+            "name": "hmrc.employment_income.amount@A1",
+            "target_id": "hmrc.employment_income.amount",
+            "geography_level": "constituency",
+            "geography_id": "A1",
+            "from": "2024",
+            "to": "2025",
+        },
+        {
+            "name": "hmrc.employment_income.amount@A2",
+            "target_id": "hmrc.employment_income.amount",
+            "geography_level": "constituency",
+            "geography_id": "A2",
+            "from": "2024",
+            "to": "2025",
+        },
+    ]
+    assert authored.membership_report["holds_by_target"] == {
+        "hmrc.employment_income.amount": 2,
+        "ons.age.0_10": 2,
+    }
 
 
 def test_author_area_target_references_refuses_unsigned_absence() -> None:

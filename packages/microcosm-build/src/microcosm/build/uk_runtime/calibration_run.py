@@ -462,7 +462,7 @@ def _run_uk_calibration_attempt(
     frame, _provenance = load_uk_national_frame(paths.input_h5)
     append_phase(state, "input_loaded")
     spine_sidecar_path = paths.input_h5.with_suffix(".build.json")
-    spine_sidecar = _load_bound_spine_sidecar(spine_sidecar_path, frame)
+    spine_sidecar = load_bound_spine_sidecar(spine_sidecar_path, frame)
     append_phase(state, "input_sidecar_bound")
     assert_calibration_input_finite(frame)
     append_phase(state, "input_finite")
@@ -503,7 +503,7 @@ def _run_uk_calibration_attempt(
             else None
         ),
         "register": _register_census(register_registry, exclusion_receipt),
-        "spine_provenance": _spine_provenance_from_sidecar(
+        "spine_provenance": spine_provenance_from_sidecar(
             spine_sidecar_path,
             spine_sidecar,
         ),
@@ -646,7 +646,7 @@ def _run_calibration_gate_battery(
     return payload
 
 
-def _load_bound_spine_sidecar(path: Path, frame: Frame) -> dict[str, object]:
+def load_bound_spine_sidecar(path: Path, frame: Frame) -> dict[str, object]:
     if not path.is_file():
         raise ValueError(f"input H5 build sidecar absent: {path}")
     try:
@@ -741,7 +741,7 @@ def _assert_spine_gate_report_passed(
         )
 
 
-def _spine_provenance_from_sidecar(
+def spine_provenance_from_sidecar(
     path: Path,
     sidecar: Mapping[str, object],
 ) -> dict[str, object]:
@@ -956,7 +956,7 @@ _RUNTIME_PROVENANCE_PACKAGES = (
 )
 
 
-def _runtime_provenance() -> dict[str, str]:
+def runtime_provenance() -> dict[str, str]:
     """The calibrating environment's package versions, for the build block."""
 
     runtime = {"python": platform.python_version()}
@@ -966,6 +966,12 @@ def _runtime_provenance() -> dict[str, str]:
         except metadata.PackageNotFoundError:
             runtime[package] = "unavailable"
     return runtime
+
+
+# Compatibility aliases for the established internal call sites.
+_load_bound_spine_sidecar = load_bound_spine_sidecar
+_spine_provenance_from_sidecar = spine_provenance_from_sidecar
+_runtime_provenance = runtime_provenance
 
 
 def _register_census(

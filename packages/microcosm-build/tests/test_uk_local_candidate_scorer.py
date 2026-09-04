@@ -153,6 +153,27 @@ def test_local_scorer_refuses_a_non_frozen_surface() -> None:
         )
 
 
+def test_local_scorer_accepts_candidate_superset_with_receipt() -> None:
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    candidate["targets"].append(
+        {"name": "national/extra@2025", "final_estimate": 123.0}
+    )
+
+    result = scorer.score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=2,
+    )
+
+    assert result["rows_outside_register"] == {
+        "count": 1,
+        "rows": ["national/extra@2025"],
+    }
+
+
 def test_local_scorer_joins_the_incumbent_on_household_id() -> None:
     """A reordered metrics file must score identically, not plausibly wrong."""
 

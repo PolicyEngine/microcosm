@@ -1,0 +1,100 @@
+{
+ "area_codes": [
+  "E001",
+  "S001"
+ ],
+ "assigned_areas": [
+  "E001",
+  "E001",
+  "S001"
+ ],
+ "data": [
+  2.0,
+  1.0,
+  1.0,
+  3.0,
+  1.0
+ ],
+ "household_ids": [
+  101,
+  102,
+  103
+ ],
+ "indices": [
+  0,
+  1,
+  0,
+  2,
+  2
+ ],
+ "indptr": [
+  0,
+  2,
+  3,
+  4,
+  5
+ ],
+ "metric_names": [
+  "households",
+  "tenure/social_rent"
+ ],
+ "metric_values": [
+  [
+   2.0,
+   1.0
+  ],
+  [
+   1.0,
+   0.0
+  ],
+  [
+   3.0,
+   1.0
+  ]
+ ],
+ "source": "origin/main build_uk_rowwise_local_matrix on the test_uk_local_rowwise fixture (_metrics/_assigned/_targets), frozen 2026-09-04 for #762 PR A",
+ "target_frame": [
+  {
+   "area_code": "E001",
+   "area_index": 0,
+   "area_type": "constituency",
+   "metric": "households",
+   "metric_index": 0,
+   "target_index": 0,
+   "value": 4.0
+  },
+  {
+   "area_code": "E001",
+   "area_index": 0,
+   "area_type": "constituency",
+   "metric": "tenure/social_rent",
+   "metric_index": 1,
+   "target_index": 1,
+   "value": 1.0
+  },
+  {
+   "area_code": "S001",
+   "area_index": 1,
+   "area_type": "constituency",
+   "metric": "households",
+   "metric_index": 0,
+   "target_index": 2,
+   "value": 2.0
+  },
+  {
+   "area_code": "S001",
+   "area_index": 1,
+   "area_type": "constituency",
+   "metric": "tenure/social_rent",
+   "metric_index": 1,
+   "target_index": 3,
+   "value": 1.0
+  }
+ ],
+ "targets": [
+  4.0,
+  1.0,
+  2.0,
+  1.0
+ ]
+}

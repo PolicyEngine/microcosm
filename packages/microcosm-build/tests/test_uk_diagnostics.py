@@ -13,6 +13,7 @@ from microcosm.build.uk_runtime.diagnostics import (
     UK_DIAGNOSTICS_SCHEMA_VERSION,
     UK_TARGET_GEOGRAPHY_LEVELS,
     uk_calibration_diagnostics_payload,
+    uk_support_limited_misses,
     uk_weakest_areas_by_fit,
     uk_weakest_families,
     uk_weight_summary,
@@ -141,6 +142,89 @@ def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
     assert trimmed["limit"] == 1
     assert trimmed["n_areas_scored"] == 2
     assert [row["area_code"] for row in trimmed["bottom_by_fit"]] == ["W07000041"]
+
+
+def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> None:
+    diagnostics = pd.DataFrame(
+        {
+            "area_type": ["constituency", "constituency", "la", None],
+            "area_code": ["E14000001", "E14000002", "E06000001", None],
+            "abs_relative_error": [0.30, 0.05, 0.40, 0.90],
+        }
+    )
+    support = {
+        "constituency": pd.DataFrame(
+            {
+                "area_code": ["E14000001", "E14000002"],
+                "assigned_households": [2, 20],
+                "effective_sample_size": [1.0, 20.0],
+                "nonzero_source_households": [1, 20],
+            }
+        ),
+        "la": pd.DataFrame(
+            {
+                "area_code": ["E06000001"],
+                "assigned_households": [3],
+                "effective_sample_size": [2.0],
+                "nonzero_source_households": [2],
+            }
+        ),
+    }
+
+    result = uk_support_limited_misses(
+        diagnostics,
+        support,
+        max_abs_relative_error=0.25,
+    )
+    assert set(result) == {"constituency", "la"}
+    assert result["constituency"] == {
+        "n_failing_cells": 1,
+        "share_failing_cells_in_bottom_ess_decile": 1.0,
+        "spearman_worst_abs_relative_error_vs_ess": -1.0,
+        "worst_areas": [
+            {
+                "area_code": "E14000001",
+                "worst_abs_relative_error": 0.3,
+                "rows": 2,
+                "ess": 1.0,
+                "sources": 1,
+            },
+            {
+                "area_code": "E14000002",
+                "worst_abs_relative_error": 0.05,
+                "rows": 20,
+                "ess": 20.0,
+                "sources": 20,
+            },
+        ],
+    }
+    assert result["la"]["n_failing_cells"] == 1
+    assert result["la"]["spearman_worst_abs_relative_error_vs_ess"] is None
+
+    rows = [
+        _local_target_row(
+            "local",
+            family="income",
+            area_type="constituency",
+            area_code="E14000001",
+            relative_error=0.30,
+            loss_contribution=0.20,
+        ),
+        {
+            "name": "national",
+            "relative_error": 0.90,
+            "final_loss_contribution": 0.80,
+            "registry": {"family": "national_income"},
+            "metadata": {"geography_level": "national"},
+        },
+    ]
+    long_support = support["constituency"].assign(
+        geography_level="constituency",
+        nonzero_households=lambda frame: frame["assigned_households"],
+    )
+    areas = uk_weakest_areas_by_fit(rows, long_support)
+    assert areas["n_areas_scored"] == 1
+    assert areas["bottom_by_fit"][0]["area_code"] == "E14000001"
 
 
 def _diagnostics_case(*, with_skipped: bool = False):

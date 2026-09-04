@@ -26,7 +26,8 @@ measured fit.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, fields, replace
 
 import numpy as np
 
@@ -35,6 +36,8 @@ __all__ = [
     "UK_LOCAL_SOLVE_DOCTRINE",
     "UK_LOCAL_TARGET_LOSS_CAP",
     "UKLocalSolveDoctrine",
+    "uk_local_doctrine_with_overrides",
+    "uk_local_target_loss_weights",
 ]
 
 #: Declared uniform loss cap for the UK local solve (scaled absolute
@@ -56,7 +59,8 @@ UK_LOCAL_TARGET_LOSS_CAP = 10.0
 UK_LOCAL_MAX_WEIGHT_RATIO = 100.0
 
 _ALLOWED_SCALE_RULES = ("default_target_loss_scales",)
-_ALLOWED_TARGET_WEIGHT_RULES = ("uniform",)
+_ALLOWED_TARGET_WEIGHT_RULES = ("uniform", "grain_equal")
+_OVERRIDABLE_FIELDS = frozenset({"target_weight_rule"})
 
 
 @dataclass(frozen=True)
@@ -111,3 +115,55 @@ class UKLocalSolveDoctrine:
 
 #: The reviewed doctrine instance every release-path solve uses.
 UK_LOCAL_SOLVE_DOCTRINE = UKLocalSolveDoctrine()
+
+
+def uk_local_target_loss_weights(
+    grain_labels: Sequence[str],
+    *,
+    rule: str,
+) -> np.ndarray | None:
+    """Derive doctrine weights from row-grain labels, never target knobs."""
+
+    if rule not in _ALLOWED_TARGET_WEIGHT_RULES:
+        raise ValueError(
+            f"target_weight_rule must be one of {_ALLOWED_TARGET_WEIGHT_RULES}, "
+            f"got {rule!r}."
+        )
+    if rule == "uniform":
+        return None
+    from microcosm.build.uk_runtime.national_doctrine import (
+        uk_national_target_loss_weights,
+    )
+
+    return uk_national_target_loss_weights(grain_labels, rule="family_equal")
+
+
+def uk_local_doctrine_with_overrides(
+    doctrine: UKLocalSolveDoctrine,
+    overrides: Mapping[str, object],
+) -> tuple[UKLocalSolveDoctrine, dict[str, dict[str, object]]]:
+    """Apply the sole reviewed local override and return its receipt."""
+
+    if not isinstance(doctrine, UKLocalSolveDoctrine):
+        raise TypeError("doctrine must be a UKLocalSolveDoctrine instance.")
+    fields_by_name = {field.name for field in fields(UKLocalSolveDoctrine)}
+    unknown = sorted(set(overrides) - fields_by_name)
+    if unknown:
+        raise ValueError(
+            f"unknown UK local doctrine field(s) {unknown}; frozen fields are "
+            f"{sorted(fields_by_name)}."
+        )
+    frozen = sorted(set(overrides) - _OVERRIDABLE_FIELDS)
+    if frozen:
+        raise ValueError(
+            "UK local doctrine field(s) are reviewed constants, not knobs: "
+            f"{frozen}; overridable fields are {sorted(_OVERRIDABLE_FIELDS)}."
+        )
+    effective_doctrine = replace(doctrine, **overrides)
+    receipt: dict[str, dict[str, object]] = {}
+    for name in sorted(_OVERRIDABLE_FIELDS):
+        default = getattr(doctrine, name)
+        effective = getattr(effective_doctrine, name)
+        if effective != default:
+            receipt[name] = {"default": default, "effective": effective}
+    return effective_doctrine, receipt

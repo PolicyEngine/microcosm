@@ -118,6 +118,7 @@ def test_households_metric_is_in_the_computed_surface() -> None:
             "income_tax": [1.0, 0.0, 2.0, 3.0],
             "age": [5, 35, 72, 12],
             "universal_credit": [0.0, 100.0, 50.0],
+            "num_children": [1, 0, 2],
             "is_child": [1.0, 0.0, 0.0, 1.0],
         }
 

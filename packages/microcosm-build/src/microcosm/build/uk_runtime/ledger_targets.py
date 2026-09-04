@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from functools import lru_cache
 from importlib import resources as importlib_resources
 from typing import Any
 
@@ -27,11 +29,18 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
+from microcosm.build.uk_runtime.ladder_targets import (
+    constituency_household_targets,
+    local_authority_household_targets,
+)
+from microcosm.build.uk_runtime.local_target_census import family_for_metric
 from microcosm.build.uk_runtime.local_targets import (
+    AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
     area_groups_from_codes,
     load_uk_local_geography_contract,
+    metric_names,
 )
-from microcosm.calibrate import TargetRegistry
+from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import Frame
 
 
@@ -44,6 +53,7 @@ class UKLedgerTargetCompilation:
 
 
 LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE = "local_registry_parity_fixture_2025.json"
+UK_LOCAL_TARGET_REFERENCE_MEMBERSHIP_RESOURCE = "local_target_reference_membership.json"
 UK_POPULATION_TARGETS_RESOURCE = "uk_population_targets.json"
 UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS = frozenset({"country", "region"})
 _UK_LOCAL_FIXTURE_METRIC_ALIASES = {
@@ -88,6 +98,59 @@ UK_CROSS_GRAIN_BRIDGES = (
         concept="uk.benefit_unit.count",
         higher_target_ids=("dwp.uc.households",),
         lower_side="contract:dwp.uc.households_by_area",
+    ),
+    # The national ONS controls use inclusive integer-age bands (0--9), while
+    # local targets use equivalent half-open encodings (0--10), so their
+    # signatures cannot match directly. These bridges let the K02000001 UK
+    # control rescale both constituency and local-authority bands over its
+    # England/Wales/Scotland/Northern Ireland legs.
+    CrossGrainBridge(
+        bridge_id="national_age_0_9_vs_local_age_0_10",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_0_9_by_region",),
+        lower_side="contract:ons.age.0_10",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_10_19_vs_local_age_10_20",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_10_19_by_region",),
+        lower_side="contract:ons.age.10_20",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_20_29_vs_local_age_20_30",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_20_29_by_region",),
+        lower_side="contract:ons.age.20_30",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_30_39_vs_local_age_30_40",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_30_39_by_region",),
+        lower_side="contract:ons.age.30_40",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_40_49_vs_local_age_40_50",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_40_49_by_region",),
+        lower_side="contract:ons.age.40_50",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_50_59_vs_local_age_50_60",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_50_59_by_region",),
+        lower_side="contract:ons.age.50_60",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_60_69_vs_local_age_60_70",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_60_69_by_region",),
+        lower_side="contract:ons.age.60_70",
+    ),
+    CrossGrainBridge(
+        bridge_id="national_age_70_79_vs_local_age_70_80",
+        concept="uk.person.count",
+        higher_target_ids=("ons.population.age_70_79_by_region",),
+        lower_side="contract:ons.age.70_80",
     ),
 )
 # A future move of these declarations into country-package spec JSON follows
@@ -220,6 +283,93 @@ def load_uk_local_area_crosswalk() -> dict[str, Any]:
         .joinpath("local_area_crosswalk.json")
         .read_text(encoding="utf-8")
     )
+
+
+def load_uk_local_target_reference_membership() -> dict[str, Any]:
+    """Load the committed local target membership and signed deferrals."""
+
+    return json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath(UK_LOCAL_TARGET_REFERENCE_MEMBERSHIP_RESOURCE)
+        .read_text(encoding="utf-8")
+    )
+
+
+def _uk_licensed_empty_legs_from_membership(
+    membership: Mapping[str, Any],
+) -> dict[str, frozenset[str]]:
+    """Derive wholly deferred target legs from committed membership rosters."""
+
+    areas_by_level = membership.get("areas_by_geography_level")
+    if not isinstance(areas_by_level, Mapping):
+        raise ValueError(
+            "UK local target membership must expose areas_by_geography_level."
+        )
+    roster_by_level_leg: dict[tuple[str, str], set[str]] = {}
+    for geography_level, raw_area_ids in areas_by_level.items():
+        if not isinstance(raw_area_ids, (list, tuple)):
+            raise ValueError(
+                f"UK local target membership roster {geography_level!r} must be a list."
+            )
+        for raw_area_id in raw_area_ids:
+            area_id = str(raw_area_id).strip()
+            if not area_id:
+                raise ValueError(
+                    "UK local target membership rosters must not contain blank "
+                    "area ids."
+                )
+            leg = _uk_cross_grain_leg_of_area(area_id)
+            roster_by_level_leg.setdefault((str(geography_level), leg), set()).add(
+                area_id
+            )
+
+    signed_deferrals = membership.get("signed_deferrals", ())
+    if not isinstance(signed_deferrals, (list, tuple)):
+        raise ValueError("UK local target membership signed_deferrals must be a list.")
+    deferred_by_target_level_leg: dict[tuple[str, str, str], set[str]] = {}
+    for deferral in signed_deferrals:
+        if not isinstance(deferral, Mapping):
+            raise ValueError(
+                "UK local target membership signed deferrals must be mappings."
+            )
+        target_id = str(deferral.get("target_id", "")).strip()
+        geography_level = str(deferral.get("geography_level", "")).strip()
+        raw_area_ids = deferral.get("area_ids")
+        if (
+            not target_id
+            or not geography_level
+            or not isinstance(raw_area_ids, (list, tuple))
+        ):
+            raise ValueError(
+                "UK local target membership signed deferrals must name a "
+                "target_id, geography_level, and area_ids list."
+            )
+        for raw_area_id in raw_area_ids:
+            area_id = str(raw_area_id).strip()
+            leg = _uk_cross_grain_leg_of_area(area_id)
+            roster = roster_by_level_leg.get((geography_level, leg), set())
+            if area_id not in roster:
+                raise ValueError(
+                    "UK local target membership signed deferral area "
+                    f"{area_id!r} is absent from the {geography_level!r} roster."
+                )
+            deferred_by_target_level_leg.setdefault(
+                (target_id, geography_level, leg), set()
+            ).add(area_id)
+
+    licensed: dict[str, set[str]] = {}
+    for (
+        target_id,
+        geography_level,
+        leg,
+    ), deferred in deferred_by_target_level_leg.items():
+        roster = roster_by_level_leg[(geography_level, leg)]
+        if roster and deferred == roster:
+            licensed.setdefault(target_id, set()).add(leg)
+    return {
+        target_id: frozenset(sorted(legs))
+        for target_id, legs in sorted(licensed.items())
+    }
 
 
 def compile_uk_local_target_registry(
@@ -623,6 +773,7 @@ class UKFrameTargetAdapter:
         )
 
 
+@lru_cache(maxsize=2)
 def _uk_contract_targets(
     *,
     national_only: bool = True,
@@ -643,9 +794,70 @@ def _uk_contract_targets(
     }
 
 
+def _spec_geography(spec: TargetSpec) -> tuple[str, str]:
+    """Resolve one compiled target's local or Ledger geography spelling."""
+
+    metadata = spec.metadata
+
+    def spelling(prefix: str, label: str) -> tuple[str, str] | None:
+        level_key = f"{prefix}geography_level"
+        id_key = f"{prefix}geography_id"
+        if level_key not in metadata and id_key not in metadata:
+            return None
+        level = str(metadata.get(level_key) or "").strip()
+        geography_id = str(metadata.get(id_key) or "").strip()
+        if not level or not geography_id:
+            raise ValueError(
+                f"UK target {spec.name!r} has blank {label} geography "
+                f"(level={level!r}, id={geography_id!r})."
+            )
+        return level, geography_id
+
+    local = spelling("", "local")
+    ledger = spelling("ledger_", "ledger")
+    if local is not None and ledger is not None and local != ledger:
+        raise ValueError(
+            f"UK target {spec.name!r} geography spellings disagree: "
+            f"local={local!r}, ledger={ledger!r}."
+        )
+    resolved = local or ledger
+    if resolved is None:
+        raise ValueError(
+            f"UK target {spec.name!r} names no geography under either the "
+            "local or Ledger metadata spelling."
+        )
+
+    level, geography_id = resolved
+    if local is None or level in UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS:
+        contract_target_id = str(
+            metadata.get("contract_target_id", spec.name.split("@", 1)[0])
+        )
+        contract = _uk_contract_targets(national_only=False).get(contract_target_id)
+        if contract is None:
+            raise ValueError(
+                f"UK target {spec.name!r} references unknown contract target "
+                f"{contract_target_id!r}."
+            )
+        declared_levels = tuple(
+            str(value).strip()
+            for value in contract.get("geography_levels") or ()
+            if str(value).strip()
+        )
+        if level not in declared_levels:
+            raise ValueError(
+                f"UK target {spec.name!r} resolved national geography level "
+                f"{level!r}, which disagrees with contract target "
+                f"{contract_target_id!r} levels {list(declared_levels)!r}."
+            )
+    return level, geography_id
+
+
 def apply_uk_cross_grain_reconciliation(
     local_frame: pd.DataFrame,
     bound_higher_targets: Iterable[str],
+    *,
+    reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Apply the standing UK rule to a bound mixed-grain target surface.
 
@@ -654,12 +866,230 @@ def apply_uk_cross_grain_reconciliation(
     cannot be bypassed.
     """
 
+    licences = (
+        _uk_licensed_empty_legs_from_membership(
+            load_uk_local_target_reference_membership()
+        )
+        if licensed_empty_legs is None
+        else licensed_empty_legs
+    )
     return apply_cross_grain_reconciliation(
         local_frame,
         bound_higher_targets,
         _uk_contract_targets(national_only=False),
         UK_CROSS_GRAIN_RULE,
+        reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
+        licensed_empty_legs=licences,
     )
+
+
+def uk_local_target_surface(
+    local_registry: TargetRegistry,
+    ladder: Any,
+    *,
+    bound_national_target_ids: Iterable[str],
+    period: int | str,
+    reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Assemble and reconcile the present-cell UK local target surface."""
+
+    level_to_area_type = {
+        level: area_type
+        for area_type, level in AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL.items()
+    }
+    target_id_to_metric = {
+        target_id: metric for metric, target_id in _uk_local_metric_target_ids().items()
+    }
+    output_rows: list[dict[str, Any]] = []
+    reconciliation_rows: list[dict[str, Any]] = []
+    national_control_groups: dict[tuple[str, str], list[tuple[str, str, float]]] = {}
+    for spec in local_registry.specs:
+        geography_level, geography_id = _spec_geography(spec)
+        contract_target_id = str(
+            spec.metadata.get("contract_target_id", spec.name.split("@", 1)[0])
+        )
+        if geography_level in level_to_area_type:
+            area_type = level_to_area_type[geography_level]
+            metric = target_id_to_metric.get(contract_target_id)
+            if metric is None:
+                raise ValueError(
+                    "UK local target surface cannot map contract target "
+                    f"{contract_target_id!r} to a PolicyEngine metric."
+                )
+            allowed = set(metric_names(area_type))
+            if metric not in allowed:
+                raise ValueError(
+                    f"UK local target surface metric {metric!r} is not declared "
+                    f"for area_type {area_type!r}."
+                )
+            output_position = len(output_rows)
+            output_rows.append(
+                {
+                    "area_type": area_type,
+                    "area_code": geography_id,
+                    "metric": metric,
+                    "value": float(spec.value),
+                    "target_name": spec.name,
+                    "family": family_for_metric(metric),
+                    "source_family": spec.family,
+                    "source": spec.source,
+                    "period": period,
+                    "contract_target_id": contract_target_id,
+                }
+            )
+            reconciliation_rows.append(
+                {
+                    "grain": area_type,
+                    "geography_id": geography_id,
+                    "target_id": f"contract:{contract_target_id}",
+                    "value": float(spec.value),
+                    "_output_position": output_position,
+                }
+            )
+        elif geography_level in UK_NATIONAL_TARGET_GEOGRAPHY_LEVELS:
+            value = float(spec.value)
+            if not np.isfinite(value):
+                raise ValueError(
+                    f"UK national target cell {spec.name!r} has non-finite "
+                    f"value {value!r}."
+                )
+            national_control_groups.setdefault(
+                (contract_target_id, geography_id), []
+            ).append((spec.name, geography_level, value))
+        else:
+            raise ValueError(
+                f"UK target {spec.name!r} names unsupported geography_level "
+                f"{geography_level!r}."
+            )
+
+    bridge_control_ids = {
+        target_id
+        for bridge in UK_CROSS_GRAIN_BRIDGES
+        for target_id in bridge.higher_target_ids
+    }
+    fanout_target_ids = {
+        target_id
+        for (target_id, _), cells in national_control_groups.items()
+        if len(cells) > 1 and target_id not in bridge_control_ids
+    }
+    fanout_targets_not_controls: list[dict[str, Any]] = []
+    for (target_id, geography_id), cells in national_control_groups.items():
+        cell_names = sorted(name for name, _, _ in cells)
+        geography_levels = sorted({level for _, level, _ in cells})
+        if len(geography_levels) != 1:
+            raise ValueError(
+                f"UK national target {target_id!r} at {geography_id!r} has "
+                f"fan-out cells {cell_names} with mixed geography levels "
+                f"{geography_levels}."
+            )
+        activated_sum = math.fsum(value for _, _, value in cells)
+        if not math.isfinite(activated_sum):
+            raise ValueError(
+                f"UK national target {target_id!r} at {geography_id!r} has "
+                f"fan-out cells {cell_names} with a non-finite summed total."
+            )
+        if target_id in bridge_control_ids and len(cells) > 1:
+            raise ValueError(
+                f"UK national target {target_id!r} is a cross-grain bridge control "
+                f"but fans out into {len(cells)} cells {cell_names} at "
+                f"{geography_id!r}; a bridge control must be one cell per geography."
+            )
+        if target_id in fanout_target_ids:
+            if len(cells) == 1:
+                # The target-id rule drops the target as a control at every
+                # geography once it fans out at any; say so where it is a
+                # single cell rather than dropping it silently.
+                fanout_targets_not_controls.append(
+                    {
+                        "target_id": target_id,
+                        "geography_id": geography_id,
+                        "cells": 1,
+                        "cell_names": cell_names,
+                        "activated_sum": activated_sum,
+                        "reason": (
+                            "Single cell at this geography, but the target fans "
+                            "out at another geography, so the target-id rule "
+                            "drops it as a control everywhere."
+                        ),
+                    }
+                )
+            if len(cells) > 1:
+                fanout_targets_not_controls.append(
+                    {
+                        "target_id": target_id,
+                        "geography_id": geography_id,
+                        "cells": len(cells),
+                        "cell_names": cell_names,
+                        "activated_sum": activated_sum,
+                        "reason": (
+                            "The activated cells are a band subset, so this "
+                            "distribution is not a cross-grain control."
+                        ),
+                    }
+                )
+            continue
+        reconciliation_rows.extend(
+            {
+                "grain": geography_level,
+                "geography_id": geography_id,
+                "target_id": target_id,
+                "value": value,
+                "_output_position": None,
+            }
+            for _, geography_level, value in cells
+        )
+
+    bound_control_ids = tuple(
+        str(target_id)
+        for target_id in bound_national_target_ids
+        if str(target_id) not in fanout_target_ids
+    )
+
+    for area_type, targets in (
+        ("constituency", constituency_household_targets(ladder)),
+        ("la", local_authority_household_targets(ladder)),
+    ):
+        for row in targets.itertuples(index=False):
+            output_position = len(output_rows)
+            output_rows.append(
+                {
+                    "area_type": area_type,
+                    "area_code": str(row.code),
+                    "metric": "households",
+                    "value": float(row.households),
+                    "target_name": (
+                        f"external:census_households/households@{row.code}"
+                    ),
+                    "family": "census_households",
+                    "source": "UK OA geography ladder",
+                    "period": period,
+                    "contract_target_id": "external:census_households/households",
+                }
+            )
+            reconciliation_rows.append(
+                {
+                    "grain": area_type,
+                    "geography_id": str(row.code),
+                    "target_id": "external:census_households/households",
+                    "value": float(row.households),
+                    "_output_position": output_position,
+                }
+            )
+
+    reconciliation = pd.DataFrame(reconciliation_rows)
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        reconciliation[["grain", "geography_id", "target_id", "value"]],
+        bound_control_ids,
+        reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
+        licensed_empty_legs=licensed_empty_legs,
+    )
+    receipt["fanout_targets_not_controls"] = fanout_targets_not_controls
+    for position, value in enumerate(reconciled["value"].to_numpy(dtype=np.float64)):
+        output_position = reconciliation.iloc[position]["_output_position"]
+        if pd.notna(output_position):
+            output_rows[int(output_position)]["value"] = float(value)
+    return pd.DataFrame(output_rows), receipt
 
 
 def _validate_uk_cross_grain_declarations() -> None:

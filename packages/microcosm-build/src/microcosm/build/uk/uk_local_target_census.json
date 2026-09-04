@@ -91,7 +91,7 @@
       "enforcement": "review_required_before_binding",
       "fence_id": "uc_unit_vs_household_grain",
       "fenced_fact_count": null,
-      "rule": "The runtime maps benefit-unit-level UC receipt to household grain: a physical household containing two UC benefit units contributes 2 to uc_households but 1 to a child band. DWP UC statistics count UC claim households, which align with benefit units rather than physical FRS households. Binding must declare the grain crosswalk (or change the runtime metric) before either UC family enters a solve."
+      "rule": "The runtime maps benefit-unit-level UC receipt and each UC benefit unit's num_children band onto household rows by sum: a physical household containing two UC benefit units contributes 2 to uc_households and one contribution to each unit's child band. This aligns the runtime with DWP UC claim households, which correspond to benefit units rather than physical FRS households; binding must preserve this reviewed grain crosswalk."
     },
     {
       "authority": "ONS/NRS/NISRA statistical disclosure control documentation; microcosm#495 scoping (cross-family review measurement).",
@@ -180,7 +180,7 @@
       "adjudications": [
         "uc_unit_vs_household_grain"
       ],
-      "description": "Households on Universal Credit, and (constituency only, in code today) the split by number of children.",
+      "description": "Universal Credit benefit units summed onto household rows, and (constituency only) their split by benefit-unit num_children.",
       "family": "uc_households",
       "sources": [
         "dwp_stat_xplore_uc"

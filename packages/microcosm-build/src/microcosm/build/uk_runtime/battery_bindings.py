@@ -100,6 +100,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     _input_mass_reference_evidence_sha256,
     coerce_input_mass_reference_registry,
     coerce_reviewed_exclusions,
+    load_uk_reviewed_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
     uk_default_qrf_tail_reviewed_exclusions,
     uk_input_mass_parity_gate,
@@ -396,9 +397,7 @@ def _evaluate_column_implication(
     # is exact (#833): every producer writes the -1.0 literal or a
     # nonnegative amount, and a tolerance band would silently reclassify a
     # corrupted near-sentinel value as a declared absence.
-    out_of_domain = np.isfinite(capital) & ~(
-        (capital == sentinel) | (capital >= 0.0)
-    )
+    out_of_domain = np.isfinite(capital) & ~((capital == sentinel) | (capital >= 0.0))
     carrier_out_of_domain = np.isfinite(carrier) & ~(
         (carrier == sentinel) | (carrier >= 0.0)
     )
@@ -811,10 +810,33 @@ def _evaluate_area_support(
 ) -> GateResult:
     kwargs = dict(parameters)
     resource = str(kwargs.pop("crosswalk_resource"))
+    exclusions_resource = str(kwargs.pop("exclusions_resource"))
+    records = load_uk_reviewed_exclusion_register(
+        None,
+        resource=exclusions_resource,
+    )
+    clock = _exclusion_clock(context)
+    invalid = {
+        key: record
+        for key, record in records.items()
+        if record.expired(clock) or record.premature(clock)
+    }
+    if invalid:
+        return GateResult(
+            name="area_support",
+            passed=False,
+            failures=tuple(
+                f"{key}: reviewed exclusion is outside its approval window "
+                f"{record.approved_on}..{record.expires_on} at {clock.isoformat()}."
+                for key, record in sorted(invalid.items())
+            ),
+            details={"invalid_reviewed_exclusions": sorted(invalid)},
+        )
     levels = tuple(str(level) for level in kwargs["geography_levels"])
     return area_support_gate(
         context.artifacts["uk_area_support_summary"],
         area_roster=_local_area_roster(resource, levels),
+        reviewed_exclusions=_exclusion_payload(records),
         **kwargs,
     )
 
@@ -1467,9 +1489,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_rows",
                 "minimum_effective_sample_size",
                 "minimum_distinct_sources",
+                "exclusions_resource",
             }
         ),
-        artifact_keys=frozenset({"uk_area_support_summary"}),
+        artifact_keys=frozenset({"uk_area_support_summary", "exclusions_evaluated_on"}),
         needs_frame=False,
     ),
     "per_family_fit": UKGateBinding(

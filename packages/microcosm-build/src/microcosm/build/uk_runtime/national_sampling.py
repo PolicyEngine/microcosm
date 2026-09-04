@@ -55,6 +55,8 @@ __all__ = [
     "UK_SAMPLE_RUNG_TOKENS",
     "UK_SAMPLE_SEED_DEFAULT",
     "sample_uk_national_frame",
+    "sample_uk_spine_frame",
+    "uk_spine_source_family_units",
     "uk_source_family_units",
 ]
 
@@ -104,6 +106,10 @@ def _strict_bool(values: pd.Series, *, label: str) -> np.ndarray:
 def _int_column(values: pd.Series, *, label: str) -> np.ndarray:
     if values.isna().any():
         raise ValueError(f"UK sample: {label} contains missing values.")
+    if not pd.api.types.is_integer_dtype(values.dtype):
+        raise ValueError(
+            f"UK sample: {label} must be integer-typed; got dtype {values.dtype}."
+        )
     return values.to_numpy(dtype=np.int64)
 
 
@@ -118,6 +124,155 @@ def _str_column(values: pd.Series, *, label: str) -> np.ndarray:
             "(1 vs 1.0) would silently split one stratum into two."
         )
     return array
+
+
+_SPINE_SOURCE_HOUSEHOLD_ID_COLUMN = "source_household_id"
+_SPINE_SUPPORT_CLONE_INDEX_COLUMN = "household_support_clone_index"
+_SPINE_CGT_BAND_DONOR_COLUMN = "household_is_cgt_band_donor"
+
+
+def uk_spine_source_family_units(frame: Frame) -> tuple[np.ndarray, np.ndarray]:
+    """Return the UK spine's explicit source-family keys and raw-row strata.
+
+    Every derivative row travels with the raw FRS household named by its
+    ``source_household_id``. The raw household owns the family's region, so
+    derivative flags and incidental derivative regions never split one
+    source family across sampling strata.
+    """
+
+    household = frame.table("household")
+    required = {
+        "household_id",
+        _SPINE_SOURCE_HOUSEHOLD_ID_COLUMN,
+        _SPINE_SUPPORT_CLONE_INDEX_COLUMN,
+        HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
+        _CAPITAL_GAINS_CLONE_COLUMN,
+        _SPINE_CGT_BAND_DONOR_COLUMN,
+        _REGION_COLUMN,
+    }
+    missing = sorted(required - set(household.columns))
+    if missing:
+        raise ValueError(
+            "UK spine sample requires explicit lineage and channel columns; "
+            f"household is missing {missing}."
+        )
+
+    household_ids = _int_column(household["household_id"], label="household_id")
+    units = _int_column(
+        household[_SPINE_SOURCE_HOUSEHOLD_ID_COLUMN],
+        label=_SPINE_SOURCE_HOUSEHOLD_ID_COLUMN,
+    )
+    support_clone = _int_column(
+        household[_SPINE_SUPPORT_CLONE_INDEX_COLUMN],
+        label=_SPINE_SUPPORT_CLONE_INDEX_COLUMN,
+    )
+    if (support_clone < 0).any():
+        raise ValueError(
+            "UK sample: household_support_clone_index must be non-negative."
+        )
+    spi = _strict_bool(
+        household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN],
+        label=HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
+    )
+    capital_gains = _strict_bool(
+        household[_CAPITAL_GAINS_CLONE_COLUMN],
+        label=_CAPITAL_GAINS_CLONE_COLUMN,
+    )
+    band_donor = _strict_bool(
+        household[_SPINE_CGT_BAND_DONOR_COLUMN],
+        label=_SPINE_CGT_BAND_DONOR_COLUMN,
+    )
+    regions = _str_column(household[_REGION_COLUMN], label=_REGION_COLUMN)
+
+    raw = (support_clone == 0) & ~spi & ~capital_gains & ~band_donor
+    source_rows = raw & (household_ids == units)
+    source_keys = set(int(value) for value in units[source_rows])
+    missing_sources = sorted(set(int(value) for value in units) - source_keys)
+    if missing_sources:
+        raise ValueError(
+            "UK spine sample: source_household_id family key(s) lack a "
+            "household_id-bearing raw row: "
+            f"{missing_sources[:5]}."
+        )
+
+    raw_region_by_unit: dict[int, str] = {}
+    multi_region: list[int] = []
+    for unit in sorted(set(int(value) for value in units)):
+        family_regions = set(str(value) for value in regions[raw & (units == unit)])
+        if len(family_regions) > 1:
+            multi_region.append(unit)
+        else:
+            raw_region_by_unit[unit] = next(iter(family_regions))
+    if multi_region:
+        raise ValueError(
+            "UK spine sample: source family spans more than one raw-row "
+            f"region for key(s) {multi_region[:5]}."
+        )
+
+    strata = np.asarray(
+        [f"region={raw_region_by_unit[int(unit)]}" for unit in units],
+        dtype=object,
+    )
+    return units, strata
+
+
+def sample_uk_spine_frame(
+    frame: Frame,
+    *,
+    fraction: float,
+    seed: int,
+) -> tuple[Frame, dict[str, object]]:
+    """Sample complete explicit source families from a UK Microcosm spine."""
+
+    validate_sample_fraction(fraction, label="UK spine sample")
+    validate_sample_seed(seed, label="UK spine sample")
+    validate_uk_national_frame(frame)
+
+    household = frame.table("household")
+    units, strata = uk_spine_source_family_units(frame)
+    pre_counts = pd.Series(units).value_counts(sort=False)
+    full_mass = float(frame.weights_for("household").total)
+    sampled, core_receipt = sample_frame_households(
+        frame,
+        fraction=fraction,
+        seed=seed,
+        source_name="UK spine",
+        unit_ids=units,
+        unit_strata=strata,
+        unit_noun="source family",
+        floor_context="the UK rowwise candidate",
+    )
+    normalized, factor = normalize_sampled_household_mass(
+        sampled,
+        target_mass=full_mass,
+        source_name="UK spine",
+    )
+
+    post_units, _ = uk_spine_source_family_units(normalized)
+    post_counts = pd.Series(post_units).value_counts(sort=False)
+    incomplete = sorted(
+        int(unit)
+        for unit, count in post_counts.items()
+        if int(count) != int(pre_counts.loc[unit])
+    )
+    if incomplete:
+        raise ValueError(
+            "UK spine sample retained incomplete source family key(s): "
+            f"{incomplete[:5]}."
+        )
+    validate_uk_national_frame(normalized)
+    return normalized, {
+        "fraction": float(fraction),
+        "seed": int(seed),
+        "rung_token": UK_SAMPLE_RUNG_TOKENS.get(float(fraction)),
+        "pre_household_count": int(len(household)),
+        "post_household_count": int(len(normalized.table("household"))),
+        "pre_family_count": int(len(pre_counts)),
+        "post_family_count": int(len(post_counts)),
+        "normalization_factor": float(factor),
+        "strata_count": int(len(np.unique(strata))),
+        "receipt": dict(core_receipt),
+    }
 
 
 def uk_source_family_units(
