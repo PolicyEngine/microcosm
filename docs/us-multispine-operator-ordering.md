@@ -568,9 +568,8 @@ the exact approved `uv.lock`, installed-distribution/RECORD and combined
 transitive environment/code digests, arguments after `argv[0]` with `argv[0]`
 replaced by `{python_interpreter}`, and configured/resolved fit-job and
 prediction-worker controls. `TORCH_DEVICE_BACKEND_AUTOLOAD=0` is a forced,
-bound child override. The optional child-environment seam refuses every other
-name and requires supplied fit-control values to equal the authenticated parent
-environment. Before the clean import, identity construction enumerates
+bound worker-bootstrap override applied before the QRF runtime can import
+Torch. Before the clean import, identity construction enumerates
 all installed `torch.backends` entry-point declarations, refuses duplicate
 distribution identities or providers outside the selected RECORD closure, and
 binds declarations belonging to selected distributions. Authentication

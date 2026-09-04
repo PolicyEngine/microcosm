@@ -97,13 +97,6 @@ _RAW_DRAW_BITS_DATASET = "raw_draw_bits"
 _REQUIRE_COMPLETE_RECIPIENT_PREDICTORS = "require_complete_recipient_predictors"
 _ABSENT_CELLS = "absent_cells"
 _RECIPIENT_PREDICTOR_UNIVERSE = "recipient_predictor_universe"
-_PRIMARY_QRF_WORKER_ENVIRONMENT_OVERRIDES = {
-    "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
-}
-_PRIMARY_QRF_WORKER_BOUND_ENVIRONMENT_NAMES = (
-    "POPULACE_FIT_N_JOBS",
-    "POPULACE_FIT_PREDICT_WORKERS",
-)
 _ABSENT_CELLS_POLICIES = (
     PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
@@ -258,39 +251,6 @@ def initialize_primary_puf_qrf_chain(
     return manifest
 
 
-def _validated_primary_qrf_worker_environment(
-    environment: Mapping[str, str] | None,
-) -> dict[str, str]:
-    if environment is None:
-        return {}
-    if not isinstance(environment, Mapping):
-        raise ValueError("Primary QRF worker environment must be a mapping.")
-    requested: dict[str, str] = {}
-    allowed = {
-        *_PRIMARY_QRF_WORKER_BOUND_ENVIRONMENT_NAMES,
-        *_PRIMARY_QRF_WORKER_ENVIRONMENT_OVERRIDES,
-    }
-    for name, value in environment.items():
-        if not isinstance(name, str) or name not in allowed:
-            raise ValueError(
-                f"Primary QRF worker environment override is not bound: {name!r}."
-            )
-        if not isinstance(value, str):
-            raise ValueError(
-                f"Primary QRF worker environment value must be a string: {name}."
-            )
-        if (
-            name in _PRIMARY_QRF_WORKER_BOUND_ENVIRONMENT_NAMES
-            and os.environ.get(name) != value
-        ):
-            raise ValueError(
-                "Primary QRF worker environment override differs from its "
-                f"authenticated parent value: {name}."
-            )
-        requested[name] = value
-    return requested
-
-
 def run_primary_puf_qrf_chain(
     checkpoint_dir: str | Path,
     *,
@@ -298,7 +258,6 @@ def run_primary_puf_qrf_chain(
 ) -> None:
     """Run or resume one fresh interpreter per target in exact chain order."""
 
-    requested_environment = _validated_primary_qrf_worker_environment(environment)
     root = Path(checkpoint_dir).resolve()
     manifest = _load_manifest(root)
     target_order = _manifest_strings(manifest, "target_order")
@@ -320,11 +279,9 @@ def run_primary_puf_qrf_chain(
                 "Primary QRF checkpoints have a non-contiguous prefix: "
                 f"target {first_gap} is missing but later target(s) {later} exist."
             )
-    child_environment = {
-        **os.environ,
-        **requested_environment,
-        **_PRIMARY_QRF_WORKER_ENVIRONMENT_OVERRIDES,
-    }
+    child_environment = None
+    if environment is not None:
+        child_environment = {**os.environ, **dict(environment)}
     for target_index, _target in enumerate(target_order):
         target_path = _target_path(root, manifest, target_index)
         if target_path.exists():

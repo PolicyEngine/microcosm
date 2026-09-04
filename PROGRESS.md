@@ -40,7 +40,7 @@ fixes are implemented and focused green. Pin proof and full verification remain.
 - The valid schema-9 metadata-restoration case and the seven-case malformed
   envelope regression pass together (2 passed, exit 0).
 - Forced `TORCH_DEVICE_BACKEND_AUTOLOAD=0` in both the authenticated semantic
-  environment and every primary-QRF child launch, after caller overrides.
+  environment and the worker module bootstrap, before its QRF/Torch import.
 - Enumerated and bound selected `torch.backends` entry-point metadata, refused
   provider distributions outside the installed-code closure before clean
   worker import, and refused duplicate canonical distribution identities so a
@@ -68,9 +68,10 @@ fixes are implemented and focused green. Pin proof and full verification remain.
   schema introduced by this branch. Bumping it would churn authored spec
   templates despite the requirement that spec-engine pins remain fixed;
   structural validation now requires the added v1 fields.
-- Restricted the optional QRF child-environment seam: arbitrary import/startup
-  controls are refused, bound fit controls must equal the authenticated parent
-  values, and only the forced Torch key may be supplied with an ignored value.
+- Restored `puf_qrf_chain.py` byte-for-byte after the first pin run proved that
+  editing its operational launcher also moves the QRF seed-kernel source
+  attestation. The worker bootstrap now owns the override, keeping the existing
+  seed protocol and compiled seed-map pins intact without re-pinning.
 - Added bound-environment-keyed, deep-copied caches only to the stacked-spine
   and H5 canonical test fixtures so parameterized/tiny-pool cases do not rebuild
   one identical production identity apiece; production identity generation
