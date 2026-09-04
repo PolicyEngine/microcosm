@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.us_runtime import h5_io as builder_h5_io
 from microcosm.calibrate import TargetRegistry, TargetSpec, calibrate
 from microcosm.frame import Frame, WeightKind, Weights
 
@@ -1716,6 +1717,7 @@ def test_builder_base_h5_pool_loader_receives_explicit_terminal_gate_policy(
         size_bytes=pool_h5.stat().st_size,
         publication_run_id="fixture-publication",
         manifest_sha256="a" * 64,
+        manifest_payload_sha256=builder_h5_io._canonical_json_sha256(manifest),
     )
     frame = SimpleNamespace()
     monkeypatch.setattr(

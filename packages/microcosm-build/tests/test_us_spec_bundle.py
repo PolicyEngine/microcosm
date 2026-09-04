@@ -722,6 +722,11 @@ def test_authored_imputation_sha256_fields_are_assets_or_policy_identity(
                 if key.endswith("sha256"):
                     if key == "asset_sha256":
                         asset_pins.append((str(value["asset"]), str(child)))
+                    elif isinstance(child, dict) and "resolver_op" in child:
+                        # A resolver binding names the runtime op that
+                        # produces the digest; it is neither an authored
+                        # digest nor an asset pin.
+                        pass
                     else:
                         identity_digests.append((child_path, str(child)))
                 collect_sha256(child, child_path)
