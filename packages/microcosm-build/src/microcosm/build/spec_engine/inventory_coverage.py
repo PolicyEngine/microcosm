@@ -350,12 +350,12 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "5deaf532b8f8f2404ffa95602168c7941d85110d1fe9b3df5525ece4b4507c99",
+    "full_checkpoint": "7176664c34039def5f43281a7735f792fe43de4ef0a6e7ca18f53d812b412d15",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
     "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
     "geography_assignment": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-    "late_resource_semantics": "c7d26e862dbb41a010a437ffc4f54b65b9528e7ab43777378994b5f144f589c4",
+    "late_resource_semantics": "b2b7dbd64db211088e85c94ad6ca1b942cb5e45683eb8c34ba9b664b5de64624",
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "987b501c695e31f45521c4a178528f75ab3df22c09bc407b182213b2de99ee57",
@@ -473,15 +473,31 @@ def _wire(value: FrozenValue) -> object:
     return thaw_json(value)
 
 
+#: Subtrees that describe the machine a build ran on, never the spec.
+_OPERATIONAL_KEYS = frozenset({"worker_execution", "audit_aliases"})
+
+
 def _without_operational_bindings(value: object) -> object:
-    """Strip only audit aliases before semantic inventory digesting."""
+    """Strip execution-profile subtrees before semantic inventory digesting.
+
+    ``worker_execution`` is the primary-QRF worker's execution binding: its
+    semantic identity hashes the interpreter binary, ABI, ``pyvenv.cfg``,
+    the installed distributions' RECORD files, and the resolved fit
+    controls (CPU count included), and its audit aliases spell the
+    interpreter path. All of that authenticates an environment for replay
+    and legitimately differs between macOS and the Linux CI runners; none
+    of it is spec evidence. Inventory digests are therefore computed over
+    the receipt with the whole subtree removed, as they were before the
+    binding became portable, so the pinned digests hold on every platform.
+    The live generation-0 receipt itself is unchanged.
+    """
 
     if isinstance(value, Mapping):
         drop_self_hash = "producers" in value and "sha256" in value
         return {
             key: _without_operational_bindings(item)
             for key, item in value.items()
-            if key != "audit_aliases" and not (drop_self_hash and key == "sha256")
+            if key not in _OPERATIONAL_KEYS and not (drop_self_hash and key == "sha256")
         }
     if isinstance(value, list):
         return [_without_operational_bindings(item) for item in value]
