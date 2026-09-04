@@ -988,15 +988,14 @@ def _write_gate_failed_pool(tmp_path: Path) -> Path:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
     diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
-    failed_gate = {
+    # The scoring loader authenticates the canonical terminal gate set, so the
+    # failed fixture must carry the real gates with one of them flipped.
+    failed_gate = json.loads(json.dumps(manifest["terminal_gates"]))
+    failed_gate["passed"] = False
+    failed_gate["gates"]["us_stacked_completeness"] = {
         "passed": False,
-        "gates": {
-            "us_spine_agreement": {
-                "passed": False,
-                "failures": ["fixture terminal failure"],
-                "details": {"fixture": False},
-            }
-        },
+        "failures": ["fixture terminal failure"],
+        "details": {"fixture": False},
     }
     manifest.update(
         {
@@ -2172,7 +2171,14 @@ def test_denied_gate_failed_pool_is_available_only_for_scoring(
     frame, loaded_manifest, _ = load_authenticated_us_multispine_pool_for_scoring(
         manifest_path
     )
-    assert frame.n("household") == 3
+    # The stacked fixture carries one base row plus one row per positive
+    # canonical humanitarian draw (see _stacked_pool_frame_with_live_immigration).
+    positive_draws = [
+        draw
+        for draw in immigration_runtime.us_immigration_controls().humanitarian
+        if draw.target > 0
+    ]
+    assert frame.n("household") == 1 + len(positive_draws)
     assert loaded_manifest["status"] == "gate_failed"
 
     refused_loaders = (
