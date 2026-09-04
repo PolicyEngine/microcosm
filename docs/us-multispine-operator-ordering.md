@@ -557,13 +557,24 @@ newly claimed outer route.
 #### Portable primary-QRF `worker_execution` identity
 
 Worker identity schema v1 separates semantic authentication from launcher
-aliases. `semantic_identity` binds the interpreter-byte SHA-256,
-implementation, version and ABI, cache tag, canonical `pyvenv.cfg` fields,
-worker-module name/source and transitive-import digests, the exact approved
-`uv.lock`, installed-distribution/RECORD and combined transitive
-environment/code digests, arguments after `argv[0]` with `argv[0]` replaced by
-`{python_interpreter}`, and configured/resolved fit-job and prediction-worker
-controls. Authentication compares that payload and its
+aliases. `semantic_identity` binds the interpreter-launcher bytes, the exact
+loaded Python runtime library (or the executable for a static build), and a
+digest of the source and extension bytes for stdlib modules observed during or
+present after a clean worker import. It also binds implementation, version and
+ABI, cache tag,
+canonical `pyvenv.cfg` fields, worker-module source, the statically resolved
+Python closure plus every Microcosm namespace file opened by that clean import,
+the exact approved `uv.lock`, installed-distribution/RECORD and combined
+transitive environment/code digests, arguments after `argv[0]` with `argv[0]`
+replaced by `{python_interpreter}`, and configured/resolved fit-job and
+prediction-worker controls. `TORCH_DEVICE_BACKEND_AUTOLOAD=0` is a forced,
+bound child override. The optional child-environment seam refuses every other
+name and requires supplied fit-control values to equal the authenticated parent
+environment. Before the clean import, identity construction enumerates
+all installed `torch.backends` entry-point declarations, refuses duplicate
+distribution identities or providers outside the selected RECORD closure, and
+binds declarations belonging to selected distributions. Authentication
+compares that payload and its
 `semantic_identity_sha256`, so byte-identical interpreters reached through
 different worktrees remain the same worker. `audit_aliases` records absolute
 `sys_executable`, `sys_prefix`, and raw `argv_template_0`, but those aliases are
@@ -593,12 +604,13 @@ receipt. The scoring loader may authenticate a deny-listed pool for
 diagnostics, but candidate-26 remains denied for release independently of this
 relocation check.
 
-This F1 identity assumes the interpreter's inherited startup path is trusted.
-It binds the two named fit controls and the resolved source/installed-RECORD
-closure; it does not additionally authenticate `PYTHONPATH`, executable
-`.pth` startup hooks, `sitecustomize`/`usercustomize`, or shadow `.pyc` files.
-Hardening those interpreter-startup mechanisms would change the worker launch
-contract and is outside this portability repair.
+This F1 identity still assumes the interpreter's broader inherited startup path
+is trusted. It now closes Torch backend autoloading, loaded-runtime and imported
+stdlib bytes, and observed Microcosm import-time files, but does not additionally
+authenticate `PYTHONPATH`, executable `.pth` startup hooks, or
+`sitecustomize`/`usercustomize`. Hardening those remaining interpreter-startup
+mechanisms would change the worker launch contract and is outside this
+portability repair.
 
 Every one of the 16 source producers consumes the following 16-requirement
 wrapper bundle `W`. It is added to the operator-specific kernel inventory in

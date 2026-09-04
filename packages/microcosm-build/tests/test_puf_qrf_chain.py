@@ -449,6 +449,27 @@ def test_primary_qrf_worker_launch_forces_torch_backend_autoload_off(
     assert check is False
 
 
+@pytest.mark.parametrize(
+    "environment",
+    (
+        {"PYTHONPATH": "/tmp/shadow-worker"},
+        {"POPULACE_FIT_N_JOBS": "2"},
+    ),
+)
+def test_primary_qrf_worker_launch_refuses_unbound_environment_divergence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    environment: dict[str, str],
+) -> None:
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+
+    with pytest.raises(ValueError, match="Primary QRF worker environment"):
+        run_primary_puf_qrf_chain(
+            tmp_path / "missing-checkpoint",
+            environment=environment,
+        )
+
+
 def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -4435,12 +4435,34 @@ def _stub_worker_identity_static_closure(
     monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "2")
 
 
-def _empty_worker_import_trace() -> dict[str, object]:
+def _fixture_worker_import_trace(
+    tmp_path: Path,
+    *,
+    module_origins: Mapping[str, str] | None = None,
+) -> dict[str, object]:
+    namespace_root = tmp_path / "namespace" / "microcosm"
+    worker_source = namespace_root / "build" / "us_runtime" / "puf_qrf_worker.py"
+    worker_source.parent.mkdir(parents=True, exist_ok=True)
+    worker_source.write_text("# fixture worker\n", encoding="utf-8")
     return {
-        "module_origins": {},
+        "module_origins": {
+            worker_identity_module.PRIMARY_QRF_WORKER_MODULE: str(worker_source),
+            **({} if module_origins is None else dict(module_origins)),
+        },
         "opened_files": (),
-        "namespace_roots": (),
+        "namespace_roots": (str(namespace_root),),
     }
+
+
+def test_worker_import_trace_refuses_empty_result() -> None:
+    with pytest.raises(RuntimeError, match="no readable namespace roots"):
+        worker_identity_module._validated_worker_import_trace(
+            {
+                "module_origins": {},
+                "opened_files": (),
+                "namespace_roots": (),
+            }
+        )
 
 
 def test_primary_qrf_worker_identity_binds_loaded_runtime_bytes(
@@ -4462,7 +4484,7 @@ def test_primary_qrf_worker_identity_binds_loaded_runtime_bytes(
     monkeypatch.setattr(
         worker_identity_module,
         "_clean_worker_import_trace",
-        lambda *_args, **_kwargs: _empty_worker_import_trace(),
+        lambda *_args, **_kwargs: _fixture_worker_import_trace(tmp_path),
         raising=False,
     )
 
@@ -4499,11 +4521,10 @@ def test_primary_qrf_worker_identity_binds_imported_stdlib_source(
     monkeypatch.setattr(
         worker_identity_module,
         "_clean_worker_import_trace",
-        lambda *_args, **_kwargs: {
-            "module_origins": {"argparse": str(argparse_source)},
-            "opened_files": (),
-            "namespace_roots": (),
-        },
+        lambda *_args, **_kwargs: _fixture_worker_import_trace(
+            tmp_path,
+            module_origins={"argparse": str(argparse_source)},
+        ),
         raising=False,
     )
     original_get_paths = worker_identity_module.sysconfig.get_paths
@@ -4623,16 +4644,36 @@ def test_worker_identity_refuses_duplicate_backend_provider_distribution_identit
 
 
 def test_worker_transitive_source_identity_binds_actual_imported_package_resource(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     target_name = "soi_table_2_1_interest_components_ty2015.json"
-    before = worker_identity_module._worker_package_resource_rows()
+    trace = worker_identity_module._clean_worker_import_trace()
+    before = worker_identity_module._worker_package_resource_rows(trace)
+    stdlib_rows = worker_identity_module._worker_stdlib_import_rows(trace)
+    assert any(row["module"] == "argparse" for row in stdlib_rows)
     target_rows = [
         row for row in before if str(row.get("resource", "")).endswith(target_name)
     ]
     assert len(target_rows) == 1
     target_resource = target_rows[0]["resource"]
     target_sha256 = target_rows[0]["sha256"]
+    _stub_worker_identity_static_closure(monkeypatch)
+    runtime = tmp_path / "libpython-fixture.so"
+    runtime.write_bytes(b"fixture runtime\n")
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_loaded_python_runtime_binary",
+        lambda: ("shared_library", runtime),
+    )
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_clean_worker_import_trace",
+        lambda: trace,
+    )
+    identity_before = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
+    )
     original_read_bytes = Path.read_bytes
 
     def changed_resource_bytes(path: Path) -> bytes:
@@ -4642,12 +4683,22 @@ def test_worker_transitive_source_identity_binds_actual_imported_package_resourc
         return raw
 
     monkeypatch.setattr(Path, "read_bytes", changed_resource_bytes)
-    after = worker_identity_module._worker_package_resource_rows()
+    after = worker_identity_module._worker_package_resource_rows(trace)
+    identity_after = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
+    )
     changed_target = next(row for row in after if row["resource"] == target_resource)
 
     assert changed_target["sha256"] != target_sha256
     assert worker_identity_module._canonical_sha256(after) != (
         worker_identity_module._canonical_sha256(before)
+    )
+    assert (
+        identity_after["worker_module"]["transitive_imports_sha256"]
+        != (identity_before["worker_module"]["transitive_imports_sha256"])
+    )
+    assert worker_identity_module._canonical_sha256(identity_after) != (
+        worker_identity_module._canonical_sha256(identity_before)
     )
 
 
@@ -4655,6 +4706,8 @@ def test_worker_transitive_source_identity_binds_actual_imported_package_resourc
     "semantic_change",
     (
         "interpreter_bytes",
+        "runtime_binary",
+        "stdlib_imports",
         "implementation",
         "version",
         "abi",
@@ -4689,6 +4742,10 @@ def test_late_primary_worker_authentication_rejects_semantic_matrix(
     refresh_environment_code = False
     if semantic_change == "interpreter_bytes":
         semantic["interpreter"]["bytes_sha256"] = "0" * 64
+    elif semantic_change == "runtime_binary":
+        semantic["interpreter"]["runtime_binary"]["bytes_sha256"] = "0" * 64
+    elif semantic_change == "stdlib_imports":
+        semantic["interpreter"]["stdlib_imports_sha256"] = "0" * 64
     elif semantic_change == "implementation":
         semantic["interpreter"]["implementation"] = "changed"
     elif semantic_change == "version":
@@ -5005,6 +5062,23 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
     assert semantic["worker_module"]["name"] == (
         "microcosm.build.us_runtime.puf_qrf_worker"
     )
+    interpreter = semantic["interpreter"]
+    assert set(interpreter) == {
+        "bytes_sha256",
+        "runtime_binary",
+        "stdlib_imports_sha256",
+        "implementation",
+        "version",
+        "abi",
+        "cache_tag",
+        "pyvenv_cfg",
+    }
+    assert interpreter["runtime_binary"]["kind"] in {
+        "shared_library",
+        "statically_linked_executable",
+    }
+    assert len(interpreter["runtime_binary"]["bytes_sha256"]) == 64
+    assert len(interpreter["stdlib_imports_sha256"]) == 64
     assert semantic["argv_template"] == [
         worker_identity_module.PRIMARY_QRF_INTERPRETER_PLACEHOLDER,
         "-m",

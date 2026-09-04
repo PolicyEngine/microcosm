@@ -4,8 +4,8 @@
 
 In progress on 2026-09-04 on `f1-portable-worker-identity`, starting from
 `b26708a1`. All four Sol findings have fail-before reproductions. The schema-9
-envelope and Torch backend-autoload fixes are focused green; the runtime/stdlib
-and real-resource closures remain.
+envelope, Torch backend-autoload, loaded-runtime/stdlib, and real-resource
+fixes are implemented and focused green. Pin proof and full verification remain.
 
 ## Done
 
@@ -47,13 +47,35 @@ and real-resource closures remain.
   colliding provider cannot evade RECORD hashing.
 - Focused provider-refusal, duplicate-provider, launch-override, semantic
   tamper, and legacy relocated-worker acceptance checks pass (exit 0 each).
+- Replaced the two-file resource list with a fresh worker-import audit trace
+  using the same inherited startup search path as the real worker. The semantic
+  transitive-import digest now includes every opened
+  Microcosm namespace file, with bytecode canonicalized to source, portable
+  locators only, and ambiguous duplicate locators refused.
+- The trace freezes and revalidates namespace roots, captures transient import
+  origins and successful pre-open file paths, refuses disappeared namespace
+  files, and rejects an empty or displaced worker trace. Its opened stdlib
+  paths supplement final `sys.modules` so transient stdlib imports stay bound.
+- Resolved the loaded Python image through platform mapping with static and
+  sysconfig fallbacks, and bound its kind and byte digest without serializing
+  its path. The interpreter identity also binds the clean import's file-backed
+  stdlib source and extension bytes while excluding site packages.
+- The mocked runtime-byte and stdlib-source mutation tests pass together; the
+  real SOI interest-components resource is observed and changes the resource
+  closure digest; and a real full identity constructs and validates with the
+  mapped `libpython3.14.dylib` (all exit 0).
+- Kept worker identity schema v1 because it is the still-unreleased exact
+  schema introduced by this branch. Bumping it would churn authored spec
+  templates despite the requirement that spec-engine pins remain fixed;
+  structural validation now requires the added v1 fields.
+- Restricted the optional QRF child-environment seam: arbitrary import/startup
+  controls are refused, bound fit controls must equal the authenticated parent
+  values, and only the forced Torch key may be supplied with an ignored value.
 
 ## Next
 
-- Replace the manual resource list with a clean-import trace, and bind the
-  loaded runtime plus traced stdlib bytes.
-- Repin only identities that legitimately move, prove spec-engine pins remain
-  fixed, then run the complete requested verification block.
+- Prove spec-engine pins remain fixed, run the complete requested verification
+  block, and finish `out.md` with exact commands, counts, and exit codes.
 
 # Historical: ACS predictor release join
 

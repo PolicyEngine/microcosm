@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import ast
 import base64
+import ctypes
+import ctypes.util
 import hashlib
+import importlib.machinery
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import sysconfig
 from collections.abc import Mapping, Sequence
@@ -62,10 +66,71 @@ _BOUND_ENVIRONMENT_NAMES = (
     *_SEMANTIC_ENVIRONMENT_NAMES,
     *_WORKER_ENVIRONMENT_OVERRIDES,
 )
-_TRANSITIVE_PACKAGE_RESOURCES = (
-    ("microcosm.build.us", "source_stages.json"),
-    ("microcosm.build.us", "support_spine.json"),
+_CLEAN_WORKER_IMPORT_TRACE_MARKER = "MICROCOSM_WORKER_IMPORT_TRACE="
+_CLEAN_WORKER_IMPORT_TRACE_SCRIPT = r"""
+import importlib.util
+import os
+import sys
+
+namespace_spec = importlib.util.find_spec("microcosm")
+if namespace_spec is None or namespace_spec.submodule_search_locations is None:
+    raise RuntimeError("cannot resolve microcosm namespace before worker import")
+namespace_roots = tuple(
+    os.path.abspath(os.fspath(path))
+    for path in namespace_spec.submodule_search_locations
 )
+opened_files = set()
+observed_module_origins = {}
+
+
+def record_worker_event(event, arguments):
+    if not arguments:
+        return
+    if event == "import" and len(arguments) > 1:
+        module_name, origin = arguments[:2]
+        if isinstance(module_name, str) and isinstance(origin, str):
+            observed_module_origins.setdefault(module_name, origin)
+        return
+    if event != "open":
+        return
+    raw_path = arguments[0]
+    if not isinstance(raw_path, (str, bytes)):
+        return
+    try:
+        path = os.path.abspath(os.fsdecode(raw_path))
+        if os.path.isfile(path):
+            opened_files.add(path)
+    except (OSError, TypeError, ValueError):
+        return
+
+
+sys.addaudithook(record_worker_event)
+__import__("microcosm.build.us_runtime.puf_qrf_worker", fromlist=("*",))
+module_origins = dict(observed_module_origins)
+for module_name, module in sorted(sys.modules.items()):
+    spec = getattr(module, "__spec__", None)
+    origin = getattr(spec, "origin", None) or getattr(module, "__file__", None)
+    if isinstance(origin, str):
+        module_origins[module_name] = origin
+namespace = sys.modules.get("microcosm")
+imported_namespace_roots = tuple(
+    os.path.abspath(os.fspath(path))
+    for path in getattr(namespace, "__path__", ())
+)
+if imported_namespace_roots != namespace_roots:
+    raise RuntimeError("microcosm namespace roots changed during worker import")
+print(
+    "MICROCOSM_WORKER_IMPORT_TRACE="
+    + repr(
+        {
+            "module_origins": module_origins,
+            "opened_files": tuple(sorted(opened_files)),
+            "namespace_roots": namespace_roots,
+        }
+    ),
+    flush=True,
+)
+"""
 _ATTESTATION_KEYS = {
     "artifact_kind",
     "schema_version",
@@ -310,39 +375,184 @@ def _with_package_initializers(
     return result
 
 
-def _worker_package_resource_rows() -> list[dict[str, str]]:
-    """Hash package data executed while importing the worker's package graph."""
+def _validated_worker_import_trace(trace: object) -> dict[str, object]:
+    """Validate the private path-bearing result returned by the clean child."""
 
-    rows: list[dict[str, str]] = []
-    for package, relative_path in _TRANSITIVE_PACKAGE_RESOURCES:
-        spec = importlib.util.find_spec(package)
-        locations = (
-            tuple(spec.submodule_search_locations or ()) if spec is not None else ()
-        )
-        candidates = [
-            Path(location).resolve() / relative_path
-            for location in locations
-            if (Path(location).resolve() / relative_path).is_file()
-        ]
-        if len(candidates) != 1:
+    if not isinstance(trace, Mapping) or set(trace) != {
+        "module_origins",
+        "opened_files",
+        "namespace_roots",
+    }:
+        raise RuntimeError("Primary-QRF clean worker import trace schema drifted.")
+    raw_origins = trace["module_origins"]
+    if not isinstance(raw_origins, Mapping) or any(
+        not isinstance(name, str)
+        or not name
+        or not isinstance(origin, str)
+        or not origin
+        for name, origin in raw_origins.items()
+    ):
+        raise RuntimeError("Primary-QRF clean worker module origins are malformed.")
+
+    def absolute_paths(field: str) -> tuple[str, ...]:
+        raw_paths = trace[field]
+        if isinstance(raw_paths, (str, bytes)) or not isinstance(raw_paths, Sequence):
             raise RuntimeError(
-                "Primary-QRF worker package resource resolution is ambiguous: "
-                f"{package}:{relative_path}."
+                f"Primary-QRF clean worker {field.replace('_', ' ')} are malformed."
             )
+        paths: list[str] = []
+        for raw_path in raw_paths:
+            if not isinstance(raw_path, str) or not Path(raw_path).is_absolute():
+                raise RuntimeError(
+                    f"Primary-QRF clean worker {field.replace('_', ' ')} "
+                    "must contain absolute paths."
+                )
+            paths.append(raw_path)
+        return tuple(paths)
+
+    opened_files = absolute_paths("opened_files")
+    namespace_roots = absolute_paths("namespace_roots")
+    if not namespace_roots or any(not Path(root).is_dir() for root in namespace_roots):
+        raise RuntimeError(
+            "Primary-QRF clean worker trace has no readable namespace roots."
+        )
+    worker_origin = raw_origins.get(PRIMARY_QRF_WORKER_MODULE)
+    if not isinstance(worker_origin, str) or not Path(worker_origin).is_absolute():
+        raise RuntimeError(
+            "Primary-QRF clean worker trace lacks its absolute worker origin."
+        )
+    resolved_worker = Path(worker_origin).resolve()
+    if not resolved_worker.is_file() or not any(
+        resolved_worker.is_relative_to(Path(root).resolve()) for root in namespace_roots
+    ):
+        raise RuntimeError(
+            "Primary-QRF clean worker origin is outside its namespace roots."
+        )
+    return {
+        "module_origins": dict(raw_origins),
+        "opened_files": opened_files,
+        "namespace_roots": namespace_roots,
+    }
+
+
+def _clean_worker_import_trace() -> dict[str, object]:
+    """Import the worker in an isolated child and return its file-use trace."""
+
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", _CLEAN_WORKER_IMPORT_TRACE_SCRIPT],
+            env={**os.environ, **_WORKER_ENVIRONMENT_OVERRIDES},
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=300,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise RuntimeError("Primary-QRF clean worker import could not run.") from error
+    if completed.returncode != 0:
+        detail = completed.stderr.strip()[-2000:]
+        raise RuntimeError(
+            "Primary-QRF clean worker import failed with exit code "
+            f"{completed.returncode}: {detail}"
+        )
+    payload_lines = [
+        line.removeprefix(_CLEAN_WORKER_IMPORT_TRACE_MARKER)
+        for line in completed.stdout.splitlines()
+        if line.startswith(_CLEAN_WORKER_IMPORT_TRACE_MARKER)
+    ]
+    if len(payload_lines) != 1:
+        raise RuntimeError(
+            "Primary-QRF clean worker import did not return one trace payload."
+        )
+    try:
+        trace = ast.literal_eval(payload_lines[0])
+    except (SyntaxError, ValueError) as error:
+        raise RuntimeError(
+            "Primary-QRF clean worker import returned a malformed trace payload."
+        ) from error
+    return _validated_worker_import_trace(trace)
+
+
+def _source_for_import_cache(path: Path, *, boundary: str) -> Path:
+    """Bind source bytes instead of location-specific bytecode cache bytes."""
+
+    if path.suffix not in {".pyc", ".pyo"}:
+        return path
+    try:
+        source = Path(importlib.util.source_from_cache(str(path)))
+    except ValueError as error:
+        raise RuntimeError(f"{boundary} has a non-canonical bytecode path.") from error
+    if not source.is_file():
+        raise RuntimeError(f"{boundary} has bytecode without readable source.")
+    return source
+
+
+def _worker_package_resource_rows(
+    trace: Mapping[str, object] | None = None,
+) -> list[dict[str, str]]:
+    """Hash every namespace file opened by a clean worker import."""
+
+    validated = _validated_worker_import_trace(
+        _clean_worker_import_trace() if trace is None else trace
+    )
+    roots = tuple(Path(path) for path in validated["namespace_roots"])
+    resolved_roots = tuple(root.resolve() for root in roots)
+
+    def namespace_relative(path: Path) -> Path | None:
+        for root in roots:
+            try:
+                return path.relative_to(root)
+            except ValueError:
+                continue
+        resolved_path = path.resolve()
+        for root in resolved_roots:
+            try:
+                return resolved_path.relative_to(root)
+            except ValueError:
+                continue
+        return None
+
+    rows_by_resource: dict[str, dict[str, str]] = {}
+    for raw_path in validated["opened_files"]:
+        path = Path(raw_path)
+        if namespace_relative(path) is None:
+            continue
+        if not path.is_file():
+            raise RuntimeError(
+                "Primary-QRF clean worker namespace file disappeared after import: "
+                f"{path}."
+            )
+        path = _source_for_import_cache(
+            path,
+            boundary="Primary-QRF clean worker namespace import",
+        )
+        relative = namespace_relative(path)
+        if relative is None:
+            raise RuntimeError(
+                "Primary-QRF clean worker bytecode source escaped its namespace root."
+            )
+        if not relative.parts:
+            continue
+        resource = f"microcosm/{relative.as_posix()}"
         try:
-            raw = candidates[0].read_bytes()
+            raw = path.read_bytes()
         except OSError as error:
             raise RuntimeError(
-                "Cannot read primary-QRF worker package resource "
-                f"{package}:{relative_path}."
+                f"Cannot read primary-QRF clean worker namespace file {resource}."
             ) from error
-        rows.append(
-            {
-                "resource": f"{package}:{relative_path}",
-                "sha256": hashlib.sha256(raw).hexdigest(),
-            }
-        )
-    return rows
+        row = {
+            "resource": resource,
+            "sha256": hashlib.sha256(raw).hexdigest(),
+        }
+        previous = rows_by_resource.setdefault(resource, row)
+        if previous != row:
+            raise RuntimeError(
+                "Primary-QRF clean worker namespace file resolution is ambiguous: "
+                f"{resource}."
+            )
+    return [rows_by_resource[key] for key in sorted(rows_by_resource)]
 
 
 def _worker_source_identity() -> tuple[str, str, tuple[str, ...]]:
@@ -397,7 +607,6 @@ def _worker_source_identity() -> tuple[str, str, tuple[str, ...]]:
         )
         pending.update(_with_package_initializers(imported, index=index) - visited)
         external_roots.update(external)
-    rows.extend(_worker_package_resource_rows())
     return worker_sha256, _canonical_sha256(rows), tuple(sorted(external_roots))
 
 
@@ -613,6 +822,320 @@ def _installed_distributions_record_sha256(
     )
 
 
+def _readable_runtime_path(raw_path: object) -> Path | None:
+    if not isinstance(raw_path, (str, os.PathLike)):
+        return None
+    try:
+        path = Path(raw_path).resolve()
+    except (OSError, RuntimeError):
+        return None
+    return path if path.is_file() else None
+
+
+def _mapped_posix_python_runtime() -> Path | None:
+    """Resolve the image containing Py_GetVersion with dladdr when available."""
+
+    if os.name != "posix":
+        return None
+
+    class DlInfo(ctypes.Structure):
+        _fields_ = (
+            ("filename", ctypes.c_char_p),
+            ("base_address", ctypes.c_void_p),
+            ("symbol_name", ctypes.c_char_p),
+            ("symbol_address", ctypes.c_void_p),
+        )
+
+    address = ctypes.cast(ctypes.pythonapi.Py_GetVersion, ctypes.c_void_p)
+    library_names: list[str | None] = [None]
+    libdl = ctypes.util.find_library("dl")
+    if libdl:
+        library_names.append(libdl)
+    for library_name in library_names:
+        try:
+            library = ctypes.CDLL(library_name)
+            dladdr = library.dladdr
+        except (AttributeError, OSError):
+            continue
+        dladdr.argtypes = (ctypes.c_void_p, ctypes.POINTER(DlInfo))
+        dladdr.restype = ctypes.c_int
+        info = DlInfo()
+        if dladdr(address, ctypes.byref(info)) and info.filename:
+            path = _readable_runtime_path(os.fsdecode(info.filename))
+            if path is not None:
+                return path
+    return None
+
+
+def _mapped_windows_python_runtime() -> Path | None:
+    if os.name != "nt":
+        return None
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        get_module_handle = kernel32.GetModuleHandleExW
+        get_module_filename = kernel32.GetModuleFileNameW
+    except (AttributeError, OSError):
+        return None
+    get_module_handle.argtypes = (
+        ctypes.c_uint32,
+        ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p),
+    )
+    get_module_handle.restype = ctypes.c_int
+    get_module_filename.argtypes = (
+        ctypes.c_void_p,
+        ctypes.c_wchar_p,
+        ctypes.c_uint32,
+    )
+    get_module_filename.restype = ctypes.c_uint32
+    address = ctypes.cast(ctypes.pythonapi.Py_GetVersion, ctypes.c_void_p)
+    handle = ctypes.c_void_p()
+    from_address_unchanged_refcount = 0x00000004 | 0x00000002
+    if not get_module_handle(
+        from_address_unchanged_refcount,
+        address,
+        ctypes.byref(handle),
+    ):
+        return None
+    buffer = ctypes.create_unicode_buffer(32768)
+    length = get_module_filename(
+        handle,
+        buffer,
+        ctypes.sizeof(buffer) // ctypes.sizeof(ctypes.c_wchar),
+    )
+    if not length or length >= len(buffer):
+        return None
+    return _readable_runtime_path(buffer.value)
+
+
+def _mapped_proc_python_runtime() -> Path | None:
+    maps_path = Path("/proc/self/maps")
+    if not maps_path.is_file():
+        return None
+    try:
+        lines = maps_path.read_text(
+            encoding="utf-8", errors="surrogateescape"
+        ).splitlines()
+    except OSError:
+        return None
+    candidates: set[Path] = set()
+    for line in lines:
+        slash = line.find("/")
+        if slash < 0:
+            continue
+        raw_path = line[slash:]
+        if raw_path.endswith(" (deleted)") or "libpython" not in Path(raw_path).name:
+            continue
+        path = _readable_runtime_path(raw_path)
+        if path is not None:
+            candidates.add(path)
+    if len(candidates) > 1:
+        raise RuntimeError(
+            "Primary-QRF worker found multiple mapped Python runtime libraries."
+        )
+    return next(iter(candidates), None)
+
+
+def _configured_python_runtime() -> Path | None:
+    names: set[str] = set()
+    for key in ("INSTSONAME", "LDLIBRARY", "DLLLIBRARY"):
+        value = sysconfig.get_config_var(key)
+        if isinstance(value, str) and value:
+            names.add(value)
+    directories: set[Path] = set()
+    for key in ("LIBDIR", "LIBPL", "BINDIR"):
+        value = sysconfig.get_config_var(key)
+        if isinstance(value, str) and value:
+            directories.add(Path(value))
+    directories.update({Path(sys.base_prefix), Path(sys.executable).parent})
+    candidates: set[Path] = set()
+    for name in names:
+        configured = Path(name)
+        if configured.is_absolute():
+            paths = (configured,)
+        else:
+            paths = tuple(directory / configured for directory in directories)
+        for raw_path in paths:
+            path = _readable_runtime_path(raw_path)
+            if path is not None and path.suffix not in {".a", ".lib"}:
+                candidates.add(path)
+    if len(candidates) > 1:
+        raise RuntimeError(
+            "Primary-QRF worker Python runtime configuration is ambiguous."
+        )
+    return next(iter(candidates), None)
+
+
+def _loaded_python_runtime_binary() -> tuple[str, Path]:
+    """Return the exact shared runtime image, or the executable for static Python."""
+
+    executable = Path(sys.executable).resolve()
+    mapped = (
+        _mapped_windows_python_runtime()
+        or _mapped_posix_python_runtime()
+        or _mapped_proc_python_runtime()
+    )
+    if mapped is not None:
+        kind = (
+            "statically_linked_executable" if mapped == executable else "shared_library"
+        )
+        return kind, mapped
+    shared = sysconfig.get_config_var("Py_ENABLE_SHARED")
+    if shared in (0, "0"):
+        if not executable.is_file():
+            raise RuntimeError(
+                "Primary-QRF worker cannot read its static Python runtime executable."
+            )
+        return "statically_linked_executable", executable
+    configured = _configured_python_runtime()
+    if configured is not None:
+        kind = (
+            "statically_linked_executable"
+            if configured == executable
+            else "shared_library"
+        )
+        return kind, configured
+    raise RuntimeError("Primary-QRF worker cannot resolve its loaded Python runtime.")
+
+
+def _worker_stdlib_roots() -> tuple[tuple[tuple[str, Path], ...], tuple[Path, ...]]:
+    configured_paths = sysconfig.get_paths()
+    excluded_roots = tuple(
+        Path(path).resolve()
+        for name in ("purelib", "platlib")
+        if isinstance((path := configured_paths.get(name)), str) and path
+    )
+    roots: list[tuple[str, Path]] = []
+    for name in ("stdlib", "platstdlib"):
+        raw_root = configured_paths.get(name)
+        if not isinstance(raw_root, str) or not raw_root:
+            continue
+        root = Path(raw_root).resolve()
+        if all(existing != root for _, existing in roots):
+            roots.append((name, root))
+    destination_shared = sysconfig.get_config_var("DESTSHARED")
+    if isinstance(destination_shared, str) and destination_shared:
+        root = Path(destination_shared).resolve()
+        if all(existing != root for _, existing in roots):
+            roots.append(("destshared", root))
+    return tuple(roots), excluded_roots
+
+
+def _stdlib_import_path(
+    origin: Path,
+    *,
+    module_name: str,
+    roots: Sequence[tuple[str, Path]],
+    excluded_roots: Sequence[Path],
+) -> tuple[Path, str] | None:
+    if not origin.is_absolute():
+        return None
+    resolved_origin = origin.resolve()
+    if any(resolved_origin.is_relative_to(root) for root in excluded_roots):
+        return None
+    stdlib_relative: Path | None = None
+    for _, root in roots:
+        try:
+            stdlib_relative = resolved_origin.relative_to(root)
+            break
+        except ValueError:
+            continue
+    if stdlib_relative is None:
+        return None
+    if any(
+        part in {"site-packages", "dist-packages"} for part in stdlib_relative.parts
+    ):
+        return None
+    source = _source_for_import_cache(
+        origin,
+        boundary=f"Primary-QRF worker stdlib module {module_name!r}",
+    )
+    resolved_source = source.resolve()
+    for root_name, root in roots:
+        try:
+            relative = resolved_source.relative_to(root)
+        except ValueError:
+            continue
+        return resolved_source, f"{root_name}/{relative.as_posix()}"
+    raise RuntimeError(
+        f"Primary-QRF worker stdlib module {module_name!r} escaped its stdlib root."
+    )
+
+
+def _stdlib_import_row(
+    module_name: str,
+    source: Path,
+    portable_path: str,
+) -> dict[str, str]:
+    if not source.is_file():
+        raise RuntimeError(
+            f"Primary-QRF worker stdlib module {module_name!r} is unreadable."
+        )
+    try:
+        raw = source.read_bytes()
+    except OSError as error:
+        raise RuntimeError(
+            f"Cannot read primary-QRF worker stdlib module {module_name!r}."
+        ) from error
+    if source.suffix in {".py", ".pyw"}:
+        kind = "source"
+    elif any(
+        str(source).endswith(suffix)
+        for suffix in importlib.machinery.EXTENSION_SUFFIXES
+    ):
+        kind = "extension"
+    else:
+        kind = "file"
+    return {
+        "module": module_name,
+        "path": portable_path,
+        "kind": kind,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
+
+
+def _worker_stdlib_import_rows(
+    trace: Mapping[str, object],
+) -> list[dict[str, str]]:
+    """Hash file-backed stdlib modules present after the clean worker import."""
+
+    validated = _validated_worker_import_trace(trace)
+    roots, excluded_roots = _worker_stdlib_roots()
+    module_origins = validated["module_origins"]
+    assert isinstance(module_origins, Mapping)
+    rows: list[dict[str, str]] = []
+    bound_paths: set[str] = set()
+    for module_name, raw_origin in sorted(module_origins.items()):
+        assert isinstance(module_name, str)
+        assert isinstance(raw_origin, str)
+        resolved = _stdlib_import_path(
+            Path(raw_origin),
+            module_name=module_name,
+            roots=roots,
+            excluded_roots=excluded_roots,
+        )
+        if resolved is None:
+            continue
+        source, portable_path = resolved
+        bound_paths.add(portable_path)
+        rows.append(_stdlib_import_row(module_name, source, portable_path))
+    for raw_path in validated["opened_files"]:
+        resolved = _stdlib_import_path(
+            Path(raw_path),
+            module_name="<clean-import-open>",
+            roots=roots,
+            excluded_roots=excluded_roots,
+        )
+        if resolved is None:
+            continue
+        source, portable_path = resolved
+        if portable_path in bound_paths:
+            continue
+        bound_paths.add(portable_path)
+        rows.append(_stdlib_import_row("<clean-import-open>", source, portable_path))
+    return sorted(rows, key=lambda row: (row["module"], row["path"]))
+
+
 def _canonical_pyvenv_config() -> dict[str, object]:
     path = Path(sys.prefix) / "pyvenv.cfg"
     try:
@@ -749,8 +1272,32 @@ def primary_qrf_worker_semantic_identity(
         }:
             raise ValueError("Primary-QRF worker lock is not approved.")
     executable = Path(sys.executable)
-    module_sha256, imports_sha256, external_roots = _worker_source_identity()
+    module_sha256, static_imports_sha256, external_roots = _worker_source_identity()
     record_sha256 = _installed_distributions_record_sha256(external_roots)
+    try:
+        executable_sha256 = hashlib.sha256(executable.read_bytes()).hexdigest()
+    except OSError as error:
+        raise RuntimeError(
+            "Primary-QRF worker cannot read its interpreter executable."
+        ) from error
+    runtime_kind, runtime_path = _loaded_python_runtime_binary()
+    try:
+        runtime_sha256 = hashlib.sha256(runtime_path.read_bytes()).hexdigest()
+    except OSError as error:
+        raise RuntimeError(
+            "Primary-QRF worker cannot read its loaded Python runtime."
+        ) from error
+    pyvenv_config = _canonical_pyvenv_config()
+    environment = _semantic_environment()
+    import_trace = _clean_worker_import_trace()
+    namespace_rows = _worker_package_resource_rows(import_trace)
+    imports_sha256 = _canonical_sha256(
+        {
+            "static_python_imports_sha256": static_imports_sha256,
+            "clean_import_namespace_files": namespace_rows,
+        }
+    )
+    stdlib_imports_sha256 = _canonical_sha256(_worker_stdlib_import_rows(import_trace))
     environment_code_sha256 = _canonical_sha256(
         {
             "worker_module_source_sha256": module_sha256,
@@ -760,7 +1307,12 @@ def primary_qrf_worker_semantic_identity(
     )
     return {
         "interpreter": {
-            "bytes_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
+            "bytes_sha256": executable_sha256,
+            "runtime_binary": {
+                "kind": runtime_kind,
+                "bytes_sha256": runtime_sha256,
+            },
+            "stdlib_imports_sha256": stdlib_imports_sha256,
             "implementation": sys.implementation.name,
             "version": list(sys.version_info[:3]),
             "abi": {
@@ -768,7 +1320,7 @@ def primary_qrf_worker_semantic_identity(
                 "abiflags": sys.abiflags,
             },
             "cache_tag": sys.implementation.cache_tag,
-            "pyvenv_cfg": _canonical_pyvenv_config(),
+            "pyvenv_cfg": pyvenv_config,
         },
         "worker_module": {
             "name": PRIMARY_QRF_WORKER_MODULE,
@@ -787,7 +1339,7 @@ def primary_qrf_worker_semantic_identity(
             "--target-index",
             "{target_index}",
         ],
-        "environment": _semantic_environment(),
+        "environment": environment,
     }
 
 
@@ -863,11 +1415,38 @@ def _validate_semantic_identity(
         raise ValueError(f"{boundary} transitive environment/code digest changed.")
     interpreter = _require_exact_keys(
         value.get("interpreter"),
-        {"bytes_sha256", "implementation", "version", "abi", "cache_tag", "pyvenv_cfg"},
+        {
+            "bytes_sha256",
+            "runtime_binary",
+            "stdlib_imports_sha256",
+            "implementation",
+            "version",
+            "abi",
+            "cache_tag",
+            "pyvenv_cfg",
+        },
         boundary=f"{boundary} interpreter",
     )
     _require_sha256(
         interpreter.get("bytes_sha256"), boundary=f"{boundary} interpreter bytes"
+    )
+    runtime_binary = _require_exact_keys(
+        interpreter.get("runtime_binary"),
+        {"kind", "bytes_sha256"},
+        boundary=f"{boundary} runtime binary",
+    )
+    if runtime_binary.get("kind") not in {
+        "shared_library",
+        "statically_linked_executable",
+    }:
+        raise ValueError(f"{boundary} runtime binary kind is invalid.")
+    _require_sha256(
+        runtime_binary.get("bytes_sha256"),
+        boundary=f"{boundary} runtime binary bytes",
+    )
+    _require_sha256(
+        interpreter.get("stdlib_imports_sha256"),
+        boundary=f"{boundary} stdlib imports",
     )
     _require_string(
         interpreter.get("implementation"), boundary=f"{boundary} implementation"

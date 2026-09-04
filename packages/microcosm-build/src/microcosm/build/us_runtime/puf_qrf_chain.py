@@ -100,6 +100,10 @@ _RECIPIENT_PREDICTOR_UNIVERSE = "recipient_predictor_universe"
 _PRIMARY_QRF_WORKER_ENVIRONMENT_OVERRIDES = {
     "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
 }
+_PRIMARY_QRF_WORKER_BOUND_ENVIRONMENT_NAMES = (
+    "POPULACE_FIT_N_JOBS",
+    "POPULACE_FIT_PREDICT_WORKERS",
+)
 _ABSENT_CELLS_POLICIES = (
     PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
@@ -254,6 +258,39 @@ def initialize_primary_puf_qrf_chain(
     return manifest
 
 
+def _validated_primary_qrf_worker_environment(
+    environment: Mapping[str, str] | None,
+) -> dict[str, str]:
+    if environment is None:
+        return {}
+    if not isinstance(environment, Mapping):
+        raise ValueError("Primary QRF worker environment must be a mapping.")
+    requested: dict[str, str] = {}
+    allowed = {
+        *_PRIMARY_QRF_WORKER_BOUND_ENVIRONMENT_NAMES,
+        *_PRIMARY_QRF_WORKER_ENVIRONMENT_OVERRIDES,
+    }
+    for name, value in environment.items():
+        if not isinstance(name, str) or name not in allowed:
+            raise ValueError(
+                f"Primary QRF worker environment override is not bound: {name!r}."
+            )
+        if not isinstance(value, str):
+            raise ValueError(
+                f"Primary QRF worker environment value must be a string: {name}."
+            )
+        if (
+            name in _PRIMARY_QRF_WORKER_BOUND_ENVIRONMENT_NAMES
+            and os.environ.get(name) != value
+        ):
+            raise ValueError(
+                "Primary QRF worker environment override differs from its "
+                f"authenticated parent value: {name}."
+            )
+        requested[name] = value
+    return requested
+
+
 def run_primary_puf_qrf_chain(
     checkpoint_dir: str | Path,
     *,
@@ -261,6 +298,7 @@ def run_primary_puf_qrf_chain(
 ) -> None:
     """Run or resume one fresh interpreter per target in exact chain order."""
 
+    requested_environment = _validated_primary_qrf_worker_environment(environment)
     root = Path(checkpoint_dir).resolve()
     manifest = _load_manifest(root)
     target_order = _manifest_strings(manifest, "target_order")
@@ -284,7 +322,7 @@ def run_primary_puf_qrf_chain(
             )
     child_environment = {
         **os.environ,
-        **({} if environment is None else dict(environment)),
+        **requested_environment,
         **_PRIMARY_QRF_WORKER_ENVIRONMENT_OVERRIDES,
     }
     for target_index, _target in enumerate(target_order):
