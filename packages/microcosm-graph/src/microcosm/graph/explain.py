@@ -506,6 +506,11 @@ def _receipt_payload(receipt: NodeReceipt) -> dict[str, object]:
         "frame_key": receipt.frame_key,
         "weight_key": receipt.weight_key,
         "opaque_artifacts": receipt.opaque_artifacts,
+        **(
+            {"typed_artifacts": receipt.typed_artifacts}
+            if receipt.typed_artifacts
+            else {}
+        ),
         "wall_time": receipt.wall_time,
     }
     if receipt.legacy_capabilities:

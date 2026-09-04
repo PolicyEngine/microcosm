@@ -1,0 +1,1 @@
+Add a runnable synthetic destination-transfer graph using one fitted QRF model across two independent recipient populations, explicit annual unit conversion, real household calibration, and held-out evaluation. The example records model/cache identities and separate calibration/evaluation verdicts, with tests for selective invalidation and holdout isolation.

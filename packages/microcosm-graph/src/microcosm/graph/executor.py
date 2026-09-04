@@ -17,6 +17,7 @@ import pandas as pd
 from microcosm.frame import Frame, WeightKind, Weights
 
 from . import keys as graph_keys
+from .artifact_edges import scope_payload, typed_contracts, value_from_descriptor
 from .canonical import canonical_json, sha256_domain
 from .codecs import SOURCE_CODECS, SourceCodecRegistry
 from .decl import (
@@ -30,6 +31,7 @@ from .decl import (
 )
 from .errors import NodeRejectedError
 from .kernel import (
+    ArtifactValue,
     Capabilities,
     KernelContext,
     KernelRegistry,
@@ -386,6 +388,21 @@ def _context_digest(context: KernelContext) -> bytes:
         digest.update(weights.kind.value.encode("ascii") + b"\0")
         _update_array(digest, weights.values)
     _update_series(digest, context.strata)
+    for name, value in sorted(context.artifacts.items()):
+        digest.update(
+            canonical_json(
+                (
+                    name,
+                    value.key,
+                    value.producer_key,
+                    value.type.name,
+                    value.type.schema_version,
+                    scope_payload(value.numerics),
+                )
+            )
+        )
+        digest.update(len(value.payload).to_bytes(8, "little"))
+        digest.update(value.payload)
     return digest.digest()
 
 
@@ -461,6 +478,7 @@ def _project_context(
     sources: Mapping[str, Path],
     tolerances: Mapping[tuple[str, str], Tolerance | None],
     numerics: Mapping[tuple[str, str], NumericScope],
+    artifacts: Mapping[str, ArtifactValue] | None = None,
 ) -> KernelContext:
     if population is None:
         return KernelContext(
@@ -473,6 +491,7 @@ def _project_context(
             sources=MappingProxyType({name: sources[name] for name in node.sources}),
             tolerances=tolerances,
             numerics=numerics,
+            artifacts={} if artifacts is None else artifacts,
         )
 
     frame = population.frame
@@ -564,6 +583,7 @@ def _project_context(
         sources=MappingProxyType({name: sources[name] for name in node.sources}),
         tolerances=tolerances,
         numerics=numerics,
+        artifacts={} if artifacts is None else artifacts,
     )
 
 
@@ -1126,6 +1146,12 @@ def _validate_result(
         if not isinstance(payload, bytes):
             raise NodeRejected(f"Node {node.id!r} artifact {name!r} is not bytes.")
         artifacts[name] = payload
+    for output in node.artifact_outputs:
+        if output.name not in artifacts:
+            error = StoreMiss if cache_hit else NodeRejected
+            raise error(
+                f"Node {node.id!r} is missing declared artifact {output.name!r}."
+            )
     receipt = _normal_json_mapping(result.receipt, f"Node {node.id!r} receipt")
     if node.structural is StructuralDelta.EXPAND:
         if cache_hit:
@@ -1378,6 +1404,7 @@ def _write_node(
     receipt: Mapping[str, object],
     opaque_artifacts: Mapping[str, bytes],
     verify_existing: bool,
+    typed_artifacts: Mapping[str, object] | None = None,
 ) -> tuple[dict[tuple[str, str], str], dict[str, object]]:
     columns: dict[tuple[str, str], tuple[pd.Series, str]] = {}
     if node.structural is StructuralDelta.NONE:
@@ -1462,7 +1489,8 @@ def _write_node(
         opaque_entries.append({"name": name, "key": output_key})
 
     record: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2 if typed_artifacts else 1,
+        **({"typed_artifacts": dict(typed_artifacts)} if typed_artifacts else {}),
         "node_id": node.id,
         "node_key": key,
         "kernel_ref": node.kernel,
@@ -1490,6 +1518,7 @@ def _require_record_shape(
     key: str,
     kernel_impl_hash: str,
     capabilities: Capabilities,
+    typed_artifacts: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     if not isinstance(raw, dict):
         raise StoreCorrupt(f"Cached receipt for node {node.id!r} is not an object.")
@@ -1506,16 +1535,37 @@ def _require_record_shape(
         "weight",
         "opaque",
     }
+    if typed_artifacts:
+        required.add("typed_artifacts")
     if set(raw) != required:
         raise StoreCorrupt(
             f"Cached receipt for node {node.id!r} has fields {sorted(raw)}, "
             f"not {sorted(required)}."
         )
-    if raw["schema_version"] != 1:
+    if raw["schema_version"] != (2 if typed_artifacts else 1):
         raise StoreUnavailable(
             f"Cached receipt for node {node.id!r} uses unsupported schema "
             f"{raw['schema_version']!r}."
         )
+    if typed_artifacts and raw.get("typed_artifacts") != dict(typed_artifacts):
+        raise StoreCorrupt(
+            f"Cached node {node.id!r} typed artifact contracts disagree with the graph."
+        )
+    if typed_artifacts:
+        opaque = _record_entries(raw, "opaque")
+        names = [entry.get("name") for entry in opaque]
+        if len(set(names)) != len(names):
+            raise StoreCorrupt(f"Cached node {node.id!r} repeats an opaque artifact.")
+        actual_outputs = {entry.get("name"): entry.get("key") for entry in opaque}
+        for output in node.artifact_outputs:
+            if output.name not in actual_outputs:
+                raise StoreMiss(
+                    f"Cached node {node.id!r} is missing declared artifact {output.name!r}."
+                )
+            if actual_outputs[output.name] != _opaque_artifact_key(key, output.name):
+                raise StoreCorrupt(
+                    f"Cached node {node.id!r} artifact identity mismatch."
+                )
     expected = (node.id, key, node.kernel, kernel_impl_hash)
     actual = (
         raw["node_id"],
@@ -1581,6 +1631,7 @@ def _load_record(
     key: str,
     kernel_impl_hash: str,
     capabilities: Capabilities,
+    typed_artifacts: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     raw = store.load_json(_cache_record_key(key))
     return _require_record_shape(
@@ -1589,6 +1640,7 @@ def _load_record(
         key=key,
         kernel_impl_hash=kernel_impl_hash,
         capabilities=capabilities,
+        typed_artifacts=typed_artifacts,
     )
 
 
@@ -1867,6 +1919,7 @@ def _preflight_require(
                 key=keys[node_id],
                 kernel_impl_hash=implementations[node_id],
                 capabilities=kernels.get(node.kernel).capabilities,
+                typed_artifacts=typed_contracts(compiled, node, keys, kernels),
             )
             _require_tolerance_writer_receipt(
                 node,
@@ -1926,6 +1979,10 @@ def run_graph(
     started_at = _now()
     source_paths, source_keys = _source_paths_and_keys(compiled, sources, store)
     keys, implementations = _all_node_keys(compiled, kernels, source_keys)
+    contracts = {
+        node_id: typed_contracts(compiled, compiled.graph.node(node_id), keys, kernels)
+        for node_id in compiled.order
+    }
     if resume == "require":
         _preflight_require(compiled, store, keys, implementations, kernels)
 
@@ -1965,6 +2022,18 @@ def run_graph(
         )
         tolerance_writers = _tolerance_writer_payload(input_writers)
 
+        typed = contracts[node_id]
+        artifact_values = {}
+        for binding in node.artifact_inputs:
+            entry = typed["inputs"][binding.name]
+            producer_receipt = receipts[binding.producer]
+            if producer_receipt.opaque_artifacts.get(binding.artifact) != entry["key"]:
+                raise StoreCorrupt(
+                    f"Node {node.id!r} artifact producer receipt disagrees with its declaration."
+                )
+            artifact_values[binding.name] = value_from_descriptor(
+                store.load_bytes(entry["key"]), entry
+            )
         hit = False
         replace_stale_record = False
         result: KernelResult | None = None
@@ -1978,6 +2047,7 @@ def run_graph(
                     key=key,
                     kernel_impl_hash=implementation,
                     capabilities=kernel.capabilities,
+                    typed_artifacts=typed,
                 )
                 try:
                     _require_tolerance_writer_receipt(
@@ -2005,6 +2075,7 @@ def run_graph(
                 sources=source_paths,
                 tolerances=input_tolerances,
                 numerics=input_numerics,
+                artifacts=artifact_values,
             )
             before = _context_digest(context)
             try:
@@ -2149,6 +2220,7 @@ def run_graph(
                 receipt=cache_receipt,
                 opaque_artifacts=opaque,
                 verify_existing=(resume != "forbid" and not replace_stale_record),
+                typed_artifacts=typed,
             )
 
         assert record is not None
@@ -2172,6 +2244,7 @@ def run_graph(
             receipt_opaque[name] = artifact_identity
 
         receipts[node_id] = NodeReceipt(
+            typed_artifacts=typed,
             key=key,
             hit=hit,
             seed=seed(key),

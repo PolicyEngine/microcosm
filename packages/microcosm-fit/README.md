@@ -45,6 +45,45 @@ draws = fitted.predict(frame)  # one column per target
 fitted_unweighted = fit(frame, predictors, targets, weights="none")
 ```
 
+## Reusable graph models
+
+`microcosm.fit.graph_models` separates donor training from recipient draws.
+Register `QRFTrainKernel()` and `QRFApplyKernel()` in the graph kernel registry.
+The training node reads one donor population Slice containing `predictors`
+then `targets`, owns no columns, and declares
+`ArtifactOutput("model", QRF_MODEL_TYPE)`. Its required parameters are tuples
+`predictors`, `targets`, and an integer `seed`; `n_estimators`, `zero_atol` and
+`max_samples_leaf` retain the public fitter's defaults.
+
+Each application node reads a recipient Slice containing exactly those
+predictors and declares `ArtifactInput("model", train_node_id, "model",
+QRF_MODEL_TYPE)`. It owns one all-row `float64` column per target in fitted
+chain order. Parameters `random_stream=("sha256-u53-v1", experiment_id,
+replicate, base_seed)` and integer `period` control its draws. Random
+coordinates include the entity ID, target, period and draw kind. Give the same
+person the same stream and period to couple counterfactual draws; change the
+experiment or replicate for a distinct set of draws. Recipient edits preserve
+the fitted model's cache identity; donor values and effective weights do not.
+
+The new training kernel excludes zero-weight rows before regime detection and
+records the source typed weight kind separately from the public DataFrame
+fitter's resolved `explicit` weights. Both kernels declare platform-bitwise
+numerics; neither promises cross-platform prediction equality. Model artifacts
+contain validated versioned metadata and a pickle from trusted local training.
+Content verification establishes integrity, not safe loading of untrusted
+pickle. The existing combined `fit.qrf@1` kernel remains available.
+
+Outside a graph, `FittedRegimeGatedQRF.predict_from_uniforms` accepts mappings
+`quantiles={target: array}` and `sign_uniforms={target: array}`. Both must name
+every fitted target and carry finite arrays in `[0, 1)` aligned to recipient
+rows. The method preserves fitted forests and RNG state. Keep each row's
+uniforms with its identity when reordering or batching. Ordinary `predict()`
+retains its existing stateful RNG behavior.
+
+The synthetic two-destination integration is runnable with
+`python -m microcosm.build.transfer_example --output <directory>`; see the
+microcosm-build documentation for its separate calibration and held-out checks.
+
 ## Dependencies
 
 The heavy dependencies (`scikit-learn`, `quantile-forest`) live here, never in
