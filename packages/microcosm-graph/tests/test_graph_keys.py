@@ -6,6 +6,8 @@ import hashlib
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from microcosm.graph.canonical import canonical_json, sha256_domain
 from microcosm.graph.decl import (
     CompiledGraph,
@@ -16,6 +18,14 @@ from microcosm.graph.decl import (
     SourceRef,
     StructuralDelta,
     compile_graph,
+)
+from microcosm.graph.kernel import (
+    Capabilities,
+    Determinism,
+    KernelRole,
+    Numeric,
+    SeedSource,
+    Tolerance,
 )
 from microcosm.graph.keys import (
     artifact_key,
@@ -37,6 +47,12 @@ CREATE = Node(
         Owned("person", "keep", "boolean"),
     ),
 )
+
+
+def _capabilities(
+    structural: StructuralDelta = StructuralDelta.NONE,
+) -> Capabilities:
+    return Capabilities(Determinism.DETERMINISTIC, structural=structural)
 
 
 def _ordinary(
@@ -87,6 +103,7 @@ def _all_keys(
             keys,
             implementation_hashes[node.kernel],
             {"survey": source_key},
+            kernel_capabilities=_capabilities(node.structural),
         )
     return compiled, keys
 
@@ -199,13 +216,21 @@ def test_carried_columns_resolve_to_the_structural_version() -> None:
     graph = Graph("toy", (SOURCE,), (CREATE, subset, model))
     compiled = compile_graph(graph)
     keys = {"survey": "a" * 64, "adults": "b" * 64}
-    baseline = node_key(compiled, "model", keys, "c" * 64, {})
+    baseline = node_key(
+        compiled,
+        "model",
+        keys,
+        "c" * 64,
+        {},
+        kernel_capabilities=_capabilities(),
+    )
     changed_unreachable_base = node_key(
         compiled,
         "model",
         {"survey": "d" * 64, "adults": "b" * 64},
         "c" * 64,
         {},
+        kernel_capabilities=_capabilities(),
     )
     assert baseline == changed_unreachable_base
 
@@ -227,6 +252,7 @@ def test_structural_key_binds_every_patch_in_its_base_version() -> None:
         {"survey": "a" * 64, "patched": "b" * 64},
         "c" * 64,
         {},
+        kernel_capabilities=_capabilities(StructuralDelta.FILTER),
     )
     changed_patch = node_key(
         compiled,
@@ -234,6 +260,7 @@ def test_structural_key_binds_every_patch_in_its_base_version() -> None:
         {"survey": "a" * 64, "patched": "d" * 64},
         "c" * 64,
         {},
+        kernel_capabilities=_capabilities(StructuralDelta.FILTER),
     )
     assert baseline != changed_patch
 
@@ -248,6 +275,7 @@ def test_non_create_source_consumers_bind_their_declared_source_bytes() -> None:
         {"survey": "a" * 64},
         "b" * 64,
         {"survey": "c" * 64},
+        kernel_capabilities=_capabilities(),
     )
     changed = node_key(
         compiled,
@@ -255,5 +283,75 @@ def test_non_create_source_consumers_bind_their_declared_source_bytes() -> None:
         {"survey": "a" * 64},
         "b" * 64,
         {"survey": "d" * 64},
+        kernel_capabilities=_capabilities(),
     )
     assert baseline != changed
+
+
+def test_every_capability_field_changes_the_node_key() -> None:
+    compiled = compile_graph(_graph())
+    base = Capabilities(
+        determinism=Determinism.SEEDED,
+        numeric=Numeric.TOLERANCE_BOUND,
+        seed_source=SeedSource.EXECUTOR,
+        role=KernelRole.COMPUTE,
+        consumes_se=False,
+        dependencies=("numpy",),
+        tolerance=Tolerance(rtol=1e-6, atol=2e-6, ulps=1),
+    )
+
+    def key(capabilities: Capabilities) -> str:
+        return node_key(
+            compiled,
+            "a",
+            {"survey": "a" * 64},
+            "b" * 64,
+            {},
+            kernel_capabilities=capabilities,
+        )
+
+    baseline = key(base)
+    variants = (
+        replace(base, determinism=Determinism.DETERMINISTIC),
+        replace(base, numeric=Numeric.BITWISE, tolerance=None),
+        replace(base, seed_source=SeedSource.PARAM),
+        replace(base, structural=StructuralDelta.FILTER),
+        replace(base, role=KernelRole.GATE),
+        replace(base, consumes_se=True),
+        replace(base, dependencies=("numpy", "pandas")),
+        replace(base, tolerance=Tolerance(rtol=3e-6, atol=2e-6, ulps=1)),
+    )
+    assert all(key(capabilities) != baseline for capabilities in variants)
+
+    positive_zero = replace(base, tolerance=Tolerance(rtol=0.0, atol=2e-6, ulps=1))
+    negative_zero = replace(base, tolerance=Tolerance(rtol=-0.0, atol=2e-6, ulps=1))
+    assert key(positive_zero) == key(negative_zero)
+
+
+def test_platform_bitwise_keys_carry_the_platform(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Amendment 16: a platform-bitwise kernel's key differs across platforms;
+    other kernels' keys do not depend on the platform at all."""
+    from microcosm.graph import keys as keys_module
+
+    fingerprints = iter(["arm64/darwin/py3.14", "x86_64/linux/py3.14"])
+    monkeypatch.setattr(keys_module, "platform_fingerprint", lambda: next(fingerprints))
+    compiled = compile_graph(_graph())
+    bound = Capabilities(Determinism.SEEDED, numeric=Numeric.PLATFORM_BITWISE)
+    first = node_key(
+        compiled, "a", {"survey": "s" * 64}, "impl", {}, kernel_capabilities=bound
+    )
+    second = node_key(
+        compiled, "a", {"survey": "s" * 64}, "impl", {}, kernel_capabilities=bound
+    )
+    assert first != second
+    plain = Capabilities(Determinism.DETERMINISTIC)
+    monkeypatch.setattr(
+        keys_module, "platform_fingerprint", lambda: "never/called/py0.0"
+    )
+    assert node_key(
+        compiled, "a", {"survey": "s" * 64}, "impl", {}, kernel_capabilities=plain
+    ) == node_key(
+        compiled, "a", {"survey": "s" * 64}, "impl", {}, kernel_capabilities=plain
+    )

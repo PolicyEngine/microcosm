@@ -37,6 +37,13 @@ def graph_to_json(graph: Graph) -> str:
             for source in graph.sources
         ],
         "nodes": [_node_payload(node) for node in graph.nodes],
+        # Amendment 12: present only when declared, so a declaration written
+        # before the amendment serializes byte for byte as it did.
+        **(
+            {}
+            if graph.mass_partition is None
+            else {"mass_partition": list(graph.mass_partition)}
+        ),
     }
     return canonical_json(payload).decode("utf-8")
 
@@ -51,7 +58,10 @@ def graph_from_json(text: str) -> Graph:
     except json.JSONDecodeError as error:
         raise ValueError("graph JSON is not valid JSON") from error
     root = _mapping(raw, "graph")
-    _exact_fields(root, {"country", "sources", "nodes"}, "graph")
+    fields = {"country", "sources", "nodes"}
+    if "mass_partition" in root:
+        fields.add("mass_partition")
+    _exact_fields(root, fields, "graph")
     sources_raw = _array(root["sources"], "graph.sources")
     nodes_raw = _array(root["nodes"], "graph.nodes")
     return Graph(
@@ -63,7 +73,19 @@ def graph_from_json(text: str) -> Graph:
         nodes=tuple(
             _node_from_payload(value, index) for index, value in enumerate(nodes_raw)
         ),
+        mass_partition=_partition_from_payload(
+            root.get("mass_partition"), "graph.mass_partition"
+        ),
     )
+
+
+def _partition_from_payload(value: object, label: str) -> tuple[str, str] | None:
+    if value is None:
+        return None
+    parts = _array(value, label)
+    if len(parts) != 2:
+        raise TypeError(f"{label} must be an [entity, column] pair")
+    return (_string(parts[0], f"{label}[0]"), _string(parts[1], f"{label}[1]"))
 
 
 def _node_payload(node: Node) -> dict[str, object]:
@@ -104,6 +126,7 @@ def _node_payload(node: Node) -> dict[str, object]:
             }
         ),
         "mass": node.mass,
+        **({"entrants": True} if node.entrants else {}),
         "description": node.description,
         "citation": node.citation,
     }
@@ -138,7 +161,12 @@ def _node_from_payload(value: object, index: int) -> Node:
         "description",
         "citation",
     }
+    if "entrants" in payload:
+        fields.add("entrants")
     _exact_fields(payload, fields, label)
+    entrants = payload.get("entrants", False)
+    if not isinstance(entrants, bool):
+        raise TypeError(f"{label}.entrants must be a boolean")
     inputs = _array(payload["inputs"], f"{label}.inputs")
     outputs = _array(payload["outputs"], f"{label}.outputs")
     sources = _array(payload["sources"], f"{label}.sources")
@@ -173,6 +201,7 @@ def _node_from_payload(value: object, index: int) -> Node:
         ),
         weights=_weights_from_payload(payload["weights"], f"{label}.weights"),
         mass=_string(payload["mass"], f"{label}.mass"),
+        entrants=entrants,
         description=_string(payload["description"], f"{label}.description"),
         citation=_string(payload["citation"], f"{label}.citation"),
     )

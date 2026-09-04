@@ -9,6 +9,7 @@ import sys
 from collections.abc import Mapping, Sequence
 from importlib import metadata as importlib_metadata
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import pandas as pd
@@ -28,6 +29,7 @@ from microcosm.frame import (
 from microcosm.frame.kernels import SimulateRulesKernel
 from microcosm.graph import (
     Capabilities,
+    ContentStore,
     Determinism,
     Graph,
     KernelBase,
@@ -42,8 +44,11 @@ from microcosm.graph import (
     SourceRef,
     StructuralDelta,
     WeightTransition,
+    compile_graph,
     graph_to_json,
+    run_graph,
 )
+from microcosm.graph.keys import platform_fingerprint
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = (
@@ -82,9 +87,7 @@ class ParityCsvSource(KernelBase):
         case = context.params.get("case")
         if case not in {"fit.qrf", "calibrate", "simulate"}:
             raise ValueError(f"Unknown parity fixture case {case!r}.")
-        table = pd.read_csv(
-            context.sources["fixture"] / "inputs.csv", float_precision="round_trip"
-        )
+        table = pd.read_csv(context.sources["fixture"], float_precision="round_trip")
         frame = _frame_for_case(str(case), table)
         return KernelResult(frame=frame, receipt={"case": case, "rows": len(table)})
 
@@ -437,7 +440,12 @@ def _simulate_case() -> tuple[Graph, pd.DataFrame, pd.DataFrame, object, None]:
     )
 
 
-def _pins(node_id: str, kernel: object, seed: int | None) -> dict[str, object]:
+def _pins(
+    node_id: str,
+    node_key: str,
+    kernel: object,
+    seed: int | None,
+) -> dict[str, object]:
     capabilities = kernel.capabilities  # type: ignore[attr-defined]
     dependencies = {
         name: importlib_metadata.version(name)
@@ -445,10 +453,13 @@ def _pins(node_id: str, kernel: object, seed: int | None) -> dict[str, object]:
     }
     return {
         "node": node_id,
+        "node_key": node_key,
         "seed": seed,
         "kernel": kernel.ref,  # type: ignore[attr-defined]
         "implementation_hash": kernel.implementation_hash(),  # type: ignore[attr-defined]
         "dependencies": dependencies,
+        "numeric": capabilities.numeric.value,
+        "platform": platform_fingerprint(),
     }
 
 
@@ -465,16 +476,90 @@ def _write_case(
     (destination / "graph.json").write_text(graph_to_json(graph), encoding="utf-8")
     inputs.to_csv(destination / "inputs.csv", index=False, lineterminator="\n")
     direct.to_csv(destination / "direct.csv", index=False, lineterminator="\n")
-    (destination / "pins.json").write_text(
-        json.dumps(
-            _pins(graph.nodes[-1].id, kernel, seed),
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
+    node_id = graph.nodes[-1].id
+    with TemporaryDirectory(prefix="microcosm-parity-") as store_path:
+        manifest = run_graph(
+            compile_graph(graph),
+            sources={"fixture": destination / "inputs.csv"},
+            store=ContentStore(Path(store_path)),
+            kernels=parity_registry(),
+            resume="forbid",
+            decisions=(),
         )
+    node_key = manifest.nodes[node_id].key
+    pins = _pins(node_id, node_key, kernel, seed)
+    pins["platforms"] = {
+        platform_fingerprint(): {"node_key": node_key, "direct": "direct.csv"}
+    }
+    _write_pins(destination, pins)
+
+
+def _write_pins(destination: Path, pins: dict[str, object]) -> None:
+    (destination / "pins.json").write_text(
+        json.dumps(pins, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         + "\n",
         encoding="utf-8",
     )
+
+
+def _platform_slug() -> str:
+    return platform_fingerprint().replace("/", "-").replace(".", "_")
+
+
+def add_platform_pin(name: str) -> str:
+    """Record this platform's node key and direct bytes for one existing case.
+
+    A platform-bitwise kernel (amendment 16) is byte-identical only within a
+    platform, so every platform that CI runs carries its own pin: the node key
+    the fingerprint produces and the direct call's bytes on that platform. The
+    authoring platform's top-level pin and ``direct.csv`` are left untouched.
+    """
+
+    builders = {
+        "fit.qrf": _fit_case,
+        "calibrate": _calibrate_case,
+        "simulate": _simulate_case,
+    }
+    graph, inputs, direct, kernel, seed = builders[name]()
+    destination = FIXTURES / name
+    pins = json.loads((destination / "pins.json").read_text(encoding="utf-8"))
+    if pins["kernel"] != kernel.ref:  # type: ignore[attr-defined]
+        raise SystemExit(
+            f"{name}: pins are for {pins['kernel']}, builder gives {kernel.ref}"
+        )  # type: ignore[attr-defined]
+    stored_inputs = pd.read_csv(
+        destination / "inputs.csv", float_precision="round_trip"
+    )
+    if not stored_inputs.equals(inputs.reset_index(drop=True)):
+        raise SystemExit(
+            f"{name}: inputs.csv no longer matches the builder; regenerate instead"
+        )
+    fingerprint = platform_fingerprint()
+    if fingerprint == pins["platform"]:
+        raise SystemExit(
+            f"{name}: {fingerprint} is the authoring platform; regenerate instead"
+        )
+    with TemporaryDirectory(prefix="microcosm-parity-") as store_path:
+        manifest = run_graph(
+            compile_graph(graph),
+            sources={"fixture": destination / "inputs.csv"},
+            store=ContentStore(Path(store_path)),
+            kernels=parity_registry(),
+            resume="forbid",
+            decisions=(),
+        )
+    node_key = manifest.nodes[pins["node"]].key
+    relative = f"platforms/{_platform_slug()}/direct.csv"
+    (destination / relative).parent.mkdir(parents=True, exist_ok=True)
+    direct.to_csv(destination / relative, index=False, lineterminator="\n")
+    platforms = dict(pins.get("platforms", {}))
+    platforms.setdefault(
+        pins["platform"], {"node_key": pins["node_key"], "direct": "direct.csv"}
+    )
+    platforms[fingerprint] = {"node_key": node_key, "direct": relative}
+    pins["platforms"] = platforms
+    _write_pins(destination, pins)
+    return fingerprint
 
 
 def generate() -> None:
@@ -496,7 +581,18 @@ def generate() -> None:
         _write_case(name, graph, inputs, direct, kernel, seed)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args[:1] == ["platform-pin"]:
+        if len(args) != 2:
+            raise SystemExit("usage: graph_parity_fixtures.py platform-pin <case>")
+        os.environ["POPULACE_FIT_N_JOBS"] = "1"
+        os.environ["POPULACE_FIT_PREDICT_WORKERS"] = "1"
+        fingerprint = add_platform_pin(args[1])
+        print(f"recorded {args[1]} pin for {fingerprint}")
+        return 0
+    if args:
+        raise SystemExit("usage: graph_parity_fixtures.py [platform-pin <case>]")
     generate()
     print(f"wrote deterministic H1 fixtures under {FIXTURES.relative_to(ROOT)}")
     return 0

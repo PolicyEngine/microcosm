@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from .decl import GATE_OUTCOMES, CompiledGraph, StructuralDelta
 from .manifest import NodeReceipt, RunManifest
+from .population import mass_record_receipt
 from .view import describe
 
 if TYPE_CHECKING:
@@ -295,7 +296,13 @@ def _short(value: object, limit: int = 28) -> str:
 
 
 def _role(receipt: NodeReceipt) -> str:
-    return str(_value(receipt.capabilities.role))
+    capabilities = receipt.capabilities
+    role = (
+        capabilities.get("role", "compute")
+        if isinstance(capabilities, Mapping)
+        else capabilities.role
+    )
+    return str(_value(role))
 
 
 def _node_status(receipt: NodeReceipt) -> tuple[str, str]:
@@ -460,6 +467,9 @@ def _render_graph(
 
 def _capabilities(receipt: NodeReceipt) -> dict[str, object]:
     capabilities = receipt.capabilities
+    if isinstance(capabilities, Mapping):
+        return {str(key): _plain(value) for key, value in capabilities.items()}
+    tolerance = capabilities.tolerance
     return {
         "determinism": _value(capabilities.determinism),
         "numeric": _value(capabilities.numeric),
@@ -468,11 +478,20 @@ def _capabilities(receipt: NodeReceipt) -> dict[str, object]:
         "role": _value(capabilities.role),
         "consumes_se": capabilities.consumes_se,
         "dependencies": capabilities.dependencies,
+        "tolerance": (
+            None
+            if tolerance is None
+            else {
+                "rtol": tolerance.rtol,
+                "atol": tolerance.atol,
+                "ulps": tolerance.ulps,
+            }
+        ),
     }
 
 
 def _receipt_payload(receipt: NodeReceipt) -> dict[str, object]:
-    return {
+    payload = {
         "node_key": receipt.key,
         "store_hit": receipt.hit,
         "seed": receipt.seed,
@@ -489,6 +508,9 @@ def _receipt_payload(receipt: NodeReceipt) -> dict[str, object]:
         "opaque_artifacts": receipt.opaque_artifacts,
         "wall_time": receipt.wall_time,
     }
+    if receipt.legacy_capabilities:
+        payload["legacy_capabilities"] = True
+    return payload
 
 
 def _render_node_detail(
@@ -577,14 +599,16 @@ def _run_metadata(manifest: RunManifest) -> str:
     hits = sum(receipt.hit for receipt in manifest.nodes.values())
     try:
         tier = manifest.tier or "Not applicable"
+        manifest_key = manifest.key
     except ValueError:
         tier = "Invalid release evidence"
+        manifest_key = "Invalid manifest"
     decisions = ", ".join(decision.kind for decision in manifest.decisions) or "None"
     return (
         '<details class="metadata"><summary>Run metadata</summary>'
         '<dl class="detail-grid">'
         f"<dt>Country</dt><dd>{_escape(manifest.country)}</dd>"
-        f"<dt>Manifest key</dt><dd><code>{_escape(manifest.key)}</code></dd>"
+        f"<dt>Manifest key</dt><dd><code>{_escape(manifest_key)}</code></dd>"
         f"<dt>Tier</dt><dd>{_escape(tier)}</dd>"
         f"<dt>Nodes</dt><dd>{len(manifest.nodes)}</dd>"
         f"<dt>Store hits</dt><dd>{hits}</dd>"
@@ -995,22 +1019,19 @@ def _mass_payload(
 ) -> dict[str, object] | None:
     raw = receipt.receipt.get("mass")
     if isinstance(raw, Mapping):
-        return {
+        payload = {
             "before": raw.get("before"),
             "after": raw.get("after"),
             "stratum_before": raw.get("stratum_before", {}),
             "stratum_after": raw.get("stratum_after", {}),
             "policy": raw.get("policy", node.mass),
         }
+        if isinstance(raw.get("partition"), Mapping):
+            payload["partition"] = raw["partition"]
+        return payload
     for record in reversed(manifest.mass_ledgers.get(node.id, ())):
         if record.node_id == node.id:
-            return {
-                "before": record.before_total,
-                "after": record.after_total,
-                "stratum_before": dict(record.before_by_stratum),
-                "stratum_after": dict(record.after_by_stratum),
-                "policy": record.policy,
-            }
+            return mass_record_receipt(record)
     if node.base is not None:
         before = manifest.populations.get(node.base)
         after = manifest.populations.get(node.id)
@@ -1029,6 +1050,50 @@ def _mass_payload(
                 "policy": node.mass,
             }
     return None
+
+
+def _partition_mass_table(mass: Mapping[str, object]) -> str:
+    raw_partition = mass.get("partition")
+    if not isinstance(raw_partition, Mapping):
+        return ""
+    raw_before = raw_partition.get("stratum_before", {})
+    raw_after = raw_partition.get("stratum_after", {})
+    by_before = raw_before if isinstance(raw_before, Mapping) else {}
+    by_after = raw_after if isinstance(raw_after, Mapping) else {}
+    partitions = sorted(set(by_before) | set(by_after), key=str)
+    rows: list[str] = []
+    for partition in partitions:
+        raw_before_strata = by_before.get(partition, {})
+        raw_after_strata = by_after.get(partition, {})
+        before_strata = (
+            raw_before_strata if isinstance(raw_before_strata, Mapping) else {}
+        )
+        after_strata = raw_after_strata if isinstance(raw_after_strata, Mapping) else {}
+        strata = sorted(set(before_strata) | set(after_strata), key=str)
+        for stratum in strata:
+            before = before_strata.get(stratum, 0.0)
+            after = after_strata.get(stratum, 0.0)
+            delta = (
+                float(after) - float(before)
+                if isinstance(before, int | float) and isinstance(after, int | float)
+                else None
+            )
+            rows.append(
+                f"<tr><td>{_escape(partition)}</td><td>{_escape(stratum)}</td>"
+                f"<td>{_escape(_number(before))}</td>"
+                f"<td>{_escape(_number(after))}</td>"
+                f"<td>{_escape(_number(delta))}</td></tr>"
+            )
+    entity = raw_partition.get("entity", "Not recorded")
+    column = raw_partition.get("column", "Not recorded")
+    heading = f"<h5>Mass by {_escape(f'{entity}.{column}')} partition</h5>"
+    if not rows:
+        return heading + '<p class="muted">Per-partition mass was not recorded.</p>'
+    return (
+        heading + '<div class="table-wrap"><table><thead><tr><th>Partition value</th>'
+        "<th>Stratum</th><th>Before</th><th>After</th><th>Change</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table></div>"
+    )
 
 
 def _mass_tables(mass: Mapping[str, object] | None) -> str:
@@ -1053,8 +1118,13 @@ def _mass_tables(mass: Mapping[str, object] | None) -> str:
     by_before = raw_before if isinstance(raw_before, Mapping) else {}
     by_after = raw_after if isinstance(raw_after, Mapping) else {}
     strata = sorted(set(by_before) | set(by_after), key=str)
+    partition_table = _partition_mass_table(mass)
     if not strata:
-        return totals + '<p class="muted">Per-stratum mass was not recorded.</p>'
+        return (
+            totals
+            + '<p class="muted">Per-stratum mass was not recorded.</p>'
+            + partition_table
+        )
     rows = "".join(
         f"<tr><td>{_escape(stratum)}</td><td>{_escape(_number(by_before.get(stratum)))}</td>"
         f"<td>{_escape(_number(by_after.get(stratum)))}</td></tr>"
@@ -1064,6 +1134,7 @@ def _mass_tables(mass: Mapping[str, object] | None) -> str:
         totals
         + '<div class="table-wrap"><table><thead><tr><th>Stratum</th><th>Before</th>'
         f"<th>After</th></tr></thead><tbody>{rows}</tbody></table></div>"
+        + partition_table
     )
 
 

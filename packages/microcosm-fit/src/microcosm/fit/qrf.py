@@ -47,6 +47,7 @@ Past that resolution the two paths are the same model.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -264,12 +265,42 @@ def _interp_rows(
     return values_lo + weight * (values_hi - values_lo)
 
 
+_SERIALIZED_FOREST_N_JOBS = 1
+
+
 @dataclass(frozen=True)
 class _Forest:
     """A fitted quantile forest plus the feature columns it was fit on."""
 
     model: RandomForestQuantileRegressor
     columns: tuple[str, ...]
+
+    def __getstate__(self) -> dict[str, object]:
+        """Return a worker-count-neutral pickle payload.
+
+        ``RandomForestQuantileRegressor.n_jobs`` controls only runtime
+        parallelism. A shallow model copy lets serialization pin that field
+        without mutating the fitted object that will perform the first draw.
+        """
+
+        model = copy.copy(self.model)
+        model.n_jobs = _SERIALIZED_FOREST_N_JOBS
+        return {"model": model, "columns": self.columns}
+
+    def __setstate__(self, state: Mapping[str, object]) -> None:
+        """Restore the current runtime worker setting after trusted loading."""
+
+        model = state["model"]
+        if not isinstance(model, RandomForestQuantileRegressor):
+            raise TypeError("Serialized QRF forest model has an invalid type.")
+        columns = state["columns"]
+        if not isinstance(columns, tuple) or any(
+            not isinstance(column, str) for column in columns
+        ):
+            raise TypeError("Serialized QRF forest columns are invalid.")
+        model.n_jobs = _fit_n_jobs()
+        object.__setattr__(self, "model", model)
+        object.__setattr__(self, "columns", columns)
 
     def draw(self, frame: pd.DataFrame, quantiles: np.ndarray) -> np.ndarray:
         """Draw one value per row at that row's quantile.

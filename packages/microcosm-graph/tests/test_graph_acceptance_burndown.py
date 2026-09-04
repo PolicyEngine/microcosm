@@ -273,7 +273,9 @@ def test_the_real_suite_is_all_strict_and_all_accounted_for() -> None:
     root = burndown.ROOT
     assert data["total"] == 0
     assert not [entry for entry in data["properties"] if entry["state"] == "missing"]
-    assert all(entry["state"] == "green" for entry in data["properties"])
+    states = {entry["id"]: entry["state"] for entry in data["properties"]}
+    assert not {identifier for identifier, state in states.items() if state == "red"}
+    assert all(state == "green" for state in states.values())
     for entry in data["files"]:
         source = (root / entry["file"]).read_text()
         for marker in markers_in(source, entry["file"]):
@@ -291,3 +293,348 @@ def test_the_tool_runs_from_the_command_line(flag: str) -> None:
     )
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout
+
+
+NEW_PROPERTY_STARTS_RED = (
+    ONE_RED_PROPERTY
+    + """
+
+@pytest.mark.xfail(strict=True, reason="charter A9: pending")
+def test_a9_nine() -> None:
+    assert False
+"""
+)
+
+
+A1_GREEN_A3_RED = """
+import pytest
+
+
+def test_a1_one() -> None:
+    assert True
+
+
+@pytest.mark.xfail(strict=True, reason="charter A3: pending")
+def test_a3_three() -> None:
+    assert False
+"""
+
+
+def test_verify_ratchets_on_property_identity_not_on_counts(tmp_path: Path) -> None:
+    """A1 going green cannot pay for A3 going red: the count is 1 -> 1, and
+    the ratchet still refuses, naming the property and the file."""
+    root = _repository(tmp_path, {"test_acceptance_a.py": ONE_RED_PROPERTY})
+    target = root / "packages" / "microcosm-graph" / "tests" / "test_acceptance_a.py"
+    target.write_text(A1_GREEN_A3_RED)
+    swapped = _run(root, "--verify")
+    assert swapped.returncode == 1
+    assert "1 -> 1" in swapped.stdout
+    assert "re-reds 1 property: A3" in swapped.stdout
+    assert "test_acceptance_a.py" in swapped.stdout
+    assert "verification=failed" in swapped.stdout
+
+
+def test_verify_counts_markers_in_new_files(tmp_path: Path) -> None:
+    """A file the baseline lacks constrains nothing by itself, but a marker
+    inside it on a property that was green is still a re-red."""
+    root = _repository(tmp_path, {"test_acceptance_a.py": ONE_RED_PROPERTY})
+    tests = root / "packages" / "microcosm-graph" / "tests"
+    (tests / "test_acceptance_b.py").write_text(
+        'import pytest\n\n\n@pytest.mark.xfail(strict=True, reason="charter A3: moved")\n'
+        "def test_a3_three_again() -> None:\n    assert False\n"
+    )
+    moved = _run(root, "--verify")
+    assert moved.returncode == 1
+    assert "[new]  packages/microcosm-graph/tests/test_acceptance_b.py" in moved.stdout
+    assert "re-reds 1 property: A3" in moved.stdout
+    assert "test_acceptance_b.py" in moved.stdout
+
+
+def test_verify_refuses_a_marker_on_an_id_the_charter_does_not_list(
+    tmp_path: Path,
+) -> None:
+    """An invented id is not a new property; it is a marker on nothing."""
+    root = _repository(tmp_path, {"test_acceptance_a.py": ONE_RED_PROPERTY})
+    target = root / "packages" / "microcosm-graph" / "tests" / "test_acceptance_a.py"
+    target.write_text(NEW_PROPERTY_STARTS_RED)  # A9 is not in the charter here
+    invented = _run(root, "--verify")
+    assert invented.returncode == 1
+    assert "names A9, which docs/graph-acceptance.md does not list" in invented.stdout
+
+
+MISLABELLED_MARKER = """
+import pytest
+
+
+@pytest.mark.xfail(strict=True, reason="charter A3: pending")
+def test_a1_one() -> None:
+    assert False
+
+
+@pytest.mark.xfail(strict=True, reason="charter A3: pending")
+def test_a3_three() -> None:
+    assert False
+"""
+
+
+def test_verify_binds_a_marker_to_the_test_it_decorates(tmp_path: Path) -> None:
+    """The reason is free text; the test name is the binding.
+
+    A marker on ``test_a1_*`` that claims A3 would let A1 go red while the
+    set of red ids stays {A3}; the tool refuses the mismatch and the
+    duplicate, so the ratchet compares one marker per property.
+    """
+    root = _repository(tmp_path, {"test_acceptance_a.py": ONE_RED_PROPERTY})
+    target = root / "packages" / "microcosm-graph" / "tests" / "test_acceptance_a.py"
+    target.write_text(MISLABELLED_MARKER)
+    mislabelled = _run(root, "--verify")
+    assert mislabelled.returncode == 1
+    assert "test_a1_one claims charter A3 but is not that property's test" in (
+        mislabelled.stdout
+    )
+    assert "A3 carries two markers" in mislabelled.stdout
+
+
+def test_verify_refuses_removing_a_charter_property(tmp_path: Path) -> None:
+    """Dropping a baseline row (and its test) is not a way to go green."""
+    root = _repository(tmp_path, {"test_acceptance_a.py": ONE_RED_PROPERTY})
+    (root / "docs" / "graph-acceptance.md").write_text(
+        "| Id | Property |\n|---|---|\n| A3 | three |\n"
+    )
+    target = root / "packages" / "microcosm-graph" / "tests" / "test_acceptance_a.py"
+    target.write_text("def test_a3_three() -> None:\n    assert True\n")
+    removed = _run(root, "--verify")
+    assert removed.returncode == 1
+    assert "charter A1 was listed on origin/main but is gone" in removed.stdout
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            "import pytest\n\npytestmark = pytest.mark.skip\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            "import pytest\n\npytestmark: list = [pytest.mark.skip]\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            "import pytest\n\nif True:\n    pytestmark: list = [pytest.mark.skip]\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            "import pytest\n\n(pytestmark,) = (pytest.mark.skip,)\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            "import pytest\n\nif (pytestmark := pytest.mark.skip):\n    pass\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            "import pytest\n\nglobals()['pytestmark'] = pytest.mark.skip\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "dynamic module namespace",
+        ),
+        (
+            "import pytest\nimport sys\n\nsys.modules[__name__].pytestmark = pytest.mark.skip\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            "import pytest\nimport sys\n\nsys.modules[__name__].__dict__['pytestmark'] = pytest.mark.skip\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            "import sys\nfrom helper import SKIP_MARK\n\nsys.modules[__name__].__dict__.update({'pytestmark': SKIP_MARK})\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "dynamic module namespace",
+        ),
+        (
+            "import sys\nfrom helper import SKIP_MARK\n\nsys.modules[__name__].__dict__.setdefault('pytestmark', SKIP_MARK)\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "dynamic module namespace",
+        ),
+        (
+            "import pytest\n\n\n@pytest.mark.skip\ndef test_a1_one() -> None:\n    assert False\n",
+            "carries mark 'skip'",
+        ),
+        (
+            "import pytest\n\nskip = pytest.mark.skip\n\n\n@skip\ndef test_a1_one() -> None:\n    assert False\n",
+            "unrecognized decorator 'skip'",
+        ),
+        (
+            "import pytest\n\nsuppress = pytest.skip\n\n\ndef test_a1_one() -> None:\n    suppress('x')\n",
+            "references pytest.skip",
+        ),
+        (
+            "import pytest\n\nsuppress = getattr(pytest, 'skip')\n\n\ndef test_a1_one() -> None:\n    suppress('x')\n",
+            "dynamic module namespace",
+        ),
+        (
+            "import pytest\n\np = pytest\n\n\ndef test_a1_one() -> None:\n    p.skip('x')\n",
+            "outside a direct pytest.mark decorator",
+        ),
+        (
+            "import pytest\n\n\n@pytest.mark.parametrize('p', [pytest])\ndef test_a1_one(p) -> None:\n    p.skip('x')\n",
+            "outside a direct pytest.mark decorator",
+        ),
+        (
+            "import pytest\n\n\ndef test_a1_one() -> None:\n    p = pytest\n    p.skip('x')\n",
+            "outside a direct pytest.mark decorator",
+        ),
+        (
+            "import pytest\n\nnamespace = globals\nnamespace()['pytestmark'] = pytest.mark.skip\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "dynamic module namespace",
+        ),
+        (
+            "import types\nimport unittest\n\ndisguised = types.SimpleNamespace(mark=types.SimpleNamespace(parametrize=lambda *args, **kwargs: unittest.skip('hidden')))\n\n\n@disguised.mark.parametrize('x', [1])\ndef test_a1_one(x) -> None:\n    assert False\n",
+            "unrecognized decorator 'disguised.mark.parametrize'",
+        ),
+        (
+            "import pytest\nimport types\n\npytest = types.SimpleNamespace(mark=types.SimpleNamespace(parametrize=lambda *args, **kwargs: (lambda function: function)))\n\n\n@pytest.mark.parametrize('x', [1])\ndef test_a1_one(x) -> None:\n    assert False\n",
+            "rebinds pytest",
+        ),
+        (
+            "import pytest\nimport unittest\n\npytest.mark.parametrize = lambda *args, **kwargs: unittest.skip('hidden')\n\n\n@pytest.mark.parametrize('x', [1])\ndef test_a1_one(x) -> None:\n    assert False\n",
+            "rebinds pytest",
+        ),
+        (
+            "import pytest\nimport unittest\n\nmarks = pytest.mark\nmarks.parametrize = lambda *args, **kwargs: unittest.skip('hidden')\n\n\n@pytest.mark.parametrize('x', [1])\ndef test_a1_one(x) -> None:\n    assert False\n",
+            "outside a direct pytest.mark decorator",
+        ),
+        (
+            "from counterfeit import pytest\n\n\n@pytest.mark.parametrize('x', [1])\ndef test_a1_one(x) -> None:\n    assert False\n",
+            "rebinds pytest",
+        ),
+        (
+            "import pytest\n\n\ndef install_marker() -> None:\n    global pytestmark\n    pytestmark = pytest.mark.skip\n\n\ninstall_marker()\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "module-level pytestmark",
+        ),
+        (
+            'import pytest\n\n\n@pytest.mark.skipif(True, reason="x")\ndef test_a1_one() -> None:\n    assert False\n',
+            "carries mark 'skipif'",
+        ),
+        (
+            "import unittest\n\n\n@unittest.skip('x')\ndef test_a1_one() -> None:\n    assert False\n",
+            "unrecognized decorator 'unittest.skip'",
+        ),
+        (
+            "import unittest\n\n\n@unittest.skipIf(True, 'x')\ndef test_a1_one() -> None:\n    assert False\n",
+            "unrecognized decorator 'unittest.skipIf'",
+        ),
+        (
+            "import unittest\n\n\n@unittest.skipUnless(False, 'x')\ndef test_a1_one() -> None:\n    assert False\n",
+            "unrecognized decorator 'unittest.skipUnless'",
+        ),
+        (
+            "import unittest\n\n\ndef test_a1_one() -> None:\n    raise unittest.SkipTest('hidden')\n",
+            "runtime unittest.SkipTest() suppresses",
+        ),
+        (
+            "import unittest\n\n\ndef test_a1_one() -> None:\n    raise unittest.SkipTest\n",
+            "references unittest.SkipTest",
+        ),
+        (
+            "from unittest import SkipTest\n\n\ndef test_a1_one() -> None:\n    raise SkipTest('hidden')\n",
+            "importing unittest SkipTest",
+        ),
+        (
+            "import pytest\n\n\nclass TestA:\n    def test_a1_one(self) -> None:\n        assert False\n",
+            "tests must be module-level functions",
+        ),
+        (
+            'import pytest\n\n\ndef test_a1_one() -> None:\n    pytest.xfail("later")\n',
+            "runtime pytest.xfail() suppresses",
+        ),
+        (
+            'import pytest\n\n\n@pytest.mark.parametrize("x", [pytest.param(1, marks=pytest.mark.xfail)])\ndef test_a1_one(x) -> None:\n    assert False\n',
+            "smuggles marks through pytest.param",
+        ),
+        (
+            "def test_a1_outer() -> None:\n    def test_a1_one() -> None:\n        assert False\n",
+            "nests test_a1_one",
+        ),
+    ],
+)
+def test_suppression_forms_the_marker_scan_cannot_model_are_refused(
+    source: str, expected: str
+) -> None:
+    problems = burndown.suppressions_in(source, "sample.py")
+    assert any(expected in problem for problem in problems), problems
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            'import pytest as hidden\n\n\n@hidden.mark.xfail(strict=True, reason="charter A1: x")\ndef test_a1_one() -> None:\n    assert False\n',
+            "imported under an alias",
+        ),
+        (
+            'from pytest import mark as hidden\n\n\n@hidden.xfail(strict=True, reason="charter A1: x")\ndef test_a1_one() -> None:\n    assert False\n',
+            "hides marker spellings",
+        ),
+        (
+            'import pytest\n\nCASES = [pytest.param(1, marks=pytest.mark.xfail)]\n\n\n@pytest.mark.parametrize("x", CASES)\ndef test_a1_one(x) -> None:\n    assert False\n',
+            "non-literal",
+        ),
+        (
+            "import pytest\n\nCASES = [pytest.param(1, marks=pytest.mark.xfail)]\n\n\ndef test_a1_one() -> None:\n    assert False\n",
+            "pytest.param(..., marks=...) is not allowed",
+        ),
+    ],
+)
+def test_aliases_and_indirect_parameters_are_refused(
+    source: str, expected: str
+) -> None:
+    problems = burndown.suppressions_in(source, "sample.py")
+    assert any(expected in problem for problem in problems), problems
+
+
+def test_the_allowed_marks_are_not_suppressions() -> None:
+    source = (
+        "import pytest\n\n\n"
+        '@pytest.mark.requires_uk\n@pytest.mark.parametrize("x", [1, 2])\n'
+        '@pytest.mark.xfail(strict=True, reason="charter A1: pending")\n'
+        "def test_a1_one(x) -> None:\n    assert False\n"
+    )
+    assert burndown.suppressions_in(source, "sample.py") == ()
+
+
+def test_the_literal_toy_module_loader_is_not_a_suppression() -> None:
+    source = (
+        "import sys\n\n"
+        "if '_toy' not in sys.modules:\n"
+        "    sys.modules['_toy'] = object()\n"
+        "toy = sys.modules['_toy']\n\n\n"
+        "def test_a1_one() -> None:\n    assert toy is not None\n"
+    )
+    assert burndown.suppressions_in(source, "sample.py") == ()
+
+
+def test_verify_lets_a_property_new_to_the_charter_start_red(tmp_path: Path) -> None:
+    """The charter's meta-TDD rule: a new property is committed red first.
+
+    A marker on an id the baseline charter never listed is not a re-red; a
+    marker on an id it did list still is.
+    """
+    root = _repository(tmp_path, {"test_acceptance_a.py": ONE_RED_PROPERTY})
+    (root / "docs" / "graph-acceptance.md").write_text(
+        "| Id | Property |\n|---|---|\n| A1 | one |\n| A3 | three |\n| A9 | nine |\n"
+    )
+    target = root / "packages" / "microcosm-graph" / "tests" / "test_acceptance_a.py"
+    target.write_text(NEW_PROPERTY_STARTS_RED)
+    admitted = _run(root, "--verify")
+    assert admitted.returncode == 0, admitted.stdout
+    assert "1 -> 1 (+1 new: A9)" in admitted.stdout
+    assert "verification=ok" in admitted.stdout
+
+    # The same marker on a property the baseline charter already listed
+    # (A3, green there) is a re-red and still fails.
+    target.write_text(
+        NEW_PROPERTY_STARTS_RED.replace(
+            "def test_a3_three() -> None:\n    assert True",
+            '@pytest.mark.xfail(strict=True, reason="charter A3: pending")\n'
+            "def test_a3_three() -> None:\n    assert False",
+        )
+    )
+    refused = _run(root, "--verify")
+    assert refused.returncode == 1
+    assert "re-reds 1 property" in refused.stdout
