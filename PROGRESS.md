@@ -37,10 +37,22 @@ before fixing them; commit each coherent step. No GitHub network or push.
 - The fresh-interpreter first-Torch-import regression now passes: 1 passed
   in 58.11s, direct exit 0. Its child sees `0` while the parent retains `1`.
 
+- Fixed finding 2 using a shared launch context that forces an empty fresh
+  `PYTHONPYCACHEPREFIX` and `PYTHONDONTWRITEBYTECODE=1` in both probe and stacked
+  worker. The execution binding records the stable `{empty_pycache_dir}`
+  placeholder, and traces refuse unexpected namespace/stdlib bytecode paths.
+- The cache reproduction now passes in both identity-probe and worker `-m`
+  modes across both cache locations: 4 passed in 22.62s, direct exit 0.
+  Probe/refusal/exception-cleanup checks also passed (5 passed in 23.95s).
+- Extended the real stacked launch regression to check child Python cache
+  flags, replacement of an inherited prefix, and cleanup without parent
+  environment mutation. Added semantic tamper coverage for both cache controls.
+
 ## Next
 
-- Apply shared fresh-cache isolation to both subprocess paths; verify and
-  commit finding 2.
+- Finish launch integration and spec-pin proof currently running.
+- Complete narrowly scoped test-fixture reuse for repeated manifest/worker
+  validation, leaving production identity and mutation regressions uncached.
 - Run the full required verification with direct exit codes; report counts,
   pin proof, commit SHAs, and deliberate scope exclusions.
 

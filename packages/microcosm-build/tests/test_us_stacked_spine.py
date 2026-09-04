@@ -4482,10 +4482,12 @@ def test_worker_import_trace_refuses_empty_result() -> None:
 
 
 @pytest.mark.parametrize("cache_location", ["source_tree", "inherited_prefix"])
-def test_worker_identity_probe_ignores_valid_header_stale_bytecode(
+@pytest.mark.parametrize("execution_path", ["identity_probe", "worker_module"])
+def test_worker_identity_ignores_valid_header_stale_bytecode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     cache_location: str,
+    execution_path: str,
 ) -> None:
     import importlib.util
     import marshal
@@ -4555,13 +4557,84 @@ def test_worker_identity_probe_ignores_valid_header_stale_bytecode(
     assert marker.read_text(encoding="utf-8") == "stale cache"
     marker.unlink()
 
-    observed = worker_identity_module._clean_worker_import_trace()
+    if execution_path == "identity_probe":
+        observed = worker_identity_module._clean_worker_import_trace()
+        assert str(worker_source) in observed["opened_files"]
+        assert str(cache_path) not in observed["opened_files"]
+    else:
+        with (
+            worker_identity_module.primary_qrf_worker_launch_environment() as overrides
+        ):
+            worker = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    worker_identity_module.PRIMARY_QRF_WORKER_MODULE,
+                ],
+                env={**os.environ, **overrides},
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30,
+            )
+        assert worker.returncode == 0, worker.stderr
 
     assert marker.read_text(encoding="utf-8") == "source"
-    assert str(worker_source) in observed["opened_files"]
-    assert str(cache_path) not in observed["opened_files"]
     assert worker_source.read_bytes() == source_bytes
     assert cache_path.read_bytes() == cache_bytes
+
+
+@pytest.mark.parametrize("suffix", [".pyc", ".pyo"])
+def test_worker_identity_namespace_trace_refuses_bytecode_substitution(
+    tmp_path: Path,
+    suffix: str,
+) -> None:
+    trace = _fixture_worker_import_trace(tmp_path)
+    source = Path(
+        trace["module_origins"][worker_identity_module.PRIMARY_QRF_WORKER_MODULE]
+    )
+    cache_path = source.with_suffix(suffix)
+    cache_path.write_bytes(b"unexpected executable cache")
+    trace["opened_files"] = (str(cache_path),)
+
+    with pytest.raises(RuntimeError, match="unexpectedly read bytecode"):
+        worker_identity_module._worker_package_resource_rows(trace)
+
+
+def test_worker_identity_probe_cleans_cache_prefix_on_launch_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inherited_prefix = tmp_path / "inherited-cache"
+    inherited_prefix.mkdir()
+    (inherited_prefix / "keep.txt").write_text("caller cache", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPYCACHEPREFIX", str(inherited_prefix))
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "0")
+    observed_prefixes: list[Path] = []
+
+    def fail_launch(
+        _argv: list[str], *, env: dict[str, str], **_kwargs: object
+    ) -> None:
+        prefix = Path(env["PYTHONPYCACHEPREFIX"])
+        assert prefix != inherited_prefix
+        assert prefix.is_absolute()
+        assert prefix.is_dir()
+        assert list(prefix.iterdir()) == []
+        assert env["PYTHONDONTWRITEBYTECODE"] == "1"
+        observed_prefixes.append(prefix)
+        raise OSError("fixture launch failure")
+
+    monkeypatch.setattr(worker_identity_module.subprocess, "run", fail_launch)
+    with pytest.raises(RuntimeError, match="clean worker import could not run"):
+        worker_identity_module._clean_worker_import_trace()
+
+    assert len(observed_prefixes) == 1
+    assert not observed_prefixes[0].exists()
+    assert worker_identity_module.os.environ["PYTHONPYCACHEPREFIX"] == str(
+        inherited_prefix
+    )
+    assert worker_identity_module.os.environ["PYTHONDONTWRITEBYTECODE"] == "0"
+    assert (inherited_prefix / "keep.txt").read_text(encoding="utf-8") == "caller cache"
 
 
 def test_primary_qrf_worker_identity_binds_loaded_runtime_bytes(
@@ -4830,6 +4903,8 @@ def test_worker_transitive_source_identity_binds_actual_imported_package_resourc
         "fit_jobs",
         "predict_workers",
         "torch_backend_autoload",
+        "python_dont_write_bytecode",
+        "python_pycache_prefix",
     ),
 )
 def test_late_primary_worker_authentication_rejects_semantic_matrix(
@@ -4892,6 +4967,10 @@ def test_late_primary_worker_authentication_rejects_semantic_matrix(
             "POPULACE_FIT_PREDICT_WORKERS"
         ]
         predict["resolved"] = int(predict["resolved"]) + 1
+    elif semantic_change == "python_dont_write_bytecode":
+        semantic["environment"]["overrides"]["PYTHONDONTWRITEBYTECODE"] = "0"
+    elif semantic_change == "python_pycache_prefix":
+        semantic["environment"]["overrides"]["PYTHONPYCACHEPREFIX"] = "/existing/cache"
     else:
         semantic["environment"]["overrides"]["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "1"
     if refresh_environment_code:
@@ -5199,11 +5278,17 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
     assert environment["policy"] == (
         "inherit_parent_environment_with_bound_fit_controls_and_forced_overrides"
     )
-    assert environment["overrides"] == {"TORCH_DEVICE_BACKEND_AUTOLOAD": "0"}
+    assert environment["overrides"] == {
+        "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPYCACHEPREFIX": "{empty_pycache_dir}",
+    }
     assert environment["bound_names"] == [
         "POPULACE_FIT_N_JOBS",
         "POPULACE_FIT_PREDICT_WORKERS",
         "TORCH_DEVICE_BACKEND_AUTOLOAD",
+        "PYTHONDONTWRITEBYTECODE",
+        "PYTHONPYCACHEPREFIX",
     ]
     assert environment["semantic_controls"] == {
         "POPULACE_FIT_N_JOBS": {"configured": None, "resolved": -1},
@@ -5465,6 +5550,10 @@ def test_stacked_worker_first_torch_import_forces_autoload_off(
     import microcosm.build.us_runtime.puf_qrf_chain as chain_module
 
     monkeypatch.setenv("TORCH_DEVICE_BACKEND_AUTOLOAD", "1")
+    inherited_prefix = tmp_path / "inherited-pycache"
+    inherited_prefix.mkdir()
+    monkeypatch.setenv("PYTHONPYCACHEPREFIX", str(inherited_prefix))
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "")
     worker_binding = _fixture_primary_execution_config_binding()["qrf"][
         "worker_execution"
     ]
@@ -5511,6 +5600,7 @@ def test_stacked_worker_first_torch_import_forces_autoload_off(
         chain_module, "_load_target_checkpoint", lambda *_args, **_kwargs: (None, None)
     )
     observed: list[dict[str, object]] = []
+    launch_prefixes: list[Path] = []
     script = r"""
 import builtins
 import json
@@ -5527,6 +5617,8 @@ def record_first_torch_import(name, *args, **kwargs):
         print("FIRST_TORCH_IMPORT=" + json.dumps({
             "autoload": os.environ.get("TORCH_DEVICE_BACKEND_AUTOLOAD"),
             "worker_loaded": "microcosm.build.us_runtime.puf_qrf_worker" in sys.modules,
+            "pycache_prefix": sys.pycache_prefix,
+            "dont_write_bytecode": sys.flags.dont_write_bytecode,
         }), flush=True)
         raise SystemExit(0)
     return original_import(name, *args, **kwargs)
@@ -5539,6 +5631,11 @@ raise AssertionError("worker never imported torch")
 
     def launch_probe(argv: list[str], **kwargs):
         assert argv[1:3] == ["-m", worker_identity_module.PRIMARY_QRF_WORKER_MODULE]
+        prefix = Path(kwargs["env"]["PYTHONPYCACHEPREFIX"])
+        assert prefix.is_absolute() and prefix.is_dir()
+        assert prefix != inherited_prefix
+        assert not list(prefix.iterdir())
+        launch_prefixes.append(prefix)
         completed = subprocess.run(
             [argv[0], "-c", script, *argv[2:]],
             **kwargs,
@@ -5578,7 +5675,21 @@ raise AssertionError("worker never imported torch")
         ),
     )
 
-    assert observed == [{"autoload": "0", "worker_loaded": False}]
+    assert len(launch_prefixes) == 1
+    assert observed == [
+        {
+            "autoload": "0",
+            "worker_loaded": False,
+            "pycache_prefix": str(launch_prefixes[0]),
+            "dont_write_bytecode": 1,
+        }
+    ]
+    assert not launch_prefixes[0].exists()
+    assert inherited_prefix.is_dir()
+    assert stacked_spine_module.os.environ["PYTHONPYCACHEPREFIX"] == str(
+        inherited_prefix
+    )
+    assert stacked_spine_module.os.environ["PYTHONDONTWRITEBYTECODE"] == ""
     assert (
         worker_binding["semantic_identity"]["environment"]["overrides"][
             "TORCH_DEVICE_BACKEND_AUTOLOAD"

@@ -14,10 +14,12 @@ import os
 import subprocess
 import sys
 import sysconfig
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path, PurePosixPath
+from tempfile import TemporaryDirectory
 
 from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
@@ -61,7 +63,11 @@ _SEMANTIC_ENVIRONMENT_NAMES = (
     "POPULACE_FIT_PREDICT_WORKERS",
 )
 _TORCH_BACKEND_ENTRY_POINT_GROUP = "torch.backends"
-_WORKER_ENVIRONMENT_OVERRIDES = {"TORCH_DEVICE_BACKEND_AUTOLOAD": "0"}
+_WORKER_ENVIRONMENT_OVERRIDES = {
+    "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONPYCACHEPREFIX": "{empty_pycache_dir}",
+}
 _BOUND_ENVIRONMENT_NAMES = (
     *_SEMANTIC_ENVIRONMENT_NAMES,
     *_WORKER_ENVIRONMENT_OVERRIDES,
@@ -435,20 +441,37 @@ def _validated_worker_import_trace(trace: object) -> dict[str, object]:
     }
 
 
+@contextmanager
+def primary_qrf_worker_launch_environment() -> Iterator[dict[str, str]]:
+    """Provide forced startup controls shared by the probe and actual worker.
+
+    Disabling writes alone still allows Python to execute existing bytecode.
+    A fresh, empty cache prefix prevents source-tree or inherited-prefix caches
+    from being read, while the semantic identity binds only its placeholder.
+    """
+
+    with TemporaryDirectory(prefix="microcosm-qrf-pycache-") as cache_prefix:
+        yield {
+            **_WORKER_ENVIRONMENT_OVERRIDES,
+            "PYTHONPYCACHEPREFIX": str(Path(cache_prefix).absolute()),
+        }
+
+
 def _clean_worker_import_trace() -> dict[str, object]:
     """Import the worker in an isolated child and return its file-use trace."""
 
     try:
-        completed = subprocess.run(
-            [sys.executable, "-c", _CLEAN_WORKER_IMPORT_TRACE_SCRIPT],
-            env={**os.environ, **_WORKER_ENVIRONMENT_OVERRIDES},
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=300,
-        )
+        with primary_qrf_worker_launch_environment() as overrides:
+            completed = subprocess.run(
+                [sys.executable, "-c", _CLEAN_WORKER_IMPORT_TRACE_SCRIPT],
+                env={**os.environ, **overrides},
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+            )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise RuntimeError("Primary-QRF clean worker import could not run.") from error
     if completed.returncode != 0:
@@ -475,18 +498,14 @@ def _clean_worker_import_trace() -> dict[str, object]:
     return _validated_worker_import_trace(trace)
 
 
-def _source_for_import_cache(path: Path, *, boundary: str) -> Path:
-    """Bind source bytes instead of location-specific bytecode cache bytes."""
+def _require_uncached_import_path(path: Path, *, boundary: str) -> Path:
+    """Refuse bytecode traces whose executable contents cannot be authenticated."""
 
-    if path.suffix not in {".pyc", ".pyo"}:
-        return path
-    try:
-        source = Path(importlib.util.source_from_cache(str(path)))
-    except ValueError as error:
-        raise RuntimeError(f"{boundary} has a non-canonical bytecode path.") from error
-    if not source.is_file():
-        raise RuntimeError(f"{boundary} has bytecode without readable source.")
-    return source
+    if path.suffix in {".pyc", ".pyo"}:
+        raise RuntimeError(
+            f"{boundary} unexpectedly read bytecode despite cache isolation."
+        )
+    return path
 
 
 def _worker_package_resource_rows(
@@ -524,14 +543,14 @@ def _worker_package_resource_rows(
                 "Primary-QRF clean worker namespace file disappeared after import: "
                 f"{path}."
             )
-        path = _source_for_import_cache(
+        path = _require_uncached_import_path(
             path,
             boundary="Primary-QRF clean worker namespace import",
         )
         relative = namespace_relative(path)
         if relative is None:
             raise RuntimeError(
-                "Primary-QRF clean worker bytecode source escaped its namespace root."
+                "Primary-QRF clean worker file escaped its namespace root."
             )
         if not relative.parts:
             continue
@@ -1046,7 +1065,7 @@ def _stdlib_import_path(
         part in {"site-packages", "dist-packages"} for part in stdlib_relative.parts
     ):
         return None
-    source = _source_for_import_cache(
+    source = _require_uncached_import_path(
         origin,
         boundary=f"Primary-QRF worker stdlib module {module_name!r}",
     )
