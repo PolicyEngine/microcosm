@@ -4294,6 +4294,115 @@ def test_worker_source_index_stays_inside_installed_namespace_roots(
     assert external == {"packaging"}
 
 
+def _two_namespace_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    roots = []
+    for name in ("installed", "checkout"):
+        root = tmp_path / name / "microcosm"
+        (root / "build" / "us_runtime").mkdir(parents=True)
+        roots.append(root)
+    monkeypatch.setattr(
+        worker_identity_module.importlib.util,
+        "find_spec",
+        lambda name: (
+            SimpleNamespace(submodule_search_locations=tuple(roots))
+            if name == "microcosm"
+            else None
+        ),
+    )
+    return roots
+
+
+def test_worker_source_index_accepts_a_byte_identical_shadow_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An installed wheel beside its own checkout (or lib64 beside lib) is the
+    same code; the first root on the import path wins."""
+    installed, checkout = _two_namespace_roots(tmp_path, monkeypatch)
+    for root in (installed, checkout):
+        (root / "build" / "us_runtime" / "puf_qrf_worker.py").write_text(
+            "import packaging\n", encoding="utf-8"
+        )
+    (checkout / "build" / "__init__.py").write_text("", encoding="utf-8")
+
+    index = worker_identity_module._module_source_index()
+
+    assert (
+        index[worker_identity_module.PRIMARY_QRF_WORKER_MODULE]
+        == (installed / "build" / "us_runtime" / "puf_qrf_worker.py").resolve()
+    )
+    assert index["microcosm.build"] == (checkout / "build" / "__init__.py").resolve()
+
+
+def test_worker_source_index_rejects_a_shadow_root_with_different_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    installed, checkout = _two_namespace_roots(tmp_path, monkeypatch)
+    (installed / "build" / "us_runtime" / "puf_qrf_worker.py").write_text(
+        "import packaging\n", encoding="utf-8"
+    )
+    (checkout / "build" / "us_runtime" / "puf_qrf_worker.py").write_text(
+        "import packaging  # edited\n", encoding="utf-8"
+    )
+
+    with pytest.raises(RuntimeError, match="Duplicate source modules .* differs"):
+        worker_identity_module._module_source_index()
+
+
+def _pyvenv_prefix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str):
+    (tmp_path / "pyvenv.cfg").write_text(
+        "home = /opt/python/bin\n"
+        "implementation = CPython\n"
+        "uv = 0.12.9\n"
+        f"version_info = {version}\n"
+        "include-system-site-packages = false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(worker_identity_module.sys, "prefix", str(tmp_path))
+
+
+@pytest.mark.parametrize("components", (2, 3))
+def test_canonical_pyvenv_config_accepts_uv_major_minor_and_triplet_versions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    components: int,
+) -> None:
+    """uv 0.12 writes ``version_info = 3.13``; older uv wrote the triplet. Both
+    canonicalize to the running interpreter's triplet."""
+    running = worker_identity_module.sys.version_info
+    _pyvenv_prefix(
+        tmp_path, monkeypatch, ".".join(str(part) for part in running[:components])
+    )
+
+    config = worker_identity_module._canonical_pyvenv_config()
+
+    assert config["version"] == list(running[:3])
+    assert config["uv_version"] == "0.12.9"
+
+
+@pytest.mark.parametrize(
+    ("version", "message"),
+    (
+        ("9.9.9", "does not match the running interpreter"),
+        ("9.9", "does not match the running interpreter"),
+        ("3", "major.minor or major.minor.micro"),
+        ("3.13.11.0", "major.minor or major.minor.micro"),
+        ("3.13rc1", "is not numeric"),
+    ),
+)
+def test_canonical_pyvenv_config_rejects_versions_that_are_not_the_interpreter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    version: str,
+    message: str,
+) -> None:
+    _pyvenv_prefix(tmp_path, monkeypatch, version)
+
+    with pytest.raises(RuntimeError, match=message):
+        worker_identity_module._canonical_pyvenv_config()
+
+
 def test_worker_transitive_source_identity_binds_imported_package_resources(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

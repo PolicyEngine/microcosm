@@ -198,11 +198,16 @@ def _module_source_index() -> dict[str, Path]:
     namespace = importlib.util.find_spec("microcosm")
     if namespace is None or namespace.submodule_search_locations is None:
         raise RuntimeError("Cannot locate installed microcosm source packages.")
-    # These are the namespace roots the running interpreter will actually use;
-    # a convenient checkout found via CWD must never substitute different code.
-    namespace_roots = sorted(
-        {Path(location).resolve() for location in namespace.submodule_search_locations}
-    )
+    # These are the namespace roots the running interpreter will actually use,
+    # in import order; a convenient checkout found via CWD must never
+    # substitute different code. A later root may shadow an earlier one only
+    # with byte-identical source (an installed wheel next to its own checkout,
+    # or ``lib64`` beside ``lib``); differing shadowed source is refused.
+    namespace_roots: list[Path] = []
+    for location in namespace.submodule_search_locations:
+        resolved = Path(location).resolve()
+        if resolved not in namespace_roots:
+            namespace_roots.append(resolved)
     result: dict[str, Path] = {}
     for namespace_root in namespace_roots:
         for source in sorted(namespace_root.rglob("*.py")):
@@ -214,9 +219,12 @@ def _module_source_index() -> dict[str, Path]:
                 continue
             module_name = ".".join(parts)
             previous = result.setdefault(module_name, source)
-            if previous != source:
+            if previous == source:
+                continue
+            if previous.read_bytes() != source.read_bytes():
                 raise RuntimeError(
-                    f"Duplicate source modules for worker identity: {module_name!r}."
+                    f"Duplicate source modules for worker identity: {module_name!r} "
+                    f"differs between {previous} and {source}."
                 )
     return result
 
@@ -585,13 +593,26 @@ def _canonical_pyvenv_config() -> dict[str, object]:
         raise RuntimeError("Primary-QRF worker pyvenv.cfg lacks semantic uv fields.")
     assert version_text is not None
     try:
-        version = [int(part) for part in version_text.split(".")]
+        declared_version = [int(part) for part in version_text.split(".")]
     except ValueError as error:
         raise RuntimeError(
             "Primary-QRF worker pyvenv.cfg version is not numeric."
         ) from error
-    if len(version) != 3:
-        raise RuntimeError("Primary-QRF worker pyvenv.cfg version must be a triplet.")
+    # uv writes ``version_info`` as ``major.minor.micro`` (<= 0.11) or
+    # ``major.minor`` (>= 0.12); the canonical form is the running
+    # interpreter's triplet, which the declared prefix must match.
+    if len(declared_version) not in {2, 3}:
+        raise RuntimeError(
+            "Primary-QRF worker pyvenv.cfg version must be major.minor or "
+            "major.minor.micro."
+        )
+    version = list(sys.version_info[:3])
+    if declared_version != version[: len(declared_version)]:
+        raise RuntimeError(
+            "Primary-QRF worker pyvenv.cfg version does not match the running "
+            f"interpreter: declared {version_text!r}, running "
+            f"{'.'.join(str(part) for part in version)!r}."
+        )
     if include_system not in {"true", "false"}:
         raise RuntimeError(
             "Primary-QRF worker pyvenv.cfg has invalid include-system-site-packages."
