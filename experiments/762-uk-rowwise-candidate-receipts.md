@@ -353,3 +353,34 @@ uv run python -m microcosm.data.publish_cli <releases>/microcosm-uk-2024-25-dens
 ```
 
 This closes the plan's I8: the machinery (PR A), the rulings and registers (PR B), the measured doctrine, the release candidate, the incumbent comparison and the contract-valid release directory all exist; what remains before any publication is María's review of both PRs and her go on the human step. I9 (the evaluator on the incumbent's target surface) and I10 (L0 sparsity) follow.
+
+## R18 — The candidate on the incumbent's target surface, every grain, signed items included (2026-09-04; PR B c7c20581; `tools/evaluate_uk_incumbent_surface.py` over R17)
+
+**What was measured.** The incumbent's own 2025 target surface as vendored in PR A (637 national rows; 23,545 local rows: 13,650 constituency, 9,895 local authority), evaluated against R17's weights. National rows go through the same engine resolution and constraint matrix the solve uses (single block); local rows through the resolver's per-household metrics summed by assigned area; and 198 regional rows the incumbent binds nationally (ONS age × region, VOA council-tax band × region) by rolling the frame up by assigned-area region (the assigned region agrees with the FRS region on 100 % of rows). Every row carries our status for that cell — `bound`, `signed_deferred` with the reason id, `not_ported:reviewed_exclusion`, `not_ported:blocked_source`, `measure_excluded`, `rolled_up`, or `not_ported` — so the signed items are measured, not hidden. The incumbent's own estimates on its local rows come from the extractor outputs (`incumbent-2025/`).
+
+| national (637 rows) | |
+|---|---|
+| measurable on our side | 565 — bound 324, rolled up 198, measure-excluded 46 (signed A16 / composition / £1m+ bands; measured anyway) |
+| within 10 % / 25 % | 84.6 / 90.4 (median abs error 1.2 %) |
+| by source, within 10 % | dwp 86, hmrc_spi 88, ons 90, voa 78, obr 64, slc 57 |
+| not measurable | 71 — 64 rows whose *concern* is ported but whose *row* is not (CGT bands 18, property-income amounts 13, PIP by component 2, benefit-cap reduction, four degenerate `uc_payment_dist` rows, …), 3 routed NTS vehicle rows, 2 EHS rent rows (blocked source), 2 salary-sacrifice counterfactuals |
+
+| local (23,545 rows) | candidate | incumbent on its own rows |
+|---|---|---|
+| measurable | 20,627 — bound 18,817, signed-deferred 1,810 | same rows |
+| within 10 % / 25 % | 62.7 / 90.6 | 77.3 / 87.9 |
+| constituency, within 10 % / 25 % | 52.0 / 91.3 | — |
+| local authority, within 10 % / 25 % | 75.0 / 89.8 | — |
+| not measurable | 2,918 — 2,600 devolved constituency rent anchors (reviewed exclusion), 318 `council_tax_net` (blocked source) | |
+
+**Where the incumbent's surface says we are worse, row by row.**
+
+1. *Constituency age and HMRC rows.* The incumbent's constituency targets are crosswalked from 2010 boundaries (`boundary_mapped_from_2010`). On those rows we sit at 63 % (age) and 53 % (HMRC) within 10 % against its 93 / 95 %; on the local-authority rows it does not crosswalk, age is 91 % against its 92 %. Its HMRC counts are SPI counts × 1.235; ours run 11.5 % below that adjusted count (employment-income count 39 % within 10 %).
+2. *UC households.* Our estimates run 13 % above the incumbent's targets (2025 ledger facts against its vintage): 3 % within 10 %. The incumbent fits its own UC rows at 13 %; on the by-children rows we are at 45–59 % against its 13–14 %.
+3. *Signed-deferred rows, where the deferral is what hides the miss on our own surface.* Band H by local authority (`council_tax_band_h_spine_support_absent` 296 areas, `council_tax_wales_country_control_absent` 20): our band-H count is 1.8 % of VOA's at the median area (1 % within 10 %; the incumbent 90 %); the national VOA band-H row is bound, so the stock's placement across areas is unconstrained. Equivalised housing costs by local authority (`msoa_mean_to_la_deferred`, 301 rows): ours 1.56× the incumbent's target in England, 1.38× in Wales (8 % within 10 %; incumbent 68 %), while equivalised net income BHC / AHC on the same deferral fit at 88 / 86 % (incumbent 88 / 90). Private rent by local authority (`private_rent_pipr_after_target_period`, 286): ours 1.20× (21 % within 10 %; incumbent 64 %).
+4. *Regional roll-ups, rows we never bind directly.* Age: 99 of 108 within 10 %, but the 80–89 band is short by 53 % in Scotland, 40 % in Wales, 34 % in Northern Ireland and 20–25 % in the north; our national `ons.population.age_80_89_by_region@2025` is a single bound total that fits at +0.6 %, and our local age bands stop at 70–80, so the 80+ regional distribution floats. VOA bands: 68 of 90 within 10 %; the misses are band H (North East, North West, Yorkshire at 0; East of England −96 %) and Wales, where the spine's band distribution is wrong against VOA (H 112k vs 13k, G 1.4k vs 55k, F 11k vs 123k, E 69k vs 201k; A–C over). Both are spine-side.
+5. *National rows.* The fifteen worst are all signed measure exclusions — household-composition rows +207 to +2336 %, UC outside the cap +467 %, SLC plan-5 borrowers +321 %, the £1m+ SPI bands at 0 — visible here, not on our surface.
+
+**Tool defects fixed on the way** (31fa0ab8, c7c20581 on PR B): the constraint matrix was built over the raw frame (403 rows skipped) rather than the resolver's prepared frame; the counterfactual filter now keys on the contract's measurement kind; the metric → target-id map was applied inverted, so every local row read `no_reference` (a unit test pins the direction); the regional roll-up is new and unit-tested.
+
+**Files.** `data/ukds/acceptance/762-rowwise-candidate/incumbent-surface-eval/{incumbent_surface_evaluation.json,incumbent_surface_evaluation.md,stdout.json,run.log}`; copies in the Desktop share folder under `incumbent-surface-eval/`. Run: 5.5 min, 8.7 GB peak.
