@@ -406,7 +406,11 @@ def _changed_fields(ready, mutation="nonzero"):
         zero_origin_bytes=origin.tobytes(),
     )
     money._validate_field(
-        changed, ready.bindings.spec.fields[position], len(amounts), nominal=False
+        changed,
+        ready.bindings.spec.fields[position],
+        len(amounts),
+        nominal=False,
+        zero_origin_code=money._origin_code(ready.bindings.spec, name),
     )
     if mutation == "status_only":
         assert changed.amount_bytes == field.amount_bytes

@@ -1,0 +1,1 @@
+Add a separate authenticated ASEC person-income attachment that restores omitted PTOTVAL observations from pinned Census members. Preserve historical sources and distinguish source-encoded zeros from unresolved legacy zero provenance through money, tax and housing bindings.
