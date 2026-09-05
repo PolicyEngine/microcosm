@@ -287,6 +287,15 @@ class CompiledProtocol:
     reference_inventory_sha256: str
     block_definition_hashes: Mapping[str, str]
     pinned_code_sha256: Mapping[str, str]
+    ledger_event_types: frozenset[str]
+    ledger_record_fields: frozenset[str]
+    ledger_snapshot_fields: tuple[str, ...]
+    attempt_payload_fields: tuple[tuple[str, tuple[str, ...] | None], ...]
+    completion_payload_fields: tuple[tuple[str, tuple[str, ...] | None], ...]
+    registration_payload_fields: tuple[str, ...]
+    quality_required_fields: tuple[str, ...]
+    amendment_change_fields: tuple[str, ...]
+    required_binding_slots: tuple[str, ...]
 
     @property
     def canonical(self) -> bool:
@@ -610,7 +619,69 @@ def compile_protocol(raw: bytes) -> CompiledProtocol:
             }
         ),
         pinned_code_sha256=MappingProxyType(_pinned_code(document)),
+        ledger_event_types=frozenset(
+            _object(ledger_doc.get("other_event_types"), "other_event_types")
+        ),
+        ledger_record_fields=frozenset(
+            _object(ledger_doc.get("record_fields"), "record_fields")
+        ),
+        ledger_snapshot_fields=tuple(
+            _text(item, "snapshot field") for item in ledger_doc["snapshot_fields"]
+        ),
+        attempt_payload_fields=_payload_fields(
+            ledger_doc["evaluation_attempt_payload"]
+        ),
+        completion_payload_fields=_payload_fields(
+            ledger_doc["evaluation_completion_payload"]
+        ),
+        registration_payload_fields=tuple(
+            _text(item, "registration payload field")
+            for item in ledger_doc["protocol_registration_payload"]
+        ),
+        quality_required_fields=tuple(
+            _text(item, "quality required field")
+            for item in ledger_doc["quality_required_fields"]
+        ),
+        amendment_change_fields=tuple(
+            _text(item, "amendment change field")
+            for item in _object(
+                document.get("protocol_amendments"), "/protocol_amendments"
+            )["required_change_fields"]
+        ),
+        required_binding_slots=tuple(
+            _text(item, "binding slot")
+            for item in _object(
+                document.get("candidate_binding_requirements"),
+                "/candidate_binding_requirements",
+            )["must_authenticate_before_scoring"]
+        ),
     )
+
+
+def _payload_fields(
+    declared: object,
+) -> tuple[tuple[str, tuple[str, ...] | None], ...]:
+    """Split a declared payload roster into names and any pinned values.
+
+    The document writes a constrained field as ``name=value`` and an
+    alternative as ``a_or_b``: ``attempt_state=started`` and
+    ``terminal_state=completed_or_failed``. Everything else is an unconstrained
+    required field name.
+    """
+    if not isinstance(declared, list) or not declared:
+        raise ProtocolError("A ledger payload roster must be a nonempty list.")
+    fields: list[tuple[str, tuple[str, ...] | None]] = []
+    for item in declared:
+        entry = _text(item, "ledger payload field")
+        name, separator, value = entry.partition("=")
+        if not separator:
+            fields.append((name, None))
+            continue
+        fields.append((name, tuple(value.split("_or_"))))
+    names = [name for name, _ in fields]
+    if len(set(names)) != len(names):
+        raise ProtocolError("Duplicate ledger payload field names.")
+    return tuple(fields)
 
 
 def _inventory_digest(document: dict[str, Any], scope_doc: dict[str, Any]) -> str:
