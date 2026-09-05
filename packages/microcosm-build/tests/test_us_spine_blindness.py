@@ -156,6 +156,10 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "_graph_acs_rent_artifacts.py",
     "graph_acs_rent.py",
     "graph_acs_rent_source.py",
+    # The pre-clone housing recipe and its strict artifact codec name no
+    # source-spine column: selection comes from the registered pool helpers.
+    "_graph_housing_source_artifacts.py",
+    "graph_housing_source.py",
     "acs_transfer.py",
     "adult_care.py",
     "alimony.py",
