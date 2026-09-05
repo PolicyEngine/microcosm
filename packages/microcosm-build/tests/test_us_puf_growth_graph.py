@@ -5,13 +5,16 @@ source; the factor levels are invented and the table says so. Nothing here
 reads a PUF, downloads anything, or imports a country engine.
 """
 
+import inspect
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.us_runtime import puf_growth_graph
 from microcosm.build.us_runtime.puf_growth import (
     PROVENANCE_RECID_COLUMN,
     PROVENANCE_SOURCE_AGI_COLUMN,
@@ -51,6 +54,7 @@ from microcosm.graph import (
     run_graph,
 )
 from microcosm.graph.codecs import load_csv_tables
+from microcosm.graph.errors import NodeRejectedError
 
 SOURCE_YEAR = 2021
 TARGET_YEAR = 2024
@@ -168,7 +172,7 @@ def raw_tax_units():
     )
 
 
-def write_source(directory: Path) -> Path:
+def write_source(directory: Path, *, recid_dtype: str = "int64") -> Path:
     """One invented ``csv-tables`` source: three returns, one filer each."""
     directory.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(
@@ -195,7 +199,7 @@ def write_source(directory: Path) -> Path:
                     "person_tax_unit_id": "int64",
                     "is_primary_filer": "bool",
                     "tax_unit_id": "int64",
-                    "RECID": "int64",
+                    "RECID": recid_dtype,
                     "MARS": "int64",
                     "XTOT": "int64",
                     "S006": "float64",
@@ -231,7 +235,7 @@ class FixtureSourceKernel(KernelBase):
         return KernelResult(frame=frame, receipt={"returns": frame.n(ENTITY)})
 
 
-def build(contract):
+def build(contract, *, recid_dtype: str = "int64"):
     graph = Graph(
         country="us",
         sources=(SourceRef("puf_raw", "csv-tables"),),
@@ -241,7 +245,10 @@ def build(contract):
                 FixtureSourceKernel.ref,
                 sources=("puf_raw",),
                 structural=StructuralDelta.CREATE,
-                outputs=_CREATE_OUTPUTS,
+                outputs=tuple(
+                    Owned(o.entity, o.column, recid_dtype) if o.column == "RECID" else o
+                    for o in _CREATE_OUTPUTS
+                ),
             ),
             *us_puf_growth_nodes(
                 contract,
@@ -258,10 +265,11 @@ def build(contract):
 
 
 def expected_frame():
-    """The parity oracle: the same contract applied by a direct call."""
+    """The parity oracle: the same contract applied by two direct calls."""
     contract = compile_puf_growth(growth_recipe(), factor_table())
-    grown = apply_puf_growth(raw_tax_units(), contract).table
-    grown["S006"] = apply_puf_design_weight_growth(raw_tax_units().S006, contract)
+    raw = raw_tax_units()
+    grown = apply_puf_growth(raw.drop(columns=["S006"]), contract).table
+    grown["S006"] = apply_puf_design_weight_growth(raw.S006, contract)
     return grown
 
 
@@ -346,7 +354,7 @@ def test_the_graph_carries_provenance_and_refuses_release_eligibility(prepared):
     assert boundary["target_year"] == TARGET_YEAR
     assert (
         manifest.node(PUF_GROWTH_MONEY_NODE).receipt["puf_growth"][
-            "design_weight_grown_here"
+            "design_weight_in_money_view"
         ]
         is False
     )
@@ -358,6 +366,11 @@ def test_weight_growth_is_owned_by_its_own_node(prepared):
     assert [(o.entity, o.column) for o in weight_node.outputs] == [(ENTITY, "S006")]
     money_node = compiled_graph.graph.node(PUF_GROWTH_MONEY_NODE)
     assert "S006" not in {o.column for o in money_node.outputs}
+    # The money node must not even read the weight, or the executor would make
+    # the weight node its predecessor and couple their cache keys.
+    assert "S006" not in {
+        column for slice_ in money_node.inputs for column in slice_.columns
+    }
     manifest = run_graph(
         compiled_graph, sources=sources, store=store, kernels=registry, resume="auto"
     )
@@ -417,3 +430,26 @@ def test_a_kernel_refuses_an_unexpected_parameter_set():
     with pytest.raises(PufGrowthRefusalError) as error:
         PufGrowthBoundaryKernel.contract({"entity": ENTITY})
     assert error.value.reason == "NODE_PARAMETER_CONTRACT"
+
+
+def test_a_nonint64_record_identifier_is_refused_by_the_money_node(tmp_path):
+    """The provenance key must stay an exact integer identifier, not a variant."""
+    contract = compile_puf_growth(growth_recipe(), factor_table())
+    compiled_graph, registry = build(contract, recid_dtype="Int64")
+    sources = {"puf_raw": write_source(tmp_path / "source", recid_dtype="Int64")}
+    with pytest.raises(NodeRejectedError) as error:
+        run_graph(
+            compiled_graph,
+            sources=sources,
+            store=ContentStore(tmp_path / "store"),
+            kernels=registry,
+            resume="auto",
+        )
+    assert "PROVENANCE_RECID_DTYPE" in str(error.value)
+
+
+def test_the_graph_module_reads_no_file_and_imports_no_country_engine():
+    source = inspect.getsource(puf_growth_graph)
+    for token in ("open(", "read_csv", "h5py", "urlopen", "requests", "Path("):
+        assert token not in source
+    assert not any(name.startswith("policyengine") for name in sys.modules)

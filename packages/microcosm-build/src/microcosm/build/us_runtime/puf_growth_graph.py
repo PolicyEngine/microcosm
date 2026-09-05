@@ -24,8 +24,11 @@ Three nodes, in the shape the US build already uses for a source operation:
 The contract travels as node parameters — the recipe identity document and the
 factor-table document, verbatim — so a changed contract changes the node key
 and nothing is served from the store across a contract change. Codes,
-identifiers and counts are read but never owned, so the executor's non-owned
-storage check is what proves they came through byte-identical.
+identifiers and counts are read but never owned. Two executor mechanisms are
+what actually keep them byte-identical: a kernel's returned coordinates must be
+exactly the node's declared outputs, so it cannot write them at all; and the
+projected input view is frozen and its digest compared before and after the
+kernel runs, so it cannot mutate them in place either.
 
 The design weight this stage grows is the **raw source column**. Promoting it
 into a frame's typed design weights is a separate, later obligation with its
@@ -50,6 +53,7 @@ from microcosm.build.us_runtime.puf_growth import (
     apply_puf_growth,
     compile_puf_growth,
     parse_growth_recipe,
+    require_transformable,
 )
 from microcosm.graph import (
     Capabilities,
@@ -93,8 +97,10 @@ PUF_GROWTH_PROVENANCE_RECID_DTYPE = "int64"
 #: pure contract is included because a change there changes what these kernels
 #: compute even when this file is untouched.
 _IMPLEMENTATION_MODULES = (
+    "microcosm.build.monetary_targets",
     "microcosm.build.us_runtime.puf_growth",
     "microcosm.build.us_runtime.puf_growth_graph",
+    "microcosm.build.us_runtime.puf_source_agi",
 )
 
 _PARAMS = ("entity", "factor_table", "recipe")
@@ -104,7 +110,13 @@ class _PufGrowthKernel(KernelBase):
     """Shared parameter contract and code identity for the three kernels."""
 
     def implementation_hash(self) -> str:
-        return source_hash(*(import_module(name) for name in _IMPLEMENTATION_MODULES))
+        # Keep the declared dependencies in the hash the way KernelBase does:
+        # without them a declared distribution would bind only its name into
+        # the node key, never its installed version.
+        return source_hash(
+            *(import_module(name) for name in _IMPLEMENTATION_MODULES),
+            dependencies=self.capabilities.dependencies,
+        )
 
     @staticmethod
     def contract(params: Mapping[str, object]) -> tuple[str, CompiledPufGrowth]:
@@ -181,7 +193,7 @@ class PufGrowthMoneyKernel(_PufGrowthKernel):
 
     def run(self, context: KernelContext) -> KernelResult:
         entity, compiled = self.contract(context.params)
-        source = _declared_source(context, entity, compiled.recipe.fields)
+        source = _declared_source(context, entity, compiled.money_view_fields)
         result = apply_puf_growth(source, compiled)
         ids = _identifier_index(context, entity)
         grown = result.table
@@ -282,12 +294,16 @@ def us_puf_growth_nodes(
         raise PufGrowthRefusalError("WEIGHT_FIELD_IS_MONEY", weight_rule.field)
     if not person_boundary_columns:
         raise PufGrowthRefusalError("PERSON_BOUNDARY_COLUMNS")
+    # Everything the money kernel needs is checked here, at declaration time,
+    # rather than after a graph run has already loaded a source and written the
+    # design-weight column.
+    require_transformable(compiled)
     params = {
         "entity": entity,
         "factor_table": compiled.factors.document.decode("ascii"),
         "recipe": compiled.recipe.identity.decode("ascii"),
     }
-    read = Slice(entity, tuple(compiled.recipe.fields))
+    money_view = Slice(entity, compiled.money_view_fields)
     boundary = f"{stage}.boundary"
     return (
         Node(
@@ -303,7 +319,7 @@ def us_puf_growth_nodes(
             f"{stage}.money",
             PufGrowthMoneyKernel.ref,
             population=boundary,
-            inputs=(read,),
+            inputs=(money_view,),
             outputs=(
                 *(
                     Owned(entity, name, "float64", rewrite=True)

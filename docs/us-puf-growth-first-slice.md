@@ -20,8 +20,8 @@ comparison input and is not the root of anything below.
 | --- | --- |
 | `packages/microcosm-build/src/microcosm/build/us_runtime/puf_growth.py` | The contract types, the closed-coverage recipe, the factor table, and the pure transform. Reads no file. |
 | `packages/microcosm-build/src/microcosm/build/us_runtime/puf_growth_graph.py` | Three nodes and three kernels that run the transform inside a real population. |
-| `packages/microcosm-build/tests/test_us_puf_growth.py` | 29 contract tests on invented rows and invented factor levels. |
-| `packages/microcosm-build/tests/test_us_puf_growth_graph.py` | 6 tests: a real compiled graph, cold / warm / `resume="require"` / fresh-store parity against a direct-call oracle. |
+| `packages/microcosm-build/tests/test_us_puf_growth.py` | 48 contract tests on invented rows and invented factor levels. |
+| `packages/microcosm-build/tests/test_us_puf_growth_graph.py` | 8 tests: a real compiled graph, cold / warm / `resume="require"` / fresh-store parity against a direct-call oracle. |
 
 Nothing was added to `us_runtime/__init__.py`; both modules are imported by
 path, as `asec_current_money` and its siblings are. Importing
@@ -53,12 +53,21 @@ recovers which one a bare number was.
 
 A **recipe** is a closed set of rules, validated before any table is seen:
 
+- no rule may take a provenance column's name, so the provenance write cannot
+  silently overwrite a declared field;
+- exactly one identifier rule, and a money rule for the source-year AGI, because
+  both provenance columns are mandatory;
 - no duplicate `(field, sign_branch)`;
 - a field is covered either by one `any` rule, or by exactly one `positive` and
   one `negative` rule — never both shapes, never half a sign cover;
 - every rule for a field agrees about that field's role, years and growth kind;
-- all money fields share one target year;
-- at most one design weight.
+- all money fields share one target year and one source reference year;
+- at least one money field, and at most one design weight, whose target year
+  matches.
+
+`require_transformable` re-checks those preconditions without a table, so a node
+factory refuses a contract that could never run at declaration time rather than
+after a graph run has already loaded a source.
 
 A **factor table** is a document of *index levels*: variable rows by year
 columns, plus an authority and a provenance block. A factor is always
@@ -110,14 +119,29 @@ per row and refuses `FACTOR_APPLIED_TWICE` if any row were ever selected twice.
 
 ## Preservation
 
-- Codes, identifiers and counts are **declared** and never written. The graph's
-  own non-owned-storage check is what proves they came through byte-identical:
-  those columns are read, not owned.
-- Money growth and design-weight growth are separate entry points and separate
-  graph nodes, reading different factor series. `apply_puf_growth` leaves the
-  design-weight column untouched and records `design_weight_grown_here: false`.
-- Zeros are never selected, so a zero never enters arithmetic and cannot come
-  back as negative zero.
+- Codes, identifiers and counts are **declared** and never written. Two executor
+  mechanisms keep them byte-identical, and it is worth naming them exactly: a
+  kernel's returned coordinates must equal the node's declared outputs, so it
+  cannot write those columns at all; and the projected input view is frozen and
+  its digest compared before and after the kernel runs, so it cannot mutate them
+  in place either. (There is no non-owned *storage-equality* check on an
+  ordinary node — that path exists only for `EXPAND`.)
+- Money growth and design-weight growth are separate entry points, separate
+  graph nodes, and **separate column sets**. The design weight is not in the
+  money view at all: `apply_puf_growth` refuses a table that contains it
+  (`DESIGN_WEIGHT_NOT_IN_MONEY_VIEW`), and the money node does not declare it as
+  an input. That matters in the graph — if the money node read the weight
+  column, the executor would make the weight node its predecessor and a
+  weight-only factor change would recompute every money column.
+- Zeros are never selected, so a zero never enters arithmetic. A source negative
+  zero is refused outright (`NEGATIVE_ZERO`) rather than carried through, so the
+  grown column cannot hold a bit pattern that compares equal to zero while
+  hashing differently.
+- A money column must be an integer or float kind — complex is refused rather
+  than silently losing its imaginary part — and an integer amount larger than
+  `2**53` is refused rather than rounded by the float64 working conversion.
+- Every product is checked: `GROWN_NONFINITE` and `SIGN_CHANGED` on money,
+  `GROWN_WEIGHT_NONFINITE` and `GROWN_WEIGHT_NONPOSITIVE` on weights.
 - The input frame is never mutated; every refusal happens before any array is
   written.
 - Raw `RECID` and the source-year AGI are copied into `puf_source_recid` and
@@ -142,9 +166,14 @@ changed to consume this.
 A factor table declares its own authority. `invented_fixture_nonauthority` is
 the only value that compiles today, and a contract built from one reports
 `release_eligible: False` in every receipt. `reviewed_resource` refuses with
-`UNREVIEWED_FACTOR_TABLE`, because `REVIEWED_FACTOR_TABLE_DIGESTS` is empty:
+`UNREVIEWED_FACTOR_TABLE` — on the compiled type itself, not only in the compile
+function, so no construction path yields a release-eligible contract — because
+`REVIEWED_FACTOR_TABLE_DIGESTS` is empty:
 no factor table for this lineage has been generated or reviewed. Adding a digest
-there is the reviewed act; there is no flag a caller can pass instead.
+there is the reviewed act; there is no flag a caller can pass instead. A
+reviewed table would additionally have to state its generation receipt
+(`REVIEWED_PROVENANCE_KEYS`: generator code digest, dependency versions,
+parameter paths, index-or-total, population divisor, rounding, source URL).
 
 **Every factor number in this repository's PUF growth fixtures is invented.**
 They exist to prove the contract and the transform. They are not IRS values, not
@@ -174,9 +203,11 @@ deliberately absent from the roster.
 <stage>.boundary        FILTER   compiles the contract, keeps every person,
                                  opens a version so declared money columns
                                  can be rewritten
-<stage>.money           COMPUTE  owns each money column (rewrite) plus the two
-                                 provenance columns
-<stage>.design_weight   COMPUTE  owns only the raw design-weight column
+<stage>.money           COMPUTE  reads every declared field except the design
+                                 weight; owns each money column (rewrite) plus
+                                 the two provenance columns
+<stage>.design_weight   COMPUTE  reads and owns only the raw design-weight
+                                 column
 ```
 
 The contract travels as node parameters — the recipe identity document and the
@@ -194,7 +225,7 @@ own mass policy (below).
 ```bash
 uv sync --all-packages --locked          # no us/uk extras are needed
 uv run pytest packages/microcosm-build/tests/test_us_puf_growth.py \
-              packages/microcosm-build/tests/test_us_puf_growth_graph.py
+              packages/microcosm-build/tests/test_us_puf_growth_graph.py   # 56 tests
 uv run ruff check .
 uv run python tools/ci_test_groups.py --verify
 ```
