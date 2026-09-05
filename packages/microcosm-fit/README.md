@@ -137,6 +137,9 @@ apply_nodes = legacy_qrf_apply_matrix_nodes(
 ```
 
 Register `LegacyQRFApplyMatrixKernel` alongside the existing training kernel.
+The matrix-producing kernel must declare `numeric=Numeric.PLATFORM_BITWISE`
+in its `Capabilities`; the consumer refuses a `BITWISE` matrix, as well as one
+from another platform. This applies to deterministic preparation kernels too.
 Every application reads the same declared matrix edge. It owns the unchanged
 raw-target format and a distinct `MATRIX_APPLY_STATE_TYPE` checkpoint wrapping
 the existing legacy packet, plus the matrix SHA-256 and actual graph producer
@@ -154,6 +157,9 @@ nodes once, while their state and raw-target bytes retain the legacy format.
 The committed golden fixture freezes pre-refactor raw bytes and all application
 state except platform-bound fitted-model identifiers. The portable test obtains
 only those identifiers from the actual independent sibling training outputs.
+Exact raw/state golden equality on Linux remains unverified; platform-bitwise
+scope does not promise cross-platform equality. A failure on another platform
+requires investigation before changing the fixture or claiming a regression.
 
 A country finalizer must read `decode_matrix_apply_state`, the final raw draw
 and the preparation's placement artifact. It must verify that the state's
