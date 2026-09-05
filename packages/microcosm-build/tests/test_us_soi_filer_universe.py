@@ -249,7 +249,7 @@ def test_actual_receipt_survives_cold_and_warm_checkpoint(
     pd.testing.assert_frame_equal(warm[0].table("household"), result.table("household"))
     assert (
         builder._read_target_frame_checkpoint(
-            path, identity={"materializer_version": 11}, target_specs=targets
+            path, identity={"materializer_version": 12}, target_specs=targets
         )
         is None
     )
@@ -295,7 +295,14 @@ def test_actual_default_origins_are_explicit_model_assumptions(actual):
     "changes",
     [
         {"soi_return_universe": "unknown"},
-        {"soi_return_universe": "returns_excluding_dependents"},
+        {
+            "soi_return_universe": "returns_excluding_dependents",
+            "ledger_layout_record_set_id": "all_returns",
+        },
+        {
+            "soi_return_universe": "returns_excluding_dependents",
+            "ledger_layout_record_set_id": "itemized_all_returns",
+        },
         {"soi_return_universe": "itemized_returns", "itemized_only": "false"},
         {"ledger_layout_record_set_id": "all_returns_excluding_dependents"},
         {"ledger_layout_record_set_id": "itemized_all_returns"},
@@ -446,3 +453,236 @@ def test_formula_owned_filer_input_is_rejected(actual):
     injected = Frame(tables, US_SCHEMA, {"household": frame.weights_for("household")})
     with pytest.raises(ValueError, match="tax_unit_is_filer"):
         builder._assert_no_formula_owned_columns(injected)
+
+
+def _compiled_table_4_3_targets():
+    """Use the real Ledger compiler on explicit invented Table 4.3 facts."""
+    from microcosm.build.us_runtime import compile_us_fiscal_target_registry
+
+    path = Path(__file__).with_name("test_us_fiscal_targets.py")
+    spec = importlib.util.spec_from_file_location("soi_fact_fixture", path)
+    fixtures = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fixtures)
+    supported_name = "irs_soi.ty2023.table_1_2.all_returns.all.wages_salaries_amount"
+    unsupported_name = (
+        "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all."
+        "taxable_interest_amount"
+    )
+    facts = [
+        *fixtures.packaged_reference_facts(),
+        fixtures._dynamic_ledger_fact(
+            source_record_id=supported_name,
+            source_name="irs_soi",
+            measure_id="wages_salaries_amount",
+            value=100.0,
+            period_value=2023,
+            layout_record_set_id="irs_soi.ty2023.table_1_2.all_returns",
+            dimensions={"income_range": "all", "filing_status": "all"},
+        ),
+        fixtures._soi_taxable_interest_fact(
+            2023,
+            source_record_id=unsupported_name,
+            value=100.0,
+            layout_record_set_id="irs_soi.ty2023.table_4_3.all_returns_excluding_dependents",
+        ),
+    ]
+    registry = compile_us_fiscal_target_registry(
+        facts, target_period=2024, allow_unaged_dollar_targets=True
+    )
+    # The public compiler requires reference facts for other families. Those
+    # invented metadata fixtures are never passed to the model materializer.
+    selected = tuple(
+        spec
+        for spec in registry.specs
+        if spec.name in {supported_name, unsupported_name}
+    )
+    assert len(selected) == 2
+    return selected
+
+
+@pytest.mark.requires_us
+def test_compiled_table_4_3_stays_visibly_unsupported_cold_and_warm(actual, tmp_path):
+    builder, frame, *_ = actual
+    # No exact interest control is removed or relabeled; unsupported source
+    # universes remain available to diagnostics and release-coverage checks.
+    targets = _targets() + _compiled_table_4_3_targets()
+    unsupported = next(
+        spec
+        for spec in targets
+        if spec.metadata["soi_return_universe"] == "returns_excluding_dependents"
+    )
+    path = tmp_path / "compiled.h5"
+    kwargs = {
+        "target_frame_checkpoint_path": path,
+        "target_frame_checkpoint_identity": {"materializer_version": 13},
+    }
+    cold = builder._load_or_materialize_target_frame(frame, targets, **kwargs)
+    warm = builder._load_or_materialize_target_frame(frame, targets, **kwargs)
+    assert cold[2]["target_frame_checkpoint"]["status"] == "miss_written"
+    assert warm[2]["target_frame_checkpoint"]["status"] == "hit"
+    for result, registry, compilation in (cold, warm):
+        assert len(registry) == len(targets) - 1
+        assert unsupported.name not in {spec.name for spec in registry.specs}
+        assert unsupported.measure not in result.table("household")
+        assert result.table("household").national_amount.tolist() == [5000, 5000, 50000]
+        supported = next(spec for spec in targets if "table_1_2" in spec.name)
+        assert result.table("household")[supported.measure].tolist() == [
+            5000,
+            5000,
+            50000,
+        ]
+        assert compilation["dropped_target_names"] == [unsupported.name]
+        (entry,) = compilation["unsupported_target_entries"]
+        assert entry["name"] == unsupported.name
+        assert entry["source_universe"] == "returns_excluding_dependents"
+        assert entry["reason"] == "dependent_return_input_contract_not_established"
+        assert compilation["soi_return_universe"]["contract"][
+            "unsupported_targets"
+        ] == [entry]
+        # Even a pre-existing same-named column cannot admit the unsupported row.
+        result.table("household")[unsupported.measure] = 1.0
+        recompiled, diagnostics = builder._compile_materialized_target_registry(
+            result, targets
+        )
+        assert len(recompiled) == len(targets) - 1
+        assert diagnostics["dropped_target_names"] == [unsupported.name]
+        # Leave all ordinary gates active: unsupported is not successful calibration.
+        outcome = SimpleNamespace(
+            skipped=(), diagnostics=(), initial_loss=1.0, final_loss=0.5
+        )
+        failures = builder._release_gate_failures(outcome, compilation)
+        assert "1 fiscal targets were not materialized." in failures
+        parity = builder.us_release_target_parity_gate(registry)
+        assert not parity.passed
+        assert any("table_4_3" in failure for failure in parity.failures)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["propensity", "presence", "tax_unit_order", "credit_take_up", "person_income"],
+)
+@pytest.mark.requires_us
+def test_warm_checkpoint_misses_changed_live_inputs(
+    actual, tmp_path, monkeypatch, mutation
+):
+    builder, original, _, _, targets, result, _, compilation = actual
+    frame = _frame()
+    path = tmp_path / "live.h5"
+    identity = {"materializer_version": 13}
+    monkeypatch.setattr(
+        builder,
+        "_materialize_target_frame",
+        lambda *a, **k: (result, None, compilation),
+    )
+    builder._load_or_materialize_target_frame(
+        original,
+        targets,
+        target_frame_checkpoint_path=path,
+        target_frame_checkpoint_identity=identity,
+    )
+    if mutation == "propensity":
+        frame.table("tax_unit").loc[0, "would_file_taxes_voluntarily"] = True
+    elif mutation == "presence":
+        frame.table("tax_unit").drop(
+            columns="would_file_taxes_voluntarily", inplace=True
+        )
+    elif mutation == "tax_unit_order":
+        table = frame.table("tax_unit")
+        table.iloc[:] = table.iloc[::-1].to_numpy()
+    elif mutation == "credit_take_up":
+        frame.table("tax_unit").loc[1, "takes_up_eitc"] = False
+    else:
+        frame.table("person").loc[0, "employment_income_before_lsr"] = 50000.0
+    assert (
+        builder._read_target_frame_checkpoint(
+            path, identity=identity, target_specs=targets, base_frame=frame
+        )
+        is None
+    )
+
+    # Public orchestration must then enter recomputation, without recalculating
+    # a filing mask merely to decide whether the cache can be reused.
+    class RecomputeReachedError(Exception):
+        pass
+
+    def recompute(*args, **kwargs):
+        assert args[0] is frame
+        raise RecomputeReachedError
+
+    monkeypatch.setattr(builder, "_materialize_target_frame", recompute)
+    with pytest.raises(RecomputeReachedError):
+        builder._load_or_materialize_target_frame(
+            frame,
+            targets,
+            target_frame_checkpoint_path=path,
+            target_frame_checkpoint_identity=identity,
+        )
+
+
+@pytest.mark.requires_us
+def test_live_propensity_change_recomputes_actual_filer_rows(actual, tmp_path):
+    builder, frame, _, _, targets, result, _, compilation = actual
+    path = tmp_path / "recompute.h5"
+    identity = {"materializer_version": 13}
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=result,
+        identity=identity,
+        compilation={
+            **compilation,
+            "soi_live_input_frame_sha256": builder._late_frame_content_sha256(frame),
+        },
+    )
+    changed = _frame()
+    changed.table("tax_unit").loc[0, "would_file_taxes_voluntarily"] = True
+    refreshed, _, receipt = builder._load_or_materialize_target_frame(
+        changed,
+        targets,
+        target_frame_checkpoint_path=path,
+        target_frame_checkpoint_identity=identity,
+    )
+    assert receipt["target_frame_checkpoint"]["status"] == "miss_written"
+    assert refreshed.table("household").national_count.tolist() == [2, 1, 1]
+    assert refreshed.table("household").national_amount.tolist() == [10000, 5000, 50000]
+    assert (
+        receipt["soi_return_universe"]["actual_mask_sha256"]
+        != compilation["soi_return_universe"]["actual_mask_sha256"]
+    )
+
+
+@pytest.mark.requires_us
+def test_missing_live_input_misses_but_malformed_stored_receipt_refuses(
+    actual, tmp_path
+):
+    builder, frame, _, _, targets, result, _, compilation = actual
+    path = tmp_path / "missing.h5"
+    identity = {"materializer_version": 13}
+    document = {
+        **compilation,
+        "soi_live_input_frame_sha256": builder._late_frame_content_sha256(frame),
+    }
+    builder._write_target_frame_checkpoint(
+        path, frame=result, identity=identity, compilation=document
+    )
+    assert (
+        builder._read_target_frame_checkpoint(
+            path, identity=identity, target_specs=targets
+        )
+        is None
+    )
+    document["soi_live_input_frame_sha256"] = "bad"
+    builder._write_target_frame_checkpoint(
+        path, frame=result, identity=identity, compilation=document
+    )
+    with pytest.raises(ValueError, match="invalid cached live input digest"):
+        builder._read_target_frame_checkpoint(
+            path, identity=identity, target_specs=targets, base_frame=frame
+        )
+    document["soi_return_universe"] = {}
+    builder._write_target_frame_checkpoint(
+        path, frame=result, identity=identity, compilation=document
+    )
+    with pytest.raises(ValueError, match="missing cached filer receipt"):
+        builder._read_target_frame_checkpoint(
+            path, identity=identity, target_specs=targets
+        )

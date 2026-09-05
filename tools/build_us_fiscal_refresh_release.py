@@ -274,6 +274,7 @@ from microcosm.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_OUTPUT_COLUMNS,
     SSITakeUpPriorBasis,
 )
+from microcosm.build.us_runtime.stacked_spine import _late_frame_content_sha256
 from microcosm.build.us_runtime.warm_start_selection import (
     DEFAULT_SELECTION_JOIN_KEY,
     SELECTION_MODES,
@@ -450,7 +451,9 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 2
 # cannot attest this lossless physical representation.
 # Version 12 requires actual tax-unit filer masks and explicit IRS return
 # universes. Earlier household design rows may include nonfilers.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 12
+# Version 13 retains unsupported universes in diagnostics and binds live input
+# content before any warm reuse of modeled filer rows.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 13
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -2311,6 +2314,7 @@ def _read_target_frame_checkpoint(
     *,
     identity: Mapping[str, object],
     target_specs: tuple,
+    base_frame: Frame | None = None,
     gate_congressional_district_targets: bool = True,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]] | None:
     if not path.exists():
@@ -2356,6 +2360,25 @@ def _read_target_frame_checkpoint(
         validate_cached_soi_filer_receipt(
             stored_compilation.get("soi_return_universe"), frame, contract=soi_contract
         )
+    if soi_contract["targets"] or soi_contract["unsupported_targets"]:
+        stored_input_digest = stored_compilation.get("soi_live_input_frame_sha256")
+        if not (
+            isinstance(stored_input_digest, str)
+            and len(stored_input_digest) == 64
+            and all(c in "0123456789abcdef" for c in stored_input_digest)
+        ):
+            raise ValueError("SOI return universe: invalid cached live input digest")
+        if (
+            base_frame is None
+            or _late_frame_content_sha256(base_frame) != stored_input_digest
+        ):
+            return None
+        if soi_contract["targets"]:
+            validate_cached_soi_filer_receipt(
+                stored_compilation["soi_return_universe"],
+                base_frame,
+                contract=soi_contract,
+            )
     registry, compilation = _compile_materialized_target_registry(
         frame,
         target_specs,
@@ -2366,6 +2389,11 @@ def _read_target_frame_checkpoint(
         **(
             {"soi_return_universe": stored_compilation["soi_return_universe"]}
             if soi_contract["targets"]
+            else {}
+        ),
+        **(
+            {"soi_live_input_frame_sha256": stored_input_digest}
+            if soi_contract["targets"] or soi_contract["unsupported_targets"]
             else {}
         ),
         "target_frame_checkpoint": {
@@ -4530,10 +4558,14 @@ def _compile_materialized_target_registry(
     *,
     gate_congressional_district_targets: bool = True,
 ) -> tuple[TargetRegistry, dict[str, object]]:
-    soi_target_universe_contract(target_specs, period=PERIOD)
+    soi_contract = soi_target_universe_contract(target_specs, period=PERIOD)
+    unsupported_names = {row["name"] for row in soi_contract["unsupported_targets"]}
     household = target_frame.table("household")
     compileable_specs = [
-        spec for spec in target_specs if _target_spec_is_materialized(spec, household)
+        spec
+        for spec in target_specs
+        if spec.name not in unsupported_names
+        and _target_spec_is_materialized(spec, household)
     ]
     registry = TargetRegistry(compileable_specs, country="us")
     dropped_specs = tuple(
@@ -4547,6 +4579,7 @@ def _compile_materialized_target_registry(
         "declared_targets": len(target_specs),
         "compiled_candidate_targets": len(compileable_specs),
         "dropped_target_names": dropped,
+        "unsupported_target_entries": soi_contract["unsupported_targets"],
         "gate_congressional_district_targets": (gate_congressional_district_targets),
         "diagnostic_only_dropped_target_names": diagnostic_only_dropped,
     }
@@ -4579,11 +4612,19 @@ def _load_or_materialize_target_frame(
             target_frame_checkpoint_path,
             identity=target_frame_checkpoint_identity,
             target_specs=target_specs,
+            base_frame=base_frame,
             gate_congressional_district_targets=gate_congressional_district_targets,
         )
         if loaded is not None:
             return loaded
 
+    # Bind the complete live input before materialization adds design columns.
+    # This is ordinary cache identity, not source or cached-row authentication.
+    soi_input_digest = (
+        _late_frame_content_sha256(base_frame)
+        if any(spec.family == "irs_soi" for spec in target_specs)
+        else None
+    )
     target_frame, registry, compilation = _materialize_target_frame(
         base_frame,
         target_specs,
@@ -4592,6 +4633,11 @@ def _load_or_materialize_target_frame(
         target_materialization_cache_context=target_materialization_cache_context,
         gate_congressional_district_targets=gate_congressional_district_targets,
     )
+    if soi_input_digest is not None:
+        compilation = {
+            **compilation,
+            "soi_live_input_frame_sha256": soi_input_digest,
+        }
     if (
         target_frame_checkpoint_path is not None
         and target_frame_checkpoint_identity is not None
@@ -4633,6 +4679,11 @@ def _materialize_target_frame(
         )
     _assert_supported_ledger_filter_metadata(target_specs)
     soi_contract = soi_target_universe_contract(target_specs, period=PERIOD)
+    declared_target_specs = target_specs
+    unsupported_names = {row["name"] for row in soi_contract["unsupported_targets"]}
+    target_specs = tuple(
+        spec for spec in target_specs if spec.name not in unsupported_names
+    )
     _assert_no_formula_owned_columns(base_frame)
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
@@ -5063,7 +5114,7 @@ def _materialize_target_frame(
     )
     registry, compilation = _compile_materialized_target_registry(
         target_frame,
-        target_specs,
+        declared_target_specs,
         gate_congressional_district_targets=gate_congressional_district_targets,
     )
     compilation = {
