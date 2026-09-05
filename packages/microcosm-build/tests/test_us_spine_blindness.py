@@ -331,6 +331,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "graph_early_preparation.py",
         "graph_cps_carried.py",
         "graph_prior_year.py",
+        # Relationship/eligibility person-preparation adapter; declares views
+        # and kernels only. Selection, role stripping and the merge stay in the
+        # pool owner, and it remains subject to the all-runtime AST scan.
+        "graph_person_preparation.py",
         # Source import/assembly/harmonization owner, classified above.
         "graph_sources.py",
     }
