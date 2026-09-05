@@ -15,6 +15,7 @@ import pytest
 
 from microcosm.build.us_runtime import puf_growth
 from microcosm.build.us_runtime.puf_growth import (
+    MAX_EXACT_AMOUNT,
     PROPOSED_TY2015_FIELD_ROSTER,
     PROVENANCE_RECID_COLUMN,
     PROVENANCE_SOURCE_AGI_COLUMN,
@@ -24,6 +25,7 @@ from microcosm.build.us_runtime.puf_growth import (
     CompiledPufGrowth,
     FactorAuthority,
     FieldRole,
+    GrownPufTable,
     GrowthFactorTable,
     GrowthKind,
     GrowthRecipe,
@@ -31,11 +33,13 @@ from microcosm.build.us_runtime.puf_growth import (
     PufGrowthRefusalError,
     ResolvedFactor,
     SignBranch,
+    _contract_identity,
     apply_puf_design_weight_growth,
     apply_puf_growth,
     compile_puf_growth,
     parse_growth_recipe,
     puf_growth_monetary_metadata,
+    require_transformable,
     roster_role,
 )
 
@@ -156,8 +160,13 @@ def source_table():
     )
 
 
+def money_view():
+    """What the money transform consumes: every declared field but the weight."""
+    return source_table().drop(columns=["S006"])
+
+
 def test_declared_factors_apply_once_across_signs_and_leave_zero_alone():
-    result = apply_puf_growth(source_table(), compiled())
+    result = apply_puf_growth(money_view(), compiled())
     grown = result.table
     assert grown.E00100.tolist() == [1000.0 * AGI_FACTOR, -500.0 * AGI_FACTOR, 0.0]
     assert grown.E00200.tolist() == [100.0 * PRICE_FACTOR, 0.0, -25.0 * PRICE_FACTOR]
@@ -312,20 +321,20 @@ def test_a_series_must_mean_the_growth_kind_the_rule_declares():
 
 def test_an_undeclared_or_absent_column_is_refused():
     contract = compiled()
-    extra = source_table()
+    extra = money_view()
     extra["E99999"] = np.zeros(3)
     with pytest.raises(PufGrowthRefusalError) as error:
         apply_puf_growth(extra, contract)
     assert error.value.reason == "UNDECLARED_SOURCE_COLUMN"
 
-    absent = source_table().drop(columns=["E00200"])
+    absent = money_view().drop(columns=["E00200"])
     with pytest.raises(PufGrowthRefusalError) as error:
         apply_puf_growth(absent, contract)
     assert error.value.reason == "MISSING_DECLARED_FIELD"
 
 
 def test_every_refusal_happens_before_the_input_is_touched():
-    before = source_table()
+    before = money_view()
     snapshot = before.copy(deep=True)
     broken = compiled(
         (
@@ -344,22 +353,22 @@ def test_every_refusal_happens_before_the_input_is_touched():
 
 
 def test_the_transform_never_mutates_its_input():
-    before = source_table()
+    before = money_view()
     snapshot = before.copy(deep=True)
     apply_puf_growth(before, compiled())
     pd.testing.assert_frame_equal(before, snapshot, check_exact=True)
 
 
-def test_identifiers_codes_counts_and_the_design_weight_come_through_untouched():
-    source = source_table()
+def test_identifiers_codes_and_counts_come_through_untouched():
+    source = money_view()
     grown = apply_puf_growth(source, compiled()).table
-    for column in ("RECID", "MARS", "XTOT", "S006"):
+    for column in ("RECID", "MARS", "XTOT"):
         assert grown[column].dtype == source[column].dtype
         assert grown[column].to_numpy().tobytes() == source[column].to_numpy().tobytes()
 
 
 def test_source_year_agi_and_recid_survive_in_provenance_columns():
-    source = source_table()
+    source = money_view()
     result = apply_puf_growth(source, compiled())
     grown = result.table
     # E00100 itself grew; the banding input did not.
@@ -371,7 +380,7 @@ def test_source_year_agi_and_recid_survive_in_provenance_columns():
 
 
 def test_duplicate_record_identifiers_are_refused():
-    source = source_table()
+    source = money_view()
     source.loc[2, "RECID"] = 11
     with pytest.raises(PufGrowthRefusalError) as error:
         apply_puf_growth(source, compiled())
@@ -380,9 +389,12 @@ def test_duplicate_record_identifiers_are_refused():
 
 def test_weight_growth_is_a_separate_operation():
     source = source_table()
-    result = apply_puf_growth(source, compiled())
-    assert result.table.S006.tolist() == source.S006.tolist()
-    assert result.receipt["design_weight_grown_here"] is False
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_growth(source, compiled())
+    assert error.value.reason == "DESIGN_WEIGHT_NOT_IN_MONEY_VIEW"
+    result = apply_puf_growth(money_view(), compiled())
+    assert "S006" not in result.table.columns
+    assert result.receipt["design_weight_in_money_view"] is False
     grown_weights = apply_puf_design_weight_growth(source.S006.to_numpy(), compiled())
     assert grown_weights.tolist() == [
         100.0 * RETURNS_FACTOR,
@@ -407,13 +419,13 @@ def test_nonpositive_weights_are_refused():
 
 
 def test_a_money_column_must_be_numeric_and_finite():
-    source = source_table()
+    source = money_view()
     source["E00200"] = source["E00200"].astype("object")
     with pytest.raises(PufGrowthRefusalError) as error:
         apply_puf_growth(source, compiled())
     assert error.value.reason == "FIELD_DTYPE"
 
-    infinite = source_table()
+    infinite = money_view()
     infinite.loc[0, "E00200"] = np.inf
     with pytest.raises(PufGrowthRefusalError) as error:
         apply_puf_growth(infinite, compiled())
@@ -421,7 +433,7 @@ def test_a_money_column_must_be_numeric_and_finite():
 
 
 def test_a_preserved_column_must_be_integral():
-    source = source_table()
+    source = money_view()
     source["MARS"] = source["MARS"].astype("float64")
     with pytest.raises(PufGrowthRefusalError) as error:
         apply_puf_growth(source, compiled())
@@ -432,9 +444,7 @@ def test_an_invented_fixture_is_never_release_eligible():
     contract = compiled()
     assert contract.factors.authority is FactorAuthority.INVENTED_FIXTURE
     assert contract.release_eligible is False
-    assert (
-        apply_puf_growth(source_table(), contract).receipt["release_eligible"] is False
-    )
+    assert apply_puf_growth(money_view(), contract).receipt["release_eligible"] is False
 
 
 def test_a_reviewed_authority_cannot_be_claimed_while_none_is_reviewed():
@@ -602,9 +612,214 @@ def test_a_reviewed_table_would_also_have_to_state_its_generation_receipt():
 
 
 def test_rows_correspond_positionally_not_by_pandas_label():
-    source = source_table()
+    source = money_view()
     source.index = pd.Index([7, 7, 9])
     grown = apply_puf_growth(source, compiled()).table
     assert grown.index.equals(pd.RangeIndex(3))
     assert grown.RECID.tolist() == [11, 22, 33]
     assert grown.E00100.tolist() == [1000.0 * AGI_FACTOR, -500.0 * AGI_FACTOR, 0.0]
+
+
+def test_a_recipe_may_not_reuse_a_provenance_column_name():
+    """Otherwise the provenance write would silently overwrite that field."""
+    with pytest.raises(PufGrowthRefusalError) as error:
+        recipe(
+            (
+                *PRESERVED_RULES,
+                money("E00100", "fixture.agi_per_return"),
+                money(PROVENANCE_SOURCE_AGI_COLUMN, "fixture.price_index"),
+            )
+        )
+    assert error.value.reason == "PROVENANCE_COLUMN_NAME"
+    assert error.value.field == PROVENANCE_SOURCE_AGI_COLUMN
+
+
+def test_a_recipe_needs_one_identifier_and_the_source_year_agi():
+    without_recid = tuple(
+        rule for rule in (*PRESERVED_RULES, *MONEY_RULES) if rule.field != "RECID"
+    )
+    with pytest.raises(PufGrowthRefusalError) as error:
+        recipe(without_recid)
+    assert error.value.reason == "PROVENANCE_RECID_FIELD"
+
+    without_agi = tuple(
+        rule for rule in (*PRESERVED_RULES, *MONEY_RULES) if rule.field != "E00100"
+    )
+    with pytest.raises(PufGrowthRefusalError) as error:
+        recipe(without_agi)
+    assert error.value.reason == "PROVENANCE_AGI_FIELD"
+
+    # A well-formed contract passes the same checks without a table in hand.
+    require_transformable(compiled())
+
+
+def test_a_forged_reviewed_contract_cannot_be_constructed_either():
+    """The authority gate is on the type, not only on the compile function."""
+    forged = factors(authority="reviewed_resource")
+    honest = compiled()
+    with pytest.raises(PufGrowthRefusalError) as error:
+        CompiledPufGrowth(
+            honest.recipe,
+            forged,
+            honest.resolved,
+            _contract_identity(honest.recipe, forged, honest.resolved),
+        )
+    assert error.value.reason == "UNREVIEWED_FACTOR_TABLE"
+
+
+def test_an_amount_the_declared_factor_cannot_produce_is_refused():
+    overflow = money_view()
+    overflow.loc[0, "E00200"] = 1.7e308
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_growth(overflow, compiled())
+    assert error.value.reason == "GROWN_NONFINITE"
+
+    tiny = {
+        **FIXTURE_SERIES,
+        "fixture.price_index": {
+            "kind": "nominal_price_restatement",
+            "levels": {"2021": "1.0", "2024": "1e-300"},
+        },
+    }
+    underflow = money_view()
+    underflow.loc[0, "E00200"] = 1e-100
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_growth(underflow, compiled(series=tiny))
+    assert error.value.reason == "SIGN_CHANGED"
+
+
+def test_a_missing_amount_is_refused():
+    source = money_view()
+    source.loc[1, "E00900"] = np.nan
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_growth(source, compiled())
+    assert error.value.reason == "FIELD_MISSING_VALUE"
+
+
+def test_a_complex_money_column_is_refused_rather_than_coerced():
+    source = money_view()
+    source["E00200"] = np.array([100 + 50j, 0 + 7j, -25 - 1j])
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_growth(source, compiled())
+    assert error.value.reason == "FIELD_DTYPE"
+
+
+def test_a_negative_zero_amount_is_refused():
+    source = money_view()
+    source.loc[1, "E00200"] = -0.0
+    assert np.signbit(source.E00200.to_numpy()[1])
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_growth(source, compiled())
+    assert error.value.reason == "NEGATIVE_ZERO"
+
+
+def test_an_integer_amount_float64_cannot_represent_exactly_is_refused():
+    source = money_view()
+    source["E00200"] = np.array([MAX_EXACT_AMOUNT + 1, 0, -1], dtype="int64")
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_growth(source, compiled())
+    assert error.value.reason == "MONEY_MAGNITUDE"
+
+
+def test_the_weight_path_refuses_products_it_cannot_represent():
+    huge = {
+        **FIXTURE_SERIES,
+        "fixture.returns": {
+            "kind": "design_weight_growth",
+            "levels": {"2021": "1.0", "2024": "1e300"},
+        },
+    }
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_design_weight_growth(np.array([1e10, 1e300]), compiled(series=huge))
+    assert error.value.reason == "GROWN_WEIGHT_NONFINITE"
+
+    vanishing = {
+        **FIXTURE_SERIES,
+        "fixture.returns": {
+            "kind": "design_weight_growth",
+            "levels": {"2021": "1.0", "2024": "1e-300"},
+        },
+    }
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_design_weight_growth(np.array([1e-100]), compiled(series=vanishing))
+    assert error.value.reason == "GROWN_WEIGHT_NONPOSITIVE"
+
+    # A factor that is not representable at all is refused earlier still.
+    collapsed = {
+        **FIXTURE_SERIES,
+        "fixture.returns": {
+            "kind": "design_weight_growth",
+            "levels": {"2021": "1e300", "2024": "1e-300"},
+        },
+    }
+    with pytest.raises(PufGrowthRefusalError) as error:
+        compiled(series=collapsed)
+    assert error.value.reason == "FACTOR_VALUE"
+
+
+def test_weight_inputs_must_be_a_finite_one_dimensional_vector():
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_design_weight_growth(np.array([[1.0, 2.0]]), compiled())
+    assert error.value.reason == "WEIGHT_SHAPE"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_design_weight_growth(np.array([1.0, np.inf]), compiled())
+    assert error.value.reason == "WEIGHT_NONFINITE"
+
+
+def test_a_duplicate_column_and_an_empty_table_are_refused():
+    duplicated = money_view()
+    duplicated = pd.concat([duplicated, duplicated[["E00200"]]], axis=1)
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_growth(duplicated, compiled())
+    assert error.value.reason == "DUPLICATE_SOURCE_COLUMN"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_growth(money_view().iloc[:0], compiled())
+    assert error.value.reason == "SOURCE_TABLE_ROWS"
+
+
+def test_the_result_type_cannot_be_built_outside_the_transform():
+    with pytest.raises(PufGrowthRefusalError) as error:
+        GrownPufTable(money_view(), "0" * 64, b"{}")
+    assert error.value.reason == "RESULT_CONSTRUCTOR_UNAVAILABLE"
+
+
+def test_two_design_weights_or_a_mismatched_weight_year_are_refused():
+    second_weight = GrowthRule(
+        "S007",
+        FieldRole.DESIGN_WEIGHT,
+        SOURCE_YEAR,
+        TARGET_YEAR,
+        GrowthKind.DESIGN_WEIGHT_GROWTH,
+        factor_series="fixture.returns",
+    )
+    with pytest.raises(PufGrowthRefusalError) as error:
+        recipe((*PRESERVED_RULES, *MONEY_RULES, second_weight))
+    assert error.value.reason == "MULTIPLE_DESIGN_WEIGHTS"
+
+    rules = tuple(
+        rule for rule in (*PRESERVED_RULES, *MONEY_RULES) if rule.field != "S006"
+    )
+    early_weight = GrowthRule(
+        "S006",
+        FieldRole.DESIGN_WEIGHT,
+        SOURCE_YEAR,
+        2023,
+        GrowthKind.DESIGN_WEIGHT_GROWTH,
+        factor_series="fixture.returns",
+    )
+    with pytest.raises(PufGrowthRefusalError) as error:
+        recipe((*rules, early_weight))
+    assert error.value.reason == "WEIGHT_TARGET_YEAR"
+
+
+def test_the_applied_once_guard_can_actually_fire(monkeypatch):
+    """A guard that cannot fail is vacuous: make both branches select a row."""
+    monkeypatch.setattr(
+        puf_growth, "_selection", lambda values, branch: np.ones(len(values), bool)
+    )
+    with pytest.raises(PufGrowthRefusalError) as error:
+        apply_puf_growth(money_view(), compiled())
+    assert error.value.reason == "FACTOR_APPLIED_TWICE"
+    assert error.value.field == "E00900"

@@ -71,6 +71,7 @@ from microcosm.build.us_runtime.puf_source_agi import PUF_SOURCE_YEAR
 __all__ = [
     "DESIGN_WEIGHT_FIELD",
     "GROWN_MONEY_VALUATION",
+    "MAX_EXACT_AMOUNT",
     "PROVENANCE_COLUMNS",
     "PROVENANCE_RECID_COLUMN",
     "PROVENANCE_SOURCE_AGI_COLUMN",
@@ -102,6 +103,7 @@ __all__ = [
     "parse_growth_recipe",
     "roster_role",
     "puf_growth_monetary_metadata",
+    "require_transformable",
 ]
 
 #: Schema version of the recipe identity this module emits.
@@ -152,6 +154,10 @@ REVIEWED_PROVENANCE_KEYS = frozenset(
     }
 )
 
+#: Largest integer amount float64 represents exactly. A larger integer money
+#: value is refused rather than silently rounded by the working conversion.
+MAX_EXACT_AMOUNT = 2**53
+
 #: Largest table this transform will accept, so a mistake is a refusal rather
 #: than an unbounded allocation.
 MAX_ROWS = 2_000_000
@@ -160,6 +166,7 @@ MAX_ROWS = 2_000_000
 MAX_DOCUMENT_BYTES = 512 * 1024
 
 _INTEGER_KINDS = frozenset("iu")
+_MONEY_KINDS_ALLOWED = frozenset("iuf")
 _RESULT_TOKEN = object()
 
 
@@ -421,8 +428,23 @@ class GrowthRecipe:
                 "INCOMPLETE_SIGN_COVER",
                 name,
             )
+        for rule in self.rules:
+            _require(
+                rule.field not in PROVENANCE_COLUMNS,
+                "PROVENANCE_COLUMN_NAME",
+                rule.field,
+            )
         money = [rule for rule in self.rules if rule.role is FieldRole.MONEY]
         _require(bool(money), "NO_MONEY_FIELD")
+        identifiers = [
+            rule.field for rule in self.rules if rule.role is FieldRole.IDENTIFIER
+        ]
+        _require(len(set(identifiers)) == 1, "PROVENANCE_RECID_FIELD")
+        _require(
+            any(rule.field == SOURCE_AGI_FIELD for rule in money),
+            "PROVENANCE_AGI_FIELD",
+            SOURCE_AGI_FIELD,
+        )
         money_targets = {rule.target_year for rule in money}
         _require(len(money_targets) == 1, "MIXED_TARGET_YEAR")
         _require(
@@ -783,6 +805,18 @@ class CompiledPufGrowth:
     def __post_init__(self) -> None:
         _require(type(self.recipe) is GrowthRecipe, "RECIPE_TYPE")
         _require(type(self.factors) is GrowthFactorTable, "FACTOR_TABLE_TYPE")
+        # The authority gate lives here, not only in the compile function, so
+        # that no construction path can produce a release-eligible contract the
+        # compile chokepoint would have refused.
+        if self.factors.authority is FactorAuthority.REVIEWED_RESOURCE:
+            _require(
+                self.factors.sha256 in REVIEWED_FACTOR_TABLE_DIGESTS,
+                "UNREVIEWED_FACTOR_TABLE",
+            )
+            _require(
+                set(self.factors.provenance) == REVIEWED_PROVENANCE_KEYS,
+                "REVIEWED_PROVENANCE_SHAPE",
+            )
         _require(
             type(self.resolved) is tuple
             and all(type(item) is ResolvedFactor for item in self.resolved),
@@ -843,6 +877,21 @@ class CompiledPufGrowth:
         )
 
     @property
+    def money_view_fields(self) -> tuple[str, ...]:
+        """The columns :func:`apply_puf_growth` consumes: everything but weights.
+
+        The design weight is excluded so a money transform neither reads nor
+        depends on it. In the graph that keeps the money node and the
+        design-weight node siblings rather than one ordering the other.
+        """
+        weight = self.design_weight_rule
+        return tuple(
+            name
+            for name in self.recipe.fields
+            if weight is None or name != weight.field
+        )
+
+    @property
     def preserved_fields(self) -> tuple[str, ...]:
         """Declared code/identifier/count fields, which this contract never writes."""
         return tuple(
@@ -894,15 +943,6 @@ def compile_puf_growth(
     """
     _require(type(recipe) is GrowthRecipe, "RECIPE_TYPE")
     _require(type(factors) is GrowthFactorTable, "FACTOR_TABLE_TYPE")
-    if factors.authority is FactorAuthority.REVIEWED_RESOURCE:
-        _require(
-            factors.sha256 in REVIEWED_FACTOR_TABLE_DIGESTS,
-            "UNREVIEWED_FACTOR_TABLE",
-        )
-        _require(
-            set(factors.provenance) == REVIEWED_PROVENANCE_KEYS,
-            "REVIEWED_PROVENANCE_SHAPE",
-        )
     resolved = []
     for rule in recipe.rules:
         if not rule.grows:
@@ -1016,8 +1056,11 @@ def _checked_source_table(
     _require(0 < rows <= MAX_ROWS, "SOURCE_TABLE_ROWS")
     _require(all(type(name) is str for name in table.columns), "SOURCE_TABLE_COLUMNS")
     _require(len(set(table.columns)) == len(table.columns), "DUPLICATE_SOURCE_COLUMN")
-    declared = set(compiled.recipe.fields)
+    declared = set(compiled.money_view_fields)
     present = set(table.columns)
+    weight = compiled.design_weight_rule
+    if weight is not None and weight.field in present:
+        raise PufGrowthRefusalError("DESIGN_WEIGHT_NOT_IN_MONEY_VIEW", weight.field)
     missing = sorted(declared - present)
     if missing:
         raise PufGrowthRefusalError("MISSING_DECLARED_FIELD", missing[0])
@@ -1028,16 +1071,37 @@ def _checked_source_table(
 
 
 def _money_values(table: pd.DataFrame, field: str) -> np.ndarray:
+    """A money column as float64, refusing anything it would have to coerce."""
     series = table[field]
+    # An explicit kind allow-list rather than ``is_numeric_dtype``, which also
+    # admits complex, whose imaginary part a float64 cast would drop in silence.
     _require(
-        pd.api.types.is_numeric_dtype(series.dtype)
-        and not pd.api.types.is_bool_dtype(series.dtype),
+        series.dtype.kind in _MONEY_KINDS_ALLOWED
+        or (
+            pd.api.types.is_extension_array_dtype(series.dtype)
+            and str(series.dtype).lower().startswith(("int", "uint", "float"))
+        ),
         "FIELD_DTYPE",
         field,
     )
     _require(not series.isna().any(), "FIELD_MISSING_VALUE", field)
+    integral = series.dtype.kind in _INTEGER_KINDS or (
+        pd.api.types.is_extension_array_dtype(series.dtype)
+        and str(series.dtype).lower().startswith(("int", "uint"))
+    )
+    if integral:
+        # float64 is the working type, so an integer amount it cannot represent
+        # exactly is refused rather than silently rounded.
+        _require(
+            bool((np.abs(series.to_numpy(dtype=object)) <= MAX_EXACT_AMOUNT).all()),
+            "MONEY_MAGNITUDE",
+            field,
+        )
     values = series.to_numpy(dtype=np.float64, copy=True)
     _require(bool(np.isfinite(values).all()), "FIELD_NONFINITE", field)
+    # A negative zero would pass every arithmetic guard untouched and then
+    # compare equal to zero while carrying a different bit pattern.
+    _require(not bool(np.signbit(values[values == 0.0]).any()), "NEGATIVE_ZERO", field)
     return values
 
 
@@ -1065,6 +1129,28 @@ def _selection(values: np.ndarray, branch: SignBranch) -> np.ndarray:
     return values != 0.0
 
 
+def require_transformable(compiled: CompiledPufGrowth) -> None:
+    """Check every precondition :func:`apply_puf_growth` needs, without a table.
+
+    A caller that is about to declare work — a graph node factory, say — uses
+    this so a contract that could never run is refused before anything is
+    loaded, rather than at the moment the money transform reaches for a field
+    that is not there.
+
+    Args:
+        compiled: The contract to check.
+
+    Raises:
+        PufGrowthRefusalError: If the contract declares no money field, no
+            single identifier, or no source-year AGI field.
+    """
+    _require(type(compiled) is CompiledPufGrowth, "COMPILED_TYPE")
+    _ = compiled.target_year
+    _source_reference_year(compiled)
+    _recid_field(compiled)
+    _agi_field(compiled)
+
+
 def apply_puf_growth(table: pd.DataFrame, compiled: CompiledPufGrowth) -> GrownPufTable:
     """Grow every declared money field once, preserving everything else.
 
@@ -1072,8 +1158,9 @@ def apply_puf_growth(table: pd.DataFrame, compiled: CompiledPufGrowth) -> GrownP
     written, and the output is a new frame built from copies.
 
     Args:
-        table: One row per raw source record, whose columns are exactly the
-            recipe's declared fields.
+        table: One row per raw source record, whose columns are exactly
+            :attr:`CompiledPufGrowth.money_view_fields` — every declared field
+            except the design weight.
         compiled: The compiled contract.
 
     Row correspondence is positional, not by pandas label: the output carries a
@@ -1082,10 +1169,10 @@ def apply_puf_growth(table: pd.DataFrame, compiled: CompiledPufGrowth) -> GrownP
 
     Returns:
         A :class:`GrownPufTable` whose frame carries the grown money columns,
-        the byte-identical code/identifier/count columns, the byte-identical
-        design weight (weights grow only through
-        :func:`apply_puf_design_weight_growth`), and the two provenance columns
-        copied from the source before any growth.
+        the byte-identical code/identifier/count columns, and the two
+        provenance columns copied from the source before any growth. The design
+        weight is not part of this view at all; it grows only through
+        :func:`apply_puf_design_weight_growth`.
 
     Raises:
         PufGrowthRefusalError: On any contract, dtype, value, or coverage
@@ -1098,7 +1185,7 @@ def apply_puf_growth(table: pd.DataFrame, compiled: CompiledPufGrowth) -> GrownP
     # Validate every column and resolve every factor before writing anything.
     grown: dict[str, np.ndarray] = {}
     applications: dict[str, int] = {}
-    for name in compiled.recipe.fields:
+    for name in compiled.money_view_fields:
         rules = compiled.recipe.rules_for(name)
         role = rules[0].role
         if role is FieldRole.MONEY:
@@ -1109,7 +1196,10 @@ def apply_puf_growth(table: pd.DataFrame, compiled: CompiledPufGrowth) -> GrownP
                 factor = compiled.factor_for(name, rule.sign_branch)
                 selected = _selection(values, rule.sign_branch)
                 applied += selected.astype(np.int64)
-                result[selected] = values[selected] * factor.value
+                # The product is checked below; a warning here would only
+                # duplicate a refusal that is already explicit.
+                with np.errstate(over="ignore", under="ignore"):
+                    result[selected] = values[selected] * factor.value
             _require(bool((applied <= 1).all()), "FACTOR_APPLIED_TWICE", name)
             _require(bool(np.isfinite(result).all()), "GROWN_NONFINITE", name)
             _require(
@@ -1117,9 +1207,6 @@ def apply_puf_growth(table: pd.DataFrame, compiled: CompiledPufGrowth) -> GrownP
             )
             grown[name] = result
             applications[name] = int(applied.sum())
-        elif role is FieldRole.DESIGN_WEIGHT:
-            weights = _money_values(source, name)
-            _require(bool((weights > 0.0).all()), "NONPOSITIVE_DESIGN_WEIGHT", name)
         else:
             _integral_values(source, name, "PRESERVED_FIELD_DTYPE")
 
@@ -1162,7 +1249,7 @@ def apply_puf_growth(table: pd.DataFrame, compiled: CompiledPufGrowth) -> GrownP
                 if compiled.design_weight_rule is not None
                 else None
             ),
-            "design_weight_grown_here": False,
+            "design_weight_in_money_view": False,
             "provenance_columns": list(PROVENANCE_COLUMNS),
             "provenance_recid_source": recid_field,
             "provenance_agi_source": agi_field,
@@ -1202,7 +1289,11 @@ def apply_puf_design_weight_growth(
     _require(
         factor.kind is GrowthKind.DESIGN_WEIGHT_GROWTH, "WEIGHT_FACTOR_KIND", rule.field
     )
-    return values * factor.value
+    with np.errstate(over="ignore", under="ignore"):
+        grown = values * factor.value
+    _require(bool(np.isfinite(grown).all()), "GROWN_WEIGHT_NONFINITE", rule.field)
+    _require(bool((grown > 0.0).all()), "GROWN_WEIGHT_NONPOSITIVE", rule.field)
+    return grown
 
 
 def _source_reference_year(compiled: CompiledPufGrowth) -> int:
@@ -1216,6 +1307,7 @@ def _source_reference_year(compiled: CompiledPufGrowth) -> int:
 
 
 def _recid_field(compiled: CompiledPufGrowth) -> str:
+    """The one declared identifier. :class:`GrowthRecipe` already required it."""
     candidates = [
         rule.field
         for rule in compiled.recipe.rules
