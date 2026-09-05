@@ -17,6 +17,7 @@ from microcosm.build.serialization_dtypes import canonicalize_table_string_dtype
 from microcosm.frame import Frame
 from microcosm.frame import units as frame_units
 
+from ._asec_current_money_codec import current_money_content_sha256
 from .asec_current_money import (
     MICROUNIT_VERSION,
     MoneyRefusalError,
@@ -157,7 +158,11 @@ def current_money_microunit_view(source, ready):
         and type(ready) is ReadyCurrentMoney,
         "AUTHENTICATED_MONEY_REQUIRED",
     )
-    source.validate()
+    expected = source.ready()
+    _require(
+        ready.bindings == expected.bindings and ready.fields == expected.fields,
+        "MONEY_CONTENT_MISMATCH",
+    )
     _require(ready.bindings.spec == source.spec, "SPEC_MISMATCH")
     _validate_money(ready, source.spec, nominal=False)
     _require(
@@ -237,6 +242,8 @@ class CurrentMoneyTaxUnitResult:
         )
         _require(
             _sha(self.money.header) == receipt["money_header_sha256"]
+            and current_money_content_sha256(self.money)
+            == receipt["money_content_sha256"]
             and _frame_signature(self.frame) == receipt["output_frame_sha256"],
             "TAX_RESULT_CHANGED",
         )
@@ -318,6 +325,7 @@ def _reconstruct(source, ready):
         "year": 2024,
         "mode": "policyengine",
         "money_header_sha256": _sha(ready.header),
+        "money_content_sha256": current_money_content_sha256(ready),
         "source_frame_sha256": _parse(source.source.identity)["frame_sha256"],
         "output_frame_sha256": _frame_signature(result),
         "implementation": _parse(implementation),

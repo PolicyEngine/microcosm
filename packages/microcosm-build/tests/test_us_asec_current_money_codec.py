@@ -71,6 +71,17 @@ def ready(spec, scope, views):
     )
 
 
+def test_synthetic_replay_refuses_supplied_expected_content():
+    spec, scope, views = fixture()
+    value = ready(spec, scope, views)
+    payload = encode_current_money(value)
+    assert (
+        encode_current_money(decode_current_money(payload, value.bindings)) == payload
+    )
+    with pytest.raises(MoneyRefusalError, match="EXPECTED_CONTENT_SYNTHETIC"):
+        decode_current_money(payload, value.bindings, expected=value)
+
+
 def edit_resource(resources, name, edit):
     value = json.loads(getattr(resources, name))
     edit(value)
