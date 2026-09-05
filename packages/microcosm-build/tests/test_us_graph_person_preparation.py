@@ -1208,3 +1208,60 @@ def test_adapter_carries_no_source_fence_exemption():
     )
     assert "graph_person_preparation.py" in blindness._OTHER_US_RUNTIME_MODULES
     assert "graph_person_preparation.py" in blindness._CLASSIFIED_US_RUNTIME_MODULES
+
+
+@pytest.mark.parametrize(
+    "factory", (us_relationship_source_nodes, us_eligibility_source_nodes)
+)
+def test_repeated_coordinate_declarations_refuse(factory):
+    """A repeated person label is refused at declaration, not merged silently."""
+    columns = frame_column_declarations(_frame())
+    with pytest.raises(ValueError, match="repeat coordinates"):
+        factory((*columns, columns[0]), base="source", context_producer="source")
+
+
+@pytest.mark.parametrize(
+    "factory", (us_relationship_source_nodes, us_eligibility_source_nodes)
+)
+@pytest.mark.parametrize("absent", ("PERIDNUM", "person_support_clone_index"))
+def test_absent_boundary_evidence_declaration_refuses(factory, absent):
+    columns = tuple(
+        value
+        for value in frame_column_declarations(_frame())
+        if not (value.entity == "person" and value.column == absent)
+    )
+    with pytest.raises(ValueError, match="source-boundary evidence is absent"):
+        factory(columns, base="source", context_producer="source")
+
+
+@pytest.mark.parametrize(
+    ("factory", "outputs", "booleans"),
+    (
+        (
+            us_relationship_source_nodes,
+            RELATIONSHIP_OUTPUTS,
+            RELATIONSHIP_OUTPUTS,
+        ),
+        (
+            us_eligibility_source_nodes,
+            ELIGIBILITY_OUTPUTS,
+            ("is_disabled", "is_blind", "is_full_time_college_student"),
+        ),
+    ),
+)
+def test_declared_output_dtypes_reflect_the_actual_merged_cells(
+    factory, outputs, booleans
+):
+    """Booleans declare nullable ``boolean``; the two counters declare float64."""
+    nodes = factory(
+        frame_column_declarations(_frame()), base="source", context_producer="source"
+    )
+    declared = {value.column: value for value in nodes[-1].outputs}
+    assert set(declared) == set(outputs)
+    for name in outputs:
+        assert declared[name].entity == "person"
+        assert declared[name].dtype == ("boolean" if name in booleans else "float64")
+    # ``is_household_head`` exists natively on the fixture's ACS rows, so the
+    # relationship declaration rewrites it; every other leaf is created.
+    for name, value in declared.items():
+        assert value.rewrite is (name == "is_household_head")
