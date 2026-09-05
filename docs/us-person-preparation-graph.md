@@ -69,17 +69,22 @@ context v1 contract's single explicit weight source and matching weight kind.
 Relationship owns `is_household_head`, `is_separated` and
 `is_surviving_spouse`. Eligibility owns `is_disabled`, `is_blind`,
 `is_full_time_college_student`, `own_children_in_household` and
-`veterans_benefits`. The six boolean leaves are physical booleans in the
-helper's output and nullable `boolean` after the full-pool merge, so they are
-declared `boolean`; a `bool` or numeric incumbent is refused at declaration
-time rather than cast. `own_children_in_household` and `veterans_benefits` are
-`float64` and retain an existing numeric incumbent dtype exactly — a `float32`,
-`int64` or nullable `Int64` incumbent is declared and merged at that dtype.
-Refusing a physical `bool` incumbent is a deliberate narrowing: the shared
-merge would accept it and materialize nullable `boolean`, but the declared
-token would then disagree with the merged cell, so the adapter refuses at
-declaration time rather than cast. This mirrors the reviewed prior-year
-adapter. Native non-CPS cells survive the declared merge: an ACS-native
+`veterans_benefits`.
+
+The six boolean leaves are physical booleans in the helper's output and
+nullable `boolean` after the full-pool merge, so they are declared `boolean`.
+An incumbent for one of them that is not already nullable `boolean` is refused
+at declaration time rather than cast. That is a deliberate narrowing: the
+shared merge would accept a physical `bool` incumbent and materialize nullable
+`boolean`, but then the declared token would disagree with the merged cell. It
+mirrors the reviewed prior-year adapter.
+
+`own_children_in_household` and `veterans_benefits` are `float64` when created
+and otherwise adopt the incumbent's dtype exactly — a `float32`, `int64` or
+nullable `Int64` incumbent is declared and merged at that dtype, matching the
+direct chain.
+
+Native non-CPS cells survive the declared merge: an ACS-native
 `is_household_head` keeps its own values, and outputs the CPS derivation
 cannot reach stay null.
 
@@ -121,8 +126,12 @@ context across cold, auto and required replay. A separate fixture runs the real
 direct housing operator and exercises the eligibility node on the state it
 leaves; that fixture re-declares housing's `str` tenure column as canonical
 `string` storage, which is a housing-side storage seam and is out of scope
-here. The complete six-operator direct chain is pinned to its pre-edit byte
-digests measured on base `ebb47671`.
+here. Repeated person index labels are covered three ways: alone, with boolean
+incumbents, and with a numeric incumbent (where the early refusal fires and the
+direct chain's inherited pandas error is reproduced alongside it). The complete
+six-operator direct chain is pinned to its pre-edit byte digests measured on
+base `ebb47671`; `us-person-source-author-oracle-capture.py` in the review
+directory re-measures them and exits 0 at both base and head.
 
 This is a development slice. Nothing here certifies a data artifact, a housing
 implementation, or the scientific quality of either family's outputs.
