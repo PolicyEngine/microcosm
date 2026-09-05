@@ -190,12 +190,14 @@ producer attached to this code", not an independently authenticated IRS
 definition. `RECID`, `S006`, `MARS` and `XTOT` are cited to `preprocess_puf` at
 the same commit; `P22250` to `aggregate_record_utils.SCREENED_FIELDS`.
 
-The roster is a **lower bound**: it is the union of what the archived producer
-documented and what this repository already reads. Fields present in the real
-file but untouched by that code are invisible from here.
-`UNDOCUMENTED_SOURCE_FIELDS` records the four codes the archived commits name
-without ever describing — `DSI`, `E02500`, `E25920`, `EIC` — and they are
-deliberately absent from the roster.
+The roster is a **lower bound**: every money code the archived codebook
+describes, plus the four structural codes and two codes cited separately
+(`P22250` from the screened-field list, `E02500` from the SOI rename table). It
+is not every code this repository reads and not every code the delivered file
+contains. `UNDOCUMENTED_SOURCE_FIELDS` records three codes the archived commits
+name in executable code without ever describing — `DSI`, `EIC` and `E25920` —
+and they are deliberately absent from the roster. That list is what this slice
+tripped over, not a complete inventory of undocumented codes.
 
 ## The graph nodes
 
@@ -258,7 +260,13 @@ Nothing below is done, and none of it is implied by anything above.
    `E25960`, `E25980`, `E26180`, `E26190`, `E30400`, `E30500`.
 4. **Resolve the raw-source field manifest.** Close the roster against real
    source documentation: whether `E22250` and `P22250` both exist in the
-   delivered file, and what `DSI`, `EIC`, `E02500` and `E25920` are.
+   delivered file, what `DSI`, `EIC` and `E25920` are, and — the larger gap —
+   which codes the delivered file contains that no archived code path touched,
+   since nothing read here can see those.
+   Relatedly: the graph stage's closed read set is the *transform's*, not the
+   frame's. A `CREATE` node may load raw money columns this contract never
+   declares, and they pass through ungrown. Closing that needs a source-stage
+   contract that declares the full raw column inventory.
 5. **Decide one-step versus two-step aging.** The archived chain was
    TY2015→2021 from SOI aggregates, then 2021→target from model uprating
    factors. A rule here declares one `(source, target)` pair, so composing two

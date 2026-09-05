@@ -5,9 +5,9 @@ amount, factor level and field roster used here is invented, and the factor
 table says so about itself.
 """
 
+import ast
 import inspect
 import json
-import sys
 
 import numpy as np
 import pandas as pd
@@ -163,6 +163,18 @@ def source_table():
 def money_view():
     """What the money transform consumes: every declared field but the weight."""
     return source_table().drop(columns=["S006"])
+
+
+def imported_module_names(module):
+    """Every module name ``module`` imports, at module level or inside a call."""
+    tree = ast.parse(inspect.getsource(module))
+    names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            names.add(node.module)
+    return names
 
 
 def test_declared_factors_apply_once_across_signs_and_leave_zero_alone():
@@ -524,10 +536,18 @@ def test_the_roster_names_real_fields_with_roles_and_no_factors():
 
 
 def test_the_transform_reads_no_file_and_imports_no_country_engine():
+    """Asserted from this module's own imports, not from process-global state.
+
+    A ``sys.modules`` sweep would say nothing in the engine-free lane and would
+    fail in the engine lane, where a sibling test has already imported the
+    country package.
+    """
     source = inspect.getsource(puf_growth)
     for token in ("open(", "read_csv", "h5py", "urlopen", "requests", "Path("):
         assert token not in source
-    assert not any(name.startswith("policyengine") for name in sys.modules)
+    imported = imported_module_names(puf_growth)
+    assert imported
+    assert not any(name.lower().startswith("policyengine") for name in imported)
 
 
 def test_a_recipe_must_declare_money_and_one_source_reference_year():
