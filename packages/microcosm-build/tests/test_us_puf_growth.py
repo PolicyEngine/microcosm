@@ -19,7 +19,9 @@ from microcosm.build.us_runtime.puf_growth import (
     PROVENANCE_RECID_COLUMN,
     PROVENANCE_SOURCE_AGI_COLUMN,
     REVIEWED_FACTOR_TABLE_DIGESTS,
+    REVIEWED_PROVENANCE_KEYS,
     UNDOCUMENTED_SOURCE_FIELDS,
+    CompiledPufGrowth,
     FactorAuthority,
     FieldRole,
     GrowthFactorTable,
@@ -27,6 +29,7 @@ from microcosm.build.us_runtime.puf_growth import (
     GrowthRecipe,
     GrowthRule,
     PufGrowthRefusalError,
+    ResolvedFactor,
     SignBranch,
     apply_puf_design_weight_growth,
     apply_puf_growth,
@@ -515,3 +518,93 @@ def test_the_transform_reads_no_file_and_imports_no_country_engine():
     for token in ("open(", "read_csv", "h5py", "urlopen", "requests", "Path("):
         assert token not in source
     assert not any(name.startswith("policyengine") for name in sys.modules)
+
+
+def test_a_recipe_must_declare_money_and_one_source_reference_year():
+    with pytest.raises(PufGrowthRefusalError) as error:
+        recipe(PRESERVED_RULES)
+    assert error.value.reason == "NO_MONEY_FIELD"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        recipe(
+            (
+                *PRESERVED_RULES,
+                money("E00100", "fixture.agi_per_return"),
+                GrowthRule(
+                    "E00200",
+                    FieldRole.MONEY,
+                    2015,
+                    TARGET_YEAR,
+                    GrowthKind.NOMINAL_PRICE_RESTATEMENT,
+                    SignBranch.ANY,
+                    "fixture.price_index",
+                ),
+            )
+        )
+    assert error.value.reason == "MIXED_SOURCE_REFERENCE_YEAR"
+
+
+def test_a_resolved_factor_cannot_claim_bits_its_levels_do_not_produce():
+    honest = compiled().factor_for("E00100", SignBranch.ANY)
+    assert honest.value == AGI_FACTOR
+    with pytest.raises(PufGrowthRefusalError) as error:
+        ResolvedFactor(
+            honest.field,
+            honest.sign_branch,
+            honest.series,
+            honest.kind,
+            honest.source_year,
+            honest.target_year,
+            honest.source_level,
+            honest.target_level,
+            "0" * 16,
+        )
+    assert error.value.reason == "RESOLVED_RATIO_BITS"
+
+
+def test_a_hand_built_contract_cannot_disagree_with_its_own_recipe():
+    contract = compiled()
+    with pytest.raises(PufGrowthRefusalError) as error:
+        CompiledPufGrowth(
+            contract.recipe,
+            contract.factors,
+            contract.resolved[:-1],
+            contract.identity,
+        )
+    assert error.value.reason == "RESOLVED_COVERAGE"
+
+    reordered = (contract.resolved[-1], *contract.resolved[:-1])
+    with pytest.raises(PufGrowthRefusalError) as error:
+        CompiledPufGrowth(
+            contract.recipe, contract.factors, reordered, contract.identity
+        )
+    assert error.value.reason == "RESOLVED_COVERAGE"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        CompiledPufGrowth(
+            contract.recipe, contract.factors, contract.resolved, b'{"a":1}'
+        )
+    assert error.value.reason == "CONTRACT_BINDING"
+
+
+def test_a_reviewed_table_would_also_have_to_state_its_generation_receipt():
+    assert REVIEWED_PROVENANCE_KEYS >= {
+        "generator_code_sha256",
+        "parameter_paths",
+        "population_divisor",
+        "rounding",
+        "source_url",
+    }
+    # Unreachable today: no digest is reviewed, so that gate refuses first.
+    with pytest.raises(PufGrowthRefusalError) as error:
+        compiled(authority="reviewed_resource")
+    assert error.value.reason == "UNREVIEWED_FACTOR_TABLE"
+
+
+def test_rows_correspond_positionally_not_by_pandas_label():
+    source = source_table()
+    source.index = pd.Index([7, 7, 9])
+    grown = apply_puf_growth(source, compiled()).table
+    assert grown.index.equals(pd.RangeIndex(3))
+    assert grown.RECID.tolist() == [11, 22, 33]
+    assert grown.E00100.tolist() == [1000.0 * AGI_FACTOR, -500.0 * AGI_FACTOR, 0.0]
