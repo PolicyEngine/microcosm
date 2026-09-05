@@ -38,7 +38,11 @@ from microcosm.build.us_runtime.acs_transfer import (
 from microcosm.build.us_runtime.adult_care import with_us_adult_care_inputs
 from microcosm.build.us_runtime.child_support import with_us_child_support_inputs
 from microcosm.build.us_runtime.childcare import with_us_childcare_inputs
-from microcosm.build.us_runtime.cps_carried import derive_us_cps_carried_inputs
+from microcosm.build.us_runtime.cps_carried import (
+    CpsCarriedTables,
+    derive_us_cps_carried_inputs,
+    derive_us_cps_carried_tables,
+)
 from microcosm.build.us_runtime.disability_benefits import (
     with_us_disability_benefits,
 )
@@ -1846,6 +1850,146 @@ def _hours_gate_receipt(
 def multispine_hours_worked_boundary_columns() -> tuple[str, ...]:
     """Declare source-boundary evidence without exposing role dispatch downstream."""
     return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
+
+
+def multispine_cps_carried_boundary_columns() -> tuple[str, ...]:
+    """Declare the registered pre-clone CPS evidence to its graph boundary."""
+    return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
+
+
+def validate_multispine_cps_carried_person_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Retain source-role validation in the existing registered owner."""
+    _assert_source_person_boundary(
+        person, metadata=metadata, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    return {"phase": _PRE_CLONE_PHASE, "cps_person_rows": int(mask.sum())}
+
+
+def multispine_cps_carried_implementation_contract() -> dict[str, object]:
+    """Bind live provider projections actually consumed by this source operator."""
+    return {
+        "outputs": {
+            entity: sorted(columns)
+            for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+                "cps_carried"
+            ].items()
+        },
+        "transient_outputs": _transient_source_outputs(
+            ("derive_us_cps_carried_inputs",), PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES
+        ),
+    }
+
+
+def observe_multispine_cps_carried_tables(
+    person: pd.DataFrame,
+    spm_unit: pd.DataFrame,
+    *,
+    weights: Weights,
+    metadata: Mapping[str, object],
+    pool_rows: Mapping[str, int],
+) -> tuple[CpsCarriedTables, dict[str, object]]:
+    """Use actual person/SPM views for the original source projection and merge."""
+    boundary = validate_multispine_cps_carried_person_boundary(
+        person, metadata=metadata
+    )
+    if (
+        set(pool_rows) != set(US_SCHEMA.entities)
+        or any(type(value) is not int or value < 0 for value in pool_rows.values())
+        or pool_rows["person"] != len(person)
+        or pool_rows["spm_unit"] != len(spm_unit)
+        or len(weights) != len(person)
+    ):
+        raise ValueError("CPS-carried population counts or weights are misaligned.")
+    for group in US_SCHEMA.group_entities:
+        if pool_rows[group] != int(
+            person[US_SCHEMA.membership_column(group)].nunique()
+        ):
+            raise ValueError("CPS-carried population counts differ from memberships.")
+    if spm_unit.spm_unit_id.duplicated().any() or set(spm_unit.spm_unit_id) != set(
+        person.person_spm_unit_id
+    ):
+        raise ValueError("CPS-carried SPM rows differ from actual memberships.")
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    selected_person = without_support_role_metadata(person.loc[mask], entity="person")
+    selected_spm = without_support_role_metadata(
+        spm_unit.loc[
+            spm_unit.spm_unit_id.isin(selected_person.person_spm_unit_id)
+        ].reset_index(drop=True),
+        entity="spm_unit",
+    )
+    # Match selected Frame weight validation without constructing a partial
+    # Frame carrying whole-population metadata or unobserved entity tables.
+    weights.with_values(weights.values[mask], kind=weights.kind)
+    outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["cps_carried"]
+    selected = {
+        "person": selected_person.drop(
+            columns=_unavailable_output_columns(selected_person, outputs["person"])
+        ),
+        "spm_unit": selected_spm.drop(
+            columns=_unavailable_output_columns(selected_spm, outputs["spm_unit"])
+        ),
+    }
+    produced = derive_us_cps_carried_tables(selected["person"], selected["spm_unit"])
+    merged = {}
+    merged_rows = {}
+    for entity, outcome in (
+        ("person", produced.person),
+        ("spm_unit", produced.spm_unit),
+    ):
+        identity = US_SCHEMA.entity_id_column(entity)
+        _assert_source_table_identity(
+            selected[entity],
+            outcome,
+            entity_id=identity,
+            operator_name="derive_us_cps_carried_inputs",
+        )
+        target = person if entity == "person" else spm_unit
+        merged[entity], merged_rows[entity] = _merge_source_person_or_group_outputs(
+            target.copy(),
+            outcome,
+            outputs[entity],
+            entity=entity,
+            entity_id=identity,
+            operator_name="derive_us_cps_carried_inputs",
+        )
+    selected_rows = {
+        "person": len(selected_person),
+        **{
+            group: int(selected_person[US_SCHEMA.membership_column(group)].nunique())
+            for group in US_SCHEMA.group_entities
+        },
+    }
+    receipt = _source_operator_receipt(
+        order_index=0,
+        operator_name="derive_us_cps_carried_inputs",
+        family="cps_carried",
+        phase=_PRE_CLONE_PHASE,
+        contract=POOL_OPERATOR_CONTRACTS["derive_us_cps_carried_inputs"],
+        before_rows=dict(pool_rows),
+        available_rows=selected_rows,
+        output_rows=selected_rows,
+        merged_rows=merged_rows,
+        declared_outputs=outputs,
+        formula_owned_removed={},
+        kernel_receipt={},
+        overlap_ownership=None,
+    )
+    return CpsCarriedTables(
+        merged["person"], merged["spm_unit"]
+    ), _source_chain_receipt(
+        phase=_PRE_CLONE_PHASE,
+        operator_names=("derive_us_cps_carried_inputs",),
+        evidence_rows=boundary["cps_person_rows"],
+        receipts=[receipt],
+        output_families=PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+    )
 
 
 def multispine_hours_implementation_contract() -> dict[str, object]:
