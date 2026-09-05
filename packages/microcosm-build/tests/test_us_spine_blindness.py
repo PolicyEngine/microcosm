@@ -231,6 +231,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "acs_sources.py",
         "acs_transfer_bank.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_checkpoint.py",  # Bounded checkpoint I/O; no population treatment.
+        "asec_household_observations.py",  # Authenticated source-only exact-key join.
         "asec_raw_stage_v4.py",  # Authenticated source restoration; no treatment.
         "asec_pool.py",
         "base_pool.py",
