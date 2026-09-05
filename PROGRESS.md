@@ -35,14 +35,45 @@ that landed in the integration lineage since `96faa5d5`).
 
 - [x] status/fetch/base comparison; fresh worktree from the explicit integration commit
 - [x] PROGRESS.md scaffold
-- [ ] verbatim copy of the four transport files + blob-hash proof
-- [ ] doc geographic-release-scope trim
-- [ ] additive CI inventory registration + changelog fragment
-- [ ] tests / lint / CI inventory verify
-- [ ] live writer+reader exercise on a temporary output root
-- [ ] transport correctness assessment
+- [x] verbatim copy of the four transport files + blob-hash proof (`c5a7feec`)
+- [x] doc geographic-release-scope trim (`3a970f95`)
+- [x] additive CI inventory registration + changelog fragment (`e9fe5604`)
+- [x] targeted tests, neighbour tests, ruff check, ruff format --check, `--verify`
+- [x] live writer+reader+CLI exercise on a temporary dedicated output root
+- [ ] fast-lane `rest` group (283 files) -- running
+- [ ] transport correctness assessment -- multi-agent review running
 - [ ] report to R/candidate-quality-producer-integration-author.md
+
+## Verification so far
+
+Environment: `uv sync --all-packages --locked` (lockfile unchanged, no upgrades),
+Python 3.14.4. `microcosm.build.candidate_quality` resolves to this worktree's
+`packages/microcosm-build/src/...`, sha256 `3c202ff4...`, equal to the committed blob.
+
+- `pytest packages/microcosm-build/tests/test_candidate_quality.py` -- 25 passed
+- `pytest test_quality_aggregates.py test_cross_grain.py` -- 98 passed
+- `ruff check .` -- clean; `ruff format --check` on the four changed files -- clean
+- `tools/ci_test_groups.py --verify` -- exit 0; the new test is in fast `rest`
+  and engine `shared-spec`, and no longer under `[defaulted]`
+- Live exercise, 29/29 checks: genuine `quality_aggregates` support/distribution
+  output over an INVENTED 4-household toy Frame, sealed and read back. Exact byte
+  preservation across non-canonical indentation; crossed candidate/population
+  identities refused with nothing written; tampered manifest and tampered
+  attachment both fail their digests; superseded manifests stay readable; a
+  deleted index does not block a direct digest read; the CLI resolves a relative
+  source and `--no-index` writes none.
+- Separate path-guard probe: relative, nested, absolute, backslash and colon
+  partition paths are all refused; only the control is accepted.
+
+## Observed, worth recording
+
+`provenance` and `geography` are omitted from the manifest entirely when the
+caller does not supply them, rather than emitted as `{}` / `null`. The frozen
+dashboard reader tolerates this (`strings(undefined)` yields `{}`;
+`raw.geography != null` leaves it null), so it is compatible, not a defect --
+but the TS type declares both as required fields, so it reads as looser than
+the type suggests.
 
 ## Next
 
-Copy the four files and prove staged blob == copied blob.
+Finish the fast-lane run and the correctness assessment, then write the report.
