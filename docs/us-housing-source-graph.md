@@ -86,6 +86,17 @@ cannot hide bytes. It rejects schema, ordering, length and digest mismatches,
 duplicate or negative IDs, foreign string storage and any encoding it does not
 declare. There is no pickle transport and no arbitrary object dtype support.
 
+Resources were measured, not estimated. On the eight-person mixed fixture the
+stage compiles to fifteen nodes and five population versions
+(`source`, `early_preparation.housing.source`, `early_preparation.rent.donor`,
+`early_preparation.rent.boundary`, `early_preparation.housing.merge_boundary`),
+a 2.6 MB content store dominated by the donor frame and the fitted forest, and
+typed payloads of 2,512 B (projection), 2,633 B (five-leaf export) and 3,313 B
+(merge evidence). The FILTER carries the source population's existing columns,
+so the two extra structural versions are real physical copies; the logical
+subset does not eliminate them. Record this profile again before any larger
+rung. No cache GC or format redesign is proposed here.
+
 The outer gate's scope is `source_housing_completion_integrity`: source
 projection, exact ID merge and completion. It is deliberately **not** a new
 mandatory post-fit housing signal gate. `us_housing_inputs_signal_gate` keeps
