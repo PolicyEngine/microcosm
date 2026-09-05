@@ -160,12 +160,16 @@ _RESTORATION_SOURCE_KEYS = frozenset(
 )
 
 
-def _restoration_sources(rows) -> None:
+def _restoration_sources(rows, source) -> None:
     _require(
         type(rows) is list and len(rows) == len(SOURCE_YEARS), "RESTORATION_SOURCES"
     )
     for row, pins in zip(rows, person_income._MEMBER_PINS, strict=True):
         year, member, archive_pin, member_pin, source_rows, _size = pins
+        positions = np.flatnonzero(np.asarray(source.scope.person_years) == year)
+        known_incumbents = int(
+            source.frame.person.PTOTVAL.iloc[positions].notna().sum()
+        )
         _require(
             type(row) is dict and set(row) == _RESTORATION_SOURCE_KEYS,
             "RESTORATION_SOURCES",
@@ -188,14 +192,16 @@ def _restoration_sources(rows) -> None:
                     "incumbent_compared_rows",
                 )
             )
-            and row["joined_rows"] + row["unreferenced_source_rows"] == source_rows
+            and row["joined_rows"] == len(positions) == source_rows
+            and row["unreferenced_source_rows"] == 0
+            and row["incumbent_compared_rows"] == known_incumbents
             and row["incumbent_conflicts"] == 0
             and row["native_key_or_age_conflicts"] == 0,
             "RESTORATION_SOURCE_COVERAGE",
         )
 
 
-def _restoration_receipt(path: Path, evidence: dict) -> dict:
+def _restoration_receipt(path: Path, evidence: dict, source) -> dict:
     """Bind the shipped restoration receipt to the authority the loader issued."""
     payload = path.read_bytes()
     _require(0 < len(payload) <= RESTORATION_RECEIPT_MAX_BYTES, "RESTORATION_RECEIPT")
@@ -233,7 +239,7 @@ def _restoration_receipt(path: Path, evidence: dict) -> dict:
         ),
         "RESTORATION_RECEIPT_DIGEST",
     )
-    _restoration_sources(receipt["sources"])
+    _restoration_sources(receipt["sources"], source)
     # The reconstruction the loader just performed is the authority; the shipped
     # receipt must agree with the evidence it issued, digest for digest.
     _require(
@@ -243,6 +249,27 @@ def _restoration_receipt(path: Path, evidence: dict) -> dict:
         and receipt["implementation_sha256"] == evidence["verification_sha256"],
         "RESTORATION_RECEIPT_BINDING",
     )
+    # T1's pinned producer only appends the observed person-income column to an
+    # owned copy of the authenticated parent. Recover that exact parent view
+    # without reading another source or changing the original T1 authority.
+    # The sidecar must describe those reconstructed facts, not merely contain
+    # syntactically valid digest strings beside an authentic checkpoint.
+    source.validate()
+    observed = source.frame.person[person_income.OBSERVED_COLUMN]
+    _require(observed.dtype == np.dtype("int64"), "RESTORATION_OBSERVATION_DTYPE")
+    _require(
+        receipt["observation_sha256"]
+        == _sha(observed.to_numpy(dtype="<i8", copy=True).tobytes())
+        and receipt["output_frame_sha256"] == evidence["frame_sha256"],
+        "RESTORATION_RECEIPT_FACTS",
+    )
+    parent = housing_source._owned_frame(source.frame)
+    del parent.person[person_income.OBSERVED_COLUMN]
+    _require(
+        receipt["parent_frame_sha256"] == money_source._frame_signature(parent),
+        "RESTORATION_RECEIPT_FACTS",
+    )
+    source.validate()
     return receipt
 
 
@@ -368,7 +395,9 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
     _require(evidence["source_kind"] == RESTORED_SOURCE_KIND, "RESTORED_SOURCE_KIND")
     _require(evidence["zero_origin_policy"] == ZERO_POLICY, "ZERO_ORIGIN_POLICY")
     _require(evidence["field_roster"] == list(FIELDS), "FIELD_ROSTER")
-    restoration = _restoration_receipt(paths[RESTORATION_RECEIPT_FILENAME], evidence)
+    restoration = _restoration_receipt(
+        paths[RESTORATION_RECEIPT_FILENAME], evidence, source
+    )
     ready = source.ready()
     _require(type(ready) is ReadyCurrentMoney, "AUTHENTICATED_READINESS_REQUIRED")
     # S is separate source authority. Its public loader authenticates the same

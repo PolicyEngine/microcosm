@@ -410,6 +410,50 @@ def test_altered_restoration_receipt_refuses(tmp_path, monkeypatch):
         prepared.prepare_asec_current_money_population(directory)
 
 
+@pytest.mark.parametrize(
+    "field",
+    ["observation_sha256", "output_frame_sha256", "parent_frame_sha256"],
+)
+def test_authentic_t1_refuses_false_sidecar_semantic_hash_before_student_or_tax(
+    tmp_path, monkeypatch, field
+):
+    directory = invented_prepared_directory(tmp_path, monkeypatch)
+    target = directory / prepared.RESTORATION_RECEIPT_FILENAME
+    receipt = money._parse(target.read_bytes()[:-1])
+    receipt[field] = "0" * 64
+    target.write_bytes(money._json(receipt) + b"\n")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("false receipt reached downstream student or tax preparation")
+
+    monkeypatch.setattr(student, "load_authenticated_student_controls", forbidden)
+    monkeypatch.setattr(prepared, "reconstruct_current_money_tax_units", forbidden)
+    with pytest.raises(
+        prepared.PreparedSourceRefusalError, match="RESTORATION_RECEIPT_FACTS"
+    ):
+        prepared.prepare_asec_current_money_population(directory)
+
+
+@pytest.mark.parametrize("claim", ["joined", "incumbent"])
+def test_authentic_t1_refuses_false_sidecar_join_counts(tmp_path, monkeypatch, claim):
+    directory = invented_prepared_directory(tmp_path, monkeypatch)
+    target = directory / prepared.RESTORATION_RECEIPT_FILENAME
+    receipt = money._parse(target.read_bytes()[:-1])
+    if claim == "joined":
+        row = receipt["sources"][0]
+        row["joined_rows"] = 0
+        row["unreferenced_source_rows"] = row["source_rows"]
+    else:
+        row = receipt["sources"][2]
+        assert row["incumbent_compared_rows"] > 0
+        row["incumbent_compared_rows"] = 0
+    target.write_bytes(money._json(receipt) + b"\n")
+    with pytest.raises(
+        prepared.PreparedSourceRefusalError, match="RESTORATION_SOURCE_COVERAGE"
+    ):
+        prepared.prepare_asec_current_money_population(directory)
+
+
 def test_implementation_identity_is_stable_and_path_independent():
     first = prepared.prepared_source_implementation_identity()
     assert first == prepared.prepared_source_implementation_identity()

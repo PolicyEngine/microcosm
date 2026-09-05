@@ -109,6 +109,16 @@ def _entities(field_entities) -> tuple[str, ...]:
     return tuple(item[1] for item in field_entities)
 
 
+def _decoded_entities(data: dict) -> tuple[str, ...]:
+    roster = data.get("field_entities")
+    _require(
+        type(roster) is list
+        and all(type(item) is list and len(item) == 2 for item in roster),
+        "FIELD_ENTITY_ROSTER",
+    )
+    return _entities(tuple(tuple(item) for item in roster))
+
+
 def _positions(values, *, rows: int, reason: str) -> np.ndarray:
     _require(
         type(values) is np.ndarray
@@ -414,7 +424,7 @@ def _validate_selected(selected: SelectedCurrentMoney) -> None:
         ),
         "SELECTED_HEADER_DIGEST",
     )
-    entities = _entities(tuple(tuple(item) for item in data["field_entities"]))
+    entities = _decoded_entities(data)
     counts = {}
     for entity in _ENTITIES:
         rows = data[entity + "_rows"]
@@ -494,6 +504,7 @@ def decode_selected_current_money(
     )
     header = payload[start : start + size]
     data = _parse(header, HEADER_MAX_BYTES)
+    _require(set(data) == _SELECTED_HEADER_KEYS, "SELECTED_HEADER_SCHEMA")
     _require(
         data.get("parent_header_sha256") == expected_parent_header_sha256
         and data.get("parent_content_sha256") == expected_parent_content_sha256
@@ -501,7 +512,7 @@ def decode_selected_current_money(
         and data.get("selection_sha256") == expected_selection_sha256,
         "SELECTED_REPLAY_BINDING",
     )
-    entities = _entities(tuple(tuple(item) for item in data.get("field_entities", ())))
+    entities = _decoded_entities(data)
     counts = {entity: data[entity + "_rows"] for entity in _ENTITIES}
     _require(
         all(type(value) is int and value > 0 for value in counts.values()),

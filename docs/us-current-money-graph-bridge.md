@@ -46,6 +46,10 @@ identity, S receipt/content/attachment digests, full money header/content/spec
 identities, tax and housing receipts, restoration receipt, and pre/post-promotion
 Frame signatures. The prepared implementation identity includes S's own closure.
 T1's original source and monetary verification closures remain unchanged.
+The restoration sidecar's observation and frame hashes, per-cohort joins and
+incumbent comparison counts must match facts derived from that authenticated
+source. A canonical receipt with false summary claims refuses before student
+or tax preparation, even when its checkpoint bytes are authentic.
 
 Income-2022/2023 missing `A_ENRLW` and `A_FTPT` observations stay missing in their
 original columns. S supplies only the authenticated `asec_A_ENRLW` and

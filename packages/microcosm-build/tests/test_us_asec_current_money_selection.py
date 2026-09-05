@@ -354,6 +354,45 @@ def test_typed_constructors_are_token_gated():
         SelectedCurrentMoney(selected.header, selected.fields)
 
 
+@pytest.mark.parametrize(
+    "mutation, reason",
+    [
+        ("null_roster", "FIELD_ENTITY_ROSTER"),
+        ("integer_item", "FIELD_ENTITY_ROSTER"),
+        ("missing_rows", "SELECTED_HEADER_SCHEMA"),
+    ],
+)
+def test_selected_decoder_sanitizes_malformed_canonical_headers(mutation, reason):
+    _, ready = invented_money()
+    body = body_of(ready)
+    payload = encode_selected_current_money(selected_of(body))
+    start = len(SELECTED_MAGIC) + 4
+    size = struct.unpack_from("<I", payload, len(SELECTED_MAGIC))[0]
+    header = money._parse(payload[start : start + size])
+    if mutation == "null_roster":
+        header["field_entities"] = None
+    elif mutation == "integer_item":
+        header["field_entities"][0] = 7
+    else:
+        del header["person_rows"]
+    encoded = money._json(header)
+    forged = (
+        SELECTED_MAGIC
+        + struct.pack("<I", len(encoded))
+        + encoded
+        + payload[start + size : -32]
+    )
+    forged += sha256(forged).digest()
+    with pytest.raises(MoneyRefusalError, match=reason):
+        decode_selected_current_money(
+            forged,
+            expected_parent_header_sha256=body.header_sha256,
+            expected_parent_content_sha256=body.content_sha256,
+            expected_prepared_receipt_sha256=DIGEST,
+            expected_selection_sha256="c" * 64,
+        )
+
+
 def test_selected_payload_declares_its_own_magic():
     _, ready = invented_money()
     payload = encode_selected_current_money(selected_of(body_of(ready)))
