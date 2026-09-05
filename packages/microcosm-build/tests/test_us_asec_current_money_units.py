@@ -335,7 +335,13 @@ def test_tax_result_rejects_changed_frame_core_implementation(tmp_path, monkeypa
 
 
 def _changed_fields(ready, mutation="nonzero"):
-    name = "CAP_VAL" if mutation == "zero_to_amount" else "WSAL_VAL"
+    name = (
+        "ANN_VAL"
+        if mutation == "status_only"
+        else "CAP_VAL"
+        if mutation == "zero_to_amount"
+        else "WSAL_VAL"
+    )
     position = money.FIELDS.index(name)
     field = ready.fields[position]
     amounts, statuses, origin = (
@@ -344,7 +350,15 @@ def _changed_fields(ready, mutation="nonzero"):
         field.zero_origin.copy(),
     )
     row = 0 if mutation == "zero_to_amount" else 3
-    if mutation == "amount_to_zero":
+    if mutation == "status_only":
+        # Both zero-dollar and declared-NIU states are valid for ANN_VAL.
+        # Change only its meaning and zero provenance, leaving amounts intact.
+        assert amounts[row] == 0.0
+        assert statuses[row] == money.CodebookStatus.DECLARED_NIU
+        assert origin[row] == 0
+        statuses[row] = money.CodebookStatus.ZERO_DOLLARS_AS_CODED
+        origin[row] = 1
+    elif mutation == "amount_to_zero":
         amounts[row] = 0.0
         statuses[row] = money._ZERO_STATUS[
             ready.bindings.spec.fields[position].zero_semantics
@@ -363,6 +377,11 @@ def _changed_fields(ready, mutation="nonzero"):
     money._validate_field(
         changed, ready.bindings.spec.fields[position], len(amounts), nominal=False
     )
+    if mutation == "status_only":
+        assert changed.amount_bytes == field.amount_bytes
+        assert changed.validity_bytes == field.validity_bytes
+        assert changed.status_bytes != field.status_bytes
+        assert changed.zero_origin_bytes != field.zero_origin_bytes
     fields = list(ready.fields)
     fields[position] = changed
     return tuple(fields)
@@ -395,7 +414,9 @@ def test_replay_bindings_alone_cannot_authorize_rechecksummed_changed_wages(
         codec.decode_current_money(changed, ready.bindings)
 
 
-@pytest.mark.parametrize("mutation", ["nonzero", "zero_to_amount", "amount_to_zero"])
+@pytest.mark.parametrize(
+    "mutation", ["nonzero", "zero_to_amount", "amount_to_zero", "status_only"]
+)
 def test_replay_refuses_invariant_valid_changed_content_before_state_issuance(
     tmp_path, monkeypatch, mutation
 ):
@@ -460,7 +481,9 @@ def test_replay_refuses_expected_from_different_source(tmp_path, monkeypatch):
         )
 
 
-@pytest.mark.parametrize("mutation", ["nonzero", "zero_to_amount", "amount_to_zero"])
+@pytest.mark.parametrize(
+    "mutation", ["nonzero", "zero_to_amount", "amount_to_zero", "status_only"]
+)
 def test_consumer_rejects_private_test_forged_ready_before_engine(
     tmp_path, monkeypatch, mutation
 ):
@@ -478,12 +501,15 @@ def test_consumer_rejects_private_test_forged_ready_before_engine(
         units.reconstruct_current_money_tax_units(source, forged)
 
 
-def test_result_receipt_binds_money_body_not_only_header(tmp_path, monkeypatch):
+@pytest.mark.parametrize("mutation", ["nonzero", "status_only"])
+def test_result_receipt_binds_money_body_not_only_header(
+    tmp_path, monkeypatch, mutation
+):
     source = _fixture(tmp_path, monkeypatch)
     ready = source.ready()
     result = units.reconstruct_current_money_tax_units(source, ready)
     forged = money.ReadyCurrentMoney(
-        ready.bindings, _changed_fields(ready), _token=money._STATE_TOKEN
+        ready.bindings, _changed_fields(ready, mutation), _token=money._STATE_TOKEN
     )
     assert forged.header == ready.header
     replaced = replace(result, money=forged, _token=units._RESULT_TOKEN)
