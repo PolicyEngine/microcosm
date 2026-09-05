@@ -2,8 +2,8 @@
 
 `microcosm.build.candidate_quality` seals existing aggregate JSON evidence for
 inspection. It never reads population H5 files, runs a simulation, uploads,
-changes release defaults, or writes production/staging pointers. It has no
-dependency on the model-artifact graph PR.
+changes release defaults, or writes production/staging pointers. It imports
+only the Python standard library and depends on no other Microcosm module.
 
 Run from the locked workspace:
 
@@ -94,37 +94,24 @@ partitions at their original safe relative paths. Bundle content is bounded at
 fail before writing. The existing dashboard reader remains authoritative for
 the bundle's evaluation semantics.
 
-## Geographic release scope
+## Acceptance, eligibility and geographic claims
 
-Exact-k configuration schema 2 requires:
+`release_eligibility` is recorded, never computed. This transport has no
+acceptance policy, no geographic scope configuration and no command-line
+surface beyond the three arguments above. It copies the status an authoritative
+acceptance producer has already decided, and refuses only the combinations that
+would contradict themselves: `eligible` without a completed run, and `eligible`
+without a population identity. A successful copy, a completed run, a present
+attachment or a matching digest is transport integrity and producer
+attestation. None of them is scientific certification, and nothing here can be
+read as one.
 
-```json
-{
-  "schema_version": 2,
-  "analysis": {
-    "requested_scope": "national",
-    "policy": "national_v1"
-  }
-}
-```
-
-All existing pool, ladder, target, calibration and release fields remain
-required. `national_v1` preserves the existing national release checks; it
-adds no CD accuracy claim. Schema 1 remains readable with its historical
-behavior and cannot accept a new CD request through undeclared fields.
-
-For explicit CD diagnostics use `requested_scope: "national_cd"` and
-`policy: "cd_support_diagnostic_v1"`. This enables existing CD missing,
-skipped and zero-support checks and records a geographic acceptance receipt.
-It also adds a terminal release failure because a reviewed CD fit and held-out
-protocol is still missing. It cannot certify CD analysis, even if support
-checks pass. The fiscal CLI exposes the same contract as `--analysis-scope`
-and `--acceptance-policy`. The older `--gate-congressional-district-targets`
-option alone retains its historical support-check behavior; it is not a CD
-certification declaration. Exact-k still requires `--no-staging`.
-
-The draft [CD acceptance protocol](us-cd-acceptance-protocol-draft.md) is for
-adjudication before any code can grant CD eligibility. Local development sizes
-must pass the complete end-to-end correctness checks and measured resource
-profile before increasing scale. Reduced survey fractions never become evidence
-that full-source CD release requirements have been met.
+Nothing in this module grants congressional-district eligibility, or eligibility
+at any other geographic level. A CD-scoped aggregate is carried exactly like any
+other attachment: its declared identity is checked against the candidate,
+population or run it names, and its bytes are preserved unchanged. That
+establishes the file is the file it claims to be. It does not establish that a
+CD fit was reviewed or that a held-out protocol was run, and this transport
+cannot be used to assert either. Declared `geography.levels` and
+`geography.vintage` are copied descriptors of what a producer says it computed,
+not verified coverage.
