@@ -117,8 +117,21 @@ def _column_names(group: h5py.Group, name: str) -> tuple[str, ...]:
     return values
 
 
-def _read_numeric_household(handle: BinaryIO) -> pd.DataFrame:
+def _read_numeric_household(
+    handle: BinaryIO,
+    *,
+    columns: Sequence[str] = ASEC_HOUSEHOLD_OBSERVATION_COLUMNS,
+    require_same_block: bool = False,
+) -> pd.DataFrame:
     """Read selected primitive observations without decoding any object block."""
+    if (
+        isinstance(columns, str)
+        or not columns
+        or any(not isinstance(name, str) or not name for name in columns)
+        or len(set(columns)) != len(columns)
+    ):
+        raise ValueError("ASEC household numeric projection requires unique names.")
+    requested = tuple(columns)
     with h5py.File(handle, "r") as h5:
         group = _hard_child(h5, "household")
         if not isinstance(group, h5py.Group):
@@ -135,7 +148,7 @@ def _read_numeric_household(handle: BinaryIO) -> pd.DataFrame:
         ):
             raise ValueError("ASEC household HDF has an invalid block count.")
         columns = _column_names(group, "axis0")
-        if set(ASEC_HOUSEHOLD_OBSERVATION_COLUMNS) - set(columns):
+        if set(requested) - set(columns):
             raise ValueError("ASEC household HDF lacks required observed columns.")
         axis1 = _dataset(group, "axis1")
         if axis1.ndim != 1:
@@ -148,14 +161,14 @@ def _read_numeric_household(handle: BinaryIO) -> pd.DataFrame:
         for index in range(int(nblocks)):
             names = _column_names(group, f"block{index}_items")
             all_items.extend(names)
-            wanted = [
-                i
-                for i, name in enumerate(names)
-                if name in ASEC_HOUSEHOLD_OBSERVATION_COLUMNS
-            ]
+            wanted = [i for i, name in enumerate(names) if name in requested]
             if not wanted:
                 # Do not even open an unrelated object/VLARRAY value dataset.
                 continue
+            if require_same_block and output:
+                raise ValueError(
+                    "ASEC household selected observations require one shared block."
+                )
             values = _dataset(group, f"block{index}_values")
             if values.dtype != np.dtype("<i8") or values.shape != (rows, len(names)):
                 raise ValueError(
@@ -172,9 +185,7 @@ def _read_numeric_household(handle: BinaryIO) -> pd.DataFrame:
             raise ValueError(
                 "ASEC household block columns disagree with the frame inventory."
             )
-    return pd.DataFrame(
-        {name: output[name] for name in ASEC_HOUSEHOLD_OBSERVATION_COLUMNS}
-    )
+    return pd.DataFrame({name: output[name] for name in requested})
 
 
 def _load_source(source: AsecHouseholdObservationSource) -> pd.DataFrame:
