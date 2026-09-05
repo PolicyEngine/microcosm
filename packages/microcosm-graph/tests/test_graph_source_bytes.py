@@ -256,17 +256,18 @@ def test_raw_byte_source_reaches_a_typed_artifact_and_its_consumer(tmp_path) -> 
     # The only population is the fixture's; the import node declares none.
     assert set(cold.populations) == {"survey"}
     assert cold.nodes["import_multipliers"].frame_key is None
-    np.testing.assert_array_equal(
-        cold.population("survey").table("person")["age_multiplier"].to_numpy(),
-        expected_multipliers(sources["survey"]),
-    )
+    values = cold.population("survey").table("person")["age_multiplier"].to_numpy()
+    np.testing.assert_array_equal(values, expected_multipliers(sources["survey"]))
+    # Every band of the fixture is populated, so the lookup really discriminates.
+    assert set(values) == {0.5, 1.0, 1.25}
     # The typed artifact carries what the codec actually read off disk.
     key = cold.nodes["import_multipliers"].opaque_artifacts["table"]
     stored = json.loads(store.load_bytes(key).decode("utf-8"))
     payload = load_source_bytes("raw-bytes-v1", sources["multipliers"])
     bounds, multiplier = decode(payload)
-    assert stored["lower_bound"] == bounds.tolist()
-    assert stored["multiplier"] == multiplier.tolist()
+    assert payload == sources["multipliers"].read_bytes()
+    assert stored["lower_bound"] == bounds.tolist() == [0, 18, 65]
+    assert stored["multiplier"] == multiplier.tolist() == [0.5, 1.0, 1.25]
     assert cold.nodes["import_multipliers"].receipt["bands"] == 3
 
     replay_registry, replay_importer, replay_apply = registry_for()
@@ -292,6 +293,7 @@ def test_changed_lookup_bytes_recompute_the_importer_and_its_dependents(
     store = ContentStore(tmp_path / "store")
     registry, _, _ = registry_for()
     cold = run_graph(compiled, sources=sources, store=store, kernels=registry)
+    before = cold.population("survey").table("person")["age_multiplier"].to_numpy()
 
     write_lookup(sources["multipliers"], (0.25, 1.0, 2.0))
     changed_registry, importer, apply_kernel = registry_for()
@@ -307,10 +309,11 @@ def test_changed_lookup_bytes_recompute_the_importer_and_its_dependents(
     # Exactly the consumers: the population the lookup never touched is reused.
     assert changed.nodes["survey"].hit
     assert changed.nodes["survey"].key == cold.nodes["survey"].key
+    after = changed.population("survey").table("person")["age_multiplier"].to_numpy()
     np.testing.assert_array_equal(
-        changed.population("survey").table("person")["age_multiplier"].to_numpy(),
-        expected_multipliers(sources["survey"], (0.25, 1.0, 2.0)),
+        after, expected_multipliers(sources["survey"], (0.25, 1.0, 2.0))
     )
+    assert not np.array_equal(before, after)
 
 
 def test_malformed_lookup_bytes_reject_an_ordinary_import_node(tmp_path) -> None:
@@ -320,9 +323,11 @@ def test_malformed_lookup_bytes_reject_an_ordinary_import_node(tmp_path) -> None
     store = ContentStore(tmp_path / "store")
     registry, importer, apply_kernel = registry_for()
 
-    with pytest.raises(NodeRejectedError, match="import_multipliers"):
+    with pytest.raises(NodeRejectedError, match="import_multipliers") as rejected:
         run_graph(compiled, sources=sources, store=store, kernels=registry)
 
+    # Rejected for the content, not for some other contract breach.
+    assert "not readable" in str(rejected.value)
     assert importer.calls == 1 and apply_kernel.calls == 0
 
 
