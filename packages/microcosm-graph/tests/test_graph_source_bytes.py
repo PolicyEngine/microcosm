@@ -130,7 +130,14 @@ class ImportMultipliers(KernelBase):
 
 
 class GateMultipliers(ImportMultipliers):
-    """The same import as a typed gate, so a bad lookup stays evidence."""
+    """The same import as a typed gate, so a bad lookup stays evidence.
+
+    A gate turns *any* exception into a verdict (``executor._failed_gate_result``),
+    including the fatal ``StoreUnavailable`` an uninstalled codec or a missing
+    dependency raises — that arm is checked before the fatal one. So a gate is
+    the wrong node to be the first reader of an optional dependency; it is the
+    right node for content it is judging, which is what this one does.
+    """
 
     ref = "lookup.gate@1"
     capabilities = Capabilities(
