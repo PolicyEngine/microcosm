@@ -5,6 +5,8 @@ import importlib.util
 import json
 import sys
 from dataclasses import replace
+from importlib import import_module
+from importlib.resources import files
 from pathlib import Path
 
 import numpy as np
@@ -17,8 +19,12 @@ from microcosm.build.us_runtime.graph_context import (
     encode_us_frame_context,
 )
 from microcosm.build.us_runtime.graph_early_preparation import (
+    _HOURS_IMPLEMENTATION_MODULES,
+    HOURS_DEPENDENCIES,
+    HOURS_OUTER_PHASE,
     HOURS_PHASE,
     US_HOURS_EVIDENCE_TYPE,
+    USHoursDeriveKernel,
     USHoursGateKernel,
     register_us_hours_kernels,
     us_hours_nodes,
@@ -554,3 +560,106 @@ def test_gate_rejects_forged_or_misbound_producer_observations(tamper):
     )
     with pytest.raises(ValueError, match="(evidence|summary|producer)"):
         USHoursGateKernel().run(context)
+
+
+def test_hours_inner_nodes_declare_the_registered_outer_preparation_phase():
+    from microcosm.build.us_runtime.h5_io import US_STACKED_POOL_OPERATOR_ORDER
+
+    nodes = us_hours_nodes(
+        frame_column_declarations(_frame()), base="source", context_producer="source"
+    )
+    assert HOURS_OUTER_PHASE in US_STACKED_POOL_OPERATOR_ORDER
+    assert {node.params["phase"] for node in nodes} == {
+        "prepare_multispine_source_inputs_for_clone"
+    }
+    assert [node.id for node in nodes] == [
+        "early_preparation.hours.boundary",
+        "early_preparation.hours",
+        "early_preparation.hours.gate",
+    ]
+
+
+@pytest.mark.parametrize("module", _HOURS_IMPLEMENTATION_MODULES)
+def test_actual_hours_helper_source_bytes_invalidate_implementation(
+    monkeypatch, module
+):
+    kernel = USHoursDeriveKernel()
+    before = kernel.implementation_hash()
+    target = Path(import_module(module).__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_source(path):
+        content = original(path)
+        return (
+            content + b"\n# intercepted helper revision\n"
+            if path.resolve() == target
+            else content
+        )
+
+    monkeypatch.setattr(Path, "read_bytes", changed_source)
+    assert kernel.implementation_hash() != before
+
+
+def test_hours_source_manifest_resource_bytes_invalidate_implementation(monkeypatch):
+    kernel = USHoursDeriveKernel()
+    before = kernel.implementation_hash()
+    target = Path(
+        str(files("microcosm.build.us").joinpath("source_stages.json"))
+    ).resolve()
+    original = Path.read_bytes
+
+    def changed_resource(path):
+        content = original(path)
+        return content + b"\n" if path.resolve() == target else content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_resource)
+    assert kernel.implementation_hash() != before
+
+
+@pytest.mark.parametrize("dependency", HOURS_DEPENDENCIES)
+def test_hours_declared_runtime_versions_invalidate_implementation(
+    monkeypatch, dependency
+):
+    import microcosm.graph.kernel as kernel_module
+
+    kernel = USHoursDeriveKernel()
+    before = kernel.implementation_hash()
+    original = kernel_module.importlib_metadata.version
+    monkeypatch.setattr(
+        kernel_module.importlib_metadata,
+        "version",
+        lambda name: (
+            original(name) + ".changed" if name == dependency else original(name)
+        ),
+    )
+    assert kernel.implementation_hash() != before
+
+
+@pytest.mark.parametrize(
+    "module",
+    (
+        "graph_sources",
+        "spine_assembly",
+        "stacked_spine",
+        "graph_geography",
+        "geography_ladder",
+    ),
+)
+def test_assembly_and_geography_edits_do_not_invalidate_hours(monkeypatch, module):
+    kernel = USHoursDeriveKernel()
+    before = kernel.implementation_hash()
+    target = Path(
+        import_module(f"microcosm.build.us_runtime.{module}").__file__
+    ).resolve()
+    original = Path.read_bytes
+
+    def changed_source(path):
+        content = original(path)
+        return (
+            content + b"\n# intercepted independent source/geography revision\n"
+            if path.resolve() == target
+            else content
+        )
+
+    monkeypatch.setattr(Path, "read_bytes", changed_source)
+    assert kernel.implementation_hash() == before

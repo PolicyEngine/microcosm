@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
+from importlib import import_module
 from importlib.resources import files
 
 import pandas as pd
@@ -27,9 +28,9 @@ from microcosm.graph import (
     StructuralDelta,
 )
 from microcosm.graph.canonical import canonical_json
+from microcosm.graph.kernel import source_hash
 
 from .graph_context import US_FRAME_CONTEXT_TYPE, _decode, _mass_records, _row_identity
-from .graph_sources import _source_implementation_hash
 from .hours_worked import (
     US_HOURS_WORKED_OUTPUT_COLUMNS,
     US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
@@ -42,22 +43,78 @@ from .multispine_pool import (
     validate_multispine_hours_person_boundary,
 )
 
-HOURS_PHASE = "early_preparation.hours"
+HOURS_PHASE = "early_preparation.hours"  # Stable inner-node identity prefix.
+HOURS_OUTER_PHASE = "prepare_multispine_source_inputs_for_clone"
 US_HOURS_EVIDENCE_TYPE = ArtifactType("microcosm.us.measured_hours_evidence", 1)
+HOURS_DEPENDENCIES = ("numpy", "pandas", "pyarrow")
+
+# Whole-module closure of the functions this slice actually calls. This is
+# independent of the source importer and assembly/geography implementations.
+# Edits elsewhere in a listed module conservatively invalidate hours as well.
+_HOURS_IMPLEMENTATION_MODULES = (
+    "microcosm.build.us_runtime.graph_early_preparation",
+    "microcosm.build.us_runtime.graph_context",
+    "microcosm.build.us_runtime.hours_worked",
+    "microcosm.build.us_runtime.multispine_pool",
+    "microcosm.build.us_runtime.operator_boundary",
+    "microcosm.build.us_runtime.support_provenance",
+    "microcosm.build.source_manifest",
+    "microcosm.build.source_runtime",
+    "microcosm.build.gates",
+    "microcosm.frame",
+    "microcosm.frame.accounting",
+    "microcosm.frame.bundle",
+    "microcosm.frame.kernels",
+    "microcosm.frame.materialize",
+    "microcosm.frame.rules",
+    "microcosm.frame.schema",
+    "microcosm.frame.units",
+    "microcosm.frame.weights",
+    "microcosm.graph",
+    "microcosm.graph.artifact_edges",
+    "microcosm.graph.attachments",
+    "microcosm.graph.availability",
+    "microcosm.graph.canonical",
+    "microcosm.graph.codecs",
+    "microcosm.graph.decl",
+    "microcosm.graph.errors",
+    "microcosm.graph.executor",
+    "microcosm.graph.explain",
+    "microcosm.graph.kernel",
+    "microcosm.graph.keys",
+    "microcosm.graph.manifest",
+    "microcosm.graph.population",
+    "microcosm.graph.randomness",
+    "microcosm.graph.serialize",
+    "microcosm.graph.store",
+    "microcosm.graph.view",
+)
 
 
 class _HoursKernel(KernelBase):
     def implementation_hash(self) -> str:
-        digest = hashlib.sha256(_source_implementation_hash().encode())
-        digest.update(
-            files("microcosm.build.us").joinpath("source_stages.json").read_bytes()
+        module_digest = source_hash(
+            *(import_module(name) for name in _HOURS_IMPLEMENTATION_MODULES),
+            dependencies=HOURS_DEPENDENCIES,
         )
-        digest.update(files("microcosm.graph").joinpath("canonical.py").read_bytes())
-        return digest.hexdigest()
+        resource = files("microcosm.build.us").joinpath("source_stages.json")
+        return hashlib.sha256(
+            canonical_json(
+                {
+                    "schema": "microcosm.us.measured-hours-implementation.v1",
+                    "modules": module_digest,
+                    "resources": {
+                        "microcosm.build.us/source_stages.json": hashlib.sha256(
+                            resource.read_bytes()
+                        ).hexdigest()
+                    },
+                }
+            )
+        ).hexdigest()
 
 
 def _params(context: KernelContext) -> None:
-    if context.params != {"phase": HOURS_PHASE}:
+    if context.params != {"phase": HOURS_OUTER_PHASE}:
         raise ValueError("Measured hours requires its registered production phase.")
 
 
@@ -92,7 +149,7 @@ class USHoursBoundaryKernel(_HoursKernel):
         Determinism.DETERMINISTIC,
         structural=StructuralDelta.FILTER,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=("numpy", "pandas"),
+        dependencies=HOURS_DEPENDENCIES,
     )
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -117,7 +174,7 @@ class USHoursDeriveKernel(_HoursKernel):
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=("numpy", "pandas"),
+        dependencies=HOURS_DEPENDENCIES,
     )
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -193,7 +250,7 @@ class USHoursGateKernel(_HoursKernel):
         Determinism.DETERMINISTIC,
         role=KernelRole.GATE,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=("numpy", "pandas"),
+        dependencies=HOURS_DEPENDENCIES,
     )
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -302,7 +359,7 @@ def us_hours_nodes(
             base=base,
             structural=StructuralDelta.FILTER,
             inputs=slices(boundary_columns),
-            params={"phase": HOURS_PHASE},
+            params={"phase": HOURS_OUTER_PHASE},
             artifact_inputs=(
                 ArtifactInput(
                     "frame_context",
@@ -322,7 +379,7 @@ def us_hours_nodes(
                 Owned("person", name, "float64", rewrite=("person", name) in inventory)
                 for name in output_names
             ),
-            params={"phase": HOURS_PHASE},
+            params={"phase": HOURS_OUTER_PHASE},
             artifact_inputs=(
                 ArtifactInput(
                     "frame_context", boundary, "frame_context", US_FRAME_CONTEXT_TYPE
@@ -337,7 +394,7 @@ def us_hours_nodes(
             f"{HOURS_PHASE}.gate",
             USHoursGateKernel.ref,
             population=boundary,
-            params={"phase": HOURS_PHASE},
+            params={"phase": HOURS_OUTER_PHASE},
             artifact_inputs=(
                 ArtifactInput(
                     "frame_context", HOURS_PHASE, "frame_context", US_FRAME_CONTEXT_TYPE

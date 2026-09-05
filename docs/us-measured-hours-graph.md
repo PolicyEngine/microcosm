@@ -6,6 +6,8 @@ column inventory, population version, and producer of the authenticated
 `microcosm.us.frame_context` artifact. Register their implementations with
 `register_us_hours_kernels`. Downstream stages must consume `frame_context`
 from `early_preparation.hours.gate`.
+All three inner nodes declare the authored outer phase
+`prepare_multispine_source_inputs_for_clone`; their node IDs remain unchanged.
 
 1. `early_preparation.hours.boundary` validates the existing assembly and
    pre-clone evidence in the registered `multispine_pool` source boundary,
@@ -53,6 +55,16 @@ legacy mass history. Its person column inventory adds only newly owned hours
 leaves in the original merge order. The executor retains its own structural
 ledger separately. Restoring a legacy checkpoint uses authenticated context;
 it must not substitute that history for the graph manifest's ledger.
+
+Hours has its own explicit implementation identity. It binds this graph adapter,
+the hours/source-boundary/context helpers, source runtime/manifest and gate
+modules, the named source_stages.json resource, and NumPy, pandas and PyArrow
+versions. PyArrow can execute string-backed source-evidence operations. Shared
+Frame core and graph execution/storage modules are bound conservatively so
+changes to projection, dtype/null handling, ownership or replay cannot reuse an
+obsolete hours result. The closure does not include source import, assembly,
+geography or QRF implementation modules. A change elsewhere inside a listed
+whole module also invalidates hours deliberately.
 
 Tests use six synthetic people and the actual manifest handler, with unequal
 weights and a nondefault person index. A fixed payload/receipt/context
