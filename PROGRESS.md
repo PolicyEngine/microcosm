@@ -4,7 +4,8 @@
 
 In progress on 2026-09-04 on `f1-portable-worker-identity`, starting at
 `50c9232b7597bd1f47897a3132ed08894fc11d93`. Baseline timing precedes all
-behavior changes. Report and raw measurement logs are outside the repository:
+behavior changes. The unchanged identity-heavy baseline passed; the first-200
+baseline is running. Report and raw measurement logs are outside the repository:
 `/private/tmp/microcosm-pr871-ci-crawl/out.md`.
 
 ## Done
@@ -16,10 +17,24 @@ behavior changes. Report and raw measurement logs are outside the repository:
 - Read the GitNexus debugging skill; no callable GitNexus tools are available,
   so source tracing and an independent test-fixture audit are being used.
 
+- Unchanged identity-heavy selector: 77 passed, 245 deselected, exit 0,
+  734.406 seconds wall time (12m 14.406s). Production/test source unchanged.
+- Collected all 322 source-order nodes with `-p no:randomly`; first-200 run
+  deselects the final 122 by node ID. The saved selection ends at
+  `test_primary_refuses_missing_universe_receipt_before_callback`.
+- Repaired only the ignored `.venv/bin/pytest` interpreter shebang after its
+  direct invocation exited 127; no environment sync or dependency change.
+- Audited all named US suites. Shared priming is needed for stacked-spine,
+  H5, and pool-tool tests; preflight/fiscal tests stub the relevant loaders.
+  Recorded all identity/environment mutation opt-outs and in-test resets.
+- CI `--procs` returns process names, not files. Verification will use its
+  actual `--list group:process` expansion: us-qs build/frame (29/5 files),
+  us-am build/other-shards (59/48 files), with external per-file timing.
+
 ## Next
 
-- Measure the unchanged identity-heavy selector and first 200 source-order
-  tests, recording direct exit codes, test counts, and wall times.
+- Finish the unchanged first-200 baseline, then commit regression tests
+  and implementation. No production or test source has been edited yet.
 - Add process memoization and regressions; prime real identities per test
   session with explicit live-test opt-out and consistent fixture bindings.
 - Run the requested full-file, CI-group, Ruff, formatting, and spec checks;
