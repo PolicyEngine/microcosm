@@ -70,9 +70,16 @@ Memoization and session priming pass the focused regressions and the complete
   or skips; exit 0; 347.905 seconds wall time (5m 47.905s), pytest 337.74s.
   The us-qs build process started only after this successful completion.
 
+- Broader CI call-path audit found one additional US caller: spec-bundle
+  generation and imputation projection reach the live worker indirectly.
+  Its module-scoped generated-documents fixture can run before function
+  priming. A focused ordering regression and priming extension are pending;
+  the current broad run will complete before the affected process is rerun.
+
 ## Next
 
-- Finish the actual us-qs/us-am CI process groups with per-file timings;
+- Finish the initial us-qs/us-am CI process groups with per-file timings.
+- Reproduce/fix spec-bundle fixture ordering, rerun the affected CI process,
   then run Ruff, formatting, and spec-pin checks.
 - Complete the external report with exact counts, wall times, scope boundaries,
   and commit history. No push.
