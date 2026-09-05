@@ -6,29 +6,34 @@ Authority: `/Users/maxghenis/architecture-reviews/microcosm-20260904/us-current-
 
 ## State
 
-Resumed the stopped author's existing branch on 2026-09-05 at `025c0b61`.
-Inspected all branch commits and the preserved graph implementation/source-codec
-diff before editing. The preserved partial implementation is complete, including
-S composition, the four graph nodes, inventory and truthful consumer status.
-All 18 new graph tests pass across the development runs, including three-process
-real-PE parity and zero warm kernel calls. Freezing for exact-head verification.
-No genuine-data graph run or push. Root integration must omit this replacement
-journal, as instructed.
+Implementation complete and frozen for root/native/Fable review. Exact-code-head
+`d1a3a89ab2976d55f05a6d6c8f1f2f45e7770561` passed 106 targeted tests with zero
+failures, errors or skips (JUnit 132.240s). The final commit changes this journal
+only; all tested source and test blobs remain identical. No genuine-data read or
+run, no push, no root integration, no release certification. Root must omit this
+replacement journal from integration.
 
-Read the now-available Fable final APPROVE for S exact revision
-`553084def66b5abd315e0e25bae9cd5e986d4867`. Locally composed its reviewed commits
-as `dba326b0` and `907d7bf0`, after verifying the review and actual commit messages.
-Root integration remains separate. S attaches before tax reconstruction and
-binds separately to unchanged T1/money; housing authenticates original T1.
+S frozen revision `553084def66b5abd315e0e25bae9cd5e986d4867` was composed locally
+as `dba326b0`/`907d7bf0` only after reading its final Fable APPROVE. S attaches
+before actual tax construction and binds separately to unchanged T1/money;
+housing authenticates original T1. No local S constructor hook remains pending.
 
 ## Done
 
+- Frozen 106-test verification: `out/current-money-bridge/frozen-1/receipt.json`.
+  All 265 parent-process and 206 modules in each direct/cache worker matched
+  exact own-worktree Git blobs; all three processes used explicit six shards.
+  Cache-only replay: all four nodes hit, zero kernel/source/engine calls.
+- Final changed-file Ruff lint/format, tracked CI file-group verification and
+  `git diff --check` passed. Development failures remain intact under
+  `out/current-money-bridge/development-logs/`; original stopped-author logs in
+  the architecture review directory remain untouched.
 - Four graph kernels, codec registration, strict implementation scope (78 modules,
   six resources), and separately pinned current graph consumer status are complete.
   Original money consumer declarations/pins remain frozen to preserve T1 authority.
   The exact registry/resource/source suite passed 130 tests plus two focused
   final checks. Actual direct/cold/fresh-cache parity passed with zero warm
-  kernel calls; remaining negative graph test validation is finishing.
+  kernel calls; all 18 graph tests also passed in the frozen verification.
 - Independently compared full canonical legacy/T1 identity payloads and actual
   money-resource execution identity to base: all equal, with all 25 closure
   code/resource files matching both Git blobs. Receipt:
@@ -64,13 +69,13 @@ binds separately to unchanged T1/money; housing authenticates original T1.
 
 ## Next
 
-1. Frozen targeted verification with exact source blobs and all six own shards;
-   preserve complete logs, including failed development attempts.
-2. Final journal commit, verify actual commit message and code-byte invariance,
-   export exact-head author report and source/test receipts. The requested external
-   directory is outside writable roots; retain a local output if export refuses.
-3. Stop for root/native/Fable review. Root integration and genuine S/graph runs
-   remain separate and unperformed; no local S constructor hook remains pending.
+- Root/native/Fable review of the frozen bridge, followed by root-owned integration
+  (omit author journals; avoid applying S twice). No genuine source/S production
+  or graph run is authorized or performed by this branch.
+- Final author report and exact source/test receipts are under
+  `out/current-money-bridge/`. Export to the requested architecture-review path
+  is subject to this session's filesystem restriction; retain local output on refusal.
+- Stop. No further implementation or broadened tests are pending locally.
 
 ## Constraints in force
 
