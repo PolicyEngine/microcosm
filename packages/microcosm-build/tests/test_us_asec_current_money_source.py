@@ -344,7 +344,7 @@ def test_authenticated_codec_roundtrip_and_expected_header_refusal(
     loaded = source.load_authenticated_current_money_source(parent, attachment)
     ready = loaded.ready()
     payload = encode_current_money(ready)
-    replay = decode_current_money(payload, ready.bindings)
+    replay = decode_current_money(payload, ready.bindings, expected=ready)
     assert (
         type(replay) is money.ReadyCurrentMoney
         and encode_current_money(replay) == payload

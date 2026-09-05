@@ -1,0 +1,1 @@
+Require independently issued expected content for authenticated current-money replay, compare the actual consumer's money against its verified source, and bind full money content in tax-result receipts; the previous input header and transport checksum did not attest restated amounts.

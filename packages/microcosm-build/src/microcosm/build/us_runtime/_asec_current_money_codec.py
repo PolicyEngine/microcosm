@@ -8,6 +8,7 @@ from .asec_current_money import (
     HEADER_MAX_BYTES,
     MAX_HOUSEHOLDS,
     MAX_PERSONS,
+    AuthenticatedAsecSource,
     MoneyBindings,
     MoneyField,
     ReadyCurrentMoney,
@@ -20,16 +21,17 @@ from .asec_current_money import (
 )
 
 MAGIC = b"MCAM2024\x01"
+_CONTENT_DOMAIN = b"microcosm/asec-current-money-content/1\0"
 # 32 person fields, one household observation, 8+1+1+1 bytes per field/row.
 PAYLOAD_MAX_BYTES = (
     len(MAGIC) + 4 + HEADER_MAX_BYTES + 11 * (32 * MAX_PERSONS + MAX_HOUSEHOLDS) + 32
 )
 
 
-def encode_current_money(
+def _ready_parts(
     ready: SyntheticReadyCurrentMoney | ReadyCurrentMoney,
-) -> bytes:
-    """Encode immutable target amounts/statuses; never serialize nominal arrays."""
+) -> tuple[bytes, ...]:
+    """One canonical serialization shared by transport and content identity."""
     _require(
         type(ready) in (SyntheticReadyCurrentMoney, ReadyCurrentMoney),
         "SYNTHETIC_READY_REQUIRED",
@@ -51,18 +53,42 @@ def encode_current_money(
                 field.zero_origin_bytes,
             )
         )
+    _require(sum(map(len, parts)) + 32 <= PAYLOAD_MAX_BYTES, "PAYLOAD_SIZE")
+    return tuple(parts)
+
+
+def current_money_content_sha256(
+    ready: SyntheticReadyCurrentMoney | ReadyCurrentMoney,
+) -> str:
+    """Bind the full canonical header and field body, apart from transport checksum."""
+    digest = sha256(_CONTENT_DOMAIN)
+    for part in _ready_parts(ready):
+        digest.update(part)
+    return digest.hexdigest()
+
+
+def encode_current_money(
+    ready: SyntheticReadyCurrentMoney | ReadyCurrentMoney,
+) -> bytes:
+    """Encode immutable target amounts/statuses; never serialize nominal arrays."""
+    parts = _ready_parts(ready)
     checksum = sha256()
     for part in parts:
         checksum.update(part)
-    parts.append(checksum.digest())
-    _require(sum(map(len, parts)) <= PAYLOAD_MAX_BYTES, "PAYLOAD_SIZE")
-    return b"".join(parts)
+    return b"".join((*parts, checksum.digest()))
 
 
 def decode_current_money(
-    payload: bytes, expected_bindings: MoneyBindings
+    payload: bytes,
+    expected_bindings: MoneyBindings,
+    *,
+    expected: ReadyCurrentMoney | None = None,
 ) -> SyntheticReadyCurrentMoney | ReadyCurrentMoney:
-    """Validate complete framing, expected scope/input/spec, and field invariants."""
+    """Authenticate replay content against issued readiness before state creation.
+
+    Verified source bindings alone cannot authorize a restated amount body.
+    Synthetic replay retains its binding-only API and refuses an expected object.
+    """
     _require(
         type(payload) is bytes
         and len(MAGIC) + 4 + 32 < len(payload) <= PAYLOAD_MAX_BYTES,
@@ -70,6 +96,13 @@ def decode_current_money(
     )
     _require(type(expected_bindings) is MoneyBindings, "EXPECTED_BINDINGS_REQUIRED")
     expected_bindings.__post_init__()
+    authenticated = type(expected_bindings.spec.source) is AuthenticatedAsecSource
+    if authenticated:
+        _require(type(expected) is ReadyCurrentMoney, "EXPECTED_CONTENT_REQUIRED")
+        _require(expected.bindings == expected_bindings, "EXPECTED_CONTENT_BINDING")
+        _validate_money(expected, expected_bindings.spec, nominal=False)
+    else:
+        _require(expected is None, "EXPECTED_CONTENT_SYNTHETIC")
     view = memoryview(payload)
     _require(payload.startswith(MAGIC), "PAYLOAD_VERSION")
     size = struct.unpack_from("<I", payload, len(MAGIC))[0]
@@ -95,6 +128,8 @@ def decode_current_money(
             buffers.append(payload[cursor : cursor + width * count])
             cursor += width * count
         fields.append(MoneyField(domain.name, *buffers))
+    if authenticated:
+        _require(tuple(fields) == expected.fields, "REPLAY_CONTENT")
     value = RestatedAsecMoney(expected_bindings, tuple(fields), _token=_STATE_TOKEN)
     return require_complete_current_money(
         value,

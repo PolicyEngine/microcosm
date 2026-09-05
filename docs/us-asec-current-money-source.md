@@ -40,7 +40,15 @@ returns an immutable `ReadyCurrentMoney` with
 `source_authentication=checkpoint_bytes_verified`. Synthetic sources still
 produce only `SyntheticReadyCurrentMoney` with `synthetic_unverified`; changing
 a namespace string cannot promote them. The existing codec preserves that
-distinction and requires the exact expected binding on replay. Readiness here
+distinction. Authenticated replay requires both the exact expected binding and
+an independently issued `ReadyCurrentMoney` supplied as
+`decode_current_money(payload, bindings, expected=ready)`. That expected object
+comes from the verified source's `.ready()` or a previously checked replay.
+Every parsed field buffer must equal its expected counterpart before a new
+state is issued. A binding-only authenticated call refuses; synthetic replay
+keeps its binding-only API and refuses an expected object. The header binds
+source inputs, not the restated body, and a transport checksum alone never
+established the body's derivation. Readiness here
 means all declared current-money amounts passed this contract. It does not
 mean all live nominal consumers have been replaced or a release is ready.
 
@@ -64,6 +72,13 @@ YAML bytes, their imported origins, adapter source, and dependency versions.
 ANN NIU is already normalized to positive zero; signed employment losses remain
 signed. No additional price conversion or parallel tax rule is implemented.
 
+Before constructing the transient view or invoking the engine, the consumer
+calls the source's `.ready()` and compares its bindings and complete field
+buffers with the supplied money. This reuses the source's validation pass and
+adds one classification and restatement per reconstruction. The post-engine
+source validation remains in place. No retained source-content cache or
+caller-provided expected hash substitutes for these checks.
+
 The result replaces only the tax-unit table and three person outputs:
 `person_tax_unit_id`, `tax_unit_role_input`, and
 `is_related_to_head_or_spouse`. All other person values and US entities, source
@@ -75,7 +90,13 @@ are not coerced by this string boundary. The receipt binds the original and resu
 artifact, actual execution closure, and old/new member partitions identified by
 person IDs. `result.validate()` detects later output or implementation changes,
 including the Frame-core and shared-loader closure already bound by the source
-evidence in its money spec.
+evidence in its money spec. The receipt also carries `money_content_sha256`, a
+domain-separated digest of the exact encoder parts without their transport
+checksum. It covers the header plus all amount, status, validity and zero-origin
+buffers, using the same serialization as the encoder. Result validation checks
+this content digest in addition to the header and Frame digests; the receipt
+preserves both through checkpoint persistence. The content digest is not an
+input to the pre-restatement header or source evidence.
 The resulting Frame is not a new raw-source authority and cannot be fed back as
 the original authenticated source. Both `release_eligible` and
 `all_current_money_consumers_wired` remain false in its receipt.
@@ -94,7 +115,10 @@ This implementation retains both decoded source Frames during parent comparison
 and performs several full-Frame fingerprint passes. Staging writes each source
 file once, sequentially, with at most the larger staged file present at one
 time; scalar hashing can allocate one column-sized byte buffer. These costs are
-unmeasured on the real full source. Only tiny invented fixtures are authorized
+unmeasured on the real full source, including the added classification,
+restatement and content-hashing passes. The content hash streams existing
+immutable buffers without joining a second full transport payload. Prior wages
+remain excluded from this corrected current-money interface. Only tiny invented fixtures are authorized
 for this slice. Existing checkpoint string canonicalization is preserved;
 metadata already omitted by that checkpoint format cannot be recovered here.
 The sealed types prevent accidental misuse in trusted Python, not hostile
