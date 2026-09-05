@@ -201,6 +201,10 @@ class SourceCodecRegistry:
     ) -> bytes:
         """Read ``path`` with the raw-byte codec ``name`` and require bytes.
 
+        This decodes an external source path, unlike
+        :meth:`ContentStore.load_bytes`, which reads a stored object back by
+        its content key.
+
         Unavailability keeps the classification :meth:`load` gives it: an
         uninstalled codec or a missing dependency is fatal
         :class:`StoreUnavailable`, never a decoded value.

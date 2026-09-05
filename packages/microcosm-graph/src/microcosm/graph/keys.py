@@ -31,7 +31,7 @@ def _hash_parts(domain: str, *parts: object) -> str:
 def _directory_identity(path: Path) -> tuple[str, int]:
     """Hash a directory as a deterministic sequence of relative file bytes.
 
-    Both built-in source codecs consume directories.  Relative names are
+    Both built-in Frame codecs consume directories.  Relative names are
     length-prefixed into this aggregate, so renaming the source directory is
     inert while renaming or changing a file inside it changes the identity.
     ``size`` is the sum of regular-file payload sizes.
@@ -54,9 +54,11 @@ def _directory_identity(path: Path) -> tuple[str, int]:
 def source_content_key(name: str, path: str | Path) -> str:
     """Return the path-independent identity of one named source's content.
 
-    A regular file follows the normative ``sha256(bytes), size`` formula.
+    A regular file follows the normative ``sha256(bytes), size`` formula,
+    which is what the file-only ``raw-bytes-v1`` codec's sources use.
     Directories use a deterministic packed representation for the directory-
-    based ``frame-store`` and ``csv-tables`` codecs.
+    based ``frame-store`` and ``csv-tables`` codecs.  Identity itself is
+    codec-agnostic: it reads the path, never the declaration.
     """
 
     source_path = Path(path)
