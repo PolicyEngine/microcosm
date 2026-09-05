@@ -20,7 +20,6 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build import frame_checkpoint as checkpoint
-from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from microcosm.frame import Frame, Weights
 
 from . import asec_current_money as money_schema
@@ -38,6 +37,7 @@ _MEMBER_PINS = tuple(
     for year, p in sorted(ASEC_EDUCATION_ASSISTANCE_ARCHIVES.items())
 )
 _ATTACHMENT_MAX_BYTES = 2_000_000_000
+_ENCODING_CONTRACT = "independently_reconstructed_canonical_checkpoint_bytes_v1"
 
 
 def _implementation() -> str:
@@ -63,6 +63,7 @@ def _implementation() -> str:
                 "columns": _READ_COLUMNS,
                 "output": OBSERVED_COLUMN,
                 "origin": "authenticated_census_csv_encoded_zero_v1",
+                "encoding_contract": _ENCODING_CONTRACT,
             }
         )
     )
@@ -98,8 +99,8 @@ def _read_member(path: Path, *, rows: int, size: int) -> pd.DataFrame:
     for column in _READ_COLUMNS[1:]:
         _require(
             bool(table[column].str.fullmatch(r"-?[0-9]+").all()),
-            "MEMBER_INTEGER",
-            "PTOTVAL",
+            "MEMBER_INTEGER" if column == "PTOTVAL" else f"MEMBER_INTEGER_{column}",
+            column,
         )
         table[column] = table[column].astype("int64")
     _require(
@@ -248,6 +249,7 @@ def _reconstruct(source, member_paths):
         "zero_origin_policy": "authenticated_census_csv_encoded_zero_v1",
         "zero_claim": "encoded_source_value_not_respondent_answer",
         "implementation_sha256": before,
+        "encoding_contract": _ENCODING_CONTRACT,
     }
     return result, receipt
 
@@ -262,19 +264,23 @@ def _document(receipt):
     }
 
 
-def _candidate_snapshot(path, destination):
+def _candidate_snapshot(path, destination, *, expected_size):
     """Candidate hash is observed only; exact reconstruction supplies authority."""
     digest = hashlib.sha256()
     with Path(path).open("rb") as src, destination.open("xb") as dst:
         before = os.fstat(src.fileno())
-        _require(0 < before.st_size <= _ATTACHMENT_MAX_BYTES, "RESTORATION_SIZE")
+        _require(
+            0 < before.st_size == expected_size <= _ATTACHMENT_MAX_BYTES,
+            "RESTORATION_SIZE",
+        )
         count = 0
         while chunk := src.read(1024 * 1024):
             count += len(chunk)
-            _require(count <= _ATTACHMENT_MAX_BYTES, "RESTORATION_SIZE")
+            _require(count <= expected_size, "RESTORATION_SIZE")
             digest.update(chunk)
             dst.write(chunk)
         after = os.fstat(src.fileno())
+        _require(count == expected_size, "RESTORATION_SIZE")
         _require(
             (
                 before.st_dev,
@@ -306,6 +312,7 @@ class _VerifiedRestoration:
 def _verify(
     parent_path, household_attachment_path, person_income_attachment_path, member_paths
 ):
+    _paths(member_paths)
     source = legacy.load_authenticated_current_money_source(
         parent_path, household_attachment_path
     )
@@ -313,17 +320,21 @@ def _verify(
     with tempfile.TemporaryDirectory(
         prefix="microcosm-person-income-candidate-"
     ) as directory:
-        snapshot = Path(directory) / CHECKPOINT_FILENAME
-        digest = _candidate_snapshot(person_income_attachment_path, snapshot)
-        actual = checkpoint.load_frame_checkpoint(snapshot)
-        canonicalize_frame_string_dtypes(
-            actual.frame, boundary="ASEC person income attachment", in_place=True
+        canonical = Path(directory) / "expected.checkpoint.h5"
+        checkpoint.write_frame_checkpoint(
+            canonical, expected, metadata=_document(receipt)
         )
-    _require(actual.metadata == _document(receipt), "RESTORATION_RECEIPT")
-    _require(
-        legacy._frame_signature(actual.frame) == legacy._frame_signature(expected),
-        "RESTORATION_CONTENT",
-    )
+        with canonical.open("rb") as stream:
+            expected_digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        snapshot = Path(directory) / CHECKPOINT_FILENAME
+        digest = _candidate_snapshot(
+            person_income_attachment_path,
+            snapshot,
+            expected_size=canonical.stat().st_size,
+        )
+        # Never decode candidate HDF. Its shapes, links, attributes, storage and
+        # datatypes cannot control a read before independent byte authority.
+        _require(digest == expected_digest, "RESTORATION_CANONICAL_BYTES")
     source.validate()
     _require(
         _implementation() == receipt["implementation_sha256"],
@@ -376,6 +387,7 @@ def restore_asec_person_income_source(
     if destination.exists():
         raise FileExistsError(destination)
     try:
+        _paths(member_paths)
         source = legacy.load_authenticated_current_money_source(
             parent_path, household_attachment_path
         )
