@@ -10,6 +10,7 @@ from importlib.resources import files
 
 import pandas as pd
 
+from microcosm.frame import US_SCHEMA
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -38,6 +39,7 @@ from .hours_worked import (
     us_hours_worked_gate_from_summary,
 )
 from .multispine_pool import (
+    multispine_hours_implementation_contract,
     multispine_hours_worked_boundary_columns,
     observe_multispine_hours_person,
     validate_multispine_hours_person_boundary,
@@ -46,6 +48,9 @@ from .multispine_pool import (
 HOURS_PHASE = "early_preparation.hours"  # Stable inner-node identity prefix.
 HOURS_OUTER_PHASE = "prepare_multispine_source_inputs_for_clone"
 US_HOURS_EVIDENCE_TYPE = ArtifactType("microcosm.us.measured_hours_evidence", 1)
+US_HOURS_PENDING_CONTEXT_TYPE = ArtifactType(
+    "microcosm.us.measured_hours_pending_context", 1
+)
 HOURS_DEPENDENCIES = ("numpy", "pandas", "pyarrow")
 
 # Whole-module closure of the functions this slice actually calls. This is
@@ -103,6 +108,7 @@ class _HoursKernel(KernelBase):
                 {
                     "schema": "microcosm.us.measured-hours-implementation.v1",
                     "modules": module_digest,
+                    "operator_contract": multispine_hours_implementation_contract(),
                     "resources": {
                         "microcosm.build.us/source_stages.json": hashlib.sha256(
                             resource.read_bytes()
@@ -134,6 +140,15 @@ def _person_context(context: KernelContext) -> tuple[pd.DataFrame, dict[str, obj
         raise ValueError("Measured hours person identity does not match its context.")
     if set(person.columns) - set(declared["columns"]):
         raise ValueError("Measured hours person view includes unknown columns.")
+    for group in US_SCHEMA.group_entities:
+        if document["entities"][group]["rows"] != int(
+            person[US_SCHEMA.membership_column(group)].nunique()
+        ):
+            # Frame already requires exactly the referenced group IDs. Check
+            # that this separate descriptor has not become stale as well.
+            raise ValueError(
+                f"Measured hours {group} context count differs from memberships."
+            )
     sources = document["weight_sources"]
     if len(sources) != 1:
         raise ValueError("Measured hours graph requires one explicit weight source.")
@@ -270,8 +285,8 @@ class USHoursGateKernel(_HoursKernel):
                 "Measured hours gate received malformed producer evidence."
             )
         frame_context = context.artifacts["frame_context"]
-        if frame_context.type != US_FRAME_CONTEXT_TYPE:
-            raise ValueError("Measured hours gate requires the full typed context.")
+        if frame_context.type != US_HOURS_PENDING_CONTEXT_TYPE:
+            raise ValueError("Measured hours gate requires its typed pending context.")
         if frame_context.producer_key != artifact.producer_key:
             raise ValueError(
                 "Measured hours evidence and context require the same producer."
@@ -386,7 +401,7 @@ def us_hours_nodes(
                 ),
             ),
             artifact_outputs=(
-                *context_output,
+                ArtifactOutput("frame_context", US_HOURS_PENDING_CONTEXT_TYPE),
                 ArtifactOutput("hours_evidence", US_HOURS_EVIDENCE_TYPE),
             ),
         ),
@@ -397,7 +412,10 @@ def us_hours_nodes(
             params={"phase": HOURS_OUTER_PHASE},
             artifact_inputs=(
                 ArtifactInput(
-                    "frame_context", HOURS_PHASE, "frame_context", US_FRAME_CONTEXT_TYPE
+                    "frame_context",
+                    HOURS_PHASE,
+                    "frame_context",
+                    US_HOURS_PENDING_CONTEXT_TYPE,
                 ),
                 ArtifactInput(
                     "hours_evidence",

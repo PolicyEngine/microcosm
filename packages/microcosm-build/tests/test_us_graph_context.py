@@ -13,7 +13,7 @@ from microcosm.build.us_runtime.graph_context import (
     us_frame_from_context,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
-from microcosm.graph import ArtifactValue, KernelContext, Node, Numeric
+from microcosm.graph import ArtifactValue, ContentStore, KernelContext, Node, Numeric
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.kernel import NumericScope
 
@@ -81,6 +81,49 @@ def test_context_artifact_contains_no_population_values_or_weights():
     assert "strata" not in document
     assert document["entities"]["person"]["rows"] == 2
     assert "values" not in document["entities"]["person"]
+
+
+@pytest.mark.parametrize("group", US_SCHEMA.group_entities)
+@pytest.mark.parametrize("index_kind", ("offset", "named", "array"))
+def test_context_v1_refuses_unsupported_group_index_before_publishing(
+    group, index_kind
+):
+    source = _frame()
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    indices = {
+        "offset": pd.RangeIndex(10, 12),
+        "named": pd.RangeIndex(2, name="original_group_row"),
+        "array": pd.Index(np.arange(2, dtype=np.int64)),
+    }
+    tables[group].index = indices[index_kind]
+    # This is a valid Frame. Its group pandas index is not its entity ID.
+    frame = Frame(
+        tables,
+        source.schema,
+        {"household": source.weights_for("household")},
+        source.strata,
+    )
+    with pytest.raises(
+        ValueError, match=f"{group} requires a default unnamed RangeIndex"
+    ):
+        encode_us_frame_context(frame)
+
+
+def test_canonical_group_indices_survive_real_graph_store_codec(tmp_path):
+    source = _frame()
+    source.person.index = pd.Index([91, 44], name="original_person_row")
+    source = Frame(
+        {entity: source.table(entity) for entity in source.entities},
+        source.schema,
+        {"household": source.weights_for("household")},
+        source.strata.set_axis(source.person.index),
+    )
+    store = ContentStore(tmp_path)
+    store.put_frame("f" * 64, source)
+    restored = store.load_frame("f" * 64)
+    assert encode_us_frame_context(restored) == encode_us_frame_context(source)
+    for entity in source.entities:
+        pd.testing.assert_frame_equal(restored.table(entity), source.table(entity))
 
 
 def test_metadata_changes_change_context_bytes():

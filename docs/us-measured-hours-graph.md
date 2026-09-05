@@ -8,6 +8,8 @@ column inventory, population version, and producer of the authenticated
 from `early_preparation.hours.gate`.
 All three inner nodes declare the authored outer phase
 `prepare_multispine_source_inputs_for_clone`; their node IDs remain unchanged.
+The declaration regression checks this phase against
+`h5_io.US_STACKED_POOL_OPERATOR_ORDER`; the runtime checks the declared literal.
 
 1. `early_preparation.hours.boundary` validates the existing assembly and
    pre-clone evidence in the registered `multispine_pool` source boundary,
@@ -16,13 +18,16 @@ All three inner nodes declare the authored outer phase
    columns from the ephemeral person view, runs the actual hours manifest
    handler, computes the original weighted signal observations, and merges
    only `hours_worked_last_week` and `weekly_hours_worked_before_lsr` by person
-   ID. It publishes the updated full context and version1 typed measured-hours
-   evidence. It does not certify the observations.
+   ID. It publishes the updated full context as
+   `microcosm.us.measured_hours_pending_context` and version1 typed measured-hours
+   evidence. Ordinary accepted-context consumers cannot bind to this pending
+   type. It does not certify the observations.
 3. `early_preparation.hours.gate` applies the original mandatory signal checks
    in their original failure order. It accepts only complete observations
    bound to the same typed producer and exact context payload. On failure,
    the executor saves the gate's original exception message and publishes no
-   success context. Both byte and structural descendants remain unreached on
+   success context. Both byte and structural descendants bound to the gate
+   remain unreached on
    cold runs, warm runs, and required-cache replay.
 
 The derivation declares every available raw and incumbent hours field. The
@@ -32,6 +37,9 @@ registered helper uses the same person-table runner, all-null projection,
 ID merge, summary/checks, and ordered receipt builders as the legacy Frame
 wrapper. Membership IDs determine the selected group counts exactly as
 `Frame.select` prunes each group, including groups without explicit weights.
+The full-pool context counts are checked against actual distinct membership
+IDs before the boundary commits. Frame itself already refuses unreferenced
+group rows; this additional check refuses stale descriptors.
 No partial Frame receives whole-pool metadata. The new graph module has no
 source-provenance exemption.
 
@@ -55,6 +63,11 @@ legacy mass history. Its person column inventory adds only newly owned hours
 leaves in the original merge order. The executor retains its own structural
 ledger separately. Restoring a legacy checkpoint uses authenticated context;
 it must not substitute that history for the graph manifest's ledger.
+US context version 1 requires default unnamed RangeIndex group tables and
+rejects other valid Frame group-index representations at encoding. It carries
+group IDs rather than index descriptors, and the all-row FILTER would otherwise
+reset such indices silently. Arbitrary person indices remain supported. The
+legacy direct Frame helper retains its wider group-index support.
 
 Hours has its own explicit implementation identity. It binds this graph adapter,
 the hours/source-boundary/context helpers, source runtime/manifest and gate
@@ -65,6 +78,10 @@ changes to projection, dtype/null handling, ownership or replay cannot reuse an
 obsolete hours result. The closure does not include source import, assembly,
 geography or QRF implementation modules. A change elsewhere inside a listed
 whole module also invalidates hours deliberately.
+The identity also binds the live hours output registry and the actual
+formula-owned transient-output projection used by the source-chain receipt.
+Provider roster changes therefore invalidate hours even when none of the
+listed modules' source bytes change.
 
 Tests use six synthetic people and the actual manifest handler, with unequal
 weights and a nondefault person index. A fixed payload/receipt/context

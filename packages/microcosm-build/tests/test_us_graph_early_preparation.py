@@ -24,6 +24,7 @@ from microcosm.build.us_runtime.graph_early_preparation import (
     HOURS_OUTER_PHASE,
     HOURS_PHASE,
     US_HOURS_EVIDENCE_TYPE,
+    US_HOURS_PENDING_CONTEXT_TYPE,
     USHoursDeriveKernel,
     USHoursGateKernel,
     register_us_hours_kernels,
@@ -73,10 +74,12 @@ fixtures = _fixtures()
 
 def _frame():
     asec = fixtures._real_pre_clone_source_frame()
+    asec_tables = {entity: asec.table(entity).copy() for entity in asec.entities}
+    household_weights = np.array([1.0, 3.0])
     asec = Frame(
-        {entity: asec.table(entity) for entity in asec.entities},
+        asec_tables,
         asec.schema,
-        {"household": Weights(np.array([1.0, 3.0]), WeightKind.DESIGN)},
+        {"household": Weights(household_weights, WeightKind.DESIGN)},
     )
     frame = assemble_spines(
         {
@@ -544,7 +547,7 @@ def test_gate_rejects_forged_or_misbound_producer_observations(tamper):
         artifacts={
             "frame_context": ArtifactValue(
                 payload,
-                US_FRAME_CONTEXT_TYPE,
+                US_HOURS_PENDING_CONTEXT_TYPE,
                 "a" * 64,
                 "b" * 64 if tamper == "producer" else "c" * 64,
                 scope,
@@ -663,3 +666,133 @@ def test_assembly_and_geography_edits_do_not_invalidate_hours(monkeypatch, modul
 
     monkeypatch.setattr(Path, "read_bytes", changed_source)
     assert kernel.implementation_hash() == before
+
+
+@pytest.mark.parametrize(
+    "group", ("household", "tax_unit", "spm_unit", "family", "marital_unit")
+)
+def test_frame_already_refuses_unreferenced_groups(group):
+    frame = _frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    extra = tables[group].iloc[[-1]].copy()
+    id_column = frame.schema.entity_id_column(group)
+    extra[id_column] = int(tables[group][id_column].max()) + 1
+    tables[group] = pd.concat([tables[group], extra], ignore_index=True)
+    weights = frame.weights_for("household")
+    if group == "household":
+        weights = weights.with_values(np.append(weights.values, 2.0), kind=weights.kind)
+    with pytest.raises(ValueError, match="referenced by no person"):
+        Frame(tables, frame.schema, {"household": weights}, frame.strata)
+
+
+@pytest.mark.parametrize(
+    "group", ("household", "tax_unit", "spm_unit", "family", "marital_unit")
+)
+def test_boundary_refuses_stale_group_counts_before_materializing_filter(
+    tmp_path, monkeypatch, group
+):
+    frame = _frame()
+    compiled, sources, store, kernels = _setup(tmp_path, frame)
+    document = json.loads(compiled.graph.nodes[0].params["frame_context"])
+    document["entities"][group]["rows"] += 1
+    source = replace(
+        compiled.graph.nodes[0],
+        params={"frame_context": canonical_json(document).decode()},
+    )
+    compiled = compile_graph(
+        replace(compiled.graph, nodes=(source, *compiled.graph.nodes[1:]))
+    )
+    stored_rows = []
+    original = store.put_frame
+
+    def record_frame(key, value, **kwargs):
+        stored_rows.append(value.n(group))
+        return original(key, value, **kwargs)
+
+    monkeypatch.setattr(store, "put_frame", record_frame)
+    with pytest.raises(
+        NodeRejectedError, match="context count differs from memberships"
+    ):
+        run_graph(compiled, sources=sources, store=store, kernels=kernels)
+    # Only the source CREATE committed; the boundary forwards no stale context.
+    assert stored_rows == [frame.n(group)]
+
+
+def test_pending_hours_context_cannot_be_consumed_as_accepted_context(tmp_path):
+    compiled, _, _, _ = _setup(tmp_path, _frame())
+    nodes = tuple(
+        replace(
+            node,
+            artifact_inputs=(
+                ArtifactInput(
+                    "frame_context", HOURS_PHASE, "frame_context", US_FRAME_CONTEXT_TYPE
+                ),
+            ),
+        )
+        if node.id == "after"
+        else node
+        for node in compiled.graph.nodes
+    )
+    with pytest.raises(ValueError, match="type"):
+        compile_graph(replace(compiled.graph, nodes=nodes))
+
+
+def test_legacy_custom_group_index_is_preserved_but_graph_context_refuses():
+    source = _frame()
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    for group in source.schema.group_entities:
+        tables[group].index = pd.Index(
+            np.arange(source.n(group)) * 3 + 41, name="original_group_row"
+        )
+    frame = Frame(
+        tables,
+        source.schema,
+        {"household": source.weights_for("household")},
+        source.strata,
+        metadata=source.metadata,
+        mass_log=source.mass_log,
+    )
+    direct = _direct(frame).frame
+    for group in frame.schema.group_entities:
+        pd.testing.assert_frame_equal(direct.table(group), frame.table(group))
+    with pytest.raises(ValueError, match="requires a default unnamed RangeIndex"):
+        encode_us_frame_context(frame)
+
+
+def test_live_formula_ownership_projection_is_bound_to_hours_identity(monkeypatch):
+    kernel = USHoursDeriveKernel()
+    before = kernel.implementation_hash()
+    initial = pool._transient_source_outputs(
+        ("with_us_hours_worked_inputs",), pool.PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES
+    )
+    assert initial == {}
+    monkeypatch.setattr(
+        pool,
+        "_FORMULA_OWNED_SOURCE_OUTPUTS",
+        {
+            **pool._FORMULA_OWNED_SOURCE_OUTPUTS,
+            "person": frozenset(
+                {
+                    *pool._FORMULA_OWNED_SOURCE_OUTPUTS.get("person", ()),
+                    "weekly_hours_worked_before_lsr",
+                }
+            ),
+        },
+    )
+    assert pool._transient_source_outputs(
+        ("with_us_hours_worked_inputs",), pool.PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES
+    ) == {"person": ["weekly_hours_worked_before_lsr"]}
+    assert kernel.implementation_hash() != before
+
+
+def test_live_hours_output_registry_is_bound_to_hours_identity(monkeypatch):
+    kernel = USHoursDeriveKernel()
+    before = kernel.implementation_hash()
+    monkeypatch.setitem(
+        pool.PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+        "hours_worked",
+        {
+            "person": frozenset({"weekly_hours_worked_before_lsr"}),
+        },
+    )
+    assert kernel.implementation_hash() != before

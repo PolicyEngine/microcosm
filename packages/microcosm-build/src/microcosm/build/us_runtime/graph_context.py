@@ -127,6 +127,20 @@ def encode_us_frame_context(frame: Frame) -> bytes:
     entities = {}
     for entity in US_SCHEMA.entities:
         table = frame.table(entity)
+        if entity in US_SCHEMA.group_entities and (
+            not isinstance(table.index, pd.RangeIndex)
+            or table.index.start != 0
+            or table.index.stop != len(table)
+            or table.index.step != 1
+            or table.index.name is not None
+        ):
+            # Version 1 carries group IDs, not pandas index descriptors. An
+            # identity FILTER uses Frame.select, which resets group indices.
+            # Refuse an unsupported representation before emitting authority
+            # that downstream person-only nodes cannot independently inspect.
+            raise ValueError(
+                f"US graph context {entity} requires a default unnamed RangeIndex."
+            )
         if any(not isinstance(column, str) for column in table.columns):
             raise ValueError("US graph context column names must be strings.")
         entities[entity] = {

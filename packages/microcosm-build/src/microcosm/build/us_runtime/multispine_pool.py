@@ -1848,6 +1848,26 @@ def multispine_hours_worked_boundary_columns() -> tuple[str, ...]:
     return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
 
 
+def multispine_hours_implementation_contract() -> dict[str, object]:
+    """Bind live provider rosters actually consumed by the hours projection.
+
+    These values can change through imported registries without an edit to
+    this module. Keep their actual projection in graph implementation identity.
+    """
+    return {
+        "outputs": {
+            entity: sorted(columns)
+            for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+                "hours_worked"
+            ].items()
+        },
+        "transient_outputs": _transient_source_outputs(
+            ("with_us_hours_worked_inputs",),
+            PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+        ),
+    }
+
+
 def validate_multispine_hours_worked_boundary(frame: Frame) -> dict[str, object]:
     """Validate the existing pre-clone boundary before graph hours derivation."""
     return validate_multispine_hours_person_boundary(
