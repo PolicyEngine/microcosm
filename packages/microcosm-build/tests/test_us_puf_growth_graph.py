@@ -8,7 +8,9 @@ reads a PUF, downloads anything, or imports a country engine.
 import ast
 import inspect
 import json
+from importlib import import_module
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -34,6 +36,7 @@ from microcosm.build.us_runtime.puf_growth_graph import (
     PUF_GROWTH_DESIGN_WEIGHT_NODE,
     PUF_GROWTH_MONEY_NODE,
     PufGrowthBoundaryKernel,
+    PufGrowthMoneyKernel,
     register_us_puf_growth_kernels,
     us_puf_growth_nodes,
 )
@@ -52,6 +55,7 @@ from microcosm.graph import (
     StructuralDelta,
     compile_graph,
     run_graph,
+    source_hash,
 )
 from microcosm.graph.codecs import load_csv_tables
 from microcosm.graph.errors import NodeRejectedError
@@ -462,3 +466,48 @@ def test_the_graph_module_reads_no_file_and_imports_no_country_engine():
     source = inspect.getsource(puf_growth_graph)
     for token in ("open(", "read_csv", "h5py", "urlopen", "requests", "Path("):
         assert token not in source
+
+
+def test_the_node_factory_refuses_a_bad_contract_or_no_boundary_column():
+    contract = compile_puf_growth(growth_recipe(), factor_table())
+    with pytest.raises(PufGrowthRefusalError) as error:
+        us_puf_growth_nodes(
+            contract, base="source", entity=ENTITY, person_boundary_columns=()
+        )
+    assert error.value.reason == "PERSON_BOUNDARY_COLUMNS"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        us_puf_growth_nodes(
+            "not a contract",
+            base="source",
+            entity=ENTITY,
+            person_boundary_columns=("is_primary_filer",),
+        )
+    assert error.value.reason == "COMPILED_TYPE"
+
+
+def test_the_kernel_hash_attests_the_pure_transform_and_its_dependencies():
+    """A behaviour-only edit to puf_growth.py must move the node key."""
+    modules = puf_growth_graph._IMPLEMENTATION_MODULES
+    assert "microcosm.build.us_runtime.puf_growth" in modules
+    assert "microcosm.build.us_runtime.puf_growth_graph" in modules
+    kernel = PufGrowthMoneyKernel()
+    assert kernel.implementation_hash() == source_hash(
+        *(import_module(name) for name in modules),
+        dependencies=kernel.capabilities.dependencies,
+    )
+    assert (
+        PufGrowthBoundaryKernel().implementation_hash() == kernel.implementation_hash()
+    )
+
+
+def test_the_kernel_helpers_refuse_a_context_missing_what_they_declared():
+    context = SimpleNamespace(tables={ENTITY: raw_tax_units()})
+    with pytest.raises(PufGrowthRefusalError) as error:
+        puf_growth_graph._identifier_index(context, ENTITY)
+    assert error.value.reason == "ENTITY_ID_COLUMN"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        puf_growth_graph._declared_source(context, ENTITY, ("RECID", "E99999"))
+    assert error.value.reason == "MISSING_DECLARED_FIELD"
+    assert error.value.field == "E99999"

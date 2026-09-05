@@ -24,6 +24,7 @@ from microcosm.build.us_runtime.puf_growth import (
     UNDOCUMENTED_SOURCE_FIELDS,
     CompiledPufGrowth,
     FactorAuthority,
+    FactorSeries,
     FieldRole,
     GrownPufTable,
     GrowthFactorTable,
@@ -516,6 +517,10 @@ def test_monetary_metadata_states_both_ends_and_which_growth_it_was():
         assert basis.temporal_basis == "annual_flow"
     assert metadata["E00100"].valuation == "real_per_return_aged_from_2021"
     assert metadata["E00200"].valuation == "nominal_price_restated_from_2021"
+    for basis in metadata.values():
+        assert basis.unit == "base_currency"
+        assert basis.sector == "households"
+        assert basis.perimeter == "irs_individual_income_tax_returns"
 
 
 def test_the_roster_names_real_fields_with_roles_and_no_factors():
@@ -843,3 +848,219 @@ def test_the_applied_once_guard_can_actually_fire(monkeypatch):
         apply_puf_growth(money_view(), compiled())
     assert error.value.reason == "FACTOR_APPLIED_TWICE"
     assert error.value.field == "E00900"
+
+
+def test_a_series_is_found_by_exact_name_not_by_substring():
+    """Substring dispatch is what the brief forbids; pin it with a collision."""
+    colliding = {
+        **FIXTURE_SERIES,
+        "fixture.price": {
+            "kind": "nominal_price_restatement",
+            "levels": {"2021": "1.0", "2024": "10.0"},
+        },
+    }
+    table = factors(series=colliding)
+    assert table.series_for("fixture.price").level_text(TARGET_YEAR) == "10.0"
+    assert table.series_for("fixture.price_index").level_text(TARGET_YEAR) == "3.0"
+    for near_miss in ("fixture.price_ind", "price_index", "fixture.", "FIXTURE.PRICE"):
+        with pytest.raises(PufGrowthRefusalError) as error:
+            table.series_for(near_miss)
+        assert error.value.reason == "UNKNOWN_FACTOR_SERIES"
+
+
+def test_the_contract_identity_binds_the_factor_table_itself():
+    """Not only the resolved ratios: a different table is a different contract."""
+    first = compiled()
+    relabelled = json.loads(first.factors.document)
+    relabelled["provenance"] = {"note": "a different invented fixture"}
+    other = GrowthFactorTable.from_bytes(canonical(relabelled))
+    second = compile_puf_growth(recipe(), other)
+    assert [f.ratio_bits for f in second.resolved] == [
+        f.ratio_bits for f in first.resolved
+    ]
+    assert second.factors.sha256 != first.factors.sha256
+    assert second.sha256 != first.sha256
+
+
+def test_declaration_order_does_not_change_a_recipe():
+    forward = recipe()
+    backward = GrowthRecipe(
+        "puf_growth_fixture_recipe_v1",
+        tuple(reversed((*PRESERVED_RULES, *MONEY_RULES))),
+    )
+    assert backward.identity == forward.identity
+    assert backward.rules == forward.rules
+
+
+def test_the_receipt_states_the_whole_contract_it_ran():
+    contract = compiled()
+    receipt = apply_puf_growth(money_view(), contract).receipt
+    assert receipt == {
+        "artifact_kind": "microcosm.us_puf_growth",
+        "contract_sha256": contract.sha256,
+        "design_weight_field": "S006",
+        "design_weight_in_money_view": False,
+        "factor_authority": "invented_fixture_nonauthority",
+        "factor_table_sha256": contract.factors.sha256,
+        "grown_money_fields": ["E00100", "E00200", "E00900"],
+        "grown_row_counts": {"E00100": 2, "E00200": 2, "E00900": 2},
+        "preserved_fields": ["MARS", "RECID", "XTOT"],
+        "provenance_agi_source": "E00100",
+        "provenance_columns": ["puf_source_recid", "puf_source_year_agi"],
+        "provenance_recid_source": "RECID",
+        "release_eligible": False,
+        "rows": 3,
+        "schema_version": 1,
+        "source_reference_year": SOURCE_YEAR,
+        "target_year": TARGET_YEAR,
+    }
+
+
+def test_a_rule_may_not_contradict_its_own_role():
+    with pytest.raises(PufGrowthRefusalError) as error:
+        GrowthRule(
+            "E00100",
+            FieldRole.MONEY,
+            SOURCE_YEAR,
+            TARGET_YEAR,
+            GrowthKind.DESIGN_WEIGHT_GROWTH,
+            factor_series="fixture.returns",
+        )
+    assert error.value.reason == "MONEY_GROWTH_KIND"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        GrowthRule(
+            "S006",
+            FieldRole.DESIGN_WEIGHT,
+            SOURCE_YEAR,
+            TARGET_YEAR,
+            GrowthKind.DESIGN_WEIGHT_GROWTH,
+            SignBranch.POSITIVE,
+            "fixture.returns",
+        )
+    assert error.value.reason == "WEIGHT_SIGN_BRANCH"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        GrowthRule(
+            "MARS",
+            FieldRole.CODE,
+            SOURCE_YEAR,
+            SOURCE_YEAR,
+            GrowthKind.NONE,
+            SignBranch.NEGATIVE,
+        )
+    assert error.value.reason == "PRESERVED_SIGN_BRANCH"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        GrowthRule("MARS", FieldRole.CODE, SOURCE_YEAR, TARGET_YEAR, GrowthKind.NONE)
+    assert error.value.reason == "PRESERVED_YEAR_SPAN"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        money("E00100", "fixture.agi_per_return").__class__(
+            "E00100",
+            FieldRole.MONEY,
+            TARGET_YEAR,
+            SOURCE_YEAR,
+            GrowthKind.REAL_PER_RETURN_AGING,
+            SignBranch.ANY,
+            "fixture.agi_per_return",
+        )
+    assert error.value.reason == "RULE_YEAR_ORDER"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        GrowthRule(
+            "MARS",
+            FieldRole.CODE,
+            SOURCE_YEAR,
+            SOURCE_YEAR,
+            GrowthKind.NONE,
+            factor_series="fixture.returns",
+        )
+    assert error.value.reason == "PRESERVED_FACTOR_SERIES"
+
+
+def test_a_factor_table_refuses_malformed_and_noncanonical_documents():
+    with pytest.raises(PufGrowthRefusalError) as error:
+        GrowthFactorTable.from_bytes(b'{"authority": ')
+    assert error.value.reason == "MALFORMED_DOCUMENT"
+
+    # Valid JSON that is not the canonical encoding is still refused, which is
+    # what makes the table's sha256 an identity rather than a hash of whatever
+    # bytes happened to arrive.
+    with pytest.raises(PufGrowthRefusalError) as error:
+        GrowthFactorTable.from_bytes(factor_document() + b" ")
+    assert error.value.reason == "TABLE_DOCUMENT"
+
+    spaced = json.dumps(json.loads(factor_document()), sort_keys=True).encode("ascii")
+    assert spaced != factor_document()
+    with pytest.raises(PufGrowthRefusalError) as error:
+        GrowthFactorTable.from_bytes(spaced)
+    assert error.value.reason == "TABLE_DOCUMENT"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        GrowthFactorTable.from_bytes(b'{"authority": NaN}')
+    assert error.value.reason == "NONFINITE_DOCUMENT"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        GrowthFactorTable.from_bytes(b"{" + b" " * (512 * 1024) + b"}")
+    assert error.value.reason == "DOCUMENT_SIZE_OR_TYPE"
+
+
+def test_a_factor_series_refuses_bad_levels_and_year_columns():
+    negative = {
+        **FIXTURE_SERIES,
+        "fixture.price_index": {
+            "kind": "nominal_price_restatement",
+            "levels": {"2021": "-2.0", "2024": "3.0"},
+        },
+    }
+    with pytest.raises(PufGrowthRefusalError) as error:
+        factors(series=negative)
+    assert error.value.reason == "LEVEL_VALUE"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        FactorSeries(
+            "fixture.x",
+            GrowthKind.REAL_PER_RETURN_AGING,
+            ((2021, "1.0"), (2021, "2.0")),
+        )
+    assert error.value.reason == "DUPLICATE_SERIES_YEAR"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        FactorSeries(
+            "fixture.x",
+            GrowthKind.REAL_PER_RETURN_AGING,
+            ((2024, "1.0"), (2021, "2.0")),
+        )
+    assert error.value.reason == "UNORDERED_SERIES_YEARS"
+
+    row = FactorSeries("fixture.x", GrowthKind.REAL_PER_RETURN_AGING, ((2021, "1.0"),))
+    with pytest.raises(PufGrowthRefusalError) as error:
+        GrowthFactorTable(
+            factor_document(),
+            "puf_growth_fixture_v1",
+            FactorAuthority.INVENTED_FIXTURE,
+            (2021,),
+            (row, row),
+            {},
+        )
+    assert error.value.reason == "DUPLICATE_SERIES"
+
+
+def test_the_recipe_document_guards_its_version_and_its_own_bytes():
+    document = json.loads(recipe().identity)
+    document["schema_version"] = 2
+    with pytest.raises(PufGrowthRefusalError) as error:
+        parse_growth_recipe(canonical(document))
+    assert error.value.reason == "RECIPE_SCHEMA_VERSION"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        parse_growth_recipe(recipe().identity + b" ")
+    assert error.value.reason == "RECIPE_DOCUMENT_ROUNDTRIP"
+
+    reordered = json.loads(recipe().identity)
+    reordered["rules"] = list(reversed(reordered["rules"]))
+    assert canonical(reordered) != recipe().identity
+    with pytest.raises(PufGrowthRefusalError) as error:
+        parse_growth_recipe(canonical(reordered))
+    assert error.value.reason == "RECIPE_DOCUMENT_ROUNDTRIP"

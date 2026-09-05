@@ -20,8 +20,8 @@ comparison input and is not the root of anything below.
 | --- | --- |
 | `packages/microcosm-build/src/microcosm/build/us_runtime/puf_growth.py` | The contract types, the closed-coverage recipe, the factor table, and the pure transform. Reads no file. |
 | `packages/microcosm-build/src/microcosm/build/us_runtime/puf_growth_graph.py` | Three nodes and three kernels that run the transform inside a real population. |
-| `packages/microcosm-build/tests/test_us_puf_growth.py` | 48 contract tests on invented rows and invented factor levels. |
-| `packages/microcosm-build/tests/test_us_puf_growth_graph.py` | 8 tests: a real compiled graph, cold / warm / `resume="require"` / fresh-store parity against a direct-call oracle. |
+| `packages/microcosm-build/tests/test_us_puf_growth.py` | 56 contract tests on invented rows and invented factor levels. |
+| `packages/microcosm-build/tests/test_us_puf_growth_graph.py` | 11 tests: a real compiled graph, cold / warm / `resume="require"` / fresh-store parity against a direct-call oracle. |
 
 Nothing was added to `us_runtime/__init__.py`; both modules are imported by
 path, as `asec_current_money` and its siblings are. Importing
@@ -227,7 +227,7 @@ own mass policy (below).
 ```bash
 uv sync --all-packages --locked          # no us/uk extras are needed
 uv run pytest packages/microcosm-build/tests/test_us_puf_growth.py \
-              packages/microcosm-build/tests/test_us_puf_growth_graph.py   # 56 tests
+              packages/microcosm-build/tests/test_us_puf_growth_graph.py   # 67 tests
 uv run ruff check .
 uv run python tools/ci_test_groups.py --verify
 ```

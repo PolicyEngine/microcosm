@@ -294,16 +294,15 @@ def us_puf_growth_nodes(
         The boundary node, the money node, and the design-weight node.
 
     Raises:
-        PufGrowthRefusalError: If the contract declares no design weight, or
-            declares a money field that is also the design weight.
+        PufGrowthRefusalError: If the contract declares no design weight, names
+            no person boundary column, or could not run at all
+            (:func:`~microcosm.build.us_runtime.puf_growth.require_transformable`).
     """
     if type(compiled) is not CompiledPufGrowth:
         raise PufGrowthRefusalError("COMPILED_TYPE")
     weight_rule = compiled.design_weight_rule
     if weight_rule is None:
         raise PufGrowthRefusalError("NO_DESIGN_WEIGHT_RULE")
-    if weight_rule.field in compiled.money_fields:
-        raise PufGrowthRefusalError("WEIGHT_FIELD_IS_MONEY", weight_rule.field)
     if not person_boundary_columns:
         raise PufGrowthRefusalError("PERSON_BOUNDARY_COLUMNS")
     # Everything the money kernel needs is checked here, at declaration time,
