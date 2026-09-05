@@ -1,8 +1,9 @@
-"""Source-codec registry and shipped codec contracts."""
+"""Source-codec registry modes and shipped codec contracts."""
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -10,7 +11,13 @@ import pandas as pd
 import pytest
 
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
-from microcosm.graph.codecs import SOURCE_CODECS, SourceCodecRegistry, load_source
+from microcosm.graph.codecs import (
+    RAW_BYTES_MAX_BYTES,
+    SOURCE_CODECS,
+    SourceCodecRegistry,
+    load_source,
+    load_source_bytes,
+)
 from microcosm.graph.store import ContentStore, StoreUnavailable
 
 
@@ -156,3 +163,120 @@ def test_missing_codec_and_codec_dependency_are_store_unavailable(
     registry.register("engine", missing_dependency)
     with pytest.raises(StoreUnavailable, match="dependency"):
         registry.load("engine", tmp_path)
+
+
+def test_raw_bytes_reads_one_regular_file_and_refuses_anything_else(
+    tmp_path: Path,
+) -> None:
+    payload = np.random.default_rng(0).integers(0, 256, size=1024, dtype=np.uint8)
+    lookup = tmp_path / "lookup.npz"
+    np.savez(lookup, values=payload)
+    expected = lookup.read_bytes()
+
+    loaded = load_source_bytes("raw-bytes-v1", lookup)
+
+    assert isinstance(loaded, bytes)
+    assert loaded == expected
+    # A symlink to a regular file is the same source: the executor hands the
+    # codec a path it already resolved.
+    link = tmp_path / "link.npz"
+    link.symlink_to(lookup)
+    assert load_source_bytes("raw-bytes-v1", link) == expected
+
+    with pytest.raises(ValueError, match="is a directory"):
+        load_source_bytes("raw-bytes-v1", tmp_path)
+    fifo = tmp_path / "pipe"
+    os.mkfifo(fifo)
+    # Refused by mode before opening: a codec that opened this would block.
+    with pytest.raises(ValueError, match="not a regular file"):
+        load_source_bytes("raw-bytes-v1", fifo)
+    with pytest.raises(ValueError, match="not readable"):
+        load_source_bytes("raw-bytes-v1", tmp_path / "absent.npz")
+
+
+def test_raw_bytes_reads_up_to_the_limit_and_refuses_one_byte_more(
+    tmp_path: Path,
+) -> None:
+    at_limit = tmp_path / "at_limit.bin"
+    with at_limit.open("wb") as handle:
+        handle.truncate(RAW_BYTES_MAX_BYTES)
+    assert len(load_source_bytes("raw-bytes-v1", at_limit)) == RAW_BYTES_MAX_BYTES
+
+    over_limit = tmp_path / "over_limit.bin"
+    with over_limit.open("wb") as handle:
+        handle.truncate(RAW_BYTES_MAX_BYTES + 1)
+    with pytest.raises(ValueError, match="larger than"):
+        load_source_bytes("raw-bytes-v1", over_limit)
+
+
+def test_codec_names_are_unique_across_both_modes() -> None:
+    registry = SourceCodecRegistry()
+
+    def frame_loader(_path: Path, *, store: ContentStore | None = None) -> Frame:
+        del store
+        return _frame()
+
+    def byte_loader(_path: Path, *, store: ContentStore | None = None) -> bytes:
+        del store
+        return b""
+
+    registry.register("tables", frame_loader)
+    registry.register_bytes("blob", byte_loader)
+    # Re-registering the same loader under its own name stays idempotent.
+    assert registry.register("tables", frame_loader) is frame_loader
+    assert registry.register_bytes("blob", byte_loader) is byte_loader
+
+    with pytest.raises(ValueError, match="already registered as a Frame codec"):
+        registry.register_bytes("tables", byte_loader)
+    with pytest.raises(ValueError, match="already registered as a raw-bytes codec"):
+        registry.register("blob", frame_loader)
+    with pytest.raises(ValueError, match="already registered"):
+        registry.register("tables", lambda _path, *, store=None: _frame())
+
+    assert registry.names() == ("blob", "tables")
+    assert dict(registry.as_mapping()) == {"tables": frame_loader}
+    assert dict(registry.as_bytes_mapping()) == {"blob": byte_loader}
+    # Availability is answered by name, in either mode: this is the question
+    # the executor asks before any kernel runs.
+    assert registry.get("tables") is frame_loader
+    assert registry.get("blob") is byte_loader
+    with pytest.raises(StoreUnavailable, match="not installed"):
+        registry.get("absent")
+
+
+def test_reading_a_codec_in_the_wrong_mode_is_explicit(tmp_path: Path) -> None:
+    source = tmp_path / "lookup.bin"
+    source.write_bytes(b"payload")
+
+    with pytest.raises(TypeError, match="is a raw-bytes codec"):
+        SOURCE_CODECS.load("raw-bytes-v1", source)
+    with pytest.raises(TypeError, match="is a Frame codec"):
+        SOURCE_CODECS.load_bytes("csv-tables", tmp_path)
+    with pytest.raises(StoreUnavailable, match="not installed"):
+        SOURCE_CODECS.load_bytes("raw-bytes-v2", source)
+
+    assert SOURCE_CODECS.names() == ("csv-tables", "frame-store", "raw-bytes-v1")
+    assert set(SOURCE_CODECS.as_mapping()) == {"csv-tables", "frame-store"}
+    assert set(SOURCE_CODECS.as_bytes_mapping()) == {"raw-bytes-v1"}
+
+
+def test_byte_codec_dependency_and_return_type_are_held_to_the_contract(
+    tmp_path: Path,
+) -> None:
+    registry = SourceCodecRegistry()
+
+    def missing_dependency(_path: Path, *, store: ContentStore | None = None) -> bytes:
+        del store
+        raise ImportError("optional reader")
+
+    def mutable_payload(_path: Path, *, store: ContentStore | None = None) -> bytes:
+        del store
+        return bytearray(b"mutable")
+
+    registry.register_bytes("engine", missing_dependency)
+    registry.register_bytes("mutable", mutable_payload)
+
+    with pytest.raises(StoreUnavailable, match="dependency"):
+        registry.load_bytes("engine", tmp_path)
+    with pytest.raises(TypeError, match="returned bytearray, not bytes"):
+        registry.load_bytes("mutable", tmp_path)
