@@ -331,6 +331,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "graph_early_preparation.py",
         "graph_cps_carried.py",
         "graph_prior_year.py",
+        # Pure synthetic current-money contracts; ordinary, no source exemption.
+        "asec_current_money.py",
+        "_asec_current_money_codec.py",
+        "asec_current_money_resources.py",
         # Source import/assembly/harmonization owner, classified above.
         "graph_sources.py",
     }
