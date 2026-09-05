@@ -122,6 +122,12 @@ class _Family:
     observe: Callable[..., tuple[pd.DataFrame, dict[str, object]]]
     contract: Callable[[], dict[str, object]]
 
+    def __post_init__(self) -> None:
+        if not self.boolean_outputs <= set(self.output_columns):
+            raise ValueError(
+                f"{self.label} boolean roster names outputs the family does not own."
+            )
+
     def reads(self) -> frozenset[str]:
         return frozenset(self.required_source_columns) | frozenset(self.output_columns)
 

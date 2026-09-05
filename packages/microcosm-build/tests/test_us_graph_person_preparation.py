@@ -44,8 +44,10 @@ from microcosm.build.us_runtime.graph_early_preparation import (
 )
 from microcosm.build.us_runtime.graph_person_preparation import (
     _PERSON_PREPARATION_IMPLEMENTATION_MODULES,
+    ELIGIBILITY,
     ELIGIBILITY_NODE,
     PERSON_PREPARATION_DEPENDENCIES,
+    RELATIONSHIP,
     RELATIONSHIP_NODE,
     USEligibilitySourceKernel,
     USRelationshipSourceKernel,
@@ -1265,3 +1267,39 @@ def test_declared_output_dtypes_reflect_the_actual_merged_cells(
     # relationship declaration rewrites it; every other leaf is created.
     for name, value in declared.items():
         assert value.rewrite is (name == "is_household_head")
+
+
+@pytest.mark.parametrize("family", ("relationship", "eligibility"))
+def test_declared_boolean_roster_is_measured_from_the_helper(family):
+    """The boolean/float split is measured from the helper, not asserted."""
+    descriptor = RELATIONSHIP if family == "relationship" else ELIGIBILITY
+    frame = _upstream(family)
+    evidence = pool._cps_source_evidence_mask(frame, phase="pre_clone")
+    available = pool._without_unavailable_output_columns(
+        pool._source_available_projection(frame, evidence, phase="pre_clone"),
+        pool.PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+            "relationship_inputs" if family == "relationship" else "eligibility_inputs"
+        ],
+    )
+    produced = getattr(pool, _family_helper(family))(
+        available.table("person"),
+        available.resolve_weights("person").values,
+        seed=pool.POOL_RANDOM_SEED,
+        time_period=pool.POOL_TIME_PERIOD,
+    )
+    measured = {
+        column
+        for column in descriptor.output_columns
+        if pd.api.types.is_bool_dtype(produced[column].dtype)
+    }
+    assert descriptor.boolean_outputs == measured
+    assert {
+        column
+        for column in descriptor.output_columns
+        if str(produced[column].dtype) == "float64"
+    } == set(descriptor.output_columns) - measured
+
+
+def test_boolean_roster_must_name_owned_outputs():
+    with pytest.raises(ValueError, match="does not own"):
+        replace(RELATIONSHIP, boolean_outputs=frozenset({"not_an_output"}))
