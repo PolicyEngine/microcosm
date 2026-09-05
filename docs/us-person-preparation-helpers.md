@@ -62,12 +62,12 @@ pass-through frame, and a partial-null `is_disabled` column on both sides of
 the recompute threshold, produced identical person tables, summaries, gates,
 and error messages.
 
-These real-person-table APIs exist so a future graph-native adapter can
-reuse the incumbent checks against whatever person table and weight vector
-it assembles, without constructing a `Frame`. Wiring that adapter — and any
-source projection/merge it needs — is out of scope here. Its implementation
-source closure must bind `_person_signal_summary.py` as well as the family
-module because both summary gates execute that shared validator.
+These real-person-table APIs exist so a graph-native adapter can reuse the
+incumbent checks against whatever person table and weight vector it assembles,
+without constructing a `Frame`. That adapter now exists: see
+[us-person-preparation-graph.md](us-person-preparation-graph.md). Its
+implementation source closure binds `_person_signal_summary.py` as well as both
+family modules, because both summary gates execute that shared validator.
 
 For graph integration, call the complete person predicate first. Relationship
 pass-through requires all three incumbent leaves and more than one observed
