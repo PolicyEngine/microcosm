@@ -1,0 +1,1 @@
+Add an optional real-Axiom input inventory and a shared, closed concept-coverage diagnostic that preserves unknown metadata, requires explicit evidence bindings, and cannot certify a population schema.
