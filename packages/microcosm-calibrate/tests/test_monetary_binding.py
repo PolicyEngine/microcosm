@@ -84,6 +84,8 @@ def _target(values=(2.0, 4.0), ids=(1, 2)):
         "ledger_source_record_id": "synthetic.fact",
         "ledger_selector": {},
         "value_operation": "identity",
+        "value_operands": [],
+        "expected_member_count": None,
         "entity": target.entity,
         "measure": target.measure,
         "filter": target.filter,

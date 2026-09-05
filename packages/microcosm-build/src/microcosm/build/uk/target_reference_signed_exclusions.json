@@ -4,8 +4,8 @@
   {
    "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
    "reason_id": "property_income_undercount_adjustment_missing",
-   "rationale": "Signed out pending a first-class value-scaling operation or a Chronicle package for HMRC Property Rental Income Statistics with declared reconciliation: the Ledger facts are official HMRC SPI Table 3.7 net property-income amounts, while the incumbent calibration target applies the populace-side x1.9 property-income undercount adjustment. The x1.9 trace is policyengine-uk-data PR #311 / issue policyengine-uk-data#230: SPI covers only taxpayers with liability, and HMRC Property Rental Income Statistics show GBP 46.68bn versus SPI about GBP 24.5bn for 2020-21. Binding the raw SPI facts would knowingly calibrate to 10/19 of the incumbent surface.",
-   "tracking": "policyengine-uk-data#230",
+   "rationale": "Signed out pending a first-class value-scaling operation or a Chronicle package for HMRC Property Rental Income Statistics with declared reconciliation: the Ledger facts are official HMRC SPI Table 3.7 net property-income amounts, while the incumbent calibration target applies the populace-side x1.9 property-income undercount adjustment. The x1.9 trace is uk-data PR #311 / issue uk-data#230: SPI covers only taxpayers with liability, and HMRC Property Rental Income Statistics show GBP 46.68bn versus SPI about GBP 24.5bn for 2020-21. Binding the raw SPI facts would knowingly calibrate to 10/19 of the incumbent surface.",
+   "tracking": "uk-data#230",
    "approved_by": "juaristi22",
    "approved_on": "2026-09-05"
   },
