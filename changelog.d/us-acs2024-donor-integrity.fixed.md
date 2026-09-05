@@ -1,0 +1,1 @@
+Bind ACS2024 housing donor parsing to verified private disk snapshots, seal native donor and training identities with detached provenance, and refuse mutated data before preparation or verified training consumption. Record the source-document identity and the category and joint-sample contracts without changing housing amounts or sampling.

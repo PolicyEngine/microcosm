@@ -80,6 +80,8 @@ def test_unrelated_operator_body_and_quality_file_do_not_invalidate(
         ),
         ("microcosm.build", "us_runtime/acs_pums.py", "assembly_prepare", "geography"),
         ("microcosm.build", "frame_sampling.py", "assembly_prepare", "geography"),
+        ("microcosm.build", "table_identity.py", "assembly_prepare", "geography"),
+        ("microcosm.build", "table_identity.py", "assembly_harmonize", "asec_codec_v4"),
         (
             "microcosm.build",
             "us_runtime/spine_assembly.py",

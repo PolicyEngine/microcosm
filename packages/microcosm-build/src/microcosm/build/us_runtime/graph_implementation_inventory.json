@@ -51,6 +51,15 @@
       "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
+    "microcosm.build/table_identity.py": {
+      "imports": [
+        "microcosm.build.serialization_dtypes",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
     "microcosm.build/us_runtime/acs_inputs.py": {
       "imports": [
         "microcosm.frame",
@@ -280,6 +289,7 @@
         "microcosm.build.gates",
         "microcosm.build.serialization_dtypes",
         "microcosm.build.source_manifest",
+        "microcosm.build.table_identity",
         "microcosm.build.us_runtime",
         "microcosm.build.us_runtime.acs_income_universe",
         "microcosm.build.us_runtime.acs_transfer",
@@ -781,6 +791,7 @@
     "microcosm.build.outer_stage_runtime": "whole-module in explicit stages",
     "microcosm.build.serialization_dtypes": "whole-module in explicit stages",
     "microcosm.build.source_manifest": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.table_identity": "whole-module in explicit stages",
     "microcosm.build.us_runtime": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "microcosm.build.us_runtime.acs_income_universe": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "microcosm.build.us_runtime.acs_inputs": "whole-module in explicit stages",
@@ -1085,6 +1096,7 @@
         "microcosm.build/frame_sampling.py",
         "microcosm.build/gates.py",
         "microcosm.build/serialization_dtypes.py",
+        "microcosm.build/table_identity.py",
         "microcosm.build/us_runtime/graph_context.py",
         "microcosm.build/us_runtime/graph_implementation.py",
         "microcosm.build/us_runtime/graph_sources.py",
@@ -1144,6 +1156,7 @@
         "microcosm.build/gates.py",
         "microcosm.build/outer_stage_runtime.py",
         "microcosm.build/serialization_dtypes.py",
+        "microcosm.build/table_identity.py",
         "microcosm.build/us_runtime/acs_inputs.py",
         "microcosm.build/us_runtime/acs_pums.py",
         "microcosm.build/us_runtime/asec_checkpoint.py",

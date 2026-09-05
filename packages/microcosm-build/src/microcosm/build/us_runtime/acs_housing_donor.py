@@ -1,8 +1,9 @@
 """ACS2024 reported housing donor, independent of any recipient population.
 
 This projection does not expose ``pre_subsidy_rent``. The 2024 ACS Subject
-Definitions (p.16) instruct respondents to exclude housing-authority/agency
-subsidies from contract rent. The separate ACS2022 donor and its nominal
+Definitions (p.16) describe the respondent instruction to exclude housing-
+authority/agency subsidies. This is publisher documentation, not an independently
+authenticated 2024 respondent-help pamphlet. The separate ACS2022 donor and its nominal
 graph remain unchanged.
 """
 
@@ -10,14 +11,16 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
 from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
+from microcosm.build.table_identity import native_table_identity
 from microcosm.build.us_runtime.acs_inputs import _adjusted_dollars
 from microcosm.build.us_runtime.acs_pums import (
     DEFAULT_CHUNKSIZE,
@@ -132,21 +135,111 @@ _STATES = frozenset(
 )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class Acs2024HousingDonor:
-    """One row per housing-unit reference person, keyed by source SERIALNO."""
+    """Producer-sealed projection; table changes are refused at preparation.
+
+    Use a loader or the synthetic projector. Metadata access returns a detached
+    document; caller dictionaries cannot mint archive-authenticated evidence.
+    """
 
     table: pd.DataFrame
-    provenance: dict[str, Any]
+    _receipt_bytes: bytes = field(repr=False)
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        raise TypeError("Use an ACS housing donor loader or synthetic projector.")
+
+    @property
+    def provenance(self) -> dict[str, Any]:
+        """Return detached metadata from the immutable producer receipt."""
+        return json.loads(self._receipt_bytes)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class Acs2024ReportedRentPreparation:
-    """Numeric QRF training for reported rent; no recipient/application stage."""
+    """Sealed training; consumers obtain a checked copy via verified_training."""
 
     training: pd.DataFrame
     predictors: tuple[str, ...]
-    provenance: dict[str, Any]
+    _receipt_bytes: bytes = field(repr=False)
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        raise TypeError("Use prepare_acs_2024_reported_rent to create training.")
+
+    @property
+    def provenance(self) -> dict[str, Any]:
+        """Return detached metadata from the immutable derived receipt."""
+        return json.loads(self._receipt_bytes)
+
+    def verified_training(self) -> pd.DataFrame:
+        """Verify native content and predictor order, returning an owned copy.
+
+        Call at the fit boundary; direct access to ``training`` is inspectable
+        mutable data and is not a verified consumption operation.
+        """
+        if type(self) is not Acs2024ReportedRentPreparation:
+            raise TypeError("Training consumption requires an issued ACS preparation.")
+        table, receipt = _verified_snapshot(
+            self.training, self._receipt_bytes, "training_identity"
+        )
+        if tuple(receipt["feature_schema"]["ordered_predictors"]) != self.predictors:
+            raise ValueError("ACS training predictor order differs from its receipt.")
+        return table
+
+
+def _receipt_bytes(document: dict[str, Any]) -> bytes:
+    return json.dumps(
+        document, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode()
+
+
+def _verified_snapshot(
+    table: pd.DataFrame, receipt: bytes, key: str
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    # Copy before verification, then consume this exact copy. Mutation after
+    # verification cannot change the local table used by preparation or fitting.
+    snapshot = table.copy(deep=True)
+    document = json.loads(receipt)
+    try:
+        identity = native_table_identity(snapshot)
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            "ACS table content identity is no longer supported."
+        ) from error
+    if identity != document[key]:
+        raise ValueError(
+            "ACS table content identity differs from its producer receipt."
+        )
+    return snapshot, document
+
+
+def _seal_donor(table: pd.DataFrame, provenance: dict[str, Any]) -> Acs2024HousingDonor:
+    result = object.__new__(Acs2024HousingDonor)
+    object.__setattr__(result, "table", table)
+    object.__setattr__(
+        result,
+        "_receipt_bytes",
+        _receipt_bytes(
+            provenance | {"projection_identity": native_table_identity(table)}
+        ),
+    )
+    return result
+
+
+def _seal_preparation(
+    table: pd.DataFrame, predictors: tuple[str, ...], provenance: dict[str, Any]
+) -> Acs2024ReportedRentPreparation:
+    result = object.__new__(Acs2024ReportedRentPreparation)
+    object.__setattr__(result, "training", table)
+    object.__setattr__(result, "predictors", predictors)
+    object.__setattr__(
+        result,
+        "_receipt_bytes",
+        _receipt_bytes(
+            provenance | {"training_identity": native_table_identity(table)}
+        ),
+    )
+    return result
 
 
 def load_acs_2024_housing_donor(
@@ -174,42 +267,53 @@ def _load(
         raise ValueError("ACS housing donor requires the independent full 2024 source.")
     if chunksize <= 0:
         raise ValueError("chunksize must be positive.")
-    identities = {}
     manifest = load_acs_source_manifest()
-    for role, path in (
-        ("household", source.household_zip),
-        ("person", source.person_zip),
-    ):
-        size, digest = _file_identity(path)
-        if authenticated:
-            _verify_download(manifest.artifact(role), size=size, digest=digest)
-        identities[role] = {"sha256": digest, "size_bytes": size}
-    household, h_members = _read_archive(
-        source.household_zip,
-        member_prefix="psam_hus",
-        required=_HOUSEHOLD_COLUMNS,
-        optional=("ST", "STATE"),
-        chunksize=chunksize,
-    )
-    person, p_members = _read_archive(
-        source.person_zip,
-        member_prefix="psam_pus",
-        required=_PERSON_COLUMNS,
-        optional=(),
-        chunksize=chunksize,
-        valid_serials=frozenset(household["SERIALNO"]),
-    )
-    result = _project(household, person)
-    result.provenance.update(
-        {
-            "source_evidence": "authenticated_archives"
-            if authenticated
-            else "synthetic_fixture_archives",
-            "archives": identities,
-            "csv_members": {"household": h_members, "person": p_members},
-        }
-    )
-    return result
+    identities, snapshots = {}, {}
+    # Private disk snapshots bound memory at archive scale. Hash the closed
+    # snapshots and parse those same files, never reopen the caller's path.
+    # Directory ownership/read-only files prevent ordinary concurrent cache
+    # writers from changing the verified input; this is not hostile-process isolation.
+    with TemporaryDirectory(prefix="microcosm-acs-housing-") as directory:
+        for role, path in (
+            ("household", source.household_zip),
+            ("person", source.person_zip),
+        ):
+            snapshot = Path(directory) / f"{role}.zip"
+            with path.open("rb") as original, snapshot.open("xb") as destination:
+                while chunk := original.read(1024 * 1024):
+                    destination.write(chunk)
+            snapshot.chmod(0o400)
+            size, digest = _file_identity(snapshot)
+            if authenticated:
+                _verify_download(manifest.artifact(role), size=size, digest=digest)
+            snapshots[role] = snapshot
+            identities[role] = {"sha256": digest, "size_bytes": size}
+        household, h_members = _read_archive(
+            snapshots["household"],
+            member_prefix="psam_hus",
+            required=_HOUSEHOLD_COLUMNS,
+            optional=("ST", "STATE"),
+            chunksize=chunksize,
+        )
+        person, p_members = _read_archive(
+            snapshots["person"],
+            member_prefix="psam_pus",
+            required=_PERSON_COLUMNS,
+            optional=(),
+            chunksize=chunksize,
+            valid_serials=frozenset(household["SERIALNO"]),
+        )
+        return _project(
+            household,
+            person,
+            source_provenance={
+                "source_evidence": "authenticated_archives"
+                if authenticated
+                else "synthetic_fixture_archives",
+                "archives": identities,
+                "csv_members": {"household": h_members, "person": p_members},
+            },
+        )
 
 
 def project_synthetic_acs_2024_housing_donor(
@@ -228,7 +332,12 @@ def _numeric(table: pd.DataFrame, column: str, *, nullable: bool = False) -> pd.
     return values
 
 
-def _project(household: pd.DataFrame, person: pd.DataFrame) -> Acs2024HousingDonor:
+def _project(
+    household: pd.DataFrame,
+    person: pd.DataFrame,
+    *,
+    source_provenance: dict[str, Any] | None = None,
+) -> Acs2024HousingDonor:
     household, person = household.copy(), person.copy()
     for table, columns in ((household, _HOUSEHOLD_COLUMNS), (person, _PERSON_COLUMNS)):
         missing = set(columns) - set(table)
@@ -351,7 +460,7 @@ def _project(household: pd.DataFrame, person: pd.DataFrame) -> Acs2024HousingDon
         "FTAXP"
     ].eq(0)
     resource = Path(__file__).with_name("acs_2024_housing_donor.json").read_bytes()
-    return Acs2024HousingDonor(
+    return _seal_donor(
         table,
         {
             **json.loads(resource),
@@ -361,6 +470,7 @@ def _project(household: pd.DataFrame, person: pd.DataFrame) -> Acs2024HousingDon
             "linked_person_rows": len(p),
             "vacant_rows_excluded": vacant_count,
             "gq_rows_excluded": int(gq.sum()),
+            **(source_provenance or {}),
         },
     )
 
@@ -375,12 +485,17 @@ def prepare_acs_2024_reported_rent(
     needs no dummy column. Encoded columns describe donors only, and are not
     an API for mapping any recipient to pre-subsidy rent.
     """
+    if type(donor) is not Acs2024HousingDonor:
+        raise TypeError("Preparation requires an issued ACS housing donor.")
+    table, provenance = _verified_snapshot(
+        donor.table, donor._receipt_bytes, "projection_identity"
+    )
     for flag in ("FRNTP", "FTAXP"):
-        if not donor.table[flag].isin([0, 1]).all():
+        if not table[flag].isin([0, 1]).all():
             raise ValueError(f"ACS prepared donor {flag} must contain 0/1.")
-    if donor.table["source_household_id"].duplicated().any():
+    if table["source_household_id"].duplicated().any():
         raise ValueError("ACS prepared donor household IDs must be unique.")
-    adapter = donor.table.rename(
+    adapter = table.rename(
         columns={
             _TARGET: "rent",
             "acs_annual_property_tax": "real_estate_taxes",
@@ -411,6 +526,8 @@ def prepare_acs_2024_reported_rent(
         "numeric_predictors": list(_NUMERIC_PREDICTORS),
         "category_levels": levels,
         "categorical_encoding": "sorted levels, omit first; constant feature has no dummy",
+        "category_level_source": "rent fit rows after archived joint target sample",
+        "unknown_category_policy": "refuse",
         "price_year": 2024,
         "income_reference": "reference person's past-12-month amounts adjusted by ADJINC",
         "target": _TARGET,
@@ -419,11 +536,12 @@ def prepare_acs_2024_reported_rent(
     feature_schema_sha256 = hashlib.sha256(
         json.dumps(feature_schema, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
-    return Acs2024ReportedRentPreparation(
+    return _seal_preparation(
         training,
         predictors,
         {
-            **donor.provenance,
+            **provenance,
+            "donor_receipt_sha256": hashlib.sha256(donor._receipt_bytes).hexdigest(),
             "target": _TARGET,
             "category_levels": levels,
             "sample_rows": len(sample),
