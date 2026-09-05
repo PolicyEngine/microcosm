@@ -43,7 +43,9 @@ proxy interpretation unchanged. Receipts state that limitation explicitly.
 `asec_student_controls.load_authenticated_student_controls` requires the actual
 authenticated restored source and complete ready money. It privately captures
 exact-size official CSVs and verifies code-owned hashes before parsing the six
-selected columns. Callers supply paths, never expected pins or alias overrides.
+selected columns. A single nonblocking descriptor must identify a regular file
+before capture, so FIFO or directory paths refuse without waiting. Callers
+supply paths, never expected pins or alias overrides.
 The resulting immutable object records the T1 identity and digest, ordered
 scope/native-key identity, money header/content identities, source joins,
 observation vector hashes, source periods, aliases and implementation closure.
