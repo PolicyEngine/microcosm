@@ -332,6 +332,42 @@ def test_sealed_identity_and_explicit_schema_authorities():
     assert "5000" in projected.provenance["sampling"]
 
 
+@pytest.mark.parametrize("axis", ["index", "columns"])
+def test_verified_training_owns_axis_storage_after_return(axis):
+    prepared = donor.prepare_acs_2024_reported_rent(
+        donor.project_synthetic_acs_2024_housing_donor(*_tables())
+    )
+    verified = prepared.verified_training()
+    expected = prepared.provenance["training_identity"]
+    getattr(prepared.training, axis).array[0] = "changed_after_verification"
+    assert donor.native_table_identity(verified) == expected
+
+
+@pytest.mark.parametrize("stage", ["donor", "training"])
+@pytest.mark.parametrize("axis", ["index", "columns"])
+def test_consumed_axes_stay_owned_after_identity_check(monkeypatch, stage, axis):
+    loaded = donor.project_synthetic_acs_2024_housing_donor(*_tables())
+    prepared = donor.prepare_acs_2024_reported_rent(loaded)
+    expected = prepared.training.copy(deep=True)
+    expected.index = expected.index.copy(deep=True)
+    expected.columns = expected.columns.copy(deep=True)
+    exposed = loaded.table if stage == "donor" else prepared.training
+    original_identity = donor.native_table_identity
+
+    def mutate_after_hash(table):
+        identity = original_identity(table)
+        getattr(exposed, axis).array[0] = "changed_after_identity_check"
+        return identity
+
+    monkeypatch.setattr(donor, "native_table_identity", mutate_after_hash)
+    consumed = (
+        donor.prepare_acs_2024_reported_rent(loaded).training
+        if stage == "donor"
+        else prepared.verified_training()
+    )
+    pd.testing.assert_frame_equal(consumed, expected, check_exact=True)
+
+
 def test_native_identity_string_storage_index_and_schema():
     from microcosm.build.table_identity import native_table_identity
 
