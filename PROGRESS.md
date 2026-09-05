@@ -35,10 +35,15 @@ and implementation are next. Report and raw measurement logs are outside the rep
   2033.172 seconds wall time. Both requested baselines completed before
   any production/test source edit. The run finished on 2026-09-05.
 
+- Added real-factory memo regressions with small traced source/runtime fixtures.
+  Unchanged production code failed graph reuse, both environment-key reuse
+  cases, and lock-key reuse: 4 failed, 7 passed, 322 deselected; exit 1;
+  30.073 seconds wall time (pytest 19.14s). No production edit preceded this.
+
 ## Next
 
-- Reproduce the new memo regressions against unchanged production code,
-  then implement memoization and the shared session/live fixture boundary.
+- Implement process memoization and the shared session/live fixture boundary;
+  add source-mutation opt-out and session-binding consistency regressions.
 - Add process memoization and regressions; prime real identities per test
   session with explicit live-test opt-out and consistent fixture bindings.
 - Run the requested full-file, CI-group, Ruff, formatting, and spec checks;

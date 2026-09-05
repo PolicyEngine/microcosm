@@ -4483,6 +4483,133 @@ def _fixture_worker_import_trace(
     }
 
 
+@pytest.fixture
+def _worker_identity_memo_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Exercise the real memo and file hashing with a tiny import closure."""
+    _stub_worker_identity_static_closure(monkeypatch)
+    runtime = tmp_path / "libpython-fixture.so"
+    runtime.write_bytes(b"unchanged fixture runtime\n")
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_loaded_python_runtime_binary",
+        lambda: ("shared_library", runtime),
+    )
+    trace = _fixture_worker_import_trace(tmp_path)
+    source = Path(
+        trace["module_origins"][worker_identity_module.PRIMARY_QRF_WORKER_MODULE]
+    )
+    trace["opened_files"] = (str(source),)
+    calls = []
+
+    def import_trace():
+        calls.append(None)
+        return trace
+
+    monkeypatch.setattr(
+        worker_identity_module, "_clean_worker_import_trace", import_trace
+    )
+    return source, calls
+
+
+def test_primary_qrf_worker_identity_memo_reuses_graph_and_clear_recomputes(
+    _worker_identity_memo_inputs,
+) -> None:
+    _source, calls = _worker_identity_memo_inputs
+    first = worker_identity_module.primary_qrf_worker_semantic_identity()
+    second = worker_identity_module.primary_qrf_worker_semantic_identity()
+    assert second is first
+    assert second["interpreter"] is first["interpreter"]
+    assert second["environment"] is first["environment"]
+    assert len(calls) == 1
+
+    worker_identity_module.clear_primary_qrf_worker_identity_cache()
+    third = worker_identity_module.primary_qrf_worker_semantic_identity()
+    assert third == first
+    assert third is not first
+    assert third["interpreter"] is not first["interpreter"]
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "name", ("POPULACE_FIT_N_JOBS", "POPULACE_FIT_PREDICT_WORKERS")
+)
+def test_primary_qrf_worker_identity_memo_binds_environment(
+    _worker_identity_memo_inputs,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+) -> None:
+    _source, calls = _worker_identity_memo_inputs
+    monkeypatch.setenv(name, "1")
+    first = worker_identity_module.primary_qrf_worker_semantic_identity()
+    monkeypatch.setenv(name, "3")
+    second = worker_identity_module.primary_qrf_worker_semantic_identity()
+    assert second is not first
+    assert first["environment"]["semantic_controls"][name]["resolved"] == 1
+    assert second["environment"]["semantic_controls"][name]["resolved"] == 3
+    assert worker_identity_module._canonical_sha256(
+        first
+    ) != worker_identity_module._canonical_sha256(second)
+    assert len(calls) == 2
+    monkeypatch.setenv(name, "1")
+    assert worker_identity_module.primary_qrf_worker_semantic_identity() is first
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "name", ("POPULACE_FIT_N_JOBS", "POPULACE_FIT_PREDICT_WORKERS")
+)
+@pytest.mark.parametrize("value", ("0", "01", "invalid"))
+def test_primary_qrf_worker_identity_memo_refuses_invalid_environment(
+    _worker_identity_memo_inputs,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    value: str,
+) -> None:
+    monkeypatch.setenv(name, "1")
+    worker_identity_module.primary_qrf_worker_semantic_identity()
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValueError, match=name):
+        worker_identity_module.primary_qrf_worker_semantic_identity()
+
+
+def test_primary_qrf_worker_identity_memo_binds_lock(
+    _worker_identity_memo_inputs,
+) -> None:
+    first = worker_identity_module.primary_qrf_worker_semantic_identity()
+    legacy = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.LEGACY_CAMPAIGN_UV_LOCK_SHA256
+    )
+    assert first["uv_lock_sha256"] == worker_identity_module.APPROVED_UV_LOCK_SHA256
+    assert (
+        legacy["uv_lock_sha256"]
+        == worker_identity_module.LEGACY_CAMPAIGN_UV_LOCK_SHA256
+    )
+    assert legacy != first
+    assert worker_identity_module.primary_qrf_worker_semantic_identity() is first
+    for invalid in ("0" * 64, "malformed"):
+        with pytest.raises(ValueError, match="lock"):
+            worker_identity_module.primary_qrf_worker_semantic_identity(
+                uv_lock_sha256=invalid
+            )
+
+
+def test_primary_qrf_worker_execution_binding_isolates_semantic_memo(
+    _worker_identity_memo_inputs,
+) -> None:
+    memo = worker_identity_module.primary_qrf_worker_semantic_identity()
+    expected = deepcopy(memo)
+    binding = worker_identity_module.primary_qrf_worker_execution_binding()
+    semantic = binding["semantic_identity"]
+    semantic["interpreter"]["runtime_binary"]["bytes_sha256"] = "0" * 64
+    semantic["argv_template"].append("--changed")
+    semantic["environment"]["overrides"]["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "1"
+    fresh = worker_identity_module.primary_qrf_worker_execution_binding()
+    assert memo == expected
+    assert fresh["semantic_identity"] == expected
+    assert fresh["semantic_identity"] is not memo
+    assert fresh["semantic_identity"]["interpreter"] is not memo["interpreter"]
+
+
 def test_worker_import_trace_refuses_empty_result() -> None:
     with pytest.raises(RuntimeError, match="no readable namespace roots"):
         worker_identity_module._validated_worker_import_trace(
