@@ -32,6 +32,7 @@ ENGINE_ONLY = (
 # shared-lane placement reviewed rather than a silent classifier default.
 EXPLICIT_SHARED_SPEC = (
     "packages/microcosm-build/tests/test_cross_grain.py",
+    "packages/microcosm-build/tests/test_quality_aggregates.py",
     "packages/microcosm-build/tests/test_transfer_graph_example.py",
 )
 
