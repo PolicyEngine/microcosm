@@ -5,7 +5,9 @@ belongs to at most one mode:
 
 *Frame mode* (:data:`SourceCodec`, :meth:`SourceCodecRegistry.register`,
 :meth:`SourceCodecRegistry.load`) decodes a source into a population
-:class:`Frame`. It is what a ``CREATE`` node's kernel calls.
+:class:`Frame`. A ``CREATE`` node's kernel calls it to build a population,
+and so does any other node whose source really is one — a held-out reference
+frame read for scoring, say.
 
 *Raw-byte mode* (:data:`SourceBytesCodec`,
 :meth:`SourceCodecRegistry.register_bytes`,
@@ -227,9 +229,21 @@ class SourceCodecRegistry:
         return payload
 
     def names(self) -> tuple[str, ...]:
-        """Every registered name, both modes, in canonical order."""
+        """The registered Frame codec names, in canonical order.
 
-        return tuple(sorted((*self._loaders, *self._byte_loaders)))
+        Each mode is enumerated by its own pair — ``names``/``as_mapping``
+        here, :meth:`bytes_names`/:meth:`as_bytes_mapping` there — so a
+        snapshot taken through either pair stays resolvable through it. The
+        name space is still shared: a name in neither tuple is not therefore
+        free, because registering it in one mode reserves it in both.
+        """
+
+        return tuple(sorted(self._loaders))
+
+    def bytes_names(self) -> tuple[str, ...]:
+        """The registered raw-byte codec names, in canonical order."""
+
+        return tuple(sorted(self._byte_loaders))
 
     def as_mapping(self) -> Mapping[str, SourceCodec]:
         """A read-only snapshot of the registered Frame loaders."""

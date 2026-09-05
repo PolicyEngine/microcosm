@@ -264,9 +264,14 @@ def test_codec_names_are_unique_across_both_modes() -> None:
     with pytest.raises(ValueError, match="already registered"):
         registry.register("tables", lambda _path, *, store=None: _frame())
 
-    assert registry.names() == ("blob", "tables")
+    # Each mode is enumerated by its own pair, so a snapshot taken through
+    # either one stays resolvable through it.
+    assert registry.names() == ("tables",)
+    assert registry.bytes_names() == ("blob",)
     assert dict(registry.as_mapping()) == {"tables": frame_loader}
     assert dict(registry.as_bytes_mapping()) == {"blob": byte_loader}
+    assert registry.names() == tuple(sorted(registry.as_mapping()))
+    assert registry.bytes_names() == tuple(sorted(registry.as_bytes_mapping()))
     # Availability is answered by name, in either mode: this is the question
     # the executor asks before any kernel runs.
     assert registry.get("tables") is frame_loader
@@ -286,7 +291,8 @@ def test_reading_a_codec_in_the_wrong_mode_is_explicit(tmp_path: Path) -> None:
     with pytest.raises(StoreUnavailable, match="not installed"):
         SOURCE_CODECS.load_bytes("raw-bytes-v2", source)
 
-    assert SOURCE_CODECS.names() == ("csv-tables", "frame-store", "raw-bytes-v1")
+    assert SOURCE_CODECS.names() == ("csv-tables", "frame-store")
+    assert SOURCE_CODECS.bytes_names() == ("raw-bytes-v1",)
     assert set(SOURCE_CODECS.as_mapping()) == {"csv-tables", "frame-store"}
     assert set(SOURCE_CODECS.as_bytes_mapping()) == {"raw-bytes-v1"}
 
