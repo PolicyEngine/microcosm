@@ -229,3 +229,68 @@ def test_authenticated_missing_or_wrongly_typed_controls_refuse_without_engine_c
         money.MoneyRefusalError, match="MICROUNIT_INPUT_ROSTER|MICROUNIT_CONTROL_DTYPE"
     ):
         units.reconstruct_current_money_tax_units(source, ready)
+
+
+def test_reconstructed_tax_filing_status_retains_canonical_source_dtype(
+    tmp_path, monkeypatch
+):
+    from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
+
+    source = _fixture(tmp_path, monkeypatch)
+    result = units.reconstruct_current_money_tax_units(source, source.ready())
+    incumbent = source.frame.table("tax_unit").filing_status_input
+    actual = result.frame.table("tax_unit").filing_status_input
+    assert incumbent.dtype == CANONICAL_STRING_DTYPE
+    assert actual.dtype == incumbent.dtype
+    assert actual.dtype.storage == incumbent.dtype.storage
+    assert actual.tolist() == ["SINGLE", "HEAD_OF_HOUSEHOLD", "HEAD_OF_HOUSEHOLD"]
+
+
+def test_tax_result_receipt_survives_actual_checkpoint_and_string_boundary(
+    tmp_path, monkeypatch
+):
+    from microcosm.build.frame_checkpoint import (
+        load_frame_checkpoint,
+        write_frame_checkpoint,
+    )
+    from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+
+    source = _fixture(tmp_path, monkeypatch)
+    result = units.reconstruct_current_money_tax_units(source, source.ready())
+    output = tmp_path / "invented-tax-result.h5"
+    write_frame_checkpoint(
+        output, result.frame, metadata={"tax_result": result.receipt}
+    )
+    loaded = load_frame_checkpoint(output)
+    expected = loaded.metadata["tax_result"]["output_frame_sha256"]
+    assert units._frame_signature(loaded.frame) == expected
+    canonicalize_frame_string_dtypes(
+        loaded.frame, boundary="test tax result reload", in_place=True
+    )
+    assert units._frame_signature(loaded.frame) == expected
+    for entity in result.frame.entities:
+        pd.testing.assert_frame_equal(
+            result.frame.table(entity), loaded.frame.table(entity), check_exact=True
+        )
+
+
+def test_tax_result_rejects_changed_frame_core_implementation(tmp_path, monkeypatch):
+    from microcosm.frame import schema
+
+    source = _fixture(tmp_path, monkeypatch)
+    result = units.reconstruct_current_money_tax_units(source, source.ready())
+    result.validate()
+    core_path = Path(schema.__file__).resolve()
+    original_read = Path.read_bytes
+
+    def changed_core_bytes(path):
+        value = original_read(path)
+        return (
+            value + b"\n# changed core behavior"
+            if path.resolve() == core_path
+            else value
+        )
+
+    monkeypatch.setattr(Path, "read_bytes", changed_core_bytes)
+    with pytest.raises(money.MoneyRefusalError, match="SOURCE_IMPLEMENTATION_CHANGED"):
+        result.validate()

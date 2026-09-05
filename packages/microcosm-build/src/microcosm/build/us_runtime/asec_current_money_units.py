@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.serialization_dtypes import canonicalize_table_string_dtypes
 from microcosm.frame import Frame
 from microcosm.frame import units as frame_units
 
@@ -30,6 +31,7 @@ from .asec_current_money_source import (
     AuthenticatedCurrentMoneySource,
     _frame_signature,
     _same_table,
+    _verification_identity,
 )
 
 MICROUNIT_CURRENT_MONEY_COLUMNS = tuple(
@@ -228,6 +230,11 @@ class CurrentMoneyTaxUnitResult:
         """Check the permitted tax-only reattachment before consuming a live result."""
         receipt = self.receipt
         _validate_money(self.money, self.money.bindings.spec, nominal=False)
+        source_evidence = _parse(self.money.bindings.spec.source.identity)
+        _require(
+            _verification_identity() == source_evidence["verification_sha256"],
+            "SOURCE_IMPLEMENTATION_CHANGED",
+        )
         _require(
             _sha(self.money.header) == receipt["money_header_sha256"]
             and _frame_signature(self.frame) == receipt["output_frame_sha256"],
@@ -255,6 +262,11 @@ def _reconstruct(source, ready):
     original = source.frame
     assignments, tax_unit = frame_units._construct_tax_units(
         construct, view, year=2024, mode="policyengine"
+    )
+    tax_unit = canonicalize_table_string_dtypes(
+        tax_unit,
+        boundary="ASEC current-money tax reconstruction",
+        table_name="tax_unit",
     )
     _require(
         assignments.index.equals(view.index) and len(assignments) == len(view),

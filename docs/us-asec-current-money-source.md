@@ -68,9 +68,14 @@ The result replaces only the tax-unit table and three person outputs:
 `person_tax_unit_id`, `tax_unit_role_input`, and
 `is_related_to_head_or_spouse`. All other person values and US entities, source
 indices, weights, strata, metadata, and mass-log records are retained and
-checked. The receipt binds the original and resulting Frame, unchanged money
+checked. The new tax table uses the existing canonical table string boundary
+before Frame construction and receipt sealing, so checkpoint reload does not
+change its filing-status representation or content signature. Numeric values
+are not coerced by this string boundary. The receipt binds the original and resulting Frame, unchanged money
 artifact, actual execution closure, and old/new member partitions identified by
-person IDs. `result.validate()` detects later output or implementation changes.
+person IDs. `result.validate()` detects later output or implementation changes,
+including the Frame-core and shared-loader closure already bound by the source
+evidence in its money spec.
 The resulting Frame is not a new raw-source authority and cannot be fed back as
 the original authenticated source. Both `release_eligible` and
 `all_current_money_consumers_wired` remain false in its receipt.
