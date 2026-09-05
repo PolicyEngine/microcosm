@@ -76,9 +76,9 @@ Landed and green locally:
 - `.../multispine_pool.py` — seven small registered helpers, no change to any
   existing selection semantics or merge formula.
 - `packages/microcosm-build/tests/test_us_graph_housing_source.py`
-  (46 functions, 62 collected, including this session's added provenance
-  guard) and `test_us_graph_housing_source_artifacts.py`
-  (31 functions, 52 collected).
+  (49 functions, 66 collected, including this session's provenance guard and
+  the review fixes' new tests) and
+  `test_us_graph_housing_source_artifacts.py` (31 functions, 52 collected).
 - `packages/microcosm-build/tests/golden/us_housing_source_pre_graph.json` —
   the pre-edit direct oracle.
 - `test_us_spine_blindness.py` classification, `docs/us-housing-source-graph.md`,
