@@ -241,6 +241,36 @@ def test_pool_summary_preserves_failure_units_and_never_certifies():
     assert gates == original
 
 
+def test_manifest_read_is_bounded_like_its_attachments(tmp_path, monkeypatch):
+    """The manifest itself is bounded, not only the attachments it lists.
+
+    A reader pointed at a corrupt or hostile evidence root must not load an
+    arbitrarily large file into memory before its digest can reject it. This
+    candidate has no available attachment, so the manifest read is the only
+    read the bound can come from.
+    """
+    from microcosm.build import candidate_quality
+
+    root = tmp_path / "quality"
+    result = write_candidate_quality(metadata(), {}, root)
+    assert read_candidate_quality(root, result["sha256"])["run_id"] == "run-fixture"
+    monkeypatch.setattr(candidate_quality, "MAX_ATTACHMENT_BYTES", 4)
+    with pytest.raises(CandidateQualityError, match="[Ss]ize bound exceeded"):
+        read_candidate_quality(root, result["sha256"])
+
+
+def test_attachment_read_is_bounded(tmp_path, monkeypatch):
+    from microcosm.build import candidate_quality
+
+    root = tmp_path / "quality"
+    result = write_candidate_quality(
+        metadata(), {"calibration_diagnostics": attachment(tmp_path)}, root
+    )
+    monkeypatch.setattr(candidate_quality, "MAX_ATTACHMENT_BYTES", 4)
+    with pytest.raises(CandidateQualityError, match="[Ss]ize bound exceeded"):
+        read_candidate_quality(root, result["sha256"])
+
+
 @pytest.mark.parametrize(
     "manifest",
     [

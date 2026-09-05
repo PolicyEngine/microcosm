@@ -102,6 +102,20 @@ def _relative(root: Path, value: object) -> Path:
     return resolved
 
 
+def _bounded(path: Path, label: str) -> bytes:
+    """Read a local evidence file under the size bound, before and after.
+
+    The bound is rechecked against the bytes actually returned: a file that
+    grows between the stat and the read would otherwise be loaded whole.
+    """
+    if path.stat().st_size > MAX_ATTACHMENT_BYTES:
+        raise CandidateQualityError(f"Size bound exceeded: {label}.")
+    data = path.read_bytes()
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        raise CandidateQualityError(f"Size bound exceeded: {label}.")
+    return data
+
+
 def _metadata(value: Mapping[str, object]) -> dict[str, Any]:
     meta = _json(_bytes(dict(value)), "candidate metadata")
     if "attachments" in meta or "schema_version" in meta:
@@ -481,7 +495,7 @@ def read_candidate_quality(root: Path, manifest_sha256: str) -> dict[str, Any]:
     """Authenticate a direct manifest and all available local aggregate bytes."""
     root = Path(root).resolve()
     digest = _sha(manifest_sha256)
-    raw = _relative(root, f"manifests/{digest}.json").read_bytes()
+    raw = _bounded(_relative(root, f"manifests/{digest}.json"), "candidate manifest")
     if hashlib.sha256(raw).hexdigest() != digest:
         raise CandidateQualityError("Candidate manifest digest mismatch.")
     payload = _json(raw, "candidate manifest")
@@ -497,9 +511,7 @@ def read_candidate_quality(root: Path, manifest_sha256: str) -> dict[str, Any]:
         item = _attachment(meta, value, name, source=False)
         if item["status"] == "available":
             path = _relative(root, item["path"])
-            if path.stat().st_size > MAX_ATTACHMENT_BYTES:
-                raise CandidateQualityError("Attachment size bound exceeded.")
-            data = path.read_bytes()
+            data = _bounded(path, name)
             if hashlib.sha256(data).hexdigest() != item["sha256"]:
                 raise CandidateQualityError(f"Attachment digest mismatch: {name}.")
             parsed = _json(data, name)
