@@ -18,6 +18,7 @@ from microcosm.frame import Frame, WeightKind, Weights
 
 from . import keys as graph_keys
 from .artifact_edges import scope_payload, typed_contracts, value_from_descriptor
+from .attachments import _PopulationRetention
 from .availability import (
     EXECUTION_SCHEMA,
     execution_state,
@@ -1443,20 +1444,25 @@ def _write_node(
     verify_existing: bool,
     typed_artifacts: Mapping[str, object] | None = None,
 ) -> tuple[dict[tuple[str, str], str], dict[str, object]]:
-    columns: dict[tuple[str, str], tuple[pd.Series, str]] = {}
     if node.structural is StructuralDelta.NONE:
         declared = {(owned.entity, owned.column): owned for owned in node.outputs}
-        for coordinate, series in result.columns.items():
-            columns[coordinate] = (series, declared[coordinate].dtype)
+        coordinates = sorted(result.columns)
     else:
-        for entity in population.frame.entities:
-            for column in population.frame.table(entity).columns:
-                series = _series_for_column(population.frame, entity, column)
-                columns[(entity, column)] = (series, _dtype_token(series))
+        coordinates = sorted(
+            (entity, column)
+            for entity in population.frame.entities
+            for column in population.frame.table(entity).columns
+        )
 
     column_entries: list[dict[str, str]] = []
     manifest_artifacts: dict[tuple[str, str], str] = {}
-    for (entity, column), (series, token) in sorted(columns.items()):
+    for entity, column in coordinates:
+        if node.structural is StructuralDelta.NONE:
+            series = result.columns[(entity, column)]
+            token = declared[(entity, column)].dtype
+        else:
+            series = _series_for_column(population.frame, entity, column)
+            token = _dtype_token(series)
         output_key = artifact_key(key, entity, column)
         store.put_column(
             output_key,
@@ -1468,6 +1474,7 @@ def _write_node(
         )
         column_entries.append({"entity": entity, "column": column, "key": output_key})
         manifest_artifacts[(entity, column)] = output_key
+        del series
 
     stored_frame_key: str | None = None
     if node.structural is not StructuralDelta.NONE:
@@ -2156,11 +2163,21 @@ def run_graph(
     kernels: KernelRegistry,
     resume: ResumePolicy = "auto",
     decisions: tuple[Decision, ...] = (),
+    population_retention: str = "eager",
 ) -> RunManifest:
-    """Execute a compiled graph with content-addressed reuse and receipts."""
+    """Execute a compiled graph with content-addressed reuse and receipts.
+
+    ``population_retention="lazy"`` retires each population after its final
+    scheduled use and loads historical manifest views from verified storage.
+    It requires a writable store, including for missing auxiliary attachments
+    under ``resume="require"``. The default ``"eager"`` retains all Frames.
+    Node identities and portable manifest provenance are unchanged.
+    """
 
     if resume not in ("auto", "require", "forbid"):
         raise ValueError("resume must be 'auto', 'require', or 'forbid'.")
+    if population_retention not in ("eager", "lazy"):
+        raise ValueError("population_retention must be 'eager' or 'lazy'.")
     normalized_decisions: list[Decision] = []
     for decision in decisions:
         if isinstance(decision, Decision):
@@ -2182,6 +2199,11 @@ def run_graph(
     if resume == "require":
         _preflight_require(compiled, store, keys, implementations, kernels)
 
+    retention = (
+        _PopulationRetention(compiled, store, verify_existing=resume != "forbid")
+        if population_retention == "lazy"
+        else None
+    )
     populations: dict[str, Population] = {}
     receipts: dict[str, NodeReceipt] = {}
     receipt_payloads: dict[str, Mapping[str, object]] = {}
@@ -2217,6 +2239,8 @@ def run_graph(
                 resume=resume,
             )
             receipt_payloads[node_id] = receipts[node_id].receipt
+            if retention is not None:
+                retention.finish(node_id, populations, receipts)
             continue
 
         if node.structural is StructuralDelta.CREATE:
@@ -2442,6 +2466,13 @@ def run_graph(
         else:
             populations[node.id] = updated
 
+        structural_collision = (
+            retention is not None
+            and not hit
+            and resume != "forbid"
+            and node.structural is not StructuralDelta.NONE
+            and store.has(frame_key(key))
+        )
         if not hit:
             manifest_artifacts, record = _write_node(
                 store,
@@ -2493,6 +2524,13 @@ def run_graph(
             opaque_artifacts=MappingProxyType(receipt_opaque),
         )
         receipt_payloads[node_id] = receipts[node_id].receipt
+        if retention is not None:
+            retention.finish(
+                node_id,
+                populations,
+                receipts,
+                structural_collision=structural_collision,
+            )
 
     return RunManifest(
         country=compiled.graph.country,
@@ -2501,13 +2539,24 @@ def run_graph(
         started_at=started_at,
         finished_at=_now(),
         host=socket.gethostname(),
-        populations=MappingProxyType(
-            {version: population.frame for version, population in populations.items()}
+        populations=(
+            retention.views()
+            if retention is not None
+            else MappingProxyType(
+                {
+                    version: population.frame
+                    for version, population in populations.items()
+                }
+            )
         ),
-        mass_ledgers=MappingProxyType(
-            {
-                version: population.mass_ledger
-                for version, population in populations.items()
-            }
+        mass_ledgers=(
+            retention.ledgers()
+            if retention is not None
+            else MappingProxyType(
+                {
+                    version: population.mass_ledger
+                    for version, population in populations.items()
+                }
+            )
         ),
     )

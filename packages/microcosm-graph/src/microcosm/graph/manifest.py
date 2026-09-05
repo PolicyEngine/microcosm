@@ -60,7 +60,7 @@ class PopulationView(Frame):
     accessor for every entity name. The source Frame keeps its original type.
     """
 
-    __slots__ = ()
+    __slots__ = ("__weakref__",)
 
     def __init__(self, frame: Frame) -> None:
         if not isinstance(frame, Frame):
@@ -484,18 +484,23 @@ class RunManifest:
         for name in ("started_at", "finished_at", "host"):
             if not isinstance(getattr(self, name), str):
                 raise TypeError(f"RunManifest.{name} must be a string")
-        populations: dict[str, PopulationView] = {}
-        for version_id, frame in self.populations.items():
-            if not isinstance(version_id, str):
-                raise TypeError("RunManifest.populations keys must be strings")
-            if not isinstance(frame, Frame):
-                raise TypeError("RunManifest.populations values must be Frame")
-            populations[version_id] = PopulationView(frame)
-        object.__setattr__(
-            self,
-            "populations",
-            MappingProxyType(populations),
-        )
+        # Only our private validated mapping can bypass eager value validation.
+        # The local import avoids a manifest/attachment module import cycle.
+        from .attachments import _LazyPopulations
+
+        if type(self.populations) is not _LazyPopulations:
+            populations: dict[str, PopulationView] = {}
+            for version_id, frame in self.populations.items():
+                if not isinstance(version_id, str):
+                    raise TypeError("RunManifest.populations keys must be strings")
+                if not isinstance(frame, Frame):
+                    raise TypeError("RunManifest.populations values must be Frame")
+                populations[version_id] = PopulationView(frame)
+            object.__setattr__(
+                self,
+                "populations",
+                MappingProxyType(populations),
+            )
         mass_ledgers: dict[str, tuple[MassRecord, ...]] = {}
         for version_id, records in self.mass_ledgers.items():
             if not isinstance(version_id, str):

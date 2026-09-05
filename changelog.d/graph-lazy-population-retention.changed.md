@@ -1,0 +1,1 @@
+Add opt-in lazy historical population views with verified final-Frame snapshots and preserved live metadata, stream source hashes without changing keys, and write structural column copies one at a time. Keep eager execution and public artifact identities unchanged.

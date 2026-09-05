@@ -350,6 +350,35 @@ Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.
 
+## Optional execution retention policy
+
+`population_retention="lazy"` is an opt-in physical execution policy; the
+existing eager default and frozen declarations remain unchanged. A version
+must stay live through its last scheduled population use, including late
+branches. All realized versions remain available through the normal
+`PopulationView` API, loaded on demand and weakly memoized. Unreached versions
+remain absent. Listing attachments, membership, manifest identity and portable
+serialization must not hydrate populations.
+
+Before retirement, ordinary patches must be present in a verified final-Frame
+snapshot. Auxiliary identity binds producing receipts without run-only fields
+and actual codec payload hashes; receipt-only identity is insufficient for
+valid tolerance-bound recomputations. Unpatched structural artifacts may be
+reused only for the actual executed result. Snapshot publication uses the
+existing atomic store format, and lazy access refuses changed payloads or
+producer binding. A frozen in-memory metadata descriptor preserves Frame
+metadata on the same eager/lazy execution path. This does not amend the
+existing Frame codec's metadata omission or portable manifest attachments.
+
+`require` retains preflight and zero-kernel behavior, but lazy attachment
+materialization needs a writable store. No node key, published node artifact,
+portable schema, or manifest key changes. Source hashing retains the legacy
+byte formula and mutation checks with bounded reads. Structural writes retain
+artifact bytes and order while copying only one Series at a time. The new
+`test_population_retention.py` and `test_source_streaming.py` verify this policy;
+the frozen acceptance suite is unchanged. This policy bounds historical Frame
+retention by the live frontier, not arbitrary kernel or caller memory.
+
 ## Ownership
 
 Max's ruling (2026-09-01): the agents build all of it. The "implementer ≠

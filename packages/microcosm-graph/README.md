@@ -81,6 +81,49 @@ tolerance-bound artifacts require tolerance-bound consumers with their own
 output tolerance. Mixed platform/tolerance artifact inputs are refused. The
 executor does not infer error propagation through an arbitrary computation.
 
+## Population retention
+
+`run_graph(..., population_retention="lazy")` keeps live populations through
+their last scheduled use, then releases them. The default `"eager"` behavior
+is unchanged. Every realized version remains available through
+`manifest.population(version)` and `manifest.populations[version]` as a normal
+`PopulationView` with the full Frame API. Listing versions, membership checks,
+manifest keys and JSON do not load Frames. Repeated lookup returns the same
+view while a caller holds it; weak memoization permits collection afterwards.
+Unreached structural nodes still have no population.
+
+Versions with ordinary column patches receive an auxiliary final-Frame
+snapshot, so historical views include those patches. Snapshot identities bind
+both producing receipts and actual codec payload hashes: a tolerance-bound
+recomputation can produce different bytes under an unchanged node key. An
+unchanged version reuses its structural artifact; a fresh computation colliding
+with an older structural artifact gets a snapshot of its actual result. These
+attachments do not change node keys, published node artifacts, portable
+manifest schemas or manifest identity. Lazy reads verify payloads and producer
+binding, and refuse artifacts changed or removed after the run.
+
+Lazy execution requires a writable store. `resume="require"` still performs
+full preflight and executes no kernels, but can reconstruct a missing auxiliary
+attachment from verified cached results. `auto` verifies/reuses existing
+attachments; `forbid` refreshes them. The existing atomic Frame codec publishes
+snapshots after staging; staging files are renamed without a second payload
+copy. Structural node column artifacts are written one copied Series at a time,
+and source hashing uses bounded reads with the same byte identity and checks
+for detected source changes.
+
+The live manifest retains each Frame's frozen metadata descriptor alongside
+its store reference. This preserves eager/lazy metadata on the same execution
+path. The existing Frame codec omits metadata on warm source loads, and portable
+manifests omit population attachments entirely; this option does not add a
+portable metadata contract. Use declared typed context artifacts when metadata
+must survive those boundaries.
+
+Memory retention follows the live DAG frontier plus the current kernel and
+write working set. Kernels, caller-held views, and metadata/provenance still
+consume memory; this is not an absolute memory cap. Auxiliary snapshots add
+disk space and I/O for patched versions. Profile a small end-to-end graph before
+increasing the population size.
+
 ## Stable random coordinates
 
 Opt-in kernels declare `SeedSource.KEYED`, put their stream tuple in normative
