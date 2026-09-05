@@ -634,3 +634,149 @@ def test_explicit_source_scopes_preserve_donor_recipient_separation(
     after = (donor_kernel.implementation_hash(), recipient_kernel.implementation_hash())
     assert (before[0] != after[0]) == (target == "donor_helper")
     assert (before[1] != after[1]) == (target != "unrelated_assembly")
+
+
+_RUNTIME_KERNELS = {
+    "donor": source.USACSRentDonorKernel,
+    "boundary": rent.USACSRentBoundaryKernel,
+    "recipient": rent.USACSRentRecipientKernel,
+    "validation": rent.USACSRentValidationKernel,
+    "finalizer": rent.USACSRentFinalizeKernel,
+}
+
+
+@pytest.mark.parametrize("name", _RUNTIME_KERNELS)
+def test_rent_arrow_version_is_declared_and_rekeys_implementation(monkeypatch, name):
+    from microcosm.graph import kernel as graph_kernel
+
+    kernel = _RUNTIME_KERNELS[name]()
+    before = kernel.implementation_hash()
+    original = graph_kernel.importlib_metadata.version
+    monkeypatch.setattr(
+        graph_kernel.importlib_metadata,
+        "version",
+        lambda package: (
+            "test-arrow-version-change" if package == "pyarrow" else original(package)
+        ),
+    )
+    assert "pyarrow" in kernel.capabilities.dependencies
+    assert kernel.implementation_hash() != before
+
+
+@pytest.mark.parametrize("name", _RUNTIME_KERNELS)
+@pytest.mark.parametrize(
+    "option,first,second",
+    [
+        ("mode.string_storage", "python", "pyarrow"),
+        ("future.infer_string", False, True),
+    ],
+)
+def test_rent_string_option_rekeys_implementation(name, option, first, second):
+    kernel = _RUNTIME_KERNELS[name]()
+    with pd.option_context(option, first):
+        before = kernel.implementation_hash()
+    with pd.option_context(option, second):
+        after = kernel.implementation_hash()
+    assert before != after
+
+
+def test_rent_runtime_identity_records_actual_resolved_backend():
+    for storage in ("python", "pyarrow", "auto"):
+        with pd.option_context(
+            "mode.string_storage", storage, "future.infer_string", True
+        ):
+            runtime = codec.string_runtime_identity()
+            sample = pd.Series(np.array(["rent"], dtype=object)).astype(str)
+            assert runtime["options"] == {
+                "mode.string_storage": storage,
+                "future.infer_string": True,
+            }
+            assert runtime["resolved"]["astype_str"]["storage"] == sample.dtype.storage
+            assert (
+                runtime["resolved"]["astype_str"]["array_class"]
+                == f"{type(sample.array).__module__}.{type(sample.array).__qualname__}"
+            )
+
+
+@pytest.mark.parametrize("change", ["pyarrow", "string_storage", "infer_string"])
+def test_changed_string_runtime_refuses_old_required_cache_and_rebuilds(
+    tmp_path, monkeypatch, change
+):
+    from microcosm.graph import StoreMiss
+    from microcosm.graph import kernel as graph_kernel
+
+    with pd.option_context(
+        "mode.string_storage", "python", "future.infer_string", True
+    ):
+        _inputs(tmp_path)
+        first, _, _, _ = _run(tmp_path)
+        for node in (f"{rent.RENT_PREFIX}.donor", f"{rent.RENT_PREFIX}.recipient"):
+            assert (
+                first.nodes[node].receipt["string_runtime"]
+                == codec.string_runtime_identity()
+            )
+        original = graph_kernel.importlib_metadata.version
+        with monkeypatch.context() as patch:
+            if change == "pyarrow":
+                patch.setattr(
+                    graph_kernel.importlib_metadata,
+                    "version",
+                    lambda name: (
+                        "test-arrow-version-change"
+                        if name == "pyarrow"
+                        else original(name)
+                    ),
+                )
+                option, value = "mode.string_storage", "python"
+            elif change == "string_storage":
+                option, value = "mode.string_storage", "pyarrow"
+            else:
+                option, value = "future.infer_string", False
+            with pd.option_context(option, value):
+                with pytest.raises(StoreMiss):
+                    _run(tmp_path, resume="require")
+                rebuilt, _, _, _ = _run(tmp_path, resume="auto")
+                for node in (
+                    f"{rent.RENT_PREFIX}.donor",
+                    f"{rent.RENT_PREFIX}.recipient",
+                ):
+                    assert (
+                        rebuilt.nodes[node].receipt["string_runtime"]
+                        == codec.string_runtime_identity()
+                    )
+                for node in (
+                    f"{rent.RENT_PREFIX}.donor",
+                    f"{rent.RENT_PREFIX}.fit.000",
+                    f"{rent.RENT_PREFIX}.recipient",
+                    rent.RENT_OUTPUT_CONTEXT,
+                ):
+                    assert first.nodes[node].key != rebuilt.nodes[node].key
+                    assert not rebuilt.nodes[node].hit
+                warm, _, _, _ = _run(tmp_path, resume="require")
+                assert warm.key == rebuilt.key and all(
+                    record.hit for record in warm.nodes.values()
+                )
+
+
+@pytest.mark.parametrize("target", ["donor", "recipient"])
+def test_rent_refuses_string_option_change_during_actual_encoding(
+    tmp_path, monkeypatch, target
+):
+    from microcosm.graph import NodeRejectedError
+
+    helper_name = f"prepare_acs_rent_{target}"
+    original = getattr(housing_inputs, helper_name)
+
+    def changed(*args, **kwargs):
+        prepared = original(*args, **kwargs)
+        pd.set_option("mode.string_storage", "pyarrow")
+        return prepared
+
+    with pd.option_context(
+        "mode.string_storage", "python", "future.infer_string", True
+    ):
+        _inputs(tmp_path)
+        monkeypatch.setattr(housing_inputs, helper_name, changed)
+        error = ValueError if target == "donor" else NodeRejectedError
+        with pytest.raises(error, match="string runtime changed during encoding"):
+            _run(tmp_path)

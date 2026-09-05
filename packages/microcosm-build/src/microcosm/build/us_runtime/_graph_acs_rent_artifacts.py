@@ -8,7 +8,7 @@ import pandas as pd
 
 from microcosm.fit._graph_legacy_qrf import decode_json, encode_json, sha
 from microcosm.fit.qrf import _index_identity, _IndexIdentity
-from microcosm.graph import ArtifactType, Numeric, platform_fingerprint
+from microcosm.graph import ArtifactType, Numeric, platform_fingerprint, source_hash
 
 from .graph_context import _row_identity
 
@@ -34,6 +34,55 @@ _PLACEMENT_FIELDS = {
     "household_identity",
     *_BINDINGS,
 }
+
+
+def string_runtime_identity() -> dict[str, object]:
+    """Describe the configured and resolved pandas string encoding runtime.
+
+    Constant-size probes exercise the construction, cast and state-code padding
+    operations used by the rent helpers. The fingerprint makes no claim that
+    different backends produce equivalent encoded values.
+    """
+    inferred = pd.Series(np.array(["rent"], dtype=object))
+    probes = {
+        "inferred": inferred,
+        "astype_str": inferred.astype(str),
+        "state_code": pd.Series(np.array([6], dtype=np.int64)).astype(str).str.zfill(2),
+    }
+    return {
+        "schema_version": 1,
+        "options": {
+            "mode.string_storage": pd.get_option("mode.string_storage"),
+            "future.infer_string": pd.get_option("future.infer_string"),
+        },
+        "resolved": {
+            name: {
+                "dtype_class": f"{type(series.dtype).__module__}.{type(series.dtype).__qualname__}",
+                "dtype": repr(series.dtype),
+                "storage": getattr(series.dtype, "storage", None),
+                "array_class": f"{type(series.array).__module__}.{type(series.array).__qualname__}",
+            }
+            for name, series in probes.items()
+        },
+    }
+
+
+def encoding_implementation_hash(*objects, dependencies: tuple[str, ...]) -> str:
+    """Bind the explicit source closure and dependencies to string options."""
+    return sha(
+        encode_json(
+            {
+                "schema": "microcosm.us.acs_rent_implementation.v2",
+                "source_sha256": source_hash(*objects, dependencies=dependencies),
+                "string_runtime": string_runtime_identity(),
+            }
+        )
+    )
+
+
+def assert_string_runtime(expected: dict[str, object]) -> None:
+    if string_runtime_identity() != expected:
+        raise ValueError("ACS rent string runtime changed during encoding.")
 
 
 def is_hash(value):

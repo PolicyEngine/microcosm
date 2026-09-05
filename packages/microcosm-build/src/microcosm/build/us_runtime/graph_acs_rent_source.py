@@ -21,7 +21,6 @@ from microcosm.graph import (
     SourceRef,
     StructuralDelta,
     load_source,
-    source_hash,
 )
 from microcosm.graph.codecs import SourceCodecRegistry
 
@@ -136,6 +135,7 @@ def load_graph_acs_rent_source(
     path = Path(path)
     if not artifacts.is_hash(expected_sha256) or not path.is_file():
         raise ValueError("ACS rent requires a pinned regular local H5 file.")
+    string_runtime = artifacts.string_runtime_identity()
     donor = housing_inputs.load_acs_2022_rent_donor(
         path, expected_sha256=expected_sha256
     )
@@ -152,7 +152,7 @@ def load_graph_acs_rent_source(
     table.insert(0, "household_id", ids)
     document = _descriptor(prepared, expected_sha256)
     decode_donor_descriptor(artifacts.encode_json(document))
-    return Frame(
+    frame = Frame(
         {
             "household": table,
             "person": pd.DataFrame({"person_id": ids, "person_household_id": ids}),
@@ -166,6 +166,8 @@ def load_graph_acs_rent_source(
         },
         metadata={_DESCRIPTOR_KEY: document},
     )
+    artifacts.assert_string_runtime(string_runtime)
+    return frame
 
 
 def prepare_acs_rent_source_descriptor(
@@ -194,7 +196,7 @@ class USACSRentDonorKernel(KernelBase):
         Determinism.DETERMINISTIC,
         structural=StructuralDelta.CREATE,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=("numpy", "pandas", "h5py"),
+        dependencies=("numpy", "pandas", "h5py", "pyarrow"),
     )
 
     def __init__(self, source_codecs=None):
@@ -206,7 +208,7 @@ class USACSRentDonorKernel(KernelBase):
         loader = self.source_codecs.get(RENT_SOURCE_CODEC)
         if isinstance(loader, partial):
             loader = loader.func
-        return source_hash(
+        return artifacts.encoding_implementation_hash(
             type(self),
             loader,
             housing_inputs,
@@ -247,6 +249,7 @@ class USACSRentDonorKernel(KernelBase):
             != (ArtifactOutput("encoding", artifacts.ACS_RENT_ENCODING_TYPE),)
         ):
             raise ValueError("ACS rent donor ownership differs from its descriptor.")
+        string_runtime = artifacts.string_runtime_identity()
         frame = load_source(
             RENT_SOURCE_CODEC,
             context.sources[RENT_SOURCE_NAME],
@@ -277,6 +280,7 @@ class USACSRentDonorKernel(KernelBase):
             raise ValueError(
                 "ACS rent staging IDs/design weights differ from original sample rows."
             )
+        artifacts.assert_string_runtime(string_runtime)
         return KernelResult(
             frame=frame,
             artifacts={"encoding": payload},
@@ -286,5 +290,6 @@ class USACSRentDonorKernel(KernelBase):
                 "training_rows": len(table),
                 "encoding_sha256": artifacts.sha(payload),
                 "row_ids": "prepared_sample_index_labels",
+                "string_runtime": string_runtime,
             },
         )

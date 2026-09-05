@@ -31,7 +31,6 @@ from microcosm.graph import (
     Owned,
     Slice,
     StructuralDelta,
-    source_hash,
 )
 from microcosm.graph.kernel import KernelRole
 
@@ -213,7 +212,7 @@ def _validate_application(context):
 
 class _RentKernel(KernelBase):
     def implementation_hash(self):
-        return source_hash(
+        return codec.encoding_implementation_hash(
             type(self),
             codec,
             source,
@@ -239,7 +238,7 @@ class USACSRentBoundaryKernel(_RentKernel):
         Determinism.DETERMINISTIC,
         structural=StructuralDelta.FILTER,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=("numpy", "pandas"),
+        dependencies=("numpy", "pandas", "pyarrow"),
     )
 
     def run(self, context):
@@ -290,7 +289,7 @@ class USACSRentRecipientKernel(_RentKernel):
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=("numpy", "pandas"),
+        dependencies=("numpy", "pandas", "pyarrow"),
     )
 
     def run(self, context):
@@ -317,6 +316,7 @@ class USACSRentRecipientKernel(_RentKernel):
             EntitySchema(group_entities=("household",)),
             {"household": context.weights["household"]},
         )
+        string_runtime = codec.string_runtime_identity()
         prepared = housing_inputs.prepare_acs_rent_recipient(
             view, donor_context=descriptor["encoding_context"]
         )
@@ -333,6 +333,7 @@ class USACSRentRecipientKernel(_RentKernel):
             frame_context=frame_context,
             encoding=encoding,
         )
+        codec.assert_string_runtime(string_runtime)
         return KernelResult(
             artifacts={"matrix": matrix, "placement": placement},
             receipt={
@@ -340,6 +341,7 @@ class USACSRentRecipientKernel(_RentKernel):
                 "households": len(prepared.predictors),
                 "matrix_sha256": codec.sha(matrix),
                 "placement_sha256": codec.sha(placement),
+                "string_runtime": string_runtime,
             },
         )
 
@@ -350,7 +352,7 @@ class USACSRentValidationKernel(_RentKernel):
         Determinism.DETERMINISTIC,
         role=KernelRole.GATE,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=("numpy", "pandas"),
+        dependencies=("numpy", "pandas", "pyarrow"),
     )
 
     def run(self, context):
@@ -404,7 +406,7 @@ class USACSRentFinalizeKernel(_RentKernel):
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=("numpy", "pandas"),
+        dependencies=("numpy", "pandas", "pyarrow"),
     )
 
     def run(self, context):
