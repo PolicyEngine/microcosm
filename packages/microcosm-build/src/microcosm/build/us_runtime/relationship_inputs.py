@@ -33,6 +33,9 @@ from microcosm.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from microcosm.build.us_runtime._person_signal_summary import (
+    validate_person_signal_summary,
+)
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
@@ -43,6 +46,7 @@ __all__ = [
     "US_RELATIONSHIP_INPUTS_STAGE_NAME",
     "derive_us_relationship_inputs_from_manifest",
     "prepare_us_relationship_person",
+    "us_relationship_inputs_person_carries_signal",
     "us_relationship_inputs_gate_from_summary",
     "us_relationship_inputs_person_gate",
     "us_relationship_inputs_person_summary",
@@ -187,14 +191,23 @@ def derive_us_relationship_inputs_from_manifest(
     return result
 
 
-def _relationship_surface_carries_signal(frame: Frame) -> bool:
-    person = frame.table("person")
+def us_relationship_inputs_person_carries_signal(person: pd.DataFrame) -> bool:
+    """Return the exact incumbent pass-through decision from the real person table.
+
+    All three outputs must be present and each must have multiple observed
+    values. Preserve the legacy null/constant rule; this does not validate raw
+    source columns or resolve weights, and is not a scientific signal gate.
+    """
     if any(column not in person for column in US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS):
         return False
     return all(
         person[column].dropna().nunique() > 1
         for column in US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS
     )
+
+
+def _relationship_surface_carries_signal(frame: Frame) -> bool:
+    return us_relationship_inputs_person_carries_signal(frame.table("person"))
 
 
 def _validated_relationship_weights(
@@ -390,8 +403,29 @@ def us_relationship_inputs_gate_from_summary(
     already confirmed the three output columns are present; missing
     columns are a separate failure mode (see
     :func:`us_relationship_inputs_person_gate`).
+
+    Raises:
+        ValueError: If required fields/counts are missing, measurements are
+            malformed, or supplied bands differ from the registered policy.
     """
 
+    validate_person_signal_summary(
+        summary,
+        family="relationship",
+        outputs=US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
+        share_bands={
+            "household_head_share": (
+                "household_head_share_band",
+                _HOUSEHOLD_HEAD_SHARE_BAND,
+            ),
+            "separated_share": ("separated_share_band", _SEPARATED_SHARE_BAND),
+            "surviving_spouse_share": (
+                "surviving_spouse_share_band",
+                _SURVIVING_SPOUSE_SHARE_BAND,
+            ),
+        },
+        invariants=("households_without_exactly_one_head", "separated_and_surviving"),
+    )
     failures: list[str] = []
     for share_key, band_key, label in (
         (

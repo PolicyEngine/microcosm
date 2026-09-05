@@ -588,3 +588,159 @@ def test_shipped_household_head_neutralization_probe() -> None:
     assert probe.effect_direction == "baseline_minus_reform"
     assert probe.expected_sign == "negative"
     assert probe.min_abs_effect >= 1_000_000.0
+
+
+class TestPersonSignalContracts:
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "missing_field",
+            "missing_count",
+            "empty_counts",
+            "extra_count",
+            "altered_band",
+            "nan_share",
+            "infinite_share",
+            "boolean_share",
+            "negative_count",
+            "fractional_count",
+            "boolean_count",
+            "extra_field",
+        ],
+    )
+    def test_summary_gate_refuses_malformed_evidence(self, mutation):
+        from microcosm.build.us_runtime import relationship_inputs as module
+
+        frame = TestPersonSummaryAndGate()._plausible_frame()
+        summary = module.us_relationship_inputs_summary(frame)
+        if mutation == "missing_field":
+            del summary["separated_share_band"]
+        elif mutation == "missing_count":
+            del summary["unique_counts"]["is_surviving_spouse"]
+        elif mutation == "empty_counts":
+            summary["unique_counts"] = {}
+        elif mutation == "extra_count":
+            summary["unique_counts"]["unregistered"] = 2
+        elif mutation == "altered_band":
+            summary["separated_share"] = 1.0
+            summary["separated_share_band"] = [0.0, 1.0]
+        elif mutation == "nan_share":
+            summary["separated_share"] = np.nan
+        elif mutation == "infinite_share":
+            summary["separated_share"] = np.inf
+        elif mutation == "boolean_share":
+            summary["separated_share"] = False
+        elif mutation == "extra_field":
+            summary["unregistered"] = 0
+        else:
+            summary["unique_counts"]["is_surviving_spouse"] = {
+                "negative_count": -1,
+                "fractional_count": 2.5,
+                "boolean_count": True,
+            }[mutation]
+        with pytest.raises(ValueError, match="Malformed relationship-input summary"):
+            module.us_relationship_inputs_gate_from_summary(summary)
+
+    @pytest.mark.parametrize(
+        "mutation,expected",
+        [
+            ("mixed", True),
+            ("missing", False),
+            ("constant", False),
+            ("partial_null_mixed", True),
+            ("partial_null_constant", False),
+        ],
+    )
+    def test_complete_person_predicate_matches_wrapper_passthrough(
+        self, mutation, expected
+    ):
+        from microcosm.build.us_runtime import relationship_inputs as module
+
+        frame = TestPersonSummaryAndGate()._plausible_frame()
+        person = frame.person.copy()
+        if mutation == "missing":
+            person = person.drop(columns=["is_surviving_spouse"])
+        elif mutation in {"constant", "partial_null_constant"}:
+            person["is_separated"] = False
+        if mutation.startswith("partial_null"):
+            person["is_separated"] = pd.array(person["is_separated"], dtype="boolean")
+            person.iloc[-1, person.columns.get_loc("is_separated")] = pd.NA
+        before = person.copy(deep=True)
+        assert module.us_relationship_inputs_person_carries_signal(person) is expected
+        pd.testing.assert_frame_equal(person, before)
+        # A valid Frame can carry two explicit weighted groups. Resolving person
+        # weights is ambiguous, but an incumbent pass-through must not resolve them.
+        weighted = {e: frame.weights_for(e) for e in frame.weighted_entities}
+        weighted["tax_unit"] = Weights(
+            np.ones(len(frame.table("tax_unit"))), WeightKind.DESIGN
+        )
+        if expected:
+            person = person.drop(columns=["A_MARITL"])
+        candidate = Frame(
+            {e: person if e == "person" else frame.table(e) for e in frame.entities},
+            frame.schema,
+            weighted,
+            frame.strata,
+        )
+        if expected:
+            assert (
+                module.with_us_relationship_inputs(candidate, seed=7, time_period=2024)
+                is candidate
+            )
+            with pytest.raises(SourceRuntimeError, match="A_MARITL"):
+                module.prepare_us_relationship_person(
+                    person, np.ones(len(person)), seed=7, time_period=2024
+                )
+        else:
+            with pytest.raises(ValueError, match="2 weighted group entities"):
+                module.with_us_relationship_inputs(candidate, seed=7, time_period=2024)
+
+    def test_zero_plain_weights_produce_zero_share_diagnostics_not_canonical_weights(
+        self,
+    ):
+        from microcosm.build.us_runtime import relationship_inputs as module
+
+        frame = TestPersonSummaryAndGate()._plausible_frame()
+        weights = np.zeros(len(frame.person))
+        summary = module.us_relationship_inputs_person_summary(frame.person, weights)
+        assert summary["separated_share"] == 0.0
+        assert not module.us_relationship_inputs_gate_from_summary(summary).passed
+        with pytest.raises(ValueError, match="all zero"):
+            Weights(weights, WeightKind.DESIGN)
+
+    @pytest.mark.parametrize(
+        "field", ["households_without_exactly_one_head", "separated_and_surviving"]
+    )
+    @pytest.mark.parametrize("value", [-1, 0.5, False])
+    def test_relationship_invariant_counts_are_nonnegative_integers(self, field, value):
+        frame = TestPersonSummaryAndGate()._plausible_frame()
+        summary = us_relationship_inputs_summary(frame)
+        summary[field] = value
+        with pytest.raises(ValueError, match="Malformed relationship-input summary"):
+            us_relationship_inputs_gate_from_summary(summary)
+
+    def test_genuine_frozen_summary_preserves_decision_and_supplied_details(self):
+        from types import MappingProxyType
+
+        from microcosm.build.us_runtime import relationship_inputs as module
+
+        frame = TestPersonSummaryAndGate()._plausible_frame()
+        summary = module.us_relationship_inputs_summary(frame)
+        frozen = MappingProxyType(
+            {
+                name: tuple(value)
+                if name.endswith("_band")
+                else MappingProxyType(value)
+                if name == "unique_counts"
+                else value
+                for name, value in summary.items()
+            }
+        )
+        gate = module.us_relationship_inputs_gate_from_summary(frozen)
+        original = module.us_relationship_inputs_signal_gate(frame)
+        assert (gate.name, gate.passed, gate.failures) == (
+            original.name,
+            original.passed,
+            original.failures,
+        )
+        assert gate.details == frozen
