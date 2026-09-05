@@ -70,7 +70,12 @@ def current_money_content_sha256(
 def encode_current_money(
     ready: SyntheticReadyCurrentMoney | ReadyCurrentMoney,
 ) -> bytes:
-    """Encode immutable target amounts/statuses; never serialize nominal arrays."""
+    """Encode immutable target amounts and evidence, including field-scoped origins.
+
+    Schema 1 retains legacy zero provenance. Schema 2 binds the restored-source
+    PTOTVAL origin policy through the exact header/spec; the byte widths and
+    checksum framing are unchanged. Per-field validation rejects swapped codes.
+    """
     parts = _ready_parts(ready)
     checksum = sha256()
     for part in parts:

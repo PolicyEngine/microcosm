@@ -11,12 +11,27 @@ from dataclasses import InitVar, dataclass
 from dataclasses import fields as dataclass_fields
 from enum import IntEnum
 from hashlib import sha256
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
 
 RECIPE = "us_asec_current_money_ccpiu_2024_v1"
 ZERO_POLICY = "frozen_fillna_zero_origin_unresolved"
+RESTORED_SOURCE_KIND = "asec_v4_with_household_and_person_income_observations_v1"
+ENCODED_ZERO_POLICY = "authenticated_census_csv_encoded_zero_v1"
+RESTORED_FIELD_COLUMNS = MappingProxyType({"PTOTVAL": "asec_PTOTVAL"})
+RESTORED_FIELD_ZERO_POLICY = MappingProxyType({"PTOTVAL": ENCODED_ZERO_POLICY})
+
+
+class ZeroOrigin(IntEnum):
+    """Source-encoding provenance; no code establishes a respondent answer."""
+
+    NOT_ZERO = 0
+    FROZEN_FILLNA_UNRESOLVED = 1
+    AUTHENTICATED_CENSUS_ENCODED = 2
+
+
 FIELDS = tuple(
     "ANN_VAL CAP_VAL CHSP_VAL CSP_VAL DIS_VAL1 DIS_VAL2 DIV_VAL DST_VAL1 DST_VAL1_YNG DST_VAL2 DST_VAL2_YNG ED_VAL FRSE_VAL HTOTVAL INT_VAL OI_VAL PHIP_VAL PMED_VAL PNSN_VAL POTC_VAL PTOTVAL RETCB_VAL RNT_VAL SEMP_VAL SPM_CAPHOUSESUB SPM_CHILDCAREXPNS SPM_ENGVAL SSI_VAL SS_VAL UC_VAL VET_VAL WC_VAL WSAL_VAL".split()
 )
@@ -103,9 +118,20 @@ class AuthenticatedAsecSource:
 
     def _validate(self):
         data = _parse(self.evidence, HEADER_MAX_BYTES)
+        restored = data.get("source_kind") == RESTORED_SOURCE_KIND
+        extra = (
+            {
+                "person_income_attachment_sha256",
+                "field_source_columns",
+                "field_zero_origin_policy",
+            }
+            if restored
+            else set()
+        )
         _require(
             set(data)
-            == {
+            == extra
+            | {
                 "schema_version",
                 "source_kind",
                 "source_authentication",
@@ -123,8 +149,13 @@ class AuthenticatedAsecSource:
             "AUTHENTICATED_SOURCE_SCHEMA",
         )
         _require(
-            data["schema_version"] == 1
-            and data["source_kind"] == "asec_v4_with_household_observations_v1"
+            data["schema_version"] == (2 if restored else 1)
+            and data["source_kind"]
+            == (
+                RESTORED_SOURCE_KIND
+                if restored
+                else "asec_v4_with_household_observations_v1"
+            )
             and data["source_authentication"] == "checkpoint_bytes_verified"
             and data["field_roster"] == list(FIELDS)
             and data["zero_origin_policy"] == ZERO_POLICY,
@@ -144,11 +175,42 @@ class AuthenticatedAsecSource:
             ),
             "SOURCE_PIN",
         )
+        if restored:
+            _require(
+                _digest(data["person_income_attachment_sha256"])
+                and data["field_source_columns"] == RESTORED_FIELD_COLUMNS
+                and data["field_zero_origin_policy"] == RESTORED_FIELD_ZERO_POLICY,
+                "RESTORED_SOURCE_SCHEMA",
+            )
         _require(self.evidence == _json(data), "AUTHENTICATED_SOURCE_SCHEMA")
 
     @property
     def identity(self) -> bytes:
         return self.evidence
+
+
+def _restored_source(source) -> bool:
+    return (
+        type(source) is AuthenticatedAsecSource
+        and _parse(source.identity)["source_kind"] == RESTORED_SOURCE_KIND
+    )
+
+
+def _origin_code(spec, field: str) -> ZeroOrigin:
+    return (
+        ZeroOrigin.AUTHENTICATED_CENSUS_ENCODED
+        if field == "PTOTVAL" and _restored_source(spec.source)
+        else ZeroOrigin.FROZEN_FILLNA_UNRESOLVED
+    )
+
+
+def _header_provenance(spec) -> dict:
+    if _restored_source(spec.source):
+        return {
+            "schema_version": 2,
+            "field_zero_origin_policy": dict(RESTORED_FIELD_ZERO_POLICY),
+        }
+    return {"schema_version": 1}
 
 
 def _authentication(source) -> str:
@@ -570,7 +632,12 @@ class MoneyField:
 
 
 def _validate_field(
-    field: MoneyField, domain: MoneyDomain, count: int, *, nominal: bool
+    field: MoneyField,
+    domain: MoneyDomain,
+    count: int,
+    *,
+    nominal: bool,
+    zero_origin_code: ZeroOrigin,
 ) -> None:
     _require(type(field) is MoneyField and field.name == domain.name, "FIELD_IDENTITY")
     buffers = (
@@ -590,7 +657,7 @@ def _validate_field(
         np.isfinite(a).all()
         and np.isin(s, [0, 1, 2, 3, 4]).all()
         and np.isin(v, [0, 1]).all()
-        and np.isin(z, [0, 1]).all(),
+        and np.isin(z, [0, 1, 2]).all(),
         "FIELD_ENCODING",
         domain.name,
     )
@@ -614,7 +681,13 @@ def _validate_field(
     if domain.name == "ANN_VAL":
         allowed.add(CodebookStatus.DECLARED_NIU)
     _require(np.isin(s, list(allowed)).all(), "FIELD_STATUS", domain.name)
-    expected_origin = (s == expected_zero).astype("u1")
+    _require(
+        type(zero_origin_code) is ZeroOrigin
+        and zero_origin_code != ZeroOrigin.NOT_ZERO,
+        "ZERO_ORIGIN_POLICY",
+        domain.name,
+    )
+    expected_origin = (s == expected_zero).astype("u1") * int(zero_origin_code)
     _require(np.array_equal(z, expected_origin), "ZERO_ORIGIN_ENCODING", domain.name)
     factor_max = 1.0 if nominal else float("174.4") / float("163.6")
     lo = min(domain.minimum, domain.minimum * factor_max)
@@ -655,9 +728,13 @@ class MoneyBindings:
             "person_year_sha256",
             "household_year_sha256",
         }
-        _require(set(data) == keys and self.header == _json(data), "HEADER_SCHEMA")
+        provenance = _header_provenance(self.spec)
+        _require(
+            set(data) == keys | set(provenance) and self.header == _json(data),
+            "HEADER_SCHEMA",
+        )
         fixed = {
-            "schema_version": 1,
+            **provenance,
             "recipe": RECIPE,
             "country": "us",
             "semantic": "annual_current_money",
@@ -765,7 +842,13 @@ def _validate_money(value, spec: CurrentMoneySpec, *, nominal: bool) -> None:
         type(value.fields) is tuple and len(value.fields) == len(FIELDS), "FIELD_ROSTER"
     )
     for domain, field in zip(spec.fields, value.fields, strict=True):
-        _validate_field(field, domain, header[domain.entity + "_rows"], nominal=nominal)
+        _validate_field(
+            field,
+            domain,
+            header[domain.entity + "_rows"],
+            nominal=nominal,
+            zero_origin_code=_origin_code(spec, domain.name),
+        )
 
 
 def _index_identity(index: pd.Index) -> bytes:
@@ -871,9 +954,15 @@ def classify_asec_money(
             values.tobytes(),
             status.tobytes(),
             valid.astype("u1").tobytes(),
-            zeros.astype("u1").tobytes(),
+            (zeros.astype("u1") * int(_origin_code(spec, domain.name))).tobytes(),
         )
-        _validate_field(field, domain, len(table), nominal=True)
+        _validate_field(
+            field,
+            domain,
+            len(table),
+            nominal=True,
+            zero_origin_code=_origin_code(spec, domain.name),
+        )
         if domain.grain == "spm_unit_repeated_on_person":
             for vector in (values, status, valid, zeros):
                 sorted_values = vector[order]
@@ -885,7 +974,7 @@ def classify_asec_money(
         result.append(field)
     header = _json(
         {
-            "schema_version": 1,
+            **_header_provenance(spec),
             "recipe": RECIPE,
             "country": "us",
             "semantic": "annual_current_money",

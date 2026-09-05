@@ -33,7 +33,7 @@ from .asec_current_money_source import (
     _detach_frame_axes,
     _frame_signature,
     _same_table,
-    _verification_identity,
+    _source_verification_identity,
 )
 
 MICROUNIT_CURRENT_MONEY_COLUMNS = tuple(
@@ -238,7 +238,8 @@ class CurrentMoneyTaxUnitResult:
         _validate_money(self.money, self.money.bindings.spec, nominal=False)
         source_evidence = _parse(self.money.bindings.spec.source.identity)
         _require(
-            _verification_identity() == source_evidence["verification_sha256"],
+            _source_verification_identity(source_evidence)
+            == source_evidence["verification_sha256"],
             "SOURCE_IMPLEMENTATION_CHANGED",
         )
         try:

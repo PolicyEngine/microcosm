@@ -260,9 +260,12 @@ def _scope(frame):
     )
 
 
-def _views(frame, scope):
+def _views(frame, scope, *, restored=False):
+    person = frame.person.loc[:, [f for f in FIELDS if f != "HTOTVAL"]].copy()
+    if restored:
+        person["PTOTVAL"] = frame.person["asec_PTOTVAL"].to_numpy(copy=True)
     return AsecMoneyViews(
-        frame.person.loc[:, [f for f in FIELDS if f != "HTOTVAL"]].copy(),
+        person,
         frame.table("household").loc[:, ["asec_HTOTVAL"]].copy(),
         scope,
     )
@@ -454,6 +457,16 @@ def _validate_attachment(parent, metadata, loaded, parent_sha):
     return cohorts
 
 
+def _source_verification_identity(evidence):
+    from .asec_current_money import RESTORED_SOURCE_KIND
+
+    if evidence["source_kind"] == RESTORED_SOURCE_KIND:
+        from .asec_person_income_source import _implementation
+
+        return _implementation()
+    return _verification_identity()
+
+
 @dataclass(frozen=True)
 class AuthenticatedCurrentMoneySource:
     frame: Frame
@@ -469,7 +482,7 @@ class AuthenticatedCurrentMoneySource:
         self.source._validate()
         evidence = _parse(self.source.identity)
         _require(
-            _verification_identity() == evidence["verification_sha256"],
+            _source_verification_identity(evidence) == evidence["verification_sha256"],
             "SOURCE_IMPLEMENTATION_CHANGED",
         )
         try:
@@ -485,7 +498,9 @@ class AuthenticatedCurrentMoneySource:
 
     def views(self):
         self.validate()
-        return _views(self.frame, self.scope)
+        from .asec_current_money import _restored_source
+
+        return _views(self.frame, self.scope, restored=_restored_source(self.source))
 
     def ready(self):
         views = self.views()
