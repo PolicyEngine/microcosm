@@ -87,6 +87,12 @@ from .cps_carried_current import (
     derive_cps_carried_current_leaves,
 )
 from .graph_context import US_FRAME_CONTEXT_TYPE
+from .graph_housing_universe import (
+    HOUSEHOLD_EVIDENCE_COLUMNS,
+    US_ASEC_HOUSING_UNIVERSE_TYPE,
+    bind_housing_universe,
+    verify_graph_housing_rows,
+)
 from .graph_implementation import (
     STAGE_DEPENDENCIES,
     implementation_hash,
@@ -94,9 +100,9 @@ from .graph_implementation import (
 )
 from .graph_sources import frame_column_declarations
 
-ASEC_PREPARED_STAGE = "asec_prepared_v1"
+ASEC_PREPARED_STAGE = "asec_prepared_v2"
 ASEC_PREPARED_PHASE = "prepare_asec_current_money_slice"
-ASEC_PREPARED_CODEC = "us-asec-prepared-current-money-v1"
+ASEC_PREPARED_CODEC = "us-asec-prepared-current-money-v2"
 ASEC_PREPARED_SOURCE_NAME = "asec_prepared"
 ASEC_PREPARED_SOURCE = SourceRef(
     ASEC_PREPARED_SOURCE_NAME,
@@ -120,7 +126,7 @@ ENGINE_NODE = f"{PREFIX}.engine_current_money"
 #: never reaches the corrected leaves and never reaches the engine frame.
 HOUSEHOLD_WEIGHT_CARRIER = housing_source.ATTACHED_COLUMNS[0]
 
-SELECTION_SCHEMA = "microcosm.us.asec_household_selection.v1"
+SELECTION_SCHEMA = "microcosm.us.asec_household_selection.v2"
 SELECTION_SOURCE_LABEL = "US ASEC prepared current money"
 SELECTION_STRATUM_COLUMN = "source_year"
 LEAF_DTYPE = "float64"
@@ -267,7 +273,7 @@ class _PreparedKernel(KernelBase):
 class USAsecPreparedCreateKernel(_PreparedKernel):
     """Prepare the whole authenticated ASEC population from one source directory."""
 
-    ref = "us.asec_prepared.create@1"
+    ref = "us.asec_prepared.create@2"
     capabilities = Capabilities(
         determinism=Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
@@ -287,6 +293,7 @@ class USAsecPreparedCreateKernel(_PreparedKernel):
                 ArtifactOutput("frame_context", US_FRAME_CONTEXT_TYPE),
                 ArtifactOutput("current_money", US_ASEC_CURRENT_MONEY_BODY_TYPE),
                 ArtifactOutput("prepared_receipt", US_ASEC_PREPARED_RECEIPT_TYPE),
+                ArtifactOutput("housing_universe", US_ASEC_HOUSING_UNIVERSE_TYPE),
             ),
             "NODE_ARTIFACT_OUTPUTS",
         )
@@ -307,6 +314,7 @@ class USAsecPreparedCreateKernel(_PreparedKernel):
                 "frame_context": graph_context.encode_us_frame_context(prepared.frame),
                 "current_money": prepared.money_payload,
                 "prepared_receipt": prepared.receipt_payload,
+                "housing_universe": prepared.housing_universe_payload,
             },
             receipt={
                 "phase": ASEC_PREPARED_PHASE,
@@ -321,7 +329,7 @@ class USAsecPreparedCreateKernel(_PreparedKernel):
 class USAsecPreparedSelectionKernel(_PreparedKernel):
     """Draw the seeded whole-household sample and slice the money body to it."""
 
-    ref = "us.asec_prepared.select_households@1"
+    ref = "us.asec_prepared.select_households@2"
     capabilities = Capabilities(
         determinism=Determinism.SEEDED,
         numeric=Numeric.PLATFORM_BITWISE,
@@ -340,14 +348,21 @@ class USAsecPreparedSelectionKernel(_PreparedKernel):
         _require(
             set(context.tables) == {"person", "household"}
             and set(context.artifacts)
-            == {"frame_context", "current_money", "prepared_receipt"},
+            == {
+                "frame_context",
+                "current_money",
+                "prepared_receipt",
+                "housing_universe",
+            },
             "NODE_INPUTS",
         )
         _require(
             node.inputs
             == (
                 Slice("person", (SELECTION_STRATUM_COLUMN,)),
-                Slice("household", (HOUSEHOLD_WEIGHT_CARRIER,)),
+                Slice(
+                    "household", (HOUSEHOLD_WEIGHT_CARRIER, *HOUSEHOLD_EVIDENCE_COLUMNS)
+                ),
             ),
             "NODE_SLICES",
         )
@@ -366,7 +381,8 @@ class USAsecPreparedSelectionKernel(_PreparedKernel):
             context, "prepared_receipt", US_ASEC_PREPARED_RECEIPT_TYPE
         )
         producer_key = _same_producer(
-            context, ("frame_context", "current_money", "prepared_receipt")
+            context,
+            ("frame_context", "current_money", "prepared_receipt", "housing_universe"),
         )
         document = _document(bound)
         person, household = context.tables["person"], context.tables["household"]
@@ -408,6 +424,18 @@ class USAsecPreparedSelectionKernel(_PreparedKernel):
             dtype="int64"
         )
         strata = _household_strata(person, household_ids)
+        universe_value = _artifact(
+            context, "housing_universe", US_ASEC_HOUSING_UNIVERSE_TYPE
+        )
+        universe = bind_housing_universe(
+            universe_value.payload, prepared_receipt=prepared
+        )
+        verify_graph_housing_rows(
+            household,
+            universe,
+            positions=np.arange(len(household), dtype="int64"),
+            income_years=strata.astype("int64"),
+        )
         view = _minimal_frame(
             person, household, context.weights["household"], context.strata
         )
@@ -493,6 +521,7 @@ class USAsecPreparedSelectionKernel(_PreparedKernel):
                     "prepared_receipt_sha256": _sha(receipt_value.payload),
                     "money_header_sha256": prepared["money_header_sha256"],
                     "money_content_sha256": prepared["money_content_sha256"],
+                    "housing_universe_payload_sha256": _sha(universe_value.payload),
                 },
                 "mass": {
                     "policy": "declared",
@@ -552,7 +581,7 @@ def _json(value: object) -> object:
 class USAsecPreparedLeavesKernel(_PreparedKernel):
     """Derive the corrected monetary CPS leaves from the selected money alone."""
 
-    ref = "us.asec_prepared.cps_carried_current@1"
+    ref = "us.asec_prepared.cps_carried_current@2"
     capabilities = Capabilities(
         determinism=Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
@@ -566,7 +595,11 @@ class USAsecPreparedLeavesKernel(_PreparedKernel):
         _require(not node.sources, "NODE_SOURCES")
         _require(node.structural is StructuralDelta.NONE, "NODE_STRUCTURAL")
         _require(
-            node.inputs == (Slice("person", CPS_CARRIED_CURRENT_ROUTING_COLUMNS),),
+            node.inputs
+            == (
+                Slice("person", CPS_CARRIED_CURRENT_ROUTING_COLUMNS),
+                Slice("household", HOUSEHOLD_EVIDENCE_COLUMNS),
+            ),
             "NODE_SLICES",
         )
         _require(node.outputs == owned_leaf_declarations(), "NODE_OUTPUTS")
@@ -577,6 +610,7 @@ class USAsecPreparedLeavesKernel(_PreparedKernel):
                 "selection",
                 "selected_current_money",
                 "prepared_receipt",
+                "housing_universe",
             },
             "NODE_ARTIFACT_INPUTS",
         )
@@ -596,6 +630,10 @@ class USAsecPreparedLeavesKernel(_PreparedKernel):
         _same_producer(
             context, ("frame_context", "selection", "selected_current_money")
         )
+        universe_value = _artifact(
+            context, "housing_universe", US_ASEC_HOUSING_UNIVERSE_TYPE
+        )
+        _same_producer(context, ("prepared_receipt", "housing_universe"))
         document = _document(bound)
         person, spm_unit = context.tables["person"], context.tables["spm_unit"]
         for entity, table in (("person", person), ("spm_unit", spm_unit)):
@@ -610,6 +648,26 @@ class USAsecPreparedLeavesKernel(_PreparedKernel):
             and selection["parent"]["producer_key"] == receipt_value.producer_key,
             "SELECTION_PARENT_BINDING",
         )
+        _require(
+            selection["parent"]["housing_universe_payload_sha256"]
+            == _sha(universe_value.payload),
+            "SELECTION_HOUSING_UNIVERSE_BINDING",
+        )
+        universe = bind_housing_universe(
+            universe_value.payload, prepared_receipt=prepared
+        )
+        household = context.tables["household"]
+        _check_identity(document, "household", household)
+        positions = (
+            pd.Index(universe.array("household_id"))
+            .get_indexer(household.household_id.to_numpy())
+            .astype("int64")
+        )
+        _require(
+            _sha(positions.tobytes()) == selection["household_positions_sha256"],
+            "SELECTED_HOUSING_UNIVERSE_POSITIONS",
+        )
+        verify_graph_housing_rows(household, universe, positions=positions)
         # The complete selected-coordinate check: the selection artifact, the
         # producer's typed context and the actual rows must name one row set.
         for entity in _ENTITIES:
@@ -691,7 +749,7 @@ class USAsecPreparedLeavesKernel(_PreparedKernel):
 class USAsecPreparedEngineKernel(_PreparedKernel):
     """Run the real PolicyEngine-US adapter for the admitted formula-owned roots."""
 
-    ref = "us.asec_prepared.engine_current_money@1"
+    ref = "us.asec_prepared.engine_current_money@2"
     capabilities = Capabilities(
         determinism=Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
@@ -883,6 +941,10 @@ def us_asec_prepared_graph(
         if ("person", name) not in inventory
     )
     _require(not missing, f"MISSING_DECLARED_INPUTS:{missing}")
+    _require(
+        all(("household", name) in inventory for name in HOUSEHOLD_EVIDENCE_COLUMNS),
+        "MISSING_HOUSING_UNIVERSE_INPUTS",
+    )
     # A nominal incumbent can be neither preserved nor silently rewritten.
     incumbent = sorted(
         f"{entity}.{column}"
@@ -906,6 +968,12 @@ def us_asec_prepared_graph(
             "prepared_receipt",
             US_ASEC_PREPARED_RECEIPT_TYPE,
         ),
+        ArtifactInput(
+            "housing_universe",
+            CREATE_NODE,
+            "housing_universe",
+            US_ASEC_HOUSING_UNIVERSE_TYPE,
+        ),
     )
     create = Node(
         id=CREATE_NODE,
@@ -918,6 +986,7 @@ def us_asec_prepared_graph(
             ArtifactOutput("frame_context", US_FRAME_CONTEXT_TYPE),
             ArtifactOutput("current_money", US_ASEC_CURRENT_MONEY_BODY_TYPE),
             ArtifactOutput("prepared_receipt", US_ASEC_PREPARED_RECEIPT_TYPE),
+            ArtifactOutput("housing_universe", US_ASEC_HOUSING_UNIVERSE_TYPE),
         ),
     )
     select = Node(
@@ -928,7 +997,7 @@ def us_asec_prepared_graph(
         mass="declared",
         inputs=(
             Slice("person", (SELECTION_STRATUM_COLUMN,)),
-            Slice("household", (HOUSEHOLD_WEIGHT_CARRIER,)),
+            Slice("household", (HOUSEHOLD_WEIGHT_CARRIER, *HOUSEHOLD_EVIDENCE_COLUMNS)),
         ),
         params={"phase": ASEC_PREPARED_PHASE, "fraction": fraction, "seed": seed},
         artifact_inputs=parent_artifacts,
@@ -942,7 +1011,10 @@ def us_asec_prepared_graph(
         id=LEAVES_NODE,
         kernel=USAsecPreparedLeavesKernel.ref,
         population=SELECT_NODE,
-        inputs=(Slice("person", CPS_CARRIED_CURRENT_ROUTING_COLUMNS),),
+        inputs=(
+            Slice("person", CPS_CARRIED_CURRENT_ROUTING_COLUMNS),
+            Slice("household", HOUSEHOLD_EVIDENCE_COLUMNS),
+        ),
         outputs=owned_leaf_declarations(),
         params={"phase": ASEC_PREPARED_PHASE},
         artifact_inputs=(
@@ -959,6 +1031,7 @@ def us_asec_prepared_graph(
                 US_ASEC_SELECTED_MONEY_TYPE,
             ),
             parent_artifacts[2],
+            parent_artifacts[3],
         ),
         artifact_outputs=(ArtifactOutput("frame_context", US_FRAME_CONTEXT_TYPE),),
     )

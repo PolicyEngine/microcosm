@@ -44,8 +44,8 @@ from .asec_current_money import (
 US_ASEC_CURRENT_MONEY_BODY_TYPE = ArtifactType(
     "microcosm.us.asec_current_money_body", 1
 )
-US_ASEC_PREPARED_RECEIPT_TYPE = ArtifactType("microcosm.us.asec_prepared_receipt", 1)
-US_ASEC_SELECTION_TYPE = ArtifactType("microcosm.us.asec_household_selection", 1)
+US_ASEC_PREPARED_RECEIPT_TYPE = ArtifactType("microcosm.us.asec_prepared_receipt", 2)
+US_ASEC_SELECTION_TYPE = ArtifactType("microcosm.us.asec_household_selection", 2)
 US_ASEC_SELECTED_MONEY_TYPE = ArtifactType(
     "microcosm.us.asec_selected_current_money", 1
 )
