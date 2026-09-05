@@ -8,18 +8,18 @@ Authority: `/Users/maxghenis/architecture-reviews/microcosm-20260904/us-current-
 
 Resumed the stopped author's existing branch on 2026-09-05 at `025c0b61`.
 Inspected all branch commits and the preserved graph implementation/source-codec
-diff before editing. The original dirty files are retained. Completing the graph,
-inventory, truthful consumer resource and tiny direct/cold/cache-only verification.
-The real tiny direct/cold/cache-only parity check now passes; remaining negative
-test verification and frozen provenance are in progress. No genuine graph run,
-no push. This replacement journal stays local to the author
-branch; root integration must omit it, as instructed.
+diff before editing. The preserved partial implementation is complete, including
+S composition, the four graph nodes, inventory and truthful consumer status.
+All 18 new graph tests pass across the development runs, including three-process
+real-PE parity and zero warm kernel calls. Freezing for exact-head verification.
+No genuine-data graph run or push. Root integration must omit this replacement
+journal, as instructed.
 
 Read the now-available Fable final APPROVE for S exact revision
 `553084def66b5abd315e0e25bae9cd5e986d4867`. Locally composed its reviewed commits
 as `dba326b0` and `907d7bf0`, after verifying the review and actual commit messages.
-Root integration remains separate. Wiring S before tax reconstruction, binding
-its separate receipt to unchanged T1/money, with housing authenticated on T1.
+Root integration remains separate. S attaches before tax reconstruction and
+binds separately to unchanged T1/money; housing authenticates original T1.
 
 ## Done
 
@@ -64,19 +64,16 @@ its separate receipt to unchanged T1/money, with housing authenticated on T1.
 
 ## Next
 
-1. `graph_asec_prepared.py`: codec loader, four kernels, graph builder, registry.
-2. `graph_sources.py` codec registration; `graph_implementation.py` stage
-   `asec_prepared_v1`; `graph_implementation_inventory.json` roster.
-3. Consumers resource status + `RESOURCE_PINS` re-issue and the identity ripple.
-4. Direct / cold / cache-only parity runner in separate processes.
-5. Docs, changelog, CI inventory verify.
-6. Freeze and verify actual commit message; record loaded source hashes, exact
-   tests and pending S composition in the author report. The requested external
-   report directory is outside the session's writable roots; attempt export and
-   retain a complete local output if the sandbox refuses it.
+1. Frozen targeted verification with exact source blobs and all six own shards;
+   preserve complete logs, including failed development attempts.
+2. Final journal commit, verify actual commit message and code-byte invariance,
+   export exact-head author report and source/test receipts. The requested external
+   directory is outside writable roots; retain a local output if export refuses.
+3. Stop for root/native/Fable review. Root integration and genuine S/graph runs
+   remain separate and unperformed; no local S constructor hook remains pending.
 
 ## Constraints in force
 
-- No genuine microdata read, no real graph run, no push, no publication.
+- No genuine microdata read or genuine-data graph run, no push, no publication.
 - Tiny invented fixtures only; private pins substituted in test scope only.
 - Do not weaken any existing fail-closed contract.

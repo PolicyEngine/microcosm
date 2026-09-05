@@ -90,7 +90,7 @@ def invented_money(person_amounts=None):
 def body_of(ready):
     return parse_current_money_body(
         encode_current_money(ready),
-        expected_header=ready.header,
+        expected_header_sha256=money._sha(ready.header),
         expected_content_sha256=current_money_content_sha256(ready),
         field_entities=tuple(
             (domain.name, domain.entity) for domain in ready.bindings.spec.fields
