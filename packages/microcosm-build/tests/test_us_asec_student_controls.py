@@ -448,3 +448,38 @@ def test_private_csv_and_candidate_snapshots_survive_path_replacement(
         student.load_authenticated_student_controls(
             source, ready, member_paths=members, candidate_path=candidate
         )
+
+
+@pytest.mark.parametrize("entrypoint", ["member", "candidate"])
+@pytest.mark.parametrize("kind", ["fifo", "directory"])
+def test_nonregular_source_paths_refuse_without_blocking(
+    tmp_path, monkeypatch, entrypoint, kind
+):
+    import os
+    import signal
+
+    source, ready, members, _ = _fixture(tmp_path, monkeypatch)
+    path = tmp_path / "nonregular-input"
+    if kind == "fifo":
+        os.mkfifo(path)
+    else:
+        path.mkdir()
+    kwargs = {"member_paths": members}
+    if entrypoint == "member":
+        members[2022] = path
+    else:
+        kwargs["candidate_path"] = path
+
+    def blocked(signum, frame):
+        raise AssertionError("Opening a nonregular source must not block")
+
+    previous = signal.signal(signal.SIGALRM, blocked)
+    signal.setitimer(signal.ITIMER_REAL, 5)
+    try:
+        with pytest.raises(money.MoneyRefusalError) as error:
+            student.load_authenticated_student_controls(source, ready, **kwargs)
+        assert error.value.reason == "STUDENT_SOURCE_FILE_KIND"
+        assert str(path) not in str(error.value)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
