@@ -3,7 +3,9 @@
 The ACS source is a directory containing exactly the two Census archives. Its
 content key binds both archives without absolute paths entering the node key.
 The ASEC source is the authenticated operator-free raw-stage checkpoint. A
-candidate pool or an enriched legacy checkpoint cannot substitute for it.
+candidate pool or an enriched legacy checkpoint cannot substitute for it. The
+prepared current-money source is a directory of the reviewed restoration
+inputs; its loader is declared here and executed only by its CREATE kernel.
 """
 
 from __future__ import annotations
@@ -44,6 +46,7 @@ from microcosm.graph.population import dtype_for_token, token_for_dtype
 from .acs_inputs import map_acs_native_inputs
 from .acs_pums import AcsPumsSource, build_acs_pums_unit_frame
 from .asec_checkpoint import load_asec_raw_stage_checkpoint_v4
+from .asec_prepared_source import load_graph_asec_prepared
 from .graph_context import (
     US_FRAME_CONTEXT_TYPE,
     _decode,
@@ -68,6 +71,7 @@ from .support_provenance import support_channel_column
 
 ASEC_CODEC = "us-asec-raw-stage-v4"
 ACS_CODEC = "us-acs-native-2024-v1"
+ASEC_PREPARED_CODEC = "us-asec-prepared-current-money-v1"
 ASSEMBLY_PHASE = "assemble_stacked_spine"
 US_STACK_PREPARATION_TYPE = ArtifactType("microcosm.us.stacked_spine_preparation", 1)
 US_SOURCE_DEPENDENCIES = STAGE_DEPENDENCIES["assembly_prepare"]
@@ -194,6 +198,10 @@ def us_source_codecs() -> SourceCodecRegistry:
     codecs = SourceCodecRegistry()
     codecs.register(ASEC_CODEC, load_graph_asec)
     codecs.register(ACS_CODEC, load_graph_acs)
+    # The prepared current-money directory source. Its loader lives with the
+    # preparation it names, so registering it here adds no import cycle and no
+    # second preparation path.
+    codecs.register(ASEC_PREPARED_CODEC, load_graph_asec_prepared)
     codecs.register_bytes("raw-bytes-v1", load_raw_bytes)
     validate_source_codecs(codecs)
     return codecs

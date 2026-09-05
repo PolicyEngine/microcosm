@@ -10,7 +10,9 @@ Resumed the stopped author's existing branch on 2026-09-05 at `025c0b61`.
 Inspected all branch commits and the preserved graph implementation/source-codec
 diff before editing. The original dirty files are retained. Completing the graph,
 inventory, truthful consumer resource and tiny direct/cold/cache-only verification.
-No genuine graph run, no push. This replacement journal stays local to the author
+The real tiny direct/cold/cache-only parity check now passes; remaining negative
+test verification and frozen provenance are in progress. No genuine graph run,
+no push. This replacement journal stays local to the author
 branch; root integration must omit it, as instructed.
 
 Read the now-available Fable final APPROVE for S exact revision
@@ -21,6 +23,16 @@ its separate receipt to unchanged T1/money, with housing authenticated on T1.
 
 ## Done
 
+- Four graph kernels, codec registration, strict implementation scope (78 modules,
+  six resources), and separately pinned current graph consumer status are complete.
+  Original money consumer declarations/pins remain frozen to preserve T1 authority.
+  The exact registry/resource/source suite passed 130 tests plus two focused
+  final checks. Actual direct/cold/fresh-cache parity passed with zero warm
+  kernel calls; remaining negative graph test validation is finishing.
+- Independently compared full canonical legacy/T1 identity payloads and actual
+  money-resource execution identity to base: all equal, with all 25 closure
+  code/resource files matching both Git blobs. Receipt:
+  `out/current-money-bridge/t1-closure.json`.
 - Pinned complete installed PE-US/Core source and baseline parameter inventories;
   engine identity now verifies these before cache lookup and refuses shadow
   package/module origins. The four exact formula closures and empty defaults
