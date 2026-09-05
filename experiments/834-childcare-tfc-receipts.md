@@ -336,7 +336,67 @@ terminal battery also failed closed on the ported gate (`KeyError: exclusions_ev
 the binding's required-artifact set lacked the exclusion clock, fixed on the branch
 (`7234d305`).
 
-**Run 2 (converged landing 0.6054 / 0.4539, `family_equal` as L4-pre):** pending.
+**Run 2 (converged landing 0.6054 / 0.4539, `family_equal` as L4-pre; `l4-834/run2/`).** Loss
+0.352 → 0.0235, 90.0% of 371 targets within 10%, ESS 5 868 — L4-pre read 0.374 → 0.0259, 90.7%
+of 364, 5 733. The seven new rows all bind and fit (initial → final):
+
+| row | initial | final |
+|---|---|---|
+| `hmrc.tfc.government_top_up` (£599.8m, FY2025-26) | 0.767 | 0.999 |
+| `hmrc.tfc.children_with_used_accounts` (1 151 515) | 0.945 | 0.999 |
+| `dfe.funded_childcare.working_parent_children_2_to_4` (621 482) | 0.975 | 1.000 |
+| `dfe.funded_childcare.early_learning_2_year_olds` (95 031) | 0.766 | 0.997 |
+| `dfe.funded_childcare.universal_only_children` (396 965) | 1.149 | 0.995 |
+| `dft.bus_fare_receipts.england` (£3.417bn) | 0.569 | 0.999 |
+| `dft.bus_net_support.england` (£3.025bn) | 0.712 | 1.002 |
+
+The pre-existing surface is where L4-pre left it, to the second decimal: the seven cells
+outside `uk_target_fit`'s 25% are the same seven — OBR CGT +44.2% (A21), the four UC
+with-children cells (single_with_children −35.3%, children_1 −28.9%, children_2 −38.9%,
+children_5_or_more −28.6%; signed on the stack's register to 2026-09-30) and the two
+state-pension SPI bands (+34.6% / +25.3%; the 50–70k deferral the stack retired as stale
+twice, back outside the bound here); UC caseload −13.4% (L4-pre −12.7%); the two HMRC CGT
+totals within 0.3%; the Scotland youngest-child row +0.3%; the private-pension 100–150k band
++24.7% (L4-pre +24.9%). So the childcare and bus rows are reachable by the weights on this
+frame (targeted's 0.77× at design weights closes to 0.997 — the A22 row needs no deferral),
+and the port neither helps nor harms the #145 residuals. Against uk-data 1.57.2's release ratios
+at 2024 (universal 0.93, extended 1.16, targeted 0.78, TFC children 1.01, spend 0.99) the
+composed surface binds the 2025 counterparts to within 0.5% each.
+
+The terminal battery on run 2 reports `uk_target_fit` as `evidence_absent` (missing
+`exclusions_evaluated_on`): the ported gate reads the run clock from the battery's artifacts,
+and main's calibration seam (`calibration_run.py`) supplies the clock only to the spine build's
+battery, where the stack's own runner supplied it to the seam. Fixed on the composition
+branch (the seam now passes the evaluation date, as the rowwise candidate build does).
+
+**Run 3 → run 4.** The re-run refused at the input sidecar: the runner's `--build-record-json`
+is the seam's own output record, not the input's sidecar (the seam reads that from the H5's
+`.build.json` path), and runs 1–2 had been pointed at the twin's spine record, so run 2 had
+overwritten `l5-refit-b.build.json` with the seam's record (kept as
+`l4-834/run2/calibration_build_record.json`). The H5, gate report and shares were untouched.
+The twin is rebuilt into `l5-refit-twin-b2/` (sha `c63d824f…`; `l5b2_vs_l5b_payload.json`:
+`payload_identical: true` — benunit, household, person and time_period byte-equal to twin-b,
+the twin-determinism property of the 686 receipts holding on this tree) and
+run 4 measures that build on the rebased composition branch (`91d740d6`, `385efc4d`,
+`955c5dd2` on `db489ac0`); the solve is seeded, so run 4 reproduces run 2's numbers and adds
+the gate verdict.
+
+**Run 4 (`l4-834/run4/`, twin-b2, the composition measurement).** Every final ratio equals run
+2's (max |difference| 0.0). Terminal battery with the ported register, evaluated 2026-09-05:
+`uk_target_fit` **fails** and blocks at the terminal phase —
+
+| disposition | cells |
+|---|---|
+| deferred (in force to 2026-09-30, microcosm#796) | the four UC with-children cells: single_with_children −35.3%, children_1 −28.9%, children_2 −38.9%, children_5_or_more −28.6% |
+| failing, unsigned | `obr.capital_gains_tax` +44.2% (A21); `hmrc/state_pension_income_band_50_000_to_70_000` +34.6% (the deferral the stack retired as "measured stale twice", outside the bound again here as at L4-pre's +33.2%); `hmrc/state_pension_income_band_20_000_to_30_000` +25.3% (L4-pre +26.7%) |
+| stale (back inside the bound; the rot rule says remove) | `hmrc/private_pension_income_count_income_band_100_000_to_150_000` +24.7% |
+
+None of the four is a #834 row: the seven new rows pass, and the A22 question (would the
+targeted row need a deferral?) is answered no. The three unsigned failures and the stale entry
+are the publication stack's open register questions — A21 for the CGT year; the two
+state-pension bands and the pension-band entry for the stack's next re-cut — and are put to
+María with this receipt rather than signed here. `release_candidate: false` throughout: the
+seam never signs shippability.
 
 ## Part D — bus (#789)
 
