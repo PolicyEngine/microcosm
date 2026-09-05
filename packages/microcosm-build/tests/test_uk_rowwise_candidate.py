@@ -1800,3 +1800,83 @@ def test_candidate_multi_block_engine_run_is_never_releasable(
         "single_block_engine": False,
         "release_blocking_gates_passed": True,
     }
+
+
+def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
+    monkeypatch, tmp_path
+):
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "spine.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    out = tmp_path / "k300"
+    _write_staging_h5(input_h5, households_per_region=52)
+    ladder = _write_ladder(ladder_path)
+    import microcosm.build.uk_runtime.battery_bindings as bindings
+
+    monkeypatch.setattr(
+        bindings,
+        "_local_area_roster",
+        lambda _resource, levels: {
+            "constituency": tuple(sorted(set(ladder.constituency_code))),
+            "local_authority": tuple(sorted(set(ladder.local_authority_code))),
+        },
+    )
+    status = builder.main(
+        [
+            "--input-h5",
+            str(input_h5),
+            "--ladder",
+            str(ladder_path),
+            "--out",
+            str(out),
+            "--n-clones",
+            "2",
+            "--dataset-households",
+            "300",
+            "--epochs",
+            "2",
+            "--skip-holdout",
+            "--seed",
+            "7",
+        ]
+    )
+    assert status in (0, 1)  # Gate failures remain reportable candidates.
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["releasable"] is False
+    assert manifest["release_posture"]["size_certification_present"] is False
+    size = manifest["solve"]["dataset_size"]
+    assert size["requested_households"] == size["realized_households"] == 300
+    assert size["pool_households"] == 416
+    assert manifest["parameters"]["n_clones"] == 2
+    assert (
+        manifest["weights"]["stretch_reference"]
+        == "normalized_horvitz_thompson_w_over_q"
+    )
+    path = out / builder.CANDIDATE_FILENAME_TEMPLATE.format(calibration_year=2025)
+    with pd.HDFStore(path, "r") as store:
+        households = store["household"]
+        persons = store["person"]
+        benunits = store["benunit"]
+    assert len(households) == 300
+    assert set(persons.person_household_id) == set(households.household_id)
+    assert set(persons.person_benunit_id) == set(benunits.benunit_id)
+    assert len(_spool_rows(out)) == 1
+
+
+def test_size_cli_refuses_promotion_without_separate_certification(tmp_path):
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--input-h5",
+            str(tmp_path / "spine.h5"),
+            "--ladder",
+            str(tmp_path / "ladder.npz"),
+            "--out",
+            str(tmp_path / "out"),
+            "--dataset-households",
+            "50000",
+            "--release-candidate",
+        ]
+    )
+    with pytest.raises(ValueError, match="candidate-only"):
+        builder._validate_cli_args(args)

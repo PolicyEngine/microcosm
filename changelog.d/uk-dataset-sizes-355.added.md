@@ -1,0 +1,1 @@
+Add exact-household-count UK rowwise candidates using contribution-informed L0 initialization, protected target carriers, fixed-size sampling and refitting. Preserve the dense pool doctrine and local gates, export compact linked entities, and record selection provenance without promoting candidates to the certified dense release or changing dataset defaults.

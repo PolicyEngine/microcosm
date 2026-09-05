@@ -77,6 +77,7 @@ import torch
 
 from microcosm.calibrate.exact_k import assert_exact_k_support
 from microcosm.calibrate.gates import HardConcrete
+from microcosm.calibrate.initialization import GateInitialization
 from microcosm.calibrate.matrix import (
     CalibrationProblem,
     SkippedTarget,
@@ -754,6 +755,7 @@ def _optimize(
     target_loss_cap: float,
     initial_weights: np.ndarray,
     *,
+    gate_initialization: GateInitialization | None = None,
     warm_start_weights: np.ndarray | None = None,
     epochs: int,
     learning_rate: float,
@@ -799,7 +801,19 @@ def _optimize(
     gates: HardConcrete | None = None
     params: list[torch.Tensor] = [log_w]
     if l0_lambda > 0.0 or target_records is not None:
-        gates = HardConcrete(len(w0), init_mean=init_mean, temperature=temperature)
+        gates = HardConcrete(
+            len(w0),
+            init_mean=init_mean,
+            temperature=temperature,
+            **(
+                {}
+                if gate_initialization is None
+                else {
+                    "initial_probabilities": gate_initialization.probabilities,
+                    "protected_mask": gate_initialization.protected,
+                }
+            ),
+        )
         params = [log_w, *gates.parameters()]
 
     optimizer = torch.optim.Adam(params, lr=learning_rate)
@@ -1053,6 +1067,7 @@ def _search_l0_lambda_for_budget(
     target_loss_cap: float,
     initial_weights: np.ndarray,
     *,
+    gate_initialization: GateInitialization | None = None,
     target_records: int,
     epochs: int,
     learning_rate: float,
@@ -1144,6 +1159,8 @@ def _search_l0_lambda_for_budget(
                 "l0_lambda": lam,
             },
         }
+        if gate_initialization is not None:
+            optimize_kwargs["gate_initialization"] = gate_initialization
         if return_gate_open_probabilities:
             weights, trajectory, gate_open_probabilities = _optimize(
                 matrix,
@@ -1332,6 +1349,7 @@ def calibrate(
     frame: Frame,
     targets: TargetSet,
     *,
+    gate_initialization: GateInitialization | None = None,
     weight_entity: str = "household",
     method: str = "adam",
     epochs: int = 256,
@@ -1432,6 +1450,9 @@ def calibrate(
             cannot express, e.g. the pre-selection *design* weights during a
             post-L0 refit. When supplied, ``l2_anchor`` becomes a free-form
             provenance label recorded in options (e.g. ``"design"``).
+        gate_initialization: Optional informed L0 prior and protected-record
+            mask, aligned to the weight entity. Requires an Adam L0 solve;
+            protected gates remain open throughout training and selection.
         init_mean: Initial expected open-probability of the L0 gates (only used
             when pruning).
         temperature: Hard-concrete temperature (only used when pruning).
@@ -1519,6 +1540,9 @@ def calibrate(
             "total cannot be conserved (sum of caps < input total). Use "
             "max_weight_ratio >= 1, or mass='free'."
         )
+    if gate_initialization is not None:
+        if method != "adam" or (target_records is None and l0_lambda <= 0):
+            raise ValueError("gate_initialization requires an Adam L0 solve.")
     if target_records is not None and (
         not isinstance(target_records, int) or target_records <= 0
     ):
@@ -1708,6 +1732,11 @@ def calibrate(
             progress_callback=progress_callback,
             budget_iters=budget_iters,
             return_gate_open_probabilities=True,
+            **(
+                {}
+                if gate_initialization is None
+                else {"gate_initialization": gate_initialization}
+            ),
         )
     else:
         effective_l0 = l0_lambda
@@ -1732,6 +1761,11 @@ def calibrate(
             temperature=temperature,
             progress_callback=progress_callback,
             return_gate_open_probabilities=True,
+            **(
+                {}
+                if gate_initialization is None
+                else {"gate_initialization": gate_initialization}
+            ),
         )
         n_nonzero = int((final_weights > prune_atol).sum())
         if effective_l0 > 0.0 and n_nonzero == 0:
@@ -1792,6 +1826,7 @@ def calibrate(
         target_loss_scales=target_loss_scales_np.copy(),
         target_loss_cap=target_loss_cap,
         options={
+            "gate_initialization_supplied": gate_initialization is not None,
             "method": method,
             "epochs": epochs,
             "learning_rate": learning_rate,
@@ -1954,6 +1989,7 @@ def refit_l0_selection(
     epochs: int = 256,
     learning_rate: float = 0.02,
     mass: str = FREE_MASS,
+    mass_reason: str | None = None,
     max_weight_ratio: float | None = None,
     l2_lambda: float = 0.0,
     l2_anchor: str = "initial",
@@ -1976,6 +2012,8 @@ def refit_l0_selection(
     named, fail-closed cardinality gate before any refit work. In either case the
     gates and L0 penalty are removed and :func:`calibrate` runs again with
     ``l0_lambda=0`` on only the selected records.
+
+    ``mass_reason`` carries a caller's calibration provenance into the refit.
 
     The explicit exact-k path subsets the original ``frame`` rather than
     ``selection.frame``. A record may have positive open probability while its
@@ -2126,6 +2164,7 @@ def refit_l0_selection(
         epochs=epochs,
         learning_rate=learning_rate,
         mass=mass,
+        mass_reason=mass_reason,
         max_weight_ratio=max_weight_ratio,
         target_records=None,
         l0_lambda=0.0,
