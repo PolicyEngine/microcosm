@@ -1,0 +1,1 @@
+Add versioned Logbook build records with typed requested and realized dataset cardinality and a normalized record unit. Exact-k builds use a null sampling-fraction field, while every legacy archive record and checksum remains unchanged.

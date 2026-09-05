@@ -11,6 +11,18 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from microcosm.build.logbook import LogbookRow, load_logbook_file
+from microcosm.build.logbook_family import (
+    FamilyAction,
+    FamilyMember,
+    LogbookFamily,
+    derive_family_id,
+    load_families,
+    load_family_actions,
+    load_family_members,
+    record_family,
+    record_family_action,
+    record_family_member,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 CLI_PATH = ROOT / "tools/logbook.py"
@@ -32,6 +44,7 @@ def _row(
     pipeline: str = "uk-frs-staging",
     rung: str = "f010",
     disposition: str = "failed",
+    requested_k: int | None = None,
 ) -> LogbookRow:
     artifact = (
         f"hf://datasets/policyengine/populace-us@{build_id}"
@@ -60,6 +73,10 @@ def _row(
         disposition=disposition,
         prediction_id=None,
         prev_row_digest=predecessor,
+        row_format_version=2 if requested_k is not None else None,
+        requested_k=requested_k,
+        realized_k=requested_k,
+        record_unit="household" if requested_k is not None else None,
     )
 
 
@@ -165,9 +182,7 @@ def test_export_refuses_a_directory_archive(
     spool.mkdir()
     cli = _load_cli()
 
-    assert (
-        cli.main(["export", "--archive", str(tmp_path), "--source", str(spool)]) == 1
-    )
+    assert cli.main(["export", "--archive", str(tmp_path), "--source", str(spool)]) == 1
     assert "extends exactly one scope chain" in capsys.readouterr().err
 
 
@@ -213,6 +228,231 @@ def test_cli_validate_and_filtered_render(
     assert "cost_usd" not in output
 
 
+def test_build_archive_discovery_excludes_family_record_directories(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "logbook"
+    root.mkdir()
+    _write_jsonl(root / "us.jsonl", _chain(pipeline="us-stacked-pool"))
+    for directory in ("families", "family_members", "family_actions"):
+        archive = root / directory / "us.jsonl"
+        archive.parent.mkdir(parents=True)
+        archive.write_text('{"not":"a build row"}\n', encoding="utf-8")
+    cli = _load_cli()
+
+    assert cli.main(["validate", "--archive", str(root)]) == 0
+    output = capsys.readouterr().out
+    assert output.count("validated 3 Logbook rows") == 1
+
+    assert (
+        cli.main(
+            [
+                "validate",
+                "--archive",
+                str(root / "families"),
+            ]
+        )
+        == 1
+    )
+    assert "No Logbook build archives" in capsys.readouterr().err
+    assert (
+        cli.main(
+            [
+                "validate",
+                "--archive",
+                str(root / "families/us.jsonl"),
+            ]
+        )
+        == 1
+    )
+    assert "No Logbook build archives" in capsys.readouterr().err
+
+
+def test_family_archive_commands_and_queries(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    family_id = derive_family_id("us", "a" * 64)
+    action_id = "22345678-1234-4234-9234-123456789abc"
+    family = LogbookFamily.create(
+        family_id=family_id,
+        chain_scope="us",
+        source_pool_sha256="a" * 64,
+    )
+    large = _row(
+        "family-large",
+        predecessor=None,
+        minute=1,
+        pipeline="us-stacked-pool",
+        requested_k=57_240,
+    )
+    small = _row(
+        "family-small",
+        predecessor=large.row_digest,
+        minute=2,
+        pipeline="us-stacked-pool",
+        requested_k=57_240,
+    )
+    members = (
+        FamilyMember.create(family_id=family_id, build_id=large.build_id),
+        FamilyMember.create(family_id=family_id, build_id=small.build_id),
+    )
+    action = FamilyAction.create(
+        action_id=action_id,
+        family_id=family_id,
+        build_id=small.build_id,
+        action_type="supersedes",
+        related_build_id=large.build_id,
+        recorded_at="2026-08-21T12:00:00Z",
+        actor="fixture",
+        reason="Corrected build",
+        evidence_location=None,
+    )
+    source_spool = tmp_path / "source-spool"
+    record_family(family, spool_dir=source_spool, post_remote=False)
+    for member in members:
+        record_family_member(member, spool_dir=source_spool, post_remote=False)
+    record_family_action(action, spool_dir=source_spool, post_remote=False)
+    archive_root = tmp_path / "logbook"
+    archive_root.mkdir()
+    _write_jsonl(archive_root / "us.jsonl", (large, small))
+    cli = _load_cli()
+
+    assert (
+        cli.main(
+            [
+                "family-export",
+                "--scope",
+                "us",
+                "--archive-root",
+                str(archive_root),
+                "--source",
+                str(source_spool),
+            ]
+        )
+        == 0
+    )
+    assert load_families(archive_root / "families/us.jsonl") == (family,)
+    assert load_family_members(archive_root / "family_members/us.jsonl") == members
+    assert load_family_actions(archive_root / "family_actions/us.jsonl") == (action,)
+
+    imported_spool = tmp_path / "imported-spool"
+    assert (
+        cli.main(
+            [
+                "family-import",
+                "--scope",
+                "us",
+                "--archive-root",
+                str(archive_root),
+                "--spool",
+                str(imported_spool),
+            ]
+        )
+        == 0
+    )
+    assert len(list(imported_spool.rglob("*.json"))) == 6
+    capsys.readouterr()
+
+    assert (
+        cli.main(
+            [
+                "list-families",
+                "--archive-root",
+                str(archive_root),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["family_id"] == family_id
+
+    assert (
+        cli.main(
+            [
+                "list-family-builds",
+                "--family-id",
+                family_id,
+                "--archive-root",
+                str(archive_root),
+            ]
+        )
+        == 0
+    )
+    build_rows = [
+        json.loads(line) for line in capsys.readouterr().out.splitlines() if line
+    ]
+    assert [row["build_id"] for row in build_rows] == [
+        "family-large",
+        "family-small",
+    ]
+    assert [row["requested_k"] for row in build_rows] == [57_240, 57_240]
+    assert all(
+        "gate_verdicts" not in row and "cost_usd" not in row for row in build_rows
+    )
+
+    assert (
+        cli.main(
+            [
+                "show-family-history",
+                "--family-id",
+                family_id,
+                "--archive-root",
+                str(archive_root),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out) == action.to_mapping()
+
+
+def test_family_export_rejects_member_whose_build_has_another_scope(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    family_id = derive_family_id("us", "a" * 64)
+    family = LogbookFamily.create(
+        family_id=family_id,
+        chain_scope="us",
+        source_pool_sha256="a" * 64,
+    )
+    member = FamilyMember.create(family_id=family_id, build_id="uk-build")
+    source_spool = tmp_path / "source-spool"
+    record_family(family, spool_dir=source_spool, post_remote=False)
+    record_family_member(member, spool_dir=source_spool, post_remote=False)
+    archive_root = tmp_path / "logbook"
+    archive_root.mkdir()
+    _write_jsonl(
+        archive_root / "us.jsonl",
+        (
+            _row(
+                "uk-build",
+                predecessor=None,
+                minute=1,
+                pipeline="uk-frs-staging",
+            ),
+        ),
+    )
+    cli = _load_cli()
+    assert (
+        cli.main(
+            [
+                "family-export",
+                "--scope",
+                "us",
+                "--archive-root",
+                str(archive_root),
+                "--source",
+                str(source_spool),
+            ]
+        )
+        == 1
+    )
+    assert "does not match family scope" in capsys.readouterr().err
+    assert not (archive_root / "families/us.jsonl").exists()
+    assert not (archive_root / "family_members/us.jsonl").exists()
+
+
 def test_cli_export_appends_jsonl_source_suffix_idempotently(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -256,9 +496,7 @@ def test_cli_local_export_refuses_wrong_scope_rows(
     _write_jsonl(source, _chain(pipeline="uk-local-rowwise"))
     cli = _load_cli()
 
-    exit_code = cli.main(
-        ["export", "--archive", str(archive), "--source", str(source)]
-    )
+    exit_code = cli.main(["export", "--archive", str(archive), "--source", str(source)])
 
     assert exit_code == 1
     err = capsys.readouterr().err
@@ -280,9 +518,7 @@ def test_cli_export_refuses_an_unratified_scope_archive(
     _write_jsonl(source, _chain(pipeline="uk-firms-staging"))
     cli = _load_cli()
 
-    exit_code = cli.main(
-        ["export", "--archive", str(archive), "--source", str(source)]
-    )
+    exit_code = cli.main(["export", "--archive", str(archive), "--source", str(source)])
 
     assert exit_code == 1
     assert "not in the ratified scope list" in capsys.readouterr().err
@@ -300,9 +536,7 @@ def test_cli_export_accepts_uk_local_scope_archive(
     _write_jsonl(source, rows)
     cli = _load_cli()
 
-    exit_code = cli.main(
-        ["export", "--archive", str(archive), "--source", str(source)]
-    )
+    exit_code = cli.main(["export", "--archive", str(archive), "--source", str(source)])
 
     assert exit_code == 0
     assert "exported 3 new Logbook rows" in capsys.readouterr().out
@@ -401,6 +635,23 @@ class _RemoteResponse:
         return None
 
 
+class _RemoteMappingResponse:
+    status = 206
+
+    def __init__(self, rows: list[dict[str, object]]) -> None:
+        self._payload = json.dumps(rows).encode()
+        self.headers = {"Content-Range": f"0-{len(rows) - 1}/{len(rows)}"}
+
+    def read(self) -> bytes:
+        return self._payload
+
+    def __enter__(self) -> _RemoteMappingResponse:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+
 def test_cli_remote_export_uses_distinct_read_only_key(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -435,8 +686,87 @@ def test_cli_remote_export_uses_distinct_read_only_key(
     assert query["limit"] == [str(cli.REMOTE_PAGE_SIZE)]
     assert query["offset"] == ["0"]
     assert query["pipeline"] == [
-        'in.("us-2024-release","us-pool-inc2","us-stacked-pool")'
+        'in.("us-2024-release","us-exact-k-release","us-pool-inc2","us-stacked-pool")'
     ]
+
+
+def test_cli_remote_family_export_filters_each_table_by_stored_scope(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    family_id = derive_family_id("us", "a" * 64)
+    action_id = "22345678-1234-4234-9234-123456789abc"
+    family = LogbookFamily.create(
+        family_id=family_id,
+        chain_scope="us",
+        source_pool_sha256="a" * 64,
+    )
+    member = FamilyMember.create(family_id=family_id, build_id="family-build")
+    action = FamilyAction.create(
+        action_id=action_id,
+        family_id=family_id,
+        build_id=member.build_id,
+        action_type="revokes",
+        related_build_id=None,
+        recorded_at="2026-08-21T12:00:00Z",
+        actor="fixture",
+        reason="Invalid output",
+        evidence_location=None,
+    )
+    build = _row(
+        member.build_id,
+        predecessor=None,
+        minute=1,
+        pipeline="us-stacked-pool",
+    )
+    rows_by_table = {
+        "builds": [build.to_mapping()],
+        "families": [family.to_mapping()],
+        "family_members_public": [member.to_mapping()],
+        "family_actions_public": [action.to_mapping()],
+    }
+    cli = _load_cli()
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_EXPORT_KEY", "exporter-jwt")
+    monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
+    requests: list[object] = []
+
+    def fake_urlopen(request: object, *, timeout: float) -> _RemoteMappingResponse:
+        assert timeout == 30.0
+        requests.append(request)
+        table = urlparse(request.full_url).path.rsplit("/", 1)[-1]
+        return _RemoteMappingResponse(rows_by_table[table])
+
+    monkeypatch.setattr(cli, "urlopen", fake_urlopen)
+    archive_root = tmp_path / "logbook"
+
+    assert (
+        cli.main(
+            [
+                "family-export",
+                "--scope",
+                "us",
+                "--archive-root",
+                str(archive_root),
+                "--remote",
+            ]
+        )
+        == 0
+    )
+
+    assert load_families(archive_root / "families/us.jsonl") == (family,)
+    assert len(requests) == 4
+    for request in requests:
+        query = parse_qs(urlparse(request.full_url).query)
+        assert request.headers["Authorization"] == "Bearer exporter-jwt"
+        table = urlparse(request.full_url).path.rsplit("/", 1)[-1]
+        if table == "builds":
+            assert query["pipeline"] == [
+                'in.("us-2024-release","us-exact-k-release","us-pool-inc2",'
+                '"us-stacked-pool")'
+            ]
+        else:
+            assert query["chain_scope"] == ["eq.us"]
 
 
 def test_cli_remote_export_filters_nested_scope(
@@ -601,6 +931,7 @@ def test_cli_remote_export_refuses_wrong_scope_rows(
     ("pipeline", "scope"),
     [
         ("us-2024-release", "us"),
+        ("us-exact-k-release", "us"),
         ("us-pool-inc2", "us"),
         ("us-stacked-pool", "us"),
         ("uk-frs-staging", "uk/frs"),
