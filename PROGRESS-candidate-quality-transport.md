@@ -77,3 +77,37 @@ the type suggests.
 ## Next
 
 Finish the fast-lane run and the correctness assessment, then write the report.
+
+## Independently verified probe results (2026-09-05)
+
+Confirmed sound:
+- Manifest digests are reproducible across roots for identical inputs.
+- Re-sealing different bytes at an existing content-address is refused
+  ("Existing immutable artifact differs").
+- An index whose country disagrees with the candidate is refused.
+- A model-scoped identity that contradicts a declared `provenance.model_version`
+  is refused. With no provenance declared there is nothing to contradict, so the
+  model identity is self-declared only -- provenance is what binds it.
+- Relative, nested, absolute, backslash and colon partition paths are all refused.
+- No absolute local filesystem path reaches the written manifest or index.
+- Literal `NaN` / `Infinity` / `-Infinity` tokens are refused.
+
+Confirmed gaps (reported, deliberately NOT patched -- see below):
+- G1: `1e400` / `-1e400` bypass the `parse_constant` hook, because that hook only
+  fires on the literal tokens. The value is sealed, survives verbatim, and a
+  consumer re-parsing it gets `Infinity` (JS `JSON.parse` agrees). Metadata is
+  protected by `_bytes(allow_nan=False)`; attachment payloads are not.
+- G2: `RecursionError` from deeply nested JSON escapes uncaught -- the handler
+  catches `(ValueError, UnicodeError)` and `RecursionError` is neither. Same for
+  `FileNotFoundError` / `IsADirectoryError` on a missing or non-regular source,
+  and on a read for an absent manifest digest. Callers cannot uniformly catch
+  `CandidateQualityError` to separate bad evidence from an environment problem.
+- G3: an attachment payload that omits its identity fields entirely is accepted.
+  The embedded cross-check only compares keys the payload actually declares, so
+  such a payload's identity binding rests wholly on the producer's sidecar claim.
+  This is the attested-versus-verified line and belongs in the report, not in a
+  silent patch.
+
+Decision: the transport bytes stay verbatim. The point of this change is to
+freeze the already-reviewed writer for review; adding unreviewed fixes to it
+would undercut that. G1--G3 go to root and the independent review to decide.
