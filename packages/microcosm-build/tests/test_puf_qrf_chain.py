@@ -5,7 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import runpy
 import stat
+import sys
+import types
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -379,6 +382,38 @@ def test_primary_qrf_target_fsyncs_file_then_parent_directory_after_rename(
         ("replace", target_path.name),
         ("fsync", "directory"),
     ]
+
+
+def test_primary_qrf_worker_launch_forces_torch_backend_autoload_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The worker disables Torch plugins before importing its QRF runtime."""
+
+    monkeypatch.setenv("TORCH_DEVICE_BACKEND_AUTOLOAD", "1")
+    observed: list[str | None] = []
+    chain_stub = types.ModuleType(
+        "microcosm.build.us_runtime.puf_qrf_chain_bootstrap_test"
+    )
+
+    def imported_attribute(name: str) -> object:
+        if name != "run_primary_puf_qrf_target":
+            raise AttributeError(name)
+        observed.append(os.environ.get("TORCH_DEVICE_BACKEND_AUTOLOAD"))
+        return lambda *_args: None
+
+    chain_stub.__getattr__ = imported_attribute  # type: ignore[attr-defined]
+    monkeypatch.setitem(
+        sys.modules,
+        "microcosm.build.us_runtime.puf_qrf_chain",
+        chain_stub,
+    )
+
+    runpy.run_module(
+        "microcosm.build.us_runtime.puf_qrf_worker",
+        run_name="__primary_qrf_worker_bootstrap_test__",
+    )
+
+    assert observed == ["0"]
 
 
 def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(

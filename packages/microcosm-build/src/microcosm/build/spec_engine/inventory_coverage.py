@@ -348,14 +348,14 @@ EXPECTED_LEGACY_RELEASE_REGEX = EXPECTED_RELEASE_REGEX.replace(
 EXPECTED_HASHES = {
     "acs_group_predictors": "a927bb7ecf3e84f54c93583ab79318654514ac546aefafba67da5285615fbd60",
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
-    "authority": "e660a8ce42b69a39d29c5f0ec37264bc69d61b03f27adc386336ec8889531bb2",
+    "authority": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "b88f2d9c0f6f92c6cd81eb14d6b126afe59577b8bb392b394b2c6fbbafd195c5",
+    "full_checkpoint": "7176664c34039def5f43281a7735f792fe43de4ef0a6e7ca18f53d812b412d15",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
-    "graph_nodes": "271a7bb8d0b3f97ff344e0b7e68184fa74738a6585c24fc8781793db669f388b",
+    "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
     "geography_assignment": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-    "late_resource_semantics": "afebb6725373abf5b8dd4fdb77bf2814cb6fcc569cb606c0c30963a8f65c0bab",
+    "late_resource_semantics": "b2b7dbd64db211088e85c94ad6ca1b942cb5e45683eb8c34ba9b664b5de64624",
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "987b501c695e31f45521c4a178528f75ab3df22c09bc407b182213b2de99ee57",
@@ -473,16 +473,23 @@ def _wire(value: FrozenValue) -> object:
     return thaw_json(value)
 
 
-def _without_operational_bindings(value: object) -> object:
-    """Strip execution-profile subtrees before semantic digesting.
+#: Subtrees that describe the machine a build ran on, never the spec.
+_OPERATIONAL_KEYS = frozenset({"worker_execution", "audit_aliases"})
 
-    ``worker_execution`` embeds the invoking interpreter path verbatim
-    (``sys.executable``), which spells itself differently between a script
-    (``.venv/bin/python``) and the pytest console script
-    (``.venv/bin/python3``) for the same interpreter. Execution profile is a
-    receipted operational surface, never semantic evidence, so inventory
-    digests are computed over the receipt with those subtrees removed. The
-    live generation-0 receipt itself is unchanged.
+
+def _without_operational_bindings(value: object) -> object:
+    """Strip execution-profile subtrees before semantic inventory digesting.
+
+    ``worker_execution`` is the primary-QRF worker's execution binding: its
+    semantic identity hashes the interpreter binary, ABI, ``pyvenv.cfg``,
+    the installed distributions' RECORD files, and the resolved fit
+    controls (CPU count included), and its audit aliases spell the
+    interpreter path. All of that authenticates an environment for replay
+    and legitimately differs between macOS and the Linux CI runners; none
+    of it is spec evidence. Inventory digests are therefore computed over
+    the receipt with the whole subtree removed, as they were before the
+    binding became portable, so the pinned digests hold on every platform.
+    The live generation-0 receipt itself is unchanged.
     """
 
     if isinstance(value, Mapping):
@@ -490,7 +497,7 @@ def _without_operational_bindings(value: object) -> object:
         return {
             key: _without_operational_bindings(item)
             for key, item in value.items()
-            if key != "worker_execution" and not (drop_self_hash and key == "sha256")
+            if key not in _OPERATIONAL_KEYS and not (drop_self_hash and key == "sha256")
         }
     if isinstance(value, list):
         return [_without_operational_bindings(item) for item in value]
@@ -1695,9 +1702,7 @@ def build_inventory_coverage(
             "sha256": _operational_free_sha256(geography_assignment),
             "authority_roles": sorted(geography_authorities),
             "target_vintage": _mapping(
-                geography_authorities.get(
-                    "congressional_district_vintage_crosswalk"
-                ),
+                geography_authorities.get("congressional_district_vintage_crosswalk"),
                 "checkpoint geography crosswalk authority",
             ).get("target_vintage"),
         },

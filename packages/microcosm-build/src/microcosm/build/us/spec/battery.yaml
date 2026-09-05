@@ -838,4 +838,4 @@ metric_contracts:
     threshold: categorical_total_variation
 authority_binding:
   authority_id: us_stacked_spine_authority
-  version: 11
+  version: 12

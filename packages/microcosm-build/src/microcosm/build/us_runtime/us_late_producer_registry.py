@@ -95,6 +95,7 @@ __all__ = [
     "US_LATE_TRANSFER_TARGET_BANK_INPUT",
     "source_producer_name",
     "transfer_producer_name",
+    "legacy_us_late_producer_schedule_receipt",
     "us_late_producer_schedule_payload",
     "us_late_producer_schedule_receipt",
 ]
@@ -122,10 +123,12 @@ __all__ = [
 # implicit. Receipt v3 reconciles repeated physical evidence and scope
 # cardinalities across each execution row, binds source-receipt outputs to the
 # callback receipt, and requires the primary callback to report the exact
-# resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 16
-US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
-US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
+# resources it consumed. Receipt v4 and registry v17 bind the portable worker
+# identity; transition authority v2 encloses that receipt. Receipt v2
+# introduced exact virtual-resource payloads.
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 17
+US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 4
+US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 2
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID = "us_stacked_late_producer_transition"
 US_LATE_PRIMARY_PUF_STAGE = "primary_puf_qrf"
@@ -2139,3 +2142,34 @@ def us_late_producer_schedule_receipt() -> Mapping[str, object]:
             "status": "derived_and_import_validated",
         }
     )
+
+
+def legacy_us_late_producer_schedule_receipt() -> Mapping[str, object]:
+    """Reconstruct the exact schema-16 schedule for attested legacy scoring."""
+
+    receipt = json.loads(json.dumps(dict(us_late_producer_schedule_receipt())))
+    receipt["schema_version"] = 16
+    contract = receipt["execution_receipt_contract"]
+    contract["version"] = 3
+    contract["transition_authority"]["version"] = 1
+    payload = {
+        key: value
+        for key, value in receipt.items()
+        if key
+        not in {
+            "payload_sha256",
+            "producer_count",
+            "source_producer_count",
+            "transfer_group_count",
+            "transfer_target_count",
+            "status",
+        }
+    }
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    receipt["payload_sha256"] = hashlib.sha256(canonical).hexdigest()
+    return MappingProxyType(receipt)

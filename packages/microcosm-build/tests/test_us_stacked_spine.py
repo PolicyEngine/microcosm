@@ -9,15 +9,18 @@ per-family declared metrics.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import inspect
 import json
 import pickle
+import sys
 from collections import Counter
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -31,6 +34,7 @@ import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_cal
 import microcosm.build.us_runtime.puf_capital_gains_tail as tail_module
 import microcosm.build.us_runtime.puf_support as puf_support_module
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
+import microcosm.build.us_runtime.worker_identity as worker_identity_module
 from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
@@ -4154,6 +4158,1159 @@ def test_late_table_content_digest_binds_dtype_index_and_order() -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def _prime_worker_identity(prime_primary_qrf_worker_identity: None) -> None:
+    """Share the real session attestation unless a test opts into live identity."""
+
+
+def _fixture_primary_execution_config_binding() -> dict[str, object]:
+    return stacked_spine_module._late_primary_execution_config_binding(
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        seed=0,
+        n_estimators=100,
+        predictors=None,
+        person_outputs=None,
+        tax_unit_outputs=None,
+        fit_records_enabled=True,
+        tail_bound_diagnostics_enabled=True,
+    )
+
+
+def _validate_fixture_primary_execution_config(
+    binding: Mapping[str, object],
+) -> None:
+    # These cases mutate received bindings, never the installed environment.
+    # Reuse the real pristine fixture for comparison, independently of the
+    # potentially re-signed candidate; direct identity mutation tests stay live.
+    expected_worker = _fixture_primary_execution_config_binding()["qrf"][
+        "worker_execution"
+    ]
+    with pytest.MonkeyPatch.context() as identity_fixture:
+        identity_fixture.setattr(
+            stacked_spine_module,
+            "_late_primary_qrf_worker_execution_binding",
+            lambda: deepcopy(expected_worker),
+        )
+        stacked_spine_module._validate_late_resource_binding(
+            binding,
+            producer=stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE,
+            entity="tax_unit",
+            column=stacked_spine_module.US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT,
+            boundary="portable worker identity fixture",
+        )
+
+
+def test_late_primary_worker_authentication_ignores_audit_alias_relocation() -> None:
+    binding = _fixture_primary_execution_config_binding()
+    worker = binding["qrf"]["worker_execution"]
+    original_semantic_identity = deepcopy(worker["semantic_identity"])
+    original_semantic_sha256 = worker["semantic_identity_sha256"]
+    relocated_interpreter = (
+        "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-c26-build/.venv/bin/python"
+    )
+
+    worker["audit_aliases"] = {
+        "sys_executable": relocated_interpreter,
+        "sys_prefix": str(Path(relocated_interpreter).parents[1]),
+        "argv_template_0": relocated_interpreter,
+    }
+
+    _validate_fixture_primary_execution_config(binding)
+    assert worker["semantic_identity"] == original_semantic_identity
+    assert worker["semantic_identity_sha256"] == original_semantic_sha256
+
+
+def test_late_primary_worker_audit_paths_must_be_absolute() -> None:
+    binding = _fixture_primary_execution_config_binding()
+    binding["qrf"]["worker_execution"]["audit_aliases"]["sys_executable"] = (
+        "relative/python"
+    )
+
+    with pytest.raises(ValueError, match="worker binding is malformed"):
+        _validate_fixture_primary_execution_config(binding)
+
+
+def test_late_primary_worker_authentication_rejects_rehashed_semantic_change() -> None:
+    binding = _fixture_primary_execution_config_binding()
+    worker = binding["qrf"]["worker_execution"]
+    semantic_identity = worker["semantic_identity"]
+    semantic_identity["interpreter"]["bytes_sha256"] = "0" * 64
+    worker["semantic_identity_sha256"] = stacked_spine_module._canonical_sha256(
+        semantic_identity
+    )
+
+    with pytest.raises(ValueError, match="semantic worker identity changed"):
+        _validate_fixture_primary_execution_config(binding)
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_worker_transitive_source_identity_includes_package_initializers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker_source = tmp_path / "worker.py"
+    package_dir = tmp_path / "fixture" / "pkg"
+    package_dir.mkdir(parents=True)
+    package_init = package_dir / "__init__.py"
+    child_source = package_dir / "child.py"
+    worker_source.write_text("import fixture.pkg.child\n", encoding="utf-8")
+    package_init.write_text("PACKAGE_VALUE = 1\n", encoding="utf-8")
+    child_source.write_text("CHILD_VALUE = 1\n", encoding="utf-8")
+    source_index = {
+        worker_identity_module.PRIMARY_QRF_WORKER_MODULE: worker_source,
+        "fixture.pkg": package_init,
+        "fixture.pkg.child": child_source,
+    }
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_module_source_index",
+        lambda: source_index,
+    )
+
+    worker_before, imports_before, _ = worker_identity_module._worker_source_identity()
+    package_init.write_text("PACKAGE_VALUE = 2\n", encoding="utf-8")
+    worker_after, imports_after, _ = worker_identity_module._worker_source_identity()
+
+    assert worker_after == worker_before
+    assert imports_after != imports_before
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_worker_source_index_stays_inside_installed_namespace_roots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    site_packages = tmp_path / "site-packages"
+    namespace_root = site_packages / "microcosm"
+    worker_source = namespace_root / "build" / "us_runtime" / "puf_qrf_worker.py"
+    neighboring_package = site_packages / "packaging" / "__init__.py"
+    worker_source.parent.mkdir(parents=True)
+    neighboring_package.parent.mkdir(parents=True)
+    worker_source.write_text("import packaging\n", encoding="utf-8")
+    neighboring_package.write_text("NEIGHBOR = True\n", encoding="utf-8")
+    monkeypatch.setattr(
+        worker_identity_module.importlib.util,
+        "find_spec",
+        lambda name: (
+            SimpleNamespace(submodule_search_locations=(namespace_root,))
+            if name == "microcosm"
+            else None
+        ),
+    )
+
+    index = worker_identity_module._module_source_index()
+
+    assert index == {
+        worker_identity_module.PRIMARY_QRF_WORKER_MODULE: worker_source.resolve()
+    }
+    internal, external = worker_identity_module._source_imports(
+        worker_identity_module.PRIMARY_QRF_WORKER_MODULE,
+        worker_source,
+        worker_source.read_bytes(),
+        index=index,
+    )
+    assert internal == set()
+    assert external == {"packaging"}
+
+
+def _two_namespace_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    roots = []
+    for name in ("installed", "checkout"):
+        root = tmp_path / name / "microcosm"
+        (root / "build" / "us_runtime").mkdir(parents=True)
+        roots.append(root)
+    monkeypatch.setattr(
+        worker_identity_module.importlib.util,
+        "find_spec",
+        lambda name: (
+            SimpleNamespace(submodule_search_locations=tuple(roots))
+            if name == "microcosm"
+            else None
+        ),
+    )
+    return roots
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_worker_source_index_accepts_a_byte_identical_shadow_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An installed wheel beside its own checkout (or lib64 beside lib) is the
+    same code; the first root on the import path wins."""
+    installed, checkout = _two_namespace_roots(tmp_path, monkeypatch)
+    for root in (installed, checkout):
+        (root / "build" / "us_runtime" / "puf_qrf_worker.py").write_text(
+            "import packaging\n", encoding="utf-8"
+        )
+    (checkout / "build" / "__init__.py").write_text("", encoding="utf-8")
+
+    index = worker_identity_module._module_source_index()
+
+    assert (
+        index[worker_identity_module.PRIMARY_QRF_WORKER_MODULE]
+        == (installed / "build" / "us_runtime" / "puf_qrf_worker.py").resolve()
+    )
+    assert index["microcosm.build"] == (checkout / "build" / "__init__.py").resolve()
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_worker_source_index_rejects_a_shadow_root_with_different_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    installed, checkout = _two_namespace_roots(tmp_path, monkeypatch)
+    (installed / "build" / "us_runtime" / "puf_qrf_worker.py").write_text(
+        "import packaging\n", encoding="utf-8"
+    )
+    (checkout / "build" / "us_runtime" / "puf_qrf_worker.py").write_text(
+        "import packaging  # edited\n", encoding="utf-8"
+    )
+
+    with pytest.raises(RuntimeError, match="Duplicate source modules .* differs"):
+        worker_identity_module._module_source_index()
+
+
+def _pyvenv_prefix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str):
+    (tmp_path / "pyvenv.cfg").write_text(
+        "home = /opt/python/bin\n"
+        "implementation = CPython\n"
+        "uv = 0.12.9\n"
+        f"version_info = {version}\n"
+        "include-system-site-packages = false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(worker_identity_module.sys, "prefix", str(tmp_path))
+
+
+@pytest.mark.parametrize("components", (2, 3))
+@pytest.mark.usefixtures("live_worker_identity")
+def test_canonical_pyvenv_config_accepts_uv_major_minor_and_triplet_versions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    components: int,
+) -> None:
+    """uv 0.12 writes ``version_info = 3.13``; older uv wrote the triplet. Both
+    canonicalize to the running interpreter's triplet."""
+    running = worker_identity_module.sys.version_info
+    _pyvenv_prefix(
+        tmp_path, monkeypatch, ".".join(str(part) for part in running[:components])
+    )
+
+    config = worker_identity_module._canonical_pyvenv_config()
+
+    assert config["version"] == list(running[:3])
+    assert config["uv_version"] == "0.12.9"
+
+
+@pytest.mark.parametrize(
+    ("version", "message"),
+    (
+        ("9.9.9", "does not match the running interpreter"),
+        ("9.9", "does not match the running interpreter"),
+        ("3", "major.minor or major.minor.micro"),
+        ("3.13.11.0", "major.minor or major.minor.micro"),
+        ("3.13rc1", "is not numeric"),
+    ),
+)
+@pytest.mark.usefixtures("live_worker_identity")
+def test_canonical_pyvenv_config_rejects_versions_that_are_not_the_interpreter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    version: str,
+    message: str,
+) -> None:
+    _pyvenv_prefix(tmp_path, monkeypatch, version)
+
+    with pytest.raises(RuntimeError, match=message):
+        worker_identity_module._canonical_pyvenv_config()
+
+
+def _stub_worker_identity_static_closure(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    stub_installed_distributions: bool = True,
+) -> None:
+    """Keep portable-identity mutation tests focused and inexpensive."""
+
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_worker_source_identity",
+        lambda: ("a" * 64, "b" * 64, ()),
+    )
+    if stub_installed_distributions:
+        monkeypatch.setattr(
+            worker_identity_module,
+            "_installed_distributions_record_sha256",
+            lambda _external_roots: "c" * 64,
+        )
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_canonical_pyvenv_config",
+        lambda: {
+            "implementation": sys.implementation.name,
+            "version": list(sys.version_info[:3]),
+            "include_system_site_packages": False,
+            "uv_version": "fixture",
+        },
+    )
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "2")
+
+
+def _fixture_worker_import_trace(
+    tmp_path: Path,
+    *,
+    module_origins: Mapping[str, str] | None = None,
+) -> dict[str, object]:
+    namespace_root = tmp_path / "namespace" / "microcosm"
+    worker_source = namespace_root / "build" / "us_runtime" / "puf_qrf_worker.py"
+    worker_source.parent.mkdir(parents=True, exist_ok=True)
+    worker_source.write_text("# fixture worker\n", encoding="utf-8")
+    return {
+        "module_origins": {
+            worker_identity_module.PRIMARY_QRF_WORKER_MODULE: str(worker_source),
+            **({} if module_origins is None else dict(module_origins)),
+        },
+        "opened_files": (),
+        "namespace_roots": (str(namespace_root),),
+    }
+
+
+@pytest.fixture
+def _worker_identity_memo_inputs(
+    live_worker_identity, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Exercise the real memo and file hashing with a tiny import closure."""
+    _stub_worker_identity_static_closure(monkeypatch)
+    runtime = tmp_path / "libpython-fixture.so"
+    runtime.write_bytes(b"unchanged fixture runtime\n")
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_loaded_python_runtime_binary",
+        lambda: ("shared_library", runtime),
+    )
+    trace = _fixture_worker_import_trace(tmp_path)
+    source = Path(
+        trace["module_origins"][worker_identity_module.PRIMARY_QRF_WORKER_MODULE]
+    )
+    trace["opened_files"] = (str(source),)
+    calls = []
+
+    def import_trace():
+        calls.append(None)
+        return trace
+
+    monkeypatch.setattr(
+        worker_identity_module, "_clean_worker_import_trace", import_trace
+    )
+    return source, calls
+
+
+def test_primary_qrf_worker_identity_memo_reuses_graph_and_clear_recomputes(
+    _worker_identity_memo_inputs,
+) -> None:
+    _source, calls = _worker_identity_memo_inputs
+    first = worker_identity_module.primary_qrf_worker_semantic_identity()
+    second = worker_identity_module.primary_qrf_worker_semantic_identity()
+    assert second is first
+    assert second["interpreter"] is first["interpreter"]
+    assert second["environment"] is first["environment"]
+    assert len(calls) == 1
+
+    worker_identity_module.clear_primary_qrf_worker_identity_cache()
+    third = worker_identity_module.primary_qrf_worker_semantic_identity()
+    assert third == first
+    assert third is not first
+    assert third["interpreter"] is not first["interpreter"]
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "name", ("POPULACE_FIT_N_JOBS", "POPULACE_FIT_PREDICT_WORKERS")
+)
+def test_primary_qrf_worker_identity_memo_binds_environment(
+    _worker_identity_memo_inputs,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+) -> None:
+    _source, calls = _worker_identity_memo_inputs
+    monkeypatch.setenv(name, "1")
+    first = worker_identity_module.primary_qrf_worker_semantic_identity()
+    monkeypatch.setenv(name, "3")
+    second = worker_identity_module.primary_qrf_worker_semantic_identity()
+    assert second is not first
+    assert first["environment"]["semantic_controls"][name]["resolved"] == 1
+    assert second["environment"]["semantic_controls"][name]["resolved"] == 3
+    assert worker_identity_module._canonical_sha256(
+        first
+    ) != worker_identity_module._canonical_sha256(second)
+    assert len(calls) == 2
+    monkeypatch.setenv(name, "1")
+    assert worker_identity_module.primary_qrf_worker_semantic_identity() is first
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize(
+    "name", ("POPULACE_FIT_N_JOBS", "POPULACE_FIT_PREDICT_WORKERS")
+)
+@pytest.mark.parametrize("value", ("0", "01", "invalid"))
+def test_primary_qrf_worker_identity_memo_refuses_invalid_environment(
+    _worker_identity_memo_inputs,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    value: str,
+) -> None:
+    monkeypatch.setenv(name, "1")
+    worker_identity_module.primary_qrf_worker_semantic_identity()
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValueError, match=name):
+        worker_identity_module.primary_qrf_worker_semantic_identity()
+
+
+def test_primary_qrf_worker_identity_memo_binds_lock(
+    _worker_identity_memo_inputs,
+) -> None:
+    first = worker_identity_module.primary_qrf_worker_semantic_identity()
+    legacy = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.LEGACY_CAMPAIGN_UV_LOCK_SHA256
+    )
+    assert first["uv_lock_sha256"] == worker_identity_module.APPROVED_UV_LOCK_SHA256
+    assert (
+        legacy["uv_lock_sha256"]
+        == worker_identity_module.LEGACY_CAMPAIGN_UV_LOCK_SHA256
+    )
+    assert legacy != first
+    assert worker_identity_module.primary_qrf_worker_semantic_identity() is first
+    for invalid in ("0" * 64, "malformed", []):
+        with pytest.raises(ValueError, match="lock"):
+            worker_identity_module.primary_qrf_worker_semantic_identity(
+                uv_lock_sha256=invalid
+            )
+
+
+def test_primary_qrf_worker_execution_binding_isolates_semantic_memo(
+    _worker_identity_memo_inputs,
+) -> None:
+    memo = worker_identity_module.primary_qrf_worker_semantic_identity()
+    expected = deepcopy(memo)
+    binding = worker_identity_module.primary_qrf_worker_execution_binding()
+    semantic = binding["semantic_identity"]
+    semantic["interpreter"]["runtime_binary"]["bytes_sha256"] = "0" * 64
+    semantic["argv_template"].append("--changed")
+    semantic["environment"]["overrides"]["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "1"
+    fresh = worker_identity_module.primary_qrf_worker_execution_binding()
+    assert memo == expected
+    assert fresh["semantic_identity"] == expected
+    assert fresh["semantic_identity"] is not memo
+    assert fresh["semantic_identity"]["interpreter"] is not memo["interpreter"]
+
+
+def test_worker_identity_session_prime_matches_pipeline_binding(
+    _session_primary_qrf_worker_identities,
+) -> None:
+    key = (
+        None,
+        worker_identity_module.os.environ.get("POPULACE_FIT_N_JOBS"),
+        worker_identity_module.os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
+    )
+    memo = worker_identity_module._PRIMARY_QRF_WORKER_IDENTITY_CACHE
+    assert key in memo
+    first = memo[key]
+    binding = _fixture_primary_execution_config_binding()["qrf"]["worker_execution"]
+    assert binding["semantic_identity"] == first
+    assert worker_identity_module.primary_qrf_worker_semantic_identity() is first
+    assert first == _session_primary_qrf_worker_identities[key]
+
+
+def test_live_worker_identity_namespace_source_mutation_recomputes(
+    _session_primary_qrf_worker_identities,
+    live_worker_identity,
+    _worker_identity_memo_inputs,
+) -> None:
+    # The session fixture attests first; the opt-out must then remove it rather
+    # than restoring that identity over the temporary namespace used below.
+    assert _session_primary_qrf_worker_identities
+    assert not worker_identity_module._PRIMARY_QRF_WORKER_IDENTITY_CACHE
+    source, calls = _worker_identity_memo_inputs
+    before = worker_identity_module.primary_qrf_worker_semantic_identity()
+    source.write_text("# changed fixture worker\n", encoding="utf-8")
+    assert worker_identity_module.primary_qrf_worker_semantic_identity() is before
+
+    live_worker_identity()
+    after = worker_identity_module.primary_qrf_worker_semantic_identity()
+    assert after is not before
+    assert (
+        after["worker_module"]["transitive_imports_sha256"]
+        != before["worker_module"]["transitive_imports_sha256"]
+    )
+    assert (
+        after["transitive_environment_code_sha256"]
+        != before["transitive_environment_code_sha256"]
+    )
+    assert len(calls) == 2
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_worker_import_trace_refuses_empty_result() -> None:
+    with pytest.raises(RuntimeError, match="no readable namespace roots"):
+        worker_identity_module._validated_worker_import_trace(
+            {
+                "module_origins": {},
+                "opened_files": (),
+                "namespace_roots": (),
+            }
+        )
+
+
+@pytest.mark.parametrize("cache_location", ["source_tree", "inherited_prefix"])
+@pytest.mark.parametrize("execution_path", ["identity_probe", "worker_module"])
+@pytest.mark.usefixtures("live_worker_identity")
+def test_worker_identity_ignores_valid_header_stale_bytecode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cache_location: str,
+    execution_path: str,
+) -> None:
+    import importlib.util
+    import marshal
+    import os
+    import struct
+    import subprocess
+
+    trace = _fixture_worker_import_trace(tmp_path)
+    worker_source = Path(
+        trace["module_origins"][worker_identity_module.PRIMARY_QRF_WORKER_MODULE]
+    )
+    (worker_source.parent.parent / "__init__.py").write_text("", encoding="utf-8")
+    marker = tmp_path / "worker-executed.txt"
+    worker_source.write_text(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('source')\n",
+        encoding="utf-8",
+    )
+    source_bytes = worker_source.read_bytes()
+    source_stat = worker_source.stat()
+    poisoned_code = compile(
+        f"from pathlib import Path\nPath({str(marker)!r}).write_text('stale cache')\n",
+        str(worker_source),
+        "exec",
+        optimize=sys.flags.optimize,
+    )
+    inherited_prefix = (
+        tmp_path / "inherited-cache" if cache_location == "inherited_prefix" else None
+    )
+    with monkeypatch.context() as cache_path_context:
+        cache_path_context.setattr(
+            sys,
+            "pycache_prefix",
+            None if inherited_prefix is None else str(inherited_prefix),
+        )
+        cache_path = Path(importlib.util.cache_from_source(str(worker_source)))
+    cache_path.parent.mkdir(parents=True)
+    # Python accepts this timestamp cache: its source mtime and size are valid,
+    # although the executable code object is unrelated to the source bytes.
+    cache_bytes = (
+        importlib.util.MAGIC_NUMBER
+        + struct.pack(
+            "<III", 0, int(source_stat.st_mtime) & 0xFFFFFFFF, len(source_bytes)
+        )
+        + marshal.dumps(poisoned_code)
+    )
+    cache_path.write_bytes(cache_bytes)
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path / "namespace"))
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "1")
+    if inherited_prefix is None:
+        monkeypatch.delenv("PYTHONPYCACHEPREFIX", raising=False)
+    else:
+        monkeypatch.setenv("PYTHONPYCACHEPREFIX", str(inherited_prefix))
+
+    control = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import {worker_identity_module.PRIMARY_QRF_WORKER_MODULE}",
+        ],
+        env=dict(os.environ),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert control.returncode == 0, control.stderr
+    assert marker.read_text(encoding="utf-8") == "stale cache"
+    marker.unlink()
+
+    if execution_path == "identity_probe":
+        observed = worker_identity_module._clean_worker_import_trace()
+        assert str(worker_source) in observed["opened_files"]
+        assert str(cache_path) not in observed["opened_files"]
+    else:
+        with (
+            worker_identity_module.primary_qrf_worker_launch_environment() as overrides
+        ):
+            worker = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    worker_identity_module.PRIMARY_QRF_WORKER_MODULE,
+                ],
+                env={**os.environ, **overrides},
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=30,
+            )
+        assert worker.returncode == 0, worker.stderr
+
+    assert marker.read_text(encoding="utf-8") == "source"
+    assert worker_source.read_bytes() == source_bytes
+    assert cache_path.read_bytes() == cache_bytes
+
+
+@pytest.mark.parametrize("suffix", [".pyc", ".pyo"])
+@pytest.mark.usefixtures("live_worker_identity")
+def test_worker_identity_namespace_trace_refuses_bytecode_substitution(
+    tmp_path: Path,
+    suffix: str,
+) -> None:
+    trace = _fixture_worker_import_trace(tmp_path)
+    source = Path(
+        trace["module_origins"][worker_identity_module.PRIMARY_QRF_WORKER_MODULE]
+    )
+    cache_path = source.with_suffix(suffix)
+    cache_path.write_bytes(b"unexpected executable cache")
+    trace["opened_files"] = (str(cache_path),)
+
+    with pytest.raises(RuntimeError, match="unexpectedly read bytecode"):
+        worker_identity_module._worker_package_resource_rows(trace)
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_worker_identity_probe_cleans_cache_prefix_on_launch_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    inherited_prefix = tmp_path / "inherited-cache"
+    inherited_prefix.mkdir()
+    (inherited_prefix / "keep.txt").write_text("caller cache", encoding="utf-8")
+    monkeypatch.setenv("PYTHONPYCACHEPREFIX", str(inherited_prefix))
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "0")
+    observed_prefixes: list[Path] = []
+
+    def fail_launch(
+        _argv: list[str], *, env: dict[str, str], **_kwargs: object
+    ) -> None:
+        prefix = Path(env["PYTHONPYCACHEPREFIX"])
+        assert prefix != inherited_prefix
+        assert prefix.is_absolute()
+        assert prefix.is_dir()
+        assert list(prefix.iterdir()) == []
+        assert env["PYTHONDONTWRITEBYTECODE"] == "1"
+        observed_prefixes.append(prefix)
+        raise OSError("fixture launch failure")
+
+    monkeypatch.setattr(worker_identity_module.subprocess, "run", fail_launch)
+    with pytest.raises(RuntimeError, match="clean worker import could not run"):
+        worker_identity_module._clean_worker_import_trace()
+
+    assert len(observed_prefixes) == 1
+    assert not observed_prefixes[0].exists()
+    assert worker_identity_module.os.environ["PYTHONPYCACHEPREFIX"] == str(
+        inherited_prefix
+    )
+    assert worker_identity_module.os.environ["PYTHONDONTWRITEBYTECODE"] == "0"
+    assert (inherited_prefix / "keep.txt").read_text(encoding="utf-8") == "caller cache"
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_primary_qrf_worker_identity_binds_loaded_runtime_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_worker_identity_static_closure(monkeypatch)
+    runtime = tmp_path / "libpython-fixture.so"
+    runtime.write_bytes(b"fixture runtime version one\n")
+    # ``raising=False`` makes this a behavioral red test on the vulnerable
+    # baseline: that implementation ignores the future loaded-runtime seam and
+    # therefore returns the same identity after the library changes.
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_loaded_python_runtime_binary",
+        lambda: ("shared_library", runtime),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_clean_worker_import_trace",
+        lambda *_args, **_kwargs: _fixture_worker_import_trace(tmp_path),
+        raising=False,
+    )
+
+    before = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
+    )
+    runtime.write_bytes(b"fixture runtime version two\n")
+    worker_identity_module.clear_primary_qrf_worker_identity_cache()
+    after = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
+    )
+
+    assert before["interpreter"].get("runtime_binary") != after["interpreter"].get(
+        "runtime_binary"
+    )
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_primary_qrf_worker_identity_binds_imported_stdlib_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_worker_identity_static_closure(monkeypatch)
+    stdlib = tmp_path / "stdlib"
+    stdlib.mkdir()
+    argparse_source = stdlib / "argparse.py"
+    argparse_source.write_text("FIXTURE_VALUE = 1\n", encoding="utf-8")
+    site_packages = tmp_path / "site-packages"
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_loaded_python_runtime_binary",
+        lambda: ("shared_library", tmp_path / "unchanged-libpython.so"),
+        raising=False,
+    )
+    (tmp_path / "unchanged-libpython.so").write_bytes(b"unchanged runtime\n")
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_clean_worker_import_trace",
+        lambda *_args, **_kwargs: _fixture_worker_import_trace(
+            tmp_path,
+            module_origins={"argparse": str(argparse_source)},
+        ),
+        raising=False,
+    )
+    original_get_paths = worker_identity_module.sysconfig.get_paths
+
+    def fixture_get_paths(*args: object, **kwargs: object) -> dict[str, str]:
+        paths = dict(original_get_paths(*args, **kwargs))
+        paths.update(
+            {
+                "stdlib": str(stdlib),
+                "platstdlib": str(stdlib),
+                "purelib": str(site_packages),
+                "platlib": str(site_packages),
+            }
+        )
+        return paths
+
+    monkeypatch.setattr(
+        worker_identity_module.sysconfig, "get_paths", fixture_get_paths
+    )
+
+    before = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
+    )
+    argparse_source.write_text("FIXTURE_VALUE = 2\n", encoding="utf-8")
+    worker_identity_module.clear_primary_qrf_worker_identity_cache()
+    after = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
+    )
+
+    assert before["interpreter"].get("stdlib_imports_sha256") != after[
+        "interpreter"
+    ].get("stdlib_imports_sha256")
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_worker_identity_refuses_unapproved_torch_backend_provider_before_import(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_worker_identity_static_closure(
+        monkeypatch,
+        stub_installed_distributions=False,
+    )
+    provider = SimpleNamespace(
+        metadata={"Name": "fixture-torch-backend"},
+        version="1.0",
+        requires=(),
+        files=(),
+        entry_points=(
+            worker_identity_module.metadata.EntryPoint(
+                name="fixture_backend",
+                value="fixture_backend:register",
+                group="torch.backends",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        worker_identity_module.metadata,
+        "distributions",
+        lambda: (provider,),
+    )
+    monkeypatch.setattr(
+        worker_identity_module.metadata,
+        "packages_distributions",
+        lambda: {},
+    )
+
+    def unexpected_import_trace(*_args: object, **_kwargs: object) -> object:
+        pytest.fail("clean worker import ran before torch backend provider refusal")
+
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_clean_worker_import_trace",
+        unexpected_import_trace,
+        raising=False,
+    )
+
+    with pytest.raises(RuntimeError, match=r"torch\.backends"):
+        worker_identity_module.primary_qrf_worker_semantic_identity(
+            uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
+        )
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_worker_identity_refuses_duplicate_backend_provider_distribution_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry_point = worker_identity_module.metadata.EntryPoint(
+        name="fixture_backend",
+        value="fixture_backend:register",
+        group="torch.backends",
+    )
+    distributions = tuple(
+        SimpleNamespace(
+            metadata={"Name": "fixture-torch-backend"},
+            version=version,
+            requires=(),
+            files=(),
+            entry_points=entry_points_for_distribution,
+        )
+        for version, entry_points_for_distribution in (
+            ("1.0", ()),
+            ("2.0", (entry_point,)),
+        )
+    )
+    monkeypatch.setattr(
+        worker_identity_module.metadata,
+        "distributions",
+        lambda: distributions,
+    )
+    monkeypatch.setattr(
+        worker_identity_module.metadata,
+        "packages_distributions",
+        lambda: {"fixture_backend": ["fixture-torch-backend"]},
+    )
+
+    with pytest.raises(RuntimeError, match="duplicate installed distribution identity"):
+        worker_identity_module._installed_distributions_record_sha256(
+            ("fixture_backend",)
+        )
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_worker_transitive_source_identity_binds_actual_imported_package_resource(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target_name = "soi_table_2_1_interest_components_ty2015.json"
+    trace = worker_identity_module._clean_worker_import_trace()
+    before = worker_identity_module._worker_package_resource_rows(trace)
+    stdlib_rows = worker_identity_module._worker_stdlib_import_rows(trace)
+    assert any(row["module"] == "argparse" for row in stdlib_rows)
+    target_rows = [
+        row for row in before if str(row.get("resource", "")).endswith(target_name)
+    ]
+    assert len(target_rows) == 1
+    target_resource = target_rows[0]["resource"]
+    target_sha256 = target_rows[0]["sha256"]
+    _stub_worker_identity_static_closure(monkeypatch)
+    runtime = tmp_path / "libpython-fixture.so"
+    runtime.write_bytes(b"fixture runtime\n")
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_loaded_python_runtime_binary",
+        lambda: ("shared_library", runtime),
+    )
+    monkeypatch.setattr(
+        worker_identity_module,
+        "_clean_worker_import_trace",
+        lambda: trace,
+    )
+    identity_before = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
+    )
+    original_read_bytes = Path.read_bytes
+
+    def changed_resource_bytes(path: Path) -> bytes:
+        raw = original_read_bytes(path)
+        if path.name == target_name:
+            return raw + b"\n"
+        return raw
+
+    monkeypatch.setattr(Path, "read_bytes", changed_resource_bytes)
+    worker_identity_module.clear_primary_qrf_worker_identity_cache()
+    after = worker_identity_module._worker_package_resource_rows(trace)
+    identity_after = worker_identity_module.primary_qrf_worker_semantic_identity(
+        uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
+    )
+    changed_target = next(row for row in after if row["resource"] == target_resource)
+
+    assert changed_target["sha256"] != target_sha256
+    assert worker_identity_module._canonical_sha256(after) != (
+        worker_identity_module._canonical_sha256(before)
+    )
+    assert (
+        identity_after["worker_module"]["transitive_imports_sha256"]
+        != (identity_before["worker_module"]["transitive_imports_sha256"])
+    )
+    assert worker_identity_module._canonical_sha256(identity_after) != (
+        worker_identity_module._canonical_sha256(identity_before)
+    )
+
+
+@pytest.mark.parametrize(
+    "semantic_change",
+    (
+        "interpreter_bytes",
+        "runtime_binary",
+        "stdlib_imports",
+        "implementation",
+        "version",
+        "abi",
+        "cache_tag",
+        "pyvenv_implementation",
+        "pyvenv_version",
+        "pyvenv_include_system",
+        "pyvenv_uv",
+        "worker_module",
+        "worker_source",
+        "transitive_source",
+        "argv_1",
+        "argv_2",
+        "argv_3",
+        "argv_4",
+        "argv_5",
+        "argv_6",
+        "uv_lock",
+        "distribution_record",
+        "environment_code",
+        "fit_jobs",
+        "predict_workers",
+        "torch_backend_autoload",
+        "python_dont_write_bytecode",
+        "python_pycache_prefix",
+    ),
+)
+def test_late_primary_worker_authentication_rejects_semantic_matrix(
+    semantic_change: str,
+) -> None:
+    binding = _fixture_primary_execution_config_binding()
+    worker = binding["qrf"]["worker_execution"]
+    semantic = worker["semantic_identity"]
+    refresh_environment_code = False
+    if semantic_change == "interpreter_bytes":
+        semantic["interpreter"]["bytes_sha256"] = "0" * 64
+    elif semantic_change == "runtime_binary":
+        semantic["interpreter"]["runtime_binary"]["bytes_sha256"] = "0" * 64
+    elif semantic_change == "stdlib_imports":
+        semantic["interpreter"]["stdlib_imports_sha256"] = "0" * 64
+    elif semantic_change == "implementation":
+        semantic["interpreter"]["implementation"] = "changed"
+    elif semantic_change == "version":
+        semantic["interpreter"]["version"] = [99, 0, 0]
+    elif semantic_change == "abi":
+        semantic["interpreter"]["abi"]["soabi"] = "changed"
+    elif semantic_change == "cache_tag":
+        semantic["interpreter"]["cache_tag"] = "changed"
+    elif semantic_change == "pyvenv_implementation":
+        semantic["interpreter"]["pyvenv_cfg"]["implementation"] = "changed"
+    elif semantic_change == "pyvenv_version":
+        semantic["interpreter"]["pyvenv_cfg"]["version"] = [99, 0, 0]
+    elif semantic_change == "pyvenv_include_system":
+        pyvenv = semantic["interpreter"]["pyvenv_cfg"]
+        pyvenv["include_system_site_packages"] = not pyvenv[
+            "include_system_site_packages"
+        ]
+    elif semantic_change == "pyvenv_uv":
+        semantic["interpreter"]["pyvenv_cfg"]["uv_version"] = "changed"
+    elif semantic_change == "worker_module":
+        semantic["worker_module"]["name"] = "changed.worker"
+    elif semantic_change == "worker_source":
+        semantic["worker_module"]["source_sha256"] = "0" * 64
+        refresh_environment_code = True
+    elif semantic_change == "transitive_source":
+        semantic["worker_module"]["transitive_imports_sha256"] = "0" * 64
+        refresh_environment_code = True
+    elif semantic_change.startswith("argv_"):
+        semantic["argv_template"][int(semantic_change.removeprefix("argv_"))] = (
+            "changed"
+        )
+    elif semantic_change == "uv_lock":
+        semantic["uv_lock_sha256"] = "0" * 64
+    elif semantic_change == "distribution_record":
+        semantic["installed_distributions_record_sha256"] = "0" * 64
+        refresh_environment_code = True
+    elif semantic_change == "environment_code":
+        semantic["transitive_environment_code_sha256"] = "0" * 64
+    elif semantic_change == "fit_jobs":
+        semantic["environment"]["semantic_controls"]["POPULACE_FIT_N_JOBS"][
+            "resolved"
+        ] = 1
+    elif semantic_change == "predict_workers":
+        predict = semantic["environment"]["semantic_controls"][
+            "POPULACE_FIT_PREDICT_WORKERS"
+        ]
+        predict["resolved"] = int(predict["resolved"]) + 1
+    elif semantic_change == "python_dont_write_bytecode":
+        semantic["environment"]["overrides"]["PYTHONDONTWRITEBYTECODE"] = "0"
+    elif semantic_change == "python_pycache_prefix":
+        semantic["environment"]["overrides"]["PYTHONPYCACHEPREFIX"] = "/existing/cache"
+    else:
+        semantic["environment"]["overrides"]["TORCH_DEVICE_BACKEND_AUTOLOAD"] = "1"
+    if refresh_environment_code:
+        semantic["transitive_environment_code_sha256"] = (
+            worker_identity_module._canonical_sha256(
+                {
+                    "worker_module_source_sha256": semantic["worker_module"][
+                        "source_sha256"
+                    ],
+                    "transitive_imports_sha256": semantic["worker_module"][
+                        "transitive_imports_sha256"
+                    ],
+                    "installed_distributions_record_sha256": semantic[
+                        "installed_distributions_record_sha256"
+                    ],
+                }
+            )
+        )
+    worker["semantic_identity_sha256"] = worker_identity_module._canonical_sha256(
+        semantic
+    )
+
+    with pytest.raises(ValueError, match="worker (binding|identity)"):
+        _validate_fixture_primary_execution_config(binding)
+
+
+def test_portable_worker_identity_does_not_mutate_origin_battery_receipt() -> None:
+    values = np.asarray([True, True, True, False, False, False], dtype=bool)
+    frame = _battery_frame({"has_esi": (values, values.copy())})
+    assert frame.n("household") == 12
+    surface = {"person": {"model_required_boolean": ("has_esi",)}}
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=surface,
+        metric_registry={
+            ("person", "model_required_boolean", "has_esi", 0): ("boolean_incidence")
+        },
+        support_profile=replace(
+            stacked_spine_module.CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE,
+            min_effective_support=5,
+        ),
+    )
+    before = stacked_spine_module._by_origin_battery_with_test_authority(
+        frame,
+        authority=authority,
+    )
+    before_receipt = stacked_spine_module._json_ready(
+        {
+            "name": before.name,
+            "passed": before.passed,
+            "failures": list(before.failures),
+            "details": before.details,
+        }
+    )
+
+    config = _fixture_primary_execution_config_binding()
+    config["qrf"]["worker_execution"]["audit_aliases"]["sys_prefix"] = (
+        "/relocated/worktree/.venv"
+    )
+    _validate_fixture_primary_execution_config(config)
+    after = stacked_spine_module._by_origin_battery_with_test_authority(
+        frame,
+        authority=authority,
+    )
+    after_receipt = stacked_spine_module._json_ready(
+        {
+            "name": after.name,
+            "passed": after.passed,
+            "failures": list(after.failures),
+            "details": after.details,
+        }
+    )
+
+    label = "person/model_required_boolean/has_esi[clone_0]"
+    comparison = after.details["comparisons"][label]
+    assert before_receipt == after_receipt
+    assert stacked_spine_module._canonical_sha256(before_receipt) == (
+        stacked_spine_module._canonical_sha256(after_receipt)
+    )
+    assert after.passed is True
+    assert after.failures == ()
+    assert comparison["status"] == "tested"
+    assert comparison["nonzero_rows"] == {"asec": 3, "acs": 3}
+    assert comparison["asec_incidence"] == 0.5
+    assert comparison["acs_incidence"] == 0.5
+    assert comparison["incidence_ratio_acs_over_asec"] == 1.0
+
+
+def test_legacy_worker_mismatch_paths_reproduce_sealed_stop_case() -> None:
+    sealed_interpreter = (
+        "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-c26-build/.venv/bin/python"
+    )
+    replay_interpreter = "/private/tmp/microcosm-c27-rootcause/.venv/bin/python"
+    common_argv = [
+        "-m",
+        "microcosm.build.us_runtime.puf_qrf_worker",
+        "--checkpoint-dir",
+        "{checkpoint_dir}",
+        "--target-index",
+        "{target_index}",
+    ]
+    sealed_worker = {
+        "module": "microcosm.build.us_runtime.puf_qrf_worker",
+        "argv_template": [sealed_interpreter, *common_argv],
+        "interpreter": {
+            "executable": sealed_interpreter,
+            "resolved_executable": (
+                "/Users/maxghenis/.local/share/uv/python/"
+                "cpython-3.14.4-macos-aarch64-none/bin/python3.14"
+            ),
+            "implementation": "cpython",
+            "cache_tag": "cpython-314",
+            "version": [3, 14, 4],
+        },
+        "environment": {
+            "policy": "inherit_parent_environment_with_bound_fit_controls",
+            "overrides": {},
+            "semantic_controls": {
+                "POPULACE_FIT_N_JOBS": {"configured": None, "resolved": -1},
+                "POPULACE_FIT_PREDICT_WORKERS": {
+                    "configured": "18",
+                    "resolved": 18,
+                    "resolution": "environment_override",
+                },
+            },
+            "bound_names": [
+                "POPULACE_FIT_N_JOBS",
+                "POPULACE_FIT_PREDICT_WORKERS",
+            ],
+        },
+    }
+    replay_worker = deepcopy(sealed_worker)
+    replay_worker["argv_template"][0] = replay_interpreter
+    replay_worker["interpreter"]["executable"] = replay_interpreter
+
+    mismatch_paths = stacked_spine_module._legacy_worker_execution_mismatch_paths(
+        sealed_worker,
+        replay_worker,
+    )
+
+    assert set(mismatch_paths) == {
+        "argv_template[0]",
+        "interpreter.executable",
+    }
+
+
+@pytest.mark.usefixtures("live_worker_identity")
 def test_late_primary_resources_bind_donor_content_and_execution_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4238,7 +5395,7 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
         "tax_unit_outputs": "canonical_default",
     }
     execution = baseline["tax_unit.@primary_puf_execution_config"]["binding"]
-    assert execution["schema_version"] == 4
+    assert execution["schema_version"] == 5
     assert execution["clone_attachment"]["support_channels"] == [
         stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
         stacked_spine_module.PUF_TAX_DETAIL_SUPPORT_CHANNEL,
@@ -4267,9 +5424,36 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
         }
     }
     worker = execution["qrf"]["worker_execution"]
-    assert worker["module"] == "microcosm.build.us_runtime.puf_qrf_worker"
-    assert worker["argv_template"] == [
-        worker["interpreter"]["executable"],
+    assert set(worker) == {
+        "schema_version",
+        "semantic_identity",
+        "semantic_identity_sha256",
+        "audit_aliases",
+    }
+    assert worker["schema_version"] == 1
+    semantic = worker["semantic_identity"]
+    assert semantic["worker_module"]["name"] == (
+        "microcosm.build.us_runtime.puf_qrf_worker"
+    )
+    interpreter = semantic["interpreter"]
+    assert set(interpreter) == {
+        "bytes_sha256",
+        "runtime_binary",
+        "stdlib_imports_sha256",
+        "implementation",
+        "version",
+        "abi",
+        "cache_tag",
+        "pyvenv_cfg",
+    }
+    assert interpreter["runtime_binary"]["kind"] in {
+        "shared_library",
+        "statically_linked_executable",
+    }
+    assert len(interpreter["runtime_binary"]["bytes_sha256"]) == 64
+    assert len(interpreter["stdlib_imports_sha256"]) == 64
+    assert semantic["argv_template"] == [
+        worker_identity_module.PRIMARY_QRF_INTERPRETER_PLACEHOLDER,
         "-m",
         "microcosm.build.us_runtime.puf_qrf_worker",
         "--checkpoint-dir",
@@ -4277,14 +5461,29 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
         "--target-index",
         "{target_index}",
     ]
-    environment = worker["environment"]
-    assert environment["policy"] == (
-        "inherit_parent_environment_with_bound_fit_controls"
+    assert worker["semantic_identity_sha256"] == (
+        worker_identity_module._canonical_sha256(semantic)
     )
-    assert environment["overrides"] == {}
+    assert worker["audit_aliases"] == {
+        "sys_executable": str(Path(sys.executable)),
+        "sys_prefix": str(Path(sys.prefix)),
+        "argv_template_0": str(Path(sys.executable)),
+    }
+    environment = semantic["environment"]
+    assert environment["policy"] == (
+        "inherit_parent_environment_with_bound_fit_controls_and_forced_overrides"
+    )
+    assert environment["overrides"] == {
+        "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPYCACHEPREFIX": "{empty_pycache_dir}",
+    }
     assert environment["bound_names"] == [
         "POPULACE_FIT_N_JOBS",
         "POPULACE_FIT_PREDICT_WORKERS",
+        "TORCH_DEVICE_BACKEND_AUTOLOAD",
+        "PYTHONDONTWRITEBYTECODE",
+        "PYTHONPYCACHEPREFIX",
     ]
     assert environment["semantic_controls"] == {
         "POPULACE_FIT_N_JOBS": {"configured": None, "resolved": -1},
@@ -4374,6 +5573,14 @@ def test_late_primary_resource_identity_binds_every_tail_control(
     name: str,
     replacement: object,
 ) -> None:
+    # In-memory tail controls change the resource config, while the worker's
+    # installed source and startup environment remain identical in both calls.
+    worker = _fixture_primary_execution_config_binding()["qrf"]["worker_execution"]
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "_late_primary_qrf_worker_execution_binding",
+        lambda: deepcopy(worker),
+    )
     donor = pd.DataFrame({"fixture_donor": [1.0]})
     common = {
         "primary_qrf_checkpoint_identity_sha256": "a" * 64,
@@ -4460,6 +5667,7 @@ def test_stacked_primary_qrf_refuses_unbound_surface_and_missing_audit_sink() ->
     binding = stacked_spine_module.stacked_late_primary_checkpoint_input_binding(
         resources
     )
+    assert binding["schema_version"] == 2
     frame = _late_primary_entry(_stacked_gap_fixture())
 
     with pytest.raises(ValueError, match=r"canonical predictor/output surface"):
@@ -4532,6 +5740,167 @@ def test_late_primary_resource_rejects_shallow_receipt_before_callback() -> None
             ),
             primary_resource_receipts=resources,
         )
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_stacked_worker_first_torch_import_forces_autoload_off(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Exercise the stacked launch in a child with no preloaded parent packages."""
+
+    import subprocess
+
+    import microcosm.build.us_runtime.puf_qrf_chain as chain_module
+
+    monkeypatch.setenv("TORCH_DEVICE_BACKEND_AUTOLOAD", "1")
+    inherited_prefix = tmp_path / "inherited-pycache"
+    inherited_prefix.mkdir()
+    monkeypatch.setenv("PYTHONPYCACHEPREFIX", str(inherited_prefix))
+    monkeypatch.setenv("PYTHONDONTWRITEBYTECODE", "")
+    worker_binding = _fixture_primary_execution_config_binding()["qrf"][
+        "worker_execution"
+    ]
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "_late_primary_qrf_worker_execution_binding",
+        lambda: deepcopy(worker_binding),
+    )
+    checkpoint_identity = "a" * 64
+    checkpoint_dir = tmp_path / checkpoint_identity
+    donor = pd.DataFrame({"fixture_donor": [1.0]})
+
+    def initialize(_frame: Frame, _donor: pd.DataFrame, root: Path, **_kwargs) -> None:
+        root.mkdir(parents=True)
+        (root / stacked_spine_module.PRIMARY_QRF_MANIFEST_FILENAME).write_text("{}")
+
+    monkeypatch.setattr(
+        stacked_spine_module, "initialize_primary_puf_qrf_chain", initialize
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "primary_puf_qrf_recipient_predictor_universe_receipt",
+        lambda _root: {"fixture": "recipient-universe"},
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "finalize_primary_puf_qrf_chain",
+        lambda frame, _root, **_kwargs: (
+            frame,
+            frame.resolve_weights("tax_unit").kind,
+        ),
+    )
+    # Keep the real chain's subprocess argv/environment assembly; replace only
+    # the model/checkpoint work, which the first-import probe never reaches.
+    monkeypatch.setattr(
+        chain_module,
+        "_load_manifest",
+        lambda _root: {"target_order": ["fixture"], "initial_state": {}},
+    )
+    monkeypatch.setattr(
+        chain_module, "QRFChainState", SimpleNamespace(from_dict=lambda _raw: None)
+    )
+    monkeypatch.setattr(
+        chain_module, "_load_target_checkpoint", lambda *_args, **_kwargs: (None, None)
+    )
+    observed: list[dict[str, object]] = []
+    launch_prefixes: list[Path] = []
+    script = r"""
+import builtins
+import json
+import os
+import runpy
+import sys
+
+assert "torch" not in sys.modules
+assert "microcosm.build" not in sys.modules
+original_import = builtins.__import__
+
+def record_first_torch_import(name, *args, **kwargs):
+    if name == "torch" or name.startswith("torch."):
+        print("FIRST_TORCH_IMPORT=" + json.dumps({
+            "autoload": os.environ.get("TORCH_DEVICE_BACKEND_AUTOLOAD"),
+            "worker_loaded": "microcosm.build.us_runtime.puf_qrf_worker" in sys.modules,
+            "pycache_prefix": sys.pycache_prefix,
+            "dont_write_bytecode": sys.flags.dont_write_bytecode,
+        }), flush=True)
+        raise SystemExit(0)
+    return original_import(name, *args, **kwargs)
+
+builtins.__import__ = record_first_torch_import
+sys.argv = [sys.argv[1], *sys.argv[2:]]
+runpy.run_module("microcosm.build.us_runtime.puf_qrf_worker", run_name="__main__")
+raise AssertionError("worker never imported torch")
+"""
+
+    def launch_probe(argv: list[str], **kwargs):
+        assert argv[1:3] == ["-m", worker_identity_module.PRIMARY_QRF_WORKER_MODULE]
+        prefix = Path(kwargs["env"]["PYTHONPYCACHEPREFIX"])
+        assert prefix.is_absolute() and prefix.is_dir()
+        assert prefix != inherited_prefix
+        assert not list(prefix.iterdir())
+        launch_prefixes.append(prefix)
+        completed = subprocess.run(
+            [argv[0], "-c", script, *argv[2:]],
+            **kwargs,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        assert completed.returncode == 0, completed.stderr
+        for line in completed.stdout.splitlines():
+            if line.startswith("FIRST_TORCH_IMPORT="):
+                observed.append(json.loads(line.removeprefix("FIRST_TORCH_IMPORT=")))
+        return completed
+
+    monkeypatch.setattr(chain_module, "subprocess", SimpleNamespace(run=launch_probe))
+    resources = stacked_spine_module.stacked_late_primary_resource_receipts(
+        donor,
+        primary_qrf_checkpoint_identity_sha256=checkpoint_identity,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        seed=0,
+        n_estimators=100,
+        fit_records_enabled=True,
+        tail_bound_diagnostics_enabled=True,
+    )
+    stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
+        _late_primary_entry(_stacked_gap_fixture()),
+        donor,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        fit_records=[],
+        tail_bound_diagnostics=[],
+        primary_qrf_checkpoint_dir=checkpoint_dir,
+        primary_qrf_input_binding=(
+            stacked_spine_module.stacked_late_primary_checkpoint_input_binding(
+                resources
+            )
+        ),
+    )
+
+    assert len(launch_prefixes) == 1
+    assert observed == [
+        {
+            "autoload": "0",
+            "worker_loaded": False,
+            "pycache_prefix": str(launch_prefixes[0]),
+            "dont_write_bytecode": 1,
+        }
+    ]
+    assert not launch_prefixes[0].exists()
+    assert inherited_prefix.is_dir()
+    assert stacked_spine_module.os.environ["PYTHONPYCACHEPREFIX"] == str(
+        inherited_prefix
+    )
+    assert stacked_spine_module.os.environ["PYTHONDONTWRITEBYTECODE"] == ""
+    assert (
+        worker_binding["semantic_identity"]["environment"]["overrides"][
+            "TORCH_DEVICE_BACKEND_AUTOLOAD"
+        ]
+        == "0"
+    )
+    assert stacked_spine_module.os.environ["TORCH_DEVICE_BACKEND_AUTOLOAD"] == "1"
 
 
 def test_stacked_primary_qrf_refuses_stale_bound_checkpoint(
@@ -4628,6 +5997,98 @@ def test_stacked_primary_qrf_refuses_stale_bound_checkpoint(
             primary_qrf_checkpoint_dir=checkpoint_dir,
             primary_qrf_input_binding=binding(changed_donor),
         )
+
+
+def test_relocated_checkpoint_resume_reports_the_retained_sidecar_digest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Resume across a worker relocation keeps the sidecar's bytes, so the
+    receipt must report the sidecar's own authenticated digest, not the live
+    binding's, which hashes the current audit aliases."""
+    checkpoint_identity = "a" * 64
+    checkpoint_dir = tmp_path / checkpoint_identity
+    donor = pd.DataFrame({"fixture_donor": [1.0]})
+
+    def initialize(_frame: Frame, _donor: pd.DataFrame, root: Path, **_kwargs) -> None:
+        root.mkdir(parents=True)
+        (root / stacked_spine_module.PRIMARY_QRF_MANIFEST_FILENAME).write_text(
+            "{}",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        stacked_spine_module, "initialize_primary_puf_qrf_chain", initialize
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "primary_puf_qrf_recipient_predictor_universe_receipt",
+        lambda _root: {"fixture": "recipient-universe"},
+    )
+    monkeypatch.setattr(
+        stacked_spine_module, "run_primary_puf_qrf_chain", lambda _root, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "finalize_primary_puf_qrf_chain",
+        lambda frame, _root, **_kwargs: (frame, frame.resolve_weights("tax_unit").kind),
+    )
+
+    def binding(bound_donor: pd.DataFrame) -> dict[str, object]:
+        resources = stacked_spine_module.stacked_late_primary_resource_receipts(
+            bound_donor,
+            primary_qrf_checkpoint_identity_sha256=checkpoint_identity,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            seed=0,
+            n_estimators=100,
+            fit_records_enabled=True,
+            tail_bound_diagnostics_enabled=True,
+        )
+        return stacked_spine_module.stacked_late_primary_checkpoint_input_binding(
+            resources
+        )
+
+    def run(input_binding: dict[str, object]):
+        return stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
+            _late_primary_entry(_stacked_gap_fixture()),
+            donor,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            fit_records=[],
+            tail_bound_diagnostics=[],
+            primary_qrf_checkpoint_dir=checkpoint_dir,
+            primary_qrf_input_binding=input_binding,
+        )
+
+    initialized = run(binding(donor)).receipt["primary_puf_qrf"]
+    sidecar_path = checkpoint_dir / "late-producer-input-binding.json"
+    sidecar_bytes = sidecar_path.read_bytes()
+    sidecar_digest = json.loads(sidecar_bytes)["sha256"]
+    assert initialized["resume_status"] == "initialized"
+    assert initialized["input_binding_sha256"] == sidecar_digest
+
+    real_binding = stacked_spine_module._late_primary_qrf_worker_execution_binding
+
+    def relocated_binding() -> dict[str, object]:
+        relocated = copy.deepcopy(real_binding())
+        relocated["audit_aliases"]["sys_executable"] = "/relocated/venv/bin/python"
+        relocated["audit_aliases"]["sys_prefix"] = "/relocated/venv"
+        return relocated
+
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "_late_primary_qrf_worker_execution_binding",
+        relocated_binding,
+    )
+    live_binding = binding(donor)
+    assert live_binding["sha256"] != sidecar_digest, "aliases must move the live digest"
+
+    resumed = run(live_binding).receipt["primary_puf_qrf"]
+
+    assert resumed["resume_status"] == "resumed"
+    assert sidecar_path.read_bytes() == sidecar_bytes
+    assert resumed["input_binding_sha256"] == sidecar_digest
 
 
 def test_late_transfer_rejects_identityless_bank_before_dispatch() -> None:
@@ -5446,9 +6907,9 @@ def _run_real_late_executor_fixture(
                 "residual_null_rows": 0,
             }
             if target == "is_pregnant":
-                pregnancy_policy = execution_contract[
-                    "structural_target_policies"
-                ]["is_pregnant"]
+                pregnancy_policy = execution_contract["structural_target_policies"][
+                    "is_pregnant"
+                ]
                 target_receipt["structural_policy"] = {
                     "policy_sha256": pregnancy_policy["sha256"],
                     "source_person_key": "person_source_id",
@@ -6360,7 +7821,9 @@ def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
     )
 
 
-def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt() -> None:
+def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt() -> (
+    None
+):
     frame = _post_puf_transfer_fixture()
     person = frame.table("person").copy()
     recipient_rows = person[support_channel_column("person")].astype(str).eq("acs")
@@ -6389,9 +7852,7 @@ def test_complete_pregnancy_surface_retains_zero_imputation_structural_receipt()
         n_estimators=10,
     )
 
-    receipt = result.receipt["targets"][
-        "person/model_required_boolean/is_pregnant"
-    ]
+    receipt = result.receipt["targets"]["person/model_required_boolean/is_pregnant"]
     assert receipt["authorized_null_rows"] == 0
     assert receipt["imputed_rows"] == 0
     assert receipt["structural_policy"]["status"] == "verified"
@@ -6412,9 +7873,7 @@ def test_post_puf_transfer_refuses_invalid_pregnancy_source_producer() -> None:
         person["is_female"].astype(bool)
         & person["age"].between(15, 44, inclusive="both")
     )
-    donor_ineligible = ineligible & person[
-        support_clone_index_column("person")
-    ].eq(1)
+    donor_ineligible = ineligible & person[support_clone_index_column("person")].eq(1)
     person.loc[person.index[donor_ineligible][0], "is_pregnant"] = True
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables["person"] = person
@@ -8228,7 +9687,7 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         GateReport((result,)).to_manifest()
 
 
-@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11))
 def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     stale_version: int,
 ) -> None:
@@ -8249,7 +9708,7 @@ def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     )
     stale_receipt = stacked_spine_module._authority_receipt(stale)
 
-    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 11
+    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 12
     assert stale_receipt["version"] == stale_version
     assert stale_receipt["integrity_valid"] is True
     assert stale_receipt["digest_matches_declared"] is True
@@ -8268,7 +9727,7 @@ def test_stacked_authority_binds_import_validated_late_producer_schedule() -> No
     receipt = stacked_spine_module.stacked_spine_authority_receipt()
     component = receipt["components"]["late_producer_schedule"]
 
-    assert receipt["version"] == 11
+    assert receipt["version"] == 12
     assert component["producer_count"] == 38
     assert component["schedule_sha256"] == (
         stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256

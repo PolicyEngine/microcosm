@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from copy import deepcopy
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +15,7 @@ from microcosm.build.spec_engine.compiler_ir import CompiledSpecIR, compile_spec
 from microcosm.build.spec_engine.legacy_adapter import compile_to_legacy_payload
 from microcosm.build.spec_engine.loader import load_bundle
 from microcosm.build.spec_engine.model import ResolvedSpec
+from microcosm.build.us_runtime import worker_identity as worker_identity_module
 from tools.spec_engine_coverage import (
     DEFAULT_REPORT_PATH,
     CoverageError,
@@ -26,6 +29,39 @@ pytest.importorskip(
     reason="live-engine oracle: the wheels gate's venv installs no engine",
     exc_type=ModuleNotFoundError,
 )
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _reuse_real_worker_binding_for_pin_checks() -> object:
+    """Reuse one real operational binding while testing digests that strip it."""
+
+    original = worker_identity_module.primary_qrf_worker_execution_binding
+
+    @cache
+    def cached(
+        _fit_jobs: str | None,
+        _predict_workers: str | None,
+        _cpu_count: int | None,
+    ) -> dict[str, object]:
+        return original()
+
+    def binding() -> dict[str, object]:
+        return deepcopy(
+            cached(
+                os.environ.get("POPULACE_FIT_N_JOBS"),
+                os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
+                os.cpu_count(),
+            )
+        )
+
+    patcher = pytest.MonkeyPatch()
+    patcher.setattr(
+        worker_identity_module,
+        "primary_qrf_worker_execution_binding",
+        binding,
+    )
+    yield
+    patcher.undo()
 
 
 @pytest.fixture(scope="module")
@@ -89,9 +125,7 @@ def test_us_coverage_is_exact_complete_and_honest(
             "report schema version differs",
         ),
         (
-            lambda report: report["spec_binding"].__setitem__(
-                "schema_version", 99
-            ),
+            lambda report: report["spec_binding"].__setitem__("schema_version", 99),
             "spec_binding contract differs",
         ),
         (

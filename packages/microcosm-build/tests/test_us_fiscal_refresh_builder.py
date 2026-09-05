@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.us_runtime import h5_io as builder_h5_io
 from microcosm.calibrate import TargetRegistry, TargetSpec, calibrate
 from microcosm.frame import Frame, WeightKind, Weights
 
@@ -1716,6 +1717,7 @@ def test_builder_base_h5_pool_loader_receives_explicit_terminal_gate_policy(
         size_bytes=pool_h5.stat().st_size,
         publication_run_id="fixture-publication",
         manifest_sha256="a" * 64,
+        manifest_payload_sha256=builder_h5_io._canonical_json_sha256(manifest),
     )
     frame = SimpleNamespace()
     monkeypatch.setattr(
@@ -1918,6 +1920,7 @@ def test_authenticated_pool_h5_consumers_use_one_returned_identity() -> None:
     assert '"manifest_sha256": authenticated_pool_h5.manifest_sha256' in receipt_source
     assert '"pool_h5_sha256": authenticated_pool_h5.sha256' in receipt_source
     assert '"pool_h5_size_bytes": authenticated_pool_h5.size_bytes' in receipt_source
+    assert 'pool_receipt["worker_execution_authentication"] = dict(' in receipt_source
 
 
 def test_builder_reconciles_exact_k_count_before_any_release_write() -> None:
@@ -9164,6 +9167,36 @@ def test_exact_k_receipt_stays_strict_even_when_base_h5_opt_in_is_present() -> N
 
     with pytest.raises(RuntimeError, match="lost its passing agreement gate"):
         builder._exact_k_ladder_manifest_payload(**_gate_failed_exact_k_inputs(builder))
+
+
+def test_exact_k_receipt_carries_current_worker_authentication() -> None:
+    builder = _load_builder_module()
+    inputs = _gate_failed_exact_k_inputs(builder)
+    worker_authentication = {
+        "manifest_schema_version": 10,
+        "execution_config_schema_version": 5,
+        "worker_execution_schema_version": 1,
+        "semantic_identity_sha256": "6" * 64,
+        "audit_aliases": {
+            "sys_executable": "/audit/python",
+            "sys_prefix": "/audit",
+            "argv_template_0": "/audit/python",
+        },
+    }
+    inputs["pool_manifest"]["agreement_gate"] = {"passed": True}
+    inputs["pool_manifest"]["worker_execution_authentication"] = worker_authentication
+    inputs["authenticated_pool_h5"] = builder.AuthenticatedPoolH5(
+        path=Path("pool.h5"),
+        sha256="1" * 64,
+        size_bytes=123,
+        publication_run_id="fixture-publication",
+        manifest_sha256="a" * 64,
+        worker_execution_authentication=worker_authentication,
+    )
+
+    receipt = builder._exact_k_ladder_manifest_payload(**inputs)
+
+    assert receipt["pool"]["worker_execution_authentication"] == (worker_authentication)
 
 
 def _gate_failed_base_pool_receipt() -> dict[str, object]:

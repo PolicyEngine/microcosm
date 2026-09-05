@@ -63,6 +63,11 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights, read_frame_ta
 _FIXTURE_SEED_PERSON_COLUMN = "takes_up_medicaid_if_eligible"
 
 
+@pytest.fixture(autouse=True)
+def _prime_worker_identity(prime_primary_qrf_worker_identity: None) -> None:
+    """Share the real session attestation unless a test opts into live identity."""
+
+
 @pytest.fixture(scope="module")
 def pool_tool() -> ModuleType:
     root = Path(__file__).resolve().parents[3]
@@ -2499,7 +2504,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "a6bc79878eb6f64637b9f3eceeea6cc2b050c0e5b8f9aca446179258940c44f2",
+            "spec_sha256": "9db29b4d33424fbb21a83c63927c7de55ba9a333d631f6323935f67a496eee46",
         },
     }
 
@@ -3518,7 +3523,7 @@ def test_legacy_checkpoint_identity_excludes_stacked_late_producer_schedule(
     assert changed == current
 
 
-def test_stacked_checkpoint_identity_binds_v12_semantic_contracts(
+def test_stacked_checkpoint_identity_binds_v13_semantic_contracts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -3551,8 +3556,8 @@ def test_stacked_checkpoint_identity_binds_v12_semantic_contracts(
 
     current = identity()
     pool_code = current["pool_code"]
-    assert current["materializer_version"] == 12
-    assert current["stacked_authority"]["version"] == 11
+    assert current["materializer_version"] == 13
+    assert current["stacked_authority"]["version"] == 12
     assert current["geography_assignment"] == (
         pool_tool._stacked_geography_assignment_contract()
     )
@@ -3779,7 +3784,7 @@ def test_stacked_checkpoint_identity_binds_v12_semantic_contracts(
         )
     )
 
-    assert current["materializer_version"] == stale_qrf["materializer_version"] == 12
+    assert current["materializer_version"] == stale_qrf["materializer_version"] == 13
     assert stale_qrf["pool_code"]["primary_qrf_checkpoint_schema_version"] == 5
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
@@ -4034,7 +4039,7 @@ def test_qbi_receipt_route_resolution_rejects_wrong_or_ambiguous_paths(
         )
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11))
+@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12))
 def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -4088,7 +4093,7 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
             )
         )
 
-    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 12
+    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 13
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
             checkpoint_root,
@@ -4492,7 +4497,7 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     outputs = pool_tool._output_paths(output, checkpoint_root=checkpoint_root)
     manifest = pool_tool._read_json_object(outputs.manifest)
     diagnostics = pool_tool._read_json_object(outputs.agreement_diagnostics)
-    assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 9
+    assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 10
     assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
     assert manifest["schema_version"] == 4
     assert diagnostics["schema_version"] == 4

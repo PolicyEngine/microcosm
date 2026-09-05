@@ -913,59 +913,14 @@ def _worker_execution_template() -> dict[str, object]:
         "surface": "execution_profile",
         "resolve_as": "worker_execution",
         "template": {
-            "module": "microcosm.build.us_runtime.puf_qrf_worker",
-            "argv_template": [
-                {"resolver_op": "sys_executable"},
-                "-m",
-                "microcosm.build.us_runtime.puf_qrf_worker",
-                "--checkpoint-dir",
-                "{checkpoint_dir}",
-                "--target-index",
-                "{target_index}",
-            ],
-            "interpreter": {
-                "executable": {"resolver_op": "sys_executable"},
-                "resolved_executable": {"resolver_op": "resolved_sys_executable"},
-                "implementation": {"resolver_op": "python_implementation"},
-                "cache_tag": {"resolver_op": "python_cache_tag"},
-                "version": {"resolver_op": "python_version_triplet"},
+            "schema_version": 1,
+            "semantic_identity": {
+                "resolver_op": "primary_qrf_worker_semantic_identity"
             },
-            "environment": {
-                "policy": "inherit_parent_environment_with_bound_fit_controls",
-                "overrides": {},
-                "semantic_controls": {
-                    "POPULACE_FIT_N_JOBS": {
-                        "configured": {
-                            "resolver_op": "environment_value",
-                            "name": "POPULACE_FIT_N_JOBS",
-                        },
-                        "resolved": {
-                            "resolver_op": "env_canonical_positive_int_or_default",
-                            "name": "POPULACE_FIT_N_JOBS",
-                            "default": -1,
-                        },
-                    },
-                    "POPULACE_FIT_PREDICT_WORKERS": {
-                        "configured": {
-                            "resolver_op": "environment_value",
-                            "name": "POPULACE_FIT_PREDICT_WORKERS",
-                        },
-                        "resolved": {
-                            "resolver_op": "env_positive_int_or_cpu_count",
-                            "name": "POPULACE_FIT_PREDICT_WORKERS",
-                            "fallback_minimum": 1,
-                        },
-                        "resolution": {
-                            "resolver_op": "env_or_cpu_count_resolution_label",
-                            "name": "POPULACE_FIT_PREDICT_WORKERS",
-                        },
-                    },
-                },
-                "bound_names": [
-                    "POPULACE_FIT_N_JOBS",
-                    "POPULACE_FIT_PREDICT_WORKERS",
-                ],
+            "semantic_identity_sha256": {
+                "resolver_op": "primary_qrf_worker_semantic_identity_sha256"
             },
+            "audit_aliases": {"resolver_op": "primary_qrf_worker_audit_aliases"},
         },
     }
 

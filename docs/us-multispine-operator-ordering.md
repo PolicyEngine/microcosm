@@ -245,14 +245,16 @@ by_origin_battery
    The authority versions distinguish the two contracts. The primary-QRF root
    and target checkpoint schema remains version 6. The capital-gains tail
    manifest uses schema version 2 and binds its support contract and receipt.
-   The canonical stacked authority is version 11, the outer stacked checkpoint
-   materializer uses version 12, and the stacked pool stage checkpoint
+   The canonical stacked authority is version 12, the outer stacked checkpoint
+   materializer uses version 13, and the stacked pool stage checkpoint
    materializer uses version 7.
    The outer base identity binds primary-QRF version 6, the ACS universe and
    QBI reconciliation contracts, the tail schema and support contract, and
-   late-producer registry schema version 16, including the signed static and
-   derivation-mode semantics of every virtual DAG resource. The companion pool
-   manifest uses schema version 9.
+   late-producer registry schema version 17, including execution-receipt
+   contract 4, transition authority 2, and resource-semantics receipt 2. The
+   primary execution config is version 5, its portable worker identity is
+   version 1, and its checkpoint input sidecar is version 2. The companion pool
+   manifest uses schema version 10.
    Older outer authority or materializer payloads are stale; primary-QRF
    version 6 remains current.
 
@@ -551,6 +553,63 @@ The same three receipts form an exact SHA-bound sidecar beside the primary-QRF
 manifest; resume refuses a missing or different sidecar, including a
 same-row-count donor with changed bytes. This closes stale-bank reuse under a
 newly claimed outer route.
+
+#### Portable primary-QRF `worker_execution` identity
+
+Worker identity schema v1 separates semantic authentication from launcher
+aliases. `semantic_identity` binds the interpreter-launcher bytes, the exact
+loaded Python runtime library (or the executable for a static build), and a
+digest of the source and extension bytes for stdlib modules observed during or
+present after a clean worker import. It also binds implementation, version and
+ABI, cache tag,
+canonical `pyvenv.cfg` fields, worker-module source, the statically resolved
+Python closure plus every Microcosm namespace file opened by that clean import,
+the exact approved `uv.lock`, installed-distribution/RECORD and combined
+transitive environment/code digests, arguments after `argv[0]` with `argv[0]`
+replaced by `{python_interpreter}`, and configured/resolved fit-job and
+prediction-worker controls. `TORCH_DEVICE_BACKEND_AUTOLOAD=0` is a forced,
+bound worker-bootstrap override applied before the QRF runtime can import
+Torch. Before the clean import, identity construction enumerates
+all installed `torch.backends` entry-point declarations, refuses duplicate
+distribution identities or providers outside the selected RECORD closure, and
+binds declarations belonging to selected distributions. Authentication
+compares that payload and its
+`semantic_identity_sha256`, so byte-identical interpreters reached through
+different worktrees remain the same worker. `audit_aliases` records absolute
+`sys_executable`, `sys_prefix`, and raw `argv_template_0`, but those aliases are
+never compared for authentication.
+
+A schema-9 gate-failed pool receives no implicit alias exception. Its only
+relocation path is the scoring-only loader with an operator-supplied
+compatibility-attestation JSON binding the sealed manifest and H5 SHA-256s, the
+exact plan-published campaign-tree token `b8819b3f`, campaign `uv.lock` SHA-256
+`27f47e385cfa35e2644a37410d1804b361ad9aee123577551c8421547bda65ee`,
+installed transitive environment/code digest, recorded worker binding,
+semantic identity, exact permitted mismatch set
+`["argv_template[0]", "interpreter.executable"]`, and
+`purpose: scoring_only`. Every semantic field must still equal the live
+worker. The attestation's `plan_signature` is an exact plan-defined
+authorization tuple (`gate`, `plan_sha256`, `prompt_sha256`,
+`checklist_sha256`, and `evidence_sha256`) checked as data; this boundary does
+not claim public-key or cryptographic signature verification.
+
+Current manifests, diagnostics, `release_manifest.json`, and scoring receipts
+surface `worker_execution_authentication`: manifest, execution-config, and
+worker schema versions, `semantic_identity_sha256`, and audit aliases.
+Attested legacy scoring additionally surfaces
+`compatibility_attestation_sha256` and `purpose: scoring_only`. Schema-9 or
+scoring-only compatibility evidence cannot enter a simulation-ready or release
+receipt. The scoring loader may authenticate a deny-listed pool for
+diagnostics, but candidate-26 remains denied for release independently of this
+relocation check.
+
+This F1 identity still assumes the interpreter's broader inherited startup path
+is trusted. It now closes Torch backend autoloading, loaded-runtime and imported
+stdlib bytes, and observed Microcosm import-time files, but does not additionally
+authenticate `PYTHONPATH`, executable `.pth` startup hooks, or
+`sitecustomize`/`usercustomize`. Hardening those remaining interpreter-startup
+mechanisms would change the worker launch contract and is outside this
+portability repair.
 
 Every one of the 16 source producers consumes the following 16-requirement
 wrapper bundle `W`. It is added to the operator-specific kernel inventory in
@@ -879,20 +938,20 @@ The lexically canonical waves have sizes `(1, 1, 17, 14, 3, 2)`:
 5. Education; adult-care transfer; WIC transfer.
 6. `source_finalizer` and education transfer.
 
-Registry schema version 13 and execution-receipt schema version 3 bind the
+Registry schema version 17 and execution-receipt contract version 4 bind the
 canonical input declarations, outputs, edges, waves, exact kind-specific
 virtual-resource bindings, content-hashed execution-row schema, and immutable
-transition authority. The schedule SHA-256 is
-`dbae9f945966a58592915780be78137e011d060271af6c933870a55db297baab`;
+transition authority version 2. The schedule SHA-256 is
+`e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f`;
 the full payload SHA-256 is
-`95ee19cd1b4d1cf321a32910c234ebc460aa47f9cc30e03fa8560ea6ae5e2eb8`.
+`7be038d34f228d66c12b53558fc5f30c93f1b376f1058c5e4fd7e7563a88d67f`.
 Reversing registry iteration produces those same bytes.
 
 The virtual-resource payload ledger is independently versioned: ACS-universe
-config v2, primary execution config v3, source execution config v3, source
+config v2, primary execution config v5, source execution config v3, source
 finalizer config v2, and transfer model config v3. Donor content,
 primary-checkpoint routing, source callback receipts, and transfer-bank routing
-remain v1. The outer all-producer resource-semantics receipt is v1 and binds
+remain v1. The outer all-producer resource-semantics receipt is v2 and binds
 both these static schemas and every dynamic derivation mode.
 
 ### Downstream hard-completeness audit
@@ -911,7 +970,7 @@ and valid. Neither receipt authorizes an upstream null.
 | PUF raw predictor sources | Every filing-status, count, and income component is observed in its declared source universe. Raw WAGP/SEMP authority is present and agrees with mapped leaves; a cross-grain source collision is rejected. A null on any eligible member fails before coercion. | Structure supplies status/count; ACS-native or ASEC-carried earnings supply earnings; early transfer supplies interest, dividends, and gains. | No. ACS under-15 WAGP/SEMP blanks are an exact source-universe state, not transfer starvation; all other source nulls fail. |
 | PUF tax-unit features | Every clone-1 recipient has a finite feature vector. Post-aggregation NaN, `+inf`, and `-inf` are counted by named predictor and rejected before fitting; none is coerced or snapped to zero. | Universe-aware person sums plus tax-unit structural inputs. | No. Eligible member values must be complete; the only special case is an all-child unit whose numeric-zero predictor is explicitly owned and counted by the named universe-zero rule. |
 | Primary QRF banks and chain | Donor/recipient banks are immutable; target order and RNG prefix are contiguous; all targets complete; live recipient identity, source-universe receipt, and feature digest match before finalization. | The processed full PUF donor and strict recipient checkpoint initialized above. | No. Mutation or missing receipt invalidates the bank; it cannot resume under legacy semantics. |
-| Outer pool checkpoint identity and resume | Primary-QRF schema v6, tail-manifest schema v2, late-registry schema v14/receipt schema v3, outer stacked materializer v10/authority v9, stacked pool-stage materializer v5, pool manifest schema v7, and the ACS-universe, QBI-mutation, tail-support, late-DAG, and signed virtual-resource-semantics identities must match exactly before any cached stage is discovered. The retiring legacy envelope remains manifest schema v4/materializer v3. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older stacked materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
+| Outer pool checkpoint identity and resume | Primary-QRF schema v6, primary execution config v5, portable worker identity v1, tail-manifest schema v2, late-registry schema v17/receipt contract v4, outer stacked materializer v13/authority v12, stacked pool-stage materializer v7, pool manifest schema v10, and the ACS-universe, QBI-mutation, tail-support, late-DAG, and signed virtual-resource-semantics identities must match exactly before any cached stage is discovered. The retiring legacy envelope remains manifest schema v4/materializer v3. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older stacked materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
 | Clone-2 capital-gains tail | Each filing status requires as many eligible recipient households as selected q99.5 donors. Eligibility requires unique single-tax-unit PUF-detail lineage and half-weight capacity for the global maximum assigned donor weight. An adequate status assigns every selected donor once; a thin status skips as a whole with a named, counted `insufficient_support` receipt. | Completed clone-1 QRF output and full PUF tail donors. At 1%, `SINGLE` and `HEAD_OF_HOUSEHOLD` attach, `JOINT` and `SEPARATE` skip, and zero-requirement `SURVIVING_SPOUSE` is `not_applicable`. | No widening or partial attachment is permitted. All 22 AGI bands provide nearest-first fallback only inside a status. Universe-aware PUF recipients remain eligible, including explicitly receipted empty-universe tax units. |
 | Late producer DAG | Before any callback, all declared inputs are filled on their required scopes or carry an input-specific counted absence receipt; numeric inputs are finite. The exact derived order, readiness rows, once-only source finalizer, and bounded transfer receipts must validate. | ACS earnings-universe materialization, primary PUF/tail, 16 source producers, and 19 bounded transfer groups execute in six derived waves. | No. The refusing producer names the unfilled input and its declared producing stage. A cycle fails at import with its path. |
 | Late transfer completion | Every declared PUF-clone or ASEC source-producer cell is nonnull; all complementary recipients are filled; the allowed count for both unmodeled and residual rows is zero. | Forty-three PUF and 29 source targets, with two overlaps, supply the 70-target late surface. | No. A missing producer or recipient value is terminal at this boundary. |
