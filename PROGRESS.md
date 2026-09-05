@@ -13,10 +13,11 @@ inventory, truthful consumer resource and tiny direct/cold/cache-only verificati
 No genuine graph run, no push. This replacement journal stays local to the author
 branch; root integration must omit it, as instructed.
 
-S dependency `553084def66b5abd315e0e25bae9cd5e986d4867` has root/native approval;
-Fable final review and root composition remain separate. No S cherry-pick here.
-Prepare an additive composition plan binding S separately to unchanged T1 and
-money, attaching before tax reconstruction and authenticating housing on T1.
+Read the now-available Fable final APPROVE for S exact revision
+`553084def66b5abd315e0e25bae9cd5e986d4867`. Locally composed its reviewed commits
+as `dba326b0` and `907d7bf0`, after verifying the review and actual commit messages.
+Root integration remains separate. Wiring S before tax reconstruction, binding
+its separate receipt to unchanged T1/money, with housing authenticated on T1.
 
 ## Done
 
