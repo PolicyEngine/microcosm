@@ -91,6 +91,11 @@ import kernel can decode real source bytes honestly.
 
 ## Next
 
-- Root review. No push, no PR, no remote comment from this lane.
+- Integration is root's call. Root's independent review of head `4c63efae`
+  approved the change and produced a five-file allowlist patch that
+  deliberately excludes this lane's documentation-only `keys.py` hunk, because
+  a separate integrated lane already implemented streaming identity there.
+  Integrate from that patch, not from this branch's commit history.
 - Known residuals are listed in the receipt at
   `/Users/maxghenis/architecture-reviews/microcosm-20260904/graph-lookup-sources-receipt.md`.
+- Nothing was pushed; no PR, no remote comment from this lane.
