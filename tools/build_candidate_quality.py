@@ -14,7 +14,10 @@ import argparse
 import json
 from pathlib import Path
 
-from microcosm.build.candidate_quality import write_candidate_quality
+from microcosm.build.candidate_quality import (
+    read_candidate_quality_json,
+    write_candidate_quality,
+)
 
 
 def main(argv: list[str] | None = None) -> dict[str, str]:
@@ -25,8 +28,8 @@ def main(argv: list[str] | None = None) -> dict[str, str]:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--no-index", action="store_true")
     args = parser.parse_args(argv)
-    metadata = json.loads(args.metadata.read_text())
-    attachments = json.loads(args.attachments.read_text())
+    metadata = read_candidate_quality_json(args.metadata)
+    attachments = read_candidate_quality_json(args.attachments)
     for item in attachments.values():
         if item.get("status") == "available" and "source" in item:
             source = Path(item["source"])
