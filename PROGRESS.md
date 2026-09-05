@@ -6,9 +6,17 @@ Authority: `/Users/maxghenis/architecture-reviews/microcosm-20260904/us-current-
 
 ## State
 
-Pure modules, source preparation and engine admission are implemented, tested and
-committed. The graph module, inventory stage, consumers-resource re-pin and the
-direct/cold/cache-only parity runner are next. No genuine graph run, no push.
+Resumed the stopped author's existing branch on 2026-09-05 at `025c0b61`.
+Inspected all branch commits and the preserved graph implementation/source-codec
+diff before editing. The original dirty files are retained. Completing the graph,
+inventory, truthful consumer resource and tiny direct/cold/cache-only verification.
+No genuine graph run, no push. This replacement journal stays local to the author
+branch; root integration must omit it, as instructed.
+
+S dependency `553084def66b5abd315e0e25bae9cd5e986d4867` has root/native approval;
+Fable final review and root composition remain separate. No S cherry-pick here.
+Prepare an additive composition plan binding S separately to unchanged T1 and
+money, attaching before tax reconstruction and authenticating housing on T1.
 
 ## Done
 
@@ -38,6 +46,10 @@ direct/cold/cache-only parity runner are next. No genuine graph run, no push.
 3. Consumers resource status + `RESOURCE_PINS` re-issue and the identity ripple.
 4. Direct / cold / cache-only parity runner in separate processes.
 5. Docs, changelog, CI inventory verify.
+6. Freeze and verify actual commit message; record loaded source hashes, exact
+   tests and pending S composition in the author report. The requested external
+   report directory is outside the session's writable roots; attempt export and
+   retain a complete local output if the sandbox refuses it.
 
 ## Constraints in force
 
