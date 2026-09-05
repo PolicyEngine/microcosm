@@ -19,6 +19,7 @@ import pandas as pd
 
 from microcosm.fit._graph_legacy_qrf import decode_json, encode_json, sha
 from microcosm.fit.qrf import _index_identity, _IndexIdentity
+from microcosm.frame import US_SCHEMA
 from microcosm.graph import ArtifactType, Numeric, platform_fingerprint
 from microcosm.graph.population import assert_dtype, dtype_for_token
 
@@ -244,12 +245,14 @@ def _entity_identity(ids: np.ndarray, entity: str) -> dict[str, object]:
     )
 
 
-def _validate_identity(value: object, *, rows: int | None = None) -> None:
+def _validate_identity(
+    value: object, *, rows: int | None = None, nonempty: bool = False
+) -> None:
     if (
         not isinstance(value, dict)
         or set(value) != _ENTITY_FIELDS
         or type(value["rows"]) is not int
-        or value["rows"] < 0
+        or value["rows"] < (1 if nonempty else 0)
         or value["id_dtype"] != "int64"
         or not is_hash(value["ordered_ids_sha256"])
         or (rows is not None and value["rows"] != rows)
@@ -339,15 +342,19 @@ def decode_projection(payload: bytes) -> Mapping[str, object]:
     ):
         raise ValueError("Unsupported US housing source projection schema.")
     selection = document["selection"]
-    if not isinstance(selection, dict) or set(selection) != {
-        "column",
-        "phase",
-        "clone_index_column",
-    }:
+    if (
+        not isinstance(selection, dict)
+        or set(selection) != {"column", "phase", "clone_index_column"}
+        or any(not isinstance(value, str) or not value for value in selection.values())
+    ):
         raise ValueError("US housing source projection selection is malformed.")
     entities = document["entities"]
-    if not isinstance(entities, dict) or not entities:
-        raise ValueError("US housing source projection describes no entity.")
+    if (
+        not isinstance(entities, dict)
+        or not entities
+        or set(entities) - set(US_SCHEMA.entities)
+    ):
+        raise ValueError("US housing source projection describes no US entity.")
     for value in entities.values():
         if not isinstance(value, dict) or set(value) != {"full", "selected"}:
             raise ValueError("US housing source projection identity is malformed.")
@@ -357,7 +364,12 @@ def decode_projection(payload: bytes) -> Mapping[str, object]:
             raise ValueError(
                 "US housing source selection cannot exceed its parent population."
             )
-    _IndexIdentity.from_dict(document["person_index"])
+    try:
+        _IndexIdentity.from_dict(document["person_index"])
+    except (AttributeError, KeyError, TypeError) as error:
+        raise ValueError(
+            "US housing source projection person index is malformed."
+        ) from error
     weight_sources = document["weight_sources"]
     if (
         not isinstance(weight_sources, dict)
@@ -365,8 +377,15 @@ def decode_projection(payload: bytes) -> Mapping[str, object]:
         or any(not isinstance(kind, str) for kind in weight_sources.values())
     ):
         raise ValueError("US housing source projection weight sources are malformed.")
+    family = document["output_family"]
+    if not isinstance(family, dict) or any(
+        not isinstance(columns, list)
+        or any(not isinstance(column, str) for column in columns)
+        for columns in family.values()
+    ):
+        raise ValueError("US housing source projection output family is malformed.")
     if {
-        entity: tuple(columns) for entity, columns in document["output_family"].items()
+        entity: tuple(columns) for entity, columns in family.items()
     } != housing_output_family():
         raise ValueError(
             "US housing source projection output family differs from the registry."
@@ -522,7 +541,16 @@ def _read_string(buffer: memoryview, rows: int, record: Mapping[str, object]):
         raise ValueError("US housing source string null count differs from its header.")
     offsets = np.frombuffer(buffer[mask_bytes : mask_bytes + offset_bytes], dtype=_INT)
     payload = bytes(buffer[mask_bytes + offset_bytes :])
-    if offsets[0] != 0 or offsets[-1] != len(payload) or (np.diff(offsets) < 0).any():
+    # Compare adjacent offsets rather than differencing them: int64 subtraction
+    # wraps, and a wrapped difference would let an overlapping or out-of-range
+    # range pass. Nonnegative + nondecreasing + a final offset equal to the
+    # payload length bounds every range inside the payload.
+    if (
+        offsets[0] != 0
+        or offsets[-1] != len(payload)
+        or (offsets < 0).any()
+        or (offsets[1:] < offsets[:-1]).any()
+    ):
         raise ValueError("US housing source string offsets are invalid.")
     values: list[object] = []
     for position in range(rows):
@@ -570,7 +598,9 @@ def decode_source_outputs(payload: bytes) -> HousingSourceOutputs:
     if not isinstance(entities, dict) or set(entities) != set(SOURCE_ENTITIES):
         raise ValueError("US housing source outputs describe the wrong entities.")
     for value in entities.values():
-        _validate_identity(value)
+        # ``strict_ids`` refuses an empty table on the way in; refuse it here too
+        # so a decoder cannot accept bytes the encoder could never produce.
+        _validate_identity(value, nonempty=True)
     records = header["columns"]
     if not isinstance(records, list) or len(records) != len(SOURCE_COLUMNS):
         raise ValueError("US housing source outputs must carry its five leaves.")
@@ -602,10 +632,13 @@ def decode_source_outputs(payload: bytes) -> HousingSourceOutputs:
             or record["utf8_bytes"] < 0
         ):
             raise ValueError("US housing source string record is malformed.")
-        if source_dtype != "string" and record["encoding"] not in {
-            "raw-f8-v1",
-            "raw-bool-v1",
-        }:
+        if source_dtype != "string" and (
+            record["encoding"]
+            != {"float64": "raw-f8-v1", "bool": "raw-bool-v1"}[source_dtype]
+            or record["nulls"] != 0
+            or record["value_bytes"]
+            != entities[entity]["rows"] * (8 if source_dtype == "float64" else 1)
+        ):
             raise ValueError("US housing source scalar record is malformed.")
         expected_length += record["value_bytes"]
     if len(body) != expected_length:
@@ -700,13 +733,15 @@ def cell_digest(series: pd.Series, *, entity: str, column: str) -> dict[str, obj
         raise ValueError(
             f"US housing merge cannot digest {entity}.{column} dtype {series.dtype!s}."
         )
-    return {
+    header = {
         "entity": entity,
         "column": column,
         "dtype": str(series.dtype),
         "rows": int(len(series)),
-        "digest": sha(parts),
     }
+    # Domain-separate the digest so two columns that happen to hold the same
+    # bytes cannot produce the same evidence record.
+    return {**header, "digest": sha(encode_json(header) + b"\0" + parts)}
 
 
 def _validate_cells(value: object) -> None:
@@ -736,11 +771,13 @@ def encode_merge_evidence(
     source_preparation: Mapping[str, object],
     mode: str,
 ) -> bytes:
+    if mode != FRESH_SOURCE_MODE:
+        raise ValueError(f"Unsupported US housing source mode {mode!r}.")
     projection_binding = binding(projection)
     outputs_binding = binding(source_outputs)
     if not isinstance(pending_context, bytes):
         raise ValueError("US housing merge evidence requires the pending bytes.")
-    return encode_json(
+    payload = encode_json(
         {
             "schema_version": 1,
             "mode": mode,
@@ -759,6 +796,9 @@ def encode_merge_evidence(
             "source_preparation": source_preparation,
         }
     )
+    if len(payload) > HEADER_MAX_BYTES:
+        raise ValueError("US housing merge evidence exceeds its bound.")
+    return payload
 
 
 def decode_merge_evidence(payload: bytes) -> Mapping[str, object]:

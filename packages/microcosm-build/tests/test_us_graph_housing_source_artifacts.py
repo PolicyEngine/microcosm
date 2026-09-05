@@ -534,3 +534,157 @@ def test_live_output_roster_is_read_from_the_registry(monkeypatch):
     monkeypatch.setattr(codec, "PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES", families)
     with pytest.raises(ValueError, match="registered housing output family"):
         codec.housing_output_family()
+
+
+# ---------------------------------------------------------------------------
+# Hardening: overflow, domain separation and header/buffer agreement
+# ---------------------------------------------------------------------------
+
+
+def _string_column_offset(header) -> int:
+    """Byte offset of the first string column's buffer inside the body."""
+    ids = sum(
+        header["entities"][entity]["rows"] * 8 for entity in codec.SOURCE_ENTITIES
+    )
+    return ids + header["columns"][0]["value_bytes"]
+
+
+def test_wrapping_int64_string_offsets_are_refused():
+    """A differenced monotonicity check would wrap; comparison cannot."""
+    # Three offsets are needed to express a wrapped step, so widen the table.
+    tables = _source_tables()
+    tables["household"] = pd.DataFrame(
+        {
+            "household_id": pd.Series([10, 20], dtype="int64"),
+            "tenure_type": pd.Series(["RENTED", "NONE"], dtype=CANONICAL_STRING),
+        }
+    )
+    payload = _outputs_payload(tables)
+    header, body = _split(payload, codec.OUTPUTS_MAGIC)
+    start = _string_column_offset(header)
+    rows = header["entities"]["household"]["rows"]
+    utf8 = header["columns"][1]["utf8_bytes"]
+    mask_end = start + rows
+    offsets_end = mask_end + (rows + 1) * 8
+    assert rows == 2
+    # Offsets that are non-decreasing only under wrapped int64 arithmetic.
+    wrapped = np.array([0, np.iinfo(np.int64).min, utf8], dtype="<i8")
+    tampered = bytearray(body)
+    tampered[mask_end:offsets_end] = wrapped.tobytes()
+    header["columns"][1]["values_sha256"] = codec.sha(
+        bytes(tampered[start : start + header["columns"][1]["value_bytes"]])
+    )
+    with pytest.raises(ValueError, match="offsets are invalid"):
+        codec.decode_source_outputs(
+            _reframe(header, bytes(tampered), codec.OUTPUTS_MAGIC)
+        )
+
+
+def test_cell_digest_is_domain_separated_by_coordinate_and_dtype():
+    values = pd.Series([1.0, 2.0], dtype="float64")
+    first = codec.cell_digest(values, entity="person", column="pre_subsidy_rent")
+    second = codec.cell_digest(values, entity="person", column="other_column")
+    assert first["digest"] != second["digest"]
+    booleans = pd.Series([True, False], dtype="bool")
+    nullable = pd.Series([True, False], dtype="boolean")
+    assert (
+        codec.cell_digest(
+            booleans, entity="spm_unit", column="receives_housing_assistance"
+        )["digest"]
+        != codec.cell_digest(
+            nullable, entity="spm_unit", column="receives_housing_assistance"
+        )["digest"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("index", "field", "value"),
+    [
+        (0, "nulls", 1),
+        (0, "encoding", "raw-bool-v1"),
+        (0, "value_bytes", 8),
+        (2, "encoding", "raw-f8-v1"),
+        (2, "nulls", 1),
+    ],
+)
+def test_scalar_records_must_agree_with_their_declared_representation(
+    index, field, value
+):
+    header, body = _split(_outputs_payload(), codec.OUTPUTS_MAGIC)
+    header["columns"][index][field] = value
+    with pytest.raises(ValueError):
+        codec.decode_source_outputs(_reframe(header, body, codec.OUTPUTS_MAGIC))
+
+
+def test_zero_row_entity_tables_are_refused_on_decode():
+    header, body = _split(_outputs_payload(), codec.OUTPUTS_MAGIC)
+    header["entities"]["household"]["rows"] = 0
+    with pytest.raises(ValueError):
+        codec.decode_source_outputs(_reframe(header, body, codec.OUTPUTS_MAGIC))
+
+
+def _projection_with(**changes):
+    payload = _projection_payload()
+    header, _body = _split(payload, codec.PROJECTION_MAGIC)
+    header.update(changes)
+    encoded = codec.encode_json(header)
+    return codec.PROJECTION_MAGIC + len(encoded).to_bytes(4, "big") + encoded
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        pytest.param(
+            {
+                "selection": {
+                    "column": 1,
+                    "phase": "pre_clone",
+                    "clone_index_column": "x",
+                }
+            },
+            id="non-string-selection",
+        ),
+        pytest.param({"person_index": {"nonsense": True}}, id="malformed-person-index"),
+        pytest.param(
+            {"output_family": {"person": "pre_subsidy_rent"}},
+            id="malformed-output-family",
+        ),
+    ],
+)
+def test_malformed_projection_fields_raise_value_errors(changes):
+    with pytest.raises(ValueError):
+        codec.decode_projection(_projection_with(**changes))
+
+
+def test_projection_with_a_foreign_entity_key_is_refused():
+    payload = _projection_payload()
+    header, _body = _split(payload, codec.PROJECTION_MAGIC)
+    header["entities"]["benefit_unit"] = header["entities"].pop("family")
+    encoded = codec.encode_json(header)
+    with pytest.raises(ValueError, match="no US entity"):
+        codec.decode_projection(
+            codec.PROJECTION_MAGIC + len(encoded).to_bytes(4, "big") + encoded
+        )
+
+
+def test_merge_evidence_refuses_an_unsupported_mode_at_encode():
+    with pytest.raises(ValueError, match="Unsupported"):
+        codec.encode_merge_evidence(
+            projection=_value(
+                _projection_payload(), codec.HOUSING_SOURCE_PROJECTION_TYPE
+            ),
+            source_outputs=_value(
+                _outputs_payload(), codec.HOUSING_SOURCE_OUTPUTS_TYPE
+            ),
+            pending_context=b"{}",
+            merged_rows={},
+            selected_rows={},
+            pool_rows={},
+            merged_cells=[],
+            native_cells=[],
+            source_preparation={
+                "phase": "pre_clone",
+                "operator_order": ["with_us_housing_inputs"],
+            },
+            mode="complete_incumbent",
+        )
