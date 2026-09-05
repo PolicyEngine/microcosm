@@ -104,6 +104,20 @@ def test_unrelated_operator_body_and_quality_file_do_not_invalidate(
             "assembly_prepare",
             "geography",
         ),
+        *(
+            ("microcosm.build", "us_runtime/" + name, "asec_prepared_v1", "geography")
+            for name in (
+                "asec_prepared_source.py",
+                "asec_current_money_selection.py",
+                "cps_carried_current.py",
+                "asec_engine_evaluation.py",
+                "asec_student_controls.py",
+                "asec_current_money_graph_resources.py",
+                "asec_current_money_graph_consumers_v1.json",
+                "asec_current_money_engine_defaults_v1.json",
+                "asec_current_money_consumers_v1.json",
+            )
+        ),
     ],
 )
 def test_transitive_module_and_resource_bytes_are_bound(
@@ -128,7 +142,12 @@ def test_live_registry_projection_invalidates_source_not_geography(monkeypatch):
         operator_boundary, "PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES", families
     )
     after = _hashes()
-    for stage in ("asec_codec_v4", "acs_codec_2024", "assembly_prepare"):
+    for stage in (
+        "asec_codec_v4",
+        "acs_codec_2024",
+        "assembly_prepare",
+        "asec_prepared_v1",
+    ):
         assert after[stage] != before[stage]
     assert after["geography"] == before["geography"]
 
@@ -153,7 +172,12 @@ print(json.dumps(implementation_manifest('assembly_prepare')['projections']))
         check=True,
         text=True,
         capture_output=True,
-        env={**os.environ, "PYTHONPATH": str(tmp_path)},
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join(
+                (str(tmp_path), os.environ.get("PYTHONPATH", ""))
+            ),
+        },
     )
     assert "fixture_new_housing_column" in result.stdout
 
@@ -302,6 +326,11 @@ def test_manifest_dependency_tuple_cannot_drift_from_capabilities(relocated):
 
 
 def test_codec_name_loader_and_capabilities_match_manifest(monkeypatch):
+    from microcosm.build.us_runtime.graph_asec_prepared import (
+        USAsecPreparedCreateKernel,
+        USAsecPreparedLeavesKernel,
+        USAsecPreparedSelectionKernel,
+    )
     from microcosm.build.us_runtime.graph_geography import (
         USGeographyAssignKernel,
         USGeographyBoundaryKernel,
@@ -315,6 +344,14 @@ def test_codec_name_loader_and_capabilities_match_manifest(monkeypatch):
     for kernel, stage in (
         (graph_sources.USAssemblyCreateKernel, "assembly_prepare"),
         (graph_sources.USSpineHarmonizeKernel, "assembly_harmonize"),
+        *(
+            (kernel, "asec_prepared_v1")
+            for kernel in (
+                USAsecPreparedCreateKernel,
+                USAsecPreparedSelectionKernel,
+                USAsecPreparedLeavesKernel,
+            )
+        ),
         *(
             (kernel, "geography")
             for kernel in (
@@ -336,6 +373,26 @@ def test_codec_name_loader_and_capabilities_match_manifest(monkeypatch):
     with pytest.raises(ValueError, match="loader"):
         impl.validate_source_codecs(wrong)
     monkeypatch.setattr(graph_sources, "load_graph_asec", lambda path: None)
+    with pytest.raises(ValueError, match="loader"):
+        graph_sources.us_source_codecs()
+
+
+def test_prepared_codec_is_bound_without_claiming_assembly_uses_it(monkeypatch):
+    from microcosm.build.us_runtime.asec_prepared_source import load_graph_asec_prepared
+
+    codecs = graph_sources.us_source_codecs()
+    assert codecs.get(graph_sources.ASEC_PREPARED_CODEC) is load_graph_asec_prepared
+    manifest = impl.implementation_manifest("asec_prepared_v1")
+    assert manifest["codecs"] == {
+        graph_sources.ASEC_PREPARED_CODEC: {
+            "loader": "microcosm.build.us_runtime.asec_prepared_source:load_graph_asec_prepared"
+        }
+    }
+    assert (
+        graph_sources.ASEC_PREPARED_CODEC
+        not in impl.implementation_manifest("assembly_prepare")["codecs"]
+    )
+    monkeypatch.setattr(graph_sources, "load_graph_asec_prepared", lambda path: None)
     with pytest.raises(ValueError, match="loader"):
         graph_sources.us_source_codecs()
 

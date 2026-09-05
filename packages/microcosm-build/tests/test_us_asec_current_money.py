@@ -268,3 +268,63 @@ def test_group_year_and_repetition_require_actual_agreement(fixture):
     other = replace(scope, person_ids=(10, 30, 20, 60, 40, 50))
     with pytest.raises(MoneyRefusalError, match="SCOPE_MISMATCH"):
         classify_asec_money(views, spec, other)
+
+
+def test_additive_graph_consumer_status_preserves_source_recipe(resources):
+    from microcosm.build.us_runtime.asec_current_money import RESOURCE_PINS
+    from microcosm.build.us_runtime.asec_current_money_graph_resources import (
+        load_graph_current_money_consumers,
+    )
+    from microcosm.build.us_runtime.asec_current_money_units import (
+        MICROUNIT_CURRENT_MONEY_COLUMNS,
+    )
+    from microcosm.build.us_runtime.asec_engine_evaluation import ADMITTED_ROOTS
+    from microcosm.build.us_runtime.cps_carried_current import (
+        CPS_CARRIED_CURRENT_MONEY_FIELDS,
+        CPS_CARRIED_CURRENT_PERSON_LEAVES,
+        CPS_CARRIED_CURRENT_SPM_UNIT_LEAVES,
+    )
+
+    source = json.loads(resources.consumers)
+    status = load_graph_current_money_consumers()
+    assert sha256(resources.consumers).hexdigest() == RESOURCE_PINS[2]
+    assert status["source_declarations"]["sha256"] == RESOURCE_PINS[2]
+    assert source["implementation_status"] == (
+        "declarations_only_live_nominal_consumers_unchanged"
+    )
+    assert "addresses" not in status
+    routes = status["wired_routes"]
+    assert set(routes) == {"microunit", "asec_prepared_current_money_graph"}
+    graph = routes["asec_prepared_current_money_graph"]
+    assert tuple(graph["money_fields"]) == CPS_CARRIED_CURRENT_MONEY_FIELDS
+    assert tuple(graph["person_leaves"]) == CPS_CARRIED_CURRENT_PERSON_LEAVES
+    assert tuple(graph["spm_unit_leaves"]) == CPS_CARRIED_CURRENT_SPM_UNIT_LEAVES
+    assert tuple(graph["engine_outputs"]) == ADMITTED_ROOTS
+    assert set(routes["microunit"]["money_fields"]) == set(
+        MICROUNIT_CURRENT_MONEY_COLUMNS
+    )
+    assert set(status["pending_nominal_consumer_routes"]) == {
+        consumer for address in source["addresses"] for consumer in address["consumers"]
+    } - {"microunit"}
+    assert status["all_current_money_consumers_wired"] is False
+    assert status["release_eligible"] is False
+    assert status["engine_defaults_allowlist"] == []
+
+
+@pytest.mark.parametrize("target", ["graph", "parent"])
+def test_additive_graph_consumer_resource_and_parent_drift_refuse(
+    tmp_path, monkeypatch, target
+):
+    from types import SimpleNamespace
+
+    from microcosm.build.us_runtime import asec_current_money_graph_resources as graph
+
+    source_package = graph.resources.files(graph.__package__)
+    names = (graph.GRAPH_CONSUMERS_RESOURCE, "asec_current_money_consumers_v1.json")
+    for name in names:
+        (tmp_path / name).write_bytes(source_package.joinpath(name).read_bytes())
+    path = tmp_path / names[target == "parent"]
+    path.write_bytes(path.read_bytes() + b"\n")
+    monkeypatch.setattr(graph, "resources", SimpleNamespace(files=lambda _: tmp_path))
+    with pytest.raises(ValueError, match="GRAPH_CONSUMERS.*FINGERPRINT"):
+        graph.load_graph_current_money_consumers()
