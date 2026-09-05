@@ -156,8 +156,8 @@ conservative module hash also rekeys the shared donor preparation on helper
 edits; it does not promise adapter-only invalidation. No source-provenance
 exemption and no frozen graph interface change is introduced.
 
-Full graph composition is not claimed. The additive relationship graph is still
-under review, so the landed integration test supplies the true direct
-relationship-produced Frame as `base`, and the eligibility consumer is a stub
-that only proves the accepted-context edge is required. Wiring the real
-preceding and following graph stages is separate work.
+The component tests retain their direct relationship predecessor and a small
+accepted-context consumer. The separate [complete pre-clone composition](us-preclone-source-graph.md)
+now wires the actual CPS, hours, historical prior-year, relationship, housing and
+eligibility kernels. Its end-to-end fixture exercises the real donor fit and
+eligibility calculation, including both acceptance gates and cache replay.
