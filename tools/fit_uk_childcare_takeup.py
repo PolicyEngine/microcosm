@@ -188,7 +188,6 @@ def fit_childcare_takeup(
         options={"maxiter": maxiter, "eps": eps},
     )
     achieved = dict(runner(input_h5, result.x, seed, target_period, contract))
-    from importlib.metadata import version
 
     return {
         "tool": "fit_uk_childcare_takeup",
@@ -203,7 +202,7 @@ def fit_childcare_takeup(
         "ledger_facts_sha256": feed_sha256,
         "target_registry_version": registry_version,
         "stochastic_contract_sha256": contract.resource_sha256,
-        "engine_version": version("policyengine-uk"),
+        "engine_version": _engine_version(),
         "optimizer": {
             "method": "L-BFGS-B",
             "maxiter": maxiter,
@@ -223,6 +222,22 @@ def fit_childcare_takeup(
         },
         "ceilings_at_rate_1": _ceilings(input_h5, target_period, targets),
     }
+
+
+def _engine_version() -> str | None:
+    """The installed policyengine-uk version, or None when it is absent.
+
+    A real fit needs the engine (the basis runs import it); the receipt's
+    provenance field must not make a hermetic run with an injected runner
+    depend on the engine being installed.
+    """
+
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("policyengine-uk")
+    except PackageNotFoundError:
+        return None
 
 
 def _ceilings(
