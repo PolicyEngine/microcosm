@@ -85,8 +85,12 @@ The typed `microcosm.us.housing_source_outputs` payload carries ordered int64
 IDs and exactly five column buffers — little-endian float64, canonical
 single-byte booleans, and UTF-8 offset payloads with an explicit null mask that
 cannot hide bytes. It rejects schema, ordering, length and digest mismatches,
-duplicate or negative IDs, foreign string storage and any encoding it does not
-declare. There is no pickle transport and no arbitrary object dtype support.
+duplicate or negative IDs, empty tables, foreign string storage, and any
+encoding, null count or byte width that disagrees with the declared
+representation. Adjacent string offsets are compared rather than differenced,
+so int64 wraparound cannot hide an overlapping or out-of-range range, and every
+evidence digest is domain-separated by coordinate, dtype and row count. There
+is no pickle transport and no arbitrary object dtype support.
 
 Resources were measured, not estimated. On the eight-person mixed fixture the
 stage compiles to fifteen nodes and five population versions
