@@ -16,6 +16,10 @@ The separate local ASEC v3-to-v4 restoration producer is documented in
 `docs/us-asec-raw-stage-v4.md`; it requires explicit pinned local inputs and writes
 a new bundle. Keep the historical v3 loader and producer behavior unchanged.
 
+US source/geography graph implementation scopes and their reviewed dependency
+inventory are documented in `docs/us-production-graph-development.md`. New
+dependency/resource failures require a scope review, not an automatic pin refresh.
+
 ## Commands
 
 ```bash

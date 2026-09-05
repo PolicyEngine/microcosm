@@ -8,7 +8,6 @@ candidate pool or an enriched legacy checkpoint cannot substitute for it.
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -16,7 +15,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-import microcosm.frame as frame_package
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from microcosm.frame import US_SCHEMA, EntitySchema, Frame
 from microcosm.graph import (
@@ -41,7 +39,6 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.codecs import SourceCodecRegistry, load_raw_bytes
-from microcosm.graph.kernel import source_hash
 from microcosm.graph.population import dtype_for_token, token_for_dtype
 
 from .acs_inputs import map_acs_native_inputs
@@ -55,6 +52,12 @@ from .graph_context import (
     _row_identity,
     encode_us_frame_context,
 )
+from .graph_implementation import (
+    STAGE_DEPENDENCIES,
+    implementation_hash,
+    implementation_manifest,
+    validate_source_codecs,
+)
 from .operator_boundary import assert_operator_free_source_frame
 from .stacked_spine import (
     assemble_stacked_spine,
@@ -67,7 +70,7 @@ ASEC_CODEC = "us-asec-raw-stage-v4"
 ACS_CODEC = "us-acs-native-2024-v1"
 ASSEMBLY_PHASE = "assemble_stacked_spine"
 US_STACK_PREPARATION_TYPE = ArtifactType("microcosm.us.stacked_spine_preparation", 1)
-US_SOURCE_DEPENDENCIES = ("numpy", "pandas", "microunit", "tables", "h5py")
+US_SOURCE_DEPENDENCIES = STAGE_DEPENDENCIES["assembly_prepare"]
 
 
 @dataclass(frozen=True)
@@ -158,12 +161,20 @@ def _canonical_assembly(frame: Frame, sources: tuple[Frame, ...]):
 
 
 def load_graph_asec(path: Path, *, store=None) -> Frame:
+    return _decode_graph_asec(path, store=store)
+
+
+def _decode_graph_asec(path: Path, *, store=None) -> Frame:
     del store
     frame, _binding = load_asec_raw_stage_checkpoint_v4(path)
     return frame
 
 
 def load_graph_acs(path: Path, *, store=None) -> Frame:
+    return _decode_graph_acs(path, store=store)
+
+
+def _decode_graph_acs(path: Path, *, store=None) -> Frame:
     del store
     expected = {"csv_hus.zip", "csv_pus.zip"}
     if not path.is_dir() or {entry.name for entry in path.iterdir()} != expected:
@@ -184,6 +195,7 @@ def us_source_codecs() -> SourceCodecRegistry:
     codecs.register(ASEC_CODEC, load_graph_asec)
     codecs.register(ACS_CODEC, load_graph_acs)
     codecs.register_bytes("raw-bytes-v1", load_raw_bytes)
+    validate_source_codecs(codecs)
     return codecs
 
 
@@ -221,33 +233,15 @@ def frame_column_declarations(frame: Frame) -> tuple[Owned, ...]:
 
 
 def _source_implementation_hash() -> str:
-    # US assembly calls source, role, unit and Frame helpers transitively. Bind
-    # their installed Python trees, including editable code, rather than using
-    # an unchanged package version as evidence that those helpers are unchanged.
-    digest = hashlib.sha256(b"microcosm.us.source-code.v1\0")
-    roots = (
-        ("microcosm.build", Path(__file__).resolve().parents[1]),
-        ("microcosm.frame", Path(frame_package.__file__).resolve().parent),
-    )
-    for package, root in roots:
-        for path in sorted(root.rglob("*.py")):
-            name = f"{package}/{path.relative_to(root).as_posix()}".encode()
-            content = path.read_bytes()
-            digest.update(len(name).to_bytes(8, "little"))
-            digest.update(name)
-            digest.update(len(content).to_bytes(8, "little"))
-            digest.update(content)
-    digest.update(
-        source_hash(
-            USAssemblyCreateKernel,
-            dependencies=US_SOURCE_DEPENDENCIES,
-        ).encode()
-    )
-    return digest.hexdigest()
+    """Compatibility spelling for the new preparation identity only."""
+    # This runs before cache lookup, including resume=require. A renamed or
+    # substituted public loader cannot claim the declared codec implementation.
+    us_source_codecs()
+    return implementation_hash("assembly_prepare")
 
 
 class USAssemblyCreateKernel(KernelBase):
-    ref = "us.production.spine_prepare@1"
+    ref = "us.production.spine_prepare@2"
     capabilities = Capabilities(
         determinism=Determinism.SEEDED,
         numeric=Numeric.PLATFORM_BITWISE,
@@ -281,6 +275,7 @@ class USAssemblyCreateKernel(KernelBase):
             frame=result.frame,
             receipt={
                 "phase": ASSEMBLY_PHASE,
+                "implementation": implementation_manifest("assembly_prepare"),
                 "preparation": result.receipt,
                 "dtype_transitions": transitions,
             },
@@ -292,16 +287,16 @@ class USAssemblyCreateKernel(KernelBase):
 
 
 class USSpineHarmonizeKernel(KernelBase):
-    ref = "us.production.spine_harmonize@1"
+    ref = "us.production.spine_harmonize@2"
     capabilities = Capabilities(
         determinism=Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
         structural=StructuralDelta.REWEIGHT,
-        dependencies=("numpy", "pandas"),
+        dependencies=STAGE_DEPENDENCIES["assembly_harmonize"],
     )
 
     def implementation_hash(self) -> str:
-        return _source_implementation_hash()
+        return implementation_hash("assembly_harmonize")
 
     def run(self, context: KernelContext) -> KernelResult:
         if context.params != {"phase": ASSEMBLY_PHASE}:
@@ -364,6 +359,7 @@ class USSpineHarmonizeKernel(KernelBase):
             artifacts={"frame_context": canonical_json(document)},
             receipt={
                 "phase": ASSEMBLY_PHASE,
+                "implementation": implementation_manifest("assembly_harmonize"),
                 "assembly": result.receipt,
                 "mass": {
                     "policy": "declared",

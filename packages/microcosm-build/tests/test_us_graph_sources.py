@@ -55,7 +55,7 @@ def test_assembly_graph_matches_direct_call_and_reuses_typed_context(
             calls.append(origin)
             return _source(origin)
 
-        monkeypatch.setattr(graph_sources, f"load_graph_{origin}", load)
+        monkeypatch.setattr(graph_sources, f"_decode_graph_{origin}", load)
     paths = {name: tmp_path / name for name in ("asec_raw_stage", "acs_native")}
     for path in paths.values():
         path.write_bytes(b"bounded fixture source identity")
@@ -220,7 +220,41 @@ def test_real_acs_codec_preserves_native_zero_and_child_source_absence(tmp_path)
     ):
         with ZipFile(tmp_path / name, "w") as archive:
             archive.writestr(member, pd.DataFrame(rows).to_csv(index=False))
-    frame = graph_sources.load_graph_acs(tmp_path)
+    # The real CSV parser may execute Arrow before its canonical output boundary.
+    # Compare both backends on this fixture; their options still enter identity.
+    frames = {}
+    for backend in ("python", "pyarrow"):
+        with pd.option_context("mode.string_storage", backend):
+            frames[backend] = graph_sources.load_graph_acs(tmp_path)
+    frame = frames["python"]
+    column_index_storage = set()
+    mapped_string_storage = set()
+    for entity in frame.entities:
+        left, right = frame.table(entity), frames["pyarrow"].table(entity)
+        column_index_storage.add(
+            (left.columns.dtype.storage, right.columns.dtype.storage)
+        )
+        comparable = right.copy()
+        for column in left:
+            if left[column].dtype != right[column].dtype:
+                assert isinstance(left[column].dtype, pd.StringDtype)
+                assert isinstance(right[column].dtype, pd.StringDtype)
+                assert left[column].dtype.storage == "python"
+                assert right[column].dtype.storage == "pyarrow"
+                mapped_string_storage.add((entity, column))
+                comparable[column] = right[column].astype(left[column].dtype)
+        pd.testing.assert_frame_equal(left, comparable, check_column_type=False)
+        np.testing.assert_array_equal(
+            frame.resolve_weights(entity).values,
+            frames["pyarrow"].resolve_weights(entity).values,
+        )
+    pd.testing.assert_series_equal(frame.strata, frames["pyarrow"].strata)
+    assert frame.metadata == frames["pyarrow"].metadata
+    assert frame.mass_log == frames["pyarrow"].mass_log
+    # Native mapping adds another string after the parser's canonical boundary.
+    # Both it and the column-name Index are real representation differences.
+    assert ("python", "pyarrow") in column_index_storage
+    assert ("household", "tenure_type") in mapped_string_storage
     person = frame.table("person").sort_values("age")
     assert pd.isna(person.iloc[0]["WAGP"])
     assert pd.isna(person.iloc[0]["employment_income_before_lsr"])
@@ -243,7 +277,7 @@ def _bounded_graph_run(tmp_path, monkeypatch, *, fraction=0.5):
             calls.append(origin)
             return _source(origin)
 
-        monkeypatch.setattr(graph_sources, f"load_graph_{origin}", load)
+        monkeypatch.setattr(graph_sources, f"_decode_graph_{origin}", load)
     paths = {name: tmp_path / name for name in ("asec_raw_stage", "acs_native")}
     for name, path in paths.items():
         path.write_bytes(name.encode())
@@ -467,7 +501,7 @@ def test_source_mutation_during_create_is_rejected(tmp_path, monkeypatch):
         path.write_bytes(b"changed during read")
         return _source("asec")
 
-    monkeypatch.setattr(graph_sources, "load_graph_asec", changing_source)
+    monkeypatch.setattr(graph_sources, "_decode_graph_asec", changing_source)
     with pytest.raises(NodeRejectedError, match="changed source"):
         run_graph(
             compiled, sources=paths, store=store, kernels=kernels, resume="forbid"
@@ -487,3 +521,12 @@ def test_asec_hdf_dependency_version_invalidates_assembly_implementation(monkeyp
 
     monkeypatch.setattr(kernel.importlib_metadata, "version", changed_hdf_version)
     assert graph_sources.USAssemblyCreateKernel().implementation_hash() != original_hash
+
+
+def test_required_replay_refuses_substituted_public_codec_loader(tmp_path, monkeypatch):
+    compiled, store, kernels, paths, _, _ = _bounded_graph_run(tmp_path, monkeypatch)
+    monkeypatch.setattr(graph_sources, "load_graph_asec", lambda path: _source("asec"))
+    with pytest.raises(ValueError, match="loader differs"):
+        run_graph(
+            compiled, sources=paths, store=store, kernels=kernels, resume="require"
+        )

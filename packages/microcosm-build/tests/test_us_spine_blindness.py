@@ -319,6 +319,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "graph_kernels.py",
         # Typed metadata codec and source-blind geography graph adapter.
         "graph_context.py",
+        "graph_implementation.py",
         "graph_geography.py",
         # Source import/assembly/harmonization owner, classified above.
         "graph_sources.py",

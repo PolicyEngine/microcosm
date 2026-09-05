@@ -462,7 +462,7 @@ def test_actual_assembly_harmonization_and_geography_compose_and_require_replay(
             calls.append(origin)
             return source_frames[origin]
 
-        monkeypatch.setattr(graph_sources, f"load_graph_{origin}", read_source)
+        monkeypatch.setattr(graph_sources, f"_decode_graph_{origin}", read_source)
 
     paths = _lookup_files(tmp_path)
     for source in ("asec_raw_stage", "acs_native"):
@@ -586,3 +586,64 @@ def test_actual_assembly_harmonization_and_geography_compose_and_require_replay(
             warm.population(f"{GEOGRAPHY_PHASE}.boundary").table(entity),
             actual.table(entity),
         )
+
+    # Full H5 parity includes nullable IDs, original ordered mass history and
+    # normative context. Executor aggregate transitions remain a separate log.
+    from microcosm.build.frame_checkpoint import (
+        load_frame_checkpoint,
+        write_frame_checkpoint,
+    )
+    from microcosm.build.us_runtime.graph_context import _mass_records
+    from microcosm.build.us_runtime.graph_implementation import implementation_manifest
+
+    exports = {"direct": assigned_direct}
+    for name, manifest, run_store in (
+        ("cold", cold, store),
+        ("require", warm, warm_store),
+    ):
+        population = manifest.population(f"{GEOGRAPHY_PHASE}.boundary")
+        payload = run_store.load_bytes(
+            manifest.nodes[GEOGRAPHY_PHASE].opaque_artifacts["frame_context"]
+        )
+        document = json.loads(payload)
+        exports[name] = Frame(
+            {entity: population.table(entity) for entity in population.entities},
+            population.schema,
+            {"household": population.weights_for("household")},
+            population.strata,
+            mass_log=_mass_records(document["mass_log"]),
+            metadata=document["metadata"],
+        )
+        assert encode_us_frame_context(exports[name]) == payload
+        assert exports[name].mass_log != population.mass_log
+        assert manifest.nodes[GEOGRAPHY_PHASE].receipt[
+            "implementation"
+        ] == implementation_manifest("geography")
+    for name, frame in exports.items():
+        path = tmp_path / f"full-{name}.h5"
+        write_frame_checkpoint(path, frame, metadata={"scope": "combined fixture"})
+        loaded = load_frame_checkpoint(path, frame_metadata=frame.metadata).frame
+        assert encode_us_frame_context(loaded) == encode_us_frame_context(frame)
+    assert (
+        (tmp_path / "full-direct.h5").read_bytes()
+        == (tmp_path / "full-cold.h5").read_bytes()
+        == (tmp_path / "full-require.h5").read_bytes()
+    )
+
+    # Changed lookup bytes have their own source identity, never an assembly
+    # implementation dependency. A harmless extra CSV newline exercises it.
+    crosswalk = paths["us_cd_crosswalk_117_119"]
+    crosswalk.write_bytes(crosswalk.read_bytes() + b"\n")
+    changed = run_graph(
+        compiled, sources=paths, store=store, kernels=kernels, resume="auto"
+    )
+    assert calls == ["asec", "acs"]
+    for phase in (
+        f"{graph_sources.ASSEMBLY_PHASE}.prepare",
+        graph_sources.ASSEMBLY_PHASE,
+    ):
+        assert changed.nodes[phase].hit
+        assert changed.nodes[phase].key == cold.nodes[phase].key
+    assert not changed.nodes[f"{GEOGRAPHY_PHASE}.lookup"].hit
+    assert not changed.nodes[GEOGRAPHY_PHASE].hit
+    assert changed.nodes[GEOGRAPHY_PHASE].key != cold.nodes[GEOGRAPHY_PHASE].key
