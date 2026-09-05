@@ -591,6 +591,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         required=True,
         help="Output directory for the candidate H5 and evidence sidecars.",
     )
+    parser.add_argument(
+        "--dataset-households",
+        type=int,
+        help="Exact output household count after informed L0 and refit; pool clone K is unchanged. Candidate-only until size certification.",
+    )
     parser.add_argument("--n-clones", type=int, default=UK_LOCAL_CLONE_COUNT)
     parser.add_argument(
         "--candidate-clone-counts",
@@ -841,6 +846,13 @@ def _run_candidate(
             source_lineage_modulus=args.source_lineage_modulus,
         )
         clone = assignment.result
+        if (
+            args.dataset_households is not None
+            and args.dataset_households > clone.frame.n("household")
+        ):
+            raise ValueError(
+                "--dataset-households exceeds the cloned pool; selection never clamps the request."
+            )
         if state is not None:
             append_phase(state, "cloned")
 
@@ -977,6 +989,7 @@ def _run_candidate(
             learning_rate=args.learning_rate,
             conserve_mass=_CONSERVE_MASS,
             target_records=_TARGET_RECORDS,
+            dataset_households=args.dataset_households,
             l0_lambda=_L0_LAMBDA,
             budget_iters=_BUDGET_ITERS,
             seed=args.seed,
@@ -1083,6 +1096,7 @@ def _run_candidate(
                 learning_rate=args.learning_rate,
                 conserve_mass=_CONSERVE_MASS,
                 target_records=_TARGET_RECORDS,
+                dataset_households=args.dataset_households,
                 l0_lambda=_L0_LAMBDA,
                 budget_iters=_BUDGET_ITERS,
                 solve_seed=args.seed,
@@ -1587,6 +1601,7 @@ def _joint_dry_run_plan(
         },
         "candidate_clone_counts": list(args.candidate_clone_counts or (args.n_clones,)),
         "candidate_clone_support": clone_support,
+        "parameters": _parameters(args, source_year=source_year),
         "releasable": False,
         "engine": "not_run",
         "ladder_target_provenance": dict(target_provenance),
@@ -1995,7 +2010,9 @@ def _dry_run_plan(
             "fraction": args.sample_fraction,
             "unreachable_check": "completed",
         },
-        "releasable": args.sample_fraction == 1.0 and args.engine_blocks == 1,
+        "releasable": args.sample_fraction == 1.0
+        and args.engine_blocks == 1
+        and args.dataset_households is None,
         "parameters": _parameters(args, source_year=source_year),
         "shapes": {
             "person": list(clone.frame.table("person").shape),
@@ -2288,11 +2305,14 @@ def _manifest(
             },
             "abs_delta": abs(new_total - old_total),
             "declared_stretch_bound": float(UK_LOCAL_MAX_WEIGHT_RATIO),
+            "stretch_reference": "pool_design"
+            if solve.size_receipt is None
+            else "normalized_horvitz_thompson_w_over_q",
             "realized_max_weight_ratio_vs_design": float(
                 np.max(
                     np.divide(
                         np.asarray(solve.weights, dtype=np.float64),
-                        np.asarray(clone.frame.weights_for("household").values),
+                        np.asarray(solve.initial_weights),
                     )
                 )
             ),
@@ -2304,7 +2324,11 @@ def _manifest(
                 "ladder": ladder_rows,
                 "national": int(len(solve.national_diagnostics)),
             },
-            "n_households": int(problem.n_households),
+            "n_households": int(solve.frame.n("household")),
+            "pool_households": int(problem.n_households),
+            "dataset_size": None
+            if solve.size_receipt is None
+            else dict(solve.size_receipt),
             "initial_loss": float(solve.initial_loss),
             "final_loss": float(solve.final_loss),
             "max_abs_relative_error": float(abs_errors.max()),
@@ -2389,8 +2413,15 @@ def _manifest(
             for gate_id, payload in gate_rows.items()
             if not isinstance(payload, Mapping) or payload.get("status") != "passed"
         ),
-        "releasable": releasable,
-        "release_posture": release_posture,
+        "releasable": releasable and args.dataset_households is None,
+        "release_posture": {
+            **release_posture,
+            **(
+                {}
+                if args.dataset_households is None
+                else {"size_certification_present": False}
+            ),
+        },
         "ladder_household_uprating": dict(
             cross_grain.get("ladder_household_uprating")
             or {"applied": False, "reason": "no cross-grain receipt"}
@@ -2420,6 +2451,7 @@ def _manifest(
 def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]:
     return {
         "n_clones": int(args.n_clones),
+        "dataset_households": args.dataset_households,
         "seed": int(args.seed),
         "source_year": source_year,
         "source_lineage_modulus": args.source_lineage_modulus,
@@ -2522,7 +2554,12 @@ def _validate_solve_result(
         raise RuntimeError(
             "doctrine solve returned no past-cap census; refusing candidate."
         )
-    if len(solve.weights) != problem.n_households:
+    expected_count = (
+        problem.n_households
+        if solve.selected_support is None
+        else len(solve.selected_support)
+    )
+    if len(solve.weights) != expected_count:
         raise RuntimeError(
             "doctrine solve returned a weight vector with the wrong length."
         )
@@ -2584,6 +2621,13 @@ def _validate_cli_args(args: argparse.Namespace) -> None:
         raise ValueError(
             "the joint registry path requires --input-sha256 and --ladder-sha256."
         )
+    if args.dataset_households is not None:
+        if args.dataset_households <= 0:
+            raise ValueError("--dataset-households must be positive.")
+        if args.release_candidate:
+            raise ValueError(
+                "--dataset-households is candidate-only: size-specific matched comparison and promotion scorecard are required before release."
+            )
     if args.release_candidate:
         required_release = {
             "--input-sha256": args.input_sha256,

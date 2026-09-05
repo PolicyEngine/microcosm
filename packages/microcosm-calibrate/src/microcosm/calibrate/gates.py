@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import math
 
+import numpy as np
 import torch
 from torch import nn
 
@@ -66,6 +67,10 @@ class HardConcrete(nn.Module):
             penalty close them). Must lie in ``(0, 1)``.
         temperature: Concrete-distribution temperature; lower is closer to a
             hard Bernoulli.
+        initial_probabilities: Optional per-record actual open probabilities
+            in (0, 1); overrides the historical scalar initialization.
+        protected_mask: Optional boolean vector. These records have gates
+            fixed at one during training and evaluation.
 
     Raises:
         ValueError: If ``init_mean`` is not strictly between 0 and 1, or
@@ -78,6 +83,8 @@ class HardConcrete(nn.Module):
         *,
         init_mean: float = 0.999,
         temperature: float = 0.25,
+        initial_probabilities: np.ndarray | None = None,
+        protected_mask: np.ndarray | None = None,
     ) -> None:
         super().__init__()
         if not (0.0 < init_mean < 1.0):
@@ -88,6 +95,22 @@ class HardConcrete(nn.Module):
             raise ValueError(
                 f"HardConcrete.temperature must be positive, got {temperature!r}."
             )
+        if initial_probabilities is not None:
+            probabilities = np.asarray(initial_probabilities, dtype=np.float64)
+            if (
+                probabilities.shape != (n,)
+                or not np.isfinite(probabilities).all()
+                or ((probabilities <= 0) | (probabilities >= 1)).any()
+            ):
+                raise ValueError(
+                    "initial_probabilities must align with gates and lie in (0, 1)."
+                )
+        if protected_mask is None:
+            protected_mask = np.zeros(n, dtype=bool)
+        protected_mask = np.asarray(protected_mask)
+        if protected_mask.shape != (n,) or protected_mask.dtype != np.bool_:
+            raise ValueError("protected_mask must be an aligned boolean vector.")
+        self.register_buffer("protected_mask", torch.tensor(protected_mask))
         self.temperature = float(temperature)
         self.gamma = _GAMMA
         self.zeta = _ZETA
@@ -95,6 +118,12 @@ class HardConcrete(nn.Module):
         init_val = math.log(init_mean / (1.0 - init_mean))
         with torch.no_grad():
             self.qz_logits.fill_(init_val)
+            if initial_probabilities is not None:
+                # The new vector is an actual open probability, unlike the
+                # historical scalar init_mean's sigmoid-logit convention.
+                shift = self.temperature * math.log(-self.gamma / self.zeta)
+                logits = np.log(probabilities / (1 - probabilities)) + shift
+                self.qz_logits.copy_(torch.tensor(logits, dtype=self.qz_logits.dtype))
 
     def forward(self) -> torch.Tensor:
         """Return the current gates: sampled in training, deterministic in eval."""
@@ -105,7 +134,7 @@ class HardConcrete(nn.Module):
         else:
             s = torch.sigmoid(self.qz_logits)
         stretched = s * (self.zeta - self.gamma) + self.gamma
-        return torch.clamp(stretched, 0.0, 1.0)
+        return torch.where(self.protected_mask, 1.0, torch.clamp(stretched, 0.0, 1.0))
 
     def get_penalty(self) -> torch.Tensor:
         """Expected number of open gates — the differentiable L0 surrogate.
@@ -116,9 +145,13 @@ class HardConcrete(nn.Module):
             ``l0_lambda`` and adds to the loss.
         """
         shift = self.temperature * math.log(-self.gamma / self.zeta)
-        return torch.sigmoid(self.qz_logits - shift).sum()
+        return torch.where(
+            self.protected_mask, 1.0, torch.sigmoid(self.qz_logits - shift)
+        ).sum()
 
     def get_active_prob(self) -> torch.Tensor:
         """Per-gate open-probability (the per-record version of the penalty)."""
         shift = self.temperature * math.log(-self.gamma / self.zeta)
-        return torch.sigmoid(self.qz_logits - shift)
+        return torch.where(
+            self.protected_mask, 1.0, torch.sigmoid(self.qz_logits - shift)
+        )

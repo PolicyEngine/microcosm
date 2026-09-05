@@ -106,3 +106,9 @@ with the journal pointing to them.
 Update this guide in the same PR whenever the workspace layout, test
 commands, or release flow change. If you find it contradicting the repo,
 trust the repo and fix this file.
+
+UK size experiments use `tools/build_uk_rowwise_candidate.py --dataset-households`
+with the same pool inputs as the dense candidate. The flag changes exported
+support, not clone K. Sizes remain candidate-only until their matched comparison
+and promotion scorecard are adjudicated; see
+[the size plan](docs/uk-dataset-size-plan-355.md).

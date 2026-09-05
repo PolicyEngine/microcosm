@@ -651,7 +651,7 @@ def test_rotated_holdout_keeps_national_rows_in_every_training_fold(
 
     def fake_solve(frame, training_problem, **kwargs):
         calls.append(kwargs["national_rows"])
-        return type("Solve", (), {"weights": np.ones(3)})()
+        return type("Solve", (), {"weights": np.ones(3), "selected_support": None})()
 
     monkeypatch.setattr(
         local_rowwise, "solve_uk_rowwise_weights_under_doctrine", fake_solve
@@ -1219,4 +1219,201 @@ def test_doctrine_solve_refuses_a_reordering_restore() -> None:
             bound_families=["census_households/constituency", "tenure/constituency"],
             restore=reordering_restore,
             epochs=2,
+        )
+
+
+def test_exact_size_preserves_targets_and_household_links():
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=2,
+    )
+    sized = refit_uk_dataset_size(
+        frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7
+    )
+    assert sized.result.frame.n("household") == 2
+    assert sized.result.frame.n("person") == 2
+    assert sized.result.frame.n("benunit") == 2
+    assert sized.result.problem.names == dense.problem.names
+    assert sized.result.initial_weights.sum() == pytest.approx(
+        dense.initial_weights.sum()
+    )
+    assert (sized.result.weights <= 10 * sized.result.initial_weights).all()
+    again = refit_uk_dataset_size(
+        frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7
+    )
+    np.testing.assert_array_equal(sized.support, again.support)
+
+
+@pytest.mark.parametrize("size", [0, -1, True, 4, 1.5])
+def test_exact_size_refuses_invalid_sizes(size):
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=1,
+    )
+    with pytest.raises(ValueError, match="integer"):
+        refit_uk_dataset_size(
+            frame, dense, households=size, epochs=1, learning_rate=0.02, seed=7
+        )
+
+
+def test_size_solve_restores_full_prepared_tables_before_subsetting():
+    frame = _clone_frame()
+    metrics = pd.DataFrame({"households": [1.0, 1.0, 1.0]}, index=[101, 102, 103])
+    problem = build_uk_rowwise_local_matrix(
+        metrics,
+        _assigned(),
+        pd.DataFrame({"code": ["E001", "S001"], "households": [2.0, 1.0]}),
+    )
+    restored_counts = []
+
+    def restore(full):
+        restored_counts.append(full.n("household"))
+        return full
+
+    result = solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        bound_families=["census_households/constituency"],
+        dataset_households=2,
+        epochs=2,
+        seed=7,
+        restore=restore,
+    )
+    assert restored_counts == [3]
+    assert result.frame.n("household") == 2
+    assert result.frame.n("person") == 2
+    assert len(result.diagnostics) == 2
+    assert "census_households/constituency" in result.frame.mass_log[-1].reason
+    assert result.selected_support.tolist() == [0, 2]
+
+
+def test_size_holdout_uses_compact_support_and_reselects_each_fold(monkeypatch):
+    import microcosm.build.uk_runtime.local_rowwise as runtime
+
+    metrics = pd.DataFrame({"households": [1.0, 2.0, 3.0]}, index=[101, 102, 103])
+    calls = []
+
+    def solve(frame, training, **kwargs):
+        calls.append((len(training.targets), kwargs["dataset_households"]))
+        return type(
+            "Solve",
+            (),
+            {"weights": np.array([1.0, 1.0]), "selected_support": np.array([0, 2])},
+        )()
+
+    monkeypatch.setattr(runtime, "solve_uk_rowwise_weights_under_doctrine", solve)
+    # The holdout helper needs at least one target in each of five folds.
+    richer = build_uk_rowwise_local_matrix(
+        pd.DataFrame(
+            {
+                name: [1.0, 2.0, 3.0]
+                for name in ("households", "tenure/social_rent", "tenure/private_rent")
+            },
+            index=metrics.index,
+        ),
+        _assigned(),
+        pd.DataFrame(
+            {
+                "code": ["E001", "S001"],
+                **{
+                    name: [3.0, 3.0]
+                    for name in (
+                        "households",
+                        "tenure/social_rent",
+                        "tenure/private_rent",
+                    )
+                },
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        runtime, "_derive_uk_local_bound_families_from_target_frame", lambda *a, **k: ()
+    )
+    receipt = rotated_uk_local_holdout(
+        _clone_frame(), richer, dataset_households=2, epochs=1
+    )
+    assert len(calls) == 5
+    assert all(n < len(richer.targets) and k == 2 for n, k in calls)
+    assert np.isfinite(receipt["mean_holdout_loss"])
+
+
+def test_size_refit_freezes_population_dependent_measures():
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    # A population-normalized measure changes if evaluated on two instead of
+    # three households. The refit must retain the full-pool value of 1/3.
+    targets = TargetSet(
+        [
+            Target(
+                "normalized",
+                "household",
+                lambda f: np.full(f.n("household"), 1 / f.n("household")),
+                1,
+            )
+        ]
+    )
+    dense = calibrate(frame, targets, epochs=2)
+    small = refit_uk_dataset_size(
+        frame, dense, households=2, epochs=2, learning_rate=0.02, seed=7
+    )
+    np.testing.assert_allclose(small.result.problem.matrix.toarray(), [[1 / 3, 1 / 3]])
+
+
+def test_full_size_returns_dense_reference_without_search():
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=1,
+    )
+    full = refit_uk_dataset_size(
+        frame, dense, households=3, epochs=1, learning_rate=0.02, seed=7
+    )
+    assert full.result is dense
+    assert full.support.tolist() == [0, 1, 2]
+
+
+def test_size_refuses_budget_smaller_than_protected_carriers():
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    targets = TargetSet(
+        [
+            Target(
+                str(i),
+                "household",
+                lambda f, i=i: (
+                    f.table("household").household_id.to_numpy() == i
+                ).astype(float),
+                1,
+            )
+            for i in [101, 102, 103]
+        ]
+    )
+    dense = calibrate(frame, targets, epochs=1)
+    with pytest.raises(ValueError, match="3 protected target carriers"):
+        refit_uk_dataset_size(
+            frame, dense, households=2, epochs=1, learning_rate=0.02, seed=7
         )

@@ -151,6 +151,8 @@ class UKRowwiseDoctrineSolve:
     national_past_cap_census: Mapping[str, Any]
     all_past_cap_census: Mapping[str, Any]
     binding_adjudications: Mapping[str, Any]
+    selected_support: np.ndarray | None = None
+    size_receipt: Mapping[str, Any] | None = None
 
 
 def past_cap_census(
@@ -1008,6 +1010,7 @@ def solve_uk_rowwise_weights_under_doctrine(
     learning_rate: float = 0.15,
     conserve_mass: bool = False,
     target_records: int | None = None,
+    dataset_households: int | None = None,
     l0_lambda: float = 0.0,
     budget_iters: int = 10,
     seed: int = 0,
@@ -1142,6 +1145,26 @@ def solve_uk_rowwise_weights_under_doctrine(
         target_loss_weights=target_loss_weights,
         target_loss_cap=doctrine.target_loss_cap,
     )
+    selected_support = None
+    size_receipt = None
+    if dataset_households is not None:
+        if target_records is not None or l0_lambda != 0:
+            raise ValueError(
+                "dataset_households requires an unpruned dense reference solve."
+            )
+        from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+
+        sized = refit_uk_dataset_size(
+            frame,
+            result,
+            households=dataset_households,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            seed=seed,
+        )
+        result = sized.result
+        selected_support = sized.support
+        size_receipt = sized.receipt
     if result.skipped:
         reasons = [
             f"{skipped.target.name}: {skipped.reason}" for skipped in result.skipped[:5]
@@ -1280,9 +1303,32 @@ def solve_uk_rowwise_weights_under_doctrine(
     # ship if the kernel product held strata or metadata the rebuilt frame
     # lost (both trivially equal today; the guard is the boundary marker
     # for the day they are not).
-    clean_result = result.frame if restore is None else restore(result.frame)
+    if selected_support is None:
+        clean_result = result.frame if restore is None else restore(result.frame)
+        expected_ids = problem.household_ids
+    else:
+        # Restore the full prepared carrier before selecting: legacy restorers
+        # retain full original tables and cannot accept compact weight arrays.
+        clean_pool = frame if restore is None else restore(frame)
+        expected_ids = tuple(problem.household_ids[i] for i in selected_support)
+        clean_subset = clean_pool.select(
+            clean_pool.table("person")["person_household_id"]
+            .isin(expected_ids)
+            .to_numpy()
+        )
+        clean_result = Frame(
+            {entity: clean_subset.table(entity) for entity in clean_subset.entities},
+            clean_subset.schema,
+            {
+                entity: result.frame.weights_for(entity)
+                for entity in result.frame.weighted_entities
+            },
+            clean_subset.strata,
+            mass_log=result.frame.mass_log,
+            metadata=result.frame.metadata,
+        )
     restored_ids = tuple(clean_result.table("household")["household_id"].tolist())
-    if restored_ids != problem.household_ids:
+    if restored_ids != expected_ids:
         raise ValueError(
             "restore returned households that do not match the problem's rows "
             "(same ids, same order); weights are written back by position, so a "
@@ -1344,6 +1390,8 @@ def solve_uk_rowwise_weights_under_doctrine(
         national_past_cap_census=national_census,
         all_past_cap_census=all_census,
         binding_adjudications=binding_adjudications,
+        selected_support=selected_support,
+        size_receipt=size_receipt,
     )
 
 
@@ -1380,6 +1428,7 @@ def rotated_uk_local_holdout(
     learning_rate: float = 0.15,
     conserve_mass: bool = False,
     target_records: int | None = None,
+    dataset_households: int | None = None,
     l0_lambda: float = 0.0,
     budget_iters: int = 10,
     solve_seed: int = 0,
@@ -1424,13 +1473,20 @@ def rotated_uk_local_holdout(
             learning_rate=learning_rate,
             conserve_mass=conserve_mass,
             target_records=target_records,
+            dataset_households=dataset_households,
             l0_lambda=l0_lambda,
             budget_iters=budget_iters,
             seed=solve_seed,
         )
         held_targets = problem.targets[holdout_indices]
         held_estimates = np.asarray(
-            problem.matrix[holdout_indices] @ train_solve.weights,
+            problem.matrix[holdout_indices][
+                :,
+                np.arange(problem.n_households)
+                if train_solve.selected_support is None
+                else train_solve.selected_support,
+            ]
+            @ train_solve.weights,
             dtype=np.float64,
         ).reshape(-1)
         held_weights = uk_local_target_loss_weights(
