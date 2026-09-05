@@ -26,6 +26,8 @@ from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
 )
 
+pytestmark = pytest.mark.requires_us
+
 LEAF_VALUES = {
     "employment_income_before_lsr": [30000.0, 0.0, 12000.0, 0.0, 45000.0, 0.0],
     "qualified_dividend_income": [448.0, 0.0, 0.0, 0.0, 89.6, 0.0],
@@ -220,3 +222,74 @@ def test_outputs_are_never_returned_as_population_cells():
     assert set(result.values) == set(ADMITTED_ROOTS)
     for root in ADMITTED_ROOTS:
         assert root not in frame.person.columns
+
+
+def test_baseline_runtime_refuses_same_version_source_or_parameter_drift(monkeypatch):
+    expected = load_engine_defaults()["baseline_runtime"]
+
+    def changed(package, module):
+        result = dict(expected[package])
+        if package == "policyengine-us":
+            result["source_and_parameters_sha256"] = "f" * 64
+        return result
+
+    monkeypatch.setattr(evaluation, "_runtime_package_identity", changed)
+    with pytest.raises(EngineAdmissionError, match="ENGINE_RUNTIME_DRIFT"):
+        evaluation.engine_runtime_identity()
+
+
+def test_runtime_identity_binds_code_and_baseline_parameters_without_data(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    installed = SimpleNamespace(version="test", locate_file=lambda module: tmp_path)
+    monkeypatch.setattr(evaluation, "distribution", lambda package: installed)
+    (tmp_path / "formula.py").write_text("result = x + y\n")
+    params = tmp_path / "parameters"
+    params.mkdir()
+    parameter = params / "baseline.yaml"
+    parameter.write_text("value: 0\n")
+    original = evaluation._runtime_package_identity("test", "test")
+    assert original["files"] == 2
+    # Source-only inspection must not read data: even an unreadable or invalid
+    # population payload is outside the exact source/parameter roster.
+    (tmp_path / "population.h5").write_bytes(b"not a source input")
+    assert evaluation._runtime_package_identity("test", "test") == original
+    parameter.write_text("value: 1\n")
+    altered = evaluation._runtime_package_identity("test", "test")
+    assert altered != original
+    parameter.write_text("value: 0\n")
+    (tmp_path / "formula.py").write_text("result = x - y\n")
+    assert evaluation._runtime_package_identity("test", "test") != original
+
+
+def test_forged_contract_does_not_reach_engine():
+    contracts = ADMITTED_ENGINE_OUTPUT_CONTRACTS[:-1]
+    with pytest.raises(EngineAdmissionError, match="ENGINE_CONTRACT_ROSTER"):
+        materialize_engine_outputs(tiny_frame(), PolicyEngineUSEngine(), contracts)
+
+
+def test_runtime_refuses_shadow_package_before_any_engine_call(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    shadow = SimpleNamespace(
+        origin=str(tmp_path / "__init__.py"), submodule_search_locations=[str(tmp_path)]
+    )
+    monkeypatch.setattr(evaluation, "find_spec", lambda name: shadow)
+    with pytest.raises(EngineAdmissionError, match="ENGINE_RUNTIME_ORIGIN"):
+        evaluation.engine_runtime_identity()
+
+
+def test_runtime_refuses_loaded_submodule_outside_pinned_distribution(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    monkeypatch.setitem(
+        evaluation.sys.modules,
+        "policyengine_us.unpinned_fixture",
+        SimpleNamespace(__file__=str(tmp_path / "formula.py")),
+    )
+    with pytest.raises(EngineAdmissionError, match="ENGINE_RUNTIME_ORIGIN"):
+        evaluation.engine_runtime_identity()

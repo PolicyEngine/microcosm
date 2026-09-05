@@ -21,6 +21,12 @@ its separate receipt to unchanged T1/money, with housing authenticated on T1.
 
 ## Done
 
+- Pinned complete installed PE-US/Core source and baseline parameter inventories;
+  engine identity now verifies these before cache lookup and refuses shadow
+  package/module origins. The four exact formula closures and empty defaults
+  remain unchanged. Engine development checks: 12 passed, followed by 4 affected
+  runtime-origin/real-engine checks, zero skips. Logs retained under
+  `out/current-money-bridge/engine-*.log`.
 - Resumed-source composition: separate reviewed S now attaches before actual
   tax-unit construction; housing authenticates the original T1. Prepared receipt
   binds S and T1 separately. Twelve targeted invented prepared-source tests pass,

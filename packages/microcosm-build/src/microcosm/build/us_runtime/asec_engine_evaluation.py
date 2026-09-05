@@ -13,9 +13,13 @@ never written back as population cells.
 from __future__ import annotations
 
 import struct
+import sys
 from dataclasses import dataclass
 from hashlib import sha256
 from importlib import resources
+from importlib.metadata import distribution
+from importlib.util import find_spec
+from pathlib import Path
 
 import numpy as np
 
@@ -29,7 +33,7 @@ US_ASEC_ENGINE_EVALUATION_TYPE = ArtifactType("microcosm.us.asec_engine_evaluati
 ENGINE_PACKAGE = "policyengine-us"
 ENGINE_DEFAULTS_RESOURCE = "asec_current_money_engine_defaults_v1.json"
 ENGINE_DEFAULTS_SHA256 = (
-    "3d560cd8dfa0b4a194f15febaa08b52fc64442f34803f4be28c5681efeaabf85"
+    "090dd200ecdb837127dba1d1f22903d152cef8a434085e4ead4d379350ee5b82"
 )
 ENGINE_DEFAULTS_ARTIFACT_KIND = "microcosm.us.asec_current_money_engine_defaults.v1"
 EVALUATION_MAGIC = b"MCASECEV\x01"
@@ -149,6 +153,82 @@ def load_engine_defaults() -> dict:
     return document
 
 
+def _runtime_package_identity(package: str, module: str) -> dict:
+    """Hash installed model code and parameter files, never population data.
+
+    Include relative names so additions, removals and relocation have explicit
+    semantics. Recompute on every invocation: cache admission must see an edit
+    made after a previous evaluation in the same process.
+    """
+    installed = distribution(package)
+    root = Path(installed.locate_file(module))
+    files = sorted(
+        path
+        for path in root.rglob("*")
+        if path.is_file()
+        and (
+            path.suffix == ".py"
+            or (
+                "parameters" in path.relative_to(root).parts
+                and path.suffix in (".yaml", ".yml", ".json")
+            )
+        )
+    )
+    records = [
+        [path.relative_to(root).as_posix(), sha256(path.read_bytes()).hexdigest()]
+        for path in files
+    ]
+    return {
+        "version": installed.version,
+        "files": len(records),
+        "source_and_parameters_sha256": sha256(canonical_json(records)).hexdigest(),
+    }
+
+
+def _verify_runtime_origin(package: str, module: str) -> None:
+    """The adapter must import the same distribution whose bytes are pinned."""
+    root = Path(distribution(package).locate_file(module)).resolve()
+    spec = find_spec(module)
+    _require(
+        spec is not None
+        and spec.origin is not None
+        and Path(spec.origin).resolve() == root / "__init__.py"
+        and spec.submodule_search_locations is not None
+        and [Path(path).resolve() for path in spec.submodule_search_locations]
+        == [root],
+        "ENGINE_RUNTIME_ORIGIN",
+    )
+    for name, loaded in tuple(sys.modules.items()):
+        if name != module and not name.startswith(module + "."):
+            continue
+        filename = getattr(loaded, "__file__", None)
+        if filename is not None:
+            _require(
+                Path(filename).resolve().is_relative_to(root), "ENGINE_RUNTIME_ORIGIN"
+            )
+        for path in getattr(loaded, "__path__", ()):
+            _require(Path(path).resolve().is_relative_to(root), "ENGINE_RUNTIME_ORIGIN")
+
+
+def engine_runtime_identity() -> dict:
+    """Verify the pinned baseline runtime before execution or a cache lookup."""
+    document = load_engine_defaults()
+    for package, module in (
+        ("policyengine-us", "policyengine_us"),
+        ("policyengine-core", "policyengine_core"),
+    ):
+        _verify_runtime_origin(package, module)
+    observed = {
+        package: _runtime_package_identity(package, module)
+        for package, module in (
+            ("policyengine-us", "policyengine_us"),
+            ("policyengine-core", "policyengine_core"),
+        )
+    }
+    _require(observed == document["baseline_runtime"], "ENGINE_RUNTIME_DRIFT")
+    return {"policy": "installed_baseline_no_reforms", "packages": observed}
+
+
 def _prior_year_leaves() -> frozenset[str]:
     family = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["prior_year_income"]
     return frozenset(name for columns in family.values() for name in columns)
@@ -259,6 +339,8 @@ def materialize_engine_outputs(
     _require(getattr(engine, "country", None) == "us", "ENGINE_COUNTRY")
     _require(period == EVALUATION_PERIOD, "ENGINE_PERIOD")
     _require(bool(contracts), "ENGINE_NO_ADMITTED_OUTPUTS")
+    _require(contracts == ADMITTED_ENGINE_OUTPUT_CONTRACTS, "ENGINE_CONTRACT_ROSTER")
+    runtime = engine_runtime_identity()
     rows = frame.n("person")
     _require(0 < rows <= EVALUATION_MAX_ROWS, "ENGINE_ROW_BOUND")
     roots = tuple(sorted(contract.root for contract in contracts))
@@ -280,6 +362,7 @@ def materialize_engine_outputs(
         "engine_package": ENGINE_PACKAGE,
         "engine_version": contracts[0].engine_version,
         "period": period,
+        "baseline_runtime": runtime,
         "person_rows": rows,
         "roots": list(roots),
         "closures": {
@@ -384,6 +467,7 @@ __all__ = [
     "admit_engine_outputs",
     "decode_engine_evaluation",
     "encode_engine_evaluation",
+    "engine_runtime_identity",
     "load_engine_defaults",
     "materialize_engine_outputs",
 ]

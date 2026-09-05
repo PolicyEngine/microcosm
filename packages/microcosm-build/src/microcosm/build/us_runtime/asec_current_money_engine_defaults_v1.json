@@ -17,5 +17,18 @@
     "self_employment_income": "needs sstb_self_employment_income_before_lsr, which this slice does not map"
   },
   "release_eligible": false,
-  "scoring_claim": "none; these are engine outputs on an engineering sample, not a tax or benefit score"
+  "scoring_claim": "none; these are engine outputs on an engineering sample, not a tax or benefit score",
+  "baseline_runtime": {
+    "policyengine-us": {
+      "version": "1.819.0",
+      "files": 12313,
+      "source_and_parameters_sha256": "12c474205741021bb45ae618f85ddd6d15e8cbb51dece8334f2d52c04500c674"
+    },
+    "policyengine-core": {
+      "version": "3.31.0",
+      "files": 175,
+      "source_and_parameters_sha256": "fbcc6f3d8e86c023c29e0782d95103155828cfa4ef6a80ed6f785f619be6439e"
+    }
+  },
+  "baseline_runtime_file_policy": "all package Python source and parameters YAML/JSON; sorted relative paths and SHA256; no population data"
 }
