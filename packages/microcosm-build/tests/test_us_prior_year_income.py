@@ -254,6 +254,99 @@ def test_existing_default_outputs_rederive_when_raw_sources_remain() -> None:
     assert result["self_employment_income_last_year"].tolist() != [0.0] * len(result)
 
 
+def test_person_helper_preserves_order_index_raw_values_and_signed_prior_join():
+    frame = _source_frame()
+    person = frame.person.copy().iloc[[7, 2, 0, 5, 1, 6, 3, 4]]
+    person.index = pd.Index([93, 42, 18, 81, 62, 11, 47, 25], name="source_row")
+    before = person.copy(deep=True)
+    result = module.prepare_us_prior_year_person(
+        person,
+        weights=Weights(np.arange(1, 9), WeightKind.IMPORTANCE),
+        seed=0,
+        time_period=2024,
+    )
+    pd.testing.assert_frame_equal(person, before)
+    pd.testing.assert_index_equal(result.index, person.index)
+    pd.testing.assert_frame_equal(result[list(person.columns)], person)
+    by_id = result.set_index("person_id")
+    assert by_id["self_employment_income_last_year"].sort_index().tolist() == [
+        0,
+        -20,
+        30,
+        20,
+        -5,
+        0,
+        50,
+        60,
+    ]
+    assert by_id.loc[2, "previous_year_income_available"]
+    assert not by_id.loc[5, "previous_year_income_available"]
+
+
+def test_person_helper_and_frame_passthrough_preserve_partial_null_incumbents():
+    original = _source_frame()
+    person = original.person.drop(columns=["I_ERNVAL"]).copy()
+    person["employment_income_last_year"] = np.nan
+    person["self_employment_income_last_year"] = [-1.0, *([np.nan] * 7)]
+    person["previous_year_income_available"] = pd.array(
+        [True, *([None] * 7)], dtype="boolean"
+    )
+    frame = module._replace_person_table(original, person)
+    result = module.prepare_us_prior_year_person(
+        person, weights=frame.resolve_weights("person"), seed=0, time_period=2024
+    )
+    assert result is person
+    assert with_us_prior_year_income_inputs(frame, seed=0, time_period=2024) is frame
+
+
+def test_person_helper_refuses_wrong_weight_length_and_untyped_weights():
+    person = _source_frame().person
+    with pytest.raises(ValueError, match="weights must match"):
+        module.prepare_us_prior_year_person(
+            person, weights=Weights([1], WeightKind.DESIGN), seed=0, time_period=2024
+        )
+    with pytest.raises(TypeError, match="canonical Weights"):
+        module.prepare_us_prior_year_person(
+            person, weights=np.ones(len(person)), seed=0, time_period=2024
+        )
+
+
+@pytest.mark.parametrize(
+    "mismatch", ["absent", "reordered", "missing_column", "wrong_type"]
+)
+def test_support_person_helper_requires_actual_aligned_predictor_projection(mismatch):
+    frame = clone_us_frame_for_puf_support(_source_frame())
+    predictors = module._person_prior_year_income_predictors(frame)
+    if mismatch == "absent":
+        predictors = None
+    elif mismatch == "reordered":
+        predictors = predictors.iloc[::-1]
+    elif mismatch == "wrong_type":
+        predictors = predictors.to_dict()
+    else:
+        predictors = predictors.drop(columns=["age"])
+    with pytest.raises(ValueError, match="actual aligned PUF predictors"):
+        module.prepare_us_prior_year_person(
+            frame.person,
+            weights=frame.resolve_weights("person"),
+            seed=0,
+            time_period=2024,
+            predictors=predictors,
+        )
+
+
+def test_source_person_helper_refuses_unrequested_support_predictors():
+    frame = _source_frame()
+    with pytest.raises(ValueError, match="require no PUF predictors"):
+        module.prepare_us_prior_year_person(
+            frame.person,
+            weights=frame.resolve_weights("person"),
+            seed=0,
+            time_period=2024,
+            predictors=module._person_prior_year_income_predictors(frame),
+        )
+
+
 def test_join_rejects_duplicate_source_year_person_key() -> None:
     frame = _source_frame()
     person = frame.table("person").copy()
@@ -354,6 +447,52 @@ def test_puf_support_joint_qrf_is_weighted_signed_and_drops_formula_output(
     assert call["kwargs"] == {"n_estimators": 100, "seed": 7}
 
 
+def test_support_helper_matches_wrapper_with_actual_predictor_projection(monkeypatch):
+    monkeypatch.setattr(module, "QRF", _QRF)
+    direct = with_us_prior_year_income_inputs(_source_frame(), seed=7, time_period=2024)
+    expanded = clone_us_frame_for_puf_support(direct)
+    predictors = module._person_prior_year_income_predictors(expanded)
+    before = predictors.copy(deep=True)
+    helper = module.prepare_us_prior_year_person(
+        expanded.person,
+        weights=expanded.resolve_weights("person"),
+        predictors=predictors,
+        seed=7,
+        time_period=2024,
+    )
+    wrapped = with_us_prior_year_income_inputs(expanded, seed=7, time_period=2024)
+    pd.testing.assert_frame_equal(helper, wrapped.person)
+    pd.testing.assert_frame_equal(predictors, before)
+    assert module._FORMULA_OWNED_OUTPUT not in helper
+
+
+def test_wrapper_keeps_weight_error_before_invalid_predictor_error():
+    source = with_us_prior_year_income_inputs(_source_frame(), seed=7, time_period=2024)
+    expanded = clone_us_frame_for_puf_support(source)
+    tables = {entity: expanded.table(entity).copy() for entity in expanded.entities}
+    tables["person"].drop(columns="has_esi", inplace=True)
+    # Valid explicit vectors, but person inheritance is ambiguous between two
+    # weighted groups. The predictor input is independently missing as well.
+    frame = Frame(
+        tables,
+        expanded.schema,
+        {
+            "household": expanded.weights_for("household"),
+            "tax_unit": expanded.resolve_weights("tax_unit"),
+        },
+        expanded.strata,
+        metadata=expanded.metadata,
+        mass_log=expanded.mass_log,
+    )
+    with pytest.raises(ValueError) as weights:
+        frame.resolve_weights("person")
+    with pytest.raises(SourceRuntimeError, match="has_esi"):
+        module._person_prior_year_income_predictors(frame)
+    with pytest.raises(ValueError) as actual:
+        with_us_prior_year_income_inputs(frame, seed=7, time_period=2024)
+    assert str(actual.value) == str(weights.value)
+
+
 def test_puf_qrf_rejects_zero_weight_capped_training_sample() -> None:
     n_asec = 5_001
     sampled = (
@@ -411,10 +550,7 @@ def _with_stack_manifest(
     return Frame(
         {entity: frame.table(entity).copy() for entity in frame.entities},
         frame.schema,
-        {
-            entity: frame.weights_for(entity)
-            for entity in frame.weighted_entities
-        },
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
         metadata={"us_stacked_spine_manifest": manifest},
@@ -452,9 +588,9 @@ def test_sampled_rung_scales_only_prior_year_availability_floor() -> None:
     assert gate.details[
         "previous_year_income_available_sampled_match_survival_factor"
     ] == pytest.approx(0.25)
-    assert gate.details["previous_year_income_available_applied_floor"] == pytest.approx(
-        0.0125
-    )
+    assert gate.details[
+        "previous_year_income_available_applied_floor"
+    ] == pytest.approx(0.0125)
     assert gate.details["previous_year_income_available_applied_share_band"] == [
         0.0125,
         0.50,
@@ -504,7 +640,9 @@ def test_full_rung_gate_manifest_is_byte_identical_to_legacy_gate() -> None:
 
     assert full_rung == legacy
     assert manifest_bytes(full_rung) == manifest_bytes(legacy)
-    assert not any("applied" in key or "survival_factor" in key for key in full_rung.details)
+    assert not any(
+        "applied" in key or "survival_factor" in key for key in full_rung.details
+    )
 
 
 def test_legacy_acs_only_sampling_does_not_scale_asec_match_floor() -> None:

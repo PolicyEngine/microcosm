@@ -1,0 +1,1 @@
+Expose the existing pre-clone US prior-year join through declared graph person views after the accepted measured-hours gate, preserving source receipts, nominal inputs, and cache replay without fitting a support model.

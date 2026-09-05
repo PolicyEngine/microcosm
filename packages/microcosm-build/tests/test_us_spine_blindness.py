@@ -69,6 +69,9 @@ _US_RUNTIME = (
 )
 _US_RUNTIME_IMPORT_PREFIX = "microcosm.build.us_runtime"
 _SPINE_BLIND_BUILD_TOOLS = (_REPOSITORY_ROOT / "tools" / "build_us_multispine_pool.py",)
+# Shared diagnostic producers get the ordinary non-owner/source-channel scans;
+# their placement outside us_runtime does not create a provenance exemption.
+_SPINE_BLIND_SHARED_MODULES = (_US_RUNTIME.parent / "quality_aggregates.py",)
 _REQUIRED_POOL_RUNTIME_MODULES = frozenset(
     {
         "late_producer_dag.py",
@@ -101,6 +104,11 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # stage validators can inspect them; no graph kernel reads or mutates
         # them, and the stage kernels stay under the operator guard below.
         "graph.py",
+        # Production pre-operator graph owner: declares source-channel views
+        # for actual source DESIGN preparation and importance harmonization.
+        # It applies no post-assembly population treatment; those graph
+        # operators remain subject to the source-blind guard.
+        "graph_sources.py",
         # Enumerates provenance columns only to reject preassembled source frames.
         "operator_boundary.py",
         "puf_qrf_chain.py",  # Carries provenance into resumable checkpoints.
@@ -148,6 +156,9 @@ _PUF_CLONE_OPERATOR_MODULES = (
     "puf_support.py",
 )
 _SPINE_BLIND_OPERATOR_MODULES = (
+    "_graph_acs_rent_artifacts.py",
+    "graph_acs_rent.py",
+    "graph_acs_rent_source.py",
     "acs_transfer.py",
     "adult_care.py",
     "alimony.py",
@@ -217,6 +228,8 @@ _GATE_SOURCE_SCOPE_HELPER_CALLERS = {
 _OTHER_US_RUNTIME_MODULES = frozenset(
     {
         "__init__.py",
+        # Closed summary-policy validator; no source reads or population treatment.
+        "_person_signal_summary.py",
         # Exact source-universe validator/receipt owner; no population treatment.
         "acs_income_universe.py",
         "acs_inputs.py",
@@ -226,11 +239,16 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "acs_sources.py",
         "acs_transfer_bank.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_checkpoint.py",  # Bounded checkpoint I/O; no population treatment.
+        "asec_household_observations.py",  # Authenticated source-only exact-key join.
+        "asec_raw_stage_v4.py",  # Authenticated source restoration; no treatment.
         "asec_pool.py",
         "base_pool.py",
         "block_ladder_sources.py",
         "capital_gain_distributions.py",
         "casualty_losses.py",
+        # Public reference aggregates and pinned acquisition; no population treatment.
+        "cd_reference.py",
+        "cd_reference_sources.py",
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",
@@ -257,6 +275,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "pregnancy.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
+        "reported_coverage_source.py",  # Exact observed-source join; no treatment.
         "puf_aggregate_records.py",
         "puf_capital_gains_tail.py",
         "puf_donor_io.py",  # Bounded donor artifact I/O; no population treatment.
@@ -308,6 +327,20 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "graph.py",
         "graph_kernels.py",
         "worker_identity.py",  # Portable primary-QRF worker identity; no population treatment.
+        # Typed metadata codec and source-blind geography graph adapter.
+        "graph_context.py",
+        "graph_implementation.py",
+        "graph_geography.py",
+        # Measured-hours adapter; still subject to the all-runtime AST scan.
+        "graph_early_preparation.py",
+        "graph_cps_carried.py",
+        "graph_prior_year.py",
+        # Relationship/eligibility person-preparation adapter; declares views
+        # and kernels only. Selection, role stripping and the merge stay in the
+        # pool owner, and it remains subject to the all-runtime AST scan.
+        "graph_person_preparation.py",
+        # Source import/assembly/harmonization owner, classified above.
+        "graph_sources.py",
     }
 )
 _CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(
@@ -3348,6 +3381,15 @@ def test_registered_population_operators_do_not_read_any_source_channel() -> Non
     )
 
 
+def test_shared_quality_producers_are_source_spine_blind() -> None:
+    for path in _SPINE_BLIND_SHARED_MODULES:
+        assert path.is_file(), f"shared producer module is missing: {path.name}"
+        source = path.read_text()
+        assert not _non_owner_source_spine_accesses(path.name, source)
+        assert not _operator_source_channel_reads(source)
+        assert not _frame_metadata_drops(source)
+
+
 def test_physical_source_accessor_is_confined_to_reviewed_gates() -> None:
     """Origin-aware diagnostics must not become population treatments."""
 
@@ -3403,8 +3445,9 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 70, (
-            f"{tool.name} must reach the pinned 70-module runtime graph; "
+        # Includes the shared person-signal validator and portable worker identity.
+        assert len(runtime_graph) == 72, (
+            f"{tool.name} must reach the pinned 72-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

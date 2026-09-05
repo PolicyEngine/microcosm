@@ -1,0 +1,1265 @@
+{
+  "contracts": {
+    "microcosm.build/frame_checkpoint.py": {
+      "imports": [
+        "h5py",
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "6e84799b53beb6b39981b770f65412a60e3808f6416bda934c0017ad36196e13",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/frame_sampling.py": {
+      "imports": [
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/gates.py": {
+      "imports": [
+        "microcosm.build.ledger_targets",
+        "microcosm.build.us_runtime.stacked_spine",
+        "microcosm.calibrate.registry",
+        "microcosm.calibrate.solve",
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "06b1202277975ae894fc8ece00dbac4b51129c78ab41d44d45aa86969f8e940e"
+    },
+    "microcosm.build/outer_stage_runtime.py": {
+      "imports": [
+        "microcosm.build.frame_checkpoint",
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "a0d0bd839844e63cf2581413187e20748db921b657051a72a022ea6185176fd0",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/serialization_dtypes.py": {
+      "imports": [
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/acs_inputs.py": {
+      "imports": [
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/acs_pums.py": {
+      "imports": [
+        "microcosm.build.serialization_dtypes",
+        "microcosm.frame",
+        "microcosm.frame.units",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "3de7aae8590dfd67cfd50c129c5fca3b3ba9eb8b2444ed59f84f92ff94a735ee",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/asec_checkpoint.py": {
+      "imports": [
+        "microcosm.build.frame_checkpoint",
+        "microcosm.build.outer_stage_runtime",
+        "microcosm.build.serialization_dtypes",
+        "microcosm.build.us_runtime.education_assistance_source",
+        "microcosm.build.us_runtime.operator_boundary",
+        "microcosm.build.us_runtime.reported_coverage_source",
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/congressional_district_geography.py": {
+      "imports": [
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/congressional_district_vintage.py": {
+      "imports": [
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "cba8c434f995a8a867f6b67951909b2038954efc13cf25c04ea958ffac6a8f61",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/education_assistance_source.py": {
+      "imports": [
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "27781733e25a9a4e98fb2ee8fe937391e7a301cf22f3ed1b2faa9bf8524831a0",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/geography_ladder.py": {
+      "imports": [
+        "microcosm.build.gates",
+        "microcosm.build.us_runtime.congressional_district_geography",
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "539fedb954503afc210fa2e9ad841638d8fc2fc1ab6e5070d21827cb896246fc",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/graph_context.py": {
+      "imports": [
+        "microcosm.frame",
+        "microcosm.graph",
+        "microcosm.graph.canonical",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/graph_geography.py": {
+      "imports": [
+        "microcosm.build.gates",
+        "microcosm.build.us_runtime.congressional_district_geography",
+        "microcosm.build.us_runtime.congressional_district_vintage",
+        "microcosm.build.us_runtime.graph_context",
+        "microcosm.build.us_runtime.graph_implementation",
+        "microcosm.build.us_runtime.puma_ladder",
+        "microcosm.graph",
+        "microcosm.graph.canonical",
+        "microcosm.graph.codecs",
+        "microcosm.graph.kernel",
+        "microcosm.graph.population",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/graph_implementation.py": {
+      "imports": [
+        "microcosm.build.us_runtime",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "454f9e3c1f7f1b840429f7c14c16dac67ab8219df0c9c32cf5807352b5c338ce",
+      "unbound_uses_sha256": "b45c8251bea93efe1847308338b21c6f8e74852564ad1a76ba5c384bd6de99a1"
+    },
+    "microcosm.build/us_runtime/graph_sources.py": {
+      "imports": [
+        "microcosm.build.serialization_dtypes",
+        "microcosm.build.us_runtime.acs_inputs",
+        "microcosm.build.us_runtime.acs_pums",
+        "microcosm.build.us_runtime.asec_checkpoint",
+        "microcosm.build.us_runtime.graph_context",
+        "microcosm.build.us_runtime.graph_implementation",
+        "microcosm.build.us_runtime.operator_boundary",
+        "microcosm.build.us_runtime.stacked_spine",
+        "microcosm.build.us_runtime.support_provenance",
+        "microcosm.frame",
+        "microcosm.graph",
+        "microcosm.graph.canonical",
+        "microcosm.graph.codecs",
+        "microcosm.graph.population",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "a9a4e39bc907d8066cfe6fbaaa5cd59812bacfee717326ca9069581477b4b939"
+    },
+    "microcosm.build/us_runtime/operator_boundary.py": {
+      "imports": [
+        "microcosm.build.us_runtime.acs_transfer",
+        "microcosm.build.us_runtime.adult_care",
+        "microcosm.build.us_runtime.child_support",
+        "microcosm.build.us_runtime.childcare",
+        "microcosm.build.us_runtime.congressional_district_geography",
+        "microcosm.build.us_runtime.cps_carried",
+        "microcosm.build.us_runtime.disability_benefits",
+        "microcosm.build.us_runtime.education_inputs",
+        "microcosm.build.us_runtime.eligibility_inputs",
+        "microcosm.build.us_runtime.energy_subsidy",
+        "microcosm.build.us_runtime.geography_ladder",
+        "microcosm.build.us_runtime.hours_worked",
+        "microcosm.build.us_runtime.housing_inputs",
+        "microcosm.build.us_runtime.immigration",
+        "microcosm.build.us_runtime.medicare_take_up",
+        "microcosm.build.us_runtime.pregnancy",
+        "microcosm.build.us_runtime.prior_year_income",
+        "microcosm.build.us_runtime.puf_capital_gains_tail",
+        "microcosm.build.us_runtime.puf_support",
+        "microcosm.build.us_runtime.qbi_inputs",
+        "microcosm.build.us_runtime.relationship_inputs",
+        "microcosm.build.us_runtime.retirement_contributions",
+        "microcosm.build.us_runtime.retirement_distributions",
+        "microcosm.build.us_runtime.scf_wealth",
+        "microcosm.build.us_runtime.weeks_unemployed",
+        "microcosm.build.us_runtime.wic_claim",
+        "microcosm.build.us_runtime.workers_compensation",
+        "microcosm.frame",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "e5b20c2f8f74c1aeded4f31e824693e20fe70bb955b3800fe2f32a96464d04c7"
+    },
+    "microcosm.build/us_runtime/puf_support.py": {
+      "imports": [
+        "microcosm.build.gates",
+        "microcosm.build.us_runtime.acs_income_universe",
+        "microcosm.build.us_runtime.puf_e01000_reconciliation",
+        "microcosm.build.us_runtime.puf_interest_components",
+        "microcosm.build.us_runtime.qbi_inputs",
+        "microcosm.build.us_runtime.support_provenance",
+        "microcosm.frame",
+        "microcosm.frame.adapters.policyengine_us",
+        "microcosm.frame.schema",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "851b8041c69b1b721dcdc02d1ce312976a87e45b66fc4aca59d0ec538ab62b44",
+      "unbound_uses_sha256": "db23144bfe6a7f4b4bd147b3a4f7f5205c7ef3cfe3d52cbdf9e7cc02d2aaead1"
+    },
+    "microcosm.build/us_runtime/puma_ladder.py": {
+      "imports": [
+        "microcosm.build.gates",
+        "microcosm.build.us_runtime.congressional_district_geography",
+        "microcosm.build.us_runtime.geography_ladder",
+        "microcosm.build.us_runtime.puma_ladder_sources",
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "056fbb3baf3f3008aa654612e700957b3ecb795b8da9460be5e9a884930c36a7",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/puma_ladder_sources.py": {
+      "imports": [
+        "numpy"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/reported_coverage_source.py": {
+      "imports": [
+        "microcosm.build.us_runtime.education_assistance_source",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4b87bba3a98f67416ff34353df950e2638c86d56170d03d372f62578149f3e2e",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/spine_assembly.py": {
+      "imports": [
+        "microcosm.build.us_runtime.puf_support",
+        "microcosm.build.us_runtime.support_provenance",
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/stacked_spine.py": {
+      "imports": [
+        "microcosm.build.frame_sampling",
+        "microcosm.build.gates",
+        "microcosm.build.serialization_dtypes",
+        "microcosm.build.source_manifest",
+        "microcosm.build.us_runtime",
+        "microcosm.build.us_runtime.acs_income_universe",
+        "microcosm.build.us_runtime.acs_transfer",
+        "microcosm.build.us_runtime.late_producer_dag",
+        "microcosm.build.us_runtime.multispine_pool",
+        "microcosm.build.us_runtime.operator_boundary",
+        "microcosm.build.us_runtime.post_transfer_calibration",
+        "microcosm.build.us_runtime.puf_aggregate_records",
+        "microcosm.build.us_runtime.puf_capital_gains_tail",
+        "microcosm.build.us_runtime.puf_interest_components",
+        "microcosm.build.us_runtime.puf_qrf_chain",
+        "microcosm.build.us_runtime.puf_support",
+        "microcosm.build.us_runtime.spine_assembly",
+        "microcosm.build.us_runtime.support_provenance",
+        "microcosm.build.us_runtime.us_late_overlap_ownership",
+        "microcosm.build.us_runtime.us_late_producer_registry",
+        "microcosm.fit",
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "3839407286d44ddbf3f207c63dcb92e1c0b45e2eec2e88a09c25ebb3a4711430",
+      "unbound_uses_sha256": "062e621661c109d963f2356bcaa67a3da0906c8e66af1dcd81122d7ce05bd454"
+    },
+    "microcosm.build/us_runtime/support_provenance.py": {
+      "imports": [
+        "microcosm.build.gates",
+        "microcosm.build.us_runtime.cps_carried",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "381597f010e2b6f15c09dc35578ce62326d01b34cb96971fd9c9fd2e813475f6"
+    },
+    "microcosm.frame/__init__.py": {
+      "imports": [
+        "microcosm.frame.accounting",
+        "microcosm.frame.bundle",
+        "microcosm.frame.materialize",
+        "microcosm.frame.rules",
+        "microcosm.frame.schema",
+        "microcosm.frame.units",
+        "microcosm.frame.weights"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.frame/accounting.py": {
+      "imports": [
+        "microcosm.frame.bundle",
+        "numpy",
+        "pandas",
+        "pandas.api.types"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.frame/adapters/__init__.py": {
+      "imports": [],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.frame/adapters/_policyengine_us_source_index.py": {
+      "imports": [
+        "microcosm.frame.schema",
+        "yaml"
+      ],
+      "resource_accesses_sha256": "a64f5650fc19608459f4e1c034e1f7e692de8ca77e4e2e111f8dd40559ce481f",
+      "unbound_uses_sha256": "6da25f88c6cadb5b1522da2e977a71e749dd54c6cb1d58fb1c6224161e9e42be"
+    },
+    "microcosm.frame/adapters/axiom.py": {
+      "imports": [
+        "axiom_rules_engine",
+        "microcosm.frame.bundle",
+        "microcosm.frame.materialize",
+        "microcosm.frame.rules",
+        "microcosm.frame.schema",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "9f0928dfa308893a0724f2e22e2676993aa7084c83115c4fdaecc341e515bd76"
+    },
+    "microcosm.frame/adapters/policyengine_uk.py": {
+      "imports": [
+        "microcosm.frame.bundle",
+        "microcosm.frame.materialize",
+        "microcosm.frame.rules",
+        "microcosm.frame.schema",
+        "numpy",
+        "policyengine_uk",
+        "policyengine_uk.data"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "366f98c5d3507744c7f9667e7323821c41358a47c56bd83f7ca9c677756c7094"
+    },
+    "microcosm.frame/adapters/policyengine_us.py": {
+      "imports": [
+        "microcosm.frame.adapters._policyengine_us_source_index",
+        "microcosm.frame.bundle",
+        "microcosm.frame.materialize",
+        "microcosm.frame.rules",
+        "microcosm.frame.schema",
+        "microcosm.frame.units",
+        "numpy",
+        "pandas",
+        "policyengine_us",
+        "policyengine_us.data"
+      ],
+      "resource_accesses_sha256": "b87a963f56b28cef5b93690cec90f1ff2e935075283e553fdf7af693f8bf3204",
+      "unbound_uses_sha256": "175c1d0a9621cee21f400b0c3e4618a40eb2fdb795adbf42b16488ea2dcf5b23"
+    },
+    "microcosm.frame/bundle.py": {
+      "imports": [
+        "microcosm.frame.schema",
+        "microcosm.frame.weights",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.frame/kernels.py": {
+      "imports": [
+        "microcosm.frame.bundle",
+        "microcosm.frame.rules",
+        "microcosm.frame.schema",
+        "microcosm.graph",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.frame/materialize.py": {
+      "imports": [
+        "microcosm.frame.bundle",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.frame/rules.py": {
+      "imports": [
+        "microcosm.frame.bundle",
+        "microcosm.frame.schema",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "bb3739bfa9c1bdb290ce2e1136dfd73bc4f2c40715a822ea87e3c91ef51a5760",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.frame/schema.py": {
+      "imports": [],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.frame/units.py": {
+      "imports": [
+        "microcosm.frame.bundle",
+        "microcosm.frame.schema",
+        "microcosm.frame.weights",
+        "microunit",
+        "microunit.units",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "e40d25e078da274aaaa43639b66ac70df5a8b87b6b637f46d00069e73bff3e73"
+    },
+    "microcosm.frame/weights.py": {
+      "imports": [
+        "numpy"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/__init__.py": {
+      "imports": [
+        "microcosm.graph.codecs",
+        "microcosm.graph.decl",
+        "microcosm.graph.errors",
+        "microcosm.graph.executor",
+        "microcosm.graph.explain",
+        "microcosm.graph.kernel",
+        "microcosm.graph.keys",
+        "microcosm.graph.manifest",
+        "microcosm.graph.population",
+        "microcosm.graph.randomness",
+        "microcosm.graph.serialize",
+        "microcosm.graph.store",
+        "microcosm.graph.view"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/artifact_edges.py": {
+      "imports": [
+        "microcosm.graph.decl",
+        "microcosm.graph.errors",
+        "microcosm.graph.kernel",
+        "microcosm.graph.keys"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/attachments.py": {
+      "imports": [
+        "microcosm.frame",
+        "microcosm.graph.canonical",
+        "microcosm.graph.decl",
+        "microcosm.graph.manifest",
+        "microcosm.graph.population",
+        "microcosm.graph.store"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/availability.py": {
+      "imports": [
+        "microcosm.graph.decl",
+        "microcosm.graph.kernel"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/canonical.py": {
+      "imports": [
+        "microcosm.graph.decl"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/codecs.py": {
+      "imports": [
+        "microcosm.frame",
+        "microcosm.graph.store",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4adeae91a0658854557dc4d2bf01d09ad531726de7cec890f00258a2dbe81da2",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/decl.py": {
+      "imports": [],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/errors.py": {
+      "imports": [],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/executor.py": {
+      "imports": [
+        "microcosm.frame",
+        "microcosm.graph",
+        "microcosm.graph.artifact_edges",
+        "microcosm.graph.attachments",
+        "microcosm.graph.availability",
+        "microcosm.graph.canonical",
+        "microcosm.graph.codecs",
+        "microcosm.graph.decl",
+        "microcosm.graph.errors",
+        "microcosm.graph.kernel",
+        "microcosm.graph.keys",
+        "microcosm.graph.manifest",
+        "microcosm.graph.population",
+        "microcosm.graph.store",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/explain.py": {
+      "imports": [
+        "microcosm.graph.decl",
+        "microcosm.graph.manifest",
+        "microcosm.graph.population",
+        "microcosm.graph.view"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/kernel.py": {
+      "imports": [
+        "microcosm.frame",
+        "microcosm.graph.decl",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "313aceccf09abe24eace2f6d432f41960afb9ed7e80ebe890a10cc41557d87d3",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/keys.py": {
+      "imports": [
+        "microcosm.graph.canonical",
+        "microcosm.graph.decl",
+        "microcosm.graph.kernel"
+      ],
+      "resource_accesses_sha256": "5e91517c603797fcf9131c3cffd0119c3226dd706f2c219658ffd571c5aa893c",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/manifest.py": {
+      "imports": [
+        "microcosm.frame",
+        "microcosm.graph.artifact_edges",
+        "microcosm.graph.attachments",
+        "microcosm.graph.availability",
+        "microcosm.graph.canonical",
+        "microcosm.graph.decl",
+        "microcosm.graph.errors",
+        "microcosm.graph.kernel",
+        "microcosm.graph.population",
+        "microcosm.graph.store",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "13c805cbaa1c2fd026afc6574c4c08dd71143a68f787d616852d5efcbb151c82",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/population.py": {
+      "imports": [
+        "microcosm.frame",
+        "microcosm.graph.canonical",
+        "microcosm.graph.decl",
+        "microcosm.graph.kernel",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/randomness.py": {
+      "imports": [
+        "microcosm.graph.canonical",
+        "numpy"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/serialize.py": {
+      "imports": [
+        "microcosm.graph.canonical",
+        "microcosm.graph.decl"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/store.py": {
+      "imports": [
+        "microcosm.frame",
+        "microcosm.graph.errors",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "99afee26ca660c678dcbd7117eb2e64d70a0343ead9a602fa5819222aca02bc3",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/view.py": {
+      "imports": [
+        "microcosm.graph.canonical",
+        "microcosm.graph.decl",
+        "microcosm.graph.manifest"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/__init__.py": {
+      "imports": [
+        "microunit.core",
+        "microunit.diagnostics",
+        "microunit.registry",
+        "microunit.rule_helpers",
+        "microunit.tax_unit_construction"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/core.py": {
+      "imports": [
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/diagnostics.py": {
+      "imports": [
+        "microunit.core",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/registry.py": {
+      "imports": [],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/rule_helpers.py": {
+      "imports": [
+        "yaml"
+      ],
+      "resource_accesses_sha256": "d880e849f439db697d177523c8c7e92775b109fc42d2f71372e2702dd9c19749",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/tax_unit_construction.py": {
+      "imports": [
+        "microunit.rule_helpers",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/units/__init__.py": {
+      "imports": [
+        "microunit.units.medicaid",
+        "microunit.units.passthrough",
+        "microunit.units.programs",
+        "microunit.units.snap",
+        "microunit.units.spm",
+        "microunit.units.tax"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/units/_helpers.py": {
+      "imports": [
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/units/medicaid.py": {
+      "imports": [
+        "microunit.core",
+        "microunit.units.programs",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/units/passthrough.py": {
+      "imports": [
+        "microunit.core",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/units/programs.py": {
+      "imports": [
+        "microunit.core",
+        "microunit.units.spm",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/units/snap.py": {
+      "imports": [
+        "microunit.core",
+        "microunit.units._helpers",
+        "microunit.units.programs",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/units/spm.py": {
+      "imports": [
+        "microunit.core",
+        "microunit.units._helpers",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microunit/units/tax.py": {
+      "imports": [
+        "microunit.core",
+        "microunit.tax_unit_construction",
+        "microunit.units._helpers",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    }
+  },
+  "import_classifications": {
+    "axiom_rules_engine": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "h5py": "versioned dependency in explicit stages",
+    "microcosm.build.frame_checkpoint": "whole-module in explicit stages",
+    "microcosm.build.frame_sampling": "whole-module in explicit stages",
+    "microcosm.build.gates": "whole-module in explicit stages",
+    "microcosm.build.ledger_targets": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.outer_stage_runtime": "whole-module in explicit stages",
+    "microcosm.build.serialization_dtypes": "whole-module in explicit stages",
+    "microcosm.build.source_manifest": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.us_runtime": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.us_runtime.acs_income_universe": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.us_runtime.acs_inputs": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.acs_pums": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.acs_transfer": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.adult_care": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.asec_checkpoint": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.child_support": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.childcare": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.congressional_district_geography": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.congressional_district_vintage": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.cps_carried": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.disability_benefits": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.education_assistance_source": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.education_inputs": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.eligibility_inputs": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.energy_subsidy": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.geography_ladder": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.graph_context": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.graph_implementation": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.hours_worked": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.housing_inputs": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.immigration": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.late_producer_dag": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.us_runtime.medicare_take_up": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.multispine_pool": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.us_runtime.operator_boundary": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.post_transfer_calibration": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.us_runtime.pregnancy": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.prior_year_income": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.puf_aggregate_records": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.us_runtime.puf_capital_gains_tail": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.puf_e01000_reconciliation": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.us_runtime.puf_interest_components": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.us_runtime.puf_qrf_chain": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.us_runtime.puf_support": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.puma_ladder": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.puma_ladder_sources": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.qbi_inputs": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.relationship_inputs": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.reported_coverage_source": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.retirement_contributions": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.retirement_distributions": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.scf_wealth": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.spine_assembly": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.stacked_spine": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.support_provenance": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.us_late_overlap_ownership": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.us_runtime.us_late_producer_registry": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.build.us_runtime.weeks_unemployed": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.wic_claim": "live registry projection; other shared-module routes inactive",
+    "microcosm.build.us_runtime.workers_compensation": "live registry projection; other shared-module routes inactive",
+    "microcosm.calibrate.registry": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.calibrate.solve": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.fit": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "microcosm.frame": "whole-module in explicit stages",
+    "microcosm.frame.accounting": "whole-module in explicit stages",
+    "microcosm.frame.adapters._policyengine_us_source_index": "whole-module in explicit stages",
+    "microcosm.frame.adapters.policyengine_us": "whole-module in explicit stages",
+    "microcosm.frame.bundle": "whole-module in explicit stages",
+    "microcosm.frame.materialize": "whole-module in explicit stages",
+    "microcosm.frame.rules": "whole-module in explicit stages",
+    "microcosm.frame.schema": "whole-module in explicit stages",
+    "microcosm.frame.units": "whole-module in explicit stages",
+    "microcosm.frame.weights": "whole-module in explicit stages",
+    "microcosm.graph": "whole-module in explicit stages",
+    "microcosm.graph.artifact_edges": "whole-module in explicit stages",
+    "microcosm.graph.attachments": "whole-module in explicit stages",
+    "microcosm.graph.availability": "whole-module in explicit stages",
+    "microcosm.graph.canonical": "whole-module in explicit stages",
+    "microcosm.graph.codecs": "whole-module in explicit stages",
+    "microcosm.graph.decl": "whole-module in explicit stages",
+    "microcosm.graph.errors": "whole-module in explicit stages",
+    "microcosm.graph.executor": "whole-module in explicit stages",
+    "microcosm.graph.explain": "whole-module in explicit stages",
+    "microcosm.graph.kernel": "whole-module in explicit stages",
+    "microcosm.graph.keys": "whole-module in explicit stages",
+    "microcosm.graph.manifest": "whole-module in explicit stages",
+    "microcosm.graph.population": "whole-module in explicit stages",
+    "microcosm.graph.randomness": "whole-module in explicit stages",
+    "microcosm.graph.serialize": "whole-module in explicit stages",
+    "microcosm.graph.store": "whole-module in explicit stages",
+    "microcosm.graph.view": "whole-module in explicit stages",
+    "microunit": "whole-module in explicit stages",
+    "microunit.core": "whole-module in explicit stages",
+    "microunit.diagnostics": "whole-module in explicit stages",
+    "microunit.registry": "whole-module in explicit stages",
+    "microunit.rule_helpers": "whole-module in explicit stages",
+    "microunit.tax_unit_construction": "whole-module in explicit stages",
+    "microunit.units": "whole-module in explicit stages",
+    "microunit.units._helpers": "whole-module in explicit stages",
+    "microunit.units.medicaid": "whole-module in explicit stages",
+    "microunit.units.passthrough": "whole-module in explicit stages",
+    "microunit.units.programs": "whole-module in explicit stages",
+    "microunit.units.snap": "whole-module in explicit stages",
+    "microunit.units.spm": "whole-module in explicit stages",
+    "microunit.units.tax": "whole-module in explicit stages",
+    "numpy": "versioned dependency in explicit stages",
+    "pandas": "versioned dependency in explicit stages",
+    "pandas.api.types": "versioned dependency in explicit stages",
+    "policyengine_uk": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "policyengine_uk.data": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "policyengine_us": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "policyengine_us.data": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
+    "yaml": "versioned dependency in explicit stages"
+  },
+  "package_resources": {
+    "microunit": [
+      "data/dependent_gross_income_limit.yaml"
+    ]
+  },
+  "package_rosters": {
+    "microcosm.frame": [
+      "__init__.py",
+      "accounting.py",
+      "adapters/__init__.py",
+      "adapters/_policyengine_us_source_index.py",
+      "adapters/axiom.py",
+      "adapters/policyengine_uk.py",
+      "adapters/policyengine_us.py",
+      "bundle.py",
+      "kernels.py",
+      "materialize.py",
+      "rules.py",
+      "schema.py",
+      "units.py",
+      "weights.py"
+    ],
+    "microcosm.graph": [
+      "__init__.py",
+      "artifact_edges.py",
+      "attachments.py",
+      "availability.py",
+      "canonical.py",
+      "codecs.py",
+      "decl.py",
+      "errors.py",
+      "executor.py",
+      "explain.py",
+      "kernel.py",
+      "keys.py",
+      "manifest.py",
+      "population.py",
+      "randomness.py",
+      "serialize.py",
+      "store.py",
+      "view.py"
+    ],
+    "microunit": [
+      "__init__.py",
+      "core.py",
+      "diagnostics.py",
+      "registry.py",
+      "rule_helpers.py",
+      "tax_unit_construction.py",
+      "units/__init__.py",
+      "units/_helpers.py",
+      "units/medicaid.py",
+      "units/passthrough.py",
+      "units/programs.py",
+      "units/snap.py",
+      "units/spm.py",
+      "units/tax.py"
+    ]
+  },
+  "reviewed_base": "c71e31654faf0e3f874e68e8c100b09c7eb9955f",
+  "schema": "microcosm.us.implementation-inventory.v1",
+  "scope_notes": {
+    "bound_modules": "Whole bytes of explicitly named modules; helper-only parsing never imports adapters.",
+    "operator_boundary": "Resolved output/formula registries projected; provider bodies are not called by source construction.",
+    "other_imports": "Canonical non-stdlib import modules are explicitly classified. Ordinary symbols from a module/dependency bound in every using scope need no inventory edit. Only unbound-helper uses retain a lexical-scope fingerprint; resource-access expressions retain their own fingerprint. Expanded AST details are audit output, not packaged data. Neither fingerprint is a proof of dynamic closure.",
+    "resources": "Microunit rule YAML is bound. Default packaged geography/source-stage resources belong to inactive legacy entrypoints; graph lookups are explicit SourceRefs."
+  },
+  "stages": {
+    "acs_codec_2024": {
+      "dependencies": [
+        "numpy",
+        "pandas",
+        "microunit",
+        "PyYAML",
+        "pyarrow"
+      ],
+      "modules": [
+        "microcosm.build/serialization_dtypes.py",
+        "microcosm.build/us_runtime/acs_inputs.py",
+        "microcosm.build/us_runtime/acs_pums.py",
+        "microcosm.build/us_runtime/graph_context.py",
+        "microcosm.build/us_runtime/graph_implementation.py",
+        "microcosm.build/us_runtime/graph_sources.py",
+        "microcosm.build/us_runtime/operator_boundary.py",
+        "microcosm.frame/__init__.py",
+        "microcosm.frame/accounting.py",
+        "microcosm.frame/adapters/__init__.py",
+        "microcosm.frame/adapters/_policyengine_us_source_index.py",
+        "microcosm.frame/adapters/axiom.py",
+        "microcosm.frame/adapters/policyengine_uk.py",
+        "microcosm.frame/adapters/policyengine_us.py",
+        "microcosm.frame/bundle.py",
+        "microcosm.frame/kernels.py",
+        "microcosm.frame/materialize.py",
+        "microcosm.frame/rules.py",
+        "microcosm.frame/schema.py",
+        "microcosm.frame/units.py",
+        "microcosm.frame/weights.py",
+        "microcosm.graph/__init__.py",
+        "microcosm.graph/artifact_edges.py",
+        "microcosm.graph/attachments.py",
+        "microcosm.graph/availability.py",
+        "microcosm.graph/canonical.py",
+        "microcosm.graph/codecs.py",
+        "microcosm.graph/decl.py",
+        "microcosm.graph/errors.py",
+        "microcosm.graph/executor.py",
+        "microcosm.graph/explain.py",
+        "microcosm.graph/kernel.py",
+        "microcosm.graph/keys.py",
+        "microcosm.graph/manifest.py",
+        "microcosm.graph/population.py",
+        "microcosm.graph/randomness.py",
+        "microcosm.graph/serialize.py",
+        "microcosm.graph/store.py",
+        "microcosm.graph/view.py",
+        "microunit/__init__.py",
+        "microunit/core.py",
+        "microunit/diagnostics.py",
+        "microunit/registry.py",
+        "microunit/rule_helpers.py",
+        "microunit/tax_unit_construction.py",
+        "microunit/units/__init__.py",
+        "microunit/units/_helpers.py",
+        "microunit/units/medicaid.py",
+        "microunit/units/passthrough.py",
+        "microunit/units/programs.py",
+        "microunit/units/snap.py",
+        "microunit/units/spm.py",
+        "microunit/units/tax.py"
+      ],
+      "resources": [
+        "microunit/data/dependent_gross_income_limit.yaml"
+      ],
+      "source_boundary_projection": true
+    },
+    "asec_codec_v4": {
+      "dependencies": [
+        "numpy",
+        "pandas",
+        "h5py"
+      ],
+      "modules": [
+        "microcosm.build/frame_checkpoint.py",
+        "microcosm.build/outer_stage_runtime.py",
+        "microcosm.build/serialization_dtypes.py",
+        "microcosm.build/us_runtime/asec_checkpoint.py",
+        "microcosm.build/us_runtime/education_assistance_source.py",
+        "microcosm.build/us_runtime/graph_context.py",
+        "microcosm.build/us_runtime/graph_implementation.py",
+        "microcosm.build/us_runtime/graph_sources.py",
+        "microcosm.build/us_runtime/operator_boundary.py",
+        "microcosm.build/us_runtime/reported_coverage_source.py",
+        "microcosm.frame/__init__.py",
+        "microcosm.frame/accounting.py",
+        "microcosm.frame/adapters/__init__.py",
+        "microcosm.frame/adapters/_policyengine_us_source_index.py",
+        "microcosm.frame/adapters/axiom.py",
+        "microcosm.frame/adapters/policyengine_uk.py",
+        "microcosm.frame/adapters/policyengine_us.py",
+        "microcosm.frame/bundle.py",
+        "microcosm.frame/kernels.py",
+        "microcosm.frame/materialize.py",
+        "microcosm.frame/rules.py",
+        "microcosm.frame/schema.py",
+        "microcosm.frame/units.py",
+        "microcosm.frame/weights.py",
+        "microcosm.graph/__init__.py",
+        "microcosm.graph/artifact_edges.py",
+        "microcosm.graph/attachments.py",
+        "microcosm.graph/availability.py",
+        "microcosm.graph/canonical.py",
+        "microcosm.graph/codecs.py",
+        "microcosm.graph/decl.py",
+        "microcosm.graph/errors.py",
+        "microcosm.graph/executor.py",
+        "microcosm.graph/explain.py",
+        "microcosm.graph/kernel.py",
+        "microcosm.graph/keys.py",
+        "microcosm.graph/manifest.py",
+        "microcosm.graph/population.py",
+        "microcosm.graph/randomness.py",
+        "microcosm.graph/serialize.py",
+        "microcosm.graph/store.py",
+        "microcosm.graph/view.py"
+      ],
+      "resources": [],
+      "source_boundary_projection": true
+    },
+    "assembly_harmonize": {
+      "dependencies": [
+        "numpy",
+        "pandas"
+      ],
+      "modules": [
+        "microcosm.build/frame_sampling.py",
+        "microcosm.build/gates.py",
+        "microcosm.build/serialization_dtypes.py",
+        "microcosm.build/us_runtime/graph_context.py",
+        "microcosm.build/us_runtime/graph_implementation.py",
+        "microcosm.build/us_runtime/graph_sources.py",
+        "microcosm.build/us_runtime/puf_support.py",
+        "microcosm.build/us_runtime/spine_assembly.py",
+        "microcosm.build/us_runtime/stacked_spine.py",
+        "microcosm.build/us_runtime/support_provenance.py",
+        "microcosm.frame/__init__.py",
+        "microcosm.frame/accounting.py",
+        "microcosm.frame/adapters/__init__.py",
+        "microcosm.frame/adapters/_policyengine_us_source_index.py",
+        "microcosm.frame/adapters/axiom.py",
+        "microcosm.frame/adapters/policyengine_uk.py",
+        "microcosm.frame/adapters/policyengine_us.py",
+        "microcosm.frame/bundle.py",
+        "microcosm.frame/kernels.py",
+        "microcosm.frame/materialize.py",
+        "microcosm.frame/rules.py",
+        "microcosm.frame/schema.py",
+        "microcosm.frame/units.py",
+        "microcosm.frame/weights.py",
+        "microcosm.graph/__init__.py",
+        "microcosm.graph/artifact_edges.py",
+        "microcosm.graph/attachments.py",
+        "microcosm.graph/availability.py",
+        "microcosm.graph/canonical.py",
+        "microcosm.graph/codecs.py",
+        "microcosm.graph/decl.py",
+        "microcosm.graph/errors.py",
+        "microcosm.graph/executor.py",
+        "microcosm.graph/explain.py",
+        "microcosm.graph/kernel.py",
+        "microcosm.graph/keys.py",
+        "microcosm.graph/manifest.py",
+        "microcosm.graph/population.py",
+        "microcosm.graph/randomness.py",
+        "microcosm.graph/serialize.py",
+        "microcosm.graph/store.py",
+        "microcosm.graph/view.py"
+      ],
+      "resources": [],
+      "source_boundary_projection": false
+    },
+    "assembly_prepare": {
+      "dependencies": [
+        "numpy",
+        "pandas",
+        "microunit",
+        "tables",
+        "h5py",
+        "PyYAML",
+        "pyarrow"
+      ],
+      "modules": [
+        "microcosm.build/frame_checkpoint.py",
+        "microcosm.build/frame_sampling.py",
+        "microcosm.build/gates.py",
+        "microcosm.build/outer_stage_runtime.py",
+        "microcosm.build/serialization_dtypes.py",
+        "microcosm.build/us_runtime/acs_inputs.py",
+        "microcosm.build/us_runtime/acs_pums.py",
+        "microcosm.build/us_runtime/asec_checkpoint.py",
+        "microcosm.build/us_runtime/education_assistance_source.py",
+        "microcosm.build/us_runtime/graph_context.py",
+        "microcosm.build/us_runtime/graph_implementation.py",
+        "microcosm.build/us_runtime/graph_sources.py",
+        "microcosm.build/us_runtime/operator_boundary.py",
+        "microcosm.build/us_runtime/puf_support.py",
+        "microcosm.build/us_runtime/reported_coverage_source.py",
+        "microcosm.build/us_runtime/spine_assembly.py",
+        "microcosm.build/us_runtime/stacked_spine.py",
+        "microcosm.build/us_runtime/support_provenance.py",
+        "microcosm.frame/__init__.py",
+        "microcosm.frame/accounting.py",
+        "microcosm.frame/adapters/__init__.py",
+        "microcosm.frame/adapters/_policyengine_us_source_index.py",
+        "microcosm.frame/adapters/axiom.py",
+        "microcosm.frame/adapters/policyengine_uk.py",
+        "microcosm.frame/adapters/policyengine_us.py",
+        "microcosm.frame/bundle.py",
+        "microcosm.frame/kernels.py",
+        "microcosm.frame/materialize.py",
+        "microcosm.frame/rules.py",
+        "microcosm.frame/schema.py",
+        "microcosm.frame/units.py",
+        "microcosm.frame/weights.py",
+        "microcosm.graph/__init__.py",
+        "microcosm.graph/artifact_edges.py",
+        "microcosm.graph/attachments.py",
+        "microcosm.graph/availability.py",
+        "microcosm.graph/canonical.py",
+        "microcosm.graph/codecs.py",
+        "microcosm.graph/decl.py",
+        "microcosm.graph/errors.py",
+        "microcosm.graph/executor.py",
+        "microcosm.graph/explain.py",
+        "microcosm.graph/kernel.py",
+        "microcosm.graph/keys.py",
+        "microcosm.graph/manifest.py",
+        "microcosm.graph/population.py",
+        "microcosm.graph/randomness.py",
+        "microcosm.graph/serialize.py",
+        "microcosm.graph/store.py",
+        "microcosm.graph/view.py",
+        "microunit/__init__.py",
+        "microunit/core.py",
+        "microunit/diagnostics.py",
+        "microunit/registry.py",
+        "microunit/rule_helpers.py",
+        "microunit/tax_unit_construction.py",
+        "microunit/units/__init__.py",
+        "microunit/units/_helpers.py",
+        "microunit/units/medicaid.py",
+        "microunit/units/passthrough.py",
+        "microunit/units/programs.py",
+        "microunit/units/snap.py",
+        "microunit/units/spm.py",
+        "microunit/units/tax.py"
+      ],
+      "resources": [
+        "microunit/data/dependent_gross_income_limit.yaml"
+      ],
+      "source_boundary_projection": true
+    },
+    "geography": {
+      "dependencies": [
+        "numpy",
+        "pandas"
+      ],
+      "modules": [
+        "microcosm.build/gates.py",
+        "microcosm.build/serialization_dtypes.py",
+        "microcosm.build/us_runtime/congressional_district_geography.py",
+        "microcosm.build/us_runtime/congressional_district_vintage.py",
+        "microcosm.build/us_runtime/geography_ladder.py",
+        "microcosm.build/us_runtime/graph_context.py",
+        "microcosm.build/us_runtime/graph_geography.py",
+        "microcosm.build/us_runtime/graph_implementation.py",
+        "microcosm.build/us_runtime/puma_ladder.py",
+        "microcosm.build/us_runtime/puma_ladder_sources.py",
+        "microcosm.frame/__init__.py",
+        "microcosm.frame/accounting.py",
+        "microcosm.frame/adapters/__init__.py",
+        "microcosm.frame/adapters/_policyengine_us_source_index.py",
+        "microcosm.frame/adapters/axiom.py",
+        "microcosm.frame/adapters/policyengine_uk.py",
+        "microcosm.frame/adapters/policyengine_us.py",
+        "microcosm.frame/bundle.py",
+        "microcosm.frame/kernels.py",
+        "microcosm.frame/materialize.py",
+        "microcosm.frame/rules.py",
+        "microcosm.frame/schema.py",
+        "microcosm.frame/units.py",
+        "microcosm.frame/weights.py",
+        "microcosm.graph/__init__.py",
+        "microcosm.graph/artifact_edges.py",
+        "microcosm.graph/attachments.py",
+        "microcosm.graph/availability.py",
+        "microcosm.graph/canonical.py",
+        "microcosm.graph/codecs.py",
+        "microcosm.graph/decl.py",
+        "microcosm.graph/errors.py",
+        "microcosm.graph/executor.py",
+        "microcosm.graph/explain.py",
+        "microcosm.graph/kernel.py",
+        "microcosm.graph/keys.py",
+        "microcosm.graph/manifest.py",
+        "microcosm.graph/population.py",
+        "microcosm.graph/randomness.py",
+        "microcosm.graph/serialize.py",
+        "microcosm.graph/store.py",
+        "microcosm.graph/view.py"
+      ],
+      "resources": [],
+      "source_boundary_projection": false
+    }
+  }
+}

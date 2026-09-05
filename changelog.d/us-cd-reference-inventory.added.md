@@ -1,0 +1,1 @@
+Add a local public congressional-district reference inventory with pinned Census and IRS sources, original margins of error and disclosure classes, explicit geography lineage, and reserved same-source holdout tables. This preparation step does not score candidates or activate calibration targets.
