@@ -40,7 +40,7 @@ def packaged_current_money_resources(
     """Read package resources with explicit claims, for synthetic fixture injection.
 
     Use load_current_money_resources to verify the actual installed reader.
-    Neither function creates an authenticated source/production readiness type.
+    Neither resource-reading function creates authenticated source authority.
     """
     package = resources.files(__package__)
     identity = _json(

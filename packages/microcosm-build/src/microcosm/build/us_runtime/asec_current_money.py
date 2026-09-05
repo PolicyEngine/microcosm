@@ -1,8 +1,8 @@
-"""Pure, synthetic-only ASEC current-money decoding and price restatement.
+"""Pure ASEC current-money decoding and price restatement.
 
 No resource discovery or source authentication happens here. Only the separate
-resource loader reads installed code. A synthetic identity is never evidence of
-verified source bytes; production readiness is deliberately unavailable in v1.
+resource loader reads installed code. Authenticated authority can only come from
+the separate verified checkpoint loader; synthetic identities remain distinct.
 """
 
 import json
@@ -32,6 +32,7 @@ HEADER_MAX_BYTES = 64 * 1024
 MAX_PERSONS = 1_000_000
 MAX_HOUSEHOLDS = 400_000
 _STATE_TOKEN = object()
+_SOURCE_TOKEN = object()
 
 
 class MoneyRefusalError(ValueError):
@@ -89,11 +90,73 @@ def _digest(value: str) -> bool:
     )
 
 
+@dataclass(frozen=True)
 class AuthenticatedAsecSource:
-    """Reserved closed type: no source verification constructor ships in this slice."""
+    """Immutable evidence issued only by the actual checkpoint verification loader."""
 
-    def __new__(cls, *args, **kwargs):
-        raise MoneyRefusalError("AUTHENTICATED_SOURCE_UNAVAILABLE")
+    evidence: bytes = b""
+    _token: InitVar[object] = None
+
+    def __post_init__(self, _token):
+        _require(_token is _SOURCE_TOKEN, "AUTHENTICATED_SOURCE_UNAVAILABLE")
+        self._validate()
+
+    def _validate(self):
+        data = _parse(self.evidence, HEADER_MAX_BYTES)
+        _require(
+            set(data)
+            == {
+                "schema_version",
+                "source_kind",
+                "source_authentication",
+                "parent_sha256",
+                "attachment_sha256",
+                "cohorts",
+                "sidecars",
+                "field_roster",
+                "zero_origin_policy",
+                "scope_sha256",
+                "input_sha256",
+                "frame_sha256",
+                "verification_sha256",
+            },
+            "AUTHENTICATED_SOURCE_SCHEMA",
+        )
+        _require(
+            data["schema_version"] == 1
+            and data["source_kind"] == "asec_v4_with_household_observations_v1"
+            and data["source_authentication"] == "checkpoint_bytes_verified"
+            and data["field_roster"] == list(FIELDS)
+            and data["zero_origin_policy"] == ZERO_POLICY,
+            "AUTHENTICATED_SOURCE_SCHEMA",
+        )
+        _require(
+            all(
+                _digest(data[name])
+                for name in (
+                    "parent_sha256",
+                    "attachment_sha256",
+                    "scope_sha256",
+                    "input_sha256",
+                    "frame_sha256",
+                    "verification_sha256",
+                )
+            ),
+            "SOURCE_PIN",
+        )
+        _require(self.evidence == _json(data), "AUTHENTICATED_SOURCE_SCHEMA")
+
+    @property
+    def identity(self) -> bytes:
+        return self.evidence
+
+
+def _authentication(source) -> str:
+    return (
+        "checkpoint_bytes_verified"
+        if type(source) is AuthenticatedAsecSource
+        else "synthetic_unverified"
+    )
 
 
 @dataclass(frozen=True)
@@ -177,7 +240,8 @@ class CurrentMoneyResources:
     """Explicit immutable resource bytes and inspected-code/runtime claims.
 
     Pure compilation checks these claims, not installed files. Use the separate
-    loader for installed verification; all sources still remain synthetic.
+    loader for installed verification. Source authentication belongs to the
+    separate closed checkpoint loader.
     """
 
     domains: bytes
@@ -215,10 +279,10 @@ class MoneyDomain:
 
 @dataclass(frozen=True)
 class CurrentMoneySpec:
-    """Closed v1 resources and a synthetic source; no mutable user mappings."""
+    """Closed v1 resources and issued source evidence; no mutable user mappings."""
 
     resources: CurrentMoneyResources
-    source: SyntheticAsecSource
+    source: SyntheticAsecSource | AuthenticatedAsecSource
     fields: tuple[MoneyDomain, ...]
     factors: tuple[tuple[int, str, str], ...]
     identity: bytes
@@ -229,15 +293,19 @@ class CurrentMoneySpec:
 
 
 def compile_asec_current_money_spec(
-    resources: CurrentMoneyResources, source_descriptor: SyntheticAsecSource
+    resources: CurrentMoneyResources,
+    source_descriptor: SyntheticAsecSource | AuthenticatedAsecSource,
 ) -> CurrentMoneySpec:
     """Compile pinned declarations; this does not change live nominal consumers."""
     _require(
         type(resources) is CurrentMoneyResources
-        and type(source_descriptor) is SyntheticAsecSource,
+        and type(source_descriptor) in (SyntheticAsecSource, AuthenticatedAsecSource),
         "SYNTHETIC_SOURCE_REQUIRED",
     )
-    source_descriptor.__post_init__()
+    if type(source_descriptor) is AuthenticatedAsecSource:
+        source_descriptor._validate()
+    else:
+        source_descriptor.__post_init__()
     resources.__post_init__()
     documents = tuple(
         _parse(v) for v in (resources.domains, resources.price, resources.consumers)
@@ -326,7 +394,7 @@ def compile_asec_current_money_spec(
             "execution": execution,
             "factors": factors,
             "numeric_scope": "platform_bitwise",
-            "source_authentication": "synthetic_unverified",
+            "source_authentication": _authentication(source_descriptor),
         }
     )
     return CurrentMoneySpec(resources, source_descriptor, fields, factors, identity)
@@ -594,7 +662,7 @@ class MoneyBindings:
             "country": "us",
             "semantic": "annual_current_money",
             "target_year": 2024,
-            "source_authentication": "synthetic_unverified",
+            "source_authentication": _authentication(self.spec.source),
             "state": "target_current",
             "spec_sha256": self.spec.sha256,
             "fields": list(FIELDS),
@@ -617,6 +685,13 @@ class MoneyBindings:
             ),
             "HEADER_DIGEST",
         )
+        if type(self.spec.source) is AuthenticatedAsecSource:
+            evidence = _parse(self.spec.source.identity)
+            _require(
+                data["scope_sha256"] == evidence["scope_sha256"]
+                and data["input_sha256"] == evidence["input_sha256"],
+                "AUTHENTICATED_HEADER_BINDING",
+            )
         _require(
             type(data["person_rows"]) is int
             and 0 < data["person_rows"] <= MAX_PERSONS
@@ -663,11 +738,14 @@ class SyntheticReadyCurrentMoney(RestatedAsecMoney):
     """Complete invented fixture amounts. This is NOT production authority."""
 
 
-class ReadyCurrentMoney:
-    """Reserved production state, deliberately unavailable in this pure slice."""
+class ReadyCurrentMoney(RestatedAsecMoney):
+    """Complete amounts bound to verified source bytes; not release certification."""
 
     def __new__(cls, *args, **kwargs):
-        raise MoneyRefusalError("PRODUCTION_READINESS_UNAVAILABLE")
+        _require(
+            kwargs.get("_token") is _STATE_TOKEN, "PRODUCTION_READINESS_UNAVAILABLE"
+        )
+        return super().__new__(cls)
 
 
 def _field(fields: tuple[MoneyField, ...], name: str) -> MoneyField:
@@ -812,7 +890,7 @@ def classify_asec_money(
             "country": "us",
             "semantic": "annual_current_money",
             "target_year": 2024,
-            "source_authentication": "synthetic_unverified",
+            "source_authentication": _authentication(spec.source),
             "state": "target_current",
             "spec_sha256": spec.sha256,
             "scope_sha256": _sha(scope_identity),
@@ -830,6 +908,13 @@ def classify_asec_money(
             "evidence_dtype": "|u1",
         }
     )
+    if type(spec.source) is AuthenticatedAsecSource:
+        expected = _parse(spec.source.identity)
+        _require(
+            expected["scope_sha256"] == _sha(scope_identity)
+            and expected["input_sha256"] == _sha(_json(inputs)),
+            "AUTHENTICATED_INPUT_MISMATCH",
+        )
     return DecodedAsecMoney(
         MoneyBindings(spec, header),
         tuple(result),
@@ -883,13 +968,15 @@ def restate_asec_current_money(
 
 def require_complete_current_money(
     restated: RestatedAsecMoney, spec: CurrentMoneySpec, *, production: bool = False
-) -> SyntheticReadyCurrentMoney:
-    """Require every mandatory amount, granting only synthetic fixture readiness."""
-    _require(type(production) is bool and not production, "SYNTHETIC_NOT_PRODUCTION")
+) -> SyntheticReadyCurrentMoney | ReadyCurrentMoney:
+    """Require every amount; synthetic evidence cannot request verified readiness."""
+    _require(type(production) is bool, "PRODUCTION_FLAG")
+    verified = type(spec.source) is AuthenticatedAsecSource
+    _require(not production or verified, "SYNTHETIC_NOT_PRODUCTION")
+    _require(not verified or production, "AUTHENTICATED_READINESS_REQUIRED")
     _require(type(restated) is RestatedAsecMoney, "TYPED_STATE")
     _validate_money(restated, spec, nominal=False)
     for field in restated.fields:
         _require(field.validity.all(), "MISSING_REQUIRED_AMOUNT", field.name)
-    return SyntheticReadyCurrentMoney(
-        restated.bindings, restated.fields, _token=_STATE_TOKEN
-    )
+    ready_type = ReadyCurrentMoney if verified else SyntheticReadyCurrentMoney
+    return ready_type(restated.bindings, restated.fields, _token=_STATE_TOKEN)

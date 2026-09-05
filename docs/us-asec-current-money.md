@@ -2,7 +2,9 @@
 
 `microcosm.build.us_runtime.asec_current_money` implements the bounded
 `us_asec_current_money_ccpiu_2024_v1` declaration, decoder and restater. It runs
-only on explicitly supplied synthetic person/household projections. It does not
+on explicitly supplied person/household projections. The original pure API uses
+synthetic evidence; the separate [authenticated source adapter](us-asec-current-money-source.md)
+now issues verified scope from the reviewed checkpoint pair. The pure module does not
 load source rows, construct a Frame, execute microunit or a country model, fit,
 calibrate, or alter the nominal recipe. Current wages are included. No prior
 wage output, model, export or delivery interface is introduced.
@@ -45,8 +47,8 @@ runtime override or automatic pin refresh.
    scope, raw-input and representation bindings. Decoding requires the expected
    `MoneyBindings`; a caller-written hash does not authenticate original data.
 
-There is no authenticated source constructor or production readiness
-constructor in this slice. A different string label cannot promote a synthetic
+There is no public authenticated source or verified readiness constructor.
+Only the separate checkpoint loader can issue authenticated evidence. A different string label cannot promote a synthetic
 source. State constructors are reserved to the validated transition functions,
 so ordinary callers cannot accidentally relabel normalized nominal arrays as
 restated/ready. These checks prevent accidental misuse in trusted Python; they
@@ -87,9 +89,8 @@ later corrected leaf formulas must consume these target views once.
 keys, income years and actual household/SPM membership. Keys must be unique
 within year. `AsecMoneyViews.scope` records the positional association of its
 projected tables; it must match the separately expected scope. The scope is
-explicit caller evidence in this synthetic-only API, not authentication of a
-physical source ID column. A later verified loader must establish that mapping
-from actual source bytes. Signed-int64 pandas Index/RangeIndex labels, including
+explicit caller evidence for synthetic sources. The separate verified loader
+establishes that mapping from actual checkpoint bytes. Signed-int64 pandas Index/RangeIndex labels, including
 duplicate/nondefault labels, are preserved separately in the fingerprint;
 other index representations refuse before values are decoded. Projection and
 permutation must move the explicit coordinate vectors with their rows.
@@ -119,7 +120,7 @@ plus framing). These are source bounds, not a claim of measured full-size
 memory use or compatibility with a graph byte-codec limit. The pure slice is
 verified on tiny invented fixtures only.
 
-Later source authentication, readiness gates, real microunit tax-only
-reconstruction, graph adapters, corrected current-leaf readers, clone lineage,
+The separately reviewed source adapter supplies byte authentication and real
+microunit tax-only reconstruction. Graph adapters, corrected current-leaf readers, clone lineage,
 other donor price bases and end-to-end candidate validation remain separate
 reviewable work. This module conveys no release or production readiness.
