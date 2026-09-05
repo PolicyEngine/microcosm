@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import shutil
+import struct
 import subprocess
 import sys
 from dataclasses import replace
@@ -24,10 +25,13 @@ from microcosm.build.frame_checkpoint import (
 from microcosm.build.frame_sampling import sample_frame_households
 from microcosm.build.us_runtime import asec_current_money as money
 from microcosm.build.us_runtime import asec_current_money_source as legacy
+from microcosm.build.us_runtime import asec_housing_universe as hu
+from microcosm.build.us_runtime import asec_housing_universe_source as hu_source
 from microcosm.build.us_runtime import asec_person_income_source as restoration
 from microcosm.build.us_runtime import asec_prepared_source as prepared
 from microcosm.build.us_runtime import graph_asec_prepared as bridge
 from microcosm.build.us_runtime import graph_context
+from microcosm.build.us_runtime import graph_housing_universe as graph_hu
 from microcosm.build.us_runtime.asec_current_money_selection import (
     decode_selected_current_money,
     parse_current_money_body,
@@ -49,22 +53,19 @@ from microcosm.build.us_runtime.graph_sources import (
     frame_column_declarations,
     us_source_codecs,
 )
-from microcosm.frame import US_SCHEMA, Frame, Weights
+from microcosm.frame import US_SCHEMA, Frame
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSEngine,
     PolicyEngineUSVariableMetadataIndex,
 )
 from microcosm.graph import (
-    ArtifactValue,
+    ArtifactType,
     ContentStore,
-    KernelContext,
     NodeRejectedError,
-    Numeric,
-    NumericScope,
     Owned,
+    StoreCorrupt,
     StoreMiss,
     compile_graph,
-    platform_fingerprint,
     run_graph,
 )
 from microcosm.graph.canonical import canonical_json
@@ -151,7 +152,9 @@ def _direct(root):
         fraction=1.0,
         seed=SEED,
         source_name=bridge.SELECTION_SOURCE_LABEL,
-        unit_strata=np.asarray(["2022", "2023", "2024"], dtype=object),
+        unit_strata=bridge._household_strata(
+            frame.person, frame.table("household").household_id.to_numpy(dtype="int64")
+        ),
     )
     body = parse_current_money_body(
         value.money_payload,
@@ -219,6 +222,7 @@ def _direct(root):
     (root / "direct-header.json").write_bytes(canonical_json(result.header))
     (root / "direct-money.bin").write_bytes(value.money_payload)
     (root / "direct-receipt.json").write_bytes(value.receipt_payload)
+    (root / "direct-housing-universe.bin").write_bytes(value.housing_universe_payload)
     return {
         "pid": os.getpid(),
         "roots": list(result.roots),
@@ -322,7 +326,15 @@ def executed(tmp_path_factory):
     from microcosm.build.us_runtime import asec_student_controls as student
 
     with pytest.MonkeyPatch.context() as patch:
-        _source_fixture().invented_prepared_directory(root, patch)
+        _source_fixture().invented_prepared_directory(
+            root,
+            patch,
+            households_per_cohort=2,
+            housing_contexts={
+                2023: {"H_TENURE": 0},
+                2024: {"H_LIVQRT": 10, "HRHTYPE": 10},
+            },
+        )
         (root / "invented-pins.json").write_bytes(
             canonical_json(
                 {
@@ -587,185 +599,277 @@ def test_engine_and_selection_refuse_invalid_runtime_params_before_outputs(execu
 def test_actual_selection_kernel_selects_whole_households_and_preserves_every_axis(
     executed,
 ):
-    """Two invented households per cohort make the half-sample nontrivial."""
-    from microcosm.build.us_runtime import asec_current_money_resources as resources
-    from microcosm.build.us_runtime._asec_current_money_codec import (
-        current_money_content_sha256,
-        encode_current_money,
+    """Actual authenticated invented source, nonidentity graph filter and real PE."""
+    root, full, store, *_ = executed
+    half, half_store = _run(root, resume="auto", fraction=0.5)
+    assert half.nodes[bridge.CREATE_NODE].hit
+    assert not half.nodes[bridge.SELECT_NODE].hit
+    parent, frame = (
+        full.population(bridge.CREATE_NODE),
+        half.population(bridge.SELECT_NODE),
     )
-
-    _root, manifest, _store, _contexts, _calls, _direct_result = executed
-    parent = manifest.population(bridge.CREATE_NODE)
-    tables = {}
-    for entity in US_SCHEMA.entities:
-        original = parent.table(entity)
-        extra = original.copy(deep=True)
-        extra[US_SCHEMA.entity_id_column(entity)] += 1000
-        if entity == "person":
-            for group in US_SCHEMA.group_entities:
-                extra[US_SCHEMA.membership_column(group)] += 1000
-        tables[entity] = pd.concat([original, extra], ignore_index=entity != "person")
-    weights = parent.weights_for("household")
-    frame = Frame(
-        tables,
-        US_SCHEMA,
-        {
-            "household": Weights(
-                np.r_[weights.values, weights.values + 10], weights.kind
-            )
-        },
-        pd.concat([parent.strata, parent.strata]),
-    )
-    pin = "a" * 64
-    source = money.SyntheticAsecSource(
-        pin,
-        pin,
-        ((2022, pin), (2023, pin), (2024, pin)),
-        (("ED_VAL.archive", pin), ("ED_VAL.member", pin)),
-        pin,
-    )
-    spec = money.compile_asec_current_money_spec(
-        resources.packaged_current_money_resources(
-            inspected_version=money.MICROUNIT_VERSION,
-            inspected_module_sha256=money.MICROUNIT_SHA256,
-        ),
-        source,
-    )
-    person, household = frame.person, frame.table("household")
-    scope = money.AsecMoneyScope(
-        tuple(person.person_id),
-        tuple(household.household_id),
-        tuple(person.person_household_id),
-        tuple(person.person_spm_unit_id),
-        tuple(person.source_year),
-        (2022, 2023, 2024, 2022, 2023, 2024),
-        tuple(f"p{i}" for i in range(12)),
-        tuple(f"h{i}" for i in range(6)),
-    )
-    # Signed values, NIU annuities, and encoded zeros exercise each field's
-    # existing classification; every field is compared at selected positions.
-    raw_person = pd.DataFrame(
-        {
-            field.column: (
-                np.full(12, -1.0)
-                if field.name == "ANN_VAL"
-                else np.tile([123.0, 0.0], 6)
-                if field.name == "WSAL_VAL"
-                else np.tile([-17.0, 0.0], 6)
-                if field.name == "RNT_VAL"
-                else np.zeros(12)
-            )
-            for field in spec.fields
-            if field.entity == "person"
-        }
-    )
-    raw_household = pd.DataFrame(
-        {
-            field.column: np.arange(6, dtype="float64") * 10
-            for field in spec.fields
-            if field.entity == "household"
-        }
-    )
-    ready = money.require_complete_current_money(
-        money.restate_asec_current_money(
-            money.classify_asec_money(
-                money.AsecMoneyViews(raw_person, raw_household, scope), spec, scope
-            ),
-            spec,
-        ),
-        spec,
-    )
-    receipt = {
-        "source_kind": prepared.PREPARED_SOURCE_KIND,
-        "release_eligible": False,
-        "entity_rows": {entity: frame.n(entity) for entity in frame.entities},
-        "money_header_sha256": money._sha(ready.header),
-        "money_content_sha256": current_money_content_sha256(ready),
-        "field_entities": [[field.name, field.entity] for field in spec.fields],
-    }
-    graph = bridge.us_asec_prepared_graph(
-        frame_column_declarations(frame), fraction=0.5, seed=SEED
-    )
-    node = graph.node(bridge.SELECT_NODE)
-    payloads = {
-        "frame_context": graph_context.encode_us_frame_context(frame),
-        "prepared_receipt": canonical_json(receipt),
-        "current_money": encode_current_money(ready),
-    }
-    numeric = NumericScope(Numeric.PLATFORM_BITWISE, platform=platform_fingerprint())
-    artifacts = {
-        edge.name: ArtifactValue(
-            payloads[edge.name],
-            edge.type,
-            money._sha(payloads[edge.name]),
-            pin,
-            numeric,
-        )
-        for edge in node.artifact_inputs
-    }
-    result = bridge.USAsecPreparedSelectionKernel().run(
-        KernelContext(
-            node=node,
-            tables={
-                "person": person.loc[
-                    :,
-                    [
-                        "person_id",
-                        *(
-                            US_SCHEMA.membership_column(group)
-                            for group in US_SCHEMA.group_entities
-                        ),
-                        "source_year",
-                    ],
-                ],
-                "household": household.loc[
-                    :, ["household_id", bridge.HOUSEHOLD_WEIGHT_CARRIER]
-                ],
-            },
-            weights={"household": frame.weights_for("household")},
-            strata=frame.strata,
-            params=node.params,
-            rng=np.random.default_rng(0),
-            artifacts=artifacts,
-        )
-    )
-    selection = json.loads(result.artifacts["selection"])
-    selected = decode_selected_current_money(
-        result.artifacts["selected_current_money"],
-        expected_parent_header_sha256=receipt["money_header_sha256"],
-        expected_parent_content_sha256=receipt["money_content_sha256"],
-        expected_prepared_receipt_sha256=money._sha(payloads["prepared_receipt"]),
-        expected_selection_sha256=money._sha(result.artifacts["selection"]),
-    )
-    keep = result.keep.to_numpy()
-    assert keep.sum() == selected.person_rows == 6
-    assert selected.household_rows == 3
-    ids = np.unique(person.person_household_id.to_numpy()[keep])
-    assert np.array_equal(keep, np.isin(person.person_household_id, ids))
-    assert person.loc[keep].groupby(
+    assert frame.n("household") == 3 and frame.n("person") == 6
+    assert frame.person.groupby(
         "source_year"
     ).person_household_id.nunique().to_dict() == {2022: 1, 2023: 1, 2024: 1}
-    household_positions = np.flatnonzero(np.isin(household.household_id, ids))
-    for name in money.FIELDS:
-        before, after = ready.field(name), selected.field(name)
-        positions = household_positions if name == "HTOTVAL" else np.flatnonzero(keep)
+    ids = frame.table("household").household_id.to_numpy()
+    positions = {
+        "person": np.flatnonzero(np.isin(parent.person.person_household_id, ids)),
+        "household": np.flatnonzero(
+            np.isin(parent.table("household").household_id, ids)
+        ),
+    }
+    assert np.array_equal(
+        parent.person.person_id.to_numpy()[positions["person"]],
+        frame.person.person_id.to_numpy(),
+    )
+    assert (
+        parent.weights_for("household").values[positions["household"]].tobytes()
+        == frame.weights_for("household").values.tobytes()
+    )
+    prep_bytes = _payload(half, half_store, bridge.CREATE_NODE, "prepared_receipt")
+    prep = json.loads(prep_bytes)
+    body = parse_current_money_body(
+        _payload(half, half_store, bridge.CREATE_NODE, "current_money"),
+        expected_header_sha256=prep["money_header_sha256"],
+        expected_content_sha256=prep["money_content_sha256"],
+        field_entities=tuple(tuple(v) for v in prep["field_entities"]),
+    )
+    selection_bytes = _payload(half, half_store, bridge.SELECT_NODE, "selection")
+    selection = json.loads(selection_bytes)
+    selected = decode_selected_current_money(
+        _payload(half, half_store, bridge.SELECT_NODE, "selected_current_money"),
+        expected_parent_header_sha256=body.header_sha256,
+        expected_parent_content_sha256=body.content_sha256,
+        expected_prepared_receipt_sha256=money._sha(prep_bytes),
+        expected_selection_sha256=money._sha(selection_bytes),
+    )
+    for name, entity in prep["field_entities"]:
         for axis in ("amounts", "statuses", "validity", "zero_origin"):
             assert (
-                getattr(after, axis).tobytes()
-                == getattr(before, axis)[positions].tobytes()
+                getattr(selected.field(name), axis).tobytes()
+                == getattr(body.field(name), axis)[positions[entity]].tobytes()
             )
-    assert selection["mass_normalization"] == "none"
-    assert selection["mass"]["after"] == float(
-        frame.resolve_weights("person").values[keep].sum()
+    before = decode_engine_evaluation(
+        _payload(full, store, bridge.ENGINE_NODE, "engine_evaluation")
     )
-    assert selection["mass"]["after"] < selection["mass"]["before"]
-    context = json.loads(result.artifacts["frame_context"])
-    for entity in US_SCHEMA.group_entities:
-        expected_ids = np.unique(person.loc[keep, US_SCHEMA.membership_column(entity)])
-        assert context["entities"][entity]["rows"] == len(expected_ids)
+    after = decode_engine_evaluation(
+        _payload(half, half_store, bridge.ENGINE_NODE, "engine_evaluation")
+    )
+    for root_name in ADMITTED_ROOTS:
         assert (
-            context["entities"][entity]["ordered_ids_sha256"]
-            == graph_context._row_identity(
-                pd.DataFrame({US_SCHEMA.entity_id_column(entity): expected_ids}), entity
-            )["ordered_ids_sha256"]
+            before.values[root_name][positions["person"]].tobytes()
+            == after.values[root_name].tobytes()
         )
+    assert selection["mass_normalization"] == "none"
+    assert selection["mass"]["after"] < selection["mass"]["before"]
+    assert (
+        frame.table("household").asec_housing_universe_occupied_hu.tolist().count(2)
+        == 1
+    )
+    assert (
+        frame.table("household").asec_housing_universe_hu_tenure_class.tolist().count(3)
+        == 1
+    )
+
+
+def test_native_hu_bytes_promoted_cells_and_source_lineage_are_separate(executed):
+    root, manifest, store, *_ = executed
+    prep = json.loads(_payload(manifest, store, bridge.CREATE_NODE, "prepared_receipt"))
+    payload = _payload(manifest, store, bridge.CREATE_NODE, "housing_universe")
+    assert payload == (root / "direct-housing-universe.bin").read_bytes()
+    body = graph_hu.bind_housing_universe(payload, prepared_receipt=prep)
+    assert type(body) is graph_hu.BoundHousingUniverse
+    assert not isinstance(body, hu.AuthenticatedHousingUniverse)
+    frame = manifest.population(bridge.SELECT_NODE)
+    household = frame.table("household")
+    assert household.asec_housing_universe_occupied_hu.tolist() == [1, 1, 2, 1, 1, 2]
+    assert household.asec_housing_universe_hu_tenure_class.tolist() == [
+        2,
+        3,
+        0,
+        2,
+        3,
+        0,
+    ]
+    for name, alias in zip(hu.DERIVED_COLUMNS, hu_source.ATTACHED_COLUMNS, strict=True):
+        assert body.array(name).dtype == np.dtype("uint8")
+        assert not body.array(name).flags.writeable
+        assert household[alias].dtype == np.dtype("int64")
+        assert np.array_equal(household[alias], body.array(name))
+    positions = np.asarray([1, 2, 5], dtype="int64")
+    # Legitimate subsets remain a row comparison, never a source authority object.
+    graph_hu.verify_graph_housing_rows(
+        household.iloc[positions], body, positions=positions
+    )
+    with pytest.raises(hu.HousingUniverseRefusalError, match="EXPECTED_UNIVERSE"):
+        hu.decode_housing_universe(payload, expected=body)
+    with pytest.raises(hu.HousingUniverseRefusalError, match="AUTHENTICATED_UNIVERSE"):
+        hu_source.verify_housing_universe_rows(
+            household, body, lineage_ids=household.household_id.to_numpy()
+        )
+    with pytest.raises(hu.HousingUniverseRefusalError, match="BOUND_HU_CONSTRUCTOR"):
+        graph_hu.BoundHousingUniverse(body.header, body.buffers)
+    checkpoint = root / "hu-selected-checkpoint.h5"
+    write_frame_checkpoint(checkpoint, frame)
+    restored = load_frame_checkpoint(checkpoint).frame
+    graph_hu.verify_graph_housing_rows(
+        restored.table("household"), body, positions=np.arange(6, dtype="int64")
+    )
+    assert prep["housing_universe"]["parent_kind"] == "HousingStatusAttachedAsec"
+    assert (
+        prep["pre_housing_universe_frame_sha256"] != prep["pre_promotion_frame_sha256"]
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "raw",
+        "derived",
+        "source",
+        "definition",
+        "codebook",
+        "source_claim",
+        "synthetic",
+        "row_count",
+        "schema_bool",
+        "codebook_bool",
+    ],
+)
+def test_rechecksummed_hu_transport_cannot_change_native_definition_or_source(
+    executed, mutation
+):
+    _root, manifest, store, *_ = executed
+    prep = json.loads(_payload(manifest, store, bridge.CREATE_NODE, "prepared_receipt"))
+    payload = _payload(manifest, store, bridge.CREATE_NODE, "housing_universe")
+    body = graph_hu.bind_housing_universe(payload, prepared_receipt=prep)
+    header, buffers = json.loads(body.header), list(body.buffers)
+    if mutation in ("raw", "derived"):
+        name = "H_TENURE" if mutation == "raw" else "occupied_hu"
+        values = body.array(name).copy()
+        values[0] = 1 if mutation == "raw" else 2
+        buffers[hu.COLUMNS.index(name)] = values.tobytes()
+    elif mutation == "source":
+        header["source"]["identity"] = "{}"
+    elif mutation == "definition":
+        header["definition_sha256"] = "f" * 64
+        prep["housing_universe"]["definition_sha256"] = "f" * 64
+    elif mutation == "codebook":
+        header["codebook"]["occupied_hu"]["occupied_housing_unit"] = 2
+    elif mutation == "source_claim":
+        header["source"]["income_year_origin"] = "caller"
+    elif mutation == "synthetic":
+        header["source_authentication"] = "synthetic_unverified"
+    elif mutation == "schema_bool":
+        header["schema_version"] = True
+    elif mutation == "codebook_bool":
+        header["codebook"]["occupied_hu"]["occupied_housing_unit"] = True
+    else:
+        header["household_rows"] += 1
+    header_bytes = hu._json(header)
+    raw = b"".join(
+        (hu.MAGIC, struct.pack("<I", len(header_bytes)), header_bytes, *buffers)
+    )
+    forged = raw + bytes.fromhex(money._sha(raw))
+    prep["housing_universe"].update(
+        payload_sha256=money._sha(forged),
+        header_sha256=money._sha(header_bytes),
+        content_sha256=money._sha(b"microcosm/asec-housing-universe-content/1\0" + raw),
+    )
+    with pytest.raises(hu.HousingUniverseRefusalError):
+        graph_hu.bind_housing_universe(forged, prepared_receipt=prep)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "negative",
+        "large",
+        "float",
+        "bool",
+        "narrow",
+        "raw",
+        "id_order",
+        "positions",
+        "producer",
+        "type",
+        "binding",
+    ],
+)
+def test_selected_hu_cells_and_ancestry_refuse_without_cast_or_authority_upgrade(
+    executed, mutation
+):
+    _root, _manifest, _store, contexts, *_ = executed
+    context = contexts[bridge.LEAVES_NODE]
+    artifacts, tables = dict(context.artifacts), dict(context.tables)
+    household = tables["household"].copy(deep=True)
+    alias = "asec_housing_universe_occupied_hu"
+    if mutation in ("negative", "large", "raw"):
+        col = "asec_H_SEQ" if mutation == "raw" else alias
+        household.iloc[0, household.columns.get_loc(col)] = {
+            "negative": -1,
+            "large": 257,
+            "raw": 99,
+        }[mutation]
+    elif mutation in ("float", "bool", "narrow"):
+        household[alias] = household[alias].astype(
+            {"float": "float64", "bool": "bool", "narrow": "uint8"}[mutation]
+        )
+    elif mutation == "id_order":
+        household = household.iloc[::-1].reset_index(drop=True)
+    elif mutation in ("positions", "binding"):
+        value = artifacts["selection"]
+        data = json.loads(value.payload)
+        if mutation == "positions":
+            data["household_positions_sha256"] = "f" * 64
+        else:
+            data["parent"]["housing_universe_payload_sha256"] = "f" * 64
+        artifacts["selection"] = replace(value, payload=canonical_json(data))
+    else:
+        value = artifacts["housing_universe"]
+        artifacts["housing_universe"] = replace(
+            value,
+            **(
+                {"producer_key": "f" * 64}
+                if mutation == "producer"
+                else {"type": ArtifactType("wrong", 1)}
+            ),
+        )
+    tables["household"] = household
+    with pytest.raises(ValueError):
+        bridge.USAsecPreparedLeavesKernel().run(
+            replace(context, artifacts=artifacts, tables=tables)
+        )
+
+
+def test_full_hu_cohort_disagreement_refuses_before_selection(executed):
+    _root, _manifest, _store, contexts, *_ = executed
+    context = contexts[bridge.SELECT_NODE]
+    tables = dict(context.tables)
+    person = tables["person"].copy(deep=True)
+    person.loc[person.source_year == 2022, "source_year"] = 2023
+    tables["person"] = person
+    with pytest.raises(hu.HousingUniverseRefusalError, match="BOUND_HU_COHORTS"):
+        bridge.USAsecPreparedSelectionKernel().run(replace(context, tables=tables))
+
+
+def test_required_cache_refuses_corrupt_hu_bytes_without_execution(
+    executed, monkeypatch
+):
+    root, manifest, store, *_ = executed
+    key = manifest.nodes[bridge.CREATE_NODE].opaque_artifacts["housing_universe"]
+    path = store.object_path(key) / "payload.bin"
+    before = path.read_bytes()
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("corrupt HU cache executed a kernel")
+
+    for cls in KERNELS:
+        monkeypatch.setattr(cls, "run", forbidden)
+    try:
+        path.write_bytes(before[:-1] + bytes([before[-1] ^ 1]))
+        with pytest.raises((StoreMiss, StoreCorrupt)):
+            _run(root, resume="require")
+    finally:
+        path.write_bytes(before)

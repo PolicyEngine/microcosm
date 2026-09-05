@@ -227,6 +227,32 @@
       "resource_accesses_sha256": "bebe07e6f115689ca38ae68c2d7f69df4ab09cfaad3326e622f9f7b8a9dc89a0",
       "unbound_uses_sha256": "ec593873f78e53325d93fc7f8cd3422f3935c0bec2a60120738bd3e606e065fc"
     },
+    "microcosm.build/us_runtime/asec_housing_universe.py": {
+      "imports": [
+        "microcosm.build.us_runtime.asec_housing_status",
+        "microcosm.build.us_runtime.asec_housing_universe_source",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "ac86369b087151b3b538064a5d1dcfaa533bd2adf1948c1132fb6ace4a2365d0",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/asec_housing_universe_source.py": {
+      "imports": [
+        "microcosm.build.us_runtime",
+        "microcosm.build.us_runtime.asec_current_money",
+        "microcosm.build.us_runtime.asec_current_money_units",
+        "microcosm.build.us_runtime.asec_housing_status",
+        "microcosm.build.us_runtime.asec_housing_status_source",
+        "microcosm.build.us_runtime.asec_housing_universe",
+        "microcosm.build.us_runtime.operator_boundary",
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "0f622ceee1c600d15eb314ecf7b88121f6c707b9cf8703c2965af95240ec73ee",
+      "unbound_uses_sha256": "a8cb1277b205b614033078bca03e9c055d190134adc1172bcae5294c76d2737e"
+    },
     "microcosm.build/us_runtime/asec_person_income_source.py": {
       "imports": [
         "microcosm.build",
@@ -258,7 +284,7 @@
         "pandas"
       ],
       "resource_accesses_sha256": "d53265b60115118b47ecd636a9fb01a878791d7c9fb1deff86ea21e35947b9c6",
-      "unbound_uses_sha256": "344a33076048af1598de5f87feaedcb047d98b1156e6da39635b80f77ee7a934"
+      "unbound_uses_sha256": "5154bd1ce0e83a803c226651a596515096e687b77ef4e8a44685b52424e67bac"
     },
     "microcosm.build/us_runtime/asec_student_controls.py": {
       "imports": [
@@ -344,6 +370,7 @@
         "microcosm.build.us_runtime.asec_prepared_source",
         "microcosm.build.us_runtime.cps_carried_current",
         "microcosm.build.us_runtime.graph_context",
+        "microcosm.build.us_runtime.graph_housing_universe",
         "microcosm.build.us_runtime.graph_implementation",
         "microcosm.build.us_runtime.graph_sources",
         "microcosm.frame",
@@ -385,6 +412,16 @@
       ],
       "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/graph_housing_universe.py": {
+      "imports": [
+        "microcosm.build.us_runtime",
+        "microcosm.graph",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "457bc0cc87c6883ba9423769b70238b0e4ea060bca16c94d03379de01ac882c6"
     },
     "microcosm.build/us_runtime/graph_implementation.py": {
       "imports": [
@@ -1019,33 +1056,35 @@
     "microcosm.build.serialization_dtypes": "whole-module in explicit stages",
     "microcosm.build.source_manifest": "inactive legacy alimony source-stage declaration; scoped-use and resource-access tripwires retained",
     "microcosm.build.table_identity": "whole-module in explicit stages",
-    "microcosm.build.us_runtime": "package-relative live aliases for original money/schema/checkpoint/household/person-income/housing verifiers, separate student controls and graph context are explicitly module-bound in asec_prepared_v1; other shared-module or optional routes remain inactive with scoped-use tripwires",
-    "microcosm.build.us_runtime._asec_current_money_codec": "whole-module in asec_prepared_v1; original canonical full-source replay unchanged",
+    "microcosm.build.us_runtime": "package-relative live aliases for original money/schema/checkpoint/household/person-income/housing verifiers, separate student controls and graph context are explicitly module-bound in asec_prepared_v2; other shared-module or optional routes remain inactive with scoped-use tripwires; v2 adds package-relative HU definition/source aliases and non-authoritative transport, each explicitly whole-module bound.",
+    "microcosm.build.us_runtime._asec_current_money_codec": "whole-module in asec_prepared_v2; original canonical full-source replay unchanged",
     "microcosm.build.us_runtime.acs_income_universe": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "microcosm.build.us_runtime.acs_inputs": "whole-module in explicit stages",
     "microcosm.build.us_runtime.acs_pums": "whole-module in explicit stages",
     "microcosm.build.us_runtime.acs_transfer": "live registry projection; other shared-module routes inactive",
     "microcosm.build.us_runtime.adult_care": "live registry projection; other shared-module routes inactive",
-    "microcosm.build.us_runtime.alimony": "whole-module in asec_prepared_v1 for pure ASEC split; source manifest and other nominal routes inactive",
+    "microcosm.build.us_runtime.alimony": "whole-module in asec_prepared_v2 for pure ASEC split; source manifest and other nominal routes inactive",
     "microcosm.build.us_runtime.asec_checkpoint": "whole-module in explicit stages",
-    "microcosm.build.us_runtime.asec_current_money": "whole-module in asec_prepared_v1; immutable recipe source identity",
-    "microcosm.build.us_runtime.asec_current_money_graph_resources": "whole-module in asec_prepared_v1; additive status loader leaves original T1/money resource identity unchanged",
-    "microcosm.build.us_runtime.asec_current_money_resources": "whole-module in asec_prepared_v1; original recipe and installed microunit verification unchanged",
-    "microcosm.build.us_runtime.asec_current_money_selection": "whole-module in asec_prepared_v1; selected body has provenance but no full-source authority",
-    "microcosm.build.us_runtime.asec_current_money_source": "whole-module in asec_prepared_v1; authenticated original source verification",
-    "microcosm.build.us_runtime.asec_current_money_units": "whole-module in asec_prepared_v1; real microunit with separate authenticated student controls",
-    "microcosm.build.us_runtime.asec_engine_evaluation": "whole-module in asec_prepared_v1; pinned complete installed formula closures and empty defaults allowlist",
-    "microcosm.build.us_runtime.asec_housing_status": "whole-module in asec_prepared_v1; status definition and sealed authenticated artifact",
-    "microcosm.build.us_runtime.asec_housing_status_source": "whole-module in asec_prepared_v1; housing source remains original T1",
-    "microcosm.build.us_runtime.asec_person_income_source": "whole-module in asec_prepared_v1; unchanged T1 restoration verifier closure",
-    "microcosm.build.us_runtime.asec_prepared_source": "whole-module in asec_prepared_v1; registry-only import in other graph_sources scopes retains scoped-use tripwire",
-    "microcosm.build.us_runtime.asec_student_controls": "whole-module in asec_prepared_v1; separate S authority before tax units, never part of original T1 verifier",
+    "microcosm.build.us_runtime.asec_current_money": "whole-module in asec_prepared_v2; immutable recipe source identity",
+    "microcosm.build.us_runtime.asec_current_money_graph_resources": "whole-module in asec_prepared_v2; additive status loader leaves original T1/money resource identity unchanged",
+    "microcosm.build.us_runtime.asec_current_money_resources": "whole-module in asec_prepared_v2; original recipe and installed microunit verification unchanged",
+    "microcosm.build.us_runtime.asec_current_money_selection": "whole-module in asec_prepared_v2; selected body has provenance but no full-source authority",
+    "microcosm.build.us_runtime.asec_current_money_source": "whole-module in asec_prepared_v2; authenticated original source verification",
+    "microcosm.build.us_runtime.asec_current_money_units": "whole-module in asec_prepared_v2; real microunit with separate authenticated student controls",
+    "microcosm.build.us_runtime.asec_engine_evaluation": "whole-module in asec_prepared_v2; pinned complete installed formula closures and empty defaults allowlist",
+    "microcosm.build.us_runtime.asec_housing_status": "whole-module in asec_prepared_v2; status definition and sealed authenticated artifact",
+    "microcosm.build.us_runtime.asec_housing_status_source": "whole-module in asec_prepared_v2; housing source remains original T1",
+    "microcosm.build.us_runtime.asec_housing_universe": "Whole-module in asec_prepared_v2; native HU source definition/ownership and non-authoritative graph transport plus selected-row validation; no ACS or selected-Frame authority.",
+    "microcosm.build.us_runtime.asec_housing_universe_source": "Whole-module in asec_prepared_v2; native HU source definition/ownership and non-authoritative graph transport plus selected-row validation; no ACS or selected-Frame authority.",
+    "microcosm.build.us_runtime.asec_person_income_source": "whole-module in asec_prepared_v2; unchanged T1 restoration verifier closure",
+    "microcosm.build.us_runtime.asec_prepared_source": "whole-module in asec_prepared_v2; registry-only import in other graph_sources scopes retains scoped-use tripwire",
+    "microcosm.build.us_runtime.asec_student_controls": "whole-module in asec_prepared_v2; separate S authority before tax units, never part of original T1 verifier",
     "microcosm.build.us_runtime.child_support": "live registry projection; other shared-module routes inactive",
     "microcosm.build.us_runtime.childcare": "live registry projection; other shared-module routes inactive",
     "microcosm.build.us_runtime.congressional_district_geography": "whole-module in explicit stages",
     "microcosm.build.us_runtime.congressional_district_vintage": "whole-module in explicit stages",
-    "microcosm.build.us_runtime.cps_carried": "whole-module in asec_prepared_v1 for split constants; nominal consumer route inactive",
-    "microcosm.build.us_runtime.cps_carried_current": "whole-module in asec_prepared_v1; typed corrected money amounts and declared raw routing only",
+    "microcosm.build.us_runtime.cps_carried": "whole-module in asec_prepared_v2 for split constants; nominal consumer route inactive",
+    "microcosm.build.us_runtime.cps_carried_current": "whole-module in asec_prepared_v2; typed corrected money amounts and declared raw routing only",
     "microcosm.build.us_runtime.disability_benefits": "live registry projection; other shared-module routes inactive",
     "microcosm.build.us_runtime.education_assistance_source": "whole-module in explicit stages",
     "microcosm.build.us_runtime.education_inputs": "live registry projection; other shared-module routes inactive",
@@ -1053,6 +1092,7 @@
     "microcosm.build.us_runtime.energy_subsidy": "live registry projection; other shared-module routes inactive",
     "microcosm.build.us_runtime.geography_ladder": "whole-module in explicit stages",
     "microcosm.build.us_runtime.graph_context": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.graph_housing_universe": "Whole-module in asec_prepared_v2; native HU source definition/ownership and non-authoritative graph transport plus selected-row validation; no ACS or selected-Frame authority.",
     "microcosm.build.us_runtime.graph_implementation": "whole-module in explicit stages",
     "microcosm.build.us_runtime.graph_sources": "whole-module in explicit graph stages; prepared slice uses frame column declarations and validated codec registration only",
     "microcosm.build.us_runtime.hours_worked": "live registry projection; other shared-module routes inactive",
@@ -1205,9 +1245,10 @@
   "schema": "microcosm.us.implementation-inventory.v1",
   "scope_notes": {
     "asec_prepared_engine": "PE-US/Core are live only in the evaluation kernel. That kernel adds their dependencies and verifies pinned installed implementation/parameter bytes in its implementation identity before cache lookup. The common prepared scope can be hashed without engine extras; its local adapter/source-index modules and empty-defaults resource are bound.",
-    "asec_prepared_v1": "Full P/H/T1 restoration, unchanged money recipe, separate S authentication/attachment before tax units, housing authentication against original T1, lossless dtype promotion, typed whole-household selection, corrected CPS leaves and four admitted PE outputs. Graph/Frame/microunit rosters are bound conservatively. Only declared source codec registration and frame column declarations run from graph_sources; ACS and stack assembly routes remain inactive. Alimony's pure ASEC split and cps_carried's split constants are bound, while their legacy consumer/source-manifest routes are inactive.",
+    "asec_prepared_v2": "Full P/H/T1 restoration, unchanged money recipe, separate S authentication/attachment before tax units, housing authentication against original T1, lossless dtype promotion, typed whole-household selection, corrected CPS leaves and four admitted PE outputs. Graph/Frame/microunit rosters are bound conservatively. Only declared source codec registration and frame column declarations run from graph_sources; ACS and stack assembly routes remain inactive. Alimony's pure ASEC split and cps_carried's split constants are bound, while their legacy consumer/source-manifest routes are inactive. V2 additionally authenticates HU from original T1, attaches it after housing status, preserves the pre-HU parent signature and carries native HU bytes plus selected-row ancestry with exact int64 promotion; pure ACS HU remains inactive.",
     "bound_modules": "Whole bytes of explicitly named modules; helper-only parsing never imports adapters.",
     "current_money_resources": "Original source recipe and consumers declaration bytes remain unchanged to preserve authenticated T1/money identities. The additive graph consumer resource is separately pinned and supersedes only implementation status for the graph slice and microunit; all old nominal consumer routes remain pending.",
+    "occupied_housing_review_base": "HU v1 source definition and attachment are exact approved 4b26e59b additions on d4bddcb6ac2aba52903cd8dace90330cee4a21e1; only the v2 prepared graph/transport wiring is new. Original source-verifier modules and resources are unchanged.",
     "operator_boundary": "Resolved output/formula registries projected; provider bodies are not called by source construction.",
     "other_imports": "Canonical non-stdlib import modules are explicitly classified. Ordinary symbols from a module/dependency bound in every using scope need no inventory edit. Only unbound-helper uses retain a lexical-scope fingerprint; resource-access expressions retain their own fingerprint. Expanded AST details are audit output, not packaged data. Neither fingerprint is a proof of dynamic closure.",
     "resources": "Microunit rule YAML is bound. Default packaged geography/source-stage resources belong to inactive legacy entrypoints; graph lookups are explicit SourceRefs."
@@ -1334,7 +1375,7 @@
       "resources": [],
       "source_boundary_projection": true
     },
-    "asec_prepared_v1": {
+    "asec_prepared_v2": {
       "dependencies": [
         "numpy",
         "pandas",
@@ -1364,6 +1405,8 @@
         "microcosm.build/us_runtime/asec_household_observations.py",
         "microcosm.build/us_runtime/asec_housing_status.py",
         "microcosm.build/us_runtime/asec_housing_status_source.py",
+        "microcosm.build/us_runtime/asec_housing_universe.py",
+        "microcosm.build/us_runtime/asec_housing_universe_source.py",
         "microcosm.build/us_runtime/asec_person_income_source.py",
         "microcosm.build/us_runtime/asec_prepared_source.py",
         "microcosm.build/us_runtime/asec_student_controls.py",
@@ -1372,6 +1415,7 @@
         "microcosm.build/us_runtime/education_assistance_source.py",
         "microcosm.build/us_runtime/graph_asec_prepared.py",
         "microcosm.build/us_runtime/graph_context.py",
+        "microcosm.build/us_runtime/graph_housing_universe.py",
         "microcosm.build/us_runtime/graph_implementation.py",
         "microcosm.build/us_runtime/graph_sources.py",
         "microcosm.build/us_runtime/operator_boundary.py",

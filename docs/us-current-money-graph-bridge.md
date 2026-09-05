@@ -9,14 +9,14 @@ calibration, or release eligibility.
 
 | Node | Operation | Result |
 | --- | --- | --- |
-| `asec_prepared.create` | Authenticate T1/money, compose observed student controls S, reconstruct actual tax units, attach housing status, promote graph dtypes | Full population, typed frame context, encoded money body, preparation receipt |
+| `asec_prepared.create` | Authenticate T1/money, compose observed student controls S, reconstruct actual tax units, attach housing status and occupied-HU evidence, promote graph dtypes | Full population, typed frame context, encoded money and native HU bodies, preparation receipt |
 | `asec_prepared.select_households` | Seeded exact-count selection by source-year stratum | Selected population, context, selection receipt, separately typed selected money |
 | `asec_prepared.cps_carried_current` | Read corrected amounts and declared routing codes | 24 person leaves including `age`, one SPM childcare leaf, updated context |
 | `asec_prepared.engine_current_money` | Admit exact installed formula closures and invoke the actual PE adapter | Evaluation artifact; no formula-owned population columns |
 
 ## Original source and separate student controls
 
-The `us-asec-prepared-current-money-v1` source codec accepts one directory with
+The `us-asec-prepared-current-money-v2` source codec accepts one directory with
 exactly the ten names in `asec_prepared_source.PREPARED_SOURCE_FILES`: raw parent
 P, household attachment H, restored T1, its canonical restoration receipt, three
 housing cohort HDFs, and three official Census PERSON CSV members. The roster
@@ -63,8 +63,54 @@ They retain the existing microunit proxy interpretation. Receipts explicitly set
 `annual_five_month_student_status_validated` to false. The separate reviewed S
 implementation is described in [the student controls contract](us-asec-student-controls.md).
 S was composed locally after native and Fable approval of its frozen revision
-`553084def66b5abd315e0e25bae9cd5e986d4867`; that is not root integration or approval
-for genuine source production or a graph population run.
+`553084def66b5abd315e0e25bae9cd5e986d4867`. Source-evidence approval and execution
+of a particular graph revision remain separate decisions.
+
+## Occupied-HU evidence and preserved parent
+
+The v2 source preparation adds `load_authenticated_housing_universe(source)`
+against the original T1 authority, then `attach_housing_universe(attached,
+universe)` after student controls, tax construction and housing status. The
+complete owned parent is checked with its native seven uint8 aliases before
+graph promotion. The original v4 housing-parent Frame identity is retained as
+`pre_housing_universe_frame_sha256`; the existing housing receipt/content, tax,
+S and money identities keep their original meanings. `pre_promotion_frame_sha256`
+now describes the additional HU columns.
+
+CREATE emits the exact full native HU bytes as a typed artifact. The preparation
+receipt separately binds its header/content/payload/definition/attachment digests,
+source period and seven aliases. This is one full artifact in the store, with
+no new source file and no second preparation. Raw native int64 controls and
+uint8 derived evidence stay unchanged inside that artifact; graph aliases use
+lossless int64 promotion recorded by the existing promotion pass.
+
+`graph_housing_universe.BoundHousingUniverse` is a non-authoritative transport
+view. Its bounded parser binds the preparation receipt, checks definitions and
+source identity, and recomputes native derived codes. It never issues
+`AuthenticatedHousingUniverse`, a ready-money object or selected-Frame authority.
+The [original HU codec and uint8 row verifier](us-asec-housing-universe.md) stay
+unchanged.
+
+SELECT declares the household H_SEQ/four context controls and seven aliases.
+It checks their exact int64 values against the native full artifact and verifies
+source-year alignment before selecting households. Its existing selection receipt
+adds the HU payload identity to its parent binding. Existing household position
+and ordered-ID digests carry selection ancestry. LEAVES consumes that original
+CREATE artifact, the CREATE receipt, and SELECT's context/selection; it checks
+producer relationships, selected positions and carried raw/promoted values.
+Negative, out-of-domain, float, Boolean or native-width aliases cannot be cast
+into acceptance. Selected rows do not recreate full-source authority.
+
+Whole-HH selection retains GQ people and occupied HUs with unresolved tenure;
+it does not filter to the HU denominator. The four PE output roots and their
+input leaves are unchanged. Pure ACS evidence remains unbound; authenticated
+ACS lineage, a shared stacked denominator, B25003 evaluation, cloning/pruning
+custody and release eligibility are separate work.
+
+V2 explicitly changes the prepared source/codec/receipt and implementation-scope
+identities, four kernel reference versions and the prepared/selection typed
+receipt versions. Existing T1, money and HU source artifact schemas remain v1.
+Older v1 graph checkpoints do not certify reuse under the v2 declarations.
 
 ## Typed artifacts and exact selection
 
@@ -134,7 +180,7 @@ validates the codec and keys source bytes; CREATE performs preparation once,
 including mandatory authenticated source reconstruction. It does not invoke
 the codec to prepare the same population a second time.
 
-The `asec_prepared_v1` implementation scope binds graph/source/runtime modules,
+The `asec_prepared_v2` implementation scope binds graph/source/runtime modules,
 reviewed packaged resources, installed dependencies and actual loader identity.
 Typed artifacts and producer keys bind body, selection, context and evaluation.
 Required-cache lookup refuses changed source bytes, implementation, missing or

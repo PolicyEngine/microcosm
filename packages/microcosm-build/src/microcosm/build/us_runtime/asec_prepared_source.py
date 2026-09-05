@@ -34,6 +34,8 @@ from microcosm.graph.population import dtype_for_token, token_for_dtype
 
 from . import asec_current_money_source as money_source
 from . import asec_housing_status_source as housing_source
+from . import asec_housing_universe as housing_universe
+from . import asec_housing_universe_source as housing_universe_source
 from . import asec_person_income_source as person_income
 from . import asec_student_controls as student_source
 from ._asec_current_money_codec import (
@@ -63,8 +65,8 @@ from .asec_housing_status_source import (
 from .education_assistance_source import ASEC_EDUCATION_ASSISTANCE_ARCHIVES
 from .operator_boundary import assert_operator_free_source_frame
 
-PREPARED_SOURCE_KIND = "us_asec_prepared_current_money_v1"
-PREPARED_RECEIPT_SCHEMA = "microcosm.us.asec_prepared_receipt.v1"
+PREPARED_SOURCE_KIND = "us_asec_prepared_current_money_v2"
+PREPARED_RECEIPT_SCHEMA = "microcosm.us.asec_prepared_receipt.v2"
 PREPARATION_BOUNDARY = "US graph ASEC prepared source"
 SOURCE_YEARS: tuple[int, ...] = (2022, 2023, 2024)
 PARENT_FILENAME = ASEC_RAW_STAGE_CHECKPOINT_FILENAME
@@ -358,18 +360,20 @@ def prepared_source_implementation_identity() -> str:
             "asec_prepared_source.py",
             "asec_current_money_selection.py",
             "cps_carried_current.py",
+            "graph_housing_universe.py",
         )
     }
     return _sha(
         _json(
             {
-                "schema": 1,
+                "schema": 2,
                 "source_kind": PREPARED_SOURCE_KIND,
                 "modules": modules,
                 "money_source_verification": money_source._verification_identity(),
                 "restoration_verification": person_income._implementation(),
                 "student_controls_verification": student_source._implementation(),
                 "housing_verification": housing_source._implementation(),
+                "housing_universe_verification": housing_universe_source._implementation(),
                 "file_roster": list(PREPARED_SOURCE_FILES),
                 "boundary": PREPARATION_BOUNDARY,
             }
@@ -385,6 +389,7 @@ class PreparedAsecPopulation:
     money_payload: bytes
     receipt: dict
     field_entities: tuple[tuple[str, str], ...]
+    housing_universe_payload: bytes
 
     @property
     def receipt_payload(self) -> bytes:
@@ -430,9 +435,16 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
     )
     attached = attach_housing_status(tax, status)
     attached.validate()
-    frame = housing_source._owned_frame(attached.frame)
+    # HU authenticates original T1 and retains the complete S/tax/housing parent.
+    # Its strict uint8 attachment validation runs before graph width promotion.
+    universe = housing_universe_source.load_authenticated_housing_universe(source)
+    with_universe = housing_universe_source.attach_housing_universe(attached, universe)
+    with_universe.validate()
+    frame = housing_source._owned_frame(with_universe.frame)
     pre_promotion = money_source._frame_signature(frame)
-    _require(pre_promotion == attached.receipt["output_frame_sha256"], "PARENT_CAPTURE")
+    _require(
+        pre_promotion == with_universe.receipt["output_frame_sha256"], "PARENT_CAPTURE"
+    )
     transitions = _promote(frame)
     post_promotion = money_source._frame_signature(frame)
     # The graph carries metadata as a typed context artifact, and the store's
@@ -448,6 +460,7 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
         "PREPARATION_IMPLEMENTATION_CHANGED",
     )
     money_payload = encode_current_money(ready)
+    universe_payload = housing_universe.encode_housing_universe(universe)
     field_entities = tuple(
         (domain.name, domain.entity) for domain in ready.bindings.spec.fields
     )
@@ -476,6 +489,19 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
         "tax_new_partition_sha256": tax.receipt["new_partition_sha256"],
         "housing_content_sha256": status.content_sha256,
         "housing_attachment_receipt_sha256": _sha(_json(attached.receipt)),
+        "pre_housing_universe_frame_sha256": attached.receipt["output_frame_sha256"],
+        "housing_universe": {
+            "header_sha256": _sha(universe.header),
+            "content_sha256": universe.content_sha256,
+            "payload_sha256": _sha(universe_payload),
+            "definition_sha256": universe.header_data["definition_sha256"],
+            "attachment_receipt_sha256": _sha(_json(with_universe.receipt)),
+            "parent_kind": "HousingStatusAttachedAsec",
+            "source_period_kind": "interview_household_universe",
+            "native_dtype": "uint8",
+            "graph_dtype": "int64",
+            "aliases": list(housing_universe_source.ATTACHED_COLUMNS),
+        },
         "restoration_receipt_sha256": _sha(_json(restoration)),
         "pre_promotion_frame_sha256": pre_promotion,
         "post_promotion_frame_sha256": post_promotion,
@@ -484,7 +510,9 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
         "implementation_sha256": identity,
         "file_roster": list(PREPARED_SOURCE_FILES),
     }
-    return PreparedAsecPopulation(frame, money_payload, receipt, field_entities)
+    return PreparedAsecPopulation(
+        frame, money_payload, receipt, field_entities, universe_payload
+    )
 
 
 def load_graph_asec_prepared(path, *, store=None) -> Frame:

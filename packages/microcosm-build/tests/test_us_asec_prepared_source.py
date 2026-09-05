@@ -20,6 +20,7 @@ from microcosm.build.frame_checkpoint import (
 from microcosm.build.us_runtime import asec_current_money as money
 from microcosm.build.us_runtime import asec_current_money_source as legacy
 from microcosm.build.us_runtime import asec_current_money_units as units
+from microcosm.build.us_runtime import asec_housing_universe_source as hu_source
 from microcosm.build.us_runtime import asec_person_income_source as restoration
 from microcosm.build.us_runtime import asec_prepared_source as prepared
 from microcosm.build.us_runtime import asec_student_controls as student
@@ -82,12 +83,61 @@ def _money_fixture():
 
 
 def invented_prepared_directory(
-    tmp_path, monkeypatch, *, student_controls_missing=True
+    tmp_path,
+    monkeypatch,
+    *,
+    student_controls_missing=True,
+    households_per_cohort=1,
+    housing_contexts=None,
 ):
     """Assemble the exact ten-file source directory from invented bytes."""
     pytest.importorskip("microunit")
     pytest.importorskip("tables")
     fixture = _money_fixture()
+    contexts = {} if housing_contexts is None else housing_contexts
+    original_frame = fixture.Frame
+    from microcosm.frame import Weights
+
+    def expanded_frame(tables, schema, weights, strata, **kwargs):
+        copies = []
+        for copy in range(households_per_cohort):
+            part = {e: t.copy(deep=True) for e, t in tables.items()}
+            for entity, table in part.items():
+                table[schema.entity_id_column(entity)] += copy * 1000
+            person = part["person"]
+            for group in schema.group_entities:
+                person[schema.membership_column(group)] += copy * 1000
+            person["PH_SEQ"] += copy * 1000
+            person["source_household_id"] += copy
+            person["PERIDNUM"] = [str(copy * 6 + i).zfill(22) for i in range(1, 7)]
+            for offset, year in enumerate((2022, 2023, 2024)):
+                if "H_TENURE" in contexts.get(year, {}):
+                    part["household"].iloc[
+                        offset, part["household"].columns.get_loc("H_TENURE")
+                    ] = contexts[year]["H_TENURE"]
+            copies.append(part)
+        return original_frame(
+            {
+                e: pd.concat([part[e] for part in copies], ignore_index=e != "person")
+                for e in tables
+            },
+            schema,
+            {
+                "household": Weights(
+                    np.concatenate(
+                        [
+                            weights["household"].values + copy * 10
+                            for copy in range(households_per_cohort)
+                        ]
+                    ),
+                    weights["household"].kind,
+                )
+            },
+            pd.concat([strata] * households_per_cohort),
+            **kwargs,
+        )
+
+    fixture.Frame = expanded_frame
     original_writer = pd.DataFrame.to_hdf
 
     def cohort_writer(table, path, *args, **kwargs):
@@ -97,6 +147,15 @@ def invented_prepared_directory(
             table["H_YEAR"] = year + 1
             for name, value in COHORT_HOUSING[year].items():
                 table[name] = value
+            for name, value in contexts.get(year, {}).items():
+                table[name] = value
+            table = pd.concat(
+                [
+                    table.assign(H_SEQ=table.H_SEQ + copy)
+                    for copy in range(households_per_cohort)
+                ],
+                ignore_index=True,
+            )
         return original_writer(table, path, *args, **kwargs)
 
     with monkeypatch.context() as patch:
@@ -105,18 +164,25 @@ def invented_prepared_directory(
     # Older cohorts lost the complete person income; restoration supplies it.
     for path in (parent, attachment):
         loaded = load_frame_checkpoint(path)
-        loaded.frame.person["PTOTVAL"] = [np.nan] * 4 + [-9999.0, 0.0]
+        loaded.frame.person["PTOTVAL"] = np.tile(
+            [np.nan] * 4 + [-9999.0, 0.0], households_per_cohort
+        )
         # Both ages in this fixture are outside the Census 16–54 universe.
         # Preserve the genuine old-cohort NaN pattern; S supplies exact observed
         # zero codes through aliases instead of filling these original columns.
         for name in student.CONTROLS:
-            loaded.frame.person[name] = (
-                [np.nan] * 4 + [0.0, 0.0] if student_controls_missing else [0] * 6
+            loaded.frame.person[name] = np.tile(
+                [np.nan] * 4 + [0.0, 0.0] if student_controls_missing else [0] * 6,
+                households_per_cohort,
             )
         for column, values in ROUTING_CODES.items():
-            loaded.frame.person[column] = np.asarray(values, dtype=np.int64)
+            loaded.frame.person[column] = np.tile(
+                np.asarray(values, dtype=np.int64), households_per_cohort
+            )
         for column, values in ROUTED_AMOUNTS.items():
-            loaded.frame.person[column] = np.asarray(values, dtype=np.float64)
+            loaded.frame.person[column] = np.tile(
+                np.asarray(values, dtype=np.float64), households_per_cohort
+            )
         if path == attachment:
             digest = money._sha(parent.read_bytes())
             loaded.metadata["parent_checkpoint_sha256"] = digest
@@ -140,13 +206,19 @@ def invented_prepared_directory(
         offset = (year - 2022) * 2
         pd.DataFrame(
             {
-                "PERIDNUM": [str(offset + index).zfill(22) for index in (1, 2)],
-                "PH_SEQ": [7, 7],
-                "A_LINENO": [1, 2],
-                "A_AGE": [55, 14],
-                "PTOTVAL": [-9999, 0],
-                "A_ENRLW": [0, 0],
-                "A_FTPT": [0, 0],
+                "PERIDNUM": [
+                    str(copy * 6 + offset + index).zfill(22)
+                    for copy in range(households_per_cohort)
+                    for index in (1, 2)
+                ],
+                "PH_SEQ": [
+                    7 + copy for copy in range(households_per_cohort) for _ in (1, 2)
+                ],
+                "A_LINENO": [1, 2] * households_per_cohort,
+                "A_AGE": [55, 14] * households_per_cohort,
+                "PTOTVAL": [-9999, 0] * households_per_cohort,
+                "A_ENRLW": [0, 0] * households_per_cohort,
+                "A_FTPT": [0, 0] * households_per_cohort,
             }
         ).to_csv(path, index=False)
         members[year] = path
@@ -156,7 +228,7 @@ def invented_prepared_directory(
                 member_name,
                 archive_pin,
                 money._sha(path.read_bytes()),
-                2,
+                2 * households_per_cohort,
                 path.stat().st_size,
             )
         )
@@ -209,6 +281,52 @@ def test_prepared_directory_yields_an_operator_free_promoted_population(
     assert peridnum.dtype == dtype_for_token("string")
     assert peridnum.tolist() == [str(index).zfill(22) for index in range(1, 7)]
     assert result.receipt["entity_rows"]["person"] == 6
+
+
+def test_hu_preserves_the_actual_student_tax_housing_and_money_parent(
+    tmp_path, monkeypatch
+):
+    directory = invented_prepared_directory(tmp_path, monkeypatch)
+    original = hu_source.attach_housing_universe
+    captured = {}
+
+    def observe(parent, universe):
+        captured["parent"] = parent
+        captured["universe"] = universe
+        return original(parent, universe)
+
+    monkeypatch.setattr(hu_source, "attach_housing_universe", observe)
+    result = prepared.prepare_asec_current_money_population(directory)
+    parent, universe = captured["parent"], captured["universe"]
+    parent.validate()
+    universe.validate()
+    assert result.receipt[
+        "pre_housing_universe_frame_sha256"
+    ] == legacy._frame_signature(parent.frame)
+    assert result.receipt["housing_attachment_receipt_sha256"] == money._sha(
+        money._json(parent.receipt)
+    )
+    assert result.receipt["tax_receipt_sha256"] == money._sha(
+        money._json(parent.tax_result.receipt)
+    )
+    assert result.money_payload == encode_current_money(parent.money)
+    assert (
+        result.receipt["student_controls_content_sha256"]
+        == parent.tax_result.receipt["student_controls"]["controls_content_sha256"]
+    )
+    for name in student.ALIASES:
+        assert np.array_equal(parent.frame.person[name], result.frame.person[name])
+    for name in student.CONTROLS:
+        assert np.array_equal(
+            parent.frame.person[name].isna(), result.frame.person[name].isna()
+        )
+    assert (
+        result.receipt["pre_housing_universe_frame_sha256"]
+        != result.receipt["pre_promotion_frame_sha256"]
+    )
+    for alias in hu_source.ATTACHED_COLUMNS:
+        assert alias not in parent.frame.table("household")
+        assert result.frame.table("household")[alias].dtype == np.dtype("int64")
 
 
 def test_receipt_binds_every_stage_identity_without_paths_or_rows(

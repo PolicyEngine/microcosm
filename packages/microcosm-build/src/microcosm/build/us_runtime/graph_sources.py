@@ -71,7 +71,7 @@ from .support_provenance import support_channel_column
 
 ASEC_CODEC = "us-asec-raw-stage-v4"
 ACS_CODEC = "us-acs-native-2024-v1"
-ASEC_PREPARED_CODEC = "us-asec-prepared-current-money-v1"
+ASEC_PREPARED_CODEC = "us-asec-prepared-current-money-v2"
 ASSEMBLY_PHASE = "assemble_stacked_spine"
 US_STACK_PREPARATION_TYPE = ArtifactType("microcosm.us.stacked_spine_preparation", 1)
 US_SOURCE_DEPENDENCIES = STAGE_DEPENDENCIES["assembly_prepare"]
