@@ -50,7 +50,11 @@ from .graph_context import (
     _mass_records,
     _row_identity,
 )
-from .graph_sources import _source_implementation_hash
+from .graph_implementation import (
+    STAGE_DEPENDENCIES,
+    implementation_hash,
+    implementation_manifest,
+)
 from .puma_ladder import (
     US_PUMA_LADDER_COLUMNS,
     assign_us_puma_ladder,
@@ -101,15 +105,15 @@ def _lookups(ladder_bytes: bytes, crosswalk_bytes: bytes):
 
 class _USGeographyKernel(KernelBase):
     def implementation_hash(self) -> str:
-        return _source_implementation_hash()
+        return implementation_hash("geography")
 
 
 class USGeographyLookupKernel(_USGeographyKernel):
-    ref = "us.production.geography_lookup@1"
+    ref = "us.production.geography_lookup@2"
     capabilities = Capabilities(
         determinism=Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=("numpy", "pandas"),
+        dependencies=STAGE_DEPENDENCIES["geography"],
     )
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -126,6 +130,7 @@ class USGeographyLookupKernel(_USGeographyKernel):
             artifacts={"ladder": ladder_bytes, "crosswalk": crosswalk_bytes},
             receipt={
                 "phase": GEOGRAPHY_PHASE,
+                "implementation": implementation_manifest("geography"),
                 "district_vintage": CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
                 "district_count": len(expected),
                 "puma_count": len(ladder),
@@ -138,9 +143,11 @@ class USGeographyLookupKernel(_USGeographyKernel):
 class USGeographyBoundaryKernel(_USGeographyKernel):
     """Preserve all rows while opening the geography rewrite version."""
 
-    ref = "us.production.geography_boundary@1"
+    ref = "us.production.geography_boundary@2"
     capabilities = Capabilities(
-        determinism=Determinism.DETERMINISTIC, structural=StructuralDelta.FILTER
+        determinism=Determinism.DETERMINISTIC,
+        structural=StructuralDelta.FILTER,
+        dependencies=STAGE_DEPENDENCIES["geography"],
     )
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -148,19 +155,20 @@ class USGeographyBoundaryKernel(_USGeographyKernel):
             raise ValueError("US geography boundary requires its registered phase.")
         person = context.tables["person"]
         return KernelResult(
+            receipt={"implementation": implementation_manifest("geography")},
             keep=pd.Series(
                 True, index=pd.Index(person["person_id"], name="person_id"), dtype=bool
-            )
+            ),
         )
 
 
 class USGeographyAssignKernel(_USGeographyKernel):
-    ref = "us.production.geography_assign@1"
+    ref = "us.production.geography_assign@2"
     capabilities = Capabilities(
         determinism=Determinism.SEEDED,
         seed_source=SeedSource.PARAM,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=("numpy", "pandas"),
+        dependencies=STAGE_DEPENDENCIES["geography"],
     )
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -239,6 +247,7 @@ class USGeographyAssignKernel(_USGeographyKernel):
             artifacts={"frame_context": canonical_json(document)},
             receipt={
                 "phase": GEOGRAPHY_PHASE,
+                "implementation": implementation_manifest("geography"),
                 "seed": 0,
                 "assign_tract": False,
                 "district_vintage": CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
@@ -253,12 +262,12 @@ class USGeographyAssignKernel(_USGeographyKernel):
 
 
 class USGeographyGateKernel(_USGeographyKernel):
-    ref = "us.production.geography_gate@1"
+    ref = "us.production.geography_gate@2"
     capabilities = Capabilities(
         determinism=Determinism.DETERMINISTIC,
         role=KernelRole.GATE,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=("numpy", "pandas"),
+        dependencies=STAGE_DEPENDENCIES["geography"],
     )
 
     def run(self, context: KernelContext) -> KernelResult:
