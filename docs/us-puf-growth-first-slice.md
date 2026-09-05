@@ -73,8 +73,13 @@ it, including the exact float64 bit pattern, into the contract's identity bytes.
 
 ## The two archived defects, and why they cannot recur here
 
-Both were established by reading `policyengine-us-data` at commit
-`42ed5d45c56df80d754fbe24cce21cfeb8d05cbe` from the local object database.
+Both were established by reading the retired US data package at commit
+`42ed5d45c56df80d754fbe24cce21cfeb8d05cbe` from its local git object database.
+This repository's launch contract forbids naming that package in the live tree
+(`test_no_incumbent_data_package_references_in_live_tree` in
+`packages/microcosm-build/tests/test_us_plan.py`), so it is identified here and
+in `puf_growth.ARCHIVED_PRODUCER_COMMIT` by that immutable commit alone; the
+paths quoted below are relative to its Python package directory.
 
 **Year columns iterated as if they were variable names.**
 `utils/uprating.py` pivots to `index="Variable", columns="Year"`, so the frame's
@@ -251,5 +256,5 @@ No PUF was read. No `.h5`, `.dta` or survey CSV was opened. No build, fit, model
 calculation, resource generation, or network asset download was run. Nothing
 here establishes what the pinned `puf_2024.h5` contains, what price basis any of
 its fields carry, or which code produced it. The archived-producer facts above
-were read from the local git object database of `policyengine-us-data`; the IRS
-booklet those archived comments cite was not read.
+were read from the retired US data package's local git object database at the
+commit above; the IRS booklet those archived comments cite was not read.
