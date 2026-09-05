@@ -25,3 +25,11 @@ Requested sibling worktree/output and R paths are read-only in this session. Wor
 - Added invented-only two-implementation/four-node receipt fixtures and refusal tests before exporter implementation.
 - Frozen common graph contract at review-artifacts/graph-contract.md.
 - Next: implement pure exporter, then focused tests before any G export.
+
+## Exporter implementation step
+- Implemented pure standard-library direct-file exporter and unchanged candidate-quality writer integration with update_index=False and exclusive output creation.
+- Invented-first tests cover two implementation hashes, exact ASCII digest vector, typed producer ancestry, zero/null values, malformed and failed evidence, digest confusion, source mutation, no candidate on false parity, input declaration pins, strict count types, forbidden data, and a fresh-process import blocker.
+- Focused exporter and existing candidate-quality writer tests: 132 passed; ruff passed; CI groups verification passed. Original candidate_quality.py unchanged.
+- Author audit corrected real CREATE/SELECT capability variants and excluded atime from read-stability identity checks before real export. Per-node source pins are empty because shared run-source identities are not node-direct pins.
+- Earlier read-only shape probe failed on dict iteration; two rg glob probes failed under zsh no-match expansion; initial ruff found formatting violations, corrected. No failed attempt caused a candidate artifact or source read.
+- Next: root output-only G export, actual Python and TypeScript integration and browser verification. No G export has run from this component yet.
