@@ -20,6 +20,12 @@ US source/geography graph implementation scopes and their reviewed dependency
 inventory are documented in `docs/us-production-graph-development.md`. New
 dependency/resource failures require a scope review, not an automatic pin refresh.
 
+IRS fiscal targets require explicit supported return universes and actual model
+filer decisions before household aggregation. Target-frame materializer version
+12 invalidates older SOI measurements; its compilation receipt records filing
+inputs/defaults and modeled-universe limits. See
+`docs/us-soi-modeled-return-universes.md` for the source and checkpoint boundaries.
+
 ## Commands
 
 ```bash
