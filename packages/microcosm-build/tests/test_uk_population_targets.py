@@ -48,6 +48,9 @@ NATIONAL_SELECTOR_KEYS = {
     "groupby_dimension",
     "dimensions",
     "dimension_values",
+    "entity_name",
+    "period_type",
+    "layout_groupby_value_id",
 }
 LOCAL_SELECTOR_KEYS = {"source_name", "source_measure_id", "record_set_spec_id"}
 POLICYENGINE_BINDING_KEYS = {
@@ -158,21 +161,21 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     resource = _load()
 
     assert resource["country"] == "uk"
-    assert resource["allowed_value_operations"] == ["identity", "sum"]
+    assert resource["allowed_value_operations"] == ["identity", "sum", "difference"]
     assert resource["resolution_defaults"] == {
         "base_period_policy": "latest_not_after_build_base_period",
         "operation": "sum",
         "assertion_policy": "observed_only",
     }
-    assert len(resource["targets"]) == 222
+    assert len(resource["targets"]) == 235
 
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 189
+    assert len(registry_scope) == 202
     assert len(profile_scope) == 33
-    assert target_ids[:189] == registry_scope
-    assert target_ids[189:] == profile_scope
+    assert target_ids[:202] == registry_scope
+    assert target_ids[202:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -186,7 +189,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
     assert len(mapped_target_ids) == 184
-    assert len(unmapped_declarations) == 5
+    assert len(unmapped_declarations) == 18
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -305,7 +308,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 222
+    assert len(target_ids) == 235
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -357,6 +360,47 @@ def test_uk_population_targets_declare_selector_vocabularies_and_bindings() -> N
             assert "assertion_policy" not in target, target_id
 
     assert len(metric_names_seen) == len(set(metric_names_seen))
+
+
+def test_childcare_bus_observation_basis_and_entity_pins_are_closed_world() -> None:
+    resource = _load()
+    registry_scope = set(resource["registry_parity"]["scope_target_ids"])
+    allowed_basis = {
+        "annual_flow",
+        "annual_unique_count",
+        "january_stock",
+        "fiscal_year_flow",
+    }
+    allowed_operations = set(resource["allowed_value_operations"])
+    for target in resource["targets"]:
+        operation = target.get("value_operation", "identity")
+        assert operation in allowed_operations, target["target_id"]
+        basis = target["measurement"].get("observation_basis")
+        if basis is not None:
+            assert basis in allowed_basis, target["target_id"]
+        if target["target_id"] in registry_scope and target["measurement"][
+            "concept"
+        ].endswith(".amount"):
+            assert "entity_name" in target["ledger_selector"], target["target_id"]
+
+    childcare = [
+        target
+        for target in resource["targets"]
+        if target["family"] == "dfe_funded_childcare"
+    ]
+    assert len(childcare) == 3
+    assert all(
+        not target["measurement"]["concept"].endswith(".amount") for target in childcare
+    )
+
+
+def test_diagnostic_only_cma_comparator_is_not_a_target() -> None:
+    resource = _load()
+
+    assert all(
+        "cma" not in target["target_id"].lower() for target in resource["targets"]
+    )
+    assert all("role" not in target for target in resource["targets"])
 
 
 def test_uk_population_targets_declare_chronicle_loader_guarantees() -> None:

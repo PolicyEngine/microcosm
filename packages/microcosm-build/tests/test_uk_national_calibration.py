@@ -41,7 +41,7 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
-ACTIVE_REFERENCE_COUNT = 408
+ACTIVE_REFERENCE_COUNT = 415
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
@@ -72,6 +72,7 @@ def _fact(
         "aggregate_fact_key": "ledger.aggregate_fact.v2:uc-fixture",
         "aggregation": {"method": "sum"},
         "assertion": "observation",
+        "entity": {"name": "person"},
         "geography": {"level": "country", "id": "K02000001"},
         "observed_measure": {
             "source_name": source_name,
@@ -241,6 +242,7 @@ def _fact_for_reference(
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:{reference.name}",
         "aggregation": {"method": "sum"},
         "assertion": "observation",
+        "entity": {"name": selector.get("entity_name", reference.entity)},
         "dimensions": dimensions,
         "geography": {
             "level": selector.get("geography_level", "country"),

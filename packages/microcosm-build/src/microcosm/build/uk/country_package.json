@@ -178,6 +178,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "target_reference_signed_exclusions.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "input_mass_reviewed_exclusions.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

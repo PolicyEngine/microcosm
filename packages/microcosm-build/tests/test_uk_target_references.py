@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import replace
 from importlib import resources as importlib_resources
 from pathlib import Path
 
@@ -40,7 +41,7 @@ from tools.generate_uk_target_references import (
     _value_operation_by_target_id,
 )
 
-ACTIVE_REFERENCE_COUNT = 408
+ACTIVE_REFERENCE_COUNT = 415
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
 FIXTURE_REFERENCE_NAMES = {
@@ -212,6 +213,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
     assert resource["allowed_value_operations"] == [
         "identity",
         "sum",
+        "difference",
         "calendar_year_average",
         "latest_plateau",
         "count_x_mean",
@@ -239,10 +241,14 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         assert reference["measure"] == expected_measure
         assert reference["family"] == target["family"]
         assert reference["period"] == 2025
-        assert reference["metadata"] == {
+        expected_metadata = {
             "contract_target_id": contract_target_id,
             "measure_kind": "prepared_column",
         }
+        observation_basis = target["measurement"].get("observation_basis")
+        if observation_basis is not None:
+            expected_metadata["observation_basis"] = observation_basis
+        assert reference["metadata"] == expected_metadata
         # The measure is a prepared column, so the pointed-to contract binding
         # must carry what the microcosm#622 materializer needs to prepare it.
         assert (
@@ -250,6 +256,77 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
             or binding.get("value_expression")
             or binding.get("kind")
         ), contract_target_id
+
+
+def test_childcare_and_bus_references_compile_with_declared_provenance() -> None:
+    root = Path(__file__).resolve().parents[3]
+    feed = root / STABLE_UK_FACT_FEED_NAME
+    if not feed.is_file():
+        pytest.skip("pinned UK Chronicle consumer feed is not present")
+
+    references = [
+        reference
+        for reference in load_country_spec("uk").target_references
+        if reference.family in {"hmrc_tfc", "dfe_funded_childcare", "dft_local_bus"}
+    ]
+    facts = []
+    for line in feed.open():
+        fact = json.loads(line)
+        source_name = fact.get("source", {}).get("source_name") or fact.get(
+            "observed_measure", {}
+        ).get("source_name")
+        if source_name in {"hmrc", "dfe", "dft"}:
+            facts.append(fact)
+
+    registry = compile_ledger_target_references(facts, references, country="uk")
+    specs = {spec.name: spec for spec in registry.specs}
+    assert {name: spec.value for name, spec in specs.items()} == {
+        "hmrc.tfc.government_top_up": 599_800_000.0,
+        "hmrc.tfc.children_with_used_accounts": 1_151_515.0,
+        "dfe.funded_childcare.working_parent_children_2_to_4": 621_482.0,
+        "dfe.funded_childcare.early_learning_2_year_olds": 95_031.0,
+        "dfe.funded_childcare.universal_only_children": 396_965.0,
+        "dft.bus_fare_receipts.england": 3_417_388_656.43538,
+        "dft.bus_net_support.england": 3_024_904_320.8399997,
+    }
+    assert {
+        name: spec.metadata["ledger_entity_name"] for name, spec in specs.items()
+    } == {
+        "hmrc.tfc.government_top_up": "government",
+        "hmrc.tfc.children_with_used_accounts": "person",
+        "dfe.funded_childcare.working_parent_children_2_to_4": "person",
+        "dfe.funded_childcare.early_learning_2_year_olds": "person",
+        "dfe.funded_childcare.universal_only_children": "person",
+        "dft.bus_fare_receipts.england": "institutional_sector",
+        "dft.bus_net_support.england": "institutional_sector",
+    }
+    assert (
+        specs["dfe.funded_childcare.universal_only_children"].metadata[
+            "ledger_value_formula"
+        ]
+        == "minuend - subtrahend"
+    )
+
+
+def test_dfe_extended_sum_refuses_the_suppressed_2024_member() -> None:
+    root = Path(__file__).resolve().parents[3]
+    feed = root / STABLE_UK_FACT_FEED_NAME
+    if not feed.is_file():
+        pytest.skip("pinned UK Chronicle consumer feed is not present")
+
+    reference = next(
+        reference
+        for reference in load_country_spec("uk").target_references
+        if reference.name == "dfe.funded_childcare.working_parent_children_2_to_4"
+    )
+    facts = [json.loads(line) for line in feed.open() if '"source_name": "dfe"' in line]
+
+    with pytest.raises(ValueError, match="expected 2 members.*resolved 1"):
+        compile_ledger_target_references(
+            facts,
+            [replace(reference, period=2024)],
+            country="uk",
+        )
 
 
 def test_uk_target_references_do_not_bind_known_mismatched_property_amounts() -> None:
@@ -423,9 +500,9 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 408,
+        "active": 415,
         "no_fact_at_or_before_period": 7,
-        "signed_excluded": 2,
+        "signed_excluded": 8,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]

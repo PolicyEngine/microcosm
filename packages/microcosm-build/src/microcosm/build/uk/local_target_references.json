@@ -4,6 +4,7 @@
   "allowed_value_operations": [
     "identity",
     "sum",
+    "difference",
     "calendar_year_average",
     "latest_plateau",
     "count_x_mean"

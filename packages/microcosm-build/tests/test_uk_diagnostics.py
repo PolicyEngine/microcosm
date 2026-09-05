@@ -259,6 +259,9 @@ def _diagnostics_case(*, with_skipped: bool = False):
                 period=2023,
                 source="Synthetic UK diagnostics fixture",
                 family="fixture",
+                metadata=(
+                    {"observation_basis": "annual_flow"} if row_index == 0 else {}
+                ),
             )
         )
         geography[f"{name}@2023"] = "la" if level == "local_authority" else level
@@ -477,6 +480,7 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
         "weights",
         "zero_weight_rows_by_stratum",
         "target_pass_rates_by_geography_level",
+        "target_observation_basis",
     }
     assert uk["schema_version"] == UK_DIAGNOSTICS_SCHEMA_VERSION
     assert set(uk["weights"]) == {
@@ -497,6 +501,7 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
     assert uk["weights"]["ess_fraction"] == pytest.approx(
         payload["effective_sample_size"] / frame.n("household")
     )
+    assert uk["target_observation_basis"] == {"national_target@2023": "annual_flow"}
     assert uk["target_pass_rates_by_geography_level"] == [
         {
             "geography_level": "national",
@@ -565,6 +570,7 @@ def test_uk_payload_shared_layer_matches_shared_diagnostics_format() -> None:
         "weights",
         "zero_weight_rows_by_stratum",
         "target_pass_rates_by_geography_level",
+        "target_observation_basis",
     }
 
 

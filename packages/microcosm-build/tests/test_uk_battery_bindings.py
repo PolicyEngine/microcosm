@@ -55,9 +55,9 @@ from microcosm.frame import engine_tables
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: The shared exclusion-expiry clock, fixed inside the committed register's
-#: validity window (approved 2026-08-10, expires 2027-02-10) so the suite
+#: validity window (latest approval 2026-09-05, expires 2027-02-10) so the suite
 #: never drifts across an expiry boundary.
-CLOCK = date(2026, 9, 1)
+CLOCK = date(2026, 9, 5)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."

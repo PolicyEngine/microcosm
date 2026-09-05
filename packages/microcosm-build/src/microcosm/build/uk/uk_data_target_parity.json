@@ -201,7 +201,7 @@
         "purpose": "Preserve service-consumption totals and distribution.",
         "verdict_basis": "Route to WS-E/F (#148), using landed DfT facts; never allocate the national total over local areas."
       },
-      "reason": "BUS05 subsidy/fare totals and the NTS0705 quintile IPF belong to WS-E/F (#148).",
+      "reason": "BUS05 subsidy/fare totals are consumed by the #789 rows; the NTS0705 quintile gradient remains routed to WS-E/F (#148).",
       "status": "routed"
     },
     {

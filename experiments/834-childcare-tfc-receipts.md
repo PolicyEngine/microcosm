@@ -84,10 +84,192 @@ arithmetic). No income, benefit or childcare input column moves. The childcare r
 
 ## Part C — column twin (L2), release round trip (L3), re-fit (L5), composition (L4)
 
-Pending the Lane A/B increments.
+### L4-pre — the I0 surface calibrated, before any childcare row exists
+
+Purpose: attribute the contract repair separately from the childcare targets. Input: the L1
+engine-only twin (2.94.0, no routed share); surface: the I0 commit's 408 references on feed
+`6ae49d7d…`; solve: 1 500 epochs, `family_equal`, the packaged measure exclusions (364 targets in
+the matrix); driver tree: a scratch worktree at the I0 commit (`l4pre-i0/`).
+
+| | value |
+|---|---|
+| initial → final loss | 0.374 → 0.0259 |
+| within 10% / within 25% | 330 / 357 of 364 |
+| ESS / max weight ratio / top-1% share | 5 733 / 10.0 / 0.189 |
+| caseload `dwp.uc.households` (6 758 889) | −25.4% → **−12.7%** |
+| 84 payment-band rows (2025 averages) | median 0.1%, max 3.6% |
+| `hmrc.cgt.gains_total` (£127.3bn, TY2024) / `taxpayers_total` (584 000) | −50.1% → −0.6% / −38.9% → −0.2% |
+| **`obr.capital_gains_tax` (£21.8bn, 2025-26)** | −27.6% → **+43.7%** |
+| Scotland UC youngest child < 1 (14 333) | +8.5% → −0.2% |
+
+The terminal battery blocks on seven `uk_target_fit` cells: the four UC with-children cells
+(single_with_children −34.0%, children_1 −25.8%, children_2 −39.7%, children_5_or_more −28.4%),
+two state-pension SPI bands (+33.2%, +26.7%) — all signed on the publication stack's
+`target_fit_reviewed_exclusions.json`, which main does not carry — and one new cell:
+**OBR CGT receipts +43.7%.** The re-pin moved the two CGT totals from tax year 2023-24 (the
+latest fact on the previous feed) to 2024-25 (HMRC's 2026 release, £127.3bn of gains against
+£65.9bn a year earlier: the realisations brought forward ahead of the October 2024 rate rise). The
+solve fits the 2024-25 gains to 0.6% and, at 2025-26 policy, the frame's CGT liability then
+overshoots OBR's 2025-26 receipts line by 44% (it was −25% under with the 2023-24 gains). Neither
+vintage of gains reproduces the OBR line; the choice is the CGT lane's (#467 / #725 / #552, #736
+"CGT 2025 level") and is put to María as A21.
+
+**Defect found and fixed here:** I0 had re-bound `dwp.uc.scotland_households_child_under_1` at
+benefit-unit grain with a `region` filter; the calibration's measure provider has no categorical
+household-to-benefit-unit broadcast (`compute_uk_measure_input` broadcasts categoricals to
+persons only), so the run refused with `provider does not know benunit.region`. The row keeps
+its household-grain binding (`household_conditions`, the pre-I0 form) with the tightened
+selector and the family's calendar-year average; validated by this run.
+
+### L2 — column twin (I1 + I2 tree on `14c71008`, built at 2.94.0)
+
+Tree: the I0 commit plus the uncommitted Lane A/B increments (`TREE_HEAD`: `14c71008`, 46 files
+changed); the same licensed inputs and the same `build_twin.sh` invocation as L1. Build: exit 0,
+28 stages, rows 113 626 / 61 234 / 52 846, all 15 spine gates `passed`
+(`l2-column-twin/l2-column.spine_gates.json`), engine 2.94.0. The new column is present from
+`frs_person_draws` onward with nonzero share 1.0 (every person carries the build-year value; the
+degenerate-column register carries its signed entry).
+
+**Payload against L1 (`compare_uk_h5_payload.py`, `l2_vs_l1_payload.json`)** — the only
+between-twin difference is the new column and its consequences:
+
+| table | columns only in L2 | columns moved | rows moved |
+|---|---|---|---|
+| benunit | — | 0 / 11 | 0 |
+| time_period | — | 0 | 0 |
+| person | `tax_free_childcare_spend_routed_share` | 1 (`student_loan_balance`) | 64 (the `top_up_to_stock` selection; no cash column moves) |
+| household | — | 38 / 66 | see below |
+
+The 38 household columns are exactly the imputed surfaces (WAS wealth, LCFS consumption, ETB
+services) and their deterministic derivatives; no FRS-carried column moves. Root cause, proven
+at engine level (`l2_vs_l1_net_income_decomposition.log`): the routed share lowers
+`tax_free_childcare` for 1 414 households (unweighted £1.228m → £0.797m; the £2 000 cap binds for
+some, hence 0.65 rather than 0.593), `hbai_household_net_income` moves for exactly those 1 414
+and for no others, and the three imputation stages read `household_net_income` /
+`hbai_household_net_income` as predictors. Market income, income tax, National Insurance,
+council tax, UC, child benefit, housing benefit, pension credit, student-loan repayments and CGT
+are byte-equal between the twins.
+
+| stage | households re-drawn | of which TFC households | mechanism |
+|---|---|---|---|
+| `was_wealth` | 654 | 536 | predictor move → correlated-rank re-draw (the 686 E5 class); the remainder are threshold neighbours (owner share 0.89 vs 0.63 in the frame) |
+| `lcfs_consumption` | 1 196 | 946 | as above, plus WAS-drawn predictors |
+| `etb_services` | 1 027 | 768 | as above |
+| `regional_property_uprating` | 31 084 (every owner) | — | deterministic: the regional owner mean re-solves once any owner draw moves; median relative move 3.2e-4 |
+| LCFS energy IPF (`electricity`, `gas`, folded `domestic_energy_consumption`) | 52 586 | — | deterministic: the weighted IPF on income/tenure/accommodation/region margins re-solves for the whole frame; median relative move 6e-4 – 1.1e-3 |
+
+Aggregate mass per column (`l2_vs_l1_household_magnitudes.json`, unweighted column totals):
+largest moves `bus_fare_spending` +0.89%, `education_consumption` +0.72%, `diesel_spending`
++0.54%, `rail_usage`/`rail_subsidy_spending` −0.37%; every other column within ±0.2%, the energy
+trio and the property pair within ±1.2e-4. On the release payload these feed back into
+`household_tax` (VAT for 1 342 households, fuel duty for 453, and a sub-£1 energy-tax ripple on
+40 491) and `household_benefits` (the 1 414 TFC households plus the in-kind ETB columns); net
+household income moves by −£0.27m unweighted across the frame.
+
+Classification for the swap register: **net-new person column + engine-predictor re-draw of the
+imputed household surfaces**, the same class the L1 twin showed against spine-n under the engine
+bump, with a smaller footprint (1 414 root households against a frame-wide net-income shift).
+No cash column, weight column or benefit-unit column moves.
+
+### L3 — release round trip (L2 read by policyengine-uk 2.94.0)
+
+`l0_childcare_receipt.py` on `l2-column.h5` (`l3_l2_column_childcare_receipt.json`): the engine
+reads `tax_free_childcare_spend_routed_share` at 0.593 (float32) for every person at both 2024
+and 2025 — the 2024-04-01 contract value, as the build-year lock requires. Against the same five
+facts as L0/L1 (model ÷ target, weights as built, before any calibration):
+
+| target (basis) | L0 = L1 | L3 |
+|---|---|---|
+| TFC top-up £ (FY2024-25 / FY2025-26) | 1.073 / 1.174 | **0.698 / 0.772** |
+| TFC children with used accounts | 1.020 / 0.951 | 1.020 / 0.951 |
+| extended entitlement children 2–4, England (Jan 2024 / Jan 2025) | 1.283 / 1.261 | 1.283 / 1.261 |
+| targeted 2-year-olds, England | 0.596 / 0.738 | 0.596 / 0.738 |
+| universal-only 3–4s, England | 1.104 / 1.177 | 1.104 / 1.177 |
+
+Only the spend row moves, by the routed share (×0.65 on the top-up, the cap binding for part of
+the population) — the four count rows are identical to L0 to three decimals, which is the
+"routed share touches spend, not eligibility or take-up" property the issue describes. The L0
+spend ratio of 1.07 was the un-routed accident that #472 corrected; the re-fit at L5 works from
+the routed 0.70.
+
+### L5 — re-fit of the four take-up rates (A6: 2024 base, hours frozen)
+
+`tools/fit_uk_childcare_takeup.py` on `l2-column.h5` (sha `2c69544b…`), feed `6ae49d7d…`,
+`--target-period 2024`, `--vintage-override dfe.funded_childcare.working_parent_children_2_to_4=2025`
+(the Jan-2024 2-year-old cell is suppressed; Part E), seed 42, engine 2.94.0, routed share 0.593
+injected from the contract, hours distribution frozen (15.019 / 4.972 / [0, 30]). Targets as
+compiled: £632.2m, 1 085 020, 621 482, 115 852, 416 537.
+
+**First run (`fit_2024.json`, defaults: L-BFGS-B, maxiter 5, eps 1e-2): did not converge**
+(`success: false`, loss 0.302). TFC 0.88 → 0.959, extended 0.812 → 0.559, universal 0.563 →
+0.447, targeted **0.597 → 0.597 (never moved)**; achieved ÷ target: TFC spend 0.785, TFC
+children 1.104, extended 0.943, targeted 0.508, universal 0.984.
+
+Diagnosis (`l5-refit/runner_probe.log`, the fitter's own runner on the same H5):
+
+| probe | result |
+|---|---|
+| stored build draws, no injection | targeted 69 050 (0.596×) from **94 flagged sample children**; 1 290 two-year-olds in the frame, 94 with a positive entitlement |
+| runner at the frozen rates, seed 42 / seed 0 | targeted 54 889 / 62 521 (0.47× / 0.54×) — the realisation noise of a ~157-child eligible base carrying £-weights of hundreds each |
+| targeted rate 0.597 → 0.607 (the optimizer's step) | **identical count** (54 889): a 0.01 step flips no unit at this base, so the forward difference reads zero and L-BFGS-B never moves the parameter |
+| targeted rate 0.697 / 0.90 | 66 101 / 88 036 — the row responds, but even at 0.90 it reaches 0.76× |
+
+So the targeted row is (i) below the draw resolution of a 1e-2 finite-difference step and (ii)
+near its reachable ceiling at design weights: the eligible base — England, a qualifying benefit
+or UC/TC criterion, **and not extended-eligible** (the engine's mutual exclusion; extended now
+covers working-parent 2-year-olds) — is ~157 sample children, and a rate of 1.0 lands at roughly
+0.85–1.0× on the build's realisation. That is a frame/rules property the calibration weights
+absorb (the publication-stack solve, L4), not something a take-up scalar reaches; uk-data's own
+release sits at 0.78× on the same row. The TFC pair is the routed-share tension the issue
+predicted: with spend routed at 0.593, the least-squares compromise pushes the TFC rate to ~0.96
+(children +10%, spend −21%) because the frame's spend per child is below HMRC's.
+
+The fitter gains an `--eps` flag (default unchanged at 1e-2, recorded in the receipt) so the
+step can exceed the smallest eligible base's resolution; the fitter's draws are its own
+identity-keyed realisation (seed 42 by default; seed 0 does not reproduce the build's stage
+draws either), so a fitted rate is a population parameter and the build's flip set differs by
+sampling noise — for targeted, ±10–20% at this base. The exact fix — an expected-count objective
+(rate × weight over the rules-eligible base, no draw) with an analytic gradient — is a fitter
+redesign outside this PR and is filed as a follow-up.
+
+**Second run (`fit_2024_eps05.json`: maxiter 10, eps 0.05):** pending.
 
 ## Part D — bus (#789)
 
 E9's Part D (`experiments/685-net-new-stages-receipts.md`) is the sizing evidence: at design
 weights England fares 0.56× BUS05ai and net support 0.71× BUS05bi; London 0.28×; England outside
 London 0.74× / 0.97×; the LCFS fare gradient runs against NTS0705a (#790's disposition).
+
+Re-measured on the L2 column twin against the FY2025 facts the two active rows bind
+(`l2_bus_design_weight_receipt.json`, design weights, `region` ≠ Scotland/Wales/NI as England):
+
+| row | fact (FY2025, £bn) | L2 twin at design weights | ratio |
+|---|---|---|---|
+| `dft.bus_fare_receipts.england` (active) | 3.417 | 1.945 | 0.569 |
+| `dft.bus_net_support.england` (active) | 3.025 | 2.153 | 0.712 |
+| London fares (held, `region == LONDON`) | 1.347 | 0.372 | 0.276 |
+| outside-London fares (held) | 2.070 | 1.573 | 0.760 |
+| outside-London net support (held) | 1.895 | 1.836 | 0.969 |
+
+The frame reproduces E9's shape to the second decimal, so the routed share and the re-pin
+leave the bus surface where E9 measured it: the England rows go to the solver at 0.57× / 0.71×,
+which is the #790 gradient question (London's 0.28× against outside-London's 0.76× is the LCFS
+fare gradient, not a weighting residual) and the reason the London / outside-London rows are
+declared with their model-side filters but signed-excluded rather than bound. The feed carries
+no UK-level fare or support fact (BUS05i is England-only), so the `.uk` rows stay signed-excluded
+on that ground.
+
+## Part E — the childcare rows at both bases (declared once, resolved by period)
+
+Compiled from the pinned feed with the committed declarations (`compile_ledger_target_references`),
+restamped at each target period — the rule A1 ruled:
+
+| row | at 2024 (fitter basis) | at 2025 (calibration basis) |
+|---|---|---|
+| `hmrc.tfc.government_top_up` | £632.2m (FY2024-25) | £599.8m (FY2025-26) |
+| `hmrc.tfc.children_with_used_accounts` | 1 085 020 | 1 151 515 |
+| `dfe.funded_childcare.working_parent_children_2_to_4` | refuses: DfE suppresses the Jan-2024 2-year-old cell, the sum's cardinality guard reports one member of two (the fitter uses its Jan-2025 vintage override) | 621 482 (Jan-2025, 2 members) |
+| `dfe.funded_childcare.early_learning_2_year_olds` | 115 852 (Jan-2024) | 95 031 (Jan-2025) |
+| `dfe.funded_childcare.universal_only_children` | 416 537 (Jan-2024, `difference` of 2) | 396 965 (Jan-2025) |
+
+The 2024 column is the #834 contract as written; the 2025 column is what the calibration binds.

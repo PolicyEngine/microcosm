@@ -8,6 +8,13 @@
    "adjudication": "microcosm#630",
    "approved_on": "2026-08-10",
    "expires_on": "2027-02-10"
+  },
+  "person.tax_free_childcare_spend_routed_share": {
+   "reason": "Constant by construction: the published FY mean of an HMRC account-activity proxy assigned without an invented distribution (uk-data #473 judgement, microcosm#834); not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#834",
+   "approved_on": "2026-09-05",
+   "expires_on": "2027-03-05"
   }
  }
 }

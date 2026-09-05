@@ -1,0 +1,1 @@
+Rewrite the UK childcare take-up fitter to compile its five targets from the calibration contract and the pinned Chronicle feed, fit the four rates only with identity-keyed draws and the hours distribution frozen by adjudication, and record an explicit finite-difference step (`--eps`) in its provenance receipt (#834).

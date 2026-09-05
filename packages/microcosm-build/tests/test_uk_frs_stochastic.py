@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -44,6 +46,7 @@ class _Contract:
         "tv_licence_evasion_rate": 0.5,
         "first_time_buyer_rate": 0.5,
         "property_purchase_rate": 0.5,
+        "tax_free_childcare_spend_routed_share": 0.593,
     }
 
     def rate(self, key: str, build_year: int | None = None) -> float:
@@ -52,6 +55,12 @@ class _Contract:
     def continuous_entry(self, key: str):
         assert key == "maximum_extended_childcare_hours_usage"
         return {"mean": 15.019, "sd": 4.972, "lower": 0, "upper": 30}
+
+    def entry(self, key: str):
+        assert key == "tax_free_childcare_spend_routed_share"
+        return SimpleNamespace(raw={"entity": "person"})
+
+    build_year = 2024
 
 
 class _FakeEngine:
@@ -62,7 +71,7 @@ class _FakeEngine:
 
     def materialize(self, frame, variables, period):
         assert tuple(variables) == ("LHA_category",)
-        assert period == "2023"
+        assert period == "2024"
         return {"LHA_category": self.lha_category}
 
 
@@ -90,7 +99,7 @@ def _frame() -> object:
         person=person,
         benunit=benunit,
         household=household,
-        time_period="2023",
+        time_period="2024",
     )
 
 
@@ -135,6 +144,7 @@ def test_person_draws_pin_scp_age_six_boundary_and_uniform_draw() -> None:
     np.testing.assert_array_equal(derived["would_claim_scp"].to_numpy(), expected)
     private_draws = derived["attends_private_school_random_draw"].to_numpy()
     assert ((0 <= private_draws) & (private_draws < 1)).all()
+    assert (derived["tax_free_childcare_spend_routed_share"] == 0.593).all()
 
 
 def test_person_and_household_stage_families_are_deterministic() -> None:

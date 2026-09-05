@@ -425,6 +425,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "would_claim_marriage_allowance", "bool"),
         _Cell("person", "would_claim_scp", "bool"),
         _Cell("person", "attends_private_school_random_draw", "float64"),
+        _Cell("person", "tax_free_childcare_spend_routed_share", "float64"),
     ),
     "frs_household_draws": _cells(
         "household",

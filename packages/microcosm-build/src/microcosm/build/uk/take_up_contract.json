@@ -103,7 +103,7 @@
       "source": {
         "source": "FRS empirical fit and HMRC Tax-Free Childcare statistics, June 2025 release",
         "agency": "HMRC",
-        "citation": "The 2015 value is the incumbent offline FRS fit; the 2024 value reflects HMRC 2024-25 TFC spending and annual unique children reached.",
+        "citation": "The 2024 value was a manual bump fitted on Enhanced FRS 2022-23 before the pipeline moved to FRS 2024-25; one scalar cannot hit caseload and spending when the award is wrong.",
         "url": "https://www.gov.uk/government/statistics/tax-free-childcare-statistics-june-2025",
         "status": "fitted_offline"
       },
@@ -161,7 +161,7 @@
       "source": {
         "source": "FRS empirical fit",
         "agency": "PolicyEngine",
-        "citation": "Incumbent offline FRS childcare take-up fit.",
+        "citation": "Incumbent offline FRS childcare take-up fit. DfE's published 74.8% figure is not transferred directly because its denominator is not comparable to the model's eligibility base.",
         "status": "fitted_offline"
       },
       "fitting_receipt": {
@@ -265,6 +265,32 @@
         "url": "https://www.gov.uk/government/statistics/monthly-property-transactions-completed-in-the-uk-with-value-40000-or-above",
         "status": "sourced_administrative_derived"
       }
+    },
+    {
+      "key": "tax_free_childcare_spend_routed_share",
+      "output": "tax_free_childcare_spend_routed_share",
+      "entity": "person",
+      "values": {
+        "2017-04-01": 0.359,
+        "2018-04-01": 0.489,
+        "2019-04-01": 0.542,
+        "2020-04-01": 0.471,
+        "2021-04-01": 0.575,
+        "2022-04-01": 0.584,
+        "2023-04-01": 0.589,
+        "2024-04-01": 0.593,
+        "2025-04-01": 0.582
+      },
+      "source": {
+        "source": "HMRC Tax-Free Childcare statistics, March 2026, Table 2 (children with used accounts, monthly and annual-unique)",
+        "agency": "HMRC",
+        "status": "sourced_administrative_derived",
+        "url": "https://www.gov.uk/government/statistics/tax-free-childcare-statistics-march-2026",
+        "chronicle_package_id": "hmrc-tax-free-childcare-march-2026",
+        "ods_sha256": "c2a8e82a7d1e6c85cbe119ffe0a51e692fac3e5014a37f845484dee710e7a29d",
+        "derivation": "sum(monthly children with used accounts) / annual-unique children / 12, per HMRC financial year; quality report defines a used account",
+        "citation": "A calibration adjustment, not a measured routed-expenditure share: an account-active-duration proxy assuming uniform spend through the year and full routing in active months; HMRC warns payment dates need not be care dates. Assigned as the published mean, no invented distribution. Denominator is the whole year; the engine defines the share over the eligible period, and the two coincide while tax_free_childcare_eligible_declaration_periods is 0 or 4. HMRC's used-account definition changed from April 2025 and applies to annual figures from FY2024-25."
+      }
     }
   ],
   "continuous": [
@@ -278,15 +304,14 @@
       "lower": 0,
       "upper": 30,
       "source": {
-        "source": "FRS empirical fit",
+        "source": "FRS empirical fit, frozen by microcosm#834 adjudication",
         "agency": "PolicyEngine",
-        "citation": "Incumbent offline childcare usage fit, clipped to [0, 30] hours.",
-        "status": "fitted_offline"
-      },
-      "fitting_receipt": {
-        "source": "incumbent UK pipeline @ ebf733c",
-        "seed": 42,
-        "status": "frozen parity value"
+        "citation": "Incumbent offline childcare usage fit, clipped to [0, 30] hours. Frozen because it is underidentified without an independent extended-spending observation; replacing it needs evidence on hours actually used.",
+        "status": "frozen_by_adjudication",
+        "freeze": {
+          "decision": "Hold 15.019 / 4.972 / 0 / 30 fixed while fitting only four take-up rates",
+          "followup": "microcosm#834"
+        }
       }
     }
   ]

@@ -1,13 +1,13 @@
 {
   "source_fact_feed": ".codex-work/consumer_facts_uk.jsonl",
   "target_period": 2025,
-  "candidate_count": 417,
-  "contract_target_count": 189,
-  "active_reference_count": 408,
+  "candidate_count": 430,
+  "contract_target_count": 202,
+  "active_reference_count": 415,
   "status_counts": {
-    "active": 408,
+    "active": 415,
     "no_fact_at_or_before_period": 7,
-    "signed_excluded": 2
+    "signed_excluded": 8
   },
   "geography_pins": {
     "obr.income_tax": {
@@ -765,9 +765,62 @@
     "dwp.uc.households": {
       "geography_level": "country",
       "geography_id": "K03000001"
+    },
+    "hmrc.tfc.government_top_up": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.tfc.children_with_used_accounts": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "dfe.funded_childcare.working_parent_children_2_to_4": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dfe.funded_childcare.early_learning_2_year_olds": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dfe.funded_childcare.universal_only_children": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_fare_receipts.england": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_net_support.england": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_fare_receipts.london": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_net_support.london": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_fare_receipts.england_outside_london": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_net_support.england_outside_london": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_fare_receipts.uk": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_net_support.uk": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
     }
   },
   "genuine_sum_residue": [
+    "dfe.funded_childcare.working_parent_children_2_to_4",
     "obr.esa",
     "ons.population.age_0_9_by_region",
     "ons.population.age_10_19_by_region",
@@ -2649,6 +2702,21 @@
     {
       "name": "dwp.uc.households",
       "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_2_to_4",
+      "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.early_learning_2_year_olds",
+      "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.universal_only_children",
+      "from": "2025-01",
       "to": "2025"
     }
   ],
@@ -7738,6 +7806,183 @@
           "resolved_value": 6758888.888888889,
           "resolved_fact_period": "2025-12",
           "resolved_fact_key": "ledger_aggregate_fact_v2_3270b0f656838ddd01b1ac5f"
+        }
+      ]
+    },
+    "hmrc.tfc.government_top_up": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.tfc.government_top_up",
+          "status": "active",
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
+          "resolved_period": 2025,
+          "resolved_value": 599800000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_988715985f9e98bbb332e83d"
+        }
+      ]
+    },
+    "hmrc.tfc.children_with_used_accounts": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.tfc.children_with_used_accounts",
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 1151515.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7aa1c663447037b35ea1c999"
+        }
+      ]
+    },
+    "dfe.funded_childcare.working_parent_children_2_to_4": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.working_parent_children_2_to_4",
+          "status": "active",
+          "matched_fact_count_overall": 11,
+          "matched_fact_count_at_or_before_period": 9,
+          "resolved_period": 2025,
+          "resolved_value": 621482.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a57a0c03ac43b62dde04fabd"
+        }
+      ]
+    },
+    "dfe.funded_childcare.early_learning_2_year_olds": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.early_learning_2_year_olds",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 11,
+          "resolved_period": 2025,
+          "resolved_value": 95031.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a2b30af28303935159ba0edc"
+        }
+      ]
+    },
+    "dfe.funded_childcare.universal_only_children": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.universal_only_children",
+          "status": "active",
+          "matched_fact_count_overall": 770,
+          "matched_fact_count_at_or_before_period": 686,
+          "resolved_period": 2025,
+          "resolved_value": 396965.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_471573def13ebdc67ff1f40a"
+        }
+      ]
+    },
+    "dft.bus_fare_receipts.england": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_fare_receipts.england",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 3417388656.43538,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2ece7c3d283b6de43b30389f"
+        }
+      ]
+    },
+    "dft.bus_net_support.england": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_net_support.england",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 3024904320.8399997,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a12dfcdc0662c8a5e48bf003"
+        }
+      ]
+    },
+    "dft.bus_fare_receipts.london": {
+      "status": "signed_excluded",
+      "candidates": [
+        {
+          "name": "dft.bus_fare_receipts.london",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "signed_rationale": "Region target held until the UK target compiler has a declared region roster and cross-grain leg; tracked by #790."
+        }
+      ]
+    },
+    "dft.bus_net_support.london": {
+      "status": "signed_excluded",
+      "candidates": [
+        {
+          "name": "dft.bus_net_support.london",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "signed_rationale": "Region target held until the UK target compiler has a declared region roster and cross-grain leg; tracked by #790."
+        }
+      ]
+    },
+    "dft.bus_fare_receipts.england_outside_london": {
+      "status": "signed_excluded",
+      "candidates": [
+        {
+          "name": "dft.bus_fare_receipts.england_outside_london",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "signed_rationale": "Chronicle stamps this row at statistical_scope; Microcosm has no declared statistical-scope pin and must not bind the England total accidentally."
+        }
+      ]
+    },
+    "dft.bus_net_support.england_outside_london": {
+      "status": "signed_excluded",
+      "candidates": [
+        {
+          "name": "dft.bus_net_support.england_outside_london",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "signed_rationale": "Chronicle stamps this row at statistical_scope; Microcosm has no declared statistical-scope pin and must not bind the England total accidentally."
+        }
+      ]
+    },
+    "dft.bus_fare_receipts.uk": {
+      "status": "signed_excluded",
+      "candidates": [
+        {
+          "name": "dft.bus_fare_receipts.uk",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "signed_rationale": "BUS05i publishes no UK total and Microcosm declares no method to construct one."
+        }
+      ]
+    },
+    "dft.bus_net_support.uk": {
+      "status": "signed_excluded",
+      "candidates": [
+        {
+          "name": "dft.bus_net_support.uk",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "signed_rationale": "BUS05i publishes no UK total and Microcosm declares no method to construct one."
         }
       ]
     }

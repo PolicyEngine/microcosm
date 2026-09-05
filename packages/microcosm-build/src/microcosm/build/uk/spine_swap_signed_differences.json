@@ -215,7 +215,7 @@
     ]
    },
    "expectation": "column_differs",
-   "magnitude_evidence": "The incumbent's state-education column is degenerate and the spine's is not, which makes this a defect fix on the incumbent side rather than a method preference. Measured on the ETB services stage's own cleaned donor frame \u2014 SN 8856, year 2023, complete cases on the thirteen-column services subset, 4,199 rows, weighted by hhold_adj_weight \u2014 dfe_education_spending has a donor share of 0.2794 weighted (0.2546 unweighted, which reproduces the E6 acceptance receipt's figure exactly) and a donor population mean of GBP 3,461 per household. The incumbent carries 14 nonzero households out of 52,846, a share of 0.000265 and a population mean of GBP 2 per household; the spine carries 11,934, a share of 0.2258 and GBP 3,111, or 0.90x the donor. bus_subsidy_spending moves the same way: donor share 0.5255 weighted and GBP 87 per household, against incumbent 0.3167 and GBP 113 (1.30x) and ours 0.5554 and GBP 89 (1.02x). The spine is closer on both the share and the level of both columns. This resolves the ETB weight-basis question that was previously recorded as blocking these rows: the stage's convention is the household grossing weight, and the verdict holds on either basis.",
+   "magnitude_evidence": "The incumbent's state-education column is degenerate and the spine's is not, which makes this a defect fix on the incumbent side rather than a method preference. Measured on the ETB services stage's own cleaned donor frame — SN 8856, year 2023, complete cases on the thirteen-column services subset, 4,199 rows, weighted by hhold_adj_weight — dfe_education_spending has a donor share of 0.2794 weighted (0.2546 unweighted, which reproduces the E6 acceptance receipt's figure exactly) and a donor population mean of GBP 3,461 per household. The incumbent carries 14 nonzero households out of 52,846, a share of 0.000265 and a population mean of GBP 2 per household; the spine carries 11,934, a share of 0.2258 and GBP 3,111, or 0.90x the donor. bus_subsidy_spending moves the same way: donor share 0.5255 weighted and GBP 87 per household, against incumbent 0.3167 and GBP 113 (1.30x) and ours 0.5554 and GBP 89 (1.02x). The spine is closer on both the share and the level of both columns. This resolves the ETB weight-basis question that was previously recorded as blocking these rows: the stage's convention is the household grossing weight, and the verdict holds on either basis.",
    "evidence": "experiments/686-uk-spine-comparison-ledger.md#etb--the-weight-basis-question-is-closed",
    "adjudicator": "juaristi22",
    "adjudicated_on": "2026-08-24",
@@ -252,7 +252,7 @@
     ]
    },
    "expectation": "column_differs",
-   "magnitude_evidence": "Carries forward the E5 adjudication of 2026-08-19 \u2014 that the wealth stage is not required to reproduce the incumbent's inflated totals \u2014 now scoped to the five household columns that actually diverge beyond the band, and re-measured against WAS Round 8 on the stage's own cleaning of the pinned tab (15,128 rows, weighted by R8xshhwgt). The spine is closer than the incumbent on all five survey-weighted donor shares: savings donor 0.6072 against incumbent 0.6620 and ours 0.6107; other_residential_property_value donor 0.0363 against 0.0763 and 0.0367; property_wealth donor 0.6433 against 0.7081 and 0.6607; main_residence_value donor 0.6236 against 0.6747 and 0.6356; corporate_wealth donor 0.7629 against 0.8222 and 0.7792. The level evidence behind the original adjudication reproduces and is the more dramatic surface: population mean per household runs 5.66x the donor for the incumbent's savings against 1.97x for ours, and 6.12x against 1.26x for other residential property. main_residence_value is the one column where the incumbent's level is closer, at 1.02x against our 0.88x. Note that the unweighted donor shares tell the opposite story on incidence, because WAS oversamples wealth-holders by design; the weighted basis is the population one and is the basis quoted here throughout.",
+   "magnitude_evidence": "Carries forward the E5 adjudication of 2026-08-19 — that the wealth stage is not required to reproduce the incumbent's inflated totals — now scoped to the five household columns that actually diverge beyond the band, and re-measured against WAS Round 8 on the stage's own cleaning of the pinned tab (15,128 rows, weighted by R8xshhwgt). The spine is closer than the incumbent on all five survey-weighted donor shares: savings donor 0.6072 against incumbent 0.6620 and ours 0.6107; other_residential_property_value donor 0.0363 against 0.0763 and 0.0367; property_wealth donor 0.6433 against 0.7081 and 0.6607; main_residence_value donor 0.6236 against 0.6747 and 0.6356; corporate_wealth donor 0.7629 against 0.8222 and 0.7792. The level evidence behind the original adjudication reproduces and is the more dramatic surface: population mean per household runs 5.66x the donor for the incumbent's savings against 1.97x for ours, and 6.12x against 1.26x for other residential property. main_residence_value is the one column where the incumbent's level is closer, at 1.02x against our 0.88x. Note that the unweighted donor shares tell the opposite story on incidence, because WAS oversamples wealth-holders by design; the weighted basis is the population one and is the basis quoted here throughout.",
    "evidence": "experiments/686-uk-spine-comparison-ledger.md#e5--wealth--signed-carried-forward",
    "adjudicator": "juaristi22",
    "adjudicated_on": "2026-08-24",
@@ -300,7 +300,7 @@
     ]
    },
    "expectation": "column_differs",
-   "magnitude_evidence": "Scoped apart from the benchmarked wealth columns because it has no donor benchmark to quote: the column is a fold of two WAS aggregates (total loans less total loans excluding Student Loans Company debt) and is a person-entity column where the wealth columns beside it are household-entity, so no like-for-like donor share exists on the stage's cleaned frame. The observed divergence is +0.0296 on the unweighted share, incumbent 0.0197 against ours 0.0493 \u2014 the spine places student debt on about two and a half times as many carriers. Signed under the standing E5 adjudication as part of the same correlated-rank draw, with the absence of a benchmark stated rather than papered over; if the wealth stage is revisited, this is the column whose direction is unevidenced.",
+   "magnitude_evidence": "Scoped apart from the benchmarked wealth columns because it has no donor benchmark to quote: the column is a fold of two WAS aggregates (total loans less total loans excluding Student Loans Company debt) and is a person-entity column where the wealth columns beside it are household-entity, so no like-for-like donor share exists on the stage's cleaned frame. The observed divergence is +0.0296 on the unweighted share, incumbent 0.0197 against ours 0.0493 — the spine places student debt on about two and a half times as many carriers. Signed under the standing E5 adjudication as part of the same correlated-rank draw, with the absence of a benchmark stated rather than papered over; if the wealth stage is revisited, this is the column whose direction is unevidenced.",
    "evidence": "experiments/686-uk-spine-comparison-ledger.md#e5--wealth--signed-carried-forward",
    "adjudicator": "juaristi22",
    "adjudicated_on": "2026-08-24",
@@ -480,6 +480,31 @@
     "structural": {
      "expected_columns": [
       "frs_benunit_capital"
+     ]
+    }
+   }
+  },
+  {
+   "id": "tfc-routed-share-net-new-column",
+   "class": "net_new_column",
+   "scope": {
+    "surface": "nonzero_shares",
+    "columns": [
+     "tax_free_childcare_spend_routed_share"
+    ],
+    "entities": [
+     "person"
+    ]
+   },
+   "expectation": "column_missing_in_reference",
+   "magnitude_evidence": "The spine persists the HMRC-derived financial-year account-activity proxy as a constant person-level input. The pinned enhanced-FRS reference predates this column, so the difference is structural. Licensed L2 (2026-09-05, receipts Part C): the column is present for every person at the 2024-04-01 contract value 0.593 (nonzero share 1.0) and policyengine-uk 2.94.0 reads it back; against the L1 engine-only twin the benunit and time_period tables are byte-equal, no cash, weight or FRS-carried column moves, and the 38 imputed household surfaces re-draw through the engine net-income predictors of 1 414 TFC households (column totals within +/-0.9%).",
+   "evidence": "experiments/834-childcare-tfc-receipts.md#part-c--column-twin-l2-release-round-trip-l3-re-fit-l5-composition-l4",
+   "adjudicator": "juaristi22",
+   "adjudicated_on": "2026-09-05",
+   "quantitative": {
+    "structural": {
+     "expected_columns": [
+      "tax_free_childcare_spend_routed_share"
      ]
     }
    }

@@ -55,6 +55,9 @@ class TargetReferenceAuthoringConfig:
     selector_pins_by_target_id: Mapping[str, Mapping[str, Any]] = field(
         default_factory=dict
     )
+    reference_metadata_by_target_id: Mapping[str, Mapping[str, str]] = field(
+        default_factory=dict
+    )
     signed_exclusions_by_target_id: Mapping[str, str] = field(default_factory=dict)
     binding_vocabulary: frozenset[str] = frozenset()
     source_fact_feed: str = ""
@@ -435,6 +438,7 @@ def target_references_resource(
         "allowed_value_operations": [
             "identity",
             "sum",
+            "difference",
             "calendar_year_average",
             "latest_plateau",
             "count_x_mean",
@@ -725,6 +729,7 @@ def _reference_row(
         "metadata": {
             "contract_target_id": target_id,
             "measure_kind": "prepared_column",
+            **dict(config.reference_metadata_by_target_id.get(target_id, {})),
         },
     }
     assertion_policy = target.get("assertion_policy")
@@ -735,6 +740,19 @@ def _reference_row(
         value_operation = "sum"
     if value_operation is not None and value_operation != "identity":
         row["value_operation"] = value_operation
+    operands = target.get("value_operands")
+    if operands is not None:
+        row["value_operands"] = operands
+    dimension_values = selector.get("dimension_values")
+    if value_operation == "sum" and isinstance(dimension_values, Mapping):
+        member_count = 1
+        has_list = False
+        for value in dimension_values.values():
+            if isinstance(value, list):
+                has_list = True
+                member_count *= len(value)
+        if has_list:
+            row["expected_member_count"] = member_count
     return row
 
 

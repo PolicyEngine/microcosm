@@ -390,13 +390,22 @@ def test_concentrated_qrf_output_fails_by_name() -> None:
 
 def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     register = uk_default_degenerate_reviewed_exclusions()
-    assert set(register) == {"household.source_year"}
+    assert set(register) == {
+        "household.source_year",
+        "person.tax_free_childcare_spend_routed_share",
+    }
     record = register["household.source_year"]
     assert record.adjudication == "microcosm#630"
     assert record.approved_by == "juaristi22"
     assert record.approved_on == "2026-08-10"
     assert record.expires_on == "2027-02-10"
     assert record.reason.strip()
+    routed_share = register["person.tax_free_childcare_spend_routed_share"]
+    assert routed_share.adjudication == "microcosm#834"
+    assert routed_share.approved_by == "juaristi22"
+    assert routed_share.approved_on == "2026-09-05"
+    assert routed_share.expires_on == "2027-03-05"
+    assert routed_share.reason.strip()
 
 
 def test_policy_of_record_is_immutable_and_loaded_once() -> None:

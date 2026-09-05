@@ -4,7 +4,8 @@
   "description": "UK population calibration contract: value-free national and local-geography target declarations over Chronicle facts. Selection contracts live in Microcosm per the chronicle#166 ruling (2026-08-13): Chronicle is a facts-only layer; Microcosm owns which facts are targets and how they bind to the model. This resource consolidates the former national and local-geography contracts into one population contract while preserving both target levels and their provenance accounting blocks. Observed values resolve from hash-pinned Chronicle consumer-facts artifacts at build time.",
   "allowed_value_operations": [
     "identity",
-    "sum"
+    "sum",
+    "difference"
   ],
   "resolution_defaults": {
     "base_period_policy": "latest_not_after_build_base_period",
@@ -678,8 +679,21 @@
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
-      "ons.population.female_90_plus": "Mar\u00eda ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
-      "ons.population.male_90_plus": "Mar\u00eda ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference."
+      "ons.population.female_90_plus": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
+      "ons.population.male_90_plus": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
+      "hmrc.tfc.government_top_up": "Post-freeze fact family, no uk-data metric.",
+      "hmrc.tfc.children_with_used_accounts": "Post-freeze fact family, no uk-data metric.",
+      "dfe.funded_childcare.working_parent_children_2_to_4": "Post-freeze fact family, no uk-data metric.",
+      "dfe.funded_childcare.early_learning_2_year_olds": "Post-freeze fact family, no uk-data metric.",
+      "dfe.funded_childcare.universal_only_children": "Post-freeze fact family, no uk-data metric.",
+      "dft.bus_fare_receipts.england": "#789 consumer target.",
+      "dft.bus_net_support.england": "#789 consumer target.",
+      "dft.bus_fare_receipts.london": "#789 consumer target.",
+      "dft.bus_net_support.london": "#789 consumer target.",
+      "dft.bus_fare_receipts.england_outside_london": "#789 consumer target.",
+      "dft.bus_net_support.england_outside_london": "#789 consumer target.",
+      "dft.bus_fare_receipts.uk": "#789 consumer target.",
+      "dft.bus_net_support.uk": "#789 consumer target."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -709,7 +723,7 @@
       "salary_sacrifice_obr_near_equivalents": "The contract separately maps OBR near-equivalents obr/salary_sacrifice_employee_ni_relief and obr/salary_sacrifice_employer_ni_relief onto hmrc.salary_sacrifice.nics_relief_employee and hmrc.salary_sacrifice.nics_relief_employer.",
       "two_child_limit_year_surface": "Chronicle's 15 dwp/uc/two_child_limit/* facts are the April-2025 publication (period month 2025-04) and are the only TCL facts; there are no 2026 Ledger facts. At 12a1e028, the incumbent pins the same published numbers at {2026}, so at calibration year 2025 Ledger activates all 15 TCL targets while the incumbent drops them from the 652-row union to the 637-row effective surface; the 2026 effective surface remains 652. The same 12a1e028 refresh adds the new incumbent dwp/uc/households row. Fixture B treats the 15 TCL rows as enumerated ledger-side additions.",
       "geography_level_order_canonicalization": "The 9 voa.council_tax_stock.* rows use country, region order to match the rest of the contract; consumers use membership only.",
-      "ons_terminal_sex_band_split": "Mar\u00eda ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference."
+      "ons_terminal_sex_band_split": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference."
     },
     "scope_target_ids": [
       "obr.income_tax",
@@ -900,7 +914,20 @@
       "slc.support.parents_learning_allowance_spend",
       "slc.support.adult_dependants_grant_recipients",
       "slc.support.adult_dependants_grant_spend",
-      "dwp.uc.households"
+      "dwp.uc.households",
+      "hmrc.tfc.government_top_up",
+      "hmrc.tfc.children_with_used_accounts",
+      "dfe.funded_childcare.working_parent_children_2_to_4",
+      "dfe.funded_childcare.early_learning_2_year_olds",
+      "dfe.funded_childcare.universal_only_children",
+      "dft.bus_fare_receipts.england",
+      "dft.bus_net_support.england",
+      "dft.bus_fare_receipts.london",
+      "dft.bus_net_support.london",
+      "dft.bus_fare_receipts.england_outside_london",
+      "dft.bus_net_support.england_outside_london",
+      "dft.bus_fare_receipts.uk",
+      "dft.bus_net_support.uk"
     ]
   },
   "profile_parity": {
@@ -1358,7 +1385,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.income_tax"
+        "source_concept": "obr.income_tax",
+        "entity_name": "person"
       }
     },
     {
@@ -1378,7 +1406,7 @@
           "value_variable": "total_national_insurance",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "The EFO line is total NICs receipts; binds total_national_insurance (class 1 employee + employer + classes 2-4). The prior ni_employee-only binding was the uk-data defect carried for parity \u2014 final estimate bit-identical to obr.ni_employee \u2014 fixed under the microcosm#757 audit partition (2026-08-26). Nearly redundant with the three separately-calibrated component lines by construction; kept so the published total binds honestly. Residual gap is Class 1A/1B on benefits in kind, which the model does not carry."
+          "notes": "The EFO line is total NICs receipts; binds total_national_insurance (class 1 employee + employer + classes 2-4). The prior ni_employee-only binding was the uk-data defect carried for parity — final estimate bit-identical to obr.ni_employee — fixed under the microcosm#757 audit partition (2026-08-26). Nearly redundant with the three separately-calibrated component lines by construction; kept so the published total binds honestly. Residual gap is Class 1A/1B on benefits in kind, which the model does not carry."
         },
         "axiom": {
           "metric_name": "obr/ni",
@@ -1389,7 +1417,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.ni_total"
+        "source_concept": "obr.ni_total",
+        "entity_name": "person"
       }
     },
     {
@@ -1419,7 +1448,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.ni_employee"
+        "source_concept": "obr.ni_employee",
+        "entity_name": "person"
       }
     },
     {
@@ -1449,7 +1479,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.ni_employer"
+        "source_concept": "obr.ni_employer",
+        "entity_name": "person"
       }
     },
     {
@@ -1479,7 +1510,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.ni_self_employed"
+        "source_concept": "obr.ni_self_employed",
+        "entity_name": "person"
       }
     },
     {
@@ -1506,7 +1538,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.vat"
+        "source_concept": "obr.vat",
+        "entity_name": "person"
       }
     },
     {
@@ -1533,7 +1566,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.fuel_duties"
+        "source_concept": "obr.fuel_duties",
+        "entity_name": "person"
       }
     },
     {
@@ -1563,7 +1597,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.capital_gains_tax"
+        "source_concept": "obr.capital_gains_tax",
+        "entity_name": "person"
       }
     },
     {
@@ -1590,7 +1625,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.sdlt"
+        "source_concept": "obr.sdlt",
+        "entity_name": "person"
       }
     },
     {
@@ -1620,7 +1656,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.attendance_allowance"
+        "source_concept": "obr.attendance_allowance",
+        "entity_name": "person"
       }
     },
     {
@@ -1650,7 +1687,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.carers_allowance"
+        "source_concept": "obr.carers_allowance",
+        "entity_name": "person"
       }
     },
     {
@@ -1680,7 +1718,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.child_benefit"
+        "source_concept": "obr.child_benefit",
+        "entity_name": "person"
       }
     },
     {
@@ -1855,7 +1894,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.domestic_rates"
+        "source_concept": "obr.domestic_rates",
+        "entity_name": "person"
       }
     },
     {
@@ -1884,7 +1924,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.incapacity_benefits"
+        "source_concept": "obr.incapacity_benefits",
+        "entity_name": "person"
       }
     },
     {
@@ -1914,7 +1955,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.housing_benefit"
+        "source_concept": "obr.housing_benefit",
+        "entity_name": "person"
       }
     },
     {
@@ -1944,7 +1986,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.jobseekers_allowance"
+        "source_concept": "obr.jobseekers_allowance",
+        "entity_name": "person"
       }
     },
     {
@@ -1974,7 +2017,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.pension_credit"
+        "source_concept": "obr.pension_credit",
+        "entity_name": "person"
       }
     },
     {
@@ -2005,7 +2049,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.dla_and_pip"
+        "source_concept": "obr.dla_and_pip",
+        "entity_name": "person"
       }
     },
     {
@@ -2035,7 +2080,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.state_pension"
+        "source_concept": "obr.state_pension",
+        "entity_name": "person"
       }
     },
     {
@@ -2065,7 +2111,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.statutory_maternity_pay"
+        "source_concept": "obr.statutory_maternity_pay",
+        "entity_name": "person"
       }
     },
     {
@@ -2092,7 +2139,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.tv_licence_fee"
+        "source_concept": "obr.tv_licence_fee",
+        "entity_name": "person"
       }
     },
     {
@@ -2137,7 +2185,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.universal_credit_in_cap"
+        "source_concept": "obr.universal_credit_in_cap",
+        "entity_name": "person"
       }
     },
     {
@@ -2182,7 +2231,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.universal_credit_outside_cap"
+        "source_concept": "obr.universal_credit_outside_cap",
+        "entity_name": "person"
       }
     },
     {
@@ -2209,7 +2259,8 @@
       "assertion_policy": "allow_source_projection",
       "ledger_selector": {
         "source_name": "obr",
-        "source_concept": "obr.winter_fuel_payment"
+        "source_concept": "obr.winter_fuel_payment",
+        "entity_name": "person"
       }
     },
     {
@@ -2598,7 +2649,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
       }
     },
     {
@@ -2677,7 +2729,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
       }
     },
     {
@@ -2756,7 +2809,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
       }
     },
     {
@@ -2835,7 +2889,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_property_income_amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
       }
     },
     {
@@ -2914,7 +2969,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
       }
     },
     {
@@ -2993,7 +3049,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
-        "groupby_dimension": "hmrc.total_income_band"
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
       }
     },
     {
@@ -3123,7 +3180,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.cgt_gains_total",
-        "groupby_dimension": "hmrc.cgt_table1_line"
+        "groupby_dimension": "hmrc.cgt_table1_line",
+        "entity_name": "tax_unit"
       }
     },
     {
@@ -4153,8 +4211,8 @@
         "country"
       ],
       "measurement": {
-        "entity": "benunit",
-        "concept": "uk.benefit_unit.count",
+        "entity": "household",
+        "concept": "uk.household.count",
         "filters": [
           {
             "concept": "uk.geography.region",
@@ -4175,9 +4233,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/scotland_uc_households_child_under_1",
-          "value_variable": "benunit_count",
-          "from_entity": "benunit",
-          "filters": [
+          "reduce": "any",
+          "household_conditions": [
             {
               "variable": "region",
               "operator": "==",
@@ -4185,21 +4242,26 @@
             },
             {
               "variable": "universal_credit",
+              "entity": "benunit",
+              "reduce": "any",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "youngest_child_age",
+              "variable": "age",
+              "entity": "person",
+              "reduce": "any_child_under",
               "operator": "<",
               "value": 1
             }
           ],
-          "notes": "Prepared benefit-unit count for Scottish UC units whose youngest child is under 1. The Chronicle monthly series is averaged over April-December 2025, matching the rest of the DWP Universal Credit family."
+          "value_variable": "household_count",
+          "notes": "Scottish UC households with a child under 1 (compute/benefits.py:24-30). Household grain kept: the calibration provider has no categorical household-to-benefit-unit broadcast (a benefit-unit row cannot filter on region), so the #813-style re-bind is not available for a geography-filtered row; the Chronicle series is calendar-year averaged over April-December 2025 like the rest of the family."
         },
         "axiom": {
           "metric_name": "dwp/scotland_uc_households_child_under_1",
           "status": "pending",
-          "value_rule": "uk.benefit_unit.count"
+          "value_rule": "uk.household.count"
         }
       },
       "ledger_selector": {
@@ -4859,6 +4921,7 @@
     },
     {
       "target_id": "ons.population.uk_total",
+      "value_operation": "sum",
       "family": "ons_population",
       "geography_levels": [
         "country"
@@ -8626,7 +8689,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "ONS Table 7 'one family only: couple, no children' is the household being exactly one childless couple and nobody else; with the childless-couple benunit present, person count == 2 is equivalent to the one-family restriction. Without it the binding counted every household *containing* such a couple \u2014 a 1.84m overlap with the couple-non-dependent-children and multi-family categories (microcosm#757 audit partition, 2026-08-26)."
+          "notes": "ONS Table 7 'one family only: couple, no children' is the household being exactly one childless couple and nobody else; with the childless-couple benunit present, person count == 2 is equivalent to the one-family restriction. Without it the binding counted every household *containing* such a couple — a 1.84m overlap with the couple-non-dependent-children and multi-family categories (microcosm#757 audit partition, 2026-08-26)."
         },
         "axiom": {
           "metric_name": "ons/couple_no_children_households",
@@ -9750,7 +9813,8 @@
         "source_concept": "scotgov.social_security_assistance_spending",
         "dimension_values": {
           "social_security_line": "scottish_child_payment"
-        }
+        },
+        "entity_name": "person"
       }
     },
     {
@@ -9780,7 +9844,8 @@
       },
       "ledger_selector": {
         "source_name": "ons",
-        "source_concept": "ons.ukea_haxv"
+        "source_concept": "ons.ukea_haxv",
+        "entity_name": "household"
       }
     },
     {
@@ -9848,7 +9913,8 @@
       },
       "ledger_selector": {
         "source_name": "ons",
-        "source_concept": "ons.e44r"
+        "source_concept": "ons.e44r",
+        "entity_name": "institutional_sector"
       }
     },
     {
@@ -9875,7 +9941,8 @@
       },
       "ledger_selector": {
         "source_name": "ons",
-        "source_concept": "ons.e44n"
+        "source_concept": "ons.e44n",
+        "entity_name": "institutional_sector"
       }
     },
     {
@@ -9902,7 +9969,8 @@
       },
       "ledger_selector": {
         "source_name": "ons",
-        "source_concept": "ons.e43b"
+        "source_concept": "ons.e43b",
+        "entity_name": "institutional_sector"
       }
     },
     {
@@ -9932,7 +10000,8 @@
       },
       "ledger_selector": {
         "source_name": "slc",
-        "source_concept": "slc.student_loan_net_repayments_total"
+        "source_concept": "slc.student_loan_net_repayments_total",
+        "entity_name": "person"
       }
     },
     {
@@ -9979,7 +10048,8 @@
         "groupby_dimension": "slc.repayment_plan",
         "source_measure_id": [
           "total_higher_education"
-        ]
+        ],
+        "entity_name": "person"
       }
     },
     {
@@ -10034,7 +10104,8 @@
         "groupby_dimension": "slc.repayment_plan",
         "source_measure_id": [
           "plan_1"
-        ]
+        ],
+        "entity_name": "person"
       }
     },
     {
@@ -10092,7 +10163,8 @@
         "source_measure_id": [
           "plan_2_full_time",
           "plan_2_part_time"
-        ]
+        ],
+        "entity_name": "person"
       }
     },
     {
@@ -10150,7 +10222,8 @@
         "source_measure_id": [
           "plan_3_postgraduate_masters",
           "plan_3_postgraduate_doctoral"
-        ]
+        ],
+        "entity_name": "person"
       }
     },
     {
@@ -10208,7 +10281,8 @@
         "source_measure_id": [
           "plan_5_full_time",
           "plan_5_part_time"
-        ]
+        ],
+        "entity_name": "person"
       }
     },
     {
@@ -10474,7 +10548,8 @@
       },
       "ledger_selector": {
         "source_name": "slc",
-        "source_concept": "slc.maintenance_loan_amount_paid"
+        "source_concept": "slc.maintenance_loan_amount_paid",
+        "entity_name": "person"
       }
     },
     {
@@ -10552,7 +10627,8 @@
         "source_concept": "slc.targeted_support_amount_awarded",
         "dimension_values": {
           "student_support_product": "parents_learning_allowance"
-        }
+        },
+        "entity_name": "person"
       }
     },
     {
@@ -10630,7 +10706,8 @@
         "source_concept": "slc.targeted_support_amount_awarded",
         "dimension_values": {
           "student_support_product": "adult_dependants_grant"
-        }
+        },
+        "entity_name": "person"
       }
     },
     {
@@ -10675,6 +10752,591 @@
         "source_concept": "dwp.uc_benefit_units",
         "source_measure_id": "total_units",
         "groupby_dimension": "dwp.uc_deductions_month"
+      }
+    },
+    {
+      "target_id": "hmrc.tfc.government_top_up",
+      "family": "hmrc_tfc",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.tax_free_childcare.amount",
+        "observation_basis": "annual_flow"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/tfc/government_top_up",
+          "value_variable": "tax_free_childcare",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "hmrc/tfc/government_top_up",
+          "status": "pending",
+          "value_rule": "uk.tax.tax_free_childcare.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.tax_free_childcare.government_top_up_gbp_million",
+        "entity_name": "government",
+        "period_type": "fiscal_year"
+      }
+    },
+    {
+      "target_id": "hmrc.tfc.children_with_used_accounts",
+      "family": "hmrc_tfc",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "observation_basis": "annual_unique_count",
+        "filters": [
+          {
+            "concept": "uk.childcare.is_child_receiving_tax_free_childcare",
+            "equals": true
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/tfc/children_with_used_accounts",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "is_child_receiving_tax_free_childcare",
+              "equals": true
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/tfc/children_with_used_accounts",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.tax_free_childcare.children_with_used_accounts_total",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimension_values": {
+          "definition_regime": "payment_and_open_at_reference_date"
+        }
+      }
+    },
+    {
+      "target_id": "dfe.funded_childcare.working_parent_children_2_to_4",
+      "family": "dfe_funded_childcare",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "observation_basis": "january_stock",
+        "filters": [
+          {
+            "concept": "uk.childcare.is_child_receiving_extended_childcare",
+            "equals": true
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 2
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dfe/funded_childcare/working_parent_children_2_to_4",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "is_child_receiving_extended_childcare",
+              "equals": true
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 2
+            },
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            }
+          ],
+          "notes": "Caseload only: entitlement spending is not bound because caseload multiplied by full-usage ceilings would double count assumptions."
+        },
+        "axiom": {
+          "metric_name": "dfe/funded_childcare/working_parent_children_2_to_4",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": [
+            "2 years",
+            "3 to 4 years"
+          ],
+          "registration_basis": "registered_children",
+          "provision": "all"
+        }
+      }
+    },
+    {
+      "target_id": "dfe.funded_childcare.early_learning_2_year_olds",
+      "family": "dfe_funded_childcare",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "observation_basis": "january_stock",
+        "filters": [
+          {
+            "concept": "uk.childcare.is_child_receiving_targeted_childcare",
+            "equals": true
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dfe/funded_childcare/early_learning_2_year_olds",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "is_child_receiving_targeted_childcare",
+              "equals": true
+            },
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            }
+          ],
+          "notes": "Caseload only; the published 74.8% denominator is not transferred into the model take-up rate."
+        },
+        "axiom": {
+          "metric_name": "dfe/funded_childcare/early_learning_2_year_olds",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Early learning for 2-year-olds",
+          "age": "2 years",
+          "registration_basis": "registered_children"
+        }
+      }
+    },
+    {
+      "target_id": "dfe.funded_childcare.universal_only_children",
+      "family": "dfe_funded_childcare",
+      "geography_levels": [
+        "country"
+      ],
+      "value_operation": "difference",
+      "value_operands": [
+        {
+          "role": "minuend",
+          "source_concept": "dfe.number_of_registered_children_nursery",
+          "source_measure_id": "registered_children_nursery_count",
+          "dimension_values": {
+            "entitlement_type": "Universal",
+            "age": "Total"
+          }
+        },
+        {
+          "role": "subtrahend",
+          "source_concept": "dfe.number_of_registered_children",
+          "source_measure_id": "registered_children_count",
+          "dimension_values": {
+            "entitlement_type": "Working parents",
+            "age": "3 to 4 years"
+          }
+        }
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "observation_basis": "january_stock",
+        "filters": [
+          {
+            "concept": "uk.childcare.is_child_receiving_universal_childcare",
+            "equals": true
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dfe/funded_childcare/universal_only_children",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "is_child_receiving_universal_childcare",
+              "equals": true
+            },
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            }
+          ],
+          "notes": "Universal-only caseload is the declared difference between the overlapping published universes; no entitlement spending row is bound."
+        },
+        "axiom": {
+          "metric_name": "dfe/funded_childcare/universal_only_children",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dfe",
+        "entity_name": "person"
+      }
+    },
+    {
+      "target_id": "dft.bus_fare_receipts.england",
+      "family": "dft_local_bus",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.bus_fare.amount",
+        "observation_basis": "fiscal_year_flow",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_fare_receipts/england",
+          "value_variable": "bus_fare_spending",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            }
+          ],
+          "notes": "DfT closing-year label: period 2025 means YE March 2025. BUS05i is consumed; NTS0705a and BUS0415 are not consumed pending #790."
+        },
+        "axiom": {
+          "metric_name": "dft/bus_fare_receipts/england",
+          "status": "pending",
+          "value_rule": "uk.transport.bus_fare.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_fare_receipts",
+        "layout_groupby_value_id": "england",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year"
+      }
+    },
+    {
+      "target_id": "dft.bus_net_support.england",
+      "family": "dft_local_bus",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.bus_support.amount",
+        "observation_basis": "fiscal_year_flow",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "ENGLAND"
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_net_support/england",
+          "value_variable": "bus_subsidy_spending",
+          "filters": [
+            {
+              "variable": "country",
+              "equals": "ENGLAND"
+            }
+          ],
+          "notes": "DfT closing-year label: period 2025 means YE March 2025. BUS05i is consumed; BUS0415 is not selectable for support."
+        },
+        "axiom": {
+          "metric_name": "dft/bus_net_support/england",
+          "status": "pending",
+          "value_rule": "uk.transport.bus_support.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_total_estimated_net_support",
+        "layout_groupby_value_id": "england",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year"
+      }
+    },
+    {
+      "target_id": "dft.bus_fare_receipts.london",
+      "family": "dft_local_bus",
+      "geography_levels": [
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.bus_fare.amount",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_fare_receipts/london",
+          "value_variable": "bus_fare_spending",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "LONDON"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dft/bus_fare_receipts/london",
+          "status": "pending",
+          "value_rule": "uk.transport.bus_fare.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_fare_receipts",
+        "layout_groupby_value_id": "london",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year"
+      }
+    },
+    {
+      "target_id": "dft.bus_net_support.london",
+      "family": "dft_local_bus",
+      "geography_levels": [
+        "region"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.bus_support.amount",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_net_support/london",
+          "value_variable": "bus_subsidy_spending",
+          "filters": [
+            {
+              "variable": "region",
+              "operator": "==",
+              "value": "LONDON"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dft/bus_net_support/london",
+          "status": "pending",
+          "value_rule": "uk.transport.bus_support.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_total_estimated_net_support",
+        "layout_groupby_value_id": "london",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year"
+      }
+    },
+    {
+      "target_id": "dft.bus_fare_receipts.england_outside_london",
+      "family": "dft_local_bus",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.bus_fare.amount",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_fare_receipts/england_outside_london",
+          "value_variable": "bus_fare_spending",
+          "filters": [
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
+            },
+            {
+              "variable": "region",
+              "operator": "!=",
+              "value": "LONDON"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dft/bus_fare_receipts/england_outside_london",
+          "status": "pending",
+          "value_rule": "uk.transport.bus_fare.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_fare_receipts",
+        "layout_groupby_value_id": "england_outside_london",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year"
+      }
+    },
+    {
+      "target_id": "dft.bus_net_support.england_outside_london",
+      "family": "dft_local_bus",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.bus_support.amount",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_net_support/england_outside_london",
+          "value_variable": "bus_subsidy_spending",
+          "filters": [
+            {
+              "variable": "country",
+              "operator": "==",
+              "value": "ENGLAND"
+            },
+            {
+              "variable": "region",
+              "operator": "!=",
+              "value": "LONDON"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dft/bus_net_support/england_outside_london",
+          "status": "pending",
+          "value_rule": "uk.transport.bus_support.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_total_estimated_net_support",
+        "layout_groupby_value_id": "england_outside_london",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year"
+      }
+    },
+    {
+      "target_id": "dft.bus_fare_receipts.uk",
+      "family": "dft_local_bus",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.bus_fare.amount",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_fare_receipts/uk",
+          "value_variable": "bus_fare_spending"
+        },
+        "axiom": {
+          "metric_name": "dft/bus_fare_receipts/uk",
+          "status": "pending",
+          "value_rule": "uk.transport.bus_fare.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_fare_receipts",
+        "layout_groupby_value_id": "uk",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year"
+      }
+    },
+    {
+      "target_id": "dft.bus_net_support.uk",
+      "family": "dft_local_bus",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "household",
+        "concept": "uk.transport.bus_support.amount",
+        "observation_basis": "fiscal_year_flow"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dft/bus_net_support/uk",
+          "value_variable": "bus_subsidy_spending"
+        },
+        "axiom": {
+          "metric_name": "dft/bus_net_support/uk",
+          "status": "pending",
+          "value_rule": "uk.transport.bus_support.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_total_estimated_net_support",
+        "layout_groupby_value_id": "uk",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year"
       }
     },
     {
@@ -11733,19 +12395,35 @@
     {
       "target_id": "voa.council_tax_stock.by_area.band_a",
       "family": "council_tax_stock",
-      "geography_levels": ["local_authority"],
+      "geography_levels": [
+        "local_authority"
+      ],
       "measurement": {
         "entity": "household",
         "concept": "uk.household.count",
-        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "A"}]
+        "filters": [
+          {
+            "concept": "uk.housing.council_tax_band",
+            "equals": "A"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
           "metric_name": "council_tax/band_a",
           "value_variable": "household_count",
-          "filters": [{"variable": "council_tax_band", "equals": "A"}]
+          "filters": [
+            {
+              "variable": "council_tax_band",
+              "equals": "A"
+            }
+          ]
         },
-        "axiom": {"metric_name": "council_tax/band_a", "status": "pending", "value_rule": "uk.household.count"}
+        "axiom": {
+          "metric_name": "council_tax/band_a",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
       },
       "ledger_selector": {
         "source_name": "voa",
@@ -11757,19 +12435,35 @@
     {
       "target_id": "voa.council_tax_stock.by_area.band_b",
       "family": "council_tax_stock",
-      "geography_levels": ["local_authority"],
+      "geography_levels": [
+        "local_authority"
+      ],
       "measurement": {
         "entity": "household",
         "concept": "uk.household.count",
-        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "B"}]
+        "filters": [
+          {
+            "concept": "uk.housing.council_tax_band",
+            "equals": "B"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
           "metric_name": "council_tax/band_b",
           "value_variable": "household_count",
-          "filters": [{"variable": "council_tax_band", "equals": "B"}]
+          "filters": [
+            {
+              "variable": "council_tax_band",
+              "equals": "B"
+            }
+          ]
         },
-        "axiom": {"metric_name": "council_tax/band_b", "status": "pending", "value_rule": "uk.household.count"}
+        "axiom": {
+          "metric_name": "council_tax/band_b",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
       },
       "ledger_selector": {
         "source_name": "voa",
@@ -11781,19 +12475,35 @@
     {
       "target_id": "voa.council_tax_stock.by_area.band_c",
       "family": "council_tax_stock",
-      "geography_levels": ["local_authority"],
+      "geography_levels": [
+        "local_authority"
+      ],
       "measurement": {
         "entity": "household",
         "concept": "uk.household.count",
-        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "C"}]
+        "filters": [
+          {
+            "concept": "uk.housing.council_tax_band",
+            "equals": "C"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
           "metric_name": "council_tax/band_c",
           "value_variable": "household_count",
-          "filters": [{"variable": "council_tax_band", "equals": "C"}]
+          "filters": [
+            {
+              "variable": "council_tax_band",
+              "equals": "C"
+            }
+          ]
         },
-        "axiom": {"metric_name": "council_tax/band_c", "status": "pending", "value_rule": "uk.household.count"}
+        "axiom": {
+          "metric_name": "council_tax/band_c",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
       },
       "ledger_selector": {
         "source_name": "voa",
@@ -11805,19 +12515,35 @@
     {
       "target_id": "voa.council_tax_stock.by_area.band_d",
       "family": "council_tax_stock",
-      "geography_levels": ["local_authority"],
+      "geography_levels": [
+        "local_authority"
+      ],
       "measurement": {
         "entity": "household",
         "concept": "uk.household.count",
-        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "D"}]
+        "filters": [
+          {
+            "concept": "uk.housing.council_tax_band",
+            "equals": "D"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
           "metric_name": "council_tax/band_d",
           "value_variable": "household_count",
-          "filters": [{"variable": "council_tax_band", "equals": "D"}]
+          "filters": [
+            {
+              "variable": "council_tax_band",
+              "equals": "D"
+            }
+          ]
         },
-        "axiom": {"metric_name": "council_tax/band_d", "status": "pending", "value_rule": "uk.household.count"}
+        "axiom": {
+          "metric_name": "council_tax/band_d",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
       },
       "ledger_selector": {
         "source_name": "voa",
@@ -11829,19 +12555,35 @@
     {
       "target_id": "voa.council_tax_stock.by_area.band_e",
       "family": "council_tax_stock",
-      "geography_levels": ["local_authority"],
+      "geography_levels": [
+        "local_authority"
+      ],
       "measurement": {
         "entity": "household",
         "concept": "uk.household.count",
-        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "E"}]
+        "filters": [
+          {
+            "concept": "uk.housing.council_tax_band",
+            "equals": "E"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
           "metric_name": "council_tax/band_e",
           "value_variable": "household_count",
-          "filters": [{"variable": "council_tax_band", "equals": "E"}]
+          "filters": [
+            {
+              "variable": "council_tax_band",
+              "equals": "E"
+            }
+          ]
         },
-        "axiom": {"metric_name": "council_tax/band_e", "status": "pending", "value_rule": "uk.household.count"}
+        "axiom": {
+          "metric_name": "council_tax/band_e",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
       },
       "ledger_selector": {
         "source_name": "voa",
@@ -11853,19 +12595,35 @@
     {
       "target_id": "voa.council_tax_stock.by_area.band_f",
       "family": "council_tax_stock",
-      "geography_levels": ["local_authority"],
+      "geography_levels": [
+        "local_authority"
+      ],
       "measurement": {
         "entity": "household",
         "concept": "uk.household.count",
-        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "F"}]
+        "filters": [
+          {
+            "concept": "uk.housing.council_tax_band",
+            "equals": "F"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
           "metric_name": "council_tax/band_f",
           "value_variable": "household_count",
-          "filters": [{"variable": "council_tax_band", "equals": "F"}]
+          "filters": [
+            {
+              "variable": "council_tax_band",
+              "equals": "F"
+            }
+          ]
         },
-        "axiom": {"metric_name": "council_tax/band_f", "status": "pending", "value_rule": "uk.household.count"}
+        "axiom": {
+          "metric_name": "council_tax/band_f",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
       },
       "ledger_selector": {
         "source_name": "voa",
@@ -11877,19 +12635,35 @@
     {
       "target_id": "voa.council_tax_stock.by_area.band_g",
       "family": "council_tax_stock",
-      "geography_levels": ["local_authority"],
+      "geography_levels": [
+        "local_authority"
+      ],
       "measurement": {
         "entity": "household",
         "concept": "uk.household.count",
-        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "G"}]
+        "filters": [
+          {
+            "concept": "uk.housing.council_tax_band",
+            "equals": "G"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
           "metric_name": "council_tax/band_g",
           "value_variable": "household_count",
-          "filters": [{"variable": "council_tax_band", "equals": "G"}]
+          "filters": [
+            {
+              "variable": "council_tax_band",
+              "equals": "G"
+            }
+          ]
         },
-        "axiom": {"metric_name": "council_tax/band_g", "status": "pending", "value_rule": "uk.household.count"}
+        "axiom": {
+          "metric_name": "council_tax/band_g",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
       },
       "ledger_selector": {
         "source_name": "voa",
@@ -11901,19 +12675,35 @@
     {
       "target_id": "voa.council_tax_stock.by_area.band_h",
       "family": "council_tax_stock",
-      "geography_levels": ["local_authority"],
+      "geography_levels": [
+        "local_authority"
+      ],
       "measurement": {
         "entity": "household",
         "concept": "uk.household.count",
-        "filters": [{"concept": "uk.housing.council_tax_band", "equals": "H"}]
+        "filters": [
+          {
+            "concept": "uk.housing.council_tax_band",
+            "equals": "H"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
           "metric_name": "council_tax/band_h",
           "value_variable": "household_count",
-          "filters": [{"variable": "council_tax_band", "equals": "H"}]
+          "filters": [
+            {
+              "variable": "council_tax_band",
+              "equals": "H"
+            }
+          ]
         },
-        "axiom": {"metric_name": "council_tax/band_h", "status": "pending", "value_rule": "uk.household.count"}
+        "axiom": {
+          "metric_name": "council_tax/band_h",
+          "status": "pending",
+          "value_rule": "uk.household.count"
+        }
       },
       "ledger_selector": {
         "source_name": "voa",

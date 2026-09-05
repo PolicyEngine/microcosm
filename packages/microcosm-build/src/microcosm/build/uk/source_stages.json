@@ -362,50 +362,50 @@
    "grain": "person",
    "artifacts": [
     {
-     "format": "json",
+     "role": "age_tail_band_populations",
      "kind": "public_aggregate_reference",
      "resource": "ons_age_tail_band_populations.json",
-     "role": "age_tail_band_populations",
+     "format": "json",
      "runtime_sha256_required": true
     }
    ],
    "operations": [
     {
+     "kind": "disaggregate_top_coded_ages",
+     "output": "age",
+     "resource": "ons_age_tail_band_populations.json",
+     "top_code": 80,
      "bands": [
       {
-       "low": 80,
        "name": "80_84",
+       "low": 80,
        "width": 5
       },
       {
-       "low": 85,
        "name": "85_89",
+       "low": 85,
        "width": 5
       },
       {
-       "low": 90,
        "name": "90_plus",
+       "low": 90,
        "width": 8
       }
      ],
+     "seed": 0,
      "draw_key": "person_id",
-     "kind": "disaggregate_top_coded_ages",
-     "output": "age",
-     "reason": "Age disaggregation rewrites an existing person column in place; no rows move, no weights change, and total household mass is conserved.",
-     "resource": "ons_age_tail_band_populations.json",
      "salt_streams": [
       "band",
       "within"
      ],
-     "seed": 0,
-     "top_code": 80
+     "reason": "Age disaggregation rewrites an existing person column in place; no rows move, no weights change, and total household mass is conserved."
     }
    ],
    "outputs": [],
-   "notes": "The licensed FRS records no age above 80, so every 80+ person arrives piled at exactly 80 and the 85-89 and 90+ population targets are structurally unbindable; the incumbent shares the defect. Each piled base person draws a band from the sex-specific ONS inverse CDF and a uniform integer age within it, keyed on person_id. Runs immediately after frs_spine, before every stage that conditions on age, so all age-conditioned imputations derive from the disaggregated surface. The stage precedes person_source_id provenance; later support and capital-gains clones copy the donor's rewritten age, preserving the #623 final-age identity invariant. Ages are assigned toward the ONS distribution; calibration still owns the totals.",
    "rewrites": [
     "age"
-   ]
+   ],
+   "notes": "The licensed FRS records no age above 80, so every 80+ person arrives piled at exactly 80 and the 85-89 and 90+ population targets are structurally unbindable; the incumbent shares the defect. Each piled base person draws a band from the sex-specific ONS inverse CDF and a uniform integer age within it, keyed on person_id. Runs immediately after frs_spine, before every stage that conditions on age, so all age-conditioned imputations derive from the disaggregated surface. The stage precedes person_source_id provenance; later support and capital-gains clones copy the donor's rewritten age, preserving the #623 final-age identity invariant. Ages are assigned toward the ONS distribution; calibration still owns the totals."
   },
   {
    "stage": "frs_employment",
@@ -792,7 +792,14 @@
    "survey": "Family Resources Survey 2024-25",
    "source": "Sourced UK take-up contract rates and identity-keyed deterministic draws.",
    "grain": "person",
-   "artifacts": [],
+   "artifacts": [
+    {
+     "role": "stochastic_contract",
+     "resource": "take_up_contract.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    }
+   ],
    "operations": [
     {
      "kind": "assign_binary_from_rate",
@@ -821,15 +828,24 @@
      "kind": "assign_uniform_draw",
      "output": "attends_private_school_random_draw",
      "seed": 0
+    },
+    {
+     "kind": "assign_period_constant",
+     "output": "tax_free_childcare_spend_routed_share",
+     "contract_key": "tax_free_childcare_spend_routed_share",
+     "period_source": "build_year",
+     "dtype": "float64"
     }
    ],
    "outputs": [
     "would_claim_marriage_allowance",
     "would_claim_scp",
-    "attends_private_school_random_draw"
+    "attends_private_school_random_draw",
+    "tax_free_childcare_spend_routed_share"
    ],
    "nonnegative_outputs": [
-    "attends_private_school_random_draw"
+    "attends_private_school_random_draw",
+    "tax_free_childcare_spend_routed_share"
    ],
    "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; higher_earner_tie_break is intentionally not produced."
   },
@@ -2040,8 +2056,8 @@
      "require_all_predictors": true,
      "require_all_outputs": true,
      "initialize_frs_channel_columns": {
-      "gift_aid": 0,
-      "charitable_investment_gifts": 0
+      "gift_aid": 0.0,
+      "charitable_investment_gifts": 0.0
      },
      "n_estimators": 100,
      "seed": 42
@@ -2474,46 +2490,47 @@
    "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path."
   },
   {
-   "artifacts": [],
+   "stage": "uc_reporter_redraw",
+   "survey": "Family Resources Survey 2024-25",
+   "source": "Family Resources Survey 2024-25 reported Universal Credit amounts, conditioned on benefit-unit composition and post-SPI incomes with PolicyEngine-UK eligibility inputs.",
    "grain": "benunit",
-   "notes": "Runs after the person-grain SPI income chain and before UC capital coherence. One temporary engine simulation screens both FRS and SPI benefit units to a positive pre-take-up award using FRS-carried capital AND at least one non-child member (uc_maximum_amount pays qualifying-young-person-only units mechanically), and materializes the UC child and state-pension-age flags; engine-known values are consumed only. A benefit-unit RegimeGatedQRF fitted on the screened base domain draws the screened SPI domain (rows); the rewrite domain (rewrite_rows) is the whole SPI channel, so screen-failing SPI units are zeroed. Each positive amount lands on one deterministic adult claimant; base-FRS rows remain byte-unchanged; an empty screened SPI domain refuses.",
+   "artifacts": [],
    "operations": [
     {
+     "kind": "derive",
      "derived": {
-      "claimable_screen": "positive_pre_takeup_uc_award AND has_non_child_member",
-      "has_non_child_member": "any(NOT is_child_or_qualifying_young_person_for_universal_credit) over benefit-unit members",
+      "uc_reported_capital": "frs_benunit_capital",
       "positive_pre_takeup_uc_award": "max(0, uc_maximum_amount - uc_income_reduction) > 0",
-      "uc_reported_capital": "frs_benunit_capital"
-     },
-     "kind": "derive"
+      "has_non_child_member": "any(NOT is_child_or_qualifying_young_person_for_universal_credit) over benefit-unit members",
+      "claimable_screen": "positive_pre_takeup_uc_award AND has_non_child_member"
+     }
     },
     {
-     "consumed_only": true,
      "kind": "materialize_rules_engine_predictors",
      "predictors": [
       "uc_maximum_amount",
       "uc_income_reduction",
       "is_child_or_qualifying_young_person_for_universal_credit",
       "is_SP_age"
-     ]
+     ],
+     "consumed_only": true
     },
     {
+     "kind": "aggregate_person_to_benunit",
+     "method": "sum",
+     "consumed_only": true,
      "aggregates": {
       "uc_child_count": "is_child_or_qualifying_young_person_for_universal_credit",
       "universal_credit_reported_amount": "universal_credit_reported"
-     },
-     "consumed_only": true,
-     "kind": "aggregate_person_to_benunit",
-     "method": "sum"
+     }
     },
     {
-     "categorical_predictors": [
-      "region"
-     ],
-     "fit": "regime_gated_qrf",
      "kind": "redraw_spi_reported_uc",
-     "landing": "eldest_working_age_adult_lowest_person_id",
      "output": "universal_credit_reported",
+     "training_rows": "base_frs_channel_not_capital_gains_clone_support_clone_0_screened",
+     "rows": "spi_channel_screened",
+     "rewrite_rows": "spi_channel",
+     "screen": "claimable_screen",
      "predictors": [
       "is_married",
       "uc_child_band",
@@ -2525,22 +2542,21 @@
       "claimant_age",
       "region"
      ],
-     "rewrite_rows": "spi_channel",
-     "rows": "spi_channel_screened",
-     "screen": "claimable_screen",
-     "seed": 44,
+     "categorical_predictors": [
+      "region"
+     ],
      "target": "universal_credit_reported_amount",
-     "training_rows": "base_frs_channel_not_capital_gains_clone_support_clone_0_screened",
-     "weight_mapping": "household_to_benunit"
+     "weight_mapping": "household_to_benunit",
+     "fit": "regime_gated_qrf",
+     "landing": "eldest_working_age_adult_lowest_person_id",
+     "seed": 44
     }
    ],
    "outputs": [],
    "rewrites": [
     "universal_credit_reported"
    ],
-   "source": "Family Resources Survey 2024-25 reported Universal Credit amounts, conditioned on benefit-unit composition and post-SPI incomes with PolicyEngine-UK eligibility inputs.",
-   "stage": "uc_reporter_redraw",
-   "survey": "Family Resources Survey 2024-25"
+   "notes": "Runs after the person-grain SPI income chain and before UC capital coherence. One temporary engine simulation screens both FRS and SPI benefit units to a positive pre-take-up award using FRS-carried capital AND at least one non-child member (uc_maximum_amount pays qualifying-young-person-only units mechanically), and materializes the UC child and state-pension-age flags; engine-known values are consumed only. A benefit-unit RegimeGatedQRF fitted on the screened base domain draws the screened SPI domain (rows); the rewrite domain (rewrite_rows) is the whole SPI channel, so screen-failing SPI units are zeroed. Each positive amount lands on one deterministic adult claimant; base-FRS rows remain byte-unchanged; an empty screened SPI domain refuses."
   },
   {
    "stage": "uc_capital_coherence",
