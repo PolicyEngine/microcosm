@@ -1303,3 +1303,42 @@ def test_declared_boolean_roster_is_measured_from_the_helper(family):
 def test_boolean_roster_must_name_owned_outputs():
     with pytest.raises(ValueError, match="does not own"):
         replace(RELATIONSHIP, boolean_outputs=frozenset({"not_an_output"}))
+
+
+@pytest.mark.parametrize(
+    ("kernel", "family", "column"),
+    (
+        (USRelationshipSourceKernel, "relationship", "is_separated"),
+        (USEligibilitySourceKernel, "eligibility", "is_blind"),
+    ),
+)
+def test_live_formula_owned_registry_binds_person_preparation(
+    monkeypatch, kernel, family, column
+):
+    """The formula-owned projection is live evidence, not a frozen literal."""
+    instance = kernel()
+    before = instance.implementation_hash()
+    frame = _upstream(family)
+    observe = _family_observer(family)
+
+    def transients():
+        return observe(
+            frame.person,
+            weights=frame.resolve_weights("person"),
+            metadata=frame.metadata,
+            pool_rows={entity: frame.n(entity) for entity in frame.entities},
+        )[1]["transient_outputs_carried_through_clone"]
+
+    assert transients() == {}
+    monkeypatch.setattr(
+        pool,
+        "_FORMULA_OWNED_SOURCE_OUTPUTS",
+        {
+            **pool._FORMULA_OWNED_SOURCE_OUTPUTS,
+            "person": frozenset(
+                {*pool._FORMULA_OWNED_SOURCE_OUTPUTS["person"], column}
+            ),
+        },
+    )
+    assert transients() == {"person": [column]}
+    assert instance.implementation_hash() != before
