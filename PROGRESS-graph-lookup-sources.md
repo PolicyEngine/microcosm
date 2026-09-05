@@ -18,7 +18,9 @@ import kernel can decode real source bytes honestly.
 ## State
 
 - Implementation, tests, lint, CI-inventory and changelog complete on this
-  branch (5 commits on top of `aad0defb`). Patch and receipt written to
+  branch. The receipt lists the exact commits and the patch's SHA256; the
+  patch is regenerated from `aad0defb..HEAD` whenever a commit lands, so the
+  two never disagree. Both live in
   `/Users/maxghenis/architecture-reviews/microcosm-20260904/`. Awaiting root
   review; nothing pushed, no PR, no remote comment.
 
