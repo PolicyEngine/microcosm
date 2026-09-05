@@ -17,8 +17,8 @@ import kernel can decode real source bytes honestly.
 
 ## State
 
-- Implementation complete; see Done. Verification run under the production
-  worktree venv with an explicit `PYTHONPATH` (see Commands).
+- Contract read and design fixed. Environment pinned and baseline captured.
+  Implementation not yet written.
 
 ## Design (fixed before editing)
 
@@ -52,18 +52,19 @@ import kernel can decode real source bytes honestly.
       `/Users/maxghenis/PolicyEngine/microcosm/.venv/bin/python` with
       `PYTHONPATH` set to this worktree's `packages/*/src`, verified by printing
       `microcosm.<shard>.__file__` for every shard.
-- [x] `codecs.py`: byte mode (`SourceBytesCodec`, `register_bytes`, `load_bytes`,
-      `as_bytes_mapping`, cross-mode name uniqueness, `raw-bytes-v1`,
-      `load_source_bytes`).
-- [x] `microcosm/graph/__init__.py`: export `SourceBytesCodec`, `load_source_bytes`.
-- [x] Tests: codec unit tests in `test_graph_codecs.py`; end-to-end
-      source -> typed-artifact route in `test_source_bytes_route.py`.
-- [x] `tools/ci_test_groups.py --verify` green with the new file in `rest` /
-      `us-am` and never `[defaulted]`.
-- [x] changelog fragment `changelog.d/graph-lookup-sources.added.md`.
-- [x] Patch + receipt written under
-      `/Users/maxghenis/architecture-reviews/microcosm-20260904/`.
+- [x] Baseline `packages/microcosm-graph/tests` before any edit: 43 passed,
+      1 skipped, 1 pre-existing failure
+      (`test_acceptance_h_parity.py::test_h3_us_post_transfer_parity`) — recorded
+      so it is never mistaken for lane damage.
 
 ## Next
 
-- Root review. No push, no PR, no remote comment from this lane.
+1. `codecs.py`: byte mode (`SourceBytesCodec`, `register_bytes`, `load_bytes`,
+   `as_bytes_mapping`, cross-mode name uniqueness, `raw-bytes-v1`,
+   `load_source_bytes`).
+2. `microcosm/graph/__init__.py`: export `SourceBytesCodec`, `load_source_bytes`.
+3. Tests: codec unit tests in `test_graph_codecs.py`; end-to-end source ->
+   typed-artifact route in a new flat graph test file.
+4. `tools/ci_test_groups.py --verify`; changelog fragment.
+5. Patch + receipt under `/Users/maxghenis/architecture-reviews/microcosm-20260904/`.
+   No push, no PR, no remote comment from this lane.
