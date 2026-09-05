@@ -18,6 +18,12 @@ from microcosm.build.us_runtime import (
     us_eligibility_inputs_summary,
     with_us_eligibility_inputs,
 )
+from microcosm.build.us_runtime.eligibility_inputs import (
+    prepare_us_eligibility_person,
+    us_eligibility_inputs_gate_from_summary,
+    us_eligibility_inputs_person_gate,
+    us_eligibility_inputs_person_summary,
+)
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.source_runtime import us_source_operation_handlers
 from microcosm.build.us_runtime.support_provenance import support_clone_index_column
@@ -366,3 +372,133 @@ class TestGate:
         gate = us_eligibility_inputs_signal_gate(frame)
         assert not gate.passed
         assert any("disabled share" in failure for failure in gate.failures)
+
+
+class TestPreparePersonHelper:
+    """``prepare_us_eligibility_person`` as the wrapper's deterministic core."""
+
+    def test_matches_wrapper_output_exactly(self) -> None:
+        frame = _us_frame(_plausible_rows())
+        wrapped = with_us_eligibility_inputs(frame, seed=0, time_period=TIME_PERIOD)
+
+        prepared = prepare_us_eligibility_person(
+            frame.table("person"),
+            frame.resolve_weights("person").values,
+            seed=0,
+            time_period=TIME_PERIOD,
+        )
+
+        pd.testing.assert_frame_equal(prepared, wrapped.table("person"))
+
+    def test_preserves_nondefault_person_index_and_row_order(self) -> None:
+        person = _person_table(
+            [
+                {},
+                {"PEDISPHY": 1},
+                {"VET_VAL": 8_400},
+            ]
+        )
+        shuffled = person.iloc[[2, 0, 1]].copy()
+        shuffled.index = pd.Index([70, 20, 40])
+        weights = np.array([5.0, 1.0, 3.0])
+
+        result = prepare_us_eligibility_person(
+            shuffled, weights, seed=0, time_period=TIME_PERIOD
+        )
+
+        assert result.index.tolist() == [70, 20, 40]
+        assert result["A_LINENO"].tolist() == shuffled["A_LINENO"].tolist()
+        assert result["veterans_benefits"].tolist() == [8_400.0, 0.0, 0.0]
+        assert result["is_disabled"].tolist() == [False, False, True]
+        for column in ("is_disabled", "is_blind", "is_full_time_college_student"):
+            assert result[column].dtype == bool
+        for column in ("own_children_in_household", "veterans_benefits"):
+            assert result[column].dtype == np.float64
+
+    def test_rejects_weights_misaligned_in_length(self) -> None:
+        person = _person_table([{}, {}])
+        with pytest.raises(ValueError, match="aligned 1:1"):
+            prepare_us_eligibility_person(
+                person, np.array([1.0]), seed=0, time_period=TIME_PERIOD
+            )
+
+    @pytest.mark.parametrize("bad_weights", [[np.nan, 1.0], [np.inf, 1.0], [-1.0, 1.0]])
+    def test_rejects_nonfinite_or_negative_weights(
+        self, bad_weights: list[float]
+    ) -> None:
+        person = _person_table([{}, {}])
+        with pytest.raises(ValueError, match="finite|nonnegative"):
+            prepare_us_eligibility_person(
+                person, np.array(bad_weights), seed=0, time_period=TIME_PERIOD
+            )
+
+    def test_missing_raw_column_is_named(self) -> None:
+        person = _person_table([{}]).drop(columns=["VET_VAL"])
+        with pytest.raises(SourceRuntimeError, match="VET_VAL"):
+            prepare_us_eligibility_person(
+                person, np.array([1.0]), seed=0, time_period=TIME_PERIOD
+            )
+
+
+class TestPersonSummaryAndGate:
+    """Real-person-table summary/gate APIs, composed by the Frame wrappers."""
+
+    def test_person_summary_matches_frame_summary(self) -> None:
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+
+        person_summary = us_eligibility_inputs_person_summary(
+            frame.table("person"), frame.resolve_weights("person").values
+        )
+
+        assert person_summary == us_eligibility_inputs_summary(frame)
+
+    def test_person_gate_matches_frame_gate_when_passing(self) -> None:
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+
+        person_gate = us_eligibility_inputs_person_gate(
+            frame.table("person"), frame.resolve_weights("person").values
+        )
+        frame_gate = us_eligibility_inputs_signal_gate(frame)
+
+        assert person_gate.passed
+        assert person_gate == frame_gate
+
+    def test_person_gate_matches_frame_gate_when_failing(self) -> None:
+        rows = [{"PEDISPHY": 1} for _ in range(10)]
+        frame = with_us_eligibility_inputs(
+            _us_frame(rows), seed=0, time_period=TIME_PERIOD
+        )
+
+        person_gate = us_eligibility_inputs_person_gate(
+            frame.table("person"), frame.resolve_weights("person").values
+        )
+        frame_gate = us_eligibility_inputs_signal_gate(frame)
+
+        assert not person_gate.passed
+        assert person_gate == frame_gate
+
+    def test_person_gate_rejects_missing_columns_without_touching_weights(
+        self,
+    ) -> None:
+        # The raw fixture never carries the five output columns.
+        person = _person_table([{}])
+
+        gate = us_eligibility_inputs_person_gate(person, np.array([1.0]))
+
+        assert not gate.passed
+        assert "missing" in gate.failures[0]
+
+    def test_gate_from_summary_reproduces_the_signal_gate_bands(self) -> None:
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+        summary = us_eligibility_inputs_summary(frame)
+
+        gate_from_summary = us_eligibility_inputs_gate_from_summary(summary)
+        frame_gate = us_eligibility_inputs_signal_gate(frame)
+
+        assert gate_from_summary == frame_gate

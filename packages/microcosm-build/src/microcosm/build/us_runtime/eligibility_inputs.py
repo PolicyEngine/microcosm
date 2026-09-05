@@ -443,9 +443,7 @@ def us_eligibility_inputs_person_summary(
 
     def _share(mask: np.ndarray) -> float:
         return (
-            float(weight_values[mask].sum()) / total_weight
-            if total_weight > 0
-            else 0.0
+            float(weight_values[mask].sum()) / total_weight if total_weight > 0 else 0.0
         )
 
     disabled = person["is_disabled"].astype(bool).to_numpy()
