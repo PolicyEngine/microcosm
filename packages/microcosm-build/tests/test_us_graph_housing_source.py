@@ -1351,3 +1351,217 @@ def test_new_runtime_modules_are_classified_and_source_blind():
     for name in ("graph_housing_source.py", "_graph_housing_source_artifacts.py"):
         assert name in blindness._SPINE_BLIND_OPERATOR_MODULES
         assert blindness._source_spine_accesses((runtime / name).read_text()) == ()
+
+
+# --------------------------------------------------------------------------
+# Durable failure evidence on replay, restored bytes, and remaining scope
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("resume", ["forbid", "auto", "require"])
+def test_failed_rent_validation_stays_unreached_on_every_replay(
+    tmp_path, monkeypatch, resume
+):
+    frame = _relationship_base(_pool_frame())
+
+    def broken(prepared, raw_rent):
+        raise ValueError("injected rent finalization failure")
+
+    monkeypatch.setattr(housing_inputs, "finalize_acs_rent", broken)
+    cold, _store, _nodes_, _donor_path = _run(tmp_path, frame)
+    manifest = cold if resume == "forbid" else _run(tmp_path, frame, resume=resume)[0]
+    assert manifest.key == cold.key
+    assert manifest.nodes[f"{rent.RENT_PREFIX}.validation"].receipt["outcome"] == "fail"
+    _assert_unreached(
+        manifest,
+        (
+            rent.RENT_OUTPUT_CONTEXT,
+            f"{HOUSING_SOURCE_PREFIX}.source_outputs",
+            HOUSING_SOURCE_MERGE_POPULATION,
+            f"{HOUSING_SOURCE_PREFIX}.merge",
+            HOUSING_SOURCE_ACCEPTED_CONTEXT,
+            "after",
+        ),
+    )
+
+
+@pytest.mark.parametrize("resume", ["forbid", "auto", "require"])
+def test_failed_completion_gate_stays_unreached_on_every_replay(
+    tmp_path, monkeypatch, resume
+):
+    frame = _relationship_base(_pool_frame())
+    original = USHousingMergeKernel.run
+
+    def tampered(self, context):
+        result = original(self, context)
+        payload = json.loads(result.artifacts["merge_evidence"])
+        payload["merged_rows"]["person"] += 1
+        return replace(
+            result,
+            artifacts={**result.artifacts, "merge_evidence": canonical_json(payload)},
+        )
+
+    monkeypatch.setattr(USHousingMergeKernel, "run", tampered)
+    cold, _store, _nodes_, _donor_path = _run(tmp_path, frame)
+    manifest = cold if resume == "forbid" else _run(tmp_path, frame, resume=resume)[0]
+    assert manifest.key == cold.key
+    gate = manifest.nodes[HOUSING_SOURCE_ACCEPTED_CONTEXT]
+    assert gate.receipt["outcome"] == "fail"
+    assert gate.receipt["execution"]["unavailable_artifacts"] == ("frame_context",)
+    assert "row counts differ" in gate.receipt["evidence"]["message"]
+    _assert_unreached(manifest, ("after",))
+
+
+def test_merged_pool_round_trips_through_a_real_frame_checkpoint(tmp_path):
+    from microcosm.build.frame_checkpoint import (
+        load_frame_checkpoint,
+        write_frame_checkpoint,
+    )
+
+    frame = _relationship_base(_pool_frame())
+    manifest, store, _nodes_, _donor_path = _run(tmp_path, frame)
+    accepted = _payload(
+        manifest, store, HOUSING_SOURCE_ACCEPTED_CONTEXT, "frame_context"
+    )
+    merged = _restore(manifest.population(HOUSING_SOURCE_MERGE_POPULATION), accepted)
+    write_frame_checkpoint(tmp_path / "merged.h5", merged)
+    restored = load_frame_checkpoint(tmp_path / "merged.h5").frame
+    for entity in merged.entities:
+        pd.testing.assert_frame_equal(restored.table(entity), merged.table(entity))
+    for entity in merged.weighted_entities:
+        np.testing.assert_array_equal(
+            restored.weights_for(entity).values, merged.weights_for(entity).values
+        )
+
+
+def test_partially_populated_measured_incumbents_are_overwritten_on_cps_rows(
+    tmp_path,
+):
+    frame = _relationship_base(_pool_frame())
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    household = tables["household"]
+    cps_household = household["H_TENURE"].notna().to_numpy()
+    tenure = household["tenure_type"].to_numpy(dtype=object).copy()
+    tenure[np.flatnonzero(cps_household)[0]] = "NONE"
+    household["tenure_type"] = pd.Series(
+        tenure, index=household.index, dtype=dtype_for_token("string")
+    )
+    partial = Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    manifest, _store, _nodes_, donor_path = _run(tmp_path, partial)
+    donor = housing_inputs.load_acs_2022_rent_donor(
+        donor_path, expected_sha256=_sha(donor_path)
+    )
+    expected = _direct_housing(partial, donor)
+    merged = manifest.population(HOUSING_SOURCE_MERGE_POPULATION)
+    pd.testing.assert_series_equal(
+        merged.table("household")["tenure_type"],
+        expected.frame.table("household")["tenure_type"],
+    )
+    # The derived value replaces the stale CPS incumbent; natives are untouched.
+    assert merged.table("household").loc[cps_household, "tenure_type"].tolist() == [
+        "OWNED_WITH_MORTGAGE",
+        "RENTED",
+        "NONE",
+    ]
+
+
+def test_duplicate_household_heads_are_refused_by_the_existing_rent_stage(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    person = frame.table("person").copy()
+    heads = person["is_household_head"].to_numpy(dtype=object).copy()
+    heads[1] = True
+    person["is_household_head"] = pd.Series(heads, index=person.index, dtype="boolean")
+    with pytest.raises(NodeRejectedError, match="head"):
+        _run(tmp_path, _with_person(frame, person))
+
+
+@pytest.mark.parametrize("stale", ["row_identity", "column_inventory"])
+def test_stale_parent_context_is_refused_before_any_output_merges(tmp_path, stale):
+    """A context that does not describe this population never reaches the merge."""
+    frame = _relationship_base(_pool_frame())
+    donor_path = _donor(tmp_path)
+    descriptor = rent_source.prepare_acs_rent_source_descriptor(
+        donor_path, expected_sha256=_sha(donor_path)
+    )
+    nodes, _columns = _nodes(frame, descriptor)
+    if stale == "row_identity":
+        # Describes a strict subset of the actual rows.
+        described = frame.select(frame.table("person")["PERIDNUM"].notna().to_numpy())
+        expected_node = HOUSING_SOURCE_POPULATION
+    else:
+        # Describes the un-operated pool: same rows, narrower column inventory,
+        # so the stale context is only caught where the wider slice is read.
+        described = _pool_frame()
+        expected_node = f"{rent.RENT_PREFIX}.recipient"
+    nodes = _rewire(
+        nodes,
+        "source",
+        params={"frame_context": encode_us_frame_context(described).decode()},
+    )
+    with pytest.raises(NodeRejectedError, match=expected_node.replace(".", r"\.")):
+        _run_nodes(tmp_path, frame, nodes, donor_path)
+
+
+def test_measured_views_declare_no_support_role_or_undeclared_predictor_columns(
+    tmp_path,
+):
+    frame = _relationship_base(_pool_frame())
+    donor_path = _donor(tmp_path)
+    descriptor = rent_source.prepare_acs_rent_source_descriptor(
+        donor_path, expected_sha256=_sha(donor_path)
+    )
+    nodes, _columns = _nodes(frame, descriptor)
+    measured = next(
+        node for node in nodes if node.id == f"{HOUSING_SOURCE_PREFIX}.measured"
+    )
+    declared = {
+        (view.entity, column) for view in measured.inputs for column in view.columns
+    }
+    assert declared == {
+        ("person", "SPM_CAPHOUSESUB"),
+        ("person", "SPM_TENMORTSTATUS"),
+        ("person", "PERIDNUM"),
+        ("person", "person_support_clone_index"),
+        ("household", "H_TENURE"),
+    }
+    assert not any("support_channel" in column for _entity, column in declared)
+    # No pension or social-security component is read by the measured node; the
+    # rent recipient owns those, on its own declared slices.
+    assert not any(
+        column.startswith(("social_security", "taxable_", "tax_exempt_"))
+        for _entity, column in declared
+    )
+
+
+def test_typed_artifact_payloads_stay_small_and_bounded(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    manifest, store, _nodes_, _donor_path = _run(tmp_path, frame)
+    sizes = {
+        "projection": len(
+            _payload(manifest, store, HOUSING_SOURCE_POPULATION, "projection")
+        ),
+        "source_outputs": len(
+            _payload(
+                manifest,
+                store,
+                f"{HOUSING_SOURCE_PREFIX}.source_outputs",
+                "source_outputs",
+            )
+        ),
+        "merge_evidence": len(
+            _payload(
+                manifest, store, f"{HOUSING_SOURCE_PREFIX}.merge", "merge_evidence"
+            )
+        ),
+    }
+    assert all(0 < size <= codec.HEADER_MAX_BYTES for size in sizes.values()), sizes
+    # The five-leaf export is a bounded header plus exact column buffers, not a
+    # Frame copy: it stays far under the projection's own carried columns.
+    assert sizes["source_outputs"] < 8 * 1024

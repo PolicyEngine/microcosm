@@ -1695,9 +1695,7 @@ def build_inventory_coverage(
             "sha256": _operational_free_sha256(geography_assignment),
             "authority_roles": sorted(geography_authorities),
             "target_vintage": _mapping(
-                geography_authorities.get(
-                    "congressional_district_vintage_crosswalk"
-                ),
+                geography_authorities.get("congressional_district_vintage_crosswalk"),
                 "checkpoint geography crosswalk authority",
             ).get("target_vintage"),
         },

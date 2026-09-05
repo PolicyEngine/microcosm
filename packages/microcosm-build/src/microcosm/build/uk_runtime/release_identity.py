@@ -40,6 +40,7 @@ UK_RELEASE_TIERS = frozenset(
 #: "-k<N>" shape and may retire as the migration moves on.
 UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
 
+
 def validate_uk_release_tier(tier: object) -> str:
     """Return a ratified UK source tier, rejecting every other token."""
 

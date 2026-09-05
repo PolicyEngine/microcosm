@@ -312,9 +312,7 @@ def _parse_family_coverage(
                     f"{resource}: family {name!r} superseded_by must be an object."
                 )
             superseding_stage = str(superseded_by.get("stage", "")).strip()
-            superseding_manifest = str(
-                superseded_by.get("source_manifest", "")
-            ).strip()
+            superseding_manifest = str(superseded_by.get("source_manifest", "")).strip()
             superseding_sha = str(
                 superseded_by.get("source_manifest_sha256", "")
             ).strip()

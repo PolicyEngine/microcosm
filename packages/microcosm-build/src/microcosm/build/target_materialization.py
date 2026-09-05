@@ -27,9 +27,7 @@ Provider = Callable[[Any, Mapping[str, Any], int | str], np.ndarray]
 # widens its lower neighbour; only the compiled register's top band runs to
 # infinity.
 # Entity-count indicators: a value of one per record of the owning entity.
-_COUNT_VALUE_VARIABLES = frozenset(
-    {"household_count", "person_count", "benunit_count"}
-)
+_COUNT_VALUE_VARIABLES = frozenset({"household_count", "person_count", "benunit_count"})
 
 _BAND_LOWER_BOUND_SUFFIX = "_lower_bound"
 _LEDGER_FILTER_PREFIX = "ledger_filter_"
@@ -182,9 +180,7 @@ def resolve_target_measures(
             "skipped": [skip.__dict__ for skip in skipped],
         }
         receipt["rounds"].append(round_receipt)
-        all_skips.extend(
-            {**skip.__dict__, "round": round_index} for skip in skipped
-        )
+        all_skips.extend({**skip.__dict__, "round": round_index} for skip in skipped)
         if not skipped:
             return MeasureResolution(
                 measure_inputs=MappingProxyType(dict(measure_inputs)),
@@ -308,9 +304,7 @@ def _raise_measure_resolution(
     raise MeasureResolutionError(message, receipt=receipt)
 
 
-def _band_lower_edge(
-    spec: Any, binding: Mapping[str, Any]
-) -> float | None:
+def _band_lower_edge(spec: Any, binding: Mapping[str, Any]) -> float | None:
     """This spec's band lower edge in model units, or None if unbanded.
 
     Reads the compiled spec's Ledger filter metadata: a ``*_lower_bound``

@@ -212,9 +212,7 @@ def redraw_spi_reported_uc(
         expected=len(benunit),
     )
     uc_child = _strict_materialized_bool(
-        materialized[
-            "is_child_or_qualifying_young_person_for_universal_credit"
-        ],
+        materialized["is_child_or_qualifying_young_person_for_universal_credit"],
         expected=len(person),
         label="UC child flag",
     )
@@ -261,7 +259,9 @@ def redraw_spi_reported_uc(
     training = base & ~is_cgt_clone & (support_clone == 0) & screen
     target = spi & screen
     if not training.any():
-        raise ValueError("UC reporter redraw has no screened canonical FRS training rows.")
+        raise ValueError(
+            "UC reporter redraw has no screened canonical FRS training rows."
+        )
     if float(weights[training].sum()) <= 0.0:
         raise ValueError("UC reporter redraw training weights must have positive mass.")
     if not target.any():
@@ -474,14 +474,19 @@ def _benefit_unit_predictors(
     grouped = person_numeric.groupby("person_benunit_id", sort=False)
     employment = grouped["employment_income"].sum().reindex(benunit_index)
     self_employment = grouped["self_employment_income"].sum().reindex(benunit_index)
-    investment = grouped[
-        [
-            "savings_interest_income",
-            "dividend_income",
-            "property_income",
-            "other_investment_income",
+    investment = (
+        grouped[
+            [
+                "savings_interest_income",
+                "dividend_income",
+                "property_income",
+                "other_investment_income",
+            ]
         ]
-    ].sum().sum(axis=1).reindex(benunit_index)
+        .sum()
+        .sum(axis=1)
+        .reindex(benunit_index)
+    )
     child_count = (
         pd.Series(uc_child.astype(np.int8), index=person.index)
         .groupby(person_ids, sort=False)
@@ -527,7 +532,9 @@ def _benefit_unit_predictors(
     result["claimant_age"] = claimant["claimant_age"].to_numpy(dtype=float)
     result["region"] = region.to_numpy()
     if result[list(UC_REPORTER_NUMERIC_PREDICTORS)].isna().any().any():
-        raise ValueError("UC reporter redraw numeric predictors contain missing values.")
+        raise ValueError(
+            "UC reporter redraw numeric predictors contain missing values."
+        )
     if result["region"].isna().any():
         raise ValueError("UC reporter redraw region predictor contains missing values.")
     return result.loc[:, list(UC_REPORTER_PREDICTORS)]
@@ -537,9 +544,9 @@ def _benefit_unit_reporter_amounts(
     person: pd.DataFrame,
     benunit: pd.DataFrame,
 ) -> np.ndarray:
-    amounts = pd.to_numeric(
-        person[UC_REPORTER_REDRAW_OUTPUT], errors="coerce"
-    ).fillna(0.0)
+    amounts = pd.to_numeric(person[UC_REPORTER_REDRAW_OUTPUT], errors="coerce").fillna(
+        0.0
+    )
     if (amounts < 0.0).any():
         raise ValueError("universal_credit_reported must be nonnegative.")
     by_benunit = amounts.groupby(person["person_benunit_id"], sort=False).sum()
@@ -592,9 +599,7 @@ def _land_spi_draws(
     spi_people = person["person_benunit_id"].isin(spi_ids).to_numpy(dtype=bool)
     person.loc[spi_people, UC_REPORTER_REDRAW_OUTPUT] = 0.0
     draw_by_benunit = pd.Series(draws, index=benunit["benunit_id"])
-    claimant_draws = person.loc[claimant_rows, "person_benunit_id"].map(
-        draw_by_benunit
-    )
+    claimant_draws = person.loc[claimant_rows, "person_benunit_id"].map(draw_by_benunit)
     claimant_spi = claimant_rows & spi_people
     landed = claimant_draws.loc[claimant_spi[claimant_rows]].to_numpy(dtype=float)
     child_claimants = uc_child[claimant_spi]
@@ -652,8 +657,7 @@ def _assert_landing_invariants(
         )
     if np.any(positive != (expected > 0.0).astype(np.int64)):
         raise RuntimeError(
-            "UC reporter redraw must land each positive draw on exactly one "
-            "person row."
+            "UC reporter redraw must land each positive draw on exactly one person row."
         )
 
 
@@ -810,8 +814,7 @@ def _assert_stage_parameters(stage: SourceStageSpec) -> None:
     }
     if actual != expected:
         raise ValueError(
-            "uc_reporter_redraw parameters drifted: "
-            f"expected {expected}, got {actual}."
+            f"uc_reporter_redraw parameters drifted: expected {expected}, got {actual}."
         )
     if stage.outputs != () or stage.rewrites != (UC_REPORTER_REDRAW_OUTPUT,):
         raise ValueError(

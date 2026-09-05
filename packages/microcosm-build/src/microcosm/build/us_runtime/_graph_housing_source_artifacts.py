@@ -681,7 +681,9 @@ def cell_digest(series: pd.Series, *, entity: str, column: str) -> dict[str, obj
         parts = _string_buffer(series.astype(_CANONICAL_STRING), f"{entity}.{column}")[
             0
         ]
-    elif isinstance(series.dtype, pd.BooleanDtype):
+    elif isinstance(series.dtype, pd.BooleanDtype) or series.dtype == np.dtype(
+        np.bool_
+    ):
         filled = series.fillna(False).to_numpy(dtype=np.bool_)
         parts = (
             np.ascontiguousarray(filled).tobytes()

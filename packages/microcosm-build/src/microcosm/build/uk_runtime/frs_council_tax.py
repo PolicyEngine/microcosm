@@ -91,9 +91,11 @@ def derive_council_tax(
     )
     tax_only = pd.Series(np.maximum(ctannual - scottish_water, 0), index=aligned.index)
     donors = ctannual > 0
-    cell_mean = tax_only[donors].groupby(
-        [gvtregno[donors], ctband[donors], single_adult[donors]], dropna=False
-    ).mean()
+    cell_mean = (
+        tax_only[donors]
+        .groupby([gvtregno[donors], ctband[donors], single_adult[donors]], dropna=False)
+        .mean()
+    )
     keys = pd.MultiIndex.from_arrays([gvtregno, ctband, single_adult])
     imputed = pd.Series(keys.map(cell_mean).to_numpy(dtype=float), index=aligned.index)
     imputed = imputed.fillna(0.0).clip(lower=0)

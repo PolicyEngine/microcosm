@@ -813,19 +813,22 @@ class USHousingMergeKernel(_HousingKernel):
             entity: int(len(identities[entity]["selected"]))
             for entity in US_SCHEMA.entities
         }
-        native_cells = []
+
+        def native_mask(entity: str) -> np.ndarray:
+            return ~(
+                tables[entity][US_SCHEMA.entity_id_column(entity)]
+                .isin(identities[entity]["selected"])
+                .to_numpy()
+            )
+
+        incumbent_digests: dict[tuple[str, str], str] = {}
         for entity, column, _dtype in codec.merge_columns():
             if column in tables[entity]:
-                native = ~tables[entity][US_SCHEMA.entity_id_column(entity)].isin(
-                    identities[entity]["selected"]
-                )
-                native_cells.append(
-                    codec.cell_digest(
-                        tables[entity].loc[native.to_numpy(), column],
-                        entity=entity,
-                        column=column,
-                    )
-                )
+                incumbent_digests[(entity, column)] = codec.cell_digest(
+                    tables[entity].loc[native_mask(entity), column],
+                    entity=entity,
+                    column=column,
+                )["digest"]
         merged, merged_rows, receipt = merge_multispine_housing_source_outputs(
             {entity: table.copy(deep=True) for entity, table in tables.items()},
             {
@@ -838,7 +841,7 @@ class USHousingMergeKernel(_HousingKernel):
         )
         columns: dict[tuple[str, str], pd.Series] = {}
         merged_cells = []
-        native_index = 0
+        native_cells = []
         for entity, column, dtype in codec.merge_columns():
             values = merged[entity][column]
             if str(values.dtype) != dtype:
@@ -846,19 +849,15 @@ class USHousingMergeKernel(_HousingKernel):
                     f"US housing merge produced {entity}.{column} as {values.dtype!s}, "
                     f"not the declared {dtype!r}."
                 )
-            if column in tables[entity]:
-                native = ~tables[entity][US_SCHEMA.entity_id_column(entity)].isin(
-                    identities[entity]["selected"]
-                )
+            if (entity, column) in incumbent_digests:
                 preserved = codec.cell_digest(
-                    values.loc[native.to_numpy()], entity=entity, column=column
+                    values.loc[native_mask(entity)], entity=entity, column=column
                 )
-                if preserved["digest"] != native_cells[native_index]["digest"]:
+                if preserved["digest"] != incumbent_digests[(entity, column)]:
                     raise ValueError(
                         f"US housing merge changed native {entity}.{column} cells."
                     )
-                native_cells[native_index] = preserved
-                native_index += 1
+                native_cells.append(preserved)
             merged_cells.append(codec.cell_digest(values, entity=entity, column=column))
             columns[(entity, column)] = pd.Series(
                 values.array,

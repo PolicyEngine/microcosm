@@ -453,10 +453,7 @@ def expected_uk_ladder_area_support(
         region_households = float(constituency_weight.sum())
         for constituency_code, household_count in constituency_weight.items():
             expected_rows = (
-                n_clones
-                * int(n_region)
-                * float(household_count)
-                / region_households
+                n_clones * int(n_region) * float(household_count) / region_households
             )
             constituency_key = str(constituency_code)
             constituency_expected[constituency_key] += expected_rows
@@ -504,9 +501,13 @@ def uk_region_mix(
     """Summarize household row and weight shares by normalized UK region."""
 
     if region_column not in household.columns:
-        raise ValueError(f"household table must contain region column {region_column!r}.")
+        raise ValueError(
+            f"household table must contain region column {region_column!r}."
+        )
     if weight_column not in household.columns:
-        raise ValueError(f"household table must contain weight column {weight_column!r}.")
+        raise ValueError(
+            f"household table must contain weight column {weight_column!r}."
+        )
 
     region_codes = _household_region_codes(
         household[region_column],
@@ -518,7 +519,9 @@ def uk_region_mix(
     if not np.isfinite(weights).all() or (weights < 0).any():
         raise ValueError(f"{weight_column} must be finite and non-negative.")
     if len(weights) == 0:
-        raise ValueError("household table must contain at least one row for region mix.")
+        raise ValueError(
+            "household table must contain at least one row for region mix."
+        )
     total_weight = float(weights.sum())
     if total_weight <= 0:
         raise ValueError(f"{weight_column} must carry positive total weight.")

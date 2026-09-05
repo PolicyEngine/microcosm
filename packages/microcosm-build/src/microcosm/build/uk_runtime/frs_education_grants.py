@@ -18,9 +18,7 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
-FRS_EDUCATION_GRANT_OUTPUT_COLUMNS = (
-    "disabled_students_allowance_eligible_expenses",
-)
+FRS_EDUCATION_GRANT_OUTPUT_COLUMNS = ("disabled_students_allowance_eligible_expenses",)
 FRS_EDUCATION_GRANT_REWRITES = ("education_grants",)
 UK_EDUCATION_GRANT_CAPACITY_PREDICTORS = (
     "childcare_grant",
@@ -66,7 +64,10 @@ class UKFRSEducationGrantSplitStageTransform:
             predictors.extend(DISABLED_STUDENTS_ALLOWANCE_ELIGIBILITY_VARIABLES)
         materialized = self.engine.materialize(frame, predictors, period)
         policy = self.policy
-        if policy is None and int(period) < DISABLED_STUDENTS_ALLOWANCE_FIRST_MODELED_YEAR:
+        if (
+            policy is None
+            and int(period) < DISABLED_STUDENTS_ALLOWANCE_FIRST_MODELED_YEAR
+        ):
             policy = UKDSAPolicy(
                 maximum=0.0,
                 instant=f"{int(period)}-01-01",
