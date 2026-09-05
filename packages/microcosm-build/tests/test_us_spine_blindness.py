@@ -97,6 +97,7 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
     {
         # Declares and receipts exact ACS source universes; never mutates rows.
         "acs_income_universe.py",
+        "acs_housing_donor.py",  # Source-only reported housing projection; no recipient treatment.
         # Owner-approved release boundary: exact raw ACS join and receipt.
         "acs_release_predictors.py",
         "base_pool.py",  # Legacy late-spine assembly.
@@ -232,6 +233,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "_person_signal_summary.py",
         # Exact source-universe validator/receipt owner; no population treatment.
         "acs_income_universe.py",
+        "acs_housing_donor.py",  # Source-only reported housing projection; no recipient treatment.
         "acs_inputs.py",
         "acs_multispine.py",
         "acs_pums.py",
