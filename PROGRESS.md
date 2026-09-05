@@ -183,8 +183,9 @@ fixes, and no gate threshold or rent science moved.
 
 ## Next
 
-1. Re-run targeted and the necessary related suite once more after the fixes.
-2. Refresh the author receipt artifacts and write the final answer file.
+Nothing outstanding in this lane. The slice is implemented, verified and
+receipted at `65613040`, and awaits independent root/Fable review. It has not
+been pushed.
 
 ## Limitations stated, not hidden
 
