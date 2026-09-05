@@ -110,9 +110,13 @@ is being rerun after the additional spec-bundle priming fix. Report and raw meas
   and all first 26 files (1,024 passed, no failures). Full stacked-spine is
   running next; final lint/format/spec/boundary checks are queued serially.
 
+- Final us-qs:build process: 1,369 passed, 2,377 warnings, no failures or
+  skips; exit 0; 654.966 seconds wall time (pytest 638.17s). All four final
+  CI process results total 4,352 passed and 11 existing skips across 141 files.
+  Final lint, formatting, spec coverage, and hard-boundary checks are running.
+
 ## Next
 
-- Finish the final us-qs:build rerun with per-file timings.
 - Run Ruff, formatting, and spec-pin checks.
 - Complete the external report with exact counts, wall times, scope boundaries,
   and commit history. No push.
