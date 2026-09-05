@@ -46,6 +46,7 @@ from microcosm.graph import (
     run_graph,
     source_hash,
 )
+from microcosm.graph.codecs import load_csv_tables, load_raw_bytes
 from microcosm.graph.kernel import KernelRole
 
 spec = importlib.util.spec_from_file_location(
@@ -404,3 +405,12 @@ def test_codec_availability_is_resolved_before_any_kernel_runs(tmp_path) -> None
     with pytest.raises(StoreUnavailableError, match="raw-bytes-v1"):
         run_graph(compiled, sources=sources, store=frame_only, kernels=registry)
     assert importer.calls == 1
+
+    # A plain mapping is its own arm of the executor's availability check, and
+    # one that carries the byte codec resolves it like any other.
+    mapping = ContentStore(
+        tmp_path / "mapping",
+        codecs={"csv-tables": load_csv_tables, "raw-bytes-v1": load_raw_bytes},
+    )
+    run_graph(compiled, sources=sources, store=mapping, kernels=registry)
+    assert importer.calls == 2 and apply_kernel.calls == 2

@@ -18,10 +18,10 @@ import kernel can decode real source bytes honestly.
 ## State
 
 - Implementation, tests, lint, CI-inventory and changelog complete on this
-  branch. The receipt lists the exact commits and the patch's SHA256; the
-  patch is regenerated from `aad0defb..HEAD` whenever a commit lands, so the
-  two never disagree. Both live in
-  `/Users/maxghenis/architecture-reviews/microcosm-20260904/`. Awaiting root
+  branch. The patch and receipt in
+  `/Users/maxghenis/architecture-reviews/microcosm-20260904/` each name the
+  commit they were generated from, so a reader can check them against
+  `git rev-parse HEAD` rather than trust that they are current. Awaiting root
   review; nothing pushed, no PR, no remote comment.
 
 ## Design (fixed before editing)
@@ -39,13 +39,26 @@ import kernel can decode real source bytes honestly.
 - `as_mapping()` keeps returning exactly the Frame loaders (unchanged type and
   contents); `as_bytes_mapping()` is its byte-mode sibling. A store configured
   with the Frame-only snapshot therefore fails closed on a bytes source.
-- Built-in `raw-bytes-v1`: regular files only (checked on the descriptor it
-  opened, opened non-blocking so a FIFO cannot hang a run), 64 MiB bounded
-  read, explicit directory / non-regular / oversize refusal as `ValueError`;
-  unknown codec and `ImportError` keep the fatal `StoreUnavailable`
-  classification (acceptance property E2).
+- Built-in `raw-bytes-v1`: regular files only, 64 MiB bounded read, explicit
+  directory / non-regular / oversize refusal as `ValueError`; unknown codec
+  and `ImportError` keep the fatal `StoreUnavailable` classification
+  (acceptance property E2).
 - `decl.py` and `kernel.py` are untouched. No dataclass schema, serialized
   shape, manifest field, or frozen API baseline moves.
+
+## Corrected mid-lane (not part of the pre-edit design)
+
+- The first implementation (`46a2b800`) refused a non-regular file from a
+  `stat()` taken *before* opening the path, and said so in its docstring.
+  Self-review found that ordering cannot deliver what it claimed: a path
+  swapped to a FIFO between the two calls blocks in `open` forever. `16e75afc`
+  replaced it — the file is opened non-blocking and the mode is read from that
+  descriptor — and `de347b3d` added the deadline that makes the FIFO test fail
+  instead of hang.
+- `names()` first returned both modes' names. Review found that this broke the
+  `names()`/`as_mapping()` agreement the base commit had by construction, so
+  `58e223cb` made `names()` Frame-only again with `bytes_names()` as its
+  byte-mode sibling.
 
 ## Done
 
