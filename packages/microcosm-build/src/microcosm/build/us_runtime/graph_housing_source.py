@@ -13,9 +13,8 @@ complete-incumbent pass-through in :func:`with_us_housing_inputs` is unchanged
 and is not implemented here.
 
 The outer gate attests source projection, exact ID merge and completion
-integrity. It is not a new scientific housing signal requirement: the existing
-rent assignment-integrity gate remains the scientific acceptance in this stage,
-and the established terminal quality gates stay authoritative.
+integrity. The existing rent gate checks assignment integrity; the established
+terminal scientific quality and release gates stay authoritative.
 """
 
 from __future__ import annotations
@@ -281,6 +280,25 @@ def _membership_counts(person: pd.DataFrame) -> dict[str, int]:
     }
 
 
+def _selection_descriptor() -> dict[str, str]:
+    columns = multispine_housing_boundary_columns()
+    return {
+        "column": columns[0],
+        "phase": codec.SOURCE_OPERATOR_PHASE,
+        "clone_index_column": columns[1],
+    }
+
+
+def _merged_context(parent_payload: bytes) -> dict[str, object]:
+    """Preserve the parent authority and append only the five owned leaf names."""
+    document = graph_context._decode(parent_payload)
+    for entity, column, _dtype in codec.merge_columns():
+        declared = document["entities"][entity]["columns"]
+        if column not in declared:
+            declared.append(column)
+    return document
+
+
 def _selected_identities(
     person: pd.DataFrame, mask: np.ndarray
 ) -> dict[str, dict[str, np.ndarray]]:
@@ -378,11 +396,7 @@ class USHousingSourceBoundaryKernel(_HousingKernel):
                 )
         projection = codec.encode_projection(
             parent_context=bound,
-            selection={
-                "column": "PERIDNUM",
-                "phase": "pre_clone",
-                "clone_index_column": multispine_housing_boundary_columns()[1],
-            },
+            selection=_selection_descriptor(),
             entities=identities,
             person_index=person.index,
             weight_sources=document["weight_sources"],
@@ -914,12 +928,7 @@ class USHousingMergeKernel(_HousingKernel):
                     name=US_SCHEMA.entity_id_column(entity),
                 ),
             )
-        for entity, names in multispine_housing_output_family().items():
-            declared = document["entities"][entity]["columns"]
-            for _e, column, _dtype in codec.merge_columns():
-                if _e == entity and column in names and column not in declared:
-                    declared.append(column)
-        pending = canonical_json(document)
+        pending = canonical_json(_merged_context(canonical_json(document)))
         evidence = codec.encode_merge_evidence(
             projection=projection_value,
             source_outputs=outputs_value,
@@ -965,6 +974,8 @@ class USHousingSourceGateKernel(_HousingKernel):
             or set(context.artifacts)
             != {
                 "frame_context",
+                "parent_frame_context",
+                "source_frame_context",
                 "merge_evidence",
                 "projection",
                 "source_outputs",
@@ -979,6 +990,7 @@ class USHousingSourceGateKernel(_HousingKernel):
             context,
             {
                 "frame_context": HOUSING_SOURCE_MERGE,
+                "source_frame_context": rent.RENT_OUTPUT_CONTEXT,
                 "merge_evidence": HOUSING_SOURCE_MERGE,
                 "projection": HOUSING_SOURCE_POPULATION,
                 "source_outputs": HOUSING_SOURCE_OUTPUTS,
@@ -1002,6 +1014,13 @@ class USHousingSourceGateKernel(_HousingKernel):
             )
         document = graph_context._decode(pending.payload)
         graph_context._mass_records(document["mass_log"])
+        parent_document, parent_value = _context(context, alias="parent_frame_context")
+        source_document, source_value = _context(context, alias="source_frame_context")
+        if pending.payload != canonical_json(_merged_context(parent_value.payload)):
+            raise ValueError(
+                "US housing gate pending context does not preserve its actual parent "
+                "authority and append exactly the owned housing columns."
+            )
         projection_value = codec.artifact(
             context, "projection", codec.HOUSING_SOURCE_PROJECTION_TYPE
         )
@@ -1016,8 +1035,16 @@ class USHousingSourceGateKernel(_HousingKernel):
         projection_binding = codec.binding(projection_value)
         outputs_binding = codec.binding(outputs_value)
         validation_binding = codec.binding(validation_value)
+        parent_binding = codec.binding(parent_value)
+        source_binding = codec.binding(source_value)
         if (
-            evidence["projection_sha256"] != projection_binding["sha256"]
+            projection["parent_context_sha256"] != parent_binding["sha256"]
+            or projection["parent_context_producer_key"]
+            != parent_binding["producer_key"]
+            or outputs.header["frame_context_sha256"] != source_binding["sha256"]
+            or outputs.header["frame_context_producer_key"]
+            != source_binding["producer_key"]
+            or evidence["projection_sha256"] != projection_binding["sha256"]
             or evidence["projection_producer_key"] != projection_binding["producer_key"]
             or evidence["source_outputs_sha256"] != outputs_binding["sha256"]
             or evidence["source_outputs_producer_key"]
@@ -1033,6 +1060,27 @@ class USHousingSourceGateKernel(_HousingKernel):
             or outputs.header["mode"] != mode
         ):
             raise ValueError("US housing gate producer bindings are stale or swapped.")
+        if (
+            projection["selection"] != _selection_descriptor()
+            or projection["weight_sources"] != parent_document["weight_sources"]
+        ):
+            raise ValueError(
+                "US housing gate projection selection or weight authority differs "
+                "from the registered selection and actual parent context."
+            )
+        for entity, identities in projection["entities"].items():
+            for phase, authority in (
+                ("full", parent_document),
+                ("selected", source_document),
+            ):
+                if any(
+                    authority["entities"][entity][name] != value
+                    for name, value in identities[phase].items()
+                ):
+                    raise ValueError(
+                        f"US housing gate projection {entity} {phase} identity "
+                        "differs from its actual context authority."
+                    )
         expected_validation = codec.encode_json(
             {
                 "schema_version": 1,
@@ -1051,6 +1099,10 @@ class USHousingSourceGateKernel(_HousingKernel):
             for entity, table in context.tables.items()
         }
         person = tables["person"]
+        if projection["person_index"] != codec.person_index_identity(person.index):
+            raise ValueError(
+                "US housing gate projection person index differs from the actual pool."
+            )
         mask, boundary = multispine_housing_source_selection(
             person, metadata=document["metadata"]
         )
@@ -1369,6 +1421,18 @@ def us_housing_source_nodes(
         inputs=tuple(gate_slices),
         params=mode_params,
         artifact_inputs=(
+            ArtifactInput(
+                "parent_frame_context",
+                context_producer,
+                "frame_context",
+                graph_context.US_FRAME_CONTEXT_TYPE,
+            ),
+            ArtifactInput(
+                "source_frame_context",
+                rent.RENT_OUTPUT_CONTEXT,
+                "frame_context",
+                graph_context.US_FRAME_CONTEXT_TYPE,
+            ),
             ArtifactInput(
                 "frame_context",
                 HOUSING_SOURCE_MERGE,

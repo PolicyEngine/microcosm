@@ -27,8 +27,9 @@ mode:
 - `early_preparation.housing.merge` calls the registered ID merge once per
   affected entity and owns all five full-pool leaves.
 - `early_preparation.housing.gate` re-derives the selection, re-checks the merged
-  and native cells against the bound evidence, and only then publishes the
-  accepted `US_FRAME_CONTEXT_TYPE`.
+  and native cells against the bound evidence, and compares the claimed context
+  bindings with typed edges from the actual parent and completed rent context
+  producers. It only then publishes the accepted `US_FRAME_CONTEXT_TYPE`.
 
 The production order is relationship, then housing, then eligibility. Pass the
 relationship stage's population as `base` and its accepted context producer as
@@ -56,6 +57,20 @@ output family — travels in the separate
 caller-authored pass flag. Selected group identities are derived from actual
 membership vectors and checked against the parent descriptors before the rent
 handoff on cold, auto and required replay.
+
+The completion gate checks every projection descriptor against its authority:
+the registered selection fields and phase, the actual full-pool pandas index,
+the parent's weight-source descriptor and full entity IDs, and the completed
+source context's selected entity IDs. Projection decoding requires all six US
+entities, nonempty full and selected identities, a person-index length matching
+the full population, and registered weight entities and kinds. The output's
+claimed source-context digest and producer key must match the actual typed
+source-context edge. The pending merged context must equal the original parent
+context with only absent housing leaf names appended in merge order. This
+preserves its metadata, legacy mass history, weight authority, IDs and existing
+column order, even if a substituted pending context has a freshly recomputed
+local digest. These are provenance and completion checks; they introduce no
+scientific threshold or new housing calculation.
 
 This slice is `fresh_source` only. Selected CPS rent must be absent or entirely
 null; partly or completely observed CPS rent refuses at the boundary, before

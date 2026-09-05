@@ -19,7 +19,7 @@ import pandas as pd
 
 from microcosm.fit._graph_legacy_qrf import decode_json, encode_json, sha
 from microcosm.fit.qrf import _index_identity, _IndexIdentity
-from microcosm.frame import US_SCHEMA
+from microcosm.frame import US_SCHEMA, WeightKind
 from microcosm.graph import ArtifactType, Numeric, platform_fingerprint
 from microcosm.graph.population import assert_dtype, dtype_for_token
 
@@ -56,6 +56,7 @@ __all__ = [
     "housing_output_family",
     "is_hash",
     "merge_columns",
+    "person_index_identity",
     "sha",
     "source_tables",
     "strict_ids",
@@ -286,6 +287,11 @@ def _split(payload: bytes, magic: bytes) -> tuple[dict[str, object], memoryview]
 # ---------------------------------------------------------------------------
 
 
+def person_index_identity(index: pd.Index) -> dict[str, object]:
+    """Describe the actual full-pool pandas row index, including row order."""
+    return _index_identity(index).to_dict()
+
+
 def encode_projection(
     *,
     parent_context,
@@ -313,7 +319,7 @@ def encode_projection(
             }
             for entity, values in sorted(entities.items())
         },
-        "person_index": _index_identity(person_index).to_dict(),
+        "person_index": person_index_identity(person_index),
         "weight_sources": dict(weight_sources),
         "output_family": {
             entity: list(columns)
@@ -349,32 +355,39 @@ def decode_projection(payload: bytes) -> Mapping[str, object]:
     ):
         raise ValueError("US housing source projection selection is malformed.")
     entities = document["entities"]
-    if (
-        not isinstance(entities, dict)
-        or not entities
-        or set(entities) - set(US_SCHEMA.entities)
-    ):
-        raise ValueError("US housing source projection describes no US entity.")
+    if not isinstance(entities, dict) or set(entities) != set(US_SCHEMA.entities):
+        raise ValueError(
+            "US housing source projection describes no US entity or an incomplete "
+            "entity set; exactly all US entities are required."
+        )
     for value in entities.values():
         if not isinstance(value, dict) or set(value) != {"full", "selected"}:
             raise ValueError("US housing source projection identity is malformed.")
-        _validate_identity(value["full"])
-        _validate_identity(value["selected"])
+        _validate_identity(value["full"], nonempty=True)
+        _validate_identity(value["selected"], nonempty=True)
         if value["selected"]["rows"] > value["full"]["rows"]:
             raise ValueError(
                 "US housing source selection cannot exceed its parent population."
             )
     try:
-        _IndexIdentity.from_dict(document["person_index"])
+        person_index = _IndexIdentity.from_dict(document["person_index"])
     except (AttributeError, KeyError, TypeError) as error:
         raise ValueError(
             "US housing source projection person index is malformed."
         ) from error
+    if person_index.length != entities["person"]["full"]["rows"]:
+        raise ValueError(
+            "US housing source person index differs from the full row count."
+        )
     weight_sources = document["weight_sources"]
     if (
         not isinstance(weight_sources, dict)
         or not weight_sources
-        or any(not isinstance(kind, str) for kind in weight_sources.values())
+        or set(weight_sources) - set(US_SCHEMA.entities)
+        or any(
+            not isinstance(kind, str) or kind not in {item.value for item in WeightKind}
+            for kind in weight_sources.values()
+        )
     ):
         raise ValueError("US housing source projection weight sources are malformed.")
     family = document["output_family"]

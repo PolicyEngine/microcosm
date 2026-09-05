@@ -688,3 +688,23 @@ def test_merge_evidence_refuses_an_unsupported_mode_at_encode():
             },
             mode="complete_incumbent",
         )
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["entities", "person_index", "weight_entity", "weight_kind", "empty_selected"],
+)
+def test_projection_structural_authority_is_closed(field):
+    header, body = _split(_projection_payload(), codec.PROJECTION_MAGIC)
+    if field == "entities":
+        header["entities"].pop("family")
+    elif field == "person_index":
+        header["person_index"]["length"] += 1
+    elif field == "weight_entity":
+        header["weight_sources"] = {"invented_entity": "design"}
+    elif field == "weight_kind":
+        header["weight_sources"] = {"household": "invented_kind"}
+    else:
+        header["entities"]["family"]["selected"]["rows"] = 0
+    with pytest.raises(ValueError):
+        codec.decode_projection(_reframe(header, body, codec.PROJECTION_MAGIC))

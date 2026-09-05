@@ -1670,3 +1670,143 @@ def test_a_declaration_that_hides_an_available_rent_incumbent_is_refused(tmp_pat
     nodes = _rewire(nodes, HOUSING_SOURCE_POPULATION, inputs=narrowed)
     with pytest.raises(NodeRejectedError, match="must declare the available"):
         _run_nodes(tmp_path, frame, nodes, donor_path)
+
+
+@pytest.mark.parametrize("field", ["selection", "weight_sources", "person_index"])
+def test_false_projection_authority_never_publishes_accepted_context(
+    tmp_path, monkeypatch, field
+):
+    frame = _relationship_base(_pool_frame())
+    original = graph_housing_source.USHousingSourceBoundaryKernel.run
+
+    def injected(self, context):
+        result = original(self, context)
+        header, body = codec._split(
+            result.artifacts["projection"], codec.PROJECTION_MAGIC
+        )
+        if field == "selection":
+            header[field] = {
+                "column": "invented",
+                "phase": "post_clone",
+                "clone_index_column": "invented_clone",
+            }
+        elif field == "weight_sources":
+            # Valid entity/kind spellings still require actual parent authority.
+            assert header[field] != {"household": "design"}
+            header[field] = {"household": "design"}
+        else:
+            # A valid-shaped descriptor with the right length but wrong index.
+            header[field]["sha256"] = "1" * 64
+        payload = codec._envelope(
+            codec.PROJECTION_MAGIC, codec.encode_json(header), bytes(body)
+        )
+        return replace(result, artifacts={**result.artifacts, "projection": payload})
+
+    monkeypatch.setattr(
+        graph_housing_source.USHousingSourceBoundaryKernel, "run", injected
+    )
+    manifest, _, _, _ = _run(tmp_path, frame)
+    assert manifest.nodes[HOUSING_SOURCE_ACCEPTED_CONTEXT].receipt["outcome"] == "fail"
+    _assert_unreached(manifest, ("after",))
+
+
+@pytest.mark.parametrize(
+    "field", ["frame_context_sha256", "frame_context_producer_key"]
+)
+@pytest.mark.parametrize("resume", ["forbid", "auto", "require"])
+def test_foreign_source_context_binding_never_publishes_accepted_context(
+    tmp_path, monkeypatch, field, resume
+):
+    frame = _relationship_base(_pool_frame())
+    original = graph_housing_source.USHousingSourceOutputsKernel.run
+
+    def injected(self, context):
+        result = original(self, context)
+        header, body = _split_outputs(result.artifacts["source_outputs"])
+        header[field] = "1" * 64
+        return replace(
+            result,
+            artifacts={
+                **result.artifacts,
+                "source_outputs": _reframe_outputs(header, body),
+            },
+        )
+
+    monkeypatch.setattr(
+        graph_housing_source.USHousingSourceOutputsKernel, "run", injected
+    )
+    cold, _, _, _ = _run(tmp_path, frame)
+    manifest = cold if resume == "forbid" else _run(tmp_path, frame, resume=resume)[0]
+    assert manifest.nodes[HOUSING_SOURCE_ACCEPTED_CONTEXT].receipt["outcome"] == "fail"
+    _assert_unreached(manifest, ("after",))
+
+
+@pytest.mark.parametrize("field", ["weight_sources", "mass_log", "metadata", "columns"])
+def test_pending_context_cannot_replace_parent_authority_even_with_fresh_digest(
+    tmp_path, monkeypatch, field
+):
+    frame = _relationship_base(_pool_frame())
+    original = USHousingMergeKernel.run
+
+    def injected(self, context):
+        result = original(self, context)
+        document = json.loads(result.artifacts["frame_context"])
+        if field == "weight_sources":
+            assert document[field] != {"household": "design"}
+            document[field] = {"household": "design"}
+        elif field == "mass_log":
+            assert document[field]
+            document[field] = []
+        elif field == "metadata":
+            assert document[field]
+            document[field]["us_late_producer_transition_authority"] = {
+                "invented": True
+            }
+        else:
+            document["entities"]["tax_unit"]["columns"].append(
+                "invented_carried_column"
+            )
+        pending = canonical_json(document)
+        evidence = json.loads(result.artifacts["merge_evidence"])
+        evidence["pending_context_sha256"] = codec.sha(pending)
+        return replace(
+            result,
+            artifacts={
+                "frame_context": pending,
+                "merge_evidence": canonical_json(evidence),
+            },
+        )
+
+    monkeypatch.setattr(USHousingMergeKernel, "run", injected)
+    manifest, _, _, _ = _run(tmp_path, frame)
+    assert manifest.nodes[HOUSING_SOURCE_ACCEPTED_CONTEXT].receipt["outcome"] == "fail"
+    _assert_unreached(manifest, ("after",))
+
+
+@pytest.mark.parametrize("alias", ["parent_frame_context", "source_frame_context"])
+@pytest.mark.parametrize("mutation", ["remove", "swap"])
+def test_gate_declares_and_requires_actual_context_authorities(
+    tmp_path, alias, mutation
+):
+    frame = _relationship_base(_pool_frame())
+    nodes, donor_path = _declared(tmp_path, frame)
+    gate = next(node for node in nodes if node.id == HOUSING_SOURCE_ACCEPTED_CONTEXT)
+    edge = next(item for item in gate.artifact_inputs if item.name == alias)
+    assert edge.producer == (
+        "source" if alias == "parent_frame_context" else rent.RENT_OUTPUT_CONTEXT
+    )
+    assert edge.type == US_FRAME_CONTEXT_TYPE
+    if mutation == "remove":
+        altered = tuple(item for item in gate.artifact_inputs if item.name != alias)
+    else:
+        foreign_producer = (
+            rent.RENT_OUTPUT_CONTEXT if alias == "parent_frame_context" else "source"
+        )
+        altered = tuple(
+            replace(item, producer=foreign_producer) if item.name == alias else item
+            for item in gate.artifact_inputs
+        )
+    nodes = _rewire(nodes, gate.id, artifact_inputs=altered)
+    manifest = _run_nodes(tmp_path, frame, nodes, donor_path)
+    assert manifest.nodes[gate.id].receipt["outcome"] == "fail"
+    _assert_unreached(manifest, ("after",))
