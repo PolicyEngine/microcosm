@@ -364,9 +364,14 @@ Before retirement, ordinary patches must be present in a verified final-Frame
 snapshot. Auxiliary identity binds producing receipts without run-only fields
 and actual codec payload hashes; receipt-only identity is insufficient for
 valid tolerance-bound recomputations. Unpatched structural artifacts may be
-reused only for the actual executed result. Snapshot publication uses the
+reused only after its signature is bound to the actual live Frame. Snapshot
+publication uses the
 existing atomic store format, and lazy access refuses changed payloads or
-producer binding. A frozen in-memory metadata descriptor preserves Frame
+producer binding. The expected payload signature must bind the actual decoded
+Frame, including a valid concurrent replacement between metadata validation
+and decoding; a metadata-only precheck is insufficient. Temporary canonical
+re-encoding may be used for this bounded-memory read verification. A frozen
+in-memory metadata descriptor preserves Frame
 metadata on the same eager/lazy execution path. This does not amend the
 existing Frame codec's metadata omission or portable manifest attachments.
 

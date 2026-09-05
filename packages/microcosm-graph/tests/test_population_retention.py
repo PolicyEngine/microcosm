@@ -526,3 +526,156 @@ def test_snapshot_publication_failure_leaves_no_partial_attachment_or_staging(
     assert not list(store.tmp.iterdir())
     for path in store.objects.glob("*/*"):
         assert (path / "meta.json").is_file()
+
+
+@pytest.mark.parametrize(
+    "replacement_point", ["before_loader", "after_loader_verification"]
+)
+def test_lazy_view_binds_signature_to_decoded_content_under_replacement(
+    tmp_path, monkeypatch, replacement_point
+):
+    import microcosm.graph.store as store_module
+    from microcosm.graph import StoreCorruptError
+
+    store = ContentStore(tmp_path / "cache")
+    manifest = run(
+        compile_graph(toy.small_graph(nodes=(toy.CREATE,))),
+        toy.toy_sources(tmp_path),
+        store,
+    )
+    reference = manifest.populations._references["survey"]
+    frame = store.load_frame(reference.key)
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = tables["person"].assign(income=999.0)
+    replacement = Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+    )
+    changed = False
+    original = (
+        store.load_frame
+        if replacement_point == "before_loader"
+        else store_module._read_frame
+    )
+
+    def replace_then_load(*args, **kwargs):
+        nonlocal changed
+        if not changed:
+            changed = True
+            store.put_frame(
+                reference.key,
+                replacement,
+                node_key=reference.node_key,
+                verify_existing=False,
+            )
+        return original(*args, **kwargs)
+
+    if replacement_point == "before_loader":
+        monkeypatch.setattr(store, "load_frame", replace_then_load)
+    else:
+        monkeypatch.setattr(store_module, "_read_frame", replace_then_load)
+    with pytest.raises(StoreCorruptError, match="decoded population attachment"):
+        manifest.population("survey")
+    assert not manifest.populations._cache
+    assert not list(store.tmp.iterdir())
+
+
+def test_decoded_signature_preserves_supported_codec_payloads(tmp_path):
+    from microcosm.graph.attachments import _decoded_payload_hash, _payload_hash
+
+    spec = importlib.util.spec_from_file_location(
+        "_retention_codec_fixture", Path(__file__).with_name("test_graph_store.py")
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    frame = module._frame()
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    person = tables["person"].copy()
+    for dtype in (
+        "Int8",
+        "Int16",
+        "Int32",
+        "Int64",
+        "UInt8",
+        "UInt16",
+        "UInt32",
+        "UInt64",
+    ):
+        person[f"nullable_{dtype}"] = pd.array([1, pd.NA, 2], dtype=dtype)
+    for dtype in (
+        "int8",
+        "uint16",
+        "int32",
+        "uint64",
+        "float32",
+        "float64",
+        "complex128",
+    ):
+        person[f"native_{dtype}"] = np.asarray([0, 1, 2], dtype=dtype)
+    person["datetime"] = np.asarray(
+        ["2024-01-01", "NaT", "2025-01-01"], dtype="datetime64[ns]"
+    )
+    person["timedelta"] = np.asarray([1, 2, 3], dtype="timedelta64[ns]")
+    person["scalar_nulls"] = pd.Series(
+        [None, pd.NA, pd.NaT], index=person.index, dtype=object
+    )
+    person["scalar_values"] = pd.Series(
+        [b"binary\x00", -0.0, 123], index=person.index, dtype=object
+    )
+    person["bool_values"] = [True, False, True]
+    person.columns.name = "fields"
+    tables["person"] = person
+    frame = Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+    store = ContentStore(tmp_path / "cache")
+    key = "a" * 64
+    store.put_frame(key, frame)
+    expected = _payload_hash(store.metadata(key, kind="frame")["payloads"])
+    assert _decoded_payload_hash(store, store.load_frame(key)) == expected
+    assert not list(store.tmp.iterdir())
+
+
+def test_retirement_binds_actual_live_frame_before_structural_artifact_reuse(
+    tmp_path, monkeypatch
+):
+    store = ContentStore(tmp_path / "cache")
+    sources = toy.toy_sources(tmp_path)
+    source = toy.read_toy_frame(sources["survey"])
+    expected = source.person.income.iloc[0]
+    tables = {entity: source.table(entity) for entity in source.entities}
+    tables["person"] = tables["person"].assign(income=999.0)
+    replacement = Frame(
+        tables,
+        source.schema,
+        {e: source.weights_for(e) for e in source.weighted_entities},
+        source.strata,
+    )
+    original = store.metadata
+    changed = False
+
+    def replace_before_capture(key, **kwargs):
+        nonlocal changed
+        metadata = original(key, **kwargs)
+        if not changed and kwargs.get("kind") == "frame":
+            changed = True
+            store.put_frame(
+                key, replacement, node_key=metadata["node_key"], verify_existing=False
+            )
+            return original(key, **kwargs)
+        return metadata
+
+    monkeypatch.setattr(store, "metadata", replace_before_capture)
+    manifest = run(compile_graph(toy.small_graph(nodes=(toy.CREATE,))), sources, store)
+    assert changed
+    assert manifest.population("survey").person.income.iloc[0] == expected
+    assert (
+        manifest.populations._references["survey"].key
+        != manifest.nodes["survey"].frame_key
+    )

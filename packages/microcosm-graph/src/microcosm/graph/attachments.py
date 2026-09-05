@@ -11,6 +11,8 @@ from threading import RLock
 from types import MappingProxyType
 from weakref import WeakValueDictionary
 
+from microcosm.frame import Frame
+
 from .canonical import canonical_json, sha256_domain
 from .decl import CompiledGraph, StructuralDelta
 from .manifest import NodeReceipt, PopulationView
@@ -70,6 +72,13 @@ class _LazyPopulations(Mapping[str, PopulationView]):
                 frame = self._store.load_frame(
                     reference.key, node_key=reference.node_key
                 )
+                # A valid same-key replacement can occur after either the
+                # check above or load_frame's own metadata verification. Bind
+                # the actual decoded content before exposing or memoizing it.
+                if _decoded_payload_hash(self._store, frame) != reference.payload_hash:
+                    raise StoreCorrupt(
+                        "The decoded population attachment changed after execution."
+                    )
                 view = PopulationView(frame)
                 # The existing Frame store codec omits metadata. Retain the
                 # original Frame's already-frozen scalar/container descriptor,
@@ -132,21 +141,17 @@ class _PopulationRetention:
             key = structural.frame_key
             assert key is not None
             patches = self._patches.pop(version, ())
-            if patches or version in self._force_snapshot:
-                key, payload_hash = _snapshot(
-                    self._store,
-                    population,
-                    structural,
-                    patches,
-                    verify_existing=self._verify_existing,
-                )
-            else:
-                # A later forbid run may replace a structural artifact under
-                # its node-derived key. A live lazy manifest must refuse that
-                # change, not quietly expose different historical values.
-                payload_hash = _payload_hash(
-                    self._store.metadata(key, kind="frame")["payloads"]
-                )
+            # Derive the binding from the actual live Frame even when its
+            # structural artifact seems reusable. Otherwise a concurrent
+            # replacement could become the expected signature at retirement.
+            key, payload_hash = _snapshot(
+                self._store,
+                population,
+                structural,
+                patches,
+                verify_existing=self._verify_existing,
+                reuse_structural=not patches and version not in self._force_snapshot,
+            )
             self._force_snapshot.discard(version)
             self._references[version] = _StoredPopulation(
                 key, structural.key, population.frame.metadata, payload_hash
@@ -167,6 +172,21 @@ def _payload_hash(payloads: object) -> str:
     return sha256_domain("population-attachment-payloads/1", canonical_json(payloads))
 
 
+def _decoded_payload_hash(store: ContentStore, frame: Frame) -> str:
+    """Hash the actual decoded Frame, using its canonical codec representation.
+
+    Temporary writes are bounded by one Frame and use the same per-column
+    codec as snapshots. Reading metadata again would leave the same race.
+    """
+
+    with TemporaryDirectory(
+        prefix="population-read-check-", dir=store.tmp
+    ) as directory:
+        staging = Path(directory)
+        _write_frame(staging, frame)
+        return _payload_hash(_payload_table(staging))
+
+
 def _snapshot(
     store: ContentStore,
     population: Population,
@@ -174,6 +194,7 @@ def _snapshot(
     patches: Sequence[NodeReceipt],
     *,
     verify_existing: bool,
+    reuse_structural: bool = False,
 ) -> tuple[str, str]:
     """Publish one codec snapshot bound to both provenance and actual bytes.
 
@@ -190,6 +211,14 @@ def _snapshot(
         staging = Path(directory)
         _write_frame(staging, population.frame)
         payload_hash = _payload_hash(_payload_table(staging))
+        if reuse_structural:
+            assert structural.frame_key is not None
+            metadata = store.metadata(structural.frame_key, kind="frame")
+            if (
+                metadata.get("node_key") == structural.key
+                and _payload_hash(metadata["payloads"]) == payload_hash
+            ):
+                return structural.frame_key, payload_hash
         key = sha256_domain(
             "population-attachment/1",
             canonical_json(

@@ -96,18 +96,26 @@ Versions with ordinary column patches receive an auxiliary final-Frame
 snapshot, so historical views include those patches. Snapshot identities bind
 both producing receipts and actual codec payload hashes: a tolerance-bound
 recomputation can produce different bytes under an unchanged node key. An
-unchanged version reuses its structural artifact; a fresh computation colliding
+unchanged version verifies its live codec signature before reusing the structural
+artifact; a fresh computation colliding
 with an older structural artifact gets a snapshot of its actual result. These
 attachments do not change node keys, published node artifacts, portable
 manifest schemas or manifest identity. Lazy reads verify payloads and producer
-binding, and refuse artifacts changed or removed after the run.
+binding, and refuse artifacts changed or removed after the run. Before a newly
+loaded view is exposed, its decoded Frame is re-encoded in temporary staging
+and checked against the captured payload signature. This closes the window
+for a valid concurrent same-key replacement after metadata verification. It
+adds one temporary Frame write/read per uncached materialization, bounded by
+the current view; holding an existing view avoids repeated materialization.
 
 Lazy execution requires a writable store. `resume="require"` still performs
 full preflight and executes no kernels, but can reconstruct a missing auxiliary
 attachment from verified cached results. `auto` verifies/reuses existing
 attachments; `forbid` refreshes them. The existing atomic Frame codec publishes
 snapshots after staging; staging files are renamed without a second payload
-copy. Structural node column artifacts are written one copied Series at a time,
+copy. Capturing a live signature writes one temporary Frame at each retirement,
+including unchanged versions whose structural artifacts are reused. Structural
+node column artifacts are written one copied Series at a time,
 and source hashing uses bounded reads with the same byte identity and checks
 for detected source changes.
 
