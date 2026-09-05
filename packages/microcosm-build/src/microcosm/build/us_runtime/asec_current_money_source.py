@@ -137,9 +137,33 @@ def _frame_signature(frame):
             _series_digest(digest, table[column])
     _series_digest(digest, frame.strata)
     digest.update(_json(frame.strata.name))
+    digest.update(_json(checkpoint._index_spec(frame.strata.index, label="strata")))
+    _series_digest(
+        digest,
+        pd.Series(
+            frame.strata.index.to_numpy(copy=False), dtype=frame.strata.index.dtype
+        ),
+    )
     for entity in frame.weighted_entities:
         digest.update(frame.weights_for(entity).values.tobytes())
     return digest.hexdigest()
+
+
+def _owned_index(index):
+    """Detach axes, including pandas' materialized RangeIndex cache."""
+    if isinstance(index, pd.RangeIndex):
+        # RangeIndex.copy(deep=True) shares its cached ndarray. Reconstruct the
+        # same logical range so a child cannot write through to a sealed parent.
+        return pd.RangeIndex(index.start, index.stop, index.step, name=index.name)
+    return index.copy(deep=True)
+
+
+def _detach_frame_axes(frame):
+    """Detach axes of an already copied Frame; preserve its data and axis types."""
+    for _, table in checkpoint._frame_tables(frame):
+        table.index = _owned_index(table.index)
+        table.columns = _owned_index(table.columns)
+    frame.strata.index = _owned_index(frame.strata.index)
 
 
 def _plain_metadata(value):

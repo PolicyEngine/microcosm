@@ -184,7 +184,7 @@ def _owned_frame(frame: Frame) -> Frame:
     # Frame copies native buffers; explicitly detach axes and weight vectors too.
     # This is one complete result copy, not a partial/fabricated US population.
     strata = frame.strata.copy(deep=True)
-    strata.index = strata.index.copy(deep=True)
+    strata.index = money_source._owned_index(strata.index)
     result = Frame(
         {
             **{entity: frame.table(entity) for entity in frame.entities},
@@ -201,10 +201,7 @@ def _owned_frame(frame: Frame) -> Frame:
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
-    for _, table in money_source.checkpoint._frame_tables(result):
-        table.index = table.index.copy(deep=True)
-        table.columns = table.columns.copy(deep=True)
-    result.strata.index = result.strata.index.copy(deep=True)
+    money_source._detach_frame_axes(result)
     return result
 
 

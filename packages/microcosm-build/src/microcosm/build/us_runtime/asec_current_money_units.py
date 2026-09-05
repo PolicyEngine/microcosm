@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.serialization_dtypes import canonicalize_table_string_dtypes
-from microcosm.frame import Frame
+from microcosm.frame import Frame, Weights
 from microcosm.frame import units as frame_units
 
 from ._asec_current_money_codec import current_money_content_sha256
@@ -30,6 +30,7 @@ from .asec_current_money import (
 )
 from .asec_current_money_source import (
     AuthenticatedCurrentMoneySource,
+    _detach_frame_axes,
     _frame_signature,
     _same_table,
     _verification_identity,
@@ -240,11 +241,15 @@ class CurrentMoneyTaxUnitResult:
             _verification_identity() == source_evidence["verification_sha256"],
             "SOURCE_IMPLEMENTATION_CHANGED",
         )
+        try:
+            frame_signature = _frame_signature(self.frame)
+        except (ValueError, TypeError, KeyError, AssertionError):
+            raise MoneyRefusalError("TAX_RESULT_CHANGED") from None
         _require(
             _sha(self.money.header) == receipt["money_header_sha256"]
             and current_money_content_sha256(self.money)
             == receipt["money_content_sha256"]
-            and _frame_signature(self.frame) == receipt["output_frame_sha256"],
+            and frame_signature == receipt["output_frame_sha256"],
             "TAX_RESULT_CHANGED",
         )
         _require(
@@ -293,11 +298,17 @@ def _reconstruct(source, ready):
     result = Frame(
         tables,
         original.schema,
-        {entity: original.weights_for(entity) for entity in original.weighted_entities},
+        {
+            entity: Weights(
+                original.weights_for(entity).values, original.weights_for(entity).kind
+            )
+            for entity in original.weighted_entities
+        },
         original.strata,
         mass_log=original.mass_log,
         metadata=original.metadata,
     )
+    _detach_frame_axes(result)
     source.validate()
     _require(_execution()[1] == implementation, "MICROUNIT_EXECUTION_CHANGED")
     for entity in original.entities:

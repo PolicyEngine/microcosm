@@ -103,6 +103,14 @@ are detached. `validate_attached_frame` also checks a Frame loaded through the
 actual checkpoint codec against its trusted tax result and status parents.
 Persisting a Frame alone does not reconstruct those parents or grant authority.
 
+Both the tax reconstruction and housing attachment own their pandas axes and
+weight buffers. Range indexes are reconstructed with their original start, stop,
+step and name: pandas' ordinary deep copy can retain a shared cached array.
+The source/result signature also binds the strata index so altering its alignment
+cannot pass a receipt check. These verification changes require newly issued
+source, money, tax and housing evidence; older receipts are not reused across
+the implementation change.
+
 The tests use three tiny invented cohort HDFs and explicit private test-pin
 substitution. They exercise the real checkpoint readers/writer and pinned
 microunit tax construction. They do not authenticate Census rows or demonstrate

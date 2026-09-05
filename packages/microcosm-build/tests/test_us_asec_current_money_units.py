@@ -59,6 +59,37 @@ def _fixture(tmp_path, monkeypatch, *, child_wages=None):
     return load_authenticated_current_money_source(parent, attachment)
 
 
+@pytest.mark.parametrize(
+    "mutation", ["range_index", "person_index", "columns", "strata_index", "weights"]
+)
+def test_tax_result_owns_storage_separately_from_authenticated_source(
+    tmp_path, monkeypatch, mutation
+):
+    source = _fixture(tmp_path, monkeypatch)
+    before = units._frame_signature(source.frame)
+    result = units.reconstruct_current_money_tax_units(source, source.ready())
+    if mutation == "range_index":
+        original = source.frame.table("household").index
+        copied = result.frame.table("household").index
+        assert type(copied) is type(original) is pd.RangeIndex
+        pd.testing.assert_index_equal(copied, original, exact=True)
+        copied.array[0] = 999
+    elif mutation == "person_index":
+        result.frame.person.index.array[0] = 999
+    elif mutation == "columns":
+        result.frame.table("family").columns.array[0] = "forged_family_id"
+    elif mutation == "strata_index":
+        result.frame.strata.index.array[0] = 999
+    else:
+        values = result.frame.weights_for("household").values
+        values.setflags(write=True)
+        values[0] = 999.0
+    assert units._frame_signature(source.frame) == before
+    source.validate()
+    with pytest.raises(money.MoneyRefusalError):
+        result.validate()
+
+
 def test_real_current_basis_changes_filing_status_and_preserves_every_other_entity(
     tmp_path, monkeypatch
 ):
