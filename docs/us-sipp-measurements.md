@@ -110,9 +110,11 @@ Missing/invalid residence or duplicate person-months refuse. Non-December record
 are not substituted for December membership or weights.
 
 Every member's `WPFINWGT`, including valid zero, enters the arithmetic household
-mean. Fractional values are preserved with a local decimal precision of 80 digits,
-independent of the caller's decimal context; nonterminating means round at that
-precision. Missing/invalid member weights make the requested mean unknown rather
+mean. Fractional values are preserved with a fixed local Decimal context: 80-digit
+precision, half-even rounding, exponent bounds -999999 to 999999, and explicit
+flags/traps. Annual sums use the same context. Caller rounding, traps and exponent
+bounds do not affect results or receive internal flags; nonterminating means round
+at that precision. Missing/invalid member weights make the requested mean unknown rather
 than excluding that member. Each person's own December weight remains separately
 available. `select_household_targets` selects these already measured household
 objects without changing membership, measurements or weights; absent target people

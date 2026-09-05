@@ -1,7 +1,7 @@
 """Invented source measurements only: 2023 dictionary and guide contracts."""
 
 from dataclasses import FrozenInstanceError, replace
-from decimal import Decimal, localcontext
+from decimal import ROUND_DOWN, ROUND_UP, Decimal, localcontext
 
 import pytest
 
@@ -486,3 +486,44 @@ def test_target_selection_rejects_ambiguous_or_mixed_source_rosters():
         select_household_targets((*first, *first), (("sample-A", 101),))
     with pytest.raises(MeasurementError):
         select_household_targets((*first, *other), (("sample-A", 101),))
+
+
+@pytest.mark.parametrize("mode", ["round_up", "round_down", "trap_all", "small_bounds"])
+@pytest.mark.parametrize("measure", ["household_mean", "earnings", "retirement"])
+def test_arithmetic_is_independent_of_entire_caller_decimal_context(mode, measure):
+    with localcontext() as context:
+        if mode == "round_up":
+            context.rounding = ROUND_UP
+        elif mode == "round_down":
+            context.rounding = ROUND_DOWN
+        elif mode == "trap_all":
+            for signal in context.traps:
+                context.traps[signal] = True
+        else:
+            context.Emax = 2
+            context.Emin = -2
+            context.clamp = 1
+        context.prec = 2
+        before = context.copy()
+        if measure == "household_mean":
+            got = december_households(
+                [
+                    row(person="101", WPFINWGT="1"),
+                    row(person="102", WPFINWGT="0"),
+                    row(person="103", WPFINWGT="0"),
+                ],
+                source=SOURCE,
+                complete_membership=True,
+            )[0].weight.value
+            expected = Decimal("0." + "3" * 80)
+        elif measure == "earnings":
+            rows = year(TPEARN_ALT="99999999")
+            rows[0] = row(month=1, TPEARN_ALT="-99999999")
+            got = annual_earnings(rows, source=SOURCE).value
+            expected = Decimal("999999990")
+        else:
+            got = annual_retirement(year(TRETINCAMT="10000000000"), source=SOURCE).value
+            expected = Decimal("120000000000")
+        assert got == expected
+        # Internal rounding must neither mutate settings nor raise flags outside.
+        assert str(context) == str(before)
