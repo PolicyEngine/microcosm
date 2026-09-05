@@ -350,6 +350,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "asec_current_money.py",
         "_asec_current_money_codec.py",
         "asec_current_money_resources.py",
+        "asec_current_money_source.py",  # Closed byte-authenticated source scope.
+        "asec_current_money_units.py",  # Verified current-money tax-only boundary.
         # Source import/assembly/harmonization owner, classified above.
         "graph_sources.py",
     }

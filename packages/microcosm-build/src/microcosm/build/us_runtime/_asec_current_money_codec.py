@@ -1,4 +1,4 @@
-"""Bounded, checksummed binary codec for target-only synthetic money artifacts."""
+"""Bounded, checksummed codec preserving target-only money source authority."""
 
 import struct
 from hashlib import sha256
@@ -10,6 +10,7 @@ from .asec_current_money import (
     MAX_PERSONS,
     MoneyBindings,
     MoneyField,
+    ReadyCurrentMoney,
     RestatedAsecMoney,
     SyntheticReadyCurrentMoney,
     _parse,
@@ -25,14 +26,20 @@ PAYLOAD_MAX_BYTES = (
 )
 
 
-def encode_current_money(ready: SyntheticReadyCurrentMoney) -> bytes:
+def encode_current_money(
+    ready: SyntheticReadyCurrentMoney | ReadyCurrentMoney,
+) -> bytes:
     """Encode immutable target amounts/statuses; never serialize nominal arrays."""
-    _require(type(ready) is SyntheticReadyCurrentMoney, "SYNTHETIC_READY_REQUIRED")
+    _require(
+        type(ready) in (SyntheticReadyCurrentMoney, ReadyCurrentMoney),
+        "SYNTHETIC_READY_REQUIRED",
+    )
     _validate_money(ready, ready.bindings.spec, nominal=False)
     # Recheck completeness even for a directly constructed or replaced value.
     require_complete_current_money(
         RestatedAsecMoney(ready.bindings, ready.fields, _token=_STATE_TOKEN),
         ready.bindings.spec,
+        production=type(ready) is ReadyCurrentMoney,
     )
     parts = [MAGIC, struct.pack("<I", len(ready.header)), ready.header]
     for field in ready.fields:
@@ -54,7 +61,7 @@ def encode_current_money(ready: SyntheticReadyCurrentMoney) -> bytes:
 
 def decode_current_money(
     payload: bytes, expected_bindings: MoneyBindings
-) -> SyntheticReadyCurrentMoney:
+) -> SyntheticReadyCurrentMoney | ReadyCurrentMoney:
     """Validate complete framing, expected scope/input/spec, and field invariants."""
     _require(
         type(payload) is bytes
@@ -89,4 +96,8 @@ def decode_current_money(
             cursor += width * count
         fields.append(MoneyField(domain.name, *buffers))
     value = RestatedAsecMoney(expected_bindings, tuple(fields), _token=_STATE_TOKEN)
-    return require_complete_current_money(value, expected_bindings.spec)
+    return require_complete_current_money(
+        value,
+        expected_bindings.spec,
+        production=data["source_authentication"] == "checkpoint_bytes_verified",
+    )
