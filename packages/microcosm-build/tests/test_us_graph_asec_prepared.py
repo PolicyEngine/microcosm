@@ -592,7 +592,7 @@ def test_engine_and_selection_refuse_invalid_runtime_params_before_outputs(execu
     selection = contexts[bridge.SELECT_NODE]
     with pytest.raises(ValueError, match="floor"):
         bridge.USAsecPreparedSelectionKernel().run(
-            replace(selection, params={**selection.params, "fraction": 0.5})
+            replace(selection, params={**selection.params, "fraction": 0.1})
         )
 
 
