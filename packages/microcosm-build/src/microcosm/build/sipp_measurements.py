@@ -11,7 +11,15 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from decimal import Decimal, localcontext
+from decimal import (
+    ROUND_HALF_EVEN,
+    Context,
+    Decimal,
+    DivisionByZero,
+    InvalidOperation,
+    Overflow,
+    localcontext,
+)
 from types import MappingProxyType
 
 SIPP_2023_MASTER_SHA256 = (
@@ -217,6 +225,18 @@ _OPTIONAL_EARN_EVIDENCE = (
     *(f"EJB{n}_{bound}" for n in range(1, 7) for bound in ("BMONTH", "EMONTH")),
 )
 _NUMBER = re.compile(r"[+-]?[0-9]+(?:\.[0-9]+)?\Z")
+# Copy this fixed context at each arithmetic operation: caller rounding, traps,
+# exponent limits and flags must not affect a source measurement.
+_ARITHMETIC_CONTEXT = Context(
+    prec=80,
+    rounding=ROUND_HALF_EVEN,
+    Emin=-999999,
+    Emax=999999,
+    capitals=1,
+    clamp=0,
+    flags=[],
+    traps=[InvalidOperation, DivisionByZero, Overflow],
+)
 
 
 def _check_source(source: SippSource, target_year: int) -> None:
@@ -457,8 +477,7 @@ def _annual_sum(
         return _measurement(
             name, concept, source, spec, observations, None, "unknown_annual", reasons
         )
-    with localcontext() as ctx:
-        ctx.prec = 80
+    with localcontext(_ARITHMETIC_CONTEXT):
         value = sum((o.value for o in observations), Decimal(0))
     zeros = sum(o.origin == "structural_zero_no_job_v1" for o in observations)
     status = (
@@ -653,8 +672,7 @@ def december_households(
         weight_reasons = tuple(dict.fromkeys(r for w in weights for r in w.reasons))
         mean = None
         if all(w.value is not None for w in weights):
-            with localcontext() as ctx:
-                ctx.prec = 80
+            with localcontext(_ARITHMETIC_CONTEXT):
                 mean = sum((w.value for w in weights), Decimal(0)) / len(weights)
         household_weight = Measurement(
             "sipp_december_mean_member_weight",
