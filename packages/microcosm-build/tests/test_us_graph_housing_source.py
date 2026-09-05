@@ -592,8 +592,8 @@ def test_source_projection_selects_actual_cps_rows_and_group_ids(tmp_path):
     frame = _relationship_base(_pool_frame())
     manifest, store, _, _ = _run(tmp_path, frame)
     projected = manifest.population(HOUSING_SOURCE_POPULATION)
-    person = frame.table("person")
-    mask = person["PERIDNUM"].notna().to_numpy()
+    # The registered pool mask, not a local re-derivation of the selection rule.
+    mask = pool._cps_source_evidence_mask(frame, phase="pre_clone").to_numpy(dtype=bool)
     expected = frame.select(mask)
     owned = {column for _entity, column, _dtype in codec.merge_columns()}
     for entity in expected.entities:
