@@ -70,6 +70,9 @@ from microcosm.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from microcosm.build.us_runtime._person_signal_summary import (
+    validate_person_signal_summary,
+)
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
@@ -80,6 +83,7 @@ __all__ = [
     "US_ELIGIBILITY_INPUTS_STAGE_NAME",
     "derive_us_eligibility_inputs_from_manifest",
     "prepare_us_eligibility_person",
+    "us_eligibility_inputs_person_carries_signal",
     "us_eligibility_inputs_gate_from_summary",
     "us_eligibility_inputs_person_gate",
     "us_eligibility_inputs_person_summary",
@@ -278,6 +282,19 @@ def _disabled_carries_signal(person: pd.DataFrame) -> bool:
     return values.nunique() > 1
 
 
+def us_eligibility_inputs_person_carries_signal(person: pd.DataFrame) -> bool:
+    """Return the complete legacy pass-through decision on the real person table.
+
+    All five outputs must exist, and observed disability must vary. Preserve
+    the current partial-null rule; other output variation, raw source columns
+    and weight resolution belong to separate operations and are not inferred.
+    """
+    have_all = all(
+        column in person.columns for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
+    )
+    return have_all and _disabled_carries_signal(person)
+
+
 def _validated_eligibility_weights(
     person: pd.DataFrame, weights: np.ndarray
 ) -> np.ndarray:
@@ -396,10 +413,7 @@ def with_us_eligibility_inputs(frame: Frame, *, seed: int, time_period: int) -> 
     if frame.schema != US_SCHEMA:
         raise ValueError("US eligibility inputs require the US schema.")
     person = frame.table("person")
-    have_all = all(
-        column in person.columns for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
-    )
-    if have_all and _disabled_carries_signal(person):
+    if us_eligibility_inputs_person_carries_signal(person):
         return frame
 
     new_person = prepare_us_eligibility_person(
@@ -491,8 +505,29 @@ def us_eligibility_inputs_gate_from_summary(
     already confirmed the five output columns are present; missing columns
     are a separate failure mode (see
     :func:`us_eligibility_inputs_person_gate`).
+
+    Raises:
+        ValueError: If required fields/counts are missing, measurements are
+            malformed, or supplied bands differ from the registered policy.
     """
 
+    validate_person_signal_summary(
+        summary,
+        family="eligibility",
+        outputs=US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
+        share_bands={
+            "disabled_share": ("disabled_share_band", _DISABLED_SHARE_BAND),
+            "full_time_college_student_share": (
+                "full_time_student_share_band",
+                _FULL_TIME_STUDENT_SHARE_BAND,
+            ),
+            "parent_share": ("parent_share_band", _PARENT_SHARE_BAND),
+            "veterans_benefits_share": (
+                "veterans_benefits_share_band",
+                _VETERANS_BENEFITS_SHARE_BAND,
+            ),
+        },
+    )
     failures: list[str] = []
     for column, count in summary["unique_counts"].items():
         if count < 2:
