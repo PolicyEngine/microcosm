@@ -76,6 +76,34 @@ frontier can be read off any run's artifact. The standalone
 `effective_sample_size(weights)` scores any weight vector, e.g. a published
 artifact's.
 
+Registry-backed diagnostics use schema 7. Each target publishes structured
+`source`, `variable`, and `dimensions` objects, and the artifact publishes a
+top-level dimension dictionary. The `source.id` remains the stable provider
+identifier, while `source.label` comes from separate country-owned provider
+label mappings in `microcosm.calibrate.provider_labels`. The `variable.id`
+defines a provider's calibration statistic category, while `variable.label`
+comes from separate country- and provider-specific mappings in
+`microcosm.calibrate.variable_labels`. Labels are not copied into Chronicle
+facts or repeated in target-reference metadata. Ledger geography metadata
+becomes one typed geography dimension per level (for example,
+`geography_country` or `geography_state`), with stable geography identifiers,
+producer-owned labels, and deterministic value order. Ledger filter and layout
+dimensions remain separate non-geographic dimensions. This applies to every
+country release that passes its `TargetRegistry`, including the UK and US
+release builders. Calls without a registry retain legacy target identity fields
+because they do not provide enough declared information to construct structured
+identities.
+
+Schema 7 also separates the statistic category from its measurement. For
+legacy Ledger concepts whose declared unit agrees with a trailing `_count` or
+`_amount`, the suffix is represented as `variable.measure` (`count` or `total`)
+instead of remaining in `variable.id`. For example,
+`hmrc.spi_employment_income_count` and
+`hmrc.spi_employment_income_amount` both use the variable identifier
+`spi_employment_income`; their measure values remain distinct. An explicit
+`diagnostic_variable_id` or `variable` metadata value always takes precedence
+and is not rewritten.
+
 ## Example
 
 ```python

@@ -2354,7 +2354,7 @@ def test_legacy_diagnostics_exemption_is_scoped_to_the_exact_june_id(
         payload=diagnostics,
     )
 
-    with pytest.raises(ReleaseContractError, match="publishes version 6"):
+    with pytest.raises(ReleaseContractError, match="publishes version 7"):
         validate_release_dir(directory)
 
 
@@ -3559,6 +3559,109 @@ def test_malformed_calibration_diagnostics_is_rejected(
     failures = "\n".join(excinfo.value.failures)
     assert "calibration_diagnostics.json" in failures
     assert "targets" in failures
+
+
+def test_schema_7_structured_calibration_diagnostics_are_accepted(
+    release_dir: Path,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 7
+    diagnostics["dimensions"] = {
+        "geography_country": {
+            "label": "Country",
+            "role": "geography",
+            "level": "country",
+            "values": {"0100000US": "United States"},
+            "order": ["0100000US"],
+        }
+    }
+    for row in diagnostics["targets"]:
+        row["source"] = {
+            "id": "fixture",
+            "label": "Fixture provider",
+            "citation": row["source"],
+        }
+        row["variable"] = {
+            "id": row["target_name"],
+            "label": "Fixture statistic",
+        }
+        row["dimensions"] = {"geography_country": "0100000US"}
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    validate_release_dir(release_dir)
+
+
+@pytest.mark.parametrize("field", ["source", "variable"])
+def test_schema_7_rejects_an_empty_identity_label(
+    release_dir: Path,
+    field: str,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 7
+    diagnostics["dimensions"] = {}
+    for row in diagnostics["targets"]:
+        row["source"] = {"id": "fixture"}
+        row["variable"] = {"id": row["target_name"]}
+        row[field]["label"] = " "
+        row["dimensions"] = {}
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert f"{field} 'label' must be a non-empty string" in failures
+
+
+def test_schema_7_rejects_partial_identity_and_multiple_geographies(
+    release_dir: Path,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 7
+    diagnostics["dimensions"] = {
+        "geography_country": {
+            "label": "Country",
+            "role": "geography",
+            "level": "country",
+            "values": {"0100000US": "United States"},
+        },
+        "geography_state": {
+            "label": "State",
+            "role": "geography",
+            "level": "state",
+            "values": {"0400000US06": "CA"},
+        },
+    }
+    for row in diagnostics["targets"]:
+        row["source"] = {"id": "fixture"}
+        row["variable"] = {"label": "Missing id"}
+        row["dimensions"] = {
+            "geography_country": "0100000US",
+            "geography_state": "0400000US06",
+        }
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "'variable' to be an object with a non-empty string 'id'" in failures
+    assert "at most one geography-role dimension" in failures
 
 
 def test_malformed_us_source_coverage_diagnostics_is_rejected(

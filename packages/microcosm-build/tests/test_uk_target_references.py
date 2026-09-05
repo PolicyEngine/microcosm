@@ -24,9 +24,12 @@ from microcosm.build.target_reference_authoring import (
     TargetReferenceAuthoringConfig,
     author_target_references,
 )
+from microcosm.calibrate.diagnostics import diagnostics_payload
 from microcosm.calibrate.matrix import build_constraint_matrix
+from microcosm.calibrate.score import score_targets
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from tools.generate_uk_target_references import (
+    OBR_DIAGNOSTIC_VARIABLE_BY_TARGET_ID,
     POLICYENGINE_BINDING_KEYS,
     _annual_uc_award_band_token,
     _geography_pins,
@@ -128,10 +131,16 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         assert reference["measure"] == expected_measure
         assert reference["family"] == target["family"]
         assert reference["period"] == 2025
-        assert reference["metadata"] == {
+        expected_metadata = {
             "contract_target_id": contract_target_id,
             "measure_kind": "prepared_column",
         }
+        diagnostic_variable_id = OBR_DIAGNOSTIC_VARIABLE_BY_TARGET_ID.get(
+            contract_target_id
+        )
+        if diagnostic_variable_id is not None:
+            expected_metadata["diagnostic_variable_id"] = diagnostic_variable_id
+        assert reference["metadata"] == expected_metadata
         # The measure is a prepared column, so the pointed-to contract binding
         # must carry what the microcosm#622 materializer needs to prepare it.
         assert (
@@ -149,6 +158,29 @@ def test_uk_target_references_do_not_bind_known_mismatched_property_amounts() ->
         for reference in resource["target_references"]
         if reference["metadata"]["contract_target_id"]
         == "hmrc.spi.property_income.amount_by_total_income_band"
+    ]
+
+
+def test_uk_obr_references_declare_receipts_and_expenditure_categories() -> None:
+    references = _load_uk_resource("target_references.json")["target_references"]
+    obr_references = [
+        reference
+        for reference in references
+        if reference["metadata"]["contract_target_id"].startswith("obr.")
+    ]
+
+    assert len(obr_references) == len(OBR_DIAGNOSTIC_VARIABLE_BY_TARGET_ID)
+    assert {
+        reference["metadata"]["contract_target_id"]: reference["metadata"][
+            "diagnostic_variable_id"
+        ]
+        for reference in obr_references
+    } == OBR_DIAGNOSTIC_VARIABLE_BY_TARGET_ID
+    assert not [
+        reference["name"]
+        for reference in references
+        if not reference["metadata"]["contract_target_id"].startswith("obr.")
+        and "diagnostic_variable_id" in reference["metadata"]
     ]
 
 
@@ -418,6 +450,7 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     assert income_tax.period == 2025
     assert income_tax.metadata["ledger_assertion"] == "source_projection"
     assert income_tax.metadata["ledger_assertion_policy"] == ("allow_source_projection")
+    assert income_tax.metadata["diagnostic_variable_id"] == "efo_receipts"
 
     tcl_households = targets["dwp.uc.two_child_limit.households_affected"]
     assert tcl_households.value == 469_780
@@ -557,6 +590,33 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
     }
     for name, target_value in zip(problem.names, problem.target_vector, strict=True):
         assert target_value == fact_values_by_name[name], name
+
+    diagnostics = diagnostics_payload(
+        score_targets(frame, registry.to_target_set()),
+        target_registry=registry,
+    )
+    obr_variables = {
+        row["name"]: row["variable"]
+        for row in diagnostics["targets"]
+        if row["source"]["id"] == "obr"
+    }
+    assert {
+        row["source"]["label"]
+        for row in diagnostics["targets"]
+        if row["source"]["id"] == "obr"
+    } == {"Office for Budget Responsibility"}
+    assert obr_variables == {
+        "obr.esa@2025": {
+            "id": "efo_expenditure",
+            "label": "EFO expenditure",
+            "measure": "total",
+        },
+        "obr.income_tax@2025": {
+            "id": "efo_receipts",
+            "label": "EFO receipts",
+            "measure": "total",
+        },
+    }
 
 
 def _real_uk_consumer_fact_rows() -> list[dict]:

@@ -103,6 +103,12 @@ from microcosm.calibrate.matrix import (  # noqa: E402 - after the compat gate
 from microcosm.calibrate.monetary_binding import (  # noqa: E402 - after compat gate
     MonetaryBindingIntegrityError,
 )
+from microcosm.calibrate.provider_labels import (  # noqa: E402 - after compat gate
+    CALIBRATION_PROVIDER_LABELS_BY_COUNTRY,
+    UK_CALIBRATION_PROVIDER_LABELS,
+    US_CALIBRATION_PROVIDER_LABELS,
+    calibration_provider_label,
+)
 from microcosm.calibrate.registry import (  # noqa: E402 - after the compat gate
     TargetRegistry,
     TargetSpec,
@@ -128,11 +134,19 @@ from microcosm.calibrate.target import (  # noqa: E402 - after the compat gate
     Target,
     TargetSet,
 )
+from microcosm.calibrate.variable_labels import (  # noqa: E402 - after compat gate
+    CALIBRATION_VARIABLE_LABELS_BY_COUNTRY,
+    UK_CALIBRATION_VARIABLE_LABELS,
+    US_CALIBRATION_VARIABLE_LABELS,
+    calibration_variable_label,
+)
 
 __version__ = "0.1.0"
 
 __all__ = [
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
+    "CALIBRATION_PROVIDER_LABELS_BY_COUNTRY",
+    "CALIBRATION_VARIABLE_LABELS_BY_COUNTRY",
     "CONSERVE_MASS",
     "FREE_MASS",
     "TARGET_LOSS_ATTRIBUTION_ABS_TOLERANCE",
@@ -149,9 +163,15 @@ __all__ = [
     "TargetRegistry",
     "TargetSet",
     "TargetSpec",
+    "UK_CALIBRATION_PROVIDER_LABELS",
+    "UK_CALIBRATION_VARIABLE_LABELS",
+    "US_CALIBRATION_PROVIDER_LABELS",
+    "US_CALIBRATION_VARIABLE_LABELS",
     "build_constraint_matrix",
     "calibrate",
     "calibrate_l0_refit",
+    "calibration_provider_label",
+    "calibration_variable_label",
     "assert_exact_k_support",
     "default_target_loss_scales",
     "effective_sample_size",

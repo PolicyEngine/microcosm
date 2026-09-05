@@ -115,7 +115,7 @@ def test_payload_reports_complete_uniform_final_loss_attribution(
     result = _result(feasible_frame, epochs=1)
     payload = diagnostics_payload(result)
 
-    assert payload["schema_version"] == 6
+    assert payload["schema_version"] == 7
     assert payload["diagnostic_warnings"] == []
     basis = payload["target_loss_basis"]
     assert basis["formula"] == (
@@ -437,6 +437,16 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
                 period=2024,
                 source="IRS SOI 2024",
                 family="irs_soi",
+                metadata={
+                    "ledger_selector_source_name": "irs_soi",
+                    "ledger_measure_concept": "irs_soi.adjusted_gross_income",
+                    "ledger_measure_unit": "usd",
+                    "ledger_geography_level": "state",
+                    "ledger_geography_id": "0400000US06",
+                    "ledger_layout_groupby_dimension": "filing_status",
+                    "ledger_layout_groupby_value_id": "single",
+                    "ledger_filter_filing_status": "single",
+                },
             ),
         ),
         country="us",
@@ -451,8 +461,182 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
     }
     income = next(row for row in payload["targets"] if row["target_name"] == "income")
     assert income["period"] == 2024
-    assert income["source"] == "IRS SOI 2024"
+    assert income["source"] == {
+        "id": "irs_soi",
+        "label": "IRS Statistics of Income",
+        "citation": "IRS SOI 2024",
+    }
+    assert income["variable"] == {
+        "id": "adjusted_gross_income",
+        "label": "Adjusted gross income",
+        "measure": "total",
+    }
+    assert income["dimensions"] == {
+        "geography_state": "0400000US06",
+        "filing_status": "single",
+    }
+    assert payload["dimensions"] == {
+        "geography_state": {
+            "label": "State",
+            "role": "geography",
+            "level": "state",
+            "values": {"0400000US06": "CA"},
+            "order": ["0400000US06"],
+        },
+        "filing_status": {
+            "label": "Filing Status",
+            "values": {"single": "Single"},
+            "order": ["single"],
+        },
+    }
     assert income["registry"]["family"] == "irs_soi"
+
+
+def test_registry_diagnostics_publish_uk_geography_and_all_ledger_dimensions(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame()
+    geographies = {
+        "K02000001": "United Kingdom",
+        "K03000001": "Great Britain",
+        "E92000001": "England",
+        "S92000003": "Scotland",
+    }
+    registry = TargetRegistry(
+        tuple(
+            TargetSpec(
+                name=f"population_female_{geography_id}",
+                entity="household",
+                measure="household_count",
+                value=truths["population"],
+                period=2025,
+                source="ons | Population table | https://example.test/ons",
+                family="ons_population",
+                metadata={
+                    "ledger_selector_source_name": "ons",
+                    "ledger_measure_concept": "ons.population",
+                    "ledger_measure_unit": "count",
+                    "ledger_geography_level": "country",
+                    "ledger_geography_id": geography_id,
+                    "ledger_layout_groupby_dimension": "age_band",
+                    "ledger_layout_groupby_value_id": "18_64",
+                    "ledger_filter_sex": "female",
+                },
+            )
+            for geography_id in geographies
+        ),
+        country="uk",
+    )
+    result = score_targets(frame, registry.to_target_set())
+
+    payload = diagnostics_payload(result, target_registry=registry)
+
+    assert payload["targets"][2]["source"] == {
+        "id": "ons",
+        "label": "Office for National Statistics",
+        "citation": "ons | Population table | https://example.test/ons",
+        "url": "https://example.test/ons",
+    }
+    assert payload["targets"][2]["variable"] == {
+        "id": "population",
+        "label": "Population",
+        "measure": "count",
+    }
+    assert payload["targets"][2]["dimensions"] == {
+        "geography_country": "E92000001",
+        "age_band": "18_64",
+        "sex": "female",
+    }
+    assert payload["dimensions"]["geography_country"] == {
+        "label": "Country",
+        "role": "geography",
+        "level": "country",
+        "values": geographies,
+        "order": list(geographies),
+    }
+    assert payload["dimensions"]["age_band"]["values"] == {"18_64": "18 64"}
+    assert payload["dimensions"]["sex"]["values"] == {"female": "Female"}
+
+
+def test_registry_diagnostics_separate_measure_from_variable_category(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="employment_income_amount_band_100000",
+                entity="household",
+                measure="income",
+                value=truths["income"],
+                period=2025,
+                source="HMRC SPI",
+                family="hmrc",
+                metadata={
+                    "ledger_selector_source_name": "hmrc",
+                    "ledger_measure_concept": "hmrc.spi_employment_income_amount",
+                    "ledger_measure_unit": "gbp",
+                    "ledger_filter_total_income_lower_bound": "100000",
+                },
+            ),
+            TargetSpec(
+                name="employment_income_count_band_100000",
+                entity="household",
+                measure="household_count",
+                value=truths["population"],
+                period=2025,
+                source="HMRC SPI",
+                family="hmrc",
+                metadata={
+                    "ledger_selector_source_name": "hmrc",
+                    "ledger_measure_concept": "hmrc.spi_employment_income_count",
+                    "ledger_measure_unit": "count",
+                    "ledger_filter_total_income_lower_bound": "100000",
+                },
+            ),
+        ),
+        country="uk",
+    )
+    result = score_targets(frame, registry.to_target_set())
+
+    payload = diagnostics_payload(result, target_registry=registry)
+
+    variables = [row["variable"] for row in payload["targets"]]
+    assert variables == [
+        {
+            "id": "spi_employment_income",
+            "label": "SPI employment income",
+            "measure": "total",
+        },
+        {
+            "id": "spi_employment_income",
+            "label": "SPI employment income",
+            "measure": "count",
+        },
+    ]
+    assert payload["targets"][0]["dimensions"] == {"total_income_lower_bound": "100000"}
+    assert payload["targets"][1]["dimensions"] == {"total_income_lower_bound": "100000"}
+
+
+def test_registry_diagnostics_reject_missing_compiled_target_identity(
+    feasible_frame,
+) -> None:
+    result = _result(feasible_frame, epochs=1)
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="different",
+                entity="household",
+                measure="household_count",
+                value=1.0,
+                source="Fixture",
+            ),
+        ),
+        country="us",
+    )
+
+    with pytest.raises(ValueError, match="does not contain compiled target row"):
+        diagnostics_payload(result, target_registry=registry)
 
 
 def test_payload_reports_weight_concentration(feasible_frame) -> None:

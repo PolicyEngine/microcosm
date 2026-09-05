@@ -21,6 +21,7 @@ import hashlib
 import json
 import logging
 import math
+import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -30,7 +31,9 @@ from microcosm.calibrate._target_loss_attribution import (
     TargetLossAttributionError,
     assemble_target_loss_attribution,
 )
+from microcosm.calibrate.provider_labels import calibration_provider_label
 from microcosm.calibrate.solve import CalibrationResult
+from microcosm.calibrate.variable_labels import calibration_variable_label
 
 __all__ = [
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
@@ -49,9 +52,89 @@ __all__ = [
 #: v6 added authoritative final per-target loss attribution and an explicit
 #: warning-only degradation state when that supplementary attribution cannot
 #: be validated.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 6
+#: v7 adds producer-defined source, variable, and dimension identity for
+#: registry-backed release diagnostics. Sources include country-owned display
+#: labels when registered. Geography is represented as a typed dimension with
+#: stable identifiers and display labels.
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 7
 
 _LOGGER = logging.getLogger(__name__)
+
+_UK_GEOGRAPHY_LABELS = {
+    "K02000001": "United Kingdom",
+    "K03000001": "Great Britain",
+    "E92000001": "England",
+    "W92000004": "Wales",
+    "S92000003": "Scotland",
+    "N92000002": "Northern Ireland",
+}
+
+_US_STATE_POSTAL = {
+    "01": "AL",
+    "02": "AK",
+    "04": "AZ",
+    "05": "AR",
+    "06": "CA",
+    "08": "CO",
+    "09": "CT",
+    "10": "DE",
+    "11": "DC",
+    "12": "FL",
+    "13": "GA",
+    "15": "HI",
+    "16": "ID",
+    "17": "IL",
+    "18": "IN",
+    "19": "IA",
+    "20": "KS",
+    "21": "KY",
+    "22": "LA",
+    "23": "ME",
+    "24": "MD",
+    "25": "MA",
+    "26": "MI",
+    "27": "MN",
+    "28": "MS",
+    "29": "MO",
+    "30": "MT",
+    "31": "NE",
+    "32": "NV",
+    "33": "NH",
+    "34": "NJ",
+    "35": "NM",
+    "36": "NY",
+    "37": "NC",
+    "38": "ND",
+    "39": "OH",
+    "40": "OK",
+    "41": "OR",
+    "42": "PA",
+    "44": "RI",
+    "45": "SC",
+    "46": "SD",
+    "47": "TN",
+    "48": "TX",
+    "49": "UT",
+    "50": "VT",
+    "51": "VA",
+    "53": "WA",
+    "54": "WV",
+    "55": "WI",
+    "56": "WY",
+}
+
+_COUNT_UNITS = frozenset(
+    {
+        "count",
+        "households",
+        "people",
+        "persons",
+        "returns",
+        "claims",
+    }
+)
+_TOTAL_UNITS = frozenset({"gbp", "usd", "dollars", "pounds"})
+_MEAN_UNITS = frozenset({"percent", "percentage", "rate", "ratio"})
 
 
 def _finite(value: float) -> float | None:
@@ -118,6 +201,322 @@ def _registry_spec_lookup(target_registry: object | None) -> dict[str, object]:
         if name is not None and period is not None:
             lookup[f"{name}@{period}"] = spec
     return lookup
+
+
+def _metadata_string(metadata: Mapping[str, object], key: str) -> str:
+    """Return a stripped metadata string, or an empty string."""
+
+    value = metadata.get(key)
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _source_id(spec: object, metadata: Mapping[str, object]) -> str:
+    """Return the publisher identifier declared by a registry-backed target."""
+
+    explicit = _metadata_string(metadata, "diagnostic_source_id")
+    if explicit:
+        return explicit
+    selector_source = _metadata_string(metadata, "ledger_selector_source_name")
+    if selector_source:
+        return selector_source
+    source_record = _metadata_string(metadata, "ledger_source_record_id")
+    if source_record:
+        return source_record.split(".", 1)[0]
+    family = str(getattr(spec, "family", "")).strip()
+    if family:
+        return family
+    name = str(getattr(spec, "name", "")).strip()
+    return re.split(r"[./]", name, maxsplit=1)[0] or "other"
+
+
+def _variable_id(
+    spec: object,
+    metadata: Mapping[str, object],
+    *,
+    source_id: str,
+) -> str:
+    """Return a stable statistic identifier for a registry-backed target.
+
+    Explicit diagnostic identifiers are already producer declarations and are
+    preserved verbatim. Ledger measure concepts are older compound identifiers:
+    some append ``_count`` or ``_amount`` even though schema 7 represents that
+    distinction separately in ``variable.measure``. Remove only the suffix that
+    agrees with the declared unit so count and amount rows remain one dashboard
+    category without conflating their measurements.
+    """
+
+    def without_source_prefix(value: str) -> str:
+        for prefix in (f"{source_id}.", f"{source_id}:"):
+            if value.startswith(prefix):
+                return value[len(prefix) :]
+        return value
+
+    for key in ("diagnostic_variable_id", "variable"):
+        value = _metadata_string(metadata, key)
+        if value:
+            return without_source_prefix(value)
+
+    measure = _variable_measure(metadata)
+    measure_suffix = {"count": "_count", "total": "_amount"}.get(measure, "")
+    for key in ("ledger_measure_concept", "ledger_source_concept"):
+        value = _metadata_string(metadata, key)
+        if value:
+            identifier = without_source_prefix(value)
+            if measure_suffix and identifier.endswith(measure_suffix):
+                identifier = identifier[: -len(measure_suffix)]
+            return identifier
+    contract_id = _metadata_string(metadata, "contract_target_id")
+    if contract_id:
+        prefix = re.split(r"[./]", contract_id, maxsplit=1)[0]
+        remainder = contract_id[len(prefix) :].lstrip("./")
+        return remainder or contract_id
+    measure = str(getattr(spec, "measure", "")).strip()
+    return measure or str(getattr(spec, "name", "")).strip() or "unknown"
+
+
+def _variable_measure(metadata: Mapping[str, object]) -> str:
+    """Classify a declared Ledger unit into the dashboard's measure vocabulary."""
+
+    unit = _metadata_string(metadata, "ledger_measure_unit").lower()
+    if unit in _COUNT_UNITS:
+        return "count"
+    if unit in _TOTAL_UNITS:
+        return "total"
+    if unit in _MEAN_UNITS:
+        return "mean"
+    return ""
+
+
+def _humanize_identifier(value: str) -> str:
+    """Turn a machine identifier into a concise dimension label."""
+
+    tail = value.rsplit("#", 1)[-1].rsplit(".", 1)[-1]
+    return " ".join(part.capitalize() for part in re.split(r"[_:/-]+", tail) if part)
+
+
+def _dimension_label(dimension_id: str) -> str:
+    """Return the established display label for a Ledger dimension id."""
+
+    if dimension_id == "us:statutes/26/62#adjusted_gross_income":
+        return "Income Band"
+    if dimension_id == "census_stc.item":
+        return "Item"
+    if dimension_id == "hhs_acf_tanf.spending_category":
+        return "Spending Category"
+    if dimension_id == "income_range":
+        return "Income Band"
+    if dimension_id == "filing_status":
+        return "Filing Status"
+    if dimension_id == "eitc_child_count":
+        return "Qualifying Children"
+    return _humanize_identifier(dimension_id)
+
+
+def _normalized_geography_level(value: str) -> str:
+    """Normalize producer aliases used by the existing country contracts."""
+
+    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+    return "local_authority" if normalized == "la" else normalized
+
+
+def _geography_label(
+    *,
+    country: str,
+    level: str,
+    geography_id: str,
+    metadata: Mapping[str, object],
+) -> str:
+    """Resolve a producer-owned geography label without consumer name parsing."""
+
+    explicit = _metadata_string(metadata, "ledger_geography_name")
+    if explicit:
+        return explicit
+    if country == "uk":
+        return _UK_GEOGRAPHY_LABELS.get(geography_id, geography_id)
+    if country == "us":
+        if geography_id == "0100000US" or level in {"country", "national"}:
+            return "United States"
+        match = re.search(r"US(\d{2})(\d{2})$", geography_id)
+        if level == "congressional_district" and match:
+            postal = _US_STATE_POSTAL.get(match.group(1))
+            if postal:
+                return f"{postal}-{match.group(2)}"
+        match = re.search(r"US(\d{2})$", geography_id)
+        if level == "state" and match:
+            return _US_STATE_POSTAL.get(match.group(1), geography_id)
+    return geography_id
+
+
+def _structured_dimensions(
+    metadata: Mapping[str, object],
+    *,
+    country: str,
+) -> tuple[dict[str, str], dict[str, dict[str, object]]]:
+    """Build schema-7 row dimensions and their producer definitions."""
+
+    values: dict[str, str] = {}
+    definitions: dict[str, dict[str, object]] = {}
+
+    geography_id = _metadata_string(metadata, "ledger_geography_id")
+    geography_level = _normalized_geography_level(
+        _metadata_string(metadata, "ledger_geography_level")
+    )
+    if geography_id and geography_level:
+        dimension_id = f"geography_{geography_level}"
+        values[dimension_id] = geography_id
+        definitions[dimension_id] = {
+            "label": _humanize_identifier(geography_level),
+            "role": "geography",
+            "level": geography_level,
+            "values": {
+                geography_id: _geography_label(
+                    country=country,
+                    level=geography_level,
+                    geography_id=geography_id,
+                    metadata=metadata,
+                )
+            },
+            "order": [geography_id],
+        }
+
+    filter_dimensions = [
+        (key.removeprefix("ledger_filter_"), raw_value.strip())
+        for key, raw_value in metadata.items()
+        if key.startswith("ledger_filter_")
+        and isinstance(raw_value, str)
+        and key.removeprefix("ledger_filter_")
+        and raw_value.strip()
+    ]
+    layout_dimension = _metadata_string(metadata, "ledger_layout_groupby_dimension")
+    layout_value = _metadata_string(metadata, "ledger_layout_groupby_value_id")
+    layout_label = _dimension_label(layout_dimension)
+    duplicate_filter = any(
+        _dimension_label(dimension_id) == layout_label and value == layout_value
+        for dimension_id, value in filter_dimensions
+    )
+    resolved_geography_label = (
+        _geography_label(
+            country=country,
+            level=geography_level,
+            geography_id=geography_id,
+            metadata=metadata,
+        )
+        if geography_id and geography_level
+        else ""
+    )
+    geography_layout = layout_dimension in {
+        "geography",
+        "state",
+        "cms_medicaid.state_abbreviation",
+    }
+    redundant_geography = layout_value.lower() in {
+        geography_id.lower(),
+        resolved_geography_label.lower(),
+    }
+    if (
+        layout_dimension
+        and layout_value
+        and not duplicate_filter
+        and not geography_layout
+        and not redundant_geography
+    ):
+        values[layout_dimension] = layout_value
+        definitions[layout_dimension] = {
+            "label": layout_label,
+            "values": {layout_value: _humanize_identifier(layout_value)},
+            "order": [layout_value],
+        }
+
+    for dimension_id, value in filter_dimensions:
+        values[dimension_id] = value
+        definitions[dimension_id] = {
+            "label": _dimension_label(dimension_id),
+            "values": {value: _humanize_identifier(value)},
+            "order": [value],
+        }
+    return values, definitions
+
+
+def _merge_dimension_definitions(
+    destination: dict[str, dict[str, object]],
+    additions: Mapping[str, Mapping[str, object]],
+) -> None:
+    """Merge per-row dimension declarations into one deterministic dictionary."""
+
+    for dimension_id, addition in additions.items():
+        current = destination.get(dimension_id)
+        if current is None:
+            destination[dimension_id] = {
+                **addition,
+                "values": dict(addition.get("values", {})),
+                "order": list(addition.get("order", [])),
+            }
+            continue
+        for key in ("label", "role", "level"):
+            incoming = addition.get(key)
+            if incoming is not None and current.get(key) != incoming:
+                raise ValueError(
+                    f"Diagnostics dimension {dimension_id!r} has conflicting "
+                    f"{key} declarations {current.get(key)!r} and {incoming!r}."
+                )
+        current_values = current.setdefault("values", {})
+        current_order = current.setdefault("order", [])
+        if not isinstance(current_values, dict) or not isinstance(current_order, list):
+            raise TypeError("Diagnostics dimension aggregation state is malformed.")
+        for raw_value, label in addition.get("values", {}).items():
+            existing = current_values.get(raw_value)
+            if existing is not None and existing != label:
+                raise ValueError(
+                    f"Diagnostics dimension {dimension_id!r} value "
+                    f"{raw_value!r} has conflicting labels {existing!r} and {label!r}."
+                )
+            current_values[raw_value] = label
+        for raw_value in addition.get("order", []):
+            if raw_value not in current_order:
+                current_order.append(raw_value)
+
+
+def _structured_target_fields(
+    target: object,
+    spec: object,
+    *,
+    country: str,
+) -> tuple[dict[str, object], dict[str, dict[str, object]]]:
+    """Serialize complete schema-7 identity for one registry-backed target."""
+
+    metadata = dict(getattr(spec, "metadata", {}) or {})
+    source_id = _source_id(spec, metadata)
+    variable_id = _variable_id(spec, metadata, source_id=source_id)
+    dimensions, definitions = _structured_dimensions(metadata, country=country)
+    citation = str(getattr(target, "source", "")).strip()
+    source: dict[str, str] = {"id": source_id}
+    source_label = calibration_provider_label(country, source_id)
+    if source_label:
+        source["label"] = source_label
+    if citation:
+        source["citation"] = citation
+        source_url = next(
+            (
+                part.strip()
+                for part in citation.split("|")
+                if part.strip().startswith(("https://", "http://"))
+            ),
+            "",
+        )
+        if source_url:
+            source["url"] = source_url
+    variable: dict[str, str] = {"id": variable_id}
+    variable_label = calibration_variable_label(country, source_id, variable_id)
+    if variable_label:
+        variable["label"] = variable_label
+    measure = _variable_measure(metadata)
+    if measure:
+        variable["measure"] = measure
+    return {
+        "source": source,
+        "variable": variable,
+        "dimensions": dimensions,
+    }, definitions
 
 
 def _target_identity_rows(result: CalibrationResult) -> list[dict[str, object]]:
@@ -328,17 +727,33 @@ def diagnostics_payload(
         floats become ``null``).
     """
     registry_specs = _registry_spec_lookup(target_registry)
-    target_rows = [
-        _target_row(
+    registry_country = str(getattr(target_registry, "country", "")).strip()
+    dimension_definitions: dict[str, dict[str, object]] = {}
+    target_rows: list[dict[str, object]] = []
+    for index, (diagnostic, target) in enumerate(
+        zip(result.diagnostics, result.problem.targets, strict=True)
+    ):
+        spec = registry_specs.get(diagnostic.name)
+        if target_registry is not None and spec is None:
+            raise ValueError(
+                "The supplied target registry does not contain compiled target "
+                f"row {diagnostic.name!r}."
+            )
+        row = _target_row(
             diagnostic,
             target,
             compiled_target=result.problem.target_vector[index],
-            spec=registry_specs.get(diagnostic.name),
+            spec=spec,
         )
-        for index, (diagnostic, target) in enumerate(
-            zip(result.diagnostics, result.problem.targets, strict=True)
-        )
-    ]
+        if spec is not None:
+            structured_fields, row_definitions = _structured_target_fields(
+                target,
+                spec,
+                country=registry_country,
+            )
+            row.update(structured_fields)
+            _merge_dimension_definitions(dimension_definitions, row_definitions)
+        target_rows.append(row)
     payload = {
         "schema_version": CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
         "weight_entity": result.weight_entity,
@@ -361,6 +776,8 @@ def diagnostics_payload(
         "diagnostic_warnings": [],
         "targets": target_rows,
     }
+    if target_registry is not None:
+        payload["dimensions"] = dimension_definitions
     try:
         attribution = assemble_target_loss_attribution(result)
     except TargetLossAttributionError as error:
