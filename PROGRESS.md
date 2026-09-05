@@ -76,6 +76,11 @@ Memoization and session priming pass the focused regressions and the complete
   priming. A focused ordering regression and priming extension are pending;
   the current broad run will complete before the affected process is rerun.
 
+- Initial actual us-qs:build process: 1,368 passed, 2,377 warnings, no
+  failures/skips, exit 0, 626.070 seconds wall time (pytest 609.75s).
+  All 29 per-file timing/count records are saved. Stacked-spine inside that
+  process took 333.299s. This process will be rerun after bundle priming.
+
 ## Next
 
 - Finish the initial us-qs/us-am CI process groups with per-file timings.
