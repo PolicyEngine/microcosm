@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
 from importlib.metadata import version
@@ -172,6 +172,13 @@ __all__ = [
     "materialize_multispine_agreement_outputs",
     "materialize_pool_deferred_transfer_inputs",
     "multispine_hours_worked_boundary_columns",
+    "multispine_housing_boundary_columns",
+    "multispine_housing_implementation_contract",
+    "multispine_housing_output_family",
+    "multispine_housing_source_selection",
+    "assert_multispine_source_merge_labels_supported",
+    "merge_multispine_housing_source_outputs",
+    "validate_multispine_housing_person_boundary",
     "observe_multispine_hours_person",
     "observe_multispine_hours_worked_inputs",
     "validate_multispine_hours_person_boundary",
@@ -874,9 +881,8 @@ def _resolve_take_up_program_bindings(
             for program in load_take_up_contract().programs
         )
     for index, binding in enumerate(bindings):
-        if (
-            len(binding) != 3
-            or not all(isinstance(value, str) and value for value in binding)
+        if len(binding) != 3 or not all(
+            isinstance(value, str) and value for value in binding
         ):
             raise ValueError(
                 "Take-up manifest program binding must contain three non-empty "
@@ -1346,9 +1352,7 @@ def pool_remaining_stage_input_manifest(
             variable,
             execution_scope="whole_pool",
             provision=provision,
-            available_by=(
-                "transferred" if variable in transfer_owned else "seeded"
-            ),
+            available_by=("transferred" if variable in transfer_owned else "seeded"),
             fallback=fallback,
         )
 
@@ -2261,6 +2265,170 @@ def observe_multispine_hours_person(
         evidence_rows=boundary["cps_person_rows"],
         receipts=[receipt],
         output_families=PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+    )
+
+
+def multispine_housing_boundary_columns() -> tuple[str, ...]:
+    """Declare the registered pre-clone housing evidence to its graph boundary."""
+    return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
+
+
+def validate_multispine_housing_person_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Retain source-role validation in the existing registered owner."""
+    _assert_source_person_boundary(
+        person, metadata=metadata, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    return {"phase": _PRE_CLONE_PHASE, "cps_person_rows": int(mask.sum())}
+
+
+def multispine_housing_source_selection(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> tuple[pd.Series, dict[str, object]]:
+    """Return the registered CPS person mask and its boundary receipt.
+
+    The mask is the same one the direct source-operator chain applies, so a
+    graph FILTER built from it selects exactly the historical projection rows.
+    """
+    boundary = validate_multispine_housing_person_boundary(person, metadata=metadata)
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    return mask, boundary
+
+
+def multispine_housing_output_family() -> Mapping[str, frozenset[str]]:
+    """Return the live registered housing output roster."""
+    return PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["housing_inputs"]
+
+
+def multispine_housing_implementation_contract() -> dict[str, object]:
+    """Bind live provider rosters actually consumed by this source operator."""
+    contract = POOL_OPERATOR_CONTRACTS["with_us_housing_inputs"]
+    return {
+        "outputs": {
+            entity: sorted(columns)
+            for entity, columns in multispine_housing_output_family().items()
+        },
+        "transient_outputs": _transient_source_outputs(
+            ("with_us_housing_inputs",), PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES
+        ),
+        "formula_owned_outputs": {
+            entity: sorted(
+                set(columns) & set(_FORMULA_OWNED_SOURCE_OUTPUTS.get(entity, ()))
+            )
+            for entity, columns in multispine_housing_output_family().items()
+        },
+        "execution_scope": contract.execution_scope,
+        "phases": list(contract.phases),
+        "family": contract.family,
+        "seed": POOL_RANDOM_SEED,
+        "time_period": POOL_TIME_PERIOD,
+    }
+
+
+def assert_multispine_source_merge_labels_supported(
+    target: pd.DataFrame,
+    columns: Iterable[str],
+    *,
+    entity: str,
+    operator_name: str,
+) -> None:
+    """Refuse the inherited label-based merge seam instead of working around it.
+
+    :func:`_merge_source_person_or_group_outputs` writes a non-boolean output
+    through ``target.loc[target.index[positions]]``. With repeated pandas index
+    labels that assignment reaches every row sharing a selected label, so the
+    combination of duplicated labels and an incumbent non-boolean output is
+    refused at this explicit scope boundary. Fixing the shared merge is a
+    separate approved scope; unique labels retain exact original parity.
+    """
+    if not target.index.has_duplicates:
+        return
+    affected = sorted(
+        column
+        for column in columns
+        if column in target and not _is_physical_boolean_series(target[column])
+    )
+    if affected:
+        raise ValueError(
+            f"Multispine source operator {operator_name!r} cannot merge "
+            f"{entity!r} output(s) {affected} onto repeated index labels; the "
+            "shared label-based merge would write every row sharing a label. "
+            "Fixing that inherited seam is a separate reviewed scope."
+        )
+
+
+def merge_multispine_housing_source_outputs(
+    tables: Mapping[str, pd.DataFrame],
+    produced: Mapping[str, pd.DataFrame],
+    *,
+    pool_rows: Mapping[str, int],
+    selected_rows: Mapping[str, int],
+    evidence_rows: int,
+) -> tuple[dict[str, pd.DataFrame], dict[str, int], dict[str, object]]:
+    """Merge the five declared housing leaves by entity ID and receipt the order.
+
+    ``tables`` are isolated full-pool copies and ``produced`` the projected
+    source rows carrying every declared output. Column values, the ID merge and
+    the ordered receipt come from the existing registered helpers; this wrapper
+    adds no new formula and changes no selection semantics.
+    """
+    outputs = multispine_housing_output_family()
+    if set(produced) != set(outputs) or set(outputs) - set(tables):
+        raise ValueError(
+            "US housing source merge requires its three declared output tables."
+        )
+    merged: dict[str, pd.DataFrame] = {
+        entity: table for entity, table in tables.items()
+    }
+    merged_rows: dict[str, int] = {}
+    for entity in sorted(outputs):
+        columns = outputs[entity]
+        identity = US_SCHEMA.entity_id_column(entity)
+        assert_multispine_source_merge_labels_supported(
+            merged[entity],
+            columns,
+            entity=entity,
+            operator_name="with_us_housing_inputs",
+        )
+        merged[entity], merged_rows[entity] = _merge_source_person_or_group_outputs(
+            merged[entity],
+            produced[entity],
+            columns,
+            entity=entity,
+            entity_id=identity,
+            operator_name="with_us_housing_inputs",
+        )
+    receipt = _source_operator_receipt(
+        order_index=0,
+        operator_name="with_us_housing_inputs",
+        family="housing_inputs",
+        phase=_PRE_CLONE_PHASE,
+        contract=POOL_OPERATOR_CONTRACTS["with_us_housing_inputs"],
+        before_rows=dict(pool_rows),
+        available_rows=dict(selected_rows),
+        output_rows=dict(selected_rows),
+        merged_rows=merged_rows,
+        declared_outputs=dict(outputs),
+        formula_owned_removed={},
+        kernel_receipt={},
+        overlap_ownership=None,
+    )
+    return (
+        merged,
+        merged_rows,
+        _source_chain_receipt(
+            phase=_PRE_CLONE_PHASE,
+            operator_names=("with_us_housing_inputs",),
+            evidence_rows=evidence_rows,
+            receipts=[receipt],
+            output_families=PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+        ),
     )
 
 

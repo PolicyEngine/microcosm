@@ -1438,7 +1438,41 @@
           "reason": "allocated 'acs' source mass in pre-operator spine assembly"
         }
       ],
-      "metadata": "_FrozenMapping(_items=(('us_spine_assembly_manifest', _FrozenMapping(_items=(('version', 1), ('channels', ('asec', 'acs')), ('native_row_counts', _FrozenMapping(_items=(('person', _FrozenMapping(_items=(('asec', 6), ('acs', 2)))), ('household', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('tax_unit', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('spm_unit', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('family', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('marital_unit', _FrozenMapping(_items=(('asec', 6), ('acs', 2)))))))))),))",
+      "metadata": {
+        "us_spine_assembly_manifest": {
+          "channels": [
+            "asec",
+            "acs"
+          ],
+          "native_row_counts": {
+            "family": {
+              "acs": 2,
+              "asec": 3
+            },
+            "household": {
+              "acs": 2,
+              "asec": 3
+            },
+            "marital_unit": {
+              "acs": 2,
+              "asec": 6
+            },
+            "person": {
+              "acs": 2,
+              "asec": 6
+            },
+            "spm_unit": {
+              "acs": 2,
+              "asec": 3
+            },
+            "tax_unit": {
+              "acs": 2,
+              "asec": 3
+            }
+          },
+          "version": 1
+        }
+      },
       "strata": [
         "default",
         "default",
@@ -2923,7 +2957,41 @@
           "reason": "allocated 'acs' source mass in pre-operator spine assembly"
         }
       ],
-      "metadata": "_FrozenMapping(_items=(('us_spine_assembly_manifest', _FrozenMapping(_items=(('version', 1), ('channels', ('asec', 'acs')), ('native_row_counts', _FrozenMapping(_items=(('person', _FrozenMapping(_items=(('asec', 6), ('acs', 2)))), ('household', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('tax_unit', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('spm_unit', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('family', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('marital_unit', _FrozenMapping(_items=(('asec', 6), ('acs', 2)))))))))),))",
+      "metadata": {
+        "us_spine_assembly_manifest": {
+          "channels": [
+            "asec",
+            "acs"
+          ],
+          "native_row_counts": {
+            "family": {
+              "acs": 2,
+              "asec": 3
+            },
+            "household": {
+              "acs": 2,
+              "asec": 3
+            },
+            "marital_unit": {
+              "acs": 2,
+              "asec": 6
+            },
+            "person": {
+              "acs": 2,
+              "asec": 6
+            },
+            "spm_unit": {
+              "acs": 2,
+              "asec": 3
+            },
+            "tax_unit": {
+              "acs": 2,
+              "asec": 3
+            }
+          },
+          "version": 1
+        }
+      },
       "strata": [
         "default",
         "default",
@@ -3028,7 +3096,7 @@
   },
   "module_sha256": {
     "housing_inputs": "d75607c047872889a8cee78808c057d9db5f6a75f5abff6343ea5a383447cfd1",
-    "multispine_pool": "14975d40054decbc2929eea5805d976581a5df2548f4644f1a1bac0ace61ffdd"
+    "multispine_pool": "b41b0f3fa0d6dcf37d550a214b501d6b929ee6c2c1dfd19dc0e34e15a8a960c7"
   },
   "n_estimators": 2,
   "pool": {
@@ -3963,7 +4031,41 @@
         "reason": "allocated 'acs' source mass in pre-operator spine assembly"
       }
     ],
-    "metadata": "_FrozenMapping(_items=(('us_spine_assembly_manifest', _FrozenMapping(_items=(('version', 1), ('channels', ('asec', 'acs')), ('native_row_counts', _FrozenMapping(_items=(('person', _FrozenMapping(_items=(('asec', 6), ('acs', 2)))), ('household', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('tax_unit', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('spm_unit', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('family', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('marital_unit', _FrozenMapping(_items=(('asec', 6), ('acs', 2)))))))))),))",
+    "metadata": {
+      "us_spine_assembly_manifest": {
+        "channels": [
+          "asec",
+          "acs"
+        ],
+        "native_row_counts": {
+          "family": {
+            "acs": 2,
+            "asec": 3
+          },
+          "household": {
+            "acs": 2,
+            "asec": 3
+          },
+          "marital_unit": {
+            "acs": 2,
+            "asec": 6
+          },
+          "person": {
+            "acs": 2,
+            "asec": 6
+          },
+          "spm_unit": {
+            "acs": 2,
+            "asec": 3
+          },
+          "tax_unit": {
+            "acs": 2,
+            "asec": 3
+          }
+        },
+        "version": 1
+      }
+    },
     "strata": [
       "default",
       "default",
@@ -5360,7 +5462,41 @@
         "reason": "allocated 'acs' source mass in pre-operator spine assembly"
       }
     ],
-    "metadata": "_FrozenMapping(_items=(('us_spine_assembly_manifest', _FrozenMapping(_items=(('version', 1), ('channels', ('asec', 'acs')), ('native_row_counts', _FrozenMapping(_items=(('person', _FrozenMapping(_items=(('asec', 6), ('acs', 2)))), ('household', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('tax_unit', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('spm_unit', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('family', _FrozenMapping(_items=(('asec', 3), ('acs', 2)))), ('marital_unit', _FrozenMapping(_items=(('asec', 6), ('acs', 2)))))))))),))",
+    "metadata": {
+      "us_spine_assembly_manifest": {
+        "channels": [
+          "asec",
+          "acs"
+        ],
+        "native_row_counts": {
+          "family": {
+            "acs": 2,
+            "asec": 3
+          },
+          "household": {
+            "acs": 2,
+            "asec": 3
+          },
+          "marital_unit": {
+            "acs": 2,
+            "asec": 6
+          },
+          "person": {
+            "acs": 2,
+            "asec": 6
+          },
+          "spm_unit": {
+            "acs": 2,
+            "asec": 3
+          },
+          "tax_unit": {
+            "acs": 2,
+            "asec": 3
+          }
+        },
+        "version": 1
+      }
+    },
     "strata": [
       "default",
       "default",
@@ -5387,6 +5523,6 @@
   "runtime_source_commit": "f01964c7c71e1ae575ac4c16766dbdaed1a342d5",
   "schema_version": 1,
   "seed": 0,
-  "source_commit": "5bfb65a4b4af77ae7efb469aed3227d39e4a58c3",
+  "source_commit": "ed461a1379475931040be70dc6f33471c63278bc",
   "time_period": 2024
 }

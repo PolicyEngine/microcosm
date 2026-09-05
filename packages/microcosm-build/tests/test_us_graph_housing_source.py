@@ -1,0 +1,984 @@
+"""The bounded fresh-source housing graph reproduces the direct pre-clone pass.
+
+Every fixture here is generated: the ACS rent donor is a real archive-layout H5
+written by this test, the recipient pool is an assembled mixed ASEC/ACS spine,
+and the QRF fits two trees. No source microdata is read and no model is
+downloaded. The graph result is compared both against the direct registered
+operator chain computed in-process and against the payload oracle captured from
+the unedited runtime before this module existed.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import sys
+from dataclasses import replace
+from functools import partial
+from importlib import import_module
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from microcosm.build.us_runtime import _graph_housing_source_artifacts as codec
+from microcosm.build.us_runtime import graph_acs_rent as rent
+from microcosm.build.us_runtime import graph_acs_rent_source as rent_source
+from microcosm.build.us_runtime import graph_housing_source, housing_inputs
+from microcosm.build.us_runtime import multispine_pool as pool
+from microcosm.build.us_runtime.graph_context import (
+    US_FRAME_CONTEXT_TYPE,
+    _json_data,
+    _mass_records,
+    encode_us_frame_context,
+)
+from microcosm.build.us_runtime.graph_housing_source import (
+    _HOUSING_IMPLEMENTATION_MODULES,
+    HOUSING_SOURCE_ACCEPTED_CONTEXT,
+    HOUSING_SOURCE_DEPENDENCIES,
+    HOUSING_SOURCE_MERGE_POPULATION,
+    HOUSING_SOURCE_POPULATION,
+    HOUSING_SOURCE_PREFIX,
+    USHousingMergeKernel,
+    register_us_housing_source_kernels,
+    us_housing_source_nodes,
+)
+from microcosm.build.us_runtime.graph_sources import frame_column_declarations
+from microcosm.build.us_runtime.spine_assembly import assemble_spines
+from microcosm.fit import graph_legacy_train
+from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from microcosm.graph import (
+    ArtifactInput,
+    ArtifactOutput,
+    Capabilities,
+    ContentStore,
+    Determinism,
+    Graph,
+    KernelBase,
+    KernelRegistry,
+    KernelResult,
+    Node,
+    Numeric,
+    SourceRef,
+    StructuralDelta,
+    compile_graph,
+    load_source,
+    run_graph,
+)
+from microcosm.graph.availability import execution_state
+from microcosm.graph.canonical import canonical_json
+from microcosm.graph.codecs import SourceCodecRegistry, load_frame_store
+from microcosm.graph.decl import GraphError
+from microcosm.graph.errors import NodeRejectedError
+from microcosm.graph.population import dtype_for_token
+
+GOLDEN = Path(__file__).with_name("golden") / "us_housing_source_pre_graph.json"
+SEED = pool.POOL_RANDOM_SEED
+N_ESTIMATORS = 2
+NUMERIC_RAW = (
+    "H_TENURE",
+    "SPM_CAPHOUSESUB",
+    "SPM_TENMORTSTATUS",
+    "HRSWK",
+    "A_HRS1",
+    "WKSWORK",
+)
+PREFIX_OPERATORS = (
+    "derive_us_cps_carried_inputs",
+    "with_us_hours_worked_inputs",
+    "with_us_prior_year_income_inputs",
+    "with_us_relationship_inputs",
+)
+
+
+def _sibling(name: str):
+    spec = importlib.util.spec_from_file_location(
+        f"_housing_source_{name}", Path(__file__).with_name(f"{name}.py")
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+pool_fixtures = _sibling("test_us_multispine_pool")
+rent_fixtures = _sibling("test_us_graph_acs_rent")
+
+
+# --------------------------------------------------------------------------
+# Fixtures: the same mixed ASEC/ACS pool the pre-edit oracle captured.
+# --------------------------------------------------------------------------
+
+
+def _asec_spine() -> Frame:
+    """Three CPS households, mixed tenure codes, one subsidized SPM unit."""
+    base = pool_fixtures._real_pre_clone_source_frame()
+    person = base.table("person").copy()
+    third = person.iloc[[0, 1]].copy()
+    third["person_id"] = [5, 6]
+    third["person_household_id"] = [3, 3]
+    third["person_tax_unit_id"] = [103, 103]
+    third["person_spm_unit_id"] = [203, 203]
+    third["person_family_id"] = [303, 303]
+    third["person_marital_unit_id"] = [405, 406]
+    third["PERIDNUM"] = ["third-parent", "third-child"]
+    third["PH_SEQ"] = [30, 30]
+    third["WSAL_VAL"] = [30_000.0, 0.0]
+    third["A_AGE"] = [55, 14]
+    person = pd.concat([person, third], ignore_index=True)
+    person["SPM_CAPHOUSESUB"] = [0.0, 0.0, 4_800.0, 4_800.0, 0.0, 0.0]
+    person["SPM_TENMORTSTATUS"] = [1, 1, 3, 3, 2, 2]
+    tables = {
+        "person": person,
+        "household": pd.DataFrame(
+            {
+                "household_id": [1, 2, 3],
+                "state_fips": [6.0, 36.0, 48.0],
+                "H_TENURE": [1, 2, 3],
+            }
+        ),
+        "tax_unit": pd.DataFrame(
+            {"tax_unit_id": [101, 102, 103], "filing_status_input": ["SINGLE"] * 3}
+        ),
+        "spm_unit": pd.DataFrame({"spm_unit_id": [201, 202, 203]}),
+        "family": pd.DataFrame({"family_id": [301, 302, 303]}),
+        "marital_unit": pd.DataFrame(
+            {"marital_unit_id": [401, 402, 403, 404, 405, 406]}
+        ),
+    }
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(np.array([1.0, 3.0, 2.0]), WeightKind.DESIGN)},
+    )
+
+
+def _acs_spine() -> Frame:
+    """Two native non-CPS households already carrying observed rent and tenure."""
+    frame = pool_fixtures._source_frame(offset=100.0)
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"]["pre_subsidy_rent"] = np.array([777.0, 0.0])
+    tables["household"]["state_fips"] = np.array([12.0, 24.0])
+    tables["household"]["tenure_type"] = np.array(
+        ["RENTED", "OWNED_OUTRIGHT"], dtype=object
+    )
+    tables["spm_unit"]["spm_unit_tenure_type"] = np.array(
+        ["RENTER", "OWNER_WITHOUT_MORTGAGE"], dtype=object
+    )
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+    )
+
+
+def _pool_frame() -> Frame:
+    """The assembled mixed pre-clone pool, matching the captured oracle."""
+    frame = assemble_spines(
+        {"asec": _asec_spine(), "acs": _acs_spine()},
+        household_mass_shares={"asec": 0.6, "acs": 0.4},
+    )
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for table in tables.values():
+        for column in table:
+            if pd.api.types.is_object_dtype(table[column]) or isinstance(
+                table[column].dtype, pd.StringDtype
+            ):
+                # The graph's canonical "string" token is python storage with
+                # pd.NA; the content store refuses any other physical dtype.
+                table[column] = table[column].astype(dtype_for_token("string"))
+        for column in NUMERIC_RAW:
+            if column in table:
+                table[column] = pd.to_numeric(table[column]).astype("float64")
+    person = tables["person"]
+    person.index = pd.Index(np.arange(len(person)) * 7 + 101, name="original_row")
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata.set_axis(person.index),
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _prefix_operators():
+    return {
+        "derive_us_cps_carried_inputs": pool.derive_us_cps_carried_inputs,
+        "with_us_hours_worked_inputs": pool._with_gated_us_hours_worked_inputs,
+        "with_us_prior_year_income_inputs": lambda frame: (
+            pool.with_us_prior_year_income_inputs(
+                frame, seed=pool.POOL_RANDOM_SEED, time_period=pool.POOL_TIME_PERIOD
+            )
+        ),
+        "with_us_relationship_inputs": lambda frame: pool.with_us_relationship_inputs(
+            frame, seed=pool.POOL_RANDOM_SEED, time_period=pool.POOL_TIME_PERIOD
+        ),
+    }
+
+
+def _relationship_base(frame: Frame) -> Frame:
+    """The true direct relationship-produced predecessor of the housing stage.
+
+    The additive relationship graph is still under review, so this integration
+    supplies the real direct wrapper's Frame as the graph's base version. Full
+    graph composition is therefore not claimed here; only the housing stage is
+    executed through the graph.
+    """
+    return pool._run_source_operator_chain(
+        frame,
+        phase="pre_clone",
+        operator_names=PREFIX_OPERATORS,
+        operators=_prefix_operators(),
+    ).frame
+
+
+def _direct_housing(base: Frame, donor: pd.DataFrame):
+    return pool._run_source_operator_chain(
+        base,
+        phase="pre_clone",
+        operator_names=("with_us_housing_inputs",),
+        operators={
+            "with_us_housing_inputs": lambda frame: pool.with_us_housing_inputs(
+                frame,
+                seed=SEED,
+                time_period=pool.POOL_TIME_PERIOD,
+                acs_rent_donor=donor,
+                n_estimators=N_ESTIMATORS,
+            )
+        },
+    )
+
+
+def _direct_eligibility(frame: Frame):
+    return pool._run_source_operator_chain(
+        frame,
+        phase="pre_clone",
+        operator_names=("with_us_eligibility_inputs",),
+        operators={
+            "with_us_eligibility_inputs": lambda current: (
+                pool.with_us_eligibility_inputs(
+                    current,
+                    seed=pool.POOL_RANDOM_SEED,
+                    time_period=pool.POOL_TIME_PERIOD,
+                )
+            )
+        },
+    )
+
+
+# --------------------------------------------------------------------------
+# Graph harness
+# --------------------------------------------------------------------------
+
+
+class _Create(KernelBase):
+    ref = "test.housing_source.base@1"
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC,
+        structural=StructuralDelta.CREATE,
+        numeric=Numeric.PLATFORM_BITWISE,
+    )
+
+    def run(self, context):
+        return KernelResult(
+            frame=load_source("frame-store", context.sources["population"]),
+            artifacts={"frame_context": context.params["frame_context"].encode()},
+        )
+
+
+class _Consumer(KernelBase):
+    """Stands in for the eligibility stage: it consumes the accepted context."""
+
+    ref = "test.housing_source.consumer@1"
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC, numeric=Numeric.PLATFORM_BITWISE
+    )
+
+    def run(self, context):
+        return KernelResult(
+            receipt={
+                "accepted_context_bytes": len(
+                    context.artifacts["frame_context"].payload
+                )
+            }
+        )
+
+
+def _donor(root: Path, *, mutation=None) -> Path:
+    return Path(rent_fixtures._donor_file(root / "donor.h5", mutation=mutation))
+
+
+def _sha(path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def _nodes(frame: Frame, descriptor: bytes, *, consumer=True, **kwargs):
+    columns = frame_column_declarations(frame)
+    produced = us_housing_source_nodes(
+        columns,
+        base="source",
+        context_producer="source",
+        donor_descriptor=descriptor,
+        seed=SEED,
+        n_estimators=N_ESTIMATORS,
+        **kwargs,
+    )
+    nodes = [
+        Node(
+            "source",
+            _Create.ref,
+            sources=("population",),
+            structural=StructuralDelta.CREATE,
+            outputs=columns,
+            params={"frame_context": encode_us_frame_context(frame).decode()},
+            artifact_outputs=(ArtifactOutput("frame_context", US_FRAME_CONTEXT_TYPE),),
+        ),
+        *produced,
+    ]
+    if consumer:
+        nodes.append(
+            Node(
+                "after",
+                _Consumer.ref,
+                population=HOUSING_SOURCE_MERGE_POPULATION,
+                artifact_inputs=(
+                    ArtifactInput(
+                        "frame_context",
+                        HOUSING_SOURCE_ACCEPTED_CONTEXT,
+                        "frame_context",
+                        US_FRAME_CONTEXT_TYPE,
+                    ),
+                ),
+            )
+        )
+    return tuple(nodes), columns
+
+
+def _setup(tmp_path, frame, *, donor_path=None, **kwargs):
+    donor_path = _donor(tmp_path) if donor_path is None else Path(donor_path)
+    donor_sha = _sha(donor_path)
+    descriptor = rent_source.prepare_acs_rent_source_descriptor(
+        donor_path, expected_sha256=donor_sha
+    )
+    codecs = SourceCodecRegistry()
+    codecs.register("frame-store", load_frame_store)
+    codecs.register(
+        rent_source.RENT_SOURCE_CODEC,
+        partial(rent_source.load_graph_acs_rent_source, expected_sha256=donor_sha),
+    )
+    nodes, columns = _nodes(frame, descriptor, **kwargs)
+    graph = Graph(
+        country="us",
+        sources=(
+            SourceRef("population", "frame-store"),
+            rent_source.RENT_SOURCE,
+        ),
+        nodes=nodes,
+    )
+    kernels = KernelRegistry()
+    kernels.register(_Create())
+    kernels.register(_Consumer())
+    register_us_housing_source_kernels(kernels, source_codecs=codecs)
+    store = ContentStore(tmp_path / "store", codecs=codecs)
+    population = ContentStore(tmp_path / "inputs").put_frame("a" * 64, frame)
+    sources = {
+        "population": population,
+        rent_source.RENT_SOURCE_NAME: donor_path,
+    }
+    return compile_graph(graph), sources, store, kernels, nodes, donor_path
+
+
+def _run(tmp_path, frame, *, resume="forbid", **kwargs):
+    compiled, sources, store, kernels, nodes, donor_path = _setup(
+        tmp_path, frame, **kwargs
+    )
+    manifest = run_graph(
+        compiled, sources=sources, store=store, kernels=kernels, resume=resume
+    )
+    return manifest, store, nodes, donor_path
+
+
+def _assert_unreached(manifest, node_ids) -> None:
+    for node_id in node_ids:
+        receipt = manifest.nodes[node_id]
+        assert execution_state(receipt.receipt) == "unreached", node_id
+        assert not receipt.artifacts and not receipt.opaque_artifacts, node_id
+        assert receipt.frame_key is None and receipt.weight_key is None, node_id
+
+
+def _payload(manifest, store, node, name):
+    return store.load_bytes(manifest.nodes[node].opaque_artifacts[name])
+
+
+def _restore(population: Frame, context: bytes) -> Frame:
+    """Rebuild the operator-visible Frame from executor cells and typed context.
+
+    Population cells, weights and strata are executor-owned; normative metadata
+    and the legacy mass history travel in the accepted typed context, exactly as
+    the landed rent and hours boundaries already assume.
+    """
+    document = json.loads(context)
+    return Frame(
+        {entity: population.table(entity) for entity in population.entities},
+        US_SCHEMA,
+        {
+            entity: population.weights_for(entity)
+            for entity in population.weighted_entities
+        },
+        population.strata,
+        mass_log=_mass_records(document["mass_log"]),
+        metadata=document["metadata"],
+    )
+
+
+def _assert_frames_equal(actual: Frame, expected: Frame) -> None:
+    assert set(actual.entities) == set(expected.entities)
+    for entity in expected.entities:
+        pd.testing.assert_frame_equal(actual.table(entity), expected.table(entity))
+    pd.testing.assert_series_equal(actual.strata, expected.strata)
+    assert set(actual.weighted_entities) == set(expected.weighted_entities)
+    for entity in expected.weighted_entities:
+        assert actual.weights_for(entity).kind == expected.weights_for(entity).kind
+        assert (
+            actual.weights_for(entity).values.tobytes()
+            == expected.weights_for(entity).values.tobytes()
+        )
+    assert _json_data(actual.metadata) == _json_data(expected.metadata)
+    assert actual.mass_log == expected.mass_log
+
+
+@pytest.fixture(scope="module")
+def golden():
+    return json.loads(GOLDEN.read_text())
+
+
+# --------------------------------------------------------------------------
+# Oracle parity
+# --------------------------------------------------------------------------
+
+
+def _snapshot_table(table: pd.DataFrame) -> dict[str, object]:
+    return {
+        "columns": list(table.columns),
+        "dtypes": [str(dtype) for dtype in table.dtypes],
+        "index": {
+            "class": type(table.index).__name__,
+            "dtype": str(table.index.dtype),
+            "name": table.index.name,
+            "values": table.index.tolist(),
+        },
+        "values": [
+            [None if value is pd.NA or value is None else value for value in row]
+            for row in table.astype(object)
+            .where(table.notna(), None)
+            .to_numpy()
+            .tolist()
+        ],
+    }
+
+
+def _snapshot_frame(frame: Frame) -> dict[str, object]:
+    return {
+        "entities": {
+            entity: _snapshot_table(frame.table(entity)) for entity in frame.entities
+        },
+        "weights": {
+            entity: {
+                "kind": frame.weights_for(entity).kind.value,
+                "values": frame.weights_for(entity).values.tolist(),
+            }
+            for entity in frame.weighted_entities
+        },
+        "strata": frame.strata.tolist(),
+        "metadata": _json_data(frame.metadata),
+        "mass_log": [
+            {
+                "entity": record.entity,
+                "old_total": record.old_total,
+                "new_total": record.new_total,
+                "declared_factor": record.declared_factor,
+                "reason": record.reason,
+            }
+            for record in frame.mass_log
+        ],
+    }
+
+
+def test_direct_pre_edit_oracle_is_unchanged(tmp_path, golden):
+    """The unedited direct path this port must reproduce has not moved."""
+    donor_path = _donor(tmp_path)
+    donor = housing_inputs.load_acs_2022_rent_donor(
+        donor_path, expected_sha256=_sha(donor_path)
+    )
+    start = _pool_frame()
+    assert _snapshot_frame(start) == golden["pool"]
+    base = _relationship_base(start)
+    assert _snapshot_frame(base) == golden["relationship_base"]
+    housing = _direct_housing(base, donor)
+    assert _snapshot_frame(housing.frame) == golden["housing"]["frame"]
+    assert (
+        json.loads(json.dumps(housing.receipt, default=str))
+        == (golden["housing"]["receipt"])
+    )
+    eligibility = _direct_eligibility(housing.frame)
+    assert _snapshot_frame(eligibility.frame) == golden["eligibility"]["frame"]
+
+
+# --------------------------------------------------------------------------
+# Cold / auto / require parity
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("resume", ["forbid", "auto", "require"])
+def test_graph_matches_direct_values_receipt_context_and_payloads(
+    tmp_path, golden, resume
+):
+    frame = _relationship_base(_pool_frame())
+    if resume != "forbid":
+        _run(tmp_path, frame)
+    manifest, store, nodes, donor_path = _run(tmp_path, frame, resume=resume)
+    donor = housing_inputs.load_acs_2022_rent_donor(
+        donor_path, expected_sha256=_sha(donor_path)
+    )
+    expected = _direct_housing(frame, donor)
+    accepted = _payload(
+        manifest, store, HOUSING_SOURCE_ACCEPTED_CONTEXT, "frame_context"
+    )
+    actual = _restore(manifest.population(HOUSING_SOURCE_MERGE_POPULATION), accepted)
+    _assert_frames_equal(actual, expected.frame)
+    assert _snapshot_frame(actual) == golden["housing"]["frame"]
+
+    merge = manifest.nodes[f"{HOUSING_SOURCE_PREFIX}.merge"]
+    assert canonical_json(merge.receipt["source_preparation"]) == canonical_json(
+        expected.receipt
+    )
+    gate = manifest.nodes[HOUSING_SOURCE_ACCEPTED_CONTEXT]
+    assert gate.receipt["outcome"] == "pass"
+    assert gate.receipt["scope"] == codec.HOUSING_GATE_SCOPE
+    assert gate.receipt["mode"] == codec.FRESH_SOURCE_MODE
+
+    document = json.loads(
+        _payload(manifest, store, HOUSING_SOURCE_ACCEPTED_CONTEXT, "frame_context")
+    )
+    original = json.loads(_payload(manifest, store, "source", "frame_context"))
+    assert document["metadata"] == original["metadata"]
+    assert document["mass_log"] == original["mass_log"]
+    assert document["weight_sources"] == original["weight_sources"]
+    for entity in US_SCHEMA.entities:
+        assert document["entities"][entity]["columns"] == list(
+            actual.table(entity).columns
+        )
+    assert manifest.nodes["after"].receipt["accepted_context_bytes"] > 0
+
+
+def test_required_replay_reuses_every_node(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    cold, _, _, _ = _run(tmp_path, frame)
+    warm, _, _, _ = _run(tmp_path, frame, resume="require")
+    assert warm.key == cold.key
+    assert all(record.hit for record in warm.nodes.values())
+
+
+# --------------------------------------------------------------------------
+# Selection, projection and measured alignment
+# --------------------------------------------------------------------------
+
+
+def test_source_projection_selects_actual_cps_rows_and_group_ids(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    manifest, store, _, _ = _run(tmp_path, frame)
+    projected = manifest.population(HOUSING_SOURCE_POPULATION)
+    person = frame.table("person")
+    mask = person["PERIDNUM"].notna().to_numpy()
+    expected = frame.select(mask)
+    owned = {column for _entity, column, _dtype in codec.merge_columns()}
+    for entity in expected.entities:
+        # The version's final state also carries this stage's measured leaves;
+        # every column the FILTER carried is byte-identical to Frame.select.
+        carried = [
+            column for column in expected.table(entity).columns if column not in owned
+        ]
+        pd.testing.assert_frame_equal(
+            projected.table(entity).loc[:, carried],
+            expected.table(entity).loc[:, carried],
+        )
+    pd.testing.assert_series_equal(projected.strata, expected.strata)
+    for entity in expected.weighted_entities:
+        np.testing.assert_array_equal(
+            projected.weights_for(entity).values, expected.weights_for(entity).values
+        )
+    projection = codec.decode_projection(
+        _payload(manifest, store, HOUSING_SOURCE_POPULATION, "projection")
+    )
+    assert projection["mode"] == codec.FRESH_SOURCE_MODE
+    assert projection["selection"] == {
+        "column": "PERIDNUM",
+        "phase": "pre_clone",
+        "clone_index_column": "person_support_clone_index",
+    }
+    for entity in US_SCHEMA.entities:
+        selected = projection["entities"][entity]["selected"]
+        assert selected["rows"] == len(expected.table(entity))
+        full = projection["entities"][entity]["full"]
+        assert full["rows"] == len(frame.table(entity))
+
+    context = json.loads(
+        _payload(manifest, store, HOUSING_SOURCE_POPULATION, "frame_context")
+    )
+    assert context["metadata"] == {}
+    assert context["mass_log"] == []
+    for entity in US_SCHEMA.entities:
+        assert context["entities"][entity]["rows"] == len(expected.table(entity))
+
+
+def test_measured_leaves_align_by_spm_and_household_id(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    manifest, _, _, _ = _run(tmp_path, frame)
+    measured = manifest.population(HOUSING_SOURCE_POPULATION)
+    source = frame.select(frame.table("person")["PERIDNUM"].notna().to_numpy())
+    household, spm_unit = housing_inputs.derive_us_housing_tables(
+        source.table("person"), source.table("household"), source.table("spm_unit")
+    )
+    produced = manifest.population(f"{rent.RENT_PREFIX}.boundary")
+    np.testing.assert_array_equal(
+        produced.table("household")["tenure_type"].to_numpy(dtype=object),
+        household["tenure_type"].to_numpy(dtype=object),
+    )
+    for column in (
+        "receives_housing_assistance",
+        "takes_up_housing_assistance_if_eligible",
+    ):
+        np.testing.assert_array_equal(
+            produced.table("spm_unit")[column].to_numpy(dtype=bool),
+            spm_unit[column].to_numpy(dtype=bool),
+        )
+        assert produced.table("spm_unit")[column].dtype == np.dtype(bool)
+    np.testing.assert_array_equal(
+        produced.table("spm_unit")["spm_unit_tenure_type"].to_numpy(dtype=object),
+        spm_unit["spm_unit_tenure_type"].to_numpy(dtype=object),
+    )
+    del measured
+
+
+def test_native_non_cps_cells_survive_the_merge(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    manifest, _, _, _ = _run(tmp_path, frame)
+    merged = manifest.population(HOUSING_SOURCE_MERGE_POPULATION)
+    person = merged.table("person")
+    native = person["PERIDNUM"].isna().to_numpy()
+    np.testing.assert_array_equal(
+        person.loc[native, "pre_subsidy_rent"].to_numpy(),
+        frame.table("person").loc[native, "pre_subsidy_rent"].to_numpy(),
+    )
+    household = merged.table("household")
+    native_household = frame.table("household")["tenure_type"].notna().to_numpy()
+    pd.testing.assert_series_equal(
+        household.loc[native_household, "tenure_type"],
+        frame.table("household").loc[native_household, "tenure_type"],
+    )
+    spm_unit = merged.table("spm_unit")
+    native_spm = frame.table("spm_unit")["spm_unit_tenure_type"].notna().to_numpy()
+    pd.testing.assert_series_equal(
+        spm_unit.loc[native_spm, "spm_unit_tenure_type"],
+        frame.table("spm_unit").loc[native_spm, "spm_unit_tenure_type"],
+    )
+    assert spm_unit.loc[native_spm, "receives_housing_assistance"].isna().all()
+    assert str(spm_unit["receives_housing_assistance"].dtype) == "boolean"
+
+
+# --------------------------------------------------------------------------
+# Fresh-source refusals
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("observed", ["partial", "complete"])
+def test_observed_cps_rent_refuses_before_any_recipient_work(
+    tmp_path, monkeypatch, observed
+):
+    frame = _relationship_base(_pool_frame())
+    person = frame.table("person").copy()
+    cps = person["PERIDNUM"].notna().to_numpy()
+    values = person["pre_subsidy_rent"].to_numpy(dtype=float).copy()
+    positions = np.flatnonzero(cps)
+    values[positions if observed == "complete" else positions[:1]] = 1234.0
+    person["pre_subsidy_rent"] = values
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = person
+    refused = Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("refused fresh-source scope must not fit a donor")
+
+    monkeypatch.setattr(graph_legacy_train, "fit_target", forbidden)
+    with pytest.raises(NodeRejectedError, match="fresh"):
+        _run(tmp_path, refused)
+
+
+def test_unsupported_mode_is_refused_at_declaration(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    with pytest.raises(ValueError, match="mode"):
+        _nodes(frame, b"{}", mode="complete_incumbent")
+
+
+def test_absent_string_tenure_incumbent_is_refused(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["household"] = tables["household"].drop(columns=["tenure_type"])
+    stripped = Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    donor_path = _donor(tmp_path)
+    descriptor = rent_source.prepare_acs_rent_source_descriptor(
+        donor_path, expected_sha256=_sha(donor_path)
+    )
+    with pytest.raises(ValueError, match="canonical string"):
+        _nodes(stripped, descriptor)
+
+
+def test_numeric_tenure_incumbent_is_refused(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["household"]["tenure_type"] = np.arange(
+        len(tables["household"]), dtype=np.float64
+    )
+    donor_path = _donor(tmp_path)
+    descriptor = rent_source.prepare_acs_rent_source_descriptor(
+        donor_path, expected_sha256=_sha(donor_path)
+    )
+    numeric = Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    with pytest.raises(ValueError, match="canonical string"):
+        _nodes(numeric, descriptor)
+
+
+def test_repeated_person_labels_with_numeric_incumbent_are_refused(tmp_path):
+    """The inherited shared-merge label seam is refused, not worked around."""
+    frame = _relationship_base(_pool_frame())
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    person = tables["person"]
+    person.index = pd.Index([7] * len(person), name=person.index.name)
+    duplicated = Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata.set_axis(person.index),
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    with pytest.raises(NodeRejectedError, match="repeated"):
+        _run(tmp_path, duplicated)
+
+
+# --------------------------------------------------------------------------
+# Gate reachability and artifact integrity
+# --------------------------------------------------------------------------
+
+
+def test_failed_rent_validation_leaves_acceptance_and_downstream_unreached(
+    tmp_path, monkeypatch
+):
+    frame = _relationship_base(_pool_frame())
+
+    def broken(prepared, raw_rent):
+        raise ValueError("injected rent finalization failure")
+
+    monkeypatch.setattr(housing_inputs, "finalize_acs_rent", broken)
+    manifest, _store, _nodes_, _donor_path = _run(tmp_path, frame)
+    validation = manifest.nodes[f"{rent.RENT_PREFIX}.validation"]
+    assert validation.receipt["outcome"] == "fail"
+    assert (
+        "injected rent finalization failure"
+        in (validation.receipt["evidence"]["message"])
+    )
+    _assert_unreached(
+        manifest,
+        (
+            rent.RENT_OUTPUT_CONTEXT,
+            f"{HOUSING_SOURCE_PREFIX}.source_outputs",
+            HOUSING_SOURCE_MERGE_POPULATION,
+            f"{HOUSING_SOURCE_PREFIX}.merge",
+            HOUSING_SOURCE_ACCEPTED_CONTEXT,
+            "after",
+        ),
+    )
+    assert HOUSING_SOURCE_MERGE_POPULATION not in manifest.populations
+
+
+def test_failed_completion_gate_leaves_downstream_unreached(tmp_path, monkeypatch):
+    frame = _relationship_base(_pool_frame())
+    original = USHousingMergeKernel.run
+
+    def tampered(self, context):
+        result = original(self, context)
+        payload = json.loads(result.artifacts["merge_evidence"])
+        payload["merged_rows"]["person"] += 1
+        return replace(
+            result,
+            artifacts={
+                **result.artifacts,
+                "merge_evidence": canonical_json(payload),
+            },
+        )
+
+    monkeypatch.setattr(USHousingMergeKernel, "run", tampered)
+    manifest, _store, _nodes_, _donor_path = _run(tmp_path, frame)
+    gate = manifest.nodes[HOUSING_SOURCE_ACCEPTED_CONTEXT]
+    assert gate.receipt["outcome"] == "fail"
+    assert not gate.opaque_artifacts
+    _assert_unreached(manifest, ("after",))
+
+
+def test_pending_context_cannot_satisfy_the_accepted_context_edge(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    donor_path = _donor(tmp_path)
+    descriptor = rent_source.prepare_acs_rent_source_descriptor(
+        donor_path, expected_sha256=_sha(donor_path)
+    )
+    nodes, _ = _nodes(frame, descriptor, consumer=False)
+    bad = Node(
+        "after",
+        _Consumer.ref,
+        population=HOUSING_SOURCE_MERGE_POPULATION,
+        artifact_inputs=(
+            ArtifactInput(
+                "frame_context",
+                f"{HOUSING_SOURCE_PREFIX}.merge",
+                "frame_context",
+                US_FRAME_CONTEXT_TYPE,
+            ),
+        ),
+    )
+    with pytest.raises(GraphError):
+        compile_graph(
+            Graph(
+                country="us",
+                sources=(
+                    SourceRef("population", "frame-store"),
+                    rent_source.RENT_SOURCE,
+                ),
+                nodes=(*nodes, bad),
+            )
+        )
+
+
+# --------------------------------------------------------------------------
+# Implementation identity, resources and rosters
+# --------------------------------------------------------------------------
+
+
+def test_implementation_hash_binds_modules_resources_and_string_options(monkeypatch):
+    from microcosm.build.us_runtime.graph_housing_source import (
+        USHousingSourceBoundaryKernel,
+    )
+
+    kernel = USHousingSourceBoundaryKernel()
+    first = kernel.implementation_hash()
+    assert first == kernel.implementation_hash()
+    with pd.option_context("mode.string_storage", "pyarrow"):
+        assert kernel.implementation_hash() != first
+    monkeypatch.setattr(
+        graph_housing_source,
+        "multispine_housing_implementation_contract",
+        lambda: {"outputs": {}},
+    )
+    assert kernel.implementation_hash() != first
+
+
+def test_implementation_modules_exist_and_include_every_bound_seam():
+    for name in _HOUSING_IMPLEMENTATION_MODULES:
+        assert import_module(name) is not None
+    required = {
+        "microcosm.build.us_runtime.graph_housing_source",
+        "microcosm.build.us_runtime._graph_housing_source_artifacts",
+        "microcosm.build.us_runtime.graph_acs_rent",
+        "microcosm.build.us_runtime.graph_acs_rent_source",
+        "microcosm.build.us_runtime._graph_acs_rent_artifacts",
+        "microcosm.build.us_runtime.housing_inputs",
+        "microcosm.build.us_runtime.multispine_pool",
+        "microcosm.build.us_runtime.operator_boundary",
+        "microcosm.build.us_runtime.support_provenance",
+        "microcosm.build.us_runtime.graph_context",
+    }
+    assert required <= set(_HOUSING_IMPLEMENTATION_MODULES)
+    assert HOUSING_SOURCE_DEPENDENCIES == ("numpy", "pandas", "pyarrow")
+
+
+def test_live_housing_output_roster_is_bound_not_hardcoded(monkeypatch):
+    assert codec.housing_output_family() == {
+        "person": ("pre_subsidy_rent",),
+        "household": ("tenure_type",),
+        "spm_unit": (
+            "receives_housing_assistance",
+            "spm_unit_tenure_type",
+            "takes_up_housing_assistance_if_eligible",
+        ),
+    }
+
+
+# --------------------------------------------------------------------------
+# Donor and recipient cache behavior
+# --------------------------------------------------------------------------
+
+
+def test_recipient_changes_reuse_the_actual_fitted_forest(tmp_path, monkeypatch):
+    frame = _relationship_base(_pool_frame())
+    calls = []
+    original = graph_legacy_train.fit_target
+
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(graph_legacy_train, "fit_target", counted)
+    first, _, _, _ = _run(tmp_path, frame)
+    changed_tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    changed_tables["person"]["age"] = (
+        changed_tables["person"]["age"].to_numpy(dtype=float) + 3.0
+    )
+    changed = Frame(
+        changed_tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    second, _, _, _ = _run(tmp_path, changed, resume="auto")
+    fit = f"{rent.RENT_PREFIX}.fit.000"
+    assert calls == [1]
+    assert first.nodes[fit].key == second.nodes[fit].key
+    assert second.nodes[fit].hit
+
+
+def test_donor_change_invalidates_the_fit(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    first, _, _, _ = _run(tmp_path, frame)
+    changed_root = tmp_path / "changed"
+    changed_root.mkdir()
+    changed = _donor(changed_root, mutation="values")
+    second, _, _, _ = _run(tmp_path, frame, resume="auto", donor_path=changed)
+    fit = f"{rent.RENT_PREFIX}.fit.000"
+    assert first.nodes[fit].key != second.nodes[fit].key
+    assert not second.nodes[fit].hit
