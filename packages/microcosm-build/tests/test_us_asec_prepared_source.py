@@ -5,6 +5,7 @@ the production loaders accept neither an override nor caller-supplied pins.
 """
 
 import importlib.util
+import os
 import shutil
 from pathlib import Path
 
@@ -408,6 +409,31 @@ def test_altered_restoration_receipt_refuses(tmp_path, monkeypatch):
         prepared.PreparedSourceRefusalError, match="RESTORATION_RECEIPT"
     ):
         prepared.prepare_asec_current_money_population(directory)
+
+
+def test_oversized_receipt_refuses_before_read_or_parse(tmp_path, monkeypatch):
+    target = tmp_path / "oversized.json"
+    with target.open("wb") as stream:
+        stream.truncate(prepared.RESTORATION_RECEIPT_MAX_BYTES + 1)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("oversized receipt reached stream read or JSON parsing")
+
+    monkeypatch.setattr(prepared.os, "fdopen", forbidden)
+    monkeypatch.setattr(prepared, "_parse", forbidden)
+    with pytest.raises(
+        prepared.PreparedSourceRefusalError, match="RESTORATION_RECEIPT"
+    ):
+        prepared._restoration_receipt(target, {}, None)
+
+
+def test_fifo_receipt_refuses_without_waiting_for_writer(tmp_path):
+    target = tmp_path / "receipt.fifo"
+    os.mkfifo(target)
+    with pytest.raises(
+        prepared.PreparedSourceRefusalError, match="RESTORATION_RECEIPT"
+    ):
+        prepared._restoration_receipt(target, {}, None)
 
 
 @pytest.mark.parametrize(

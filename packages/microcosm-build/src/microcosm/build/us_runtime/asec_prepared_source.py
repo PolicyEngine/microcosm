@@ -19,6 +19,8 @@ operator-free frame whose dtypes have been promoted to graph tokens.
 
 from __future__ import annotations
 
+import os
+import stat
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
@@ -203,7 +205,19 @@ def _restoration_sources(rows, source) -> None:
 
 def _restoration_receipt(path: Path, evidence: dict, source) -> dict:
     """Bind the shipped restoration receipt to the authority the loader issued."""
-    payload = path.read_bytes()
+    # Refuse special files even if the roster check raced with a replacement,
+    # and bound allocation before parsing an untrusted sidecar.
+    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        info = os.fstat(descriptor)
+        _require(stat.S_ISREG(info.st_mode), "RESTORATION_RECEIPT")
+        _require(
+            0 < info.st_size <= RESTORATION_RECEIPT_MAX_BYTES, "RESTORATION_RECEIPT"
+        )
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            payload = stream.read(RESTORATION_RECEIPT_MAX_BYTES + 1)
+    finally:
+        os.close(descriptor)
     _require(0 < len(payload) <= RESTORATION_RECEIPT_MAX_BYTES, "RESTORATION_RECEIPT")
     _require(payload.endswith(b"\n"), "RESTORATION_RECEIPT")
     try:
