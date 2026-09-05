@@ -4,8 +4,8 @@
 
 In progress on 2026-09-04 on `f1-portable-worker-identity`, starting at
 `50c9232b7597bd1f47897a3132ed08894fc11d93`. Baseline timing precedes all
-behavior changes. The unchanged identity-heavy baseline passed; the first-200
-baseline is running. Report and raw measurement logs are outside the repository:
+behavior changes. Both unchanged baselines passed; regression reproduction
+and implementation are next. Report and raw measurement logs are outside the repository:
 `/private/tmp/microcosm-pr871-ci-crawl/out.md`.
 
 ## Done
@@ -31,10 +31,14 @@ baseline is running. Report and raw measurement logs are outside the repository:
   actual `--list group:process` expansion: us-qs build/frame (29/5 files),
   us-am build/other-shards (59/48 files), with external per-file timing.
 
+- Unchanged first-200 baseline: 200 passed, 122 deselected, exit 0,
+  2033.172 seconds wall time. Both requested baselines completed before
+  any production/test source edit. The run finished on 2026-09-05.
+
 ## Next
 
-- Finish the unchanged first-200 baseline, then commit regression tests
-  and implementation. No production or test source has been edited yet.
+- Reproduce the new memo regressions against unchanged production code,
+  then implement memoization and the shared session/live fixture boundary.
 - Add process memoization and regressions; prime real identities per test
   session with explicit live-test opt-out and consistent fixture bindings.
 - Run the requested full-file, CI-group, Ruff, formatting, and spec checks;
