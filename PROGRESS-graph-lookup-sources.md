@@ -17,8 +17,10 @@ import kernel can decode real source bytes honestly.
 
 ## State
 
-- Contract read and design fixed. Environment pinned and baseline captured.
-  Implementation not yet written.
+- Implementation, tests, lint, CI-inventory and changelog complete on this
+  branch (5 commits on top of `aad0defb`). Patch and receipt written to
+  `/Users/maxghenis/architecture-reviews/microcosm-20260904/`. Awaiting root
+  review; nothing pushed, no PR, no remote comment.
 
 ## Design (fixed before editing)
 
@@ -33,13 +35,15 @@ import kernel can decode real source bytes honestly.
   the executor's pre-run registration check calls it and a bytes codec must be
   *available* without becoming a Frame codec.
 - `as_mapping()` keeps returning exactly the Frame loaders (unchanged type and
-  contents); `as_bytes_mapping()` is its byte-mode sibling.
-- Built-in `raw-bytes-v1`: regular files only, 64 MiB bound, explicit
-  directory / non-regular / oversize refusal as `ValueError`; unknown codec
-  and `ImportError` keep the fatal `StoreUnavailable` classification
-  (acceptance property E2).
-- `decl.py` and `kernel.py` are untouched. No dataclass schema or frozen API
-  baseline moves.
+  contents); `as_bytes_mapping()` is its byte-mode sibling. A store configured
+  with the Frame-only snapshot therefore fails closed on a bytes source.
+- Built-in `raw-bytes-v1`: regular files only (checked on the descriptor it
+  opened, opened non-blocking so a FIFO cannot hang a run), 64 MiB bounded
+  read, explicit directory / non-regular / oversize refusal as `ValueError`;
+  unknown codec and `ImportError` keep the fatal `StoreUnavailable`
+  classification (acceptance property E2).
+- `decl.py` and `kernel.py` are untouched. No dataclass schema, serialized
+  shape, manifest field, or frozen API baseline moves.
 
 ## Done
 
@@ -48,23 +52,30 @@ import kernel can decode real source bytes honestly.
       `kernel.KernelContext.sources`, `decl.Node`/`SourceRef`.
 - [x] Confirmed a `StructuralDelta.NONE` node may declare `sources` (decl.py),
       so an import kernel needs no synthetic population of its own.
-- [x] Environment: this worktree has no venv; verification uses
-      `/Users/maxghenis/PolicyEngine/microcosm/.venv/bin/python` with
-      `PYTHONPATH` set to this worktree's `packages/*/src`, verified by printing
-      `microcosm.<shard>.__file__` for every shard.
-- [x] Baseline `packages/microcosm-graph/tests` before any edit: 43 passed,
-      1 skipped, 1 pre-existing failure
-      (`test_acceptance_h_parity.py::test_h3_us_post_transfer_parity`) — recorded
-      so it is never mistaken for lane damage.
+- [x] Environment: this worktree has no synced venv; verification uses another
+      worktree's interpreter with `PYTHONPATH` set to this worktree's
+      `packages/*/src`, verified by printing `microcosm.<shard>.__file__` for
+      every shard before trusting a run. No `uv sync`, no installs.
+- [x] Baseline before any edit: `packages/microcosm-graph/tests` = 399 passed,
+      1 skipped, 1 failed — `test_acceptance_h_parity.py::test_h3_us_post_transfer_parity`
+      fails only because the borrowed venv lacks `jsonschema` (declared by
+      microcosm-build). Recorded so it is never mistaken for lane damage.
+- [x] `codecs.py`: byte mode (`SourceBytesCodec`, `register_bytes`, `load_bytes`,
+      `as_bytes_mapping`, cross-mode name uniqueness, `raw-bytes-v1`,
+      `load_source_bytes`), plus the docstring corrections a third,
+      file-only codec forces in `codecs.py` and `keys.py`.
+- [x] `microcosm/graph/__init__.py`: export `SourceBytesCodec`, `load_source_bytes`.
+- [x] Tests: byte-mode unit tests in `test_graph_codecs.py`; the end-to-end
+      source -> typed-artifact route in `test_graph_source_bytes.py`.
+- [x] `tools/ci_test_groups.py --verify` green, new file in fast `rest` and
+      engine `us-am`, never `[defaulted]`;
+      `tools/graph_acceptance_burndown.py --verify` unchanged; `ruff check .` clean.
+- [x] changelog fragment `changelog.d/graph-lookup-sources.added.md`.
+- [x] Restored the root `PROGRESS.md` (another lane's ACS journal) after this
+      journal first overwrote it; this lane's journal lives here instead.
 
 ## Next
 
-1. `codecs.py`: byte mode (`SourceBytesCodec`, `register_bytes`, `load_bytes`,
-   `as_bytes_mapping`, cross-mode name uniqueness, `raw-bytes-v1`,
-   `load_source_bytes`).
-2. `microcosm/graph/__init__.py`: export `SourceBytesCodec`, `load_source_bytes`.
-3. Tests: codec unit tests in `test_graph_codecs.py`; end-to-end source ->
-   typed-artifact route in a new flat graph test file.
-4. `tools/ci_test_groups.py --verify`; changelog fragment.
-5. Patch + receipt under `/Users/maxghenis/architecture-reviews/microcosm-20260904/`.
-   No push, no PR, no remote comment from this lane.
+- Root review. No push, no PR, no remote comment from this lane.
+- Known residuals are listed in the receipt at
+  `/Users/maxghenis/architecture-reviews/microcosm-20260904/graph-lookup-sources-receipt.md`.
