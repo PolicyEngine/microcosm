@@ -23,8 +23,32 @@ Source values and person identifiers do not appear in error messages or receipts
 `restore_asec_person_income_source` produces the new checkpoint and a value-free
 receipt. `verify_asec_person_income_source` independently reconstructs the full
 attachment from authenticated parents and official member snapshots, then checks
-the complete typed frame and receipt against a private candidate snapshot. The
-candidate's observed digest alone grants no authority.
+the exact canonical checkpoint bytes against a private candidate snapshot. It
+serializes the independently reconstructed frame and receipt into a private file,
+requires the candidate's byte length and SHA256 to match that file, and never
+opens candidate HDF content. The candidate's observed digest alone grants no
+authority. This prevents candidate links, external storage, virtual datasets,
+attributes or declared shapes from controlling a read before authentication.
+
+T accepts only the deterministic canonical checkpoint encoding produced by the
+reviewed writer. An equivalent frame in a different HDF encoding is refused.
+The explicit encoding contract is part of the receipt and implementation hash.
+T identity is environment-locked: produce and verify it with the reviewed locked
+dependencies, preserve those exact bytes, and produce a new immutable attachment
+after an intentional environment or implementation change. Historical source
+kinds and generic checkpoint readers retain their existing contracts.
+
+The producer reconstructs once to write T and again through the verifier before
+publication. Verification also writes one private canonical checkpoint, adding
+temporary disk I/O approximately equal to the attachment size. These independent
+replays remain mandatory. Measure their time and peak memory on the source-only
+rung before choosing a larger model population.
+
+The output directory must be new. Exclusive directory creation and hardlink
+publication never replace an existing destination. A failure during final
+publication can leave a partially populated newly created directory; inspect it
+and use a new destination on retry. The producer does not remove an existing or
+raced destination to recover from that failure.
 
 `load_authenticated_restored_current_money_source` issues the new kind only after
 that comparison. It binds all parents, the new attachment digest, source reader

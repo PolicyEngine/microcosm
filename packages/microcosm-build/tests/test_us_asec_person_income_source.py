@@ -338,15 +338,15 @@ def test_private_member_and_attachment_snapshots_are_used(tmp_path, monkeypatch)
         return real_read(path, **kwargs)
 
     monkeypatch.setattr(restoration, "_read_member", read_private)
-    real_load = restoration.checkpoint.load_frame_checkpoint
+    real_snapshot = restoration._candidate_snapshot
 
-    def load_private(path, *args, **kwargs):
-        assert Path(path) != candidate
-        if Path(path).name == restoration.CHECKPOINT_FILENAME:
-            candidate.write_bytes(b"changed after private snapshot")
-        return real_load(path, *args, **kwargs)
+    def snapshot_then_replace(path, destination, **kwargs):
+        assert Path(destination) != candidate
+        digest = real_snapshot(path, destination, **kwargs)
+        candidate.write_bytes(b"changed after private snapshot")
+        return digest
 
-    monkeypatch.setattr(restoration.checkpoint, "load_frame_checkpoint", load_private)
+    monkeypatch.setattr(restoration, "_candidate_snapshot", snapshot_then_replace)
     checked = restoration.verify_asec_person_income_source(
         parent, attachment, candidate, member_paths=paths
     )
@@ -455,3 +455,269 @@ def test_restored_source_schema_and_policy_are_closed(tmp_path, monkeypatch, mut
         evidence["person_income_attachment_sha256"] = "untrusted"
     with pytest.raises(money.MoneyRefusalError):
         money.AuthenticatedAsecSource(money._json(evidence), _token=money._SOURCE_TOKEN)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "canonical",
+        "external_numeric",
+        "external_metadata",
+        "external_root",
+        "virtual_numeric",
+        "external_raw",
+        "soft_link",
+        "alias",
+        "cycle",
+        "attribute",
+        "vlen",
+        "sparse_metadata",
+        "same_size_wrong_bytes",
+        "truncated",
+    ],
+)
+def test_candidate_hdf_is_never_decoded(tmp_path, monkeypatch, mutation):
+    import json
+    import shutil
+
+    import h5py
+
+    from microcosm.build import frame_checkpoint as checkpoint
+
+    parent, attachment, paths = invented_sources(tmp_path, monkeypatch)
+    output = tmp_path / "restored"
+    restoration.restore_asec_person_income_source(
+        parent, attachment, member_paths=paths, output_dir=output
+    )
+    candidate = output / restoration.CHECKPOINT_FILENAME
+    original_bytes = candidate.read_bytes()
+    donor = tmp_path / "outside-candidate.h5"
+    shutil.copyfile(candidate, donor)
+    root_path = f"/{checkpoint._ROOT}"
+    metadata_path = f"{root_path}/{checkpoint._METADATA_DATASET}"
+    with h5py.File(candidate, "r") as h5:
+        metadata = json.loads(bytes(h5[metadata_path][:]))
+        table_index = next(
+            i for i, t in enumerate(metadata["tables"]) if t["name"] == "person"
+        )
+        column_index = next(
+            i
+            for i, c in enumerate(metadata["tables"][table_index]["columns"])
+            if c["name"] == "WSAL_VAL"
+        )
+        numeric_path = (
+            f"{root_path}/tables/t{table_index:05d}/columns/c{column_index:05d}/values"
+        )
+        values = h5[numeric_path][:]
+    if mutation == "same_size_wrong_bytes":
+        changed = bytearray(original_bytes)
+        changed[-1] ^= 1
+        candidate.write_bytes(changed)
+    elif mutation == "truncated":
+        candidate.write_bytes(original_bytes[:-1])
+    elif mutation != "canonical":
+        with h5py.File(candidate, "r+") as h5:
+            if mutation.startswith("external_") and mutation != "external_raw":
+                target = {
+                    "external_numeric": numeric_path,
+                    "external_metadata": metadata_path,
+                    "external_root": root_path,
+                }[mutation]
+                del h5[target]
+                h5[target] = h5py.ExternalLink(str(donor), target)
+            elif mutation == "virtual_numeric":
+                layout = h5py.VirtualLayout(shape=values.shape, dtype=values.dtype)
+                layout[:] = h5py.VirtualSource(
+                    str(donor), numeric_path, shape=values.shape
+                )
+                del h5[numeric_path]
+                h5.create_virtual_dataset(numeric_path, layout)
+            elif mutation == "external_raw":
+                del h5[numeric_path]
+                h5.create_dataset(
+                    numeric_path,
+                    data=values,
+                    external=[(str(tmp_path / "outside.raw"), 0, h5py.h5f.UNLIMITED)],
+                )
+            elif mutation == "soft_link":
+                h5["copy"] = h5[numeric_path]
+                del h5[numeric_path]
+                h5[numeric_path] = h5py.SoftLink("/copy")
+            elif mutation == "alias":
+                h5["alias"] = h5[root_path]
+            elif mutation == "cycle":
+                h5[root_path]["cycle"] = h5[root_path]
+            elif mutation == "attribute":
+                h5.attrs["unexpected"] = "not canonical"
+            elif mutation == "vlen":
+                del h5[metadata_path]
+                h5.create_dataset(metadata_path, (1,), dtype=h5py.string_dtype())
+            elif mutation == "sparse_metadata":
+                del h5[metadata_path]
+                h5.create_dataset(metadata_path, shape=(1_000_000_000,), dtype="u1")
+        assert candidate.stat().st_size < 1_000_000
+
+    real_open = h5py.File
+    candidate_opens = []
+
+    def forbid_candidate_open(name, mode="r", *args, **kwargs):
+        if mode == "r" and (
+            Path(name).name == restoration.CHECKPOINT_FILENAME or Path(name) == donor
+        ):
+            candidate_opens.append(str(name))
+            raise AssertionError("Candidate or external HDF must never be opened")
+        return real_open(name, mode, *args, **kwargs)
+
+    monkeypatch.setattr(h5py, "File", forbid_candidate_open)
+    if mutation == "canonical":
+        checked = restoration.verify_asec_person_income_source(
+            parent, attachment, candidate, member_paths=paths
+        )
+        assert checked.attachment_sha256 == money._sha(original_bytes)
+        assert checked.frame.person.asec_PTOTVAL.tolist() == [-9999, 0] * 3
+    else:
+        with pytest.raises(money.MoneyRefusalError, match="RESTORATION"):
+            restoration.verify_asec_person_income_source(
+                parent, attachment, candidate, member_paths=paths
+            )
+    assert candidate_opens == []
+
+
+@pytest.mark.parametrize("entrypoint", ["producer", "verifier"])
+@pytest.mark.parametrize("mapping", [None, {}, {True: "x"}, {2022: 1}])
+def test_invalid_member_mapping_refuses_before_parent_load(
+    tmp_path, monkeypatch, entrypoint, mapping
+):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Malformed mapping must refuse before P/H load")
+
+    monkeypatch.setattr(legacy, "load_authenticated_current_money_source", forbidden)
+    with pytest.raises(money.MoneyRefusalError, match="MEMBER_PATHS"):
+        if entrypoint == "producer":
+            restoration.restore_asec_person_income_source(
+                "unused-P", "unused-H", member_paths=mapping, output_dir=tmp_path / "T"
+            )
+        else:
+            restoration.verify_asec_person_income_source(
+                "unused-P", "unused-H", "unused-T", member_paths=mapping
+            )
+
+
+@pytest.mark.parametrize("column", ["PH_SEQ", "A_LINENO", "A_AGE", "PTOTVAL"])
+def test_malformed_member_integer_identifies_actual_field(tmp_path, column):
+    path = tmp_path / "invented.csv"
+    row = dict(PERIDNUM="0" * 22, PH_SEQ="1", A_LINENO="1", A_AGE="15", PTOTVAL="0")
+    row[column] = "invalid"
+    pd.DataFrame([row]).to_csv(path, index=False)
+    reason = (
+        "PTOTVAL: MEMBER_INTEGER"
+        if column == "PTOTVAL"
+        else f"contract: MEMBER_INTEGER_{column}"
+    )
+    with pytest.raises(money.MoneyRefusalError, match=reason):
+        restoration._read_member(path, rows=1, size=path.stat().st_size)
+
+
+def test_year_swapped_members_refuse(tmp_path, monkeypatch):
+    parent, attachment, paths = invented_sources(tmp_path, monkeypatch)
+    paths[2022], paths[2023] = paths[2023], paths[2022]
+    with pytest.raises(money.MoneyRefusalError, match="SOURCE_BYTES"):
+        restoration.restore_asec_person_income_source(
+            parent, attachment, member_paths=paths, output_dir=tmp_path / "refused"
+        )
+
+
+def test_missing_2024_incumbent_refuses(tmp_path, monkeypatch):
+    parent, attachment, paths = invented_sources(tmp_path, monkeypatch)
+    for path in (parent, attachment):
+        loaded = load_frame_checkpoint(path)
+        loaded.frame.person.iloc[4, loaded.frame.person.columns.get_loc("PTOTVAL")] = (
+            np.nan
+        )
+        if path == attachment:
+            parent_sha = money._sha(parent.read_bytes())
+            loaded.metadata["parent_checkpoint_sha256"] = parent_sha
+            loaded.metadata["household_observations"]["input_checkpoint_sha256"] = (
+                parent_sha
+            )
+        write_frame_checkpoint(path, loaded.frame, metadata=loaded.metadata)
+    monkeypatch.setattr(
+        legacy,
+        "_SOURCE_PINS",
+        (
+            money._sha(parent.read_bytes()),
+            money._sha(attachment.read_bytes()),
+            legacy._SOURCE_PINS[2],
+        ),
+    )
+    with pytest.raises(
+        money.MoneyRefusalError, match="RESTORATION_INCUMBENT_INCOMPLETE"
+    ):
+        restoration.restore_asec_person_income_source(
+            parent, attachment, member_paths=paths, output_dir=tmp_path / "refused"
+        )
+
+
+def test_canonical_bytes_survive_separate_process_and_wall_clock(tmp_path, monkeypatch):
+    import json
+    import os
+    import subprocess
+    import sys
+    import time
+
+    parent, attachment, paths = invented_sources(tmp_path, monkeypatch)
+    first = tmp_path / "first"
+    restoration.restore_asec_person_income_source(
+        parent, attachment, member_paths=paths, output_dir=first
+    )
+    second = tmp_path / "second"
+    spec = tmp_path / "invented-private-pins.json"
+    spec.write_text(
+        json.dumps(
+            {
+                "parent": str(parent),
+                "attachment": str(attachment),
+                "members": {y: str(p) for y, p in paths.items()},
+                "source_pins": legacy._SOURCE_PINS,
+                "member_pins": restoration._MEMBER_PINS,
+                "output": str(second),
+                "after": time.time() + 1.1,
+            }
+        )
+    )
+    script = """
+import json, sys, time
+from pathlib import Path
+from microcosm.build.us_runtime import asec_current_money_source as legacy
+from microcosm.build.us_runtime import asec_person_income_source as restoration
+spec = json.loads(Path(sys.argv[1]).read_text())
+# Invented test-only pins; public APIs still accept no pin authority.
+pins = spec['source_pins']
+legacy._SOURCE_PINS = (pins[0], pins[1], tuple(tuple(p) for p in pins[2]))
+restoration._MEMBER_PINS = tuple(tuple(p) for p in spec['member_pins'])
+while time.time() < spec['after']:
+    time.sleep(0.05)
+restoration.restore_asec_person_income_source(
+    spec['parent'], spec['attachment'],
+    member_paths={int(y): p for y, p in spec['members'].items()},
+    output_dir=spec['output'])
+"""
+    repo = Path(__file__).resolve().parents[3]
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.pathsep.join(
+        str(p) for p in sorted((repo / "packages").glob("*/src"))
+    )
+    subprocess.run(
+        [sys.executable, "-c", script, str(spec)],
+        env=env,
+        check=True,
+        capture_output=True,
+        timeout=120,
+    )
+    canonical = first / restoration.CHECKPOINT_FILENAME
+    independently_written = second / restoration.CHECKPOINT_FILENAME
+    assert canonical.read_bytes() == independently_written.read_bytes()
+    checked = restoration.verify_asec_person_income_source(
+        parent, attachment, independently_written, member_paths=paths
+    )
+    assert checked.attachment_sha256 == money._sha(canonical.read_bytes())
