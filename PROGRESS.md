@@ -27,7 +27,9 @@ through `git cat-file`, never through its working copy.
 
 ## State
 
-Bootstrapping.
+Transport copied, doc scoped, registrations added. Composition exercised
+end-to-end against both the local reader and the frozen dashboard reader.
+Awaiting the independent correctness review before freezing.
 
 ## Done
 
@@ -37,10 +39,36 @@ Bootstrapping.
 - Extracted the four staged blobs by OID; all four sha256 match the recorded
   `candidate-quality-producer-staged-blobs.json` manifest.
 - Created this worktree/branch from the explicit integration head.
+- Copied all four files byte-exact; each path's blob OID in the copy commit
+  equals its staged OID.
+- Trimmed the doc's geographic-release-scope section, which described an
+  exact-k schema 2, `--analysis-scope`, `--acceptance-policy`,
+  `--gate-congressional-district-targets` and a CD acceptance draft link that
+  do not exist in this composition. Replaced with what is true here:
+  eligibility is recorded rather than computed, arrives from a separate
+  authoritative acceptance producer, and no geographic eligibility is created.
+- Registered the test additively in `EXPLICIT_SHARED_SPEC` (one added line;
+  the staged version of that file would have dropped two entries integration
+  has since gained). Added a changelog fragment scoped to the transport only.
+- 25/25 transport tests pass; ruff check and ruff format clean repo-wide;
+  `tools/ci_test_groups.py --verify` exits 0 with the file no longer
+  `[defaulted]` and present in both the `rest` and `shared-spec` groups.
+- Ran a 16-assertion end-to-end probe of the real writer and reader on a
+  dedicated temp root: exact byte preservation, content-addressed manifest,
+  only `artifacts/` and `manifests/` written, and clean `CandidateQualityError`
+  refusals for tampering, crossed identity, run-scope-claiming-population,
+  embedded alias mismatch, non-JSON source, eligible-without-completion and
+  escaping paths.
+- Ran the frozen `334b826` dashboard reader (against a copy whose reader files
+  hash-match the live worktree, so that checkout stayed untouched) over
+  evidence written by this composition: ordinary evidence accepted with its
+  diagnostics and estimate intact; tampering gives `hash_mismatch`; a crossed
+  candidate id and a wrong manifest digest are refused; a run-scoped
+  attachment is refused as population evidence.
 
 ## Next
 
-- Copy the four files byte-exact and prove blob equality.
-- Trim the doc's geographic-release-scope section.
-- Assess transport correctness; land any concrete fix as its own explained commit.
-- Tests, ruff, `tools/ci_test_groups.py --verify`; freeze; write the report.
+- Fold in the independent review's confirmed findings, each as its own
+  explained commit.
+- Re-run tests, lint and the CI inventory check; freeze; write the report to
+  `R/candidate-quality-producer-integration-author.md`.
