@@ -85,6 +85,11 @@ Memoization and session priming pass the focused regressions and the complete
   111.252 seconds wall time (pytest 89.33s), with all 5 per-file records.
   The us-am build process is running next.
 
+- Actual us-am:build process: 1,899 passed, 1 skipped, 5 warnings; exit 0;
+  855.001 seconds wall time (pytest 833.68s), with all 59 per-file
+  records. The skip is the opt-in 3.7 GB SIPP scan. Final other-shards process
+  is running; independent final review found no actionable concerns.
+
 ## Next
 
 - Finish the initial us-qs/us-am CI process groups with per-file timings.
