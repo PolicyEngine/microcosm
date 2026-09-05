@@ -255,6 +255,14 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "org_wages.py",
         "parity_reference.py",
         "pregnancy.py",
+        # SLD local layer (populace#625): downstream per-district reweighting
+        # over the packaged artifact; consumes exported geography columns
+        # only, never source-spine provenance.
+        "sld_local_doctrine.py",
+        "sld_local_report.py",
+        "sld_local_solver.py",
+        "sld_local_targets.py",
+        "sld_membership.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
         "puf_aggregate_records.py",
