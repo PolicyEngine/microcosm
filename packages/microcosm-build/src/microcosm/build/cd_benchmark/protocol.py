@@ -19,6 +19,7 @@ inside the document and never from a caller's label.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
@@ -29,6 +30,7 @@ from typing import Any
 
 from microcosm.build.cd_benchmark.canonical import (
     CanonicalJsonError,
+    canonical_bytes,
     digest,
     is_sha256_hex,
     strict_load,
@@ -282,6 +284,9 @@ class CompiledProtocol:
     scope_reduction_order: tuple[str, ...]
     scoring_permitted_in_document: bool
     approval_installed_in_document: bool
+    reference_inventory_sha256: str
+    block_definition_hashes: Mapping[str, str]
+    pinned_code_sha256: Mapping[str, str]
 
     @property
     def canonical(self) -> bool:
@@ -595,7 +600,69 @@ def compile_protocol(raw: bytes) -> CompiledProtocol:
         approval_installed_in_document=_flag(
             approval_doc.get("installed"), "/approval/installed"
         ),
+        reference_inventory_sha256=_inventory_digest(document, scope_doc),
+        block_definition_hashes=MappingProxyType(
+            {
+                _text(_object(item, "block").get("id"), "block id"): digest(
+                    canonical_bytes(item)
+                )
+                for item in blocks
+            }
+        ),
+        pinned_code_sha256=MappingProxyType(_pinned_code(document)),
     )
+
+
+def _inventory_digest(document: dict[str, Any], scope_doc: dict[str, Any]) -> str:
+    """The reference inventory digest, required to agree in both places."""
+    authority = _object(document.get("reference_authority"), "/reference_authority")
+    inventory = _object(authority.get("inventory"), "reference inventory")
+    required = _object(scope_doc.get("required_district_set"), "required_district_set")
+    primary = _text(inventory.get("sha256"), "reference inventory sha256")
+    secondary = _text(required.get("inventory_sha256"), "district inventory sha256")
+    if not is_sha256_hex(primary) or primary != secondary:
+        raise ProtocolError(
+            "The reference inventory digest must be a lowercase digest and must "
+            "agree between /reference_authority and /scope/required_district_set."
+        )
+    return primary
+
+
+def _pinned_code(document: dict[str, Any]) -> dict[str, str]:
+    """Source-file digests the contract inspected, keyed by file name.
+
+    These are locators recording what was read when the contract was written.
+    Nothing in this package opens the paths beside them; the digests exist so a
+    binding can be checked against the adapter it was reviewed against, and a
+    changed adapter is a scope question rather than an automatic pin refresh.
+    """
+    sections = (
+        _object(
+            _object(document.get("reference_authority"), "/reference_authority").get(
+                "HU_adapter_clarification"
+            ),
+            "HU_adapter_clarification",
+        ),
+        _object(
+            _object(document.get("candidate_semantics"), "/candidate_semantics").get(
+                "definition_authority"
+            ),
+            "definition_authority",
+        ),
+    )
+    pins: dict[str, str] = {}
+    for section in sections:
+        for item in section.get("code", []):
+            entry = _object(item, "pinned code entry")
+            name = _text(entry.get("path"), "pinned code path").rsplit("/", 1)[-1]
+            value = _text(entry.get("sha256"), "pinned code sha256")
+            if not is_sha256_hex(value):
+                raise ProtocolError(f"Pinned code digest for {name} is not a digest.")
+            if pins.setdefault(name, value) != value:
+                raise ProtocolError(f"Conflicting pinned code digests for {name}.")
+    if not pins:
+        raise ProtocolError("The document pins no inspected source code.")
+    return pins
 
 
 def load_canonical_bytes() -> bytes:
