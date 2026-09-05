@@ -383,9 +383,17 @@ def test_committed_target_fit_register_carries_the_signed_deferrals() -> None:
         "dwp.uc.households_children_2@2025",
         "dwp.uc.households_children_5_or_more@2025",
         "hmrc/private_pension_income_count_income_band_100_000_to_150_000@2025",
+        "obr.capital_gains_tax@2025",
     }
-    for record in register.values():
+    for name, record in register.items():
         assert record.approved_by == "juaristi22"
+        if name == "obr.capital_gains_tax@2025":
+            # #834 composition: the 2024-25 forestalling-year gains bound at
+            # the 2025 period (microcosm#875 owns the translation).
+            assert record.adjudication == "microcosm#875"
+            assert record.approved_on == "2026-09-05"
+            assert record.expires_on == "2026-10-05"
+            continue
         assert record.adjudication == "microcosm#796"
         assert record.approved_on == "2026-08-30"
         assert record.expires_on == "2026-09-30"
