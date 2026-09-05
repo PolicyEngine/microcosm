@@ -351,7 +351,12 @@ def test_actual_graph_cold_warm_required_match_the_direct_transform(prepared, tm
 
 
 def test_public_compiled_constructor_and_graph_use_the_same_table(tmp_path):
-    compiled = compile_puf_growth(growth_recipe(), factor_table())
+    years = (SOURCE_YEAR, TARGET_YEAR)
+    table = replace(factor_table(), years=years)
+    assert table.years is years
+    compiled = compile_puf_growth(growth_recipe(), table)
+    parsed = GrowthFactorTable.from_bytes(table.document)
+    assert compiled.identity == compile_puf_growth(growth_recipe(), parsed).identity
     public = CompiledPufGrowth(
         compiled.recipe, compiled.factors, compiled.resolved, compiled.identity
     )

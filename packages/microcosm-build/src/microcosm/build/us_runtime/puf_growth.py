@@ -311,8 +311,8 @@ class GrowthRule:
         role: What the field is. Only :attr:`FieldRole.MONEY` may carry a sign
             branch, and only money and the design weight may grow at all.
         source_reference_year: The year the observed amount belongs to.
-        target_year: The year the output amount is stated in. Equal to
-            ``source_reference_year`` only for a declared no-growth field.
+        target_year: The year the output amount is stated in. Preserved fields
+            retain ``source_reference_year``; growing roles may also use that year.
         growth_kind: What the factor means. Fixed by the role for every role
             except money, which must choose restatement or aging explicitly.
         sign_branch: Which rows this rule selects. ``ANY`` must be the field's
@@ -679,12 +679,10 @@ class GrowthFactorTable:
         )
         names = [item.name for item in self.series]
         _require(len(set(names)) == len(names), "DUPLICATE_SERIES")
-        _require(
-            type(self.years) is tuple
-            and bool(self.years)
-            and list(self.years) == sorted(set(self.years)),
-            "TABLE_YEARS",
-        )
+        _require(type(self.years) is tuple and bool(self.years), "TABLE_YEARS")
+        for year in self.years:
+            _year(year, "TABLE_YEARS")
+        _require(list(self.years) == sorted(set(self.years)), "TABLE_YEARS")
         for item in self.series:
             _require(item.years == self.years, "SERIES_YEAR_COVERAGE", item.name)
         _require(isinstance(self.provenance, Mapping), "TABLE_PROVENANCE")
