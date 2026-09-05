@@ -58,7 +58,7 @@ from microcosm.build.us_runtime.graph_prior_year import (
     us_prior_year_source_nodes,
 )
 from microcosm.build.us_runtime.graph_sources import frame_column_declarations
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import Frame, Weights
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
@@ -132,6 +132,28 @@ def _frame():
     return frame
 
 
+def _string_backed(frame):
+    """Re-declare pandas ``str`` columns as ``string``, as the hours fixture does.
+
+    The housing operator emits a ``str``-dtype tenure column that the graph
+    store's declared ``string`` token does not accept. That is a housing-side
+    storage seam, out of scope for this bounded person-preparation fixture.
+    """
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for table in tables.values():
+        for column in table:
+            if table[column].dtype == object or str(table[column].dtype) == "str":
+                table[column] = table[column].astype("string")
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
 def _operators():
     donor = cps.hours.fixtures._rent_donor()
     return {
@@ -167,6 +189,50 @@ def _direct(frame, operators=GRAPH_OPERATORS):
         phase="pre_clone",
         operator_names=tuple(operators),
         operators={name: _operators()[name] for name in operators},
+    )
+
+
+def _upstream(family):
+    """The real pre-clone state each family runs on.
+
+    Relationship follows the prior-year join; eligibility follows housing, so
+    its fixture runs the direct housing operator and re-declares the tenure
+    column's storage. No housing graph node exists here.
+    """
+    if family == "relationship":
+        return _direct(_frame(), OPERATORS[:3]).frame
+    return _string_backed(_direct(_frame(), OPERATORS[:5]).frame)
+
+
+def _family_operator(family):
+    return (
+        ("with_us_relationship_inputs",)
+        if family == "relationship"
+        else ("with_us_eligibility_inputs",)
+    )
+
+
+def _family_node(family):
+    return RELATIONSHIP_NODE if family == "relationship" else ELIGIBILITY_NODE
+
+
+def _family_outputs(family):
+    return RELATIONSHIP_OUTPUTS if family == "relationship" else ELIGIBILITY_OUTPUTS
+
+
+def _family_helper(family):
+    return (
+        "prepare_us_relationship_person"
+        if family == "relationship"
+        else "prepare_us_eligibility_person"
+    )
+
+
+def _family_observer(family):
+    return (
+        pool.observe_multispine_relationship_person
+        if family == "relationship"
+        else pool.observe_multispine_eligibility_person
     )
 
 
@@ -362,9 +428,7 @@ def test_actual_composition_cold_auto_require_matches_direct_values_and_receipts
         context_payload = store.load_bytes(node.opaque_artifacts["frame_context"])
         assert context_payload == encode_us_frame_context(expected.frame)
         output_store = ContentStore(tmp_path / f"restored-{resume}")
-        output_store.put_frame(
-            "b" * 64, _restored(actual, json.loads(context_payload))
-        )
+        output_store.put_frame("b" * 64, _restored(actual, json.loads(context_payload)))
         output_store.put_frame("c" * 64, expected.frame)
         assert (
             output_store.metadata("b" * 64)["payloads"]
@@ -404,9 +468,12 @@ def test_actual_composition_cold_auto_require_matches_direct_values_and_receipts
         True,
         False,
     ]
-    assert actual.person.loc[
-        measured, "is_full_time_college_student"
-    ].tolist() == [False, True, False, False]
+    assert actual.person.loc[measured, "is_full_time_college_student"].tolist() == [
+        False,
+        True,
+        False,
+        False,
+    ]
     assert actual.person.loc[measured, "own_children_in_household"].tolist() == [
         1.0,
         0.0,
@@ -438,7 +505,7 @@ def test_actual_eligibility_after_direct_housing_state_matches_direct(tmp_path):
     the post-housing pre-clone state through the direct operator. It is not a
     full pre-clone graph and certifies nothing about housing.
     """
-    frame = _direct(_frame(), OPERATORS[:5]).frame
+    frame = _string_backed(_direct(_frame(), OPERATORS[:5]).frame)
     housing_outputs = pool.PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["housing_inputs"]
     for entity, columns in housing_outputs.items():
         present = set(columns) & set(frame.table(entity).columns)
@@ -497,17 +564,10 @@ def test_actual_presence_null_authority_and_row_order(
     tmp_path, monkeypatch, family, surface
 ):
     _forbid_qrf(monkeypatch)
-    upstream = OPERATORS[:3] if family == "relationship" else OPERATORS[:5]
-    outputs = (
-        RELATIONSHIP_OUTPUTS if family == "relationship" else ELIGIBILITY_OUTPUTS
-    )
-    operator = (
-        ("with_us_relationship_inputs",)
-        if family == "relationship"
-        else ("with_us_eligibility_inputs",)
-    )
-    node = RELATIONSHIP_NODE if family == "relationship" else ELIGIBILITY_NODE
-    frame = _direct(_frame(), upstream).frame
+    outputs = _family_outputs(family)
+    operator = _family_operator(family)
+    node = _family_node(family)
+    frame = _upstream(family)
     measured = frame.person.PERIDNUM.notna()
     if surface == "shuffled_person":
         tables = {entity: frame.table(entity) for entity in frame.entities}
@@ -553,9 +613,7 @@ def test_actual_presence_null_authority_and_row_order(
                 for name in outputs:
                     if name in {"is_disabled", "is_household_head"}:
                         continue
-                    frame.person.loc[measured, name] = (
-                        True if name in booleans else 7.0
-                    )
+                    frame.person.loc[measured, name] = True if name in booleans else 7.0
             # A signal-carrying surface passes through without reading raw
             # inputs, so the raw column may be missing entirely.
             frame.person.drop(
@@ -577,16 +635,9 @@ def test_actual_presence_null_authority_and_row_order(
 @pytest.mark.parametrize("family", ("relationship", "eligibility"))
 def test_complete_pass_through_never_recomputes(tmp_path, monkeypatch, family):
     """A signal-carrying surface passes through, exactly like the wrapper."""
-    outputs = (
-        RELATIONSHIP_OUTPUTS if family == "relationship" else ELIGIBILITY_OUTPUTS
-    )
-    helper = (
-        "prepare_us_relationship_person"
-        if family == "relationship"
-        else "prepare_us_eligibility_person"
-    )
+    outputs = _family_outputs(family)
+    helper = _family_helper(family)
     frame = _direct(_frame(), OPERATORS[:3]).frame
-    measured = frame.person.PERIDNUM.notna()
     booleans = {
         "is_household_head",
         "is_separated",
@@ -608,12 +659,8 @@ def test_complete_pass_through_never_recomputes(tmp_path, monkeypatch, family):
         raise AssertionError(f"{helper} must not run on a pass-through surface")
 
     monkeypatch.setattr(pool, helper, forbidden)
-    operator = (
-        ("with_us_relationship_inputs",)
-        if family == "relationship"
-        else ("with_us_eligibility_inputs",)
-    )
-    node = RELATIONSHIP_NODE if family == "relationship" else ELIGIBILITY_NODE
+    operator = _family_operator(family)
+    node = _family_node(family)
     expected = _direct(frame, operator)
     args, sources, store, kernels = _setup(tmp_path, frame, families=(family,))
     result = run_graph(args, sources=sources, store=store, kernels=kernels)
@@ -628,26 +675,11 @@ def test_complete_pass_through_never_recomputes(tmp_path, monkeypatch, family):
 
 
 @pytest.mark.parametrize("family", ("relationship", "eligibility"))
-def test_registered_observer_uses_actual_selected_weights_and_ids(
-    monkeypatch, family
-):
-    upstream = OPERATORS[:3] if family == "relationship" else OPERATORS[:5]
-    frame = _direct(_frame(), upstream).frame
-    operator = (
-        ("with_us_relationship_inputs",)
-        if family == "relationship"
-        else ("with_us_eligibility_inputs",)
-    )
-    observe = (
-        pool.observe_multispine_relationship_person
-        if family == "relationship"
-        else pool.observe_multispine_eligibility_person
-    )
-    helper = (
-        "prepare_us_relationship_person"
-        if family == "relationship"
-        else "prepare_us_eligibility_person"
-    )
+def test_registered_observer_uses_actual_selected_weights_and_ids(monkeypatch, family):
+    frame = _upstream(family)
+    operator = _family_operator(family)
+    observe = _family_observer(family)
+    helper = _family_helper(family)
     expected = _direct(frame, operator)
     observed = []
     original = getattr(pool, helper)
@@ -690,22 +722,14 @@ def test_registered_observer_uses_actual_selected_weights_and_ids(
             "support_context",
         )
     ]
-    + [
-        ("eligibility", failure)
-        for failure in ("missing_raw", "support_context")
-    ],
+    + [("eligibility", failure) for failure in ("missing_raw", "support_context")],
 )
 def test_original_source_refusal_or_preclone_misuse_refuses(
     tmp_path, monkeypatch, family, failure
 ):
     _forbid_qrf(monkeypatch)
-    upstream = OPERATORS[:3] if family == "relationship" else OPERATORS[:5]
-    operator = (
-        ("with_us_relationship_inputs",)
-        if family == "relationship"
-        else ("with_us_eligibility_inputs",)
-    )
-    frame = _direct(_frame(), upstream).frame
+    operator = _family_operator(family)
+    frame = _upstream(family)
     measured = frame.person.PERIDNUM.notna()
     if failure == "missing_raw":
         frame.person.drop(
@@ -734,10 +758,9 @@ def test_original_source_refusal_or_preclone_misuse_refuses(
 
 @pytest.mark.parametrize("family", ("relationship", "eligibility"))
 def test_present_raw_read_and_output_ownership_cannot_be_omitted(tmp_path, family):
-    upstream = OPERATORS[:3] if family == "relationship" else OPERATORS[:5]
-    node_id = RELATIONSHIP_NODE if family == "relationship" else ELIGIBILITY_NODE
+    node_id = _family_node(family)
     raw = "A_MARITL" if family == "relationship" else "PEPAR1"
-    frame = _direct(_frame(), upstream).frame
+    frame = _upstream(family)
     args, sources, store, kernels = _setup(tmp_path, frame, families=(family,))
     derive = next(node for node in args.graph.nodes if node.id == node_id)
     for changed in (
@@ -773,8 +796,7 @@ def test_present_raw_read_and_output_ownership_cannot_be_omitted(tmp_path, famil
 @pytest.mark.parametrize("family", ("relationship", "eligibility"))
 @pytest.mark.parametrize("field", ("identity", "counts", "weights"))
 def test_malformed_full_context_refuses(tmp_path, family, field):
-    upstream = OPERATORS[:3] if family == "relationship" else OPERATORS[:5]
-    frame = _direct(_frame(), upstream).frame
+    frame = _upstream(family)
     args, sources, store, kernels = _setup(tmp_path, frame, families=(family,))
     source = args.graph.nodes[0]
     document = json.loads(source.params["frame_context"])
@@ -797,8 +819,7 @@ def test_malformed_full_context_refuses(tmp_path, family, field):
 
 @pytest.mark.parametrize("family", ("relationship", "eligibility"))
 def test_multiple_explicit_weight_sources_refuse(tmp_path, family):
-    upstream = OPERATORS[:3] if family == "relationship" else OPERATORS[:5]
-    frame = _direct(_frame(), upstream).frame
+    frame = _upstream(family)
     frame = Frame(
         {entity: frame.table(entity) for entity in frame.entities},
         frame.schema,
@@ -829,8 +850,7 @@ def test_multiple_explicit_weight_sources_refuse(tmp_path, family):
 def test_incompatible_boolean_incumbent_refuses_before_execution(
     tmp_path, family, column, dtype
 ):
-    upstream = OPERATORS[:3] if family == "relationship" else OPERATORS[:5]
-    frame = _direct(_frame(), upstream).frame
+    frame = _upstream(family)
     frame.person[column] = pd.Series(
         False if dtype == "bool" else np.nan, index=frame.person.index, dtype=dtype
     )
@@ -841,16 +861,12 @@ def test_incompatible_boolean_incumbent_refuses_before_execution(
 def test_person_preparation_requires_the_accepted_hours_context_not_pending(tmp_path):
     args, _, _, _ = _setup(tmp_path, _frame())
     boundary = next(
-        node
-        for node in args.graph.nodes
-        if node.id == f"{RELATIONSHIP_NODE}.boundary"
+        node for node in args.graph.nodes if node.id == f"{RELATIONSHIP_NODE}.boundary"
     )
     assert boundary.artifact_inputs[0].producer == "early_preparation.prior_year"
     changed = replace(
         boundary,
-        artifact_inputs=(
-            replace(boundary.artifact_inputs[0], producer=HOURS_PHASE),
-        ),
+        artifact_inputs=(replace(boundary.artifact_inputs[0], producer=HOURS_PHASE),),
     )
     with pytest.raises(ValueError, match="type"):
         compile_graph(
@@ -897,13 +913,8 @@ def test_failed_hours_gate_leaves_person_preparation_unreached_on_every_resume(
     "misuse", ("not_weights", "short_weights", "row_mismatch", "membership_mismatch")
 )
 def test_observer_refuses_malformed_weights_or_counts(family, misuse):
-    upstream = OPERATORS[:3] if family == "relationship" else OPERATORS[:5]
-    frame = _direct(_frame(), upstream).frame
-    observe = (
-        pool.observe_multispine_relationship_person
-        if family == "relationship"
-        else pool.observe_multispine_eligibility_person
-    )
+    frame = _upstream(family)
+    observe = _family_observer(family)
     weights = frame.resolve_weights("person")
     rows = {entity: frame.n(entity) for entity in frame.entities}
     if misuse == "not_weights":
@@ -925,18 +936,9 @@ def test_observer_refuses_malformed_weights_or_counts(family, misuse):
 
 @pytest.mark.parametrize("family", ("relationship", "eligibility"))
 def test_registered_projection_rejects_helper_identity_change(monkeypatch, family):
-    upstream = OPERATORS[:3] if family == "relationship" else OPERATORS[:5]
-    frame = _direct(_frame(), upstream).frame
-    helper = (
-        "prepare_us_relationship_person"
-        if family == "relationship"
-        else "prepare_us_eligibility_person"
-    )
-    observe = (
-        pool.observe_multispine_relationship_person
-        if family == "relationship"
-        else pool.observe_multispine_eligibility_person
-    )
+    frame = _upstream(family)
+    helper = _family_helper(family)
+    observe = _family_observer(family)
     original = getattr(pool, helper)
 
     def invalid(person, weights, **kwargs):
@@ -1067,9 +1069,7 @@ def test_executed_options_bind_person_preparation(monkeypatch, option, kernel):
 def test_adapter_never_names_source_role_or_selection_columns():
     """Role stripping and CPS selection stay inside the registered pool owner."""
     text = Path(
-        import_module(
-            "microcosm.build.us_runtime.graph_person_preparation"
-        ).__file__
+        import_module("microcosm.build.us_runtime.graph_person_preparation").__file__
     ).read_text()
     for token in (
         "PERIDNUM",

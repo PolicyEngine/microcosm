@@ -48,6 +48,8 @@ from microcosm.build.us_runtime.disability_benefits import (
 )
 from microcosm.build.us_runtime.education_inputs import with_us_education_inputs
 from microcosm.build.us_runtime.eligibility_inputs import (
+    prepare_us_eligibility_person,
+    us_eligibility_inputs_person_carries_signal,
     with_us_eligibility_inputs,
 )
 from microcosm.build.us_runtime.energy_subsidy import (
@@ -92,6 +94,8 @@ from microcosm.build.us_runtime.qbi_inputs import (
     with_us_qbi_input_reconciliation,
 )
 from microcosm.build.us_runtime.relationship_inputs import (
+    prepare_us_relationship_person,
+    us_relationship_inputs_person_carries_signal,
     with_us_relationship_inputs,
 )
 from microcosm.build.us_runtime.retirement_contributions import (
@@ -2112,6 +2116,237 @@ def observe_multispine_prior_year_person(
     return merged, _source_chain_receipt(
         phase=_PRE_CLONE_PHASE,
         operator_names=("with_us_prior_year_income_inputs",),
+        evidence_rows=boundary["cps_person_rows"],
+        receipts=[receipt],
+        output_families=PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+    )
+
+
+def multispine_relationship_boundary_columns() -> tuple[str, ...]:
+    """Declare the registered pre-clone evidence for relationship preparation."""
+    return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
+
+
+def multispine_eligibility_boundary_columns() -> tuple[str, ...]:
+    """Declare the registered pre-clone evidence for eligibility preparation."""
+    return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
+
+
+def validate_multispine_relationship_person_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Reject support populations before the source-only relationship derivation."""
+    return _validate_multispine_person_preparation_boundary(person, metadata=metadata)
+
+
+def validate_multispine_eligibility_person_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Reject support populations before the source-only eligibility derivation."""
+    return _validate_multispine_person_preparation_boundary(person, metadata=metadata)
+
+
+def _validate_multispine_person_preparation_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Validate actual person evidence at the registered source boundary."""
+    _assert_source_person_boundary(
+        person, metadata=metadata, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    return {"phase": _PRE_CLONE_PHASE, "cps_person_rows": int(mask.sum())}
+
+
+def multispine_relationship_implementation_contract() -> dict[str, object]:
+    """Bind the live projections and options this source operator executes."""
+    return _multispine_person_preparation_contract(
+        "with_us_relationship_inputs", "relationship_inputs"
+    )
+
+
+def multispine_eligibility_implementation_contract() -> dict[str, object]:
+    """Bind the live projections and options this source operator executes."""
+    return _multispine_person_preparation_contract(
+        "with_us_eligibility_inputs", "eligibility_inputs"
+    )
+
+
+def _multispine_person_preparation_contract(
+    operator_name: str, family: str
+) -> dict[str, object]:
+    """Project the live output/transient rosters and the executed options.
+
+    These values move through imported registries without an edit here, so a
+    graph identity that omits them would not describe what actually ran.
+    """
+    return {
+        "outputs": {
+            entity: sorted(columns)
+            for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family].items()
+        },
+        "transient_outputs": _transient_source_outputs(
+            (operator_name,), PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES
+        ),
+        "seed": POOL_RANDOM_SEED,
+        "time_period": POOL_TIME_PERIOD,
+    }
+
+
+def observe_multispine_relationship_person(
+    person: pd.DataFrame,
+    *,
+    weights: Weights,
+    metadata: Mapping[str, object],
+    pool_rows: Mapping[str, int],
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Run the real pre-clone relationship derivation on its person projection.
+
+    Canonical person weights are selected in the original person order and the
+    authenticated full counts describe the unchanged pool. No incomplete Frame
+    is constructed. Support role fields are removed only from the validated
+    ephemeral source view. The public pass-through predicate decides whether
+    the always-recomputing helper runs, so the wrapper's order — signal check
+    before weight validation and before any raw-column requirement — holds.
+    """
+    return _observe_multispine_person_preparation(
+        person,
+        weights=weights,
+        metadata=metadata,
+        pool_rows=pool_rows,
+        operator_name="with_us_relationship_inputs",
+        family="relationship_inputs",
+        label="Relationship-input",
+        carries_signal=lambda table: us_relationship_inputs_person_carries_signal(
+            table
+        ),
+        prepare=lambda table, values: prepare_us_relationship_person(
+            table,
+            values,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+    )
+
+
+def observe_multispine_eligibility_person(
+    person: pd.DataFrame,
+    *,
+    weights: Weights,
+    metadata: Mapping[str, object],
+    pool_rows: Mapping[str, int],
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Run the real pre-clone eligibility derivation on its person projection.
+
+    The same registered boundary, canonical weight selection and full-pool ID
+    merge as the relationship observer. The legacy partial-null pass-through
+    rule — all five outputs present and observed disability varying — is the
+    public predicate's, not this helper's, so the graph cannot strengthen or
+    weaken it.
+    """
+    return _observe_multispine_person_preparation(
+        person,
+        weights=weights,
+        metadata=metadata,
+        pool_rows=pool_rows,
+        operator_name="with_us_eligibility_inputs",
+        family="eligibility_inputs",
+        label="Eligibility-input",
+        carries_signal=lambda table: us_eligibility_inputs_person_carries_signal(table),
+        prepare=lambda table, values: prepare_us_eligibility_person(
+            table,
+            values,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+    )
+
+
+def _observe_multispine_person_preparation(
+    person: pd.DataFrame,
+    *,
+    weights: Weights,
+    metadata: Mapping[str, object],
+    pool_rows: Mapping[str, int],
+    operator_name: str,
+    family: str,
+    label: str,
+    carries_signal: Callable[[pd.DataFrame], bool],
+    prepare: Callable[[pd.DataFrame, np.ndarray], pd.DataFrame],
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """The shared person-preparation source projection, run and full-pool merge."""
+    boundary = _validate_multispine_person_preparation_boundary(
+        person, metadata=metadata
+    )
+    if (
+        not isinstance(weights, Weights)
+        or set(pool_rows) != set(US_SCHEMA.entities)
+        or any(type(value) is not int or value < 0 for value in pool_rows.values())
+        or pool_rows["person"] != len(person)
+        or len(weights) != len(person)
+    ):
+        raise ValueError(f"{label} population counts or weights are misaligned.")
+    for group in US_SCHEMA.group_entities:
+        if pool_rows[group] != int(
+            person[US_SCHEMA.membership_column(group)].nunique()
+        ):
+            raise ValueError(f"{label} population counts differ from memberships.")
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    selected = without_support_role_metadata(person.loc[mask], entity="person")
+    outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family]
+    selected = selected.drop(
+        columns=_unavailable_output_columns(selected, outputs["person"])
+    )
+    selected_weights = weights.with_values(weights.values[mask], kind=weights.kind)
+    # The wrapper returns its frame untouched on a signal-carrying surface,
+    # reading neither weights nor raw source columns. Preserve that order.
+    produced = (
+        selected
+        if carries_signal(selected)
+        else prepare(selected, selected_weights.values)
+    )
+    _assert_source_table_identity(
+        selected,
+        produced,
+        entity_id="person_id",
+        operator_name=operator_name,
+    )
+    merged, count = _merge_source_person_or_group_outputs(
+        person.copy(),
+        produced,
+        outputs["person"],
+        entity="person",
+        entity_id="person_id",
+        operator_name=operator_name,
+    )
+    selected_rows = {
+        "person": len(selected),
+        **{
+            group: int(selected[US_SCHEMA.membership_column(group)].nunique())
+            for group in US_SCHEMA.group_entities
+        },
+    }
+    receipt = _source_operator_receipt(
+        order_index=0,
+        operator_name=operator_name,
+        family=family,
+        phase=_PRE_CLONE_PHASE,
+        contract=POOL_OPERATOR_CONTRACTS[operator_name],
+        before_rows=dict(pool_rows),
+        available_rows=selected_rows,
+        output_rows=selected_rows,
+        merged_rows={"person": count},
+        declared_outputs=outputs,
+        formula_owned_removed={},
+        kernel_receipt={},
+        overlap_ownership=None,
+    )
+    return merged, _source_chain_receipt(
+        phase=_PRE_CLONE_PHASE,
+        operator_names=(operator_name,),
         evidence_rows=boundary["cps_person_rows"],
         receipts=[receipt],
         output_families=PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
