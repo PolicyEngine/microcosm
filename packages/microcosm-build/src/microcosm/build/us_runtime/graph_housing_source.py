@@ -1181,10 +1181,9 @@ class USHousingSourceGateKernel(_HousingKernel):
                 observed = codec.cell_digest(
                     values.loc[~selected.to_numpy()], entity=entity, column=column
                 )
-                # The evidence carries the native cells as the merge saw them
-                # before it wrote, and as they stood after. Requiring both to
-                # equal what this gate independently recomputes attests
-                # preservation instead of trusting the merge kernel's own check.
+                # The merge reports both the before and after native digests.
+                # This gate checks their consistency with the final cells;
+                # it does not independently observe the pre-merge cells.
                 if observed != native or incumbent_cells[(entity, column)] != native:
                     raise ValueError(
                         f"US housing gate native {entity}.{column} cells changed."
