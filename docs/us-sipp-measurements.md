@@ -3,15 +3,18 @@
 `microcosm.build.sipp_measurements` provides pure measurement functions
 for explicitly supplied lexical 2023 SIPP rows. It is additive: none of the six
 existing SIPP consumers calls it yet. The module lives above `us_runtime` to avoid that package’s existing eager engine
-initialization. There is no source loader, fitting operation,
+initialization. This pure module has no source loader, fitting operation,
 PolicyEngine calculation, donor product, cache, or year-transfer implementation.
 
 `SippSource` carries a caller-supplied data digest, the fixed official master
 metadata digest, survey year 2023 and reference year 2022. This is identity metadata,
-not proof of source authentication. A future adapter must authenticate the bytes,
+not proof of source authentication. An adapter must authenticate the bytes,
 retain original source observations, bind this module's code identity and
 `MEASUREMENT_RULE_ID`, and pass the complete required source projection. A filename
 is never source authority. No mutable research report is a runtime dependency.
+The separate [December source producer](us-sipp-december-source.md) supplies this
+boundary for its closed sixteen-field December projection; it does not authenticate
+the annual measurement inputs or wire any existing consumer.
 
 ## Input and result contract
 
@@ -138,6 +141,21 @@ income, oldest-member covariates, source-to-recipient concept mappings, scientif
 fit quality/population decisions and all six consumer integrations remain separate.
 
 ## Primary definitions and verification
+
+`december_bank_assets` adds a separate `sipp_december_bank_assets_v1` rule without
+changing `MEASUREMENT_RULE_ID` or the eleven existing measurement semantics.
+It returns one result per supplied December person, including unknowns, after
+validating every supplied person/month key. `TVAL_BANK` includes CDs and retains
+reference-year-end 2022 nominal dollars. A known value requires an integral amount
+0–99,999,999, December `TAGE_EHC>=15`, applicable `AVAL_BANK` 1–9, and no
+contradiction. Amount missing code −999, missing/invalid age, age below 15,
+NIU/suppressed/invalid flags and lexical unknowns remain distinct reasons. An
+applicable numeric amount below age 15 adds a contradiction. A numeric zero remains
+a published source value; an under-age blank never becomes a structural zero.
+Flag 9 retains unresolved component-allocation quality even when its value is
+usable. This is measurement eligibility, not fit admission. Dictionary printed/PDF
+pages 191 and 797 define the bank amount and monthly-age domains respectively.
+`test_us_sipp_december_bank_assets.py` covers this additive rule with invented rows.
 
 The code-owned master identity is the [official 2023 API dictionary](https://api.census.gov/data/2023/sipp/variables.json),
 SHA-256 `b62876a0763a0b45f2c4873b055b35c264d3a67640b8a8b3590b650aa1db679e`.

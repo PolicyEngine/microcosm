@@ -720,6 +720,53 @@ def december_households(
     return tuple(result)
 
 
+def december_bank_assets(
+    rows: Sequence[SippRow], *, source: SippSource, target_year: int = 2022
+) -> tuple[Measurement, ...]:
+    """Retain each December person's published financial-institution recode.
+
+    Dictionary page 191 defines TVAL_BANK for December monthly age >=15,
+    including CDs. Applicable flag 9 remains a measurement with unresolved
+    component-allocation quality; no fit admission or year transfer is implied.
+    Supplied person/month keys are validated before non-December rows are skipped.
+    """
+    _check_source(source, target_year)
+    spec = _Field(
+        "AVAL_BANK",
+        0,
+        99999999,
+        -999,
+        "reference_year_end_financial_institution_assets_including_CDs",
+    )
+    prepared = _prepare(rows, ("TVAL_BANK", "AVAL_BANK", "TAGE_EHC"))
+    result = []
+    for key, month, row in prepared:
+        if month != 12:
+            continue
+        obs = _observe(key, month, row, "TVAL_BANK", spec, ("TAGE_EHC",))
+        age_class, age = _number(row.values, "TAGE_EHC", 0, 90, -999)
+        reasons = list(obs.reasons)
+        if age is None:
+            reasons.append("bank_age:" + age_class)
+        elif age < 15:
+            reasons.append("bank_age_below_universe")
+            if obs.value is not None and obs.flag is not None and 1 <= obs.flag <= 9:
+                reasons.append("bank_numeric_applicable_age_contradiction")
+        obs = replace(obs, reasons=tuple(dict.fromkeys(reasons)))
+        measure = _measurement(
+            "sipp_december_bank_assets",
+            "sipp_tval_bank",
+            source,
+            spec,
+            (obs,),
+            obs.value if obs.usable else None,
+            "published_bank_recode" if obs.usable else "unknown_bank_recode",
+            obs.reasons,
+        )
+        result.append(replace(measure, rule_id="sipp_december_bank_assets_v1"))
+    return tuple(result)
+
+
 def select_household_targets(
     households: Sequence[DecemberHousehold], persons: Iterable[PersonKey]
 ) -> tuple[DecemberHousehold, ...]:
