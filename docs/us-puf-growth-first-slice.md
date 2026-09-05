@@ -190,12 +190,17 @@ producer attached to this code", not an independently authenticated IRS
 definition. `RECID`, `S006`, `MARS` and `XTOT` are cited to `preprocess_puf` at
 the same commit; `P22250` to `aggregate_record_utils.SCREENED_FIELDS`.
 
-The roster is a **lower bound**: every money code the archived codebook
-describes, plus the four structural codes and two codes cited separately
-(`P22250` from the screened-field list, `E02500` from the SOI rename table). It
-is not every code this repository reads and not every code the delivered file
-contains. `UNDOCUMENTED_SOURCE_FIELDS` records three codes the archived commits
-name in executable code without ever describing — `DSI`, `EIC` and `E25920` —
+The roster is a **lower bound**: 79 codes — every money code the archived
+codebook describes, the four structural codes, `P22250` from the screened-field
+list, and five money codes the codebook omits that only the archived SOI
+rename/measure tables name (`E02500`, `E04800`, `E06500`, `E08800`, `E19700`).
+Each entry cites where its meaning was actually read, and where the archived
+source is itself ambiguous the entry says so: `E06500` is bound to both
+`total_income_tax` and `income_tax_before_credits` in the same table, which a
+successor must settle rather than inherit. The roster is not every code this
+repository reads and not every code the delivered file contains.
+`UNDOCUMENTED_SOURCE_FIELDS` records four codes the archived commit names in
+executable code without ever describing — `DSI`, `EIC`, `E25920` and `E87530` —
 and they are deliberately absent from the roster. That list is what this slice
 tripped over, not a complete inventory of undocumented codes.
 

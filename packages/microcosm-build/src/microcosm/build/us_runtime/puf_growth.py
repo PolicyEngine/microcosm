@@ -1456,6 +1456,10 @@ _DOCUMENTED_MONEY_MEANINGS: tuple[tuple[str, str], ...] = (
     ("T27800", "Farm income (Sch J)"),
 )
 
+_SOI_MEASURE_CITATION = (
+    f"retired US data package @{ARCHIVED_PRODUCER_COMMIT}:utils/soi.py puf_measures"
+)
+
 _SOI_RENAME_CITATION = (
     f"retired US data package @{ARCHIVED_PRODUCER_COMMIT}:"
     "datasets/puf/uprate_puf.py SOI_TO_PUF_STRAIGHT_RENAMES"
@@ -1467,12 +1471,14 @@ _SCREENED_FIELD_CITATION = (
 )
 
 #: The raw TY2015 PUF fields this lineage names, with the role each one plays.
-#: A **proposal**, not an authenticated raw-source manifest: it is every money
-#: code the archived codebook describes, plus the four structural codes and the
-#: one screened code cited separately. It is not every code this repository
-#: reads, and not every code the delivered file contains. It declares no factor
-#: for any field. Adding or removing a field is a reviewed change, not something
-#: a recipe may do implicitly.
+#: A **proposal**, not an authenticated raw-source manifest: every money code
+#: the archived codebook describes, plus the four structural codes, the one
+#: screened code, and five money codes the codebook omits that only the
+#: archived SOI rename/measure tables name -- each cited to where its meaning
+#: was actually read. It is not every code this repository reads, and not every
+#: code the delivered file contains. It declares no factor for any field.
+#: Adding or removing a field is a reviewed change, not something a recipe may
+#: do implicitly.
 PROPOSED_TY2015_FIELD_ROSTER: tuple[RosterEntry, ...] = (
     RosterEntry(
         SOURCE_RECID_FIELD,
@@ -1489,8 +1495,7 @@ PROPOSED_TY2015_FIELD_ROSTER: tuple[RosterEntry, ...] = (
     RosterEntry(
         "MARS",
         FieldRole.CODE,
-        "Filing status: 1 single, 2 joint, 3 separate, 4 head of household; "
-        "0 marks an aggregate record",
+        "Filing status: 1 single, 2 joint, 3 separate, 4 head of household",
         _STRUCTURAL_CITATION,
     ),
     RosterEntry(
@@ -1512,22 +1517,45 @@ PROPOSED_TY2015_FIELD_ROSTER: tuple[RosterEntry, ...] = (
         " taxable_social_security to this code; the codebook has no entry)",
         _SOI_RENAME_CITATION,
     ),
+    # Four money codes the codebook omits and only the archived SOI measure
+    # table names. E06500 is bound to two different SOI series there, which is
+    # itself an open question a successor must settle rather than inherit.
+    RosterEntry("E04800", FieldRole.MONEY, "Taxable income", _SOI_MEASURE_CITATION),
+    RosterEntry(
+        "E06500",
+        FieldRole.MONEY,
+        "Income tax; the archived measure table binds it to both"
+        " total_income_tax and income_tax_before_credits",
+        _SOI_MEASURE_CITATION,
+    ),
+    RosterEntry(
+        "E08800", FieldRole.MONEY, "Income tax after credits", _SOI_MEASURE_CITATION
+    ),
+    RosterEntry(
+        "E19700",
+        FieldRole.MONEY,
+        "Charitable contributions deduction",
+        _SOI_MEASURE_CITATION,
+    ),
     *(
         RosterEntry(field, FieldRole.MONEY, meaning, ROSTER_CITATION)
         for field, meaning in _DOCUMENTED_MONEY_MEANINGS
     ),
 )
 
-#: Three codes the archived producer names in executable code while neither
-#: archived commit says what they mean: ``DSI`` and ``EIC`` appear only in a
-#: predictor list, ``E25920`` only as a subtracted term. They are deliberately
-#: absent from the roster: a successor must resolve them against real source
-#: documentation rather than inherit a guess. This is **not** a complete
-#: inventory of undocumented codes -- it is the three this slice tripped over,
-#: and closing it is a documented remaining obligation. ``E22250`` is in the roster because the
-#: codebook documents it, but no archived code path reads it -- every path uses
-#: ``P22250`` -- so whether both codes exist in the delivered file is open.
-UNDOCUMENTED_SOURCE_FIELDS: tuple[str, ...] = ("DSI", "E25920", "EIC")
+#: Codes the archived producer names in executable code at
+#: :data:`ARCHIVED_PRODUCER_COMMIT` while nothing there says what they mean:
+#: ``DSI`` and ``EIC`` appear only in a predictor list, ``E25920`` only as a
+#: subtracted term, and ``E87530`` only inside two helpers whose names imply a
+#: Lifetime-Learning qualified-tuition meaning that no comment states. They are
+#: deliberately absent from the roster: a successor must resolve them against
+#: real source documentation rather than inherit a guess. This is **not** a
+#: complete inventory of undocumented codes -- it is what this slice tripped
+#: over, and closing it is a documented remaining obligation. ``E22250`` is in
+#: the roster because the codebook documents it, but no archived code path
+#: reads it -- every path uses ``P22250`` -- so whether both codes exist in the
+#: delivered file is open.
+UNDOCUMENTED_SOURCE_FIELDS: tuple[str, ...] = ("DSI", "E25920", "E87530", "EIC")
 
 #: The source tax year those roster fields are observed in.
 ROSTER_SOURCE_REFERENCE_YEAR = PUF_SOURCE_YEAR
