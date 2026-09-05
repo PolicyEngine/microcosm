@@ -153,6 +153,25 @@ on a reviewer's word.
 | low | The label-seam guard tests the incumbent's booleanness while the shared merge branches on the source's | **Confirmed.** Sound for this recipe's fixed five leaves, but wrong in general for a helper exported in `__all__` | The guard now accepts the produced table and decides from the same series the merge does; unit test covers a boolean incumbent with a non-boolean source |
 | low | The accepted-context edge is enforced only by producer name; `merge_boundary` republishes the same accepted type upstream | **Confirmed.** Only the merge's *pending* context is type-excluded | Documented for whoever wires eligibility: an `ArtifactInput` names producer and type, so the consumer must name the gate |
 
+### The panel's verdicts, including where they cut against me
+
+Each finding was checked by three adversarial verifiers instructed to refute it.
+Only the first two survived:
+
+| Finding | Survived | Action |
+| --- | --- | --- |
+| Cache tests self-satisfying | **3/3** | fixed in code |
+| Carried boolean assistance incumbent | **3/3, 3/3, 2/3** (three reviewers) | fixed in code |
+| Merge evidence post-merge digests only | 0/3 refuted | changed anyway, narrower rationale |
+| Rent-final-context binding unverified | 0/3 refuted | documented only |
+| Label-seam guard decision basis | 0/3 refuted | changed anyway, as robustness |
+| Accepted-context edge by producer name | 0/3 refuted | documented only |
+
+I agree the four refuted items are not live defects here. Two were still worth
+a small change, and the report states the value of each without inflation — in
+particular, carrying the pre-merge digest does **not** make the gate independent
+of the merge kernel, and nothing claims it does.
+
 `_merge_source_person_or_group_outputs` was **not** changed by any of these
 fixes, and no gate threshold or rent science moved.
 
