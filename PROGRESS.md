@@ -2,7 +2,8 @@
 
 ## State
 
-In progress on 2026-09-04 on `f1-portable-worker-identity`, starting at
+In progress on 2026-09-05 on `f1-portable-worker-identity`, started on
+2026-09-04 at
 `50c9232b7597bd1f47897a3132ed08894fc11d93`. Baseline timing precedes all
 behavior changes. Both unchanged baselines and fail-before regressions are recorded.
 Memoization and session priming pass the focused post-fix regressions;
@@ -67,13 +68,10 @@ full verification is next. Report and raw measurement logs are outside the repos
 
 ## Next
 
-- Run the full stacked-spine file and actual us-qs/us-am CI process groups
-  with per-file timings.
-- Finish independent review, Ruff/formatting, the spec-pin proof, and report.
-- Add process memoization and regressions; prime real identities per test
-  session with explicit live-test opt-out and consistent fixture bindings.
-- Run the requested full-file, CI-group, Ruff, formatting, and spec checks;
-  record all results and commit each coherent step.
+- Finish the full stacked-spine file and the actual us-qs/us-am CI process
+  groups with per-file timings; then run Ruff, formatting, and spec-pin checks.
+- Complete the external report with exact counts, wall times, scope boundaries,
+  and commit history. No push.
 
 # Historical: Astra gate round 1 journal
 
