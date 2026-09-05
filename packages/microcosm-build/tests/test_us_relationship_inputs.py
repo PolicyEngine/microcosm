@@ -35,6 +35,12 @@ from microcosm.build.us_runtime.asec_pool import _with_relationship_recode
 from microcosm.build.us_runtime.l0_refit_export import (
     US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS,
 )
+from microcosm.build.us_runtime.relationship_inputs import (
+    prepare_us_relationship_person,
+    us_relationship_inputs_gate_from_summary,
+    us_relationship_inputs_person_gate,
+    us_relationship_inputs_person_summary,
+)
 from microcosm.build.us_runtime.release_input_coverage import (
     RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS,
 )
@@ -287,6 +293,152 @@ class TestFrameAndGate:
         gate = us_relationship_inputs_signal_gate(_frame([{}]))
         assert not gate.passed
         assert _HEAD in gate.details["missing"]
+
+
+class TestPreparePersonHelper:
+    """``prepare_us_relationship_person`` as the wrapper's deterministic core."""
+
+    def test_matches_wrapper_output_exactly(self) -> None:
+        frame = _frame(
+            [
+                {"PH_SEQ": 1, "P_SEQ": 1, "A_MARITL": 4},
+                {"PH_SEQ": 1, "P_SEQ": 2, "A_MARITL": 6},
+                {"PH_SEQ": 2, "P_SEQ": 1, "A_MARITL": 7},
+            ],
+            weights=[2.0, 1.0],
+        )
+        wrapped = with_us_relationship_inputs(frame, seed=0, time_period=2024)
+
+        prepared = prepare_us_relationship_person(
+            frame.table("person"),
+            frame.resolve_weights("person").values,
+            seed=0,
+            time_period=2024,
+        )
+
+        pd.testing.assert_frame_equal(prepared, wrapped.table("person"))
+
+    def test_preserves_nondefault_person_index_and_row_order(self) -> None:
+        person = _person(
+            [
+                {"PH_SEQ": 1, "P_SEQ": 1, "A_MARITL": 4},
+                {"PH_SEQ": 1, "P_SEQ": 2, "A_MARITL": 6},
+                {"PH_SEQ": 2, "P_SEQ": 1, "A_MARITL": 7},
+            ]
+        )
+        # Shuffle rows and attach an arbitrary, non-contiguous index.
+        shuffled = person.iloc[[2, 0, 1]].copy()
+        shuffled.index = pd.Index([50, 10, 30])
+        weights = np.array([9.0, 2.0, 1.0])  # aligned to the shuffled row order
+
+        result = prepare_us_relationship_person(
+            shuffled, weights, seed=0, time_period=2024
+        )
+
+        assert result.index.tolist() == [50, 10, 30]
+        assert result["PH_SEQ"].tolist() == shuffled["PH_SEQ"].tolist()
+        assert result[_HEAD].tolist() == [True, True, False]
+        assert result[_SEPARATED].tolist() == [False, False, True]
+        assert result[_SURVIVING].tolist() == [False, True, False]
+
+    def test_rejects_weights_misaligned_in_length(self) -> None:
+        person = _person([{}, {}])
+        with pytest.raises(ValueError, match="aligned 1:1"):
+            prepare_us_relationship_person(
+                person, np.array([1.0]), seed=0, time_period=2024
+            )
+
+    @pytest.mark.parametrize("bad_weights", [[np.nan, 1.0], [np.inf, 1.0], [-1.0, 1.0]])
+    def test_rejects_nonfinite_or_negative_weights(
+        self, bad_weights: list[float]
+    ) -> None:
+        person = _person([{}, {}])
+        with pytest.raises(ValueError, match="finite|nonnegative"):
+            prepare_us_relationship_person(
+                person, np.array(bad_weights), seed=0, time_period=2024
+            )
+
+    def test_missing_raw_column_is_named(self) -> None:
+        person = _person([{}]).drop(columns=["A_MARITL"])
+        with pytest.raises(SourceRuntimeError, match="A_MARITL"):
+            prepare_us_relationship_person(
+                person, np.array([1.0]), seed=0, time_period=2024
+            )
+
+
+class TestPersonSummaryAndGate:
+    """Real-person-table summary/gate APIs, composed by the Frame wrappers."""
+
+    def _plausible_frame(self) -> Frame:
+        rows: list[dict[str, object]] = []
+        for household in range(1, 51):
+            rows.extend(
+                [
+                    {
+                        "PH_SEQ": household,
+                        "P_SEQ": 1,
+                        "A_MARITL": 4 if household <= 5 else 7,
+                    },
+                    {
+                        "PH_SEQ": household,
+                        "P_SEQ": 2,
+                        "A_MARITL": 6 if household <= 2 else 7,
+                    },
+                ]
+            )
+        return with_us_relationship_inputs(_frame(rows), seed=0, time_period=2024)
+
+    def test_person_summary_matches_frame_summary(self) -> None:
+        frame = self._plausible_frame()
+
+        person_summary = us_relationship_inputs_person_summary(
+            frame.table("person"), frame.resolve_weights("person").values
+        )
+
+        assert person_summary == us_relationship_inputs_summary(frame)
+
+    def test_person_gate_matches_frame_gate_when_passing(self) -> None:
+        frame = self._plausible_frame()
+
+        person_gate = us_relationship_inputs_person_gate(
+            frame.table("person"), frame.resolve_weights("person").values
+        )
+        frame_gate = us_relationship_inputs_signal_gate(frame)
+
+        assert person_gate.passed
+        assert person_gate == frame_gate
+
+    def test_person_gate_matches_frame_gate_when_failing(self) -> None:
+        frame = self._plausible_frame()
+        frame.table("person").loc[1, _HEAD] = True
+
+        person_gate = us_relationship_inputs_person_gate(
+            frame.table("person"), frame.resolve_weights("person").values
+        )
+        frame_gate = us_relationship_inputs_signal_gate(frame)
+
+        assert not person_gate.passed
+        assert person_gate == frame_gate
+
+    def test_person_gate_rejects_missing_columns_without_touching_weights(
+        self,
+    ) -> None:
+        # The raw fixture never carries the three output columns.
+        person = _person([{}])
+
+        gate = us_relationship_inputs_person_gate(person, np.array([1.0]))
+
+        assert not gate.passed
+        assert _HEAD in gate.details["missing"]
+
+    def test_gate_from_summary_reproduces_the_signal_gate_bands(self) -> None:
+        frame = self._plausible_frame()
+        summary = us_relationship_inputs_summary(frame)
+
+        gate_from_summary = us_relationship_inputs_gate_from_summary(summary)
+        frame_gate = us_relationship_inputs_signal_gate(frame)
+
+        assert gate_from_summary == frame_gate
 
 
 class TestCoverageAndExclusion:
