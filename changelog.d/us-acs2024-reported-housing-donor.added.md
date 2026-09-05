@@ -1,0 +1,1 @@
+Add a separately authenticated ACS2024 housing donor projection with Census allocation flags, explicit reported contract rent and annual property tax, source-aligned household design weights, and independent joint sampling. Keep the legacy ACS2022 rent graph unchanged; do not map reported contract rent to pre-subsidy rent.
