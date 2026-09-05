@@ -712,6 +712,33 @@ def test_public_table_refuses_mutable_document_bytes_and_mismatched_state():
         replace(original, provenance={"note": "unbound to retained document"})
 
 
+@pytest.mark.parametrize(
+    "years",
+    [
+        (2021.0, 2024.0),
+        (2021, 2024.0),
+        (False, True),
+        (True, 2024),
+        (2021, True),
+        ("2021", "2024"),
+        (1899, 2024),
+        (2021, 2201),
+    ],
+)
+def test_public_table_year_domain_matches_the_graph_document_parser(years):
+    original = factors()
+    document = original.as_document()
+    document["years"] = list(years)
+    raw = canonical(document)
+    # These labels remain invalid even when their canonical document matches
+    # the supplied state. Float/int tuple equality must not admit a contract
+    # that applies directly but cannot be parsed at the real graph boundary.
+    with pytest.raises(PufGrowthRefusalError, match="TABLE_YEARS"):
+        GrowthFactorTable.from_bytes(raw)
+    with pytest.raises(PufGrowthRefusalError, match="TABLE_YEARS"):
+        replace(original, document=raw, years=years)
+
+
 def test_explicit_same_year_factor_one_remains_a_receipted_noop():
     rules = tuple(
         replace(rule, target_year=rule.source_reference_year) for rule in recipe().rules
