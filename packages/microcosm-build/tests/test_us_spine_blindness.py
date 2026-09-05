@@ -222,6 +222,8 @@ _GATE_SOURCE_SCOPE_HELPER_CALLERS = {
 _OTHER_US_RUNTIME_MODULES = frozenset(
     {
         "__init__.py",
+        # Closed summary-policy validator; no source reads or population treatment.
+        "_person_signal_summary.py",
         # Exact source-universe validator/receipt owner; no population treatment.
         "acs_income_universe.py",
         "acs_inputs.py",
@@ -3418,9 +3420,9 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        # The measured-coverage source join is the seventieth dependency.
-        assert len(runtime_graph) == 70, (
-            f"{tool.name} must reach the pinned 70-module runtime graph; "
+        # The shared person-signal summary validator is the seventy-first dependency.
+        assert len(runtime_graph) == 71, (
+            f"{tool.name} must reach the pinned 71-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (
