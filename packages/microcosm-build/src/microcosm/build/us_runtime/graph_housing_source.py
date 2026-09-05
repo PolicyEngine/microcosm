@@ -1198,9 +1198,21 @@ def us_housing_source_nodes(
                     f"{entity}.{column}; refusing an absent or incompatible "
                     "representation."
                 )
-        elif incumbent is not None and incumbent.dtype not in {"bool", "boolean"}:
+        elif incumbent is not None:
+            # The two assistance leaves are physical ``bool`` on the projection
+            # and nullable ``boolean`` on the full pool, which is exactly what
+            # the unchanged registered merge produces. A rewrite must declare
+            # its incumbent's dtype, so a carried incumbent cannot satisfy both
+            # ends of that split: a ``bool`` incumbent fails the merge node and
+            # a ``boolean`` incumbent fails the measured node. Refuse it here
+            # with the reason rather than emitting a graph that only fails
+            # later inside ``compile_graph``.
             raise ValueError(
-                f"US housing source {entity}.{column} incumbent must be boolean."
+                f"US housing source cannot rewrite a carried {entity}.{column} "
+                "incumbent: this recipe writes physical 'bool' on the source "
+                "projection and nullable 'boolean' on the full pool, and a "
+                "rewrite must declare the incumbent's own dtype. Only a pool "
+                "that does not already carry the assistance leaves is in scope."
             )
         measured_outputs.append(
             Owned(entity, column, source_dtype, rewrite=incumbent is not None)

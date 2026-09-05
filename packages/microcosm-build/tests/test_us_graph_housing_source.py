@@ -861,6 +861,40 @@ def test_numeric_tenure_incumbent_is_refused(tmp_path):
         _nodes(numeric, descriptor)
 
 
+@pytest.mark.parametrize("physical", ["bool", "boolean"])
+def test_a_carried_assistance_incumbent_is_refused_at_declaration(
+    tmp_path, physical
+):
+    """Neither physical representation could ever compile, so refuse it early.
+
+    The assistance leaves are ``bool`` on the projection and ``boolean`` on the
+    full pool. A rewrite must declare its incumbent's dtype, so a ``bool``
+    incumbent would fail the merge node and a ``boolean`` incumbent would fail
+    the measured node -- both inside ``compile_graph``, far from the caller's
+    mistake.
+    """
+    frame = _relationship_base(_pool_frame())
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    spm = tables["spm_unit"]
+    spm["receives_housing_assistance"] = pd.Series(
+        [False] * len(spm), index=spm.index, dtype=physical
+    )
+    carried = Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    donor_path = _donor(tmp_path)
+    descriptor = rent_source.prepare_acs_rent_source_descriptor(
+        donor_path, expected_sha256=_sha(donor_path)
+    )
+    with pytest.raises(ValueError, match="cannot rewrite a carried"):
+        _nodes(carried, descriptor)
+
+
 def test_repeated_person_labels_with_numeric_incumbent_are_refused(tmp_path):
     """The inherited shared-merge label seam is refused, not worked around."""
     frame = _relationship_base(_pool_frame())
