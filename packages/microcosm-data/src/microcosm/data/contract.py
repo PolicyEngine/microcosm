@@ -305,6 +305,12 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "targets_checked",
             "max_abs_relative_error",
             "failing_targets",
+            "reviewed_exclusions",
+            "stale_exclusions",
+            "dormant_exclusions",
+            "expired_exclusions",
+            "premature_exclusions",
+            "exclusions_evaluated_on",
         }
     ),
     "aggregate_vs_admin": frozenset({"anchors_checked"}),
@@ -376,13 +382,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "5a596f72e5412d97d7938864ce44426634f22622655b2a3efcc76aaa4274d485"
+    "99b8e15935780788add5d6a595224ec63443a3eef6c3e9a266ef9548d74dad78"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "9debdfbc78c4f48734c9851ff14fa88f84788d184ae05bb54558c43e82cc6345"
+    "71c9d69fdfa42937f755035903fcfe86ff2fa2915d424aa1f93340db017f3960"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "c405d55f92528775565f8f6c9807bc187de42662e71b59132bf0ec3f5d2caae2"
+    "3a676170b1e9c89c138b92239b90553559ec95eda9e7b6ff6abbbc4decaf96ed"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -658,10 +664,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "7bc1fab5aa0c035b664684f93195c7f18cb6f48a5ff0e29fbd557bda979ba83b"
+            "cb0d7ce17c0cd3cf70bd432d4ba85efce3fa837ebf3caba5f5cf0b5545c5dc61"
         ),
         "policy_sha256": (
-            "59a5e70053626439a848fd77c58064bf64c62914829667e62ef66a7408dd40f3"
+            "290b1ad240bf4f6412dcaa87c77283dad79d88c817b10b2f402736378fd3d63d"
         ),
     },
     "release_cut": {
