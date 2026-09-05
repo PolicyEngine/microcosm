@@ -28,6 +28,40 @@ from microcosm.build.us_runtime.operator_boundary import (
 )
 from microcosm.graph.population import dtype_for_token, token_for_dtype
 
+#: Raw ASEC routing codes the corrected leaves read. The real raw-stage frame
+#: carries them; the minimal money fixture predates the leaves work, so this
+#: source fixture adds them to both checkpoints before the loaders re-pin.
+ROUTING_CODES = {
+    "RESNSS1": [1, 0, 2, 0, 0, 4],
+    "RESNSS2": [0, 0, 0, 3, 0, 0],
+    "DST_SC1": [4, 0, 1, 4, 0, 0],
+    "DST_SC2": [0, 4, 0, 0, 0, 0],
+    "DST_SC1_YNG": [0, 0, 0, 0, 0, 0],
+    "DST_SC2_YNG": [0, 0, 0, 0, 4, 0],
+    "OI_OFF": [20, 12, 0, 20, 12, 0],
+}
+#: Nominal source dollars for the routed fields, so the restated 2022/2023 rows
+#: differ from the 2024 rows by the recorded CPI factors alone.
+ROUTED_AMOUNTS = {
+    "SS_VAL": [1200.0, 0.0, 2400.0, 600.0, 300.0, 900.0],
+    "DIV_VAL": [1000.0, 0.0, 0.0, 0.0, 500.0, 0.0],
+    "CAP_VAL": [800.0, 0.0, 0.0, 0.0, 200.0, 0.0],
+    "INT_VAL": [400.0, 0.0, 100.0, 0.0, 250.0, 0.0],
+    "PNSN_VAL": [0.0, 0.0, 3000.0, 0.0, 1500.0, 0.0],
+    "DST_VAL1": [700.0, 0.0, 250.0, 350.0, 0.0, 0.0],
+    "DST_VAL2": [0.0, 150.0, 0.0, 0.0, 0.0, 0.0],
+    "DST_VAL1_YNG": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "DST_VAL2_YNG": [0.0, 0.0, 0.0, 0.0, 450.0, 0.0],
+    "OI_VAL": [275.0, 125.0, 0.0, 175.0, 225.0, 0.0],
+    "RNT_VAL": [-500.0, 0.0, 0.0, 0.0, 650.0, 0.0],
+    "FRSE_VAL": [0.0, 0.0, -750.0, 0.0, 0.0, 0.0],
+    "UC_VAL": [0.0, 0.0, 1100.0, 0.0, 0.0, 0.0],
+    "PHIP_VAL": [900.0, 0.0, 0.0, 0.0, 950.0, 0.0],
+    "PMED_VAL": [120.0, 0.0, 0.0, 0.0, 140.0, 0.0],
+    "POTC_VAL": [60.0, 0.0, 0.0, 0.0, 70.0, 0.0],
+    "SPM_CHILDCAREXPNS": [0.0, 0.0, 1300.0, 1300.0, 0.0, 0.0],
+}
+
 COHORT_HOUSING = {
     2022: {"HPUBLIC": 1, "HLORENT": 0, "I_HPUBLI": 0, "I_HLOREN": 0},
     2023: {"HPUBLIC": 2, "HLORENT": 1, "I_HPUBLI": 0, "I_HLOREN": 1},
@@ -66,6 +100,10 @@ def invented_prepared_directory(tmp_path, monkeypatch):
     for path in (parent, attachment):
         loaded = load_frame_checkpoint(path)
         loaded.frame.person["PTOTVAL"] = [np.nan] * 4 + [-9999.0, 0.0]
+        for column, values in ROUTING_CODES.items():
+            loaded.frame.person[column] = np.asarray(values, dtype=np.int64)
+        for column, values in ROUTED_AMOUNTS.items():
+            loaded.frame.person[column] = np.asarray(values, dtype=np.float64)
         if path == attachment:
             digest = money._sha(parent.read_bytes())
             loaded.metadata["parent_checkpoint_sha256"] = digest
@@ -206,8 +244,7 @@ def test_money_body_leaves_as_bytes_that_reparse_against_the_receipt(
     result = prepared.prepare_asec_current_money_population(directory)
     body = parse_current_money_body(
         result.money_payload,
-        expected_header=bytes.fromhex("")
-        or _header_from(result),  # explicit: the receipt names the header digest
+        expected_header_sha256=result.receipt["money_header_sha256"],
         expected_content_sha256=result.receipt["money_content_sha256"],
         field_entities=result.field_entities,
     )
@@ -216,17 +253,6 @@ def test_money_body_leaves_as_bytes_that_reparse_against_the_receipt(
     assert body.entity_of("HTOTVAL") == "household"
     # Restoration supplied the observed person income for every cohort.
     assert body.field("PTOTVAL").validity.tolist() == [1] * 6
-
-
-def _header_from(result):
-    payload = result.money_payload
-    import struct
-
-    from microcosm.build.us_runtime._asec_current_money_codec import MAGIC
-
-    size = struct.unpack_from("<I", payload, len(MAGIC))[0]
-    start = len(MAGIC) + 4
-    return payload[start : start + size]
 
 
 @pytest.mark.parametrize(

@@ -424,6 +424,19 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
     return PreparedAsecPopulation(frame, money_payload, receipt, field_entities)
 
 
+def load_graph_asec_prepared(path, *, store=None) -> Frame:
+    """Registered source codec: the prepared operator-free population only.
+
+    The executor verifies that this loader is installed and content-keys the
+    directory; it never calls it. The declared computation that invokes the
+    preparation is the CREATE kernel, which needs the money body and receipt
+    this signature cannot return, so the two paths share one implementation
+    rather than preparing the population twice.
+    """
+    del store
+    return prepare_asec_current_money_population(path).frame
+
+
 __all__ = [
     "COHORT_FILENAMES",
     "HOUSEHOLD_ATTACHMENT_FILENAME",
@@ -437,6 +450,7 @@ __all__ = [
     "PreparedAsecPopulation",
     "PreparedSourceRefusalError",
     "RESTORATION_RECEIPT_FILENAME",
+    "load_graph_asec_prepared",
     "prepare_asec_current_money_population",
     "prepared_source_implementation_identity",
 ]

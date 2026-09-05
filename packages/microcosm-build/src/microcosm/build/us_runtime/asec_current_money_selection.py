@@ -236,22 +236,25 @@ class SelectedCurrentMoney:
 def parse_current_money_body(
     payload: bytes,
     *,
-    expected_header: bytes,
+    expected_header_sha256: str,
     expected_content_sha256: str,
     field_entities: tuple[tuple[str, str], ...],
 ) -> BoundCurrentMoneyBody:
     """Parse canonical money bytes without reconstructing replayable readiness.
 
-    The caller supplies the producer's header and content digest; both must
-    match exactly. This deliberately cannot mint a ``ReadyCurrentMoney``: the
-    authenticated replay contract stays with ``decode_current_money``.
+    The caller supplies the producer's header and content digests; both must
+    match exactly. Digests, not header bytes, are what a producer receipt
+    carries across a graph edge, so binding on them keeps the consumer honest
+    without re-transporting the header. This deliberately cannot mint a
+    ``ReadyCurrentMoney``: the authenticated replay contract stays with
+    ``decode_current_money``.
     """
     _require(
         type(payload) is bytes
         and len(BODY_MAGIC) + 4 + 32 < len(payload) <= BODY_PAYLOAD_MAX_BYTES,
         "PAYLOAD_SIZE",
     )
-    _require(type(expected_header) is bytes, "EXPECTED_HEADER_REQUIRED")
+    _require(_digest(expected_header_sha256), "EXPECTED_HEADER_DIGEST")
     _require(_digest(expected_content_sha256), "EXPECTED_CONTENT_DIGEST")
     entities = _entities(field_entities)
     _require(payload.startswith(BODY_MAGIC), "PAYLOAD_VERSION")
@@ -262,7 +265,7 @@ def parse_current_money_body(
         "HEADER_SIZE",
     )
     header = payload[start : start + size]
-    _require(header == expected_header, "BODY_HEADER_BINDING")
+    _require(_sha(header) == expected_header_sha256, "BODY_HEADER_BINDING")
     data = _parse(header, HEADER_MAX_BYTES)
     _require(
         data.get("recipe") == RECIPE

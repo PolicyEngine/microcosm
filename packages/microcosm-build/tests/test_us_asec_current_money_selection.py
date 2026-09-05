@@ -92,7 +92,9 @@ def invented_money(person_amounts=None, household_amounts=None):
 def body_of(ready, **overrides):
     return parse_current_money_body(
         encode_current_money(ready),
-        expected_header=overrides.get("expected_header", ready.header),
+        expected_header_sha256=overrides.get(
+            "expected_header_sha256", money._sha(ready.header)
+        ),
         expected_content_sha256=overrides.get(
             "expected_content_sha256", current_money_content_sha256(ready)
         ),
@@ -141,14 +143,14 @@ def test_body_parse_refuses_altered_header_content_and_bytes():
     with pytest.raises(MoneyRefusalError, match="BODY_HEADER_BINDING"):
         parse_current_money_body(
             payload,
-            expected_header=ready.header + b" ",
+            expected_header_sha256=PIN,
             expected_content_sha256=content,
             field_entities=entities,
         )
     with pytest.raises(MoneyRefusalError, match="BODY_CONTENT_BINDING"):
         parse_current_money_body(
             payload,
-            expected_header=ready.header,
+            expected_header_sha256=money._sha(ready.header),
             expected_content_sha256=PIN,
             field_entities=entities,
         )
@@ -157,21 +159,21 @@ def test_body_parse_refuses_altered_header_content_and_bytes():
     with pytest.raises(MoneyRefusalError, match="PAYLOAD_CHECKSUM"):
         parse_current_money_body(
             bytes(tampered),
-            expected_header=ready.header,
+            expected_header_sha256=money._sha(ready.header),
             expected_content_sha256=content,
             field_entities=entities,
         )
     with pytest.raises(MoneyRefusalError, match="FIELD_ENTITY_ROSTER"):
         parse_current_money_body(
             payload,
-            expected_header=ready.header,
+            expected_header_sha256=money._sha(ready.header),
             expected_content_sha256=content,
             field_entities=tuple((name, "tax_unit") for name, _ in entities),
         )
     with pytest.raises(MoneyRefusalError, match="FIELD_ENTITY_ROSTER"):
         parse_current_money_body(
             payload,
-            expected_header=ready.header,
+            expected_header_sha256=money._sha(ready.header),
             expected_content_sha256=content,
             field_entities=entities[1:],
         )
@@ -179,7 +181,7 @@ def test_body_parse_refuses_altered_header_content_and_bytes():
     with pytest.raises(MoneyRefusalError, match="PAYLOAD_LENGTH"):
         parse_current_money_body(
             payload,
-            expected_header=ready.header,
+            expected_header_sha256=money._sha(ready.header),
             expected_content_sha256=content,
             field_entities=tuple((name, "household") for name, _ in entities),
         )
