@@ -36,3 +36,31 @@ dependency was upgraded.
 No source-year money adjustment, no changed rent science or gate thresholds,
 no new mandatory post-fit housing signal gate, no shared-merge semantics
 change, no real microdata read, no push/deploy.
+
+## Design settled (2026-09-05)
+
+Node topology, all `params={"phase": "prepare_multispine_source_inputs_for_clone"}`:
+
+| Node | Kind | Population / base |
+| --- | --- | --- |
+| `early_preparation.housing.source` | FILTER, `mass="free"` | base = caller's full pool version |
+| `early_preparation.housing.measured` | ordinary | population = `.source` |
+| `early_preparation.rent.*` (existing) | unchanged | base = `.source`, context = `.measured` |
+| `early_preparation.housing.source_outputs` | ordinary, no cells | population = `early_preparation.rent.boundary` |
+| `early_preparation.housing.merge_boundary` | FILTER, `mass="conserve"` | base = caller's full pool version |
+| `early_preparation.housing.merge` | ordinary, owns 5 leaves | population = `.merge_boundary` |
+| `early_preparation.housing.gate` | GATE | population = `.merge_boundary` |
+
+Representation decisions (from the root decisions doc):
+
+- Source version carries physical `bool` for the two SPM assistance leaves and
+  the canonical graph `string` for both tenure leaves; the full-pool merge
+  normalizes the booleans to nullable `boolean`, exactly as the direct helper
+  already does.
+- Full-pool `household.tenure_type` and `spm_unit.spm_unit_tenure_type`
+  incumbents are **required** to exist with a `string` representation. Absent
+  or incompatible enum representation is refused, not silently widened.
+- `fresh_source` is the only mode: selected CPS `pre_subsidy_rent` must be
+  absent or entirely null, refused at the boundary before any recipient work.
+- The projected operator context has empty metadata and empty mass_log; parent
+  authority travels in the separate projection artifact.
