@@ -95,6 +95,11 @@ Memoization and session priming pass the focused regressions and the complete
   per-file records. All four initial CI processes completed successfully.
   The spec-bundle priming-order regression is now running before its fix.
 
+- Added a real spec-bundle fixture-ordering regression: 1 failed, 25
+  deselected; direct exit 1; 129.447 seconds wall time (pytest
+  118.65s). Generation ran before session priming and its identity was
+  replaced. No spec-fixture behavior change preceded the failing run.
+
 ## Next
 
 - Finish the initial us-qs/us-am CI process groups with per-file timings.

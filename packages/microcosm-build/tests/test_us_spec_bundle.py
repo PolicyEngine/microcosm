@@ -1108,3 +1108,19 @@ def test_root_us_drafting_location_is_a_symlink_free_pointer() -> None:
     assert "packages/microcosm-build/src/microcosm/build/us/spec" in (
         readme.read_text(encoding="utf-8")
     )
+
+
+@pytest.mark.requires_us
+def test_generated_bundle_reuses_primed_worker_identity(
+    generated_documents: dict[str, dict[str, object]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """Generation and session priming must share one real worker attestation."""
+    from microcosm.build.us_runtime import worker_identity
+
+    assert "imputation.yaml" in generated_documents
+    generated_identity = worker_identity.primary_qrf_worker_semantic_identity()
+    request.getfixturevalue("_session_primary_qrf_worker_identities")
+    assert (
+        worker_identity.primary_qrf_worker_semantic_identity() is generated_identity
+    )
