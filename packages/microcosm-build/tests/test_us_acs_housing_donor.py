@@ -375,7 +375,7 @@ def test_missing_observed_target_fails_and_prepared_flags_are_revalidated():
     h, p = _tables()
     donor = project_synthetic_acs_2024_housing_donor(h, p)
     donor.table.loc["r1", "FRNTP"] = 2
-    with pytest.raises(ValueError, match="FRNTP"):
+    with pytest.raises(ValueError, match="content identity"):
         prepare_acs_2024_reported_rent(donor)
 
 
@@ -388,13 +388,14 @@ def test_tiny_actual_qrf_consumes_reported_contract_rent_interface(monkeypatch):
     monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
     donor = project_synthetic_acs_2024_housing_donor(*_tables())
     prepared = prepare_acs_2024_reported_rent(donor)
+    training = prepared.verified_training()
     fitted = QRF(n_estimators=2, seed=17).fit(
-        prepared.training,
+        training,
         predictors=list(prepared.predictors),
         targets=[TARGET],
         weights="household_weight",
     )
-    result = fitted.predict(prepared.training.loc[:, prepared.predictors])
+    result = fitted.predict(training.loc[:, prepared.predictors])
     assert result.index.equals(prepared.training.index)
     assert result.columns.tolist() == [TARGET]
     assert np.isfinite(result[TARGET]).all()

@@ -6,7 +6,8 @@
   "rent_concept_authority": {
     "url": "https://www2.census.gov/programs-surveys/acs/tech_docs/subject_definitions/2024_ACSSubjectDefinitions.pdf",
     "page": 16,
-    "rule": "Respondents exclude housing-authority/agency subsidies from contract rent; this donor does not observe pre-subsidy rent"
+    "sha256": "6e0c5b1a5d3ebf7e300e583ac6424cbd5f09de50d69e7ef03aa6d070d9c4a7a8",
+    "rule": "The publisher describes the respondent instruction to exclude housing-authority/agency subsidies from contract rent. This is not a separately authenticated 2024 respondent-help pamphlet or proof every respondent followed the instruction; this donor does not observe pre-subsidy rent"
   },
   "dictionary": {
     "url": "https://www2.census.gov/programs-surveys/acs/tech_docs/pums/data_dict/PUMS_Data_Dictionary_2024.pdf",
@@ -28,5 +29,5 @@
     "property_tax_observed": "Finite TAXAMT in occupied TEN=1/2 housing unit and FTAXP=0"
   },
   "selection": "All occupied housing units; vacant and group-quarters rows excluded explicitly; no recipient-based subset",
-  "sampling": "Existing archived joint rent/property-tax target-specific allocation-mask union and deterministic 10000-row cap; original sampler salts retained"
+  "sampling": "Existing archived joint rent/property-tax target-specific allocation-mask union and deterministic 10000-row joint cap; original sampler salts retained. When both disjoint target supports reach 5000, the joint sample includes 5000 rent rows and 5000 tax-only rows; rent preparation then drops tax-only rows. Category levels come from these final rent-fit rows, and later recipient encoding must refuse unknown levels"
 }
