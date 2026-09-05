@@ -9,6 +9,7 @@ import json
 import re
 import sys
 from collections import Counter
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -201,6 +202,11 @@ LEGACY_COMPATIBILITY_SHA256 = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _prime_worker_identity(prime_primary_qrf_worker_identity: None) -> None:
+    """Share the real session attestation unless a test opts into live identity."""
+
+
 @pytest.fixture(scope="module")
 def resolved_us_spec() -> ResolvedSpec:
     return load_bundle("us")
@@ -211,8 +217,17 @@ def resolved_country_spec() -> ResolvedCountrySpec:
     return load_country_spec("us")
 
 
-@pytest.fixture(scope="module")
-def generated_documents() -> dict[str, dict[str, object]]:
+@pytest.fixture
+def generated_documents(
+    prime_primary_qrf_worker_identity: None,
+) -> dict[str, dict[str, object]]:
+    # The function fixture primes before the first cached generation, including
+    # when earlier tests already initialized and then cleared the session memo.
+    return _cached_generated_documents()
+
+
+@cache
+def _cached_generated_documents() -> dict[str, dict[str, object]]:
     # The extractor is intentionally exercised once per module: this proves
     # the checked-in package remains a projection of the live constants while
     # keeping the comparatively expensive PolicyEngine ABI read bounded.
@@ -1121,6 +1136,4 @@ def test_generated_bundle_reuses_primed_worker_identity(
     assert "imputation.yaml" in generated_documents
     generated_identity = worker_identity.primary_qrf_worker_semantic_identity()
     request.getfixturevalue("_session_primary_qrf_worker_identities")
-    assert (
-        worker_identity.primary_qrf_worker_semantic_identity() is generated_identity
-    )
+    assert worker_identity.primary_qrf_worker_semantic_identity() is generated_identity

@@ -7,7 +7,8 @@ In progress on 2026-09-05 on `f1-portable-worker-identity`, started on
 `50c9232b7597bd1f47897a3132ed08894fc11d93`. Baseline timing precedes all
 behavior changes. Both unchanged baselines and fail-before regressions are recorded.
 Memoization and session priming pass the focused regressions and the complete
-335-test stacked-spine file. The actual CI process groups are running. Report and raw measurement logs are outside the repository:
+335-test stacked-spine file. All four initial CI process groups passed; the affected us-qs build process
+is being rerun after the additional spec-bundle priming fix. Report and raw measurement logs are outside the repository:
 `/private/tmp/microcosm-pr871-ci-crawl/out.md`.
 
 ## Done
@@ -100,11 +101,15 @@ Memoization and session priming pass the focused regressions and the complete
   118.65s). Generation ran before session priming and its identity was
   replaced. No spec-fixture behavior change preceded the failing run.
 
+- Fixed spec-bundle priming by ordering the function fixture before cached
+  generation and adding the module autouse adapter. Real ordering regression
+  now passes: 1 passed, 25 deselected; exit 0; 99.303 seconds wall time
+  (pytest 87.24s). The affected us-qs:build process will now run on final code.
+
 ## Next
 
-- Finish the initial us-qs/us-am CI process groups with per-file timings.
-- Reproduce/fix spec-bundle fixture ordering, rerun the affected CI process,
-  then run Ruff, formatting, and spec-pin checks.
+- Finish the final us-qs:build rerun with per-file timings.
+- Run Ruff, formatting, and spec-pin checks.
 - Complete the external report with exact counts, wall times, scope boundaries,
   and commit history. No push.
 
