@@ -455,23 +455,18 @@ def test_formula_owned_filer_input_is_rejected(actual):
         builder._assert_no_formula_owned_columns(injected)
 
 
-def _compiled_table_4_3_targets():
-    """Use the real Ledger compiler on explicit invented Table 4.3 facts."""
-    from microcosm.build.us_runtime import compile_us_fiscal_target_registry
-
+def _table_4_3_ledger_facts(*, include_unsupported=True, include_return_count=False):
+    """Invented Ledger facts with real source-layout declarations."""
     path = Path(__file__).with_name("test_us_fiscal_targets.py")
     spec = importlib.util.spec_from_file_location("soi_fact_fixture", path)
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
-    supported_name = "irs_soi.ty2023.table_1_2.all_returns.all.wages_salaries_amount"
-    unsupported_name = (
-        "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all."
-        "taxable_interest_amount"
-    )
     facts = [
         *fixtures.packaged_reference_facts(),
         fixtures._dynamic_ledger_fact(
-            source_record_id=supported_name,
+            source_record_id=(
+                "irs_soi.ty2023.table_1_2.all_returns.all.wages_salaries_amount"
+            ),
             source_name="irs_soi",
             measure_id="wages_salaries_amount",
             value=100.0,
@@ -479,25 +474,176 @@ def _compiled_table_4_3_targets():
             layout_record_set_id="irs_soi.ty2023.table_1_2.all_returns",
             dimensions={"income_range": "all", "filing_status": "all"},
         ),
-        fixtures._soi_taxable_interest_fact(
-            2023,
-            source_record_id=unsupported_name,
-            value=100.0,
-            layout_record_set_id="irs_soi.ty2023.table_4_3.all_returns_excluding_dependents",
-        ),
     ]
+    if include_unsupported:
+        measures = ["taxable_interest_amount"]
+        if include_return_count:
+            measures.append("taxable_interest_returns")
+        for measure in measures:
+            facts.append(
+                fixtures._soi_taxable_interest_fact(
+                    2023,
+                    source_record_id=(
+                        "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents.all."
+                        + measure
+                    ),
+                    value=100.0,
+                    measure_id=measure,
+                    layout_record_set_id=(
+                        "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents"
+                    ),
+                )
+            )
+    return facts
+
+
+def _compiled_table_4_3_targets():
+    """Use the real Ledger compiler on explicit invented Table 4.3 facts."""
+    from microcosm.build.us_runtime import compile_us_fiscal_target_registry
+
     registry = compile_us_fiscal_target_registry(
-        facts, target_period=2024, allow_unaged_dollar_targets=True
+        _table_4_3_ledger_facts(),
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
     )
     # The public compiler requires reference facts for other families. Those
     # invented metadata fixtures are never passed to the model materializer.
-    selected = tuple(
-        spec
-        for spec in registry.specs
-        if spec.name in {supported_name, unsupported_name}
-    )
+    selected = tuple(spec for spec in registry.specs if spec.family == "irs_soi")
     assert len(selected) == 2
     return selected
+
+
+@pytest.mark.parametrize("source_path", ["download", "base_h5", "pool"])
+@pytest.mark.parametrize("include_unsupported", [True, False])
+def test_soi_release_preflight_precedes_population_load(
+    monkeypatch, tmp_path, source_path, include_unsupported
+):
+    _exercise_soi_release_preflight(
+        monkeypatch, tmp_path, source_path, include_unsupported
+    )
+
+
+@pytest.mark.parametrize("include_unsupported", [True, False])
+def test_soi_release_preflight_also_applies_to_evidence_release(
+    monkeypatch, tmp_path, include_unsupported
+):
+    # Evidence mode converts terminal verdicts only; source preflights retain
+    # the existing unconditional-refusal contract in both release modes.
+    _exercise_soi_release_preflight(
+        monkeypatch, tmp_path, "download", include_unsupported, evidence=True
+    )
+
+
+def _exercise_soi_release_preflight(
+    monkeypatch, tmp_path, source_path, include_unsupported, *, evidence=False
+):
+    builder = _builder()
+    facts = _table_4_3_ledger_facts(
+        include_unsupported=include_unsupported, include_return_count=True
+    )
+    calls = []
+    compiled = []
+    original_compile = builder.compile_us_fiscal_target_registry
+
+    def load_feed(path, **pins):
+        assert path == tmp_path / "invented-feed"
+        assert pins == {
+            "expected_facts_sha256": "1" * 64,
+            "expected_manifest_sha256": "2" * 64,
+        }
+        calls.append("feed")
+        return SimpleNamespace(facts=facts)
+
+    def compile_feed(actual_facts, **kwargs):
+        assert actual_facts is facts
+        result = original_compile(actual_facts, **kwargs)
+        compiled.append(result)
+        calls.append("compile")
+        return result
+
+    class PopulationStageReachedError(Exception):
+        pass
+
+    def population_stage(*args, **kwargs):
+        calls.append("population")
+        raise PopulationStageReachedError
+
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(builder, "load_ledger_consumer_artifact", load_feed)
+    monkeypatch.setattr(builder, "compile_us_fiscal_target_registry", compile_feed)
+    monkeypatch.setattr(builder, "_download_base_h5", population_stage)
+    monkeypatch.setattr(builder, "_load_base_pool_if_identified", population_stage)
+    monkeypatch.setattr(
+        builder, "load_simulation_ready_us_multispine_pool", population_stage
+    )
+    monkeypatch.setattr(
+        builder,
+        "_load_verified_incumbent_diagnostics_payload",
+        lambda *args, **kwargs: ({}, "3" * 64),
+    )
+    argv = [
+        "--ledger-facts",
+        str(tmp_path / "invented-feed"),
+        "--ledger-facts-sha256",
+        "1" * 64,
+        "--ledger-manifest-sha256",
+        "2" * 64,
+        "--out",
+        str(tmp_path / "output"),
+        "--no-staging",
+        "--no-age-targets",
+        "--allow-unaged-dollar-targets",
+    ]
+    if source_path == "base_h5":
+        argv += ["--base-h5", str(tmp_path / "unread.h5")]
+    elif source_path == "pool":
+        argv += [
+            "--pool-manifest",
+            str(tmp_path / "unread-pool.json"),
+            "--pool-manifest-sha256",
+            "4" * 64,
+            "--pool-release-id",
+            "invented-pool",
+            "--exact-k",
+            "N",
+            "--exact-k-pi-hi",
+            "0.5",
+            "--seed",
+            "0",
+            "--incumbent-diagnostics",
+            str(tmp_path / "invented-incumbent.json"),
+            "--incumbent-diagnostics-sha256",
+            "3" * 64,
+            "--frozen-target-surface-sha256",
+            "5" * 64,
+        ]
+    if evidence:
+        argv += ["--evidence-release"]
+    if include_unsupported:
+        with pytest.raises(
+            RuntimeError, match="SOI source-universe preflight"
+        ) as error:
+            builder._main(argv)
+        assert calls == ["feed", "compile"]
+        contract = universe.soi_target_universe_contract(compiled[0].specs, period=2024)
+        assert len(contract["unsupported_targets"]) == 2
+        for entry in contract["unsupported_targets"]:
+            assert entry["name"] in str(error.value)
+            assert entry["source_universe"] in str(error.value)
+            assert entry["reason"] in str(error.value)
+        # The low-level metadata diagnostic remains available unchanged.
+        assert len(contract["targets"]) == 1
+    else:
+        with pytest.raises(PopulationStageReachedError):
+            builder._main(argv)
+        assert calls == ["feed", "compile", "population"]
+        assert (
+            universe.soi_target_universe_contract(compiled[0].specs, period=2024)[
+                "unsupported_targets"
+            ]
+            == []
+        )
+    assert not (tmp_path / "output").exists()
 
 
 @pytest.mark.requires_us

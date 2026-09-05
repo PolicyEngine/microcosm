@@ -8754,6 +8754,52 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 expected_sha256=args.incumbent_diagnostics_sha256,
             )
         )
+    # Compile the real feed before either population-loading arm. An
+    # unsupported source universe is already a release blocker; discovering it
+    # after imputation, model materialization, and solve only wastes those runs.
+    # Low-level materializers retain their supported/unsupported diagnostics.
+    congressional_district_vintage_crosswalk = (
+        load_congressional_district_vintage_crosswalk(
+            args.congressional_district_vintage_crosswalk
+        )
+        if args.congressional_district_vintage_crosswalk is not None
+        else None
+    )
+    congressional_district_vintage_crosswalk_metadata = (
+        {
+            "path": str(args.congressional_district_vintage_crosswalk.resolve()),
+            "sha256": _sha256(args.congressional_district_vintage_crosswalk),
+        }
+        if args.congressional_district_vintage_crosswalk is not None
+        else None
+    )
+    ledger_artifact = load_ledger_consumer_artifact(
+        args.ledger_facts,
+        expected_facts_sha256=args.ledger_facts_sha256,
+        expected_manifest_sha256=args.ledger_manifest_sha256,
+    )
+    target_registry = compile_us_fiscal_target_registry(
+        ledger_artifact.facts,
+        target_period=PERIOD,
+        congressional_district_vintage_crosswalk=(
+            congressional_district_vintage_crosswalk
+        ),
+        age_targets=args.age_targets,
+        allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
+    )
+    soi_universe_contract = soi_target_universe_contract(
+        target_registry.specs, period=PERIOD
+    )
+    if soi_universe_contract["unsupported_targets"]:
+        raise RuntimeError(
+            "Release gates failed: SOI source-universe preflight failed: "
+            + "; ".join(
+                f"target={entry['name']!r}, "
+                f"source_universe={entry['source_universe']!r}, "
+                f"reason={entry['reason']}"
+                for entry in soi_universe_contract["unsupported_targets"]
+            )
+        )
     pool_frame: Frame | None = None
     pool_original_household_ids: np.ndarray | None = None
     pool_original_household_weights: np.ndarray | None = None
@@ -8835,21 +8881,6 @@ def _main(argv: Sequence[str] | None = None) -> None:
         dataset_filename = DATASET_FILENAME
         calibration_key = "populace_us_2024_calibration"
         calibration_filename = CALIBRATION_FILENAME
-    congressional_district_vintage_crosswalk = (
-        load_congressional_district_vintage_crosswalk(
-            args.congressional_district_vintage_crosswalk
-        )
-        if args.congressional_district_vintage_crosswalk is not None
-        else None
-    )
-    congressional_district_vintage_crosswalk_metadata = (
-        {
-            "path": str(args.congressional_district_vintage_crosswalk.resolve()),
-            "sha256": _sha256(args.congressional_district_vintage_crosswalk),
-        }
-        if args.congressional_district_vintage_crosswalk is not None
-        else None
-    )
     _assert_cd_vintage_support_matches(
         base_h5,
         congressional_district_vintage_crosswalk_metadata,
@@ -8909,20 +8940,6 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # build, not merely a test.
     assert_take_up_contract_current()
     assert_take_up_treatments_consistent()
-    ledger_artifact = load_ledger_consumer_artifact(
-        args.ledger_facts,
-        expected_facts_sha256=args.ledger_facts_sha256,
-        expected_manifest_sha256=args.ledger_manifest_sha256,
-    )
-    target_registry = compile_us_fiscal_target_registry(
-        ledger_artifact.facts,
-        target_period=PERIOD,
-        congressional_district_vintage_crosswalk=(
-            congressional_district_vintage_crosswalk
-        ),
-        age_targets=args.age_targets,
-        allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
-    )
     # Reviewed CMS Medicaid enrollment substitutions (microcosm#386): a state
     # whose point-in-time snapshot is unreported at source ships its cited
     # nearest-prior-month count instead of failing the take-up gate closed.
