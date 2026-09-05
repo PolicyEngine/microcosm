@@ -33,6 +33,7 @@ from microcosm.graph.population import dtype_for_token, token_for_dtype
 from . import asec_current_money_source as money_source
 from . import asec_housing_status_source as housing_source
 from . import asec_person_income_source as person_income
+from . import asec_student_controls as student_source
 from ._asec_current_money_codec import (
     current_money_content_sha256,
     encode_current_money,
@@ -326,6 +327,7 @@ def prepared_source_implementation_identity() -> str:
                 "modules": modules,
                 "money_source_verification": money_source._verification_identity(),
                 "restoration_verification": person_income._implementation(),
+                "student_controls_verification": student_source._implementation(),
                 "housing_verification": housing_source._implementation(),
                 "file_roster": list(PREPARED_SOURCE_FILES),
                 "boundary": PREPARATION_BOUNDARY,
@@ -369,7 +371,17 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
     restoration = _restoration_receipt(paths[RESTORATION_RECEIPT_FILENAME], evidence)
     ready = source.ready()
     _require(type(ready) is ReadyCurrentMoney, "AUTHENTICATED_READINESS_REQUIRED")
-    tax = reconstruct_current_money_tax_units(source, ready)
+    # S is separate source authority. Its public loader authenticates the same
+    # official members against the unchanged T1 and money parents; attachment
+    # adds two aliases while retaining original missing controls untouched.
+    controls = student_source.load_authenticated_student_controls(
+        source,
+        ready,
+        member_paths={year: paths[name] for year, name in MEMBER_FILENAMES},
+    )
+    with_students = student_source.attach_student_controls(source, ready, controls)
+    tax = reconstruct_current_money_tax_units(with_students, ready)
+    # Housing still authenticates original T1, never the transient tax/S view.
     status = load_authenticated_housing_status(
         source, cohort_paths={year: paths[name] for year, name in COHORT_FILENAMES}
     )
@@ -403,6 +415,14 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
         "release_eligible": False,
         "all_current_money_consumers_wired": False,
         "source_evidence_sha256": _sha(source.source.identity),
+        "t1_sha256": evidence["person_income_attachment_sha256"],
+        "student_controls_receipt_sha256": _sha(_json(controls.receipt)),
+        "student_controls_content_sha256": controls.content_sha256,
+        "student_controls_attachment_receipt_sha256": _sha(
+            _json(with_students.receipt)
+        ),
+        "student_controls_reference_period": controls.receipt["reference_period"],
+        "annual_five_month_student_status_validated": False,
         "money_header_sha256": _sha(ready.header),
         "money_content_sha256": current_money_content_sha256(ready),
         "money_spec_sha256": ready.bindings.spec.sha256,

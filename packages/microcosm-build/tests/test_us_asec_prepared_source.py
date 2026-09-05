@@ -18,8 +18,11 @@ from microcosm.build.frame_checkpoint import (
 )
 from microcosm.build.us_runtime import asec_current_money as money
 from microcosm.build.us_runtime import asec_current_money_source as legacy
+from microcosm.build.us_runtime import asec_current_money_units as units
 from microcosm.build.us_runtime import asec_person_income_source as restoration
 from microcosm.build.us_runtime import asec_prepared_source as prepared
+from microcosm.build.us_runtime import asec_student_controls as student
+from microcosm.build.us_runtime._asec_current_money_codec import encode_current_money
 from microcosm.build.us_runtime.asec_current_money_selection import (
     parse_current_money_body,
 )
@@ -77,7 +80,9 @@ def _money_fixture():
     return module
 
 
-def invented_prepared_directory(tmp_path, monkeypatch):
+def invented_prepared_directory(
+    tmp_path, monkeypatch, *, student_controls_missing=True
+):
     """Assemble the exact ten-file source directory from invented bytes."""
     pytest.importorskip("microunit")
     pytest.importorskip("tables")
@@ -100,6 +105,13 @@ def invented_prepared_directory(tmp_path, monkeypatch):
     for path in (parent, attachment):
         loaded = load_frame_checkpoint(path)
         loaded.frame.person["PTOTVAL"] = [np.nan] * 4 + [-9999.0, 0.0]
+        # Both ages in this fixture are outside the Census 16–54 universe.
+        # Preserve the genuine old-cohort NaN pattern; S supplies exact observed
+        # zero codes through aliases instead of filling these original columns.
+        for name in student.CONTROLS:
+            loaded.frame.person[name] = (
+                [np.nan] * 4 + [0.0, 0.0] if student_controls_missing else [0] * 6
+            )
         for column, values in ROUTING_CODES.items():
             loaded.frame.person[column] = np.asarray(values, dtype=np.int64)
         for column, values in ROUTED_AMOUNTS.items():
@@ -132,6 +144,8 @@ def invented_prepared_directory(tmp_path, monkeypatch):
                 "A_LINENO": [1, 2],
                 "A_AGE": [55, 14],
                 "PTOTVAL": [-9999, 0],
+                "A_ENRLW": [0, 0],
+                "A_FTPT": [0, 0],
             }
         ).to_csv(path, index=False)
         members[year] = path
@@ -146,6 +160,7 @@ def invented_prepared_directory(tmp_path, monkeypatch):
             )
         )
     monkeypatch.setattr(restoration, "_MEMBER_PINS", tuple(pins))
+    monkeypatch.setattr(student, "_MEMBER_PINS", tuple(pins))
     restored = tmp_path / "restored"
     restoration.restore_asec_person_income_source(
         parent, attachment, member_paths=members, output_dir=restored
@@ -207,6 +222,10 @@ def test_receipt_binds_every_stage_identity_without_paths_or_rows(
     assert receipt["restored_source_kind"] == money.RESTORED_SOURCE_KIND
     for name in (
         "source_evidence_sha256",
+        "t1_sha256",
+        "student_controls_receipt_sha256",
+        "student_controls_content_sha256",
+        "student_controls_attachment_receipt_sha256",
         "money_header_sha256",
         "money_content_sha256",
         "money_spec_sha256",
@@ -235,6 +254,10 @@ def test_receipt_binds_every_stage_identity_without_paths_or_rows(
     assert not any(
         isinstance(value, str) and value.startswith("/") for value in receipt.values()
     )
+    assert receipt["student_controls_reference_period"] == (
+        "preceding_survey_week_income_cohort_plus_one"
+    )
+    assert receipt["annual_five_month_student_status_validated"] is False
 
 
 def test_money_body_leaves_as_bytes_that_reparse_against_the_receipt(
@@ -253,6 +276,94 @@ def test_money_body_leaves_as_bytes_that_reparse_against_the_receipt(
     assert body.entity_of("HTOTVAL") == "household"
     # Restoration supplied the observed person income for every cohort.
     assert body.field("PTOTVAL").validity.tolist() == [1] * 6
+
+
+def test_separate_student_source_precedes_actual_tax_and_preserves_t1_money(
+    tmp_path, monkeypatch
+):
+    directory = invented_prepared_directory(tmp_path, monkeypatch)
+    originals = {
+        name: (directory / name).read_bytes() for name in prepared.PREPARED_SOURCE_FILES
+    }
+    captured = {}
+    original_student_loader = student.load_authenticated_student_controls
+    original_tax = prepared.reconstruct_current_money_tax_units
+    original_housing = prepared.load_authenticated_housing_status
+
+    def student_loader(source, ready, **kwargs):
+        captured["source"] = source
+        captured["ready"] = ready
+        captured["frame"] = legacy._frame_signature(source.frame)
+        captured["source_identity"] = source.source.identity
+        captured["money"] = encode_current_money(ready)
+        # The uncomposed source still refuses the exact missing control. The
+        # successful prepared path must therefore pass through authenticated S.
+        with pytest.raises(money.MoneyRefusalError) as error:
+            units.current_money_microunit_view(source, ready)
+        assert error.value.reason == "MICROUNIT_CONTROL_MISSING"
+        assert error.value.field == "A_ENRLW"
+        result = original_student_loader(source, ready, **kwargs)
+        captured["controls"] = result
+        return result
+
+    def tax_reconstruction(source, ready):
+        assert type(source) is student.StudentControlsAttachedAsec
+        assert source.parent is captured["source"]
+        assert ready is captured["ready"]
+        captured["attachment"] = source
+        return original_tax(source, ready)
+
+    def housing_loader(source, **kwargs):
+        assert source is captured["source"]
+        return original_housing(source, **kwargs)
+
+    monkeypatch.setattr(student, "load_authenticated_student_controls", student_loader)
+    monkeypatch.setattr(
+        prepared, "reconstruct_current_money_tax_units", tax_reconstruction
+    )
+    monkeypatch.setattr(prepared, "load_authenticated_housing_status", housing_loader)
+    result = prepared.prepare_asec_current_money_population(directory)
+    source = captured["source"]
+    controls = captured["controls"]
+    assert source.source.identity == captured["source_identity"]
+    assert legacy._frame_signature(source.frame) == captured["frame"]
+    assert result.money_payload == captured["money"]
+    assert encode_current_money(captured["ready"]) == captured["money"]
+    assert result.receipt["source_evidence_sha256"] == money._sha(
+        source.source.identity
+    )
+    assert result.receipt["t1_sha256"] == money._sha(
+        originals[prepared.PERSON_INCOME_FILENAME]
+    )
+    assert controls.receipt["source_identity"].encode() == source.source.identity
+    assert result.receipt["student_controls_content_sha256"] == controls.content_sha256
+    assert result.receipt["student_controls_receipt_sha256"] == money._sha(
+        money._json(controls.receipt)
+    )
+    assert result.receipt["student_controls_attachment_receipt_sha256"] == money._sha(
+        money._json(captured["attachment"].receipt)
+    )
+    for name, alias in zip(student.CONTROLS, student.ALIASES, strict=True):
+        pd.testing.assert_series_equal(
+            result.frame.person[name], source.frame.person[name]
+        )
+        assert result.frame.person[name].isna().tolist() == [True] * 4 + [False] * 2
+        assert result.frame.person[alias].tolist() == [0] * 6
+    assert {
+        name: (directory / name).read_bytes() for name in prepared.PREPARED_SOURCE_FILES
+    } == originals
+
+
+def test_complete_source_compares_student_incumbents_before_preparing(
+    tmp_path, monkeypatch
+):
+    directory = invented_prepared_directory(
+        tmp_path, monkeypatch, student_controls_missing=False
+    )
+    result = prepared.prepare_asec_current_money_population(directory)
+    for name, alias in zip(student.CONTROLS, student.ALIASES, strict=True):
+        assert result.frame.person[name].tolist() == result.frame.person[alias].tolist()
+        assert not result.frame.person[name].isna().any()
 
 
 @pytest.mark.parametrize(

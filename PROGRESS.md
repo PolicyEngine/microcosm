@@ -21,6 +21,11 @@ its separate receipt to unchanged T1/money, with housing authenticated on T1.
 
 ## Done
 
+- Resumed-source composition: separate reviewed S now attaches before actual
+  tax-unit construction; housing authenticates the original T1. Prepared receipt
+  binds S and T1 separately. Twelve targeted invented prepared-source tests pass,
+  including original-NaN, original-source and money-byte preservation. Evidence:
+  `/tmp/current-money-prepared-s-dev1.log` and `.xml` (26.758s JUnit).
 - Fresh worktree from the explicit approved base after status/fetch/base inspection.
 - Locked interpreter: I's `.venv` (CPython 3.14.4, policyengine-us 1.819.0,
   policyengine-core 3.31.0), driven with this worktree's six shard `src` roots
