@@ -2,124 +2,82 @@
 
 ## State
 
-In progress on 2026-09-05 on `f1-portable-worker-identity`, started on
-2026-09-04 at
-`50c9232b7597bd1f47897a3132ed08894fc11d93`. Baseline timing precedes all
-behavior changes. Both unchanged baselines and fail-before regressions are recorded.
-Memoization and session priming pass the focused regressions and the complete
-335-test stacked-spine file. All four initial CI process groups passed; the affected us-qs build process
-is being rerun after the additional spec-bundle priming fix. Report and raw measurement logs are outside the repository:
+Complete on 2026-09-05 on `f1-portable-worker-identity`, started on
+2026-09-04 at `50c9232b7597bd1f47897a3132ed08894fc11d93`. Process memoization,
+real session priming, explicit live opt-outs, and all requested verification
+are complete. No GitHub network, push, new branch, or stash.
+Final report, exact commands, direct exits, and per-file timing tables:
 `/private/tmp/microcosm-pr871-ci-crawl/out.md`.
 
 ## Done
 
-- Read the repository guide, prior journals, identity factories and launch,
-  stacked binding sites, worker bootstrap, and fixture-cache code.
-- Confirmed the assigned branch and clean initial worktree. No GitHub network,
-  push, branches, or stash. Forbidden files and spec pins remain untouched.
-- Read the GitNexus debugging skill; no callable GitNexus tools are available,
-  so source tracing and an independent test-fixture audit are being used.
-
-- Unchanged identity-heavy selector: 77 passed, 245 deselected, exit 0,
-  734.406 seconds wall time (12m 14.406s). Production/test source unchanged.
-- Collected all 322 source-order nodes with `-p no:randomly`; first-200 run
-  deselects the final 122 by node ID. The saved selection ends at
+- Read the guide, prior journals, worker identity/bootstrap/launch, three live
+  stacked binding sites, and fixture caches. Used direct source tracing and
+  independent agent reviews; the GitNexus skill's tools were unavailable.
+- Completed both unchanged baselines before production/test behavior edits:
+  identity selection 77 passed, 245 deselected, exit 0, 734.406s wall;
+  first 200 tests 200 passed, 122 deselected, exit 0, 2033.172s wall.
+  Source-order collection used `-p no:randomly`, then 122 explicit deselections;
+  the final selected node was
   `test_primary_refuses_missing_universe_receipt_before_callback`.
-- Repaired only the ignored `.venv/bin/pytest` interpreter shebang after its
-  direct invocation exited 127; no environment sync or dependency change.
-- Audited all named US suites. Shared priming is needed for stacked-spine,
-  H5, and pool-tool tests; preflight/fiscal tests stub the relevant loaders.
-  Recorded all identity/environment mutation opt-outs and in-test resets.
-- CI `--procs` returns process names, not files. Verification will use its
-  actual `--list group:process` expansion: us-qs build/frame (29/5 files),
-  us-am build/other-shards (59/48 files), with external per-file timing.
+- Repaired only ignored `.venv/bin/pytest` after its stale interpreter shebang
+  produced direct exit 127. Used the supplied synced Python 3.14.4 environment,
+  `uv run --no-sync`, and an external writable UV cache; no dependency sync.
+- Committed fail-before memo regressions: 4 failed, 7 passed, 322 deselected;
+  exit 1; 30.073s wall. Implemented the memo keyed by raw lock argument and
+  both bound fit-control environment values, with an exported/documented clear
+  API and shared read-only semantic graph. Execution bindings clone the graph
+  so artifact mutation cannot poison subsequent identities.
+- Primed real session identities for stacked-spine, H5, pool-tool, and the
+  indirectly reached spec-bundle suite. Removed redundant stacked/H5 caches.
+  Identity/source/runtime/backend/environment mutation tests explicitly opt out
+  and clear before/after; deliberate byte edits within a test clear between calls.
+  Preflight/fiscal-refresh tests already stub their live-binding paths.
+- Added 14 regression cases covering memo reuse/reset, both environment keys,
+  invalid controls and locks, lock separation, artifact-copy isolation, real
+  session consistency, opted-out namespace-byte changes, and generator ordering.
+  Memo/session checks passed: 13 passed, 322 deselected; exit 0; 64.224s wall.
+- Broader call-path audit found spec generation could precede function priming.
+  Committed a real ordering regression before the fixture fix: 1 failed,
+  25 deselected; exit 1; 129.447s wall. Ordered priming before cached generation;
+  the same test then passed: 1 passed, 25 deselected; exit 0; 99.303s wall.
+- Same post-fix identity selection: 90 passed, 245 deselected; exit 0;
+  160.517s wall, a 4.58x speedup despite 13 added selection cases.
+- Full stacked-spine file: 335 passed, 2,378 warnings, no failures/skips;
+  exit 0; 347.905s wall (5m 47.905s), pytest 337.74s.
+- Ran actual CI process expansions from `--list GROUP:PROCESS`; `--procs`
+  returns process names, so the prompt's literal per-file loop was not valid.
+  Every process ran serially with exact CI file arguments and no cacheprovider.
+  An external observation-only plugin saved each file's counts and wall span.
+- Initial us-qs:build before bundle priming: 1,368 passed, no skips; exit 0;
+  626.070s wall. Reran the affected complete process after its final fix.
+- Final CI process results (all exit 0):
 
-- Unchanged first-200 baseline: 200 passed, 122 deselected, exit 0,
-  2033.172 seconds wall time. Both requested baselines completed before
-  any production/test source edit. The run finished on 2026-09-05.
+  | Process | Files | Passed | Skipped | Wall seconds |
+  |---|---:|---:|---:|---:|
+  | us-qs:build | 29 | 1,369 | 0 | 654.966 |
+  | us-qs:frame | 5 | 84 | 8 | 111.252 |
+  | us-am:build | 59 | 1,899 | 1 | 855.001 |
+  | us-am:other-shards | 48 | 1,000 | 2 | 139.672 |
 
-- Added real-factory memo regressions with small traced source/runtime fixtures.
-  Unchanged production code failed graph reuse, both environment-key reuse
-  cases, and lock-key reuse: 4 failed, 7 passed, 322 deselected; exit 1;
-  30.073 seconds wall time (pytest 19.14s). No production edit preceded this.
-
-- Implemented process memoization keyed by raw lock argument and both bound
-  fit controls; exported the clear API and documented deliberate-mutation
-  resets. Retained the full uncached computation and all launch isolation.
-- Execution bindings clone the shared semantic graph so artifact mutations
-  cannot alter later authentication. Invalid lock/environment refusals remain.
-- Added a shared real session snapshot for stacked/H5/pool-tool tests and
-  explicit live opt-outs for identity/environment mutation tests. Live tests
-  clear before/after; runtime/stdlib/resource byte tests clear between edits.
-- Removed the redundant stacked config cache and H5 public-function cache;
-  removed H5's unnecessary deterministic env overrides. Legacy payloads copy
-  the real identity before artifact mutation. Preflight/fiscal seams stay stubbed.
-- Post-fix memo, environment/lock/refusal, artifact isolation, session binding,
-  and opted-out namespace-source checks: 13 passed, 322 deselected, exit 0,
-  64.224 seconds wall time (pytest 53.94s).
-- Verified the forbidden files, uv.lock, and complete operational-binding
-  inventory exclusion remain byte-for-byte unchanged from the starting commit.
-
-- Independent read-only review found no actionable defects. AST comparison
-  confirmed the uncached attestation body, validators, authenticator, launch
-  environment, and probe are unchanged apart from the factory's private name.
-- Same post-fix identity selector: 90 passed (13 new regression cases),
-  245 deselected, exit 0, 160.517 seconds wall time versus 734.406 before.
-  This is a 4.58x measured speedup despite the additional regressions.
-
-- Full post-fix stacked-spine file: 335 passed, 2,378 warnings, no failures
-  or skips; exit 0; 347.905 seconds wall time (5m 47.905s), pytest 337.74s.
-  The us-qs build process started only after this successful completion.
-
-- Broader CI call-path audit found one additional US caller: spec-bundle
-  generation and imputation projection reach the live worker indirectly.
-  Its module-scoped generated-documents fixture can run before function
-  priming. A focused ordering regression and priming extension are pending;
-  the current broad run will complete before the affected process is rerun.
-
-- Initial actual us-qs:build process: 1,368 passed, 2,377 warnings, no
-  failures/skips, exit 0, 626.070 seconds wall time (pytest 609.75s).
-  All 29 per-file timing/count records are saved. Stacked-spine inside that
-  process took 333.299s. This process will be rerun after bundle priming.
-
-- Actual us-qs:frame process: 84 passed, 8 skipped, 1 warning; exit 0;
-  111.252 seconds wall time (pytest 89.33s), with all 5 per-file records.
-  The us-am build process is running next.
-
-- Actual us-am:build process: 1,899 passed, 1 skipped, 5 warnings; exit 0;
-  855.001 seconds wall time (pytest 833.68s), with all 59 per-file
-  records. The skip is the opt-in 3.7 GB SIPP scan. Final other-shards process
-  is running; independent final review found no actionable concerns.
-
-- Actual us-am:other-shards process: 1,000 passed, 2 skipped, 4 warnings;
-  exit 0; 139.672 seconds wall time (pytest 131.00s), with all 48
-  per-file records. All four initial CI processes completed successfully.
-  The spec-bundle priming-order regression is now running before its fix.
-
-- Added a real spec-bundle fixture-ordering regression: 1 failed, 25
-  deselected; direct exit 1; 129.447 seconds wall time (pytest
-  118.65s). Generation ran before session priming and its identity was
-  replaced. No spec-fixture behavior change preceded the failing run.
-
-- Fixed spec-bundle priming by ordering the function fixture before cached
-  generation and adding the module autouse adapter. Real ordering regression
-  now passes: 1 passed, 25 deselected; exit 0; 99.303 seconds wall time
-  (pytest 87.24s). The affected us-qs:build process will now run on final code.
-
-- Final us-qs:build rerun has completed the spec-bundle module (26 passed)
-  and all first 26 files (1,024 passed, no failures). Full stacked-spine is
-  running next; final lint/format/spec/boundary checks are queued serially.
-
-- Final us-qs:build process: 1,369 passed, 2,377 warnings, no failures or
-  skips; exit 0; 654.966 seconds wall time (pytest 638.17s). All four final
-  CI process results total 4,352 passed and 11 existing skips across 141 files.
-  Final lint, formatting, spec coverage, and hard-boundary checks are running.
+- Final groups total 4,352 passed, 11 existing skips, no failures/errors across
+  141 files. Skips cover eight optional Axiom cases, one opt-in 3.7 GB SIPP
+  audit, and two existing live data-loader tests. No skip was added by this fix.
+- Ruff packages/tools passed (exit 0, 0.066s); all six changed Python files
+  passed format checking (exit 0, 0.021s). Diff whitespace passed (0.036s).
+- Spec proof passed: 42,154/42,154 configuration fields, 41/41 inventories;
+  exit 0, 81.683s wall. No spec pins moved. Protected-file and AST verification
+  passed (exit 0, 0.080s): the uncached identity body, existing validators,
+  authenticator, probe, and launch policy are unchanged. The full
+  `worker_execution` subtree remains excluded from inventory digests.
+- Independent reviews found no actionable defects. Engine-free compatibility
+  was reviewed from source; no engine-free test run is claimed. Python 3.13,
+  GitHub/Linux runners, wheels, unrelated CI groups, and certification were
+  not run in this local fix lane. All command receipts are in the report.
 
 ## Next
 
-- Run Ruff, formatting, and spec-pin checks.
-- Complete the external report with exact counts, wall times, scope boundaries,
-  and commit history. No push.
+No implementation or requested local verification remains. No push.
 
 # Historical: Astra gate round 1 journal
 
