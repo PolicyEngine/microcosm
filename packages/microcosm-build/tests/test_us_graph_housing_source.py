@@ -38,6 +38,8 @@ from microcosm.build.us_runtime.graph_housing_source import (
     _HOUSING_IMPLEMENTATION_MODULES,
     HOUSING_SOURCE_ACCEPTED_CONTEXT,
     HOUSING_SOURCE_DEPENDENCIES,
+    HOUSING_SOURCE_MEASURED,
+    HOUSING_SOURCE_MERGE,
     HOUSING_SOURCE_MERGE_POPULATION,
     HOUSING_SOURCE_POPULATION,
     HOUSING_SOURCE_PREFIX,
@@ -377,6 +379,25 @@ def _nodes(frame: Frame, descriptor: bytes, *, consumer=True, **kwargs):
     return tuple(nodes), columns
 
 
+def _population_key(frame: Frame) -> str:
+    """Key the stored population by its content, not by a constant.
+
+    Sibling graph tests pin their input under a fixed ``"a" * 64`` because they
+    run the graph once. The cache tests here run it twice with *different*
+    frames, so a constant key would make the second run replay the first
+    frame's cached source node and the change under test would never reach the
+    graph at all.
+    """
+    digest = hashlib.sha256()
+    for entity in sorted(frame.entities):
+        digest.update(entity.encode())
+        digest.update(frame.table(entity).to_json(orient="table").encode())
+    for entity in sorted(frame.weighted_entities):
+        digest.update(frame.weights_for(entity).values.tobytes())
+    digest.update(frame.strata.to_json(orient="table").encode())
+    return digest.hexdigest()
+
+
 def _setup(tmp_path, frame, *, donor_path=None, **kwargs):
     donor_path = _donor(tmp_path) if donor_path is None else Path(donor_path)
     donor_sha = _sha(donor_path)
@@ -403,7 +424,9 @@ def _setup(tmp_path, frame, *, donor_path=None, **kwargs):
     kernels.register(_Consumer())
     register_us_housing_source_kernels(kernels, source_codecs=codecs)
     store = ContentStore(tmp_path / "store", codecs=codecs)
-    population = ContentStore(tmp_path / "inputs").put_frame("a" * 64, frame)
+    population = ContentStore(tmp_path / "inputs").put_frame(
+        _population_key(frame), frame
+    )
     sources = {
         "population": population,
         rent_source.RENT_SOURCE_NAME: donor_path,
@@ -1032,9 +1055,23 @@ def test_recipient_changes_reuse_the_actual_fitted_forest(tmp_path, monkeypatch)
     )
     second, _, _, _ = _run(tmp_path, changed, resume="auto")
     fit = f"{rent.RENT_PREFIX}.fit.000"
+    # The recipient change must actually reach the graph, or "the fit was
+    # reused" would be satisfied by the whole run being a cache hit.
+    assert first.nodes["source"].key != second.nodes["source"].key
+    for node_id in (
+        HOUSING_SOURCE_POPULATION,
+        HOUSING_SOURCE_MEASURED,
+        f"{rent.RENT_PREFIX}.recipient",
+        f"{rent.RENT_PREFIX}.apply.000",
+        HOUSING_SOURCE_MERGE,
+        HOUSING_SOURCE_ACCEPTED_CONTEXT,
+    ):
+        assert first.nodes[node_id].key != second.nodes[node_id].key, node_id
+        assert not second.nodes[node_id].hit, node_id
     assert calls == [1]
     assert first.nodes[fit].key == second.nodes[fit].key
     assert second.nodes[fit].hit
+    assert second.nodes[f"{rent.RENT_PREFIX}.donor"].hit
 
 
 def test_donor_change_invalidates_the_fit(tmp_path):
