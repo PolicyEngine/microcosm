@@ -263,6 +263,11 @@ from microcosm.build.us_runtime.reform_validation import (
     reform_validation_payload,
     write_reform_validation,
 )
+from microcosm.build.us_runtime.soi_return_universe import (
+    materialize_soi_filer_universe,
+    soi_target_universe_contract,
+    validate_cached_soi_filer_receipt,
+)
 from microcosm.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_AGE_TARGETS,
     US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
@@ -443,7 +448,9 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 2
 # 11: target-frame checkpoint columns now preserve nullable booleans as
 # canonical bool values plus an explicit uint8 null mask. Older checkpoints
 # cannot attest this lossless physical representation.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 11
+# Version 12 requires actual tax-unit filer masks and explicit IRS return
+# universes. Earlier household design rows may include nonfilers.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 12
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -2344,6 +2351,11 @@ def _read_target_frame_checkpoint(
         strata = _read_checkpoint_series(h5["strata"])
         stored_compilation = json.loads(str(h5.attrs.get("compilation_json", "{}")))
     frame = Frame(tables, US_SCHEMA, weights, strata)
+    soi_contract = soi_target_universe_contract(target_specs, period=PERIOD)
+    if soi_contract["targets"]:
+        validate_cached_soi_filer_receipt(
+            stored_compilation.get("soi_return_universe"), frame, contract=soi_contract
+        )
     registry, compilation = _compile_materialized_target_registry(
         frame,
         target_specs,
@@ -2351,6 +2363,11 @@ def _read_target_frame_checkpoint(
     )
     compilation = {
         **compilation,
+        **(
+            {"soi_return_universe": stored_compilation["soi_return_universe"]}
+            if soi_contract["targets"]
+            else {}
+        ),
         "target_frame_checkpoint": {
             "enabled": True,
             "status": "hit",
@@ -4513,6 +4530,7 @@ def _compile_materialized_target_registry(
     *,
     gate_congressional_district_targets: bool = True,
 ) -> tuple[TargetRegistry, dict[str, object]]:
+    soi_target_universe_contract(target_specs, period=PERIOD)
     household = target_frame.table("household")
     compileable_specs = [
         spec for spec in target_specs if _target_spec_is_materialized(spec, household)
@@ -4605,8 +4623,6 @@ def _materialize_target_frame(
     target_materialization_cache_context: Mapping[str, object] | None = None,
     gate_congressional_district_targets: bool = False,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
-    from policyengine_us import CountryTaxBenefitSystem, Microsimulation
-
     if (
         target_materialization_cache_dir is not None
         and target_materialization_cache_context is None
@@ -4616,7 +4632,10 @@ def _materialize_target_frame(
             "target_materialization_cache_dir is set."
         )
     _assert_supported_ledger_filter_metadata(target_specs)
+    soi_contract = soi_target_universe_contract(target_specs, period=PERIOD)
     _assert_no_formula_owned_columns(base_frame)
+    from policyengine_us import CountryTaxBenefitSystem, Microsimulation
+
     dataset = _dataset_from_frame(
         base_frame,
         assert_no_formula_owned_columns=False,
@@ -4641,15 +4660,16 @@ def _materialize_target_frame(
         if "eitc_child_count" in system.variables
         else None
     )
-    needs_itemizer_mask = any(
-        spec.family == "irs_soi" and spec.metadata.get("itemized_only") == "true"
-        for spec in target_specs
+    soi_masks, soi_receipt = (
+        materialize_soi_filer_universe(
+            base_frame, simulation, system, contract=soi_contract
+        )
+        if soi_contract["targets"]
+        else ({}, None)
     )
-    tax_unit_itemizes = (
-        np.asarray(_calculate_array(simulation, "tax_unit_itemizes"), dtype=bool)
-        if needs_itemizer_mask and "tax_unit_itemizes" in system.variables
-        else None
-    )
+    itemized_target_names = {
+        row["name"] for row in soi_contract["targets"] if row["requires_itemization"]
+    }
     tax_unit_state_fips = household["state_fips"].to_numpy()[tax_unit_positions]
     needs_congressional_district_mask = any(
         spec.metadata.get("congressional_district_geoid") for spec in target_specs
@@ -4872,7 +4892,11 @@ def _materialize_target_frame(
         source_name = spec.metadata.get("source_variable", spec.metadata["variable"])
         lower = _as_bound(spec.metadata["agi_lower_bound"])
         upper = _as_bound(spec.metadata["agi_upper_bound"])
-        mask = (agi_tax_unit >= lower) & (agi_tax_unit < upper)
+        mask = (
+            soi_masks["tax_unit_is_filer"]
+            & (agi_tax_unit >= lower)
+            & (agi_tax_unit < upper)
+        )
         if spec.metadata.get("taxable_only") == "true":
             mask &= (income_tax_tax_unit > 0) | (taxable_income_tax_unit > 0)
         status = FILING_STATUS_MAP[spec.metadata["filing_status"]]
@@ -4889,10 +4913,8 @@ def _materialize_target_frame(
             if "eitc" not in variable_cache:
                 continue
             mask &= variable_cache["eitc"] > 0
-        if spec.metadata.get("itemized_only") == "true":
-            if tax_unit_itemizes is None:
-                continue
-            mask &= tax_unit_itemizes
+        if spec.name in itemized_target_names:
+            mask &= soi_masks["tax_unit_itemizes"]
         if "state_fips" in spec.metadata:
             mask &= tax_unit_state_fips == int(spec.metadata["state_fips"])
         if "congressional_district_geoid" in spec.metadata:
@@ -4929,7 +4951,7 @@ def _materialize_target_frame(
         agi_tax_unit,
         filing_status,
         eitc_child_count,
-        tax_unit_itemizes,
+        soi_masks,
     )
     # microcosm#456: the base simulation is pinned past its ``del`` by the
     # shared system instance's ``simulation`` backref — for the full pool that
@@ -5046,6 +5068,7 @@ def _materialize_target_frame(
     )
     compilation = {
         **compilation,
+        **({"soi_return_universe": soi_receipt} if soi_receipt is not None else {}),
         "target_materialization_cache": cache_stats,
     }
     return (
