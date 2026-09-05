@@ -79,6 +79,7 @@ __all__ = [
     "ROSTER_CITATION",
     "ROSTER_SOURCE_REFERENCE_YEAR",
     "REVIEWED_FACTOR_TABLE_DIGESTS",
+    "REVIEWED_PROVENANCE_KEYS",
     "SOURCE_AGI_FIELD",
     "SOURCE_RECID_FIELD",
     "CompiledPufGrowth",
@@ -133,6 +134,23 @@ PROVENANCE_COLUMNS = (PROVENANCE_RECID_COLUMN, PROVENANCE_SOURCE_AGI_COLUMN)
 #: ``reviewed_resource`` authority cannot compile. Adding a digest here is the
 #: reviewed act; it is not something a caller can supply.
 REVIEWED_FACTOR_TABLE_DIGESTS: tuple[str, ...] = ()
+
+#: What a ``reviewed_resource`` factor table must state about itself. Nothing
+#: can satisfy this yet, because :data:`REVIEWED_FACTOR_TABLE_DIGESTS` is
+#: empty; the set is here so the receipt a reviewed table owes is written down
+#: executably rather than only in prose.
+REVIEWED_PROVENANCE_KEYS = frozenset(
+    {
+        "dependency_versions",
+        "generated_by",
+        "generator_code_sha256",
+        "index_or_total",
+        "parameter_paths",
+        "population_divisor",
+        "rounding",
+        "source_url",
+    }
+)
 
 #: Largest table this transform will accept, so a mistake is a refusal rather
 #: than an unbounded allocation.
@@ -403,10 +421,14 @@ class GrowthRecipe:
                 "INCOMPLETE_SIGN_COVER",
                 name,
             )
-        money_targets = {
-            rule.target_year for rule in self.rules if rule.role is FieldRole.MONEY
-        }
-        _require(len(money_targets) <= 1, "MIXED_TARGET_YEAR")
+        money = [rule for rule in self.rules if rule.role is FieldRole.MONEY]
+        _require(bool(money), "NO_MONEY_FIELD")
+        money_targets = {rule.target_year for rule in money}
+        _require(len(money_targets) == 1, "MIXED_TARGET_YEAR")
+        _require(
+            len({rule.source_reference_year for rule in money}) == 1,
+            "MIXED_SOURCE_REFERENCE_YEAR",
+        )
         weights = [rule for rule in self.rules if rule.role is FieldRole.DESIGN_WEIGHT]
         _require(len(weights) <= 1, "MULTIPLE_DESIGN_WEIGHTS")
         if weights and money_targets:
@@ -706,6 +728,30 @@ class ResolvedFactor:
     target_level: str
     ratio_bits: str
 
+    def __post_init__(self) -> None:
+        field = _identifier(self.field, "RESOLVED_FIELD")
+        _require(type(self.sign_branch) is SignBranch, "RESOLVED_SIGN_BRANCH", field)
+        _require(
+            type(self.kind) is GrowthKind and self.kind is not GrowthKind.NONE,
+            "RESOLVED_KIND",
+            field,
+        )
+        _identifier(self.series, "RESOLVED_SERIES", field)
+        _year(self.source_year, "RESOLVED_SOURCE_YEAR", field)
+        _year(self.target_year, "RESOLVED_TARGET_YEAR", field)
+        _require(
+            _finite_positive(self.source_level) and _finite_positive(self.target_level),
+            "RESOLVED_LEVEL",
+            field,
+        )
+        # The stored bits are the factor. Recomputing them here means a
+        # hand-built ResolvedFactor cannot claim a factor its own levels do not
+        # produce, so the bits are evidence rather than an assertion.
+        expected = struct.pack(
+            "<d", float(self.target_level) / float(self.source_level)
+        ).hex()
+        _require(self.ratio_bits == expected, "RESOLVED_RATIO_BITS", field)
+
     @property
     def value(self) -> float:
         """The exact float64 this factor is, recovered from its bit pattern."""
@@ -733,6 +779,47 @@ class CompiledPufGrowth:
     factors: GrowthFactorTable
     resolved: tuple[ResolvedFactor, ...]
     identity: bytes
+
+    def __post_init__(self) -> None:
+        _require(type(self.recipe) is GrowthRecipe, "RECIPE_TYPE")
+        _require(type(self.factors) is GrowthFactorTable, "FACTOR_TABLE_TYPE")
+        _require(
+            type(self.resolved) is tuple
+            and all(type(item) is ResolvedFactor for item in self.resolved),
+            "RESOLVED_TYPE",
+        )
+        # Exactly one resolved factor per growing rule, agreeing with it, and
+        # none left over: a directly constructed contract cannot describe a
+        # different computation than its own recipe declares.
+        expected = tuple(
+            (
+                rule.field,
+                rule.sign_branch,
+                rule.factor_series,
+                rule.growth_kind,
+                rule.source_reference_year,
+                rule.target_year,
+            )
+            for rule in self.recipe.rules
+            if rule.grows
+        )
+        actual = tuple(
+            (
+                factor.field,
+                factor.sign_branch,
+                factor.series,
+                factor.kind,
+                factor.source_year,
+                factor.target_year,
+            )
+            for factor in self.resolved
+        )
+        _require(actual == expected, "RESOLVED_COVERAGE")
+        _require(
+            self.identity
+            == _contract_identity(self.recipe, self.factors, self.resolved),
+            "CONTRACT_BINDING",
+        )
 
     @property
     def sha256(self) -> str:
@@ -812,6 +899,10 @@ def compile_puf_growth(
             factors.sha256 in REVIEWED_FACTOR_TABLE_DIGESTS,
             "UNREVIEWED_FACTOR_TABLE",
         )
+        _require(
+            set(factors.provenance) == REVIEWED_PROVENANCE_KEYS,
+            "REVIEWED_PROVENANCE_SHAPE",
+        )
     resolved = []
     for rule in recipe.rules:
         if not rule.grows:
@@ -835,7 +926,19 @@ def compile_puf_growth(
                 struct.pack("<d", ratio).hex(),
             )
         )
-    identity = _json(
+    resolved = tuple(resolved)
+    return CompiledPufGrowth(
+        recipe, factors, resolved, _contract_identity(recipe, factors, resolved)
+    )
+
+
+def _contract_identity(
+    recipe: GrowthRecipe,
+    factors: GrowthFactorTable,
+    resolved: tuple[ResolvedFactor, ...],
+) -> bytes:
+    """Canonical bytes identifying one recipe bound to one factor table."""
+    return _json(
         {
             "schema_version": RECIPE_SCHEMA_VERSION,
             "recipe": json.loads(recipe.identity),
@@ -845,7 +948,6 @@ def compile_puf_growth(
             "resolved": [factor.as_document() for factor in resolved],
         }
     )
-    return CompiledPufGrowth(recipe, factors, tuple(resolved), identity)
 
 
 def puf_growth_monetary_metadata(
@@ -973,6 +1075,10 @@ def apply_puf_growth(table: pd.DataFrame, compiled: CompiledPufGrowth) -> GrownP
         table: One row per raw source record, whose columns are exactly the
             recipe's declared fields.
         compiled: The compiled contract.
+
+    Row correspondence is positional, not by pandas label: the output carries a
+    fresh ``RangeIndex`` and row *i* of the output is row *i* of the input. A
+    caller that needs the input's labels back must reattach them.
 
     Returns:
         A :class:`GrownPufTable` whose frame carries the grown money columns,
