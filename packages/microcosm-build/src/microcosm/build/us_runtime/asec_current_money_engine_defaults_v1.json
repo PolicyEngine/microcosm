@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "microcosm.us.asec_current_money_engine_defaults.v1",
+  "engine_package": "policyengine-us",
+  "engine_version": "1.819.0",
+  "allowlist": [],
+  "allowlist_policy": "no engine default is an approved input to an admitted output; a closure leaf this graph does not produce blocks its root",
+  "admitted_roots": [
+    "capital_gains",
+    "dividend_income",
+    "employment_income",
+    "social_security"
+  ],
+  "blocked_roots": {
+    "interest_income": "needs tax_exempt_interest_income, which this slice does not map",
+    "pension_income": "needs the public pension leaves, which this slice does not map",
+    "self_employment_income": "needs sstb_self_employment_income_before_lsr, which this slice does not map"
+  },
+  "release_eligible": false,
+  "scoring_claim": "none; these are engine outputs on an engineering sample, not a tax or benefit score"
+}
