@@ -58,8 +58,10 @@ membership vectors and checked against the parent descriptors before the rent
 handoff on cold, auto and required replay.
 
 This slice is `fresh_source` only. Selected CPS rent must be absent or entirely
-null; partly or completely observed CPS rent refuses at the boundary, before a
-donor is loaded or fitted. The complete-incumbent pass-through remains owned by
+null; partly or completely observed CPS rent refuses at the boundary, before
+the donor is fitted and before any recipient work. The authenticated donor
+`CREATE` is recipient-independent by design and may still load first; that is
+the same preflight the caller already performed to build the descriptor. The complete-incumbent pass-through remains owned by
 the unchanged direct `with_us_housing_inputs`, and this recipe does not claim
 it. There is no post-clone housing-assistance QRF, no target activation change,
 no source-period money adjustment, and no change to the rent science or its

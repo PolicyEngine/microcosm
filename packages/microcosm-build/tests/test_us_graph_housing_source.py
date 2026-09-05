@@ -717,12 +717,26 @@ def test_observed_cps_rent_refuses_before_any_recipient_work(
         metadata=frame.metadata,
     )
 
-    def forbidden(*args, **kwargs):
-        raise AssertionError("refused fresh-source scope must not fit a donor")
+    fits = []
+    original = graph_legacy_train.fit_target
+    recipients = []
+    original_recipient = rent.USACSRentRecipientKernel.run
 
-    monkeypatch.setattr(graph_legacy_train, "fit_target", forbidden)
-    with pytest.raises(NodeRejectedError, match="fresh"):
+    def counted(*args, **kwargs):
+        fits.append(1)
+        return original(*args, **kwargs)
+
+    def counted_recipient(self, context):
+        recipients.append(1)
+        return original_recipient(self, context)
+
+    monkeypatch.setattr(graph_legacy_train, "fit_target", counted)
+    monkeypatch.setattr(rent.USACSRentRecipientKernel, "run", counted_recipient)
+    with pytest.raises(NodeRejectedError, match="fresh_source only"):
         _run(tmp_path, refused)
+    # The donor CREATE is recipient-independent and may load first; nothing that
+    # depends on the recipient projection runs once the boundary refuses.
+    assert fits == [] and recipients == []
 
 
 def test_unsupported_mode_is_refused_at_declaration(tmp_path):
