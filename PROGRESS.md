@@ -6,8 +6,8 @@ In progress on 2026-09-05 on `f1-portable-worker-identity`, started on
 2026-09-04 at
 `50c9232b7597bd1f47897a3132ed08894fc11d93`. Baseline timing precedes all
 behavior changes. Both unchanged baselines and fail-before regressions are recorded.
-Memoization and session priming pass the focused post-fix regressions;
-full verification is next. Report and raw measurement logs are outside the repository:
+Memoization and session priming pass the focused regressions and the complete
+335-test stacked-spine file. The actual CI process groups are running. Report and raw measurement logs are outside the repository:
 `/private/tmp/microcosm-pr871-ci-crawl/out.md`.
 
 ## Done
@@ -66,10 +66,14 @@ full verification is next. Report and raw measurement logs are outside the repos
   245 deselected, exit 0, 160.517 seconds wall time versus 734.406 before.
   This is a 4.58x measured speedup despite the additional regressions.
 
+- Full post-fix stacked-spine file: 335 passed, 2,378 warnings, no failures
+  or skips; exit 0; 347.905 seconds wall time (5m 47.905s), pytest 337.74s.
+  The us-qs build process started only after this successful completion.
+
 ## Next
 
-- Finish the full stacked-spine file and the actual us-qs/us-am CI process
-  groups with per-file timings; then run Ruff, formatting, and spec-pin checks.
+- Finish the actual us-qs/us-am CI process groups with per-file timings;
+  then run Ruff, formatting, and spec-pin checks.
 - Complete the external report with exact counts, wall times, scope boundaries,
   and commit history. No push.
 
