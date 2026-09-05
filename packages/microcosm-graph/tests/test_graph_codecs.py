@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import signal
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -19,6 +22,32 @@ from microcosm.graph.codecs import (
     load_source_bytes,
 )
 from microcosm.graph.store import ContentStore, StoreUnavailable
+
+
+@contextlib.contextmanager
+def _deadline(seconds: int) -> Iterator[None]:
+    """Fail on a blocked read instead of hanging.
+
+    Nothing bounds a test's runtime here — pytest-timeout is not installed and
+    ``addopts`` sets no deadline — so a codec that blocked on a FIFO would take
+    the lane out for the runner's whole budget with no assertion and no
+    traceback. This turns that into an ordinary failure.
+    """
+
+    if not hasattr(signal, "SIGALRM"):  # pragma: no cover - POSIX only
+        yield
+        return
+
+    def expire(signum: int, frame: object) -> None:
+        raise TimeoutError(f"raw-bytes-v1 blocked for more than {seconds}s.")
+
+    previous = signal.signal(signal.SIGALRM, expire)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, previous)
 
 
 def _frame() -> Frame:
@@ -187,8 +216,10 @@ def test_raw_bytes_reads_one_regular_file_and_refuses_anything_else(
         load_source_bytes("raw-bytes-v1", tmp_path)
     fifo = tmp_path / "pipe"
     os.mkfifo(fifo)
-    # Refused by mode before opening: a codec that opened this would block.
-    with pytest.raises(ValueError, match="not a regular file"):
+    # Opened non-blocking and refused from the descriptor's own mode. The
+    # deadline is the regression guard: a blocking open of a FIFO with no
+    # writer would hang here rather than fail.
+    with _deadline(10), pytest.raises(ValueError, match="not a regular file"):
         load_source_bytes("raw-bytes-v1", fifo)
     with pytest.raises(ValueError, match="not readable"):
         load_source_bytes("raw-bytes-v1", tmp_path / "absent.npz")
