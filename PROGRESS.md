@@ -85,10 +85,29 @@ Landed and green locally:
 `tools/ci_test_groups.py --verify` reports `verification=ok`; both new files
 land in `[engine] us-am` / `[fast] rest` and never under `[defaulted]`.
 
+## Verification (2026-09-05, this session)
+
+The previous lane was cut off by a hard usage limit at 07:53 mid-test-run.
+This session re-ran verification from the committed head to completion.
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Targeted | `pytest test_us_graph_housing_source.py test_us_graph_housing_source_artifacts.py` | **113 passed** in 88.70s, 0 skipped |
+| Lint | `ruff check .` | All checks passed |
+| CI partition | `tools/ci_test_groups.py --verify` | `verification=ok` |
+| Grouping | `--list rest` / `--list us-am` | both new files in each; never `[defaulted]` |
+| Related | 27 files touching `multispine_pool` / the rent graph / housing inputs | see below |
+
+The environment is the in-worktree isolated locked sync: Python 3.14.4,
+pandas 3.0.3, numpy 2.4.6, scikit-learn 1.8.0, pyarrow 25.0.0. No
+PolicyEngine engine is installed, which confirms the two new test files are
+genuinely engine-free and their `[fast] rest` placement is honest rather than
+a silently skipped lane. Neither file carries a skip, xfail or importorskip.
+
 ## Next
 
-1. Run the necessary related suites once (microcosm-build shard).
-2. Write the author receipt and the final answer file.
+1. Adjudicate the independent adversarial review of the landed change.
+2. Refresh the author receipt artifacts and write the final answer file.
 
 ## Limitations stated, not hidden
 
