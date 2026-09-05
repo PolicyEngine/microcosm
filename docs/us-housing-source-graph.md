@@ -20,7 +20,12 @@ mode:
   rent-only finalizer.
 - `early_preparation.housing.source_outputs` exports the five completed leaves
   as immutable typed bytes bound to the projection, the rent final context and
-  the completed rent validation.
+  the completed rent validation. All three bindings are authenticated by this
+  node against its own declared producer edges at encode time. The merge
+  boundary, the merge and the gate each re-verify the projection and validation
+  bindings; the rent-final-context digest and producer key are carried for
+  audit provenance and are **not** re-verified downstream, because the merge
+  side works from the full-pool context rather than the rent one.
 - `early_preparation.housing.merge_boundary` is an all-row `FILTER` of the
   original full pool that depends on the completed export, so rewritten cells
   cannot create a source/merge cycle.
@@ -36,6 +41,14 @@ relationship stage's population as `base` and its accepted context producer as
 `early_preparation.housing.gate`'s context edge, not merely the output columns,
 so a withheld acceptance leaves it unreached. The merge node's pending context
 has a different artifact type and cannot satisfy that accepted-context input.
+
+Type alone is not the whole guard, and the integrator should know it.
+`early_preparation.housing.merge_boundary` republishes the unchanged full-pool
+context under the same accepted `US_FRAME_CONTEXT_TYPE`, upstream of the merge.
+An `ArtifactInput` names its producer as well as its type, so a downstream
+consumer must name `early_preparation.housing.gate`; binding
+`merge_boundary` instead would type-check while bypassing acceptance. Only the
+merge's pending context is excluded by type.
 
 The registered `multispine_pool` helpers own the source facts. Selection and
 role validation come from `multispine_housing_source_selection`, which is the
@@ -78,8 +91,11 @@ full-pool merge normalizes the booleans to nullable `boolean`, exactly as the
 direct helper already does. Full-pool tenure incumbents must already use that
 canonical string representation: an absent or numeric incumbent is refused at
 declaration rather than silently widening the scope to object dtype. Native
-non-CPS rent and tenure cells survive the merge unchanged, and the merge
-evidence digests them before and after so the gate can attest it.
+non-CPS rent and tenure cells survive the merge unchanged. The merge evidence
+carries those cells digested both as the merge saw them before it wrote and as
+they stood after, and the gate requires the pair to agree with the digest it
+recomputes from the final table, so preservation is attested rather than taken
+on the merge kernel's word.
 
 The typed `microcosm.us.housing_source_outputs` payload carries ordered int64
 IDs and exactly five column buffers — little-endian float64, canonical

@@ -136,9 +136,29 @@ PolicyEngine engine is installed, which confirms the two new test files are
 genuinely engine-free and their `[fast] rest` placement is honest rather than
 a silently skipped lane. Neither file carries a skip, xfail or importorskip.
 
+## Independent adversarial review (2026-09-05)
+
+Five independent dimension reviewers over the landed diff (contract fidelity,
+codec correctness, graph semantics, data parity, test strength), each finding
+adversarially verified by three distinct lenses. Every finding below was
+**re-confirmed by the author independently** before any fix; nothing was taken
+on a reviewer's word.
+
+| Sev | Finding | Author verdict | Resolution |
+| --- | --- | --- | --- |
+| high | Warm-resume cache tests are self-satisfying: `_setup` pinned every input frame under a constant `"a" * 64` content key | **Confirmed.** Probe showed a `+3.0` age change never reached the graph — `source` was a cache hit with an identical key, so the whole run replayed | Key the population by content; assert the recipient-side nodes really re-ran. The test now genuinely shows `rent.donor`/`rent.fit.000` reused while every recipient node re-keys |
+| medium ×3 | A carried boolean assistance incumbent is admitted at declaration but can never compile | **Confirmed.** `bool` incumbent → merge node `GraphError`; `boolean` incumbent → measured node `GraphError` | Refuse at declaration with the reason; parametrized test over both representations |
+| medium | Merge evidence carries only post-merge native digests, so the gate cannot independently attest preservation | **Confirmed.** The doc claimed "before and after"; the evidence held only "after" | Evidence now carries `incumbent_cells` (pre-merge); the gate requires pre == post == its own recomputation. Mutation-tested |
+| medium | The source-outputs header records a rent-final-context binding no consumer verifies | **Confirmed, by design.** The export node authenticates it at encode against its own declared edge; the merge side works from the full-pool context | Documented precisely in code and docs as audit provenance rather than an enforced binding. Adding a gate edge would widen the gate past decision 4 |
+| low | The label-seam guard tests the incumbent's booleanness while the shared merge branches on the source's | **Confirmed.** Sound for this recipe's fixed five leaves, but wrong in general for a helper exported in `__all__` | The guard now accepts the produced table and decides from the same series the merge does; unit test covers a boolean incumbent with a non-boolean source |
+| low | The accepted-context edge is enforced only by producer name; `merge_boundary` republishes the same accepted type upstream | **Confirmed.** Only the merge's *pending* context is type-excluded | Documented for whoever wires eligibility: an `ArtifactInput` names producer and type, so the consumer must name the gate |
+
+`_merge_source_person_or_group_outputs` was **not** changed by any of these
+fixes, and no gate threshold or rent science moved.
+
 ## Next
 
-1. Adjudicate the independent adversarial review of the landed change.
+1. Re-run targeted and the necessary related suite once more after the fixes.
 2. Refresh the author receipt artifacts and write the final answer file.
 
 ## Limitations stated, not hidden

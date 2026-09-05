@@ -861,6 +861,36 @@ def test_numeric_tenure_incumbent_is_refused(tmp_path):
         _nodes(numeric, descriptor)
 
 
+def test_the_label_guard_decides_from_the_produced_values_like_the_merge():
+    """The merge picks its write path from the source, so the guard must too.
+
+    ``_merge_source_person_or_group_outputs`` branches on
+    ``_is_physical_boolean_series(source_values)``. A boolean incumbent with a
+    non-boolean produced column therefore still takes the unsafe label-based
+    write, and deciding from the incumbent alone would wave it through.
+    """
+    target = pd.DataFrame(
+        {
+            "spm_unit_id": [1, 2],
+            "leaf": pd.Series([True, False], dtype="boolean"),
+        },
+        index=pd.Index([7, 7], name="person_id"),
+    )
+    produced = pd.DataFrame({"spm_unit_id": [1, 2], "leaf": [1.5, 2.5]})
+    # Incumbent-only: boolean, so the old check saw nothing to refuse.
+    pool.assert_multispine_source_merge_labels_supported(
+        target, ["leaf"], entity="spm_unit", operator_name="with_us_housing_inputs"
+    )
+    with pytest.raises(ValueError, match="repeated index labels"):
+        pool.assert_multispine_source_merge_labels_supported(
+            target,
+            ["leaf"],
+            entity="spm_unit",
+            operator_name="with_us_housing_inputs",
+            source=produced,
+        )
+
+
 @pytest.mark.parametrize("physical", ["bool", "boolean"])
 def test_a_carried_assistance_incumbent_is_refused_at_declaration(
     tmp_path, physical
@@ -956,6 +986,40 @@ def test_failed_completion_gate_leaves_downstream_unreached(tmp_path, monkeypatc
         result = original(self, context)
         payload = json.loads(result.artifacts["merge_evidence"])
         payload["merged_rows"]["person"] += 1
+        return replace(
+            result,
+            artifacts={
+                **result.artifacts,
+                "merge_evidence": canonical_json(payload),
+            },
+        )
+
+    monkeypatch.setattr(USHousingMergeKernel, "run", tampered)
+    manifest, _store, _nodes_, _donor_path = _run(tmp_path, frame)
+    gate = manifest.nodes[HOUSING_SOURCE_ACCEPTED_CONTEXT]
+    assert gate.receipt["outcome"] == "fail"
+    assert not gate.opaque_artifacts
+    _assert_unreached(manifest, ("after",))
+
+
+def test_gate_refuses_evidence_whose_pre_merge_native_digest_disagrees(
+    tmp_path, monkeypatch
+):
+    """The gate attests preservation, not the merge kernel's word for it.
+
+    The merge records the native cells as it saw them before writing and as
+    they stood after. A merge that reported a pre-merge digest disagreeing with
+    the post-merge one has not preserved the native cells, and the gate must
+    refuse it even though the post-merge digest still matches the final table.
+    """
+    frame = _relationship_base(_pool_frame())
+    original = USHousingMergeKernel.run
+
+    def tampered(self, context):
+        result = original(self, context)
+        payload = json.loads(result.artifacts["merge_evidence"])
+        assert payload["incumbent_cells"], "expected a carried native incumbent"
+        payload["incumbent_cells"][0]["digest"] = "0" * 64
         return replace(
             result,
             artifacts={

@@ -869,14 +869,17 @@ class USHousingMergeKernel(_HousingKernel):
                 .to_numpy()
             )
 
-        incumbent_digests: dict[tuple[str, str], str] = {}
+        # Digest the native cells *before* the merge as well as after, so the
+        # gate can attest preservation from the evidence itself rather than
+        # inheriting this kernel's word for it.
+        incumbent_digests: dict[tuple[str, str], dict[str, object]] = {}
         for entity, column, _dtype in codec.merge_columns():
             if column in tables[entity]:
                 incumbent_digests[(entity, column)] = codec.cell_digest(
                     tables[entity].loc[native_mask(entity), column],
                     entity=entity,
                     column=column,
-                )["digest"]
+                )
         merged, merged_rows, receipt = merge_multispine_housing_source_outputs(
             {entity: table.copy(deep=True) for entity, table in tables.items()},
             {
@@ -890,6 +893,7 @@ class USHousingMergeKernel(_HousingKernel):
         columns: dict[tuple[str, str], pd.Series] = {}
         merged_cells = []
         native_cells = []
+        incumbent_cells = []
         for entity, column, dtype in codec.merge_columns():
             values = merged[entity][column]
             if str(values.dtype) != dtype:
@@ -901,10 +905,11 @@ class USHousingMergeKernel(_HousingKernel):
                 preserved = codec.cell_digest(
                     values.loc[native_mask(entity)], entity=entity, column=column
                 )
-                if preserved["digest"] != incumbent_digests[(entity, column)]:
+                if preserved != incumbent_digests[(entity, column)]:
                     raise ValueError(
                         f"US housing merge changed native {entity}.{column} cells."
                     )
+                incumbent_cells.append(incumbent_digests[(entity, column)])
                 native_cells.append(preserved)
             merged_cells.append(codec.cell_digest(values, entity=entity, column=column))
             columns[(entity, column)] = pd.Series(
@@ -929,6 +934,7 @@ class USHousingMergeKernel(_HousingKernel):
             pool_rows=pool_rows,
             merged_cells=merged_cells,
             native_cells=native_cells,
+            incumbent_cells=incumbent_cells,
             source_preparation=receipt,
             mode=mode,
         )
@@ -1087,6 +1093,14 @@ class USHousingSourceGateKernel(_HousingKernel):
         native_cells = {
             (cell["entity"], cell["column"]): cell for cell in evidence["native_cells"]
         }
+        incumbent_cells = {
+            (cell["entity"], cell["column"]): cell
+            for cell in evidence["incumbent_cells"]
+        }
+        if set(incumbent_cells) != set(native_cells):
+            raise ValueError(
+                "US housing gate native evidence lacks its pre-merge counterpart."
+            )
         for entity, column, dtype in codec.merge_columns():
             values = tables[entity][column]
             if str(values.dtype) != dtype:
@@ -1106,7 +1120,11 @@ class USHousingSourceGateKernel(_HousingKernel):
                 observed = codec.cell_digest(
                     values.loc[~selected.to_numpy()], entity=entity, column=column
                 )
-                if observed != native:
+                # The evidence carries the native cells as the merge saw them
+                # before it wrote, and as they stood after. Requiring both to
+                # equal what this gate independently recomputes attests
+                # preservation instead of trusting the merge kernel's own check.
+                if observed != native or incumbent_cells[(entity, column)] != native:
                     raise ValueError(
                         f"US housing gate native {entity}.{column} cells changed."
                     )

@@ -2340,22 +2340,34 @@ def assert_multispine_source_merge_labels_supported(
     *,
     entity: str,
     operator_name: str,
+    source: pd.DataFrame | None = None,
 ) -> None:
     """Refuse the inherited label-based merge seam instead of working around it.
 
     :func:`_merge_source_person_or_group_outputs` writes a non-boolean output
     through ``target.loc[target.index[positions]]``. With repeated pandas index
     labels that assignment reaches every row sharing a selected label, so the
-    combination of duplicated labels and an incumbent non-boolean output is
-    refused at this explicit scope boundary. Fixing the shared merge is a
-    separate approved scope; unique labels retain exact original parity.
+    combination of duplicated labels and that write is refused at this explicit
+    scope boundary. Fixing the shared merge is a separate approved scope;
+    unique labels retain exact original parity.
+
+    The merge picks its write path from the **produced** values, so pass
+    ``source`` to decide from the same series it does. Without ``source`` this
+    falls back to the incumbent, which is conservative rather than exact: it can
+    over-refuse a boolean-producing column whose incumbent is not boolean, and
+    it would under-refuse a non-boolean-producing column whose incumbent is.
     """
     if not target.index.has_duplicates:
         return
+
+    def writes_by_label(column: str) -> bool:
+        decided = target[column] if source is None or column not in source else (
+            source[column]
+        )
+        return not _is_physical_boolean_series(decided)
+
     affected = sorted(
-        column
-        for column in columns
-        if column in target and not _is_physical_boolean_series(target[column])
+        column for column in columns if column in target and writes_by_label(column)
     )
     if affected:
         raise ValueError(
@@ -2398,6 +2410,7 @@ def merge_multispine_housing_source_outputs(
             columns,
             entity=entity,
             operator_name="with_us_housing_inputs",
+            source=produced[entity],
         )
         merged[entity], merged_rows[entity] = _merge_source_person_or_group_outputs(
             merged[entity],

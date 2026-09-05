@@ -220,6 +220,7 @@ def test_merge_evidence_round_trip_carries_the_ordered_source_receipt():
         pool_rows={"person": 4},
         merged_cells=[],
         native_cells=[],
+        incumbent_cells=[],
         source_preparation=receipt,
         mode=codec.FRESH_SOURCE_MODE,
     )
@@ -682,6 +683,7 @@ def test_merge_evidence_refuses_an_unsupported_mode_at_encode():
             pool_rows={},
             merged_cells=[],
             native_cells=[],
+            incumbent_cells=[],
             source_preparation={
                 "phase": "pre_clone",
                 "operator_order": ["with_us_housing_inputs"],

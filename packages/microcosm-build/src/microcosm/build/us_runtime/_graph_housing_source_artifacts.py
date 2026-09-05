@@ -154,6 +154,7 @@ _MERGE_EVIDENCE_FIELDS = {
     "pool_rows",
     "merged_cells",
     "native_cells",
+    "incumbent_cells",
     "source_preparation",
 }
 _CELL_FIELDS = {"entity", "column", "dtype", "rows", "digest"}
@@ -518,6 +519,10 @@ def encode_source_outputs(
             "columns": columns,
             "projection_sha256": projection_binding["sha256"],
             "projection_producer_key": projection_binding["producer_key"],
+            # Authenticated here against the export node's own declared rent
+            # final-context edge. Carried for audit provenance: the merge side
+            # works from the full-pool context, so no downstream consumer
+            # re-verifies these two fields.
             "frame_context_sha256": context_binding["sha256"],
             "frame_context_producer_key": context_binding["producer_key"],
             "validation_sha256": validation_binding["sha256"],
@@ -768,6 +773,7 @@ def encode_merge_evidence(
     pool_rows: Mapping[str, int],
     merged_cells: Sequence[Mapping[str, object]],
     native_cells: Sequence[Mapping[str, object]],
+    incumbent_cells: Sequence[Mapping[str, object]],
     source_preparation: Mapping[str, object],
     mode: str,
 ) -> bytes:
@@ -793,6 +799,7 @@ def encode_merge_evidence(
             "pool_rows": dict(pool_rows),
             "merged_cells": [dict(cell) for cell in merged_cells],
             "native_cells": [dict(cell) for cell in native_cells],
+            "incumbent_cells": [dict(cell) for cell in incumbent_cells],
             "source_preparation": source_preparation,
         }
     )
@@ -832,6 +839,7 @@ def decode_merge_evidence(payload: bytes) -> Mapping[str, object]:
             raise ValueError(f"US housing merge evidence {key} is malformed.")
     _validate_cells(document["merged_cells"])
     _validate_cells(document["native_cells"])
+    _validate_cells(document["incumbent_cells"])
     receipt = document["source_preparation"]
     if (
         not isinstance(receipt, dict)
