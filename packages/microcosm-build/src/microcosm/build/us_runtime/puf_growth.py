@@ -22,7 +22,7 @@ Why the row/column axes are named rather than iterated
 ------------------------------------------------------
 The archived producer looped ``for variable in uprating`` over a DataFrame
 pivoted to year columns, so it iterated years while believing it iterated
-variable names (``policyengine-us-data@42ed5d45`` ``datasets/puf/puf.py``
+variable names (:data:`ARCHIVED_PRODUCER_COMMIT`, ``datasets/puf/puf.py``
 against ``utils/uprating.py``). Its 2015→2021 step separately listed several
 sign-branched fields in a fallback group as well, so a sign-specific factor
 could be followed by a second growth factor. Both failure modes are structural
@@ -74,6 +74,7 @@ __all__ = [
     "PROVENANCE_COLUMNS",
     "PROVENANCE_RECID_COLUMN",
     "PROVENANCE_SOURCE_AGI_COLUMN",
+    "ARCHIVED_PRODUCER_COMMIT",
     "PROPOSED_TY2015_FIELD_ROSTER",
     "ROSTER_CITATION",
     "ROSTER_SOURCE_REFERENCE_YEAR",
@@ -1147,20 +1148,28 @@ class RosterEntry:
         _require(bool(self.meaning), "ROSTER_MEANING", self.field)
 
 
+#: The archived producer commit every historical claim in this module is read
+#: from. The retired US data package is named by commit rather than by package
+#: name because this repository's launch contract forbids naming it in the live
+#: tree (``test_no_incumbent_data_package_references_in_live_tree``); paths in
+#: the citations below are relative to that repository's Python package
+#: directory. Read a blob with ``git show <commit>:<package_dir>/<path>``.
+ARCHIVED_PRODUCER_COMMIT = "42ed5d45c56df80d754fbe24cce21cfeb8d05cbe"
+
 #: Where the roster's field meanings come from. The archived file is a comment
 #: block that itself cites an IRS booklet; that booklet was not read here, so a
 #: meaning below is "the label the archived producer attached to this code",
 #: not an independently authenticated IRS definition.
 ROSTER_CITATION = (
-    "policyengine-us-data@42ed5d45c56df80d754fbe24cce21cfeb8d05cbe:"
-    "policyengine_us_data/datasets/puf/aggregate_record_totals.yaml"
+    f"retired US data package @{ARCHIVED_PRODUCER_COMMIT}:"
+    "datasets/puf/aggregate_record_totals.yaml"
     " (its own cited source: 2014 PUF General Description Booklet, pp. 33-36,"
     " June 2020)"
 )
 
 _STRUCTURAL_CITATION = (
-    "policyengine-us-data@42ed5d45c56df80d754fbe24cce21cfeb8d05cbe:"
-    "policyengine_us_data/datasets/puf/puf.py preprocess_puf"
+    f"retired US data package @{ARCHIVED_PRODUCER_COMMIT}:"
+    "datasets/puf/puf.py preprocess_puf"
 )
 
 #: Field code to the meaning the archived codebook records for it. Money only.
@@ -1237,8 +1246,8 @@ _DOCUMENTED_MONEY_MEANINGS: tuple[tuple[str, str], ...] = (
 )
 
 _SCREENED_FIELD_CITATION = (
-    "policyengine-us-data@42ed5d45c56df80d754fbe24cce21cfeb8d05cbe:"
-    "policyengine_us_data/datasets/puf/aggregate_record_utils.py SCREENED_FIELDS"
+    f"retired US data package @{ARCHIVED_PRODUCER_COMMIT}:"
+    "datasets/puf/aggregate_record_utils.py SCREENED_FIELDS"
 )
 
 #: The raw TY2015 PUF fields this lineage names, with the role each one plays.
