@@ -153,6 +153,9 @@ _PUF_CLONE_OPERATOR_MODULES = (
     "puf_support.py",
 )
 _SPINE_BLIND_OPERATOR_MODULES = (
+    "_graph_acs_rent_artifacts.py",
+    "graph_acs_rent.py",
+    "graph_acs_rent_source.py",
     "acs_transfer.py",
     "adult_care.py",
     "alimony.py",
