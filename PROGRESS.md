@@ -7,9 +7,9 @@ Authority: `us-housing-source-root-decisions.md` (narrows) over
 `us-housing-source-graph-proposal.md` (scope), both under
 `/Users/maxghenis/architecture-reviews/microcosm-20260904/`.
 
-## State
+## Bootstrapping (2026-09-05, historical)
 
-Bootstrapping. Isolated locked env created in-worktree with
+Isolated locked env created in-worktree with
 `env -u UV_FROZEN uv sync --all-packages --locked` (pandas 3.0.3, numpy 2.4.6,
 pyarrow 25.0.0, scikit-learn 1.8.0); no shared dependency was modified and no
 dependency was upgraded.
@@ -75,8 +75,9 @@ Landed and green locally:
   and merge-evidence codecs.
 - `.../multispine_pool.py` — seven small registered helpers, no change to any
   existing selection semantics or merge formula.
-- `packages/microcosm-build/tests/test_us_graph_housing_source.py` (43 tests)
-  and `test_us_graph_housing_source_artifacts.py` (39 tests).
+- `packages/microcosm-build/tests/test_us_graph_housing_source.py`
+  (45 functions, 61 collected) and
+  `test_us_graph_housing_source_artifacts.py` (31 functions, 52 collected).
 - `packages/microcosm-build/tests/golden/us_housing_source_pre_graph.json` —
   the pre-edit direct oracle.
 - `test_us_spine_blindness.py` classification, `docs/us-housing-source-graph.md`,
