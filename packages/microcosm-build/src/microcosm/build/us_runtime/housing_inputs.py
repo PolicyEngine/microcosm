@@ -473,14 +473,17 @@ def _constant_source_by_unit(
     return values.to_numpy(dtype=np.float64)
 
 
-def derive_us_housing_inputs(frame: Frame) -> Frame:
-    """Carry the three exact ASEC housing/tenure inputs onto their entities."""
+def derive_us_housing_tables(
+    person: pd.DataFrame, household: pd.DataFrame, spm_unit: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return copied household/SPM tables with the exact measured housing leaves.
 
-    if frame.schema != US_SCHEMA:
-        raise ValueError("US housing inputs require the US schema.")
-    person = frame.table("person")
-    household = frame.table("household")
-    spm_unit = frame.table("spm_unit")
+    Inputs are the actual linked tables (or declared views) at the existing
+    housing derivation boundary. SPM raw values align through person_spm_unit_id;
+    returned group row order, indices, other columns and input tables are kept.
+    This helper neither reconstructs other entities nor changes raw code meaning.
+    """
+
     _required_columns(
         person,
         ("SPM_CAPHOUSESUB", "SPM_TENMORTSTATUS", "person_spm_unit_id"),
@@ -529,15 +532,30 @@ def derive_us_housing_inputs(frame: Frame) -> Frame:
             f"{unknown_spm_codes}."
         )
 
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    tables["household"]["tenure_type"] = np.asarray(
+    household_result = household.copy()
+    spm_result = spm_unit.copy()
+    household_result["tenure_type"] = np.asarray(
         [_HOUSEHOLD_TENURE_MAP[code] for code in raw_household_codes], dtype=object
     )
-    tables["spm_unit"]["receives_housing_assistance"] = subsidy > 0.0
-    tables["spm_unit"]["takes_up_housing_assistance_if_eligible"] = subsidy > 0.0
-    tables["spm_unit"]["spm_unit_tenure_type"] = np.asarray(
+    spm_result["receives_housing_assistance"] = subsidy > 0.0
+    spm_result["takes_up_housing_assistance_if_eligible"] = subsidy > 0.0
+    spm_result["spm_unit_tenure_type"] = np.asarray(
         [_SPM_TENURE_MAP[code] for code in raw_spm_codes], dtype=object
     )
+    return household_result, spm_result
+
+
+def derive_us_housing_inputs(frame: Frame) -> Frame:
+    """Carry the three exact ASEC housing/tenure inputs onto their entities."""
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("US housing inputs require the US schema.")
+    household, spm_unit = derive_us_housing_tables(
+        frame.table("person"), frame.table("household"), frame.table("spm_unit")
+    )
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["household"] = household
+    tables["spm_unit"] = spm_unit
     return Frame(
         tables,
         frame.schema,
