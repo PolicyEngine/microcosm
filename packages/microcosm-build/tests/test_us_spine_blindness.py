@@ -339,6 +339,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # and kernels only. Selection, role stripping and the merge stay in the
         # pool owner, and it remains subject to the all-runtime AST scan.
         "graph_person_preparation.py",
+        # Pure synthetic current-money contracts; ordinary, no source exemption.
+        "asec_current_money.py",
+        "_asec_current_money_codec.py",
+        "asec_current_money_resources.py",
         # Source import/assembly/harmonization owner, classified above.
         "graph_sources.py",
     }
