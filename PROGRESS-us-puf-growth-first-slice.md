@@ -9,7 +9,8 @@ forked from root integration `9ff943e6896ee6c487c853e4da96ccdfd7d96ed5` (unchang
 
 ## State (2026-09-05)
 
-Setup and reconnaissance complete; implementation not started.
+Implemented, tested green, documented, committed. Under adversarial review;
+not pushed, no PR, nothing wired into a build or a release.
 
 ## Done
 
@@ -23,11 +24,23 @@ Setup and reconnaissance complete; implementation not started.
 - Probed `import microcosm.build.us_runtime`: succeeds in 37.75 s and loads **no** `policyengine*`
   module, so its `__init__` does not trigger installed-PolicyEngine ABI initialization here.
 
+- Added `packages/microcosm-build/src/microcosm/build/us_runtime/puf_growth.py`:
+  the pure contract (roles, growth kinds, sign branches, variable-row/year-column
+  factor levels, authority) and the transform.
+- Added `packages/microcosm-build/src/microcosm/build/us_runtime/puf_growth_graph.py`:
+  boundary / money / design-weight nodes and kernels.
+- Added `packages/microcosm-build/tests/test_us_puf_growth.py` (29 tests) and
+  `packages/microcosm-build/tests/test_us_puf_growth_graph.py` (6 tests). All 35 pass.
+- Added `docs/us-puf-growth-first-slice.md` and
+  `changelog.d/20260905-us-puf-growth-first-slice.added.md`.
+- `ruff check .` clean repo-wide; `tools/ci_test_groups.py --verify` reports
+  `verification=ok`; both new files land in `us-p` and `rest`, never `[defaulted]`.
+
 ## Next
 
-- Design the per-field growth contract against the ASEC current-money precedent.
-- Implement the registry + pure transform + tiny Frame/graph demonstration.
-- Write `docs/us-puf-growth-first-slice.md` with the explicit remaining obligations.
+- Answer the adversarial review findings.
+- Hand to root for independent inspection. Root composes; this branch does not
+  wire the stage into any build, pin, or release path.
 
 ## Scope fences (from the authorizing brief)
 
