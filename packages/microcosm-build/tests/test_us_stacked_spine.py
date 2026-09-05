@@ -19,7 +19,6 @@ from collections import Counter
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
-from functools import cache
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -4159,12 +4158,12 @@ def test_late_table_content_digest_binds_dtype_index_and_order() -> None:
     )
 
 
-@cache
-def _cached_fixture_primary_execution_config_binding(
-    _fit_jobs: str | None,
-    _predict_workers: str | None,
-    _cpu_count: int | None,
-) -> dict[str, object]:
+@pytest.fixture(autouse=True)
+def _prime_worker_identity(prime_primary_qrf_worker_identity: None) -> None:
+    """Share the real session attestation unless a test opts into live identity."""
+
+
+def _fixture_primary_execution_config_binding() -> dict[str, object]:
     return stacked_spine_module._late_primary_execution_config_binding(
         clone_attachment_fraction=1.0,
         clone_attachment_seed=578,
@@ -4175,16 +4174,6 @@ def _cached_fixture_primary_execution_config_binding(
         tax_unit_outputs=None,
         fit_records_enabled=True,
         tail_bound_diagnostics_enabled=True,
-    )
-
-
-def _fixture_primary_execution_config_binding() -> dict[str, object]:
-    return deepcopy(
-        _cached_fixture_primary_execution_config_binding(
-            worker_identity_module.os.environ.get("POPULACE_FIT_N_JOBS"),
-            worker_identity_module.os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
-            worker_identity_module.os.cpu_count(),
-        )
     )
 
 
@@ -4255,6 +4244,7 @@ def test_late_primary_worker_authentication_rejects_rehashed_semantic_change() -
         _validate_fixture_primary_execution_config(binding)
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_worker_transitive_source_identity_includes_package_initializers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4286,6 +4276,7 @@ def test_worker_transitive_source_identity_includes_package_initializers(
     assert imports_after != imports_before
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_worker_source_index_stays_inside_installed_namespace_roots(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4341,6 +4332,7 @@ def _two_namespace_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     return roots
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_worker_source_index_accepts_a_byte_identical_shadow_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4363,6 +4355,7 @@ def test_worker_source_index_accepts_a_byte_identical_shadow_root(
     assert index["microcosm.build"] == (checkout / "build" / "__init__.py").resolve()
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_worker_source_index_rejects_a_shadow_root_with_different_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4392,6 +4385,7 @@ def _pyvenv_prefix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, version: str
 
 
 @pytest.mark.parametrize("components", (2, 3))
+@pytest.mark.usefixtures("live_worker_identity")
 def test_canonical_pyvenv_config_accepts_uv_major_minor_and_triplet_versions(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4420,6 +4414,7 @@ def test_canonical_pyvenv_config_accepts_uv_major_minor_and_triplet_versions(
         ("3.13rc1", "is not numeric"),
     ),
 )
+@pytest.mark.usefixtures("live_worker_identity")
 def test_canonical_pyvenv_config_rejects_versions_that_are_not_the_interpreter(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4484,7 +4479,9 @@ def _fixture_worker_import_trace(
 
 
 @pytest.fixture
-def _worker_identity_memo_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def _worker_identity_memo_inputs(
+    live_worker_identity, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     """Exercise the real memo and file hashing with a tiny import closure."""
     _stub_worker_identity_static_closure(monkeypatch)
     runtime = tmp_path / "libpython-fixture.so"
@@ -4586,7 +4583,7 @@ def test_primary_qrf_worker_identity_memo_binds_lock(
     )
     assert legacy != first
     assert worker_identity_module.primary_qrf_worker_semantic_identity() is first
-    for invalid in ("0" * 64, "malformed"):
+    for invalid in ("0" * 64, "malformed", []):
         with pytest.raises(ValueError, match="lock"):
             worker_identity_module.primary_qrf_worker_semantic_identity(
                 uv_lock_sha256=invalid
@@ -4610,6 +4607,52 @@ def test_primary_qrf_worker_execution_binding_isolates_semantic_memo(
     assert fresh["semantic_identity"]["interpreter"] is not memo["interpreter"]
 
 
+def test_worker_identity_session_prime_matches_pipeline_binding(
+    _session_primary_qrf_worker_identities,
+) -> None:
+    key = (
+        None,
+        worker_identity_module.os.environ.get("POPULACE_FIT_N_JOBS"),
+        worker_identity_module.os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
+    )
+    memo = worker_identity_module._PRIMARY_QRF_WORKER_IDENTITY_CACHE
+    assert key in memo
+    first = memo[key]
+    binding = _fixture_primary_execution_config_binding()["qrf"]["worker_execution"]
+    assert binding["semantic_identity"] == first
+    assert worker_identity_module.primary_qrf_worker_semantic_identity() is first
+    assert first == _session_primary_qrf_worker_identities[key]
+
+
+def test_live_worker_identity_namespace_source_mutation_recomputes(
+    _session_primary_qrf_worker_identities,
+    live_worker_identity,
+    _worker_identity_memo_inputs,
+) -> None:
+    # The session fixture attests first; the opt-out must then remove it rather
+    # than restoring that identity over the temporary namespace used below.
+    assert _session_primary_qrf_worker_identities
+    assert not worker_identity_module._PRIMARY_QRF_WORKER_IDENTITY_CACHE
+    source, calls = _worker_identity_memo_inputs
+    before = worker_identity_module.primary_qrf_worker_semantic_identity()
+    source.write_text("# changed fixture worker\n", encoding="utf-8")
+    assert worker_identity_module.primary_qrf_worker_semantic_identity() is before
+
+    live_worker_identity()
+    after = worker_identity_module.primary_qrf_worker_semantic_identity()
+    assert after is not before
+    assert (
+        after["worker_module"]["transitive_imports_sha256"]
+        != before["worker_module"]["transitive_imports_sha256"]
+    )
+    assert (
+        after["transitive_environment_code_sha256"]
+        != before["transitive_environment_code_sha256"]
+    )
+    assert len(calls) == 2
+
+
+@pytest.mark.usefixtures("live_worker_identity")
 def test_worker_import_trace_refuses_empty_result() -> None:
     with pytest.raises(RuntimeError, match="no readable namespace roots"):
         worker_identity_module._validated_worker_import_trace(
@@ -4623,6 +4666,7 @@ def test_worker_import_trace_refuses_empty_result() -> None:
 
 @pytest.mark.parametrize("cache_location", ["source_tree", "inherited_prefix"])
 @pytest.mark.parametrize("execution_path", ["identity_probe", "worker_module"])
+@pytest.mark.usefixtures("live_worker_identity")
 def test_worker_identity_ignores_valid_header_stale_bytecode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4725,6 +4769,7 @@ def test_worker_identity_ignores_valid_header_stale_bytecode(
 
 
 @pytest.mark.parametrize("suffix", [".pyc", ".pyo"])
+@pytest.mark.usefixtures("live_worker_identity")
 def test_worker_identity_namespace_trace_refuses_bytecode_substitution(
     tmp_path: Path,
     suffix: str,
@@ -4741,6 +4786,7 @@ def test_worker_identity_namespace_trace_refuses_bytecode_substitution(
         worker_identity_module._worker_package_resource_rows(trace)
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_worker_identity_probe_cleans_cache_prefix_on_launch_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4777,6 +4823,7 @@ def test_worker_identity_probe_cleans_cache_prefix_on_launch_failure(
     assert (inherited_prefix / "keep.txt").read_text(encoding="utf-8") == "caller cache"
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_primary_qrf_worker_identity_binds_loaded_runtime_bytes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4804,6 +4851,7 @@ def test_primary_qrf_worker_identity_binds_loaded_runtime_bytes(
         uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
     )
     runtime.write_bytes(b"fixture runtime version two\n")
+    worker_identity_module.clear_primary_qrf_worker_identity_cache()
     after = worker_identity_module.primary_qrf_worker_semantic_identity(
         uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
     )
@@ -4813,6 +4861,7 @@ def test_primary_qrf_worker_identity_binds_loaded_runtime_bytes(
     )
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_primary_qrf_worker_identity_binds_imported_stdlib_source(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4861,6 +4910,7 @@ def test_primary_qrf_worker_identity_binds_imported_stdlib_source(
         uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
     )
     argparse_source.write_text("FIXTURE_VALUE = 2\n", encoding="utf-8")
+    worker_identity_module.clear_primary_qrf_worker_identity_cache()
     after = worker_identity_module.primary_qrf_worker_semantic_identity(
         uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
     )
@@ -4870,6 +4920,7 @@ def test_primary_qrf_worker_identity_binds_imported_stdlib_source(
     ].get("stdlib_imports_sha256")
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_worker_identity_refuses_unapproved_torch_backend_provider_before_import(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4917,6 +4968,7 @@ def test_worker_identity_refuses_unapproved_torch_backend_provider_before_import
         )
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_worker_identity_refuses_duplicate_backend_provider_distribution_identity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -4955,6 +5007,7 @@ def test_worker_identity_refuses_duplicate_backend_provider_distribution_identit
         )
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_worker_transitive_source_identity_binds_actual_imported_package_resource(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -4995,6 +5048,7 @@ def test_worker_transitive_source_identity_binds_actual_imported_package_resourc
         return raw
 
     monkeypatch.setattr(Path, "read_bytes", changed_resource_bytes)
+    worker_identity_module.clear_primary_qrf_worker_identity_cache()
     after = worker_identity_module._worker_package_resource_rows(trace)
     identity_after = worker_identity_module.primary_qrf_worker_semantic_identity(
         uv_lock_sha256=worker_identity_module.APPROVED_UV_LOCK_SHA256
@@ -5256,6 +5310,7 @@ def test_legacy_worker_mismatch_paths_reproduce_sealed_stop_case() -> None:
     }
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_late_primary_resources_bind_donor_content_and_execution_config(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5687,6 +5742,7 @@ def test_late_primary_resource_rejects_shallow_receipt_before_callback() -> None
         )
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_stacked_worker_first_torch_import_forces_autoload_off(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

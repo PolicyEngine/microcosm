@@ -153,6 +153,9 @@ _ATTESTATION_KEYS = {
     "permitted_mismatches",
 }
 _SHA256_ALPHABET = frozenset("0123456789abcdef")
+_PRIMARY_QRF_WORKER_IDENTITY_CACHE: dict[
+    tuple[str | None, str | None, str | None], dict[str, object]
+] = {}
 
 
 @dataclass(frozen=True)
@@ -1273,7 +1276,47 @@ def _semantic_environment() -> dict[str, object]:
     }
 
 
+def clear_primary_qrf_worker_identity_cache() -> None:
+    """Clear process attestations after deliberate runtime or source mutations."""
+
+    _PRIMARY_QRF_WORKER_IDENTITY_CACHE.clear()
+
+
 def primary_qrf_worker_semantic_identity(
+    *,
+    uv_lock_sha256: str | None = None,
+) -> dict[str, object]:
+    """Return the shared canonical worker identity, excluding launcher aliases.
+
+    A process's interpreter, source tree, and installed distributions are
+    attested once per process for each lock and bound-environment combination.
+    Anything that deliberately mutates them must call
+    ``clear_primary_qrf_worker_identity_cache()`` before reattesting. The
+    returned object graph is shared across calls and must be treated as read-only.
+
+    The raw lock argument is part of the key: ``None`` validates the checkout's
+    lock on its first cache miss and after clearing, while explicit approved
+    and legacy digests have separate entries. Bound environment values are
+    likewise keyed by their raw configured strings so validation is preserved.
+    """
+
+    if uv_lock_sha256 is not None:
+        _require_sha256(uv_lock_sha256, boundary="primary-QRF worker lock")
+    key = (
+        uv_lock_sha256,
+        os.environ.get("POPULACE_FIT_N_JOBS"),
+        os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
+    )
+    if key not in _PRIMARY_QRF_WORKER_IDENTITY_CACHE:
+        _PRIMARY_QRF_WORKER_IDENTITY_CACHE[key] = (
+            _uncached_primary_qrf_worker_semantic_identity(
+                uv_lock_sha256=uv_lock_sha256
+            )
+        )
+    return _PRIMARY_QRF_WORKER_IDENTITY_CACHE[key]
+
+
+def _uncached_primary_qrf_worker_semantic_identity(
     *,
     uv_lock_sha256: str | None = None,
 ) -> dict[str, object]:
@@ -1367,7 +1410,10 @@ def primary_qrf_worker_execution_binding() -> dict[str, object]:
 
     raw_executable = sys.executable
     executable = Path(raw_executable).absolute()
-    semantic_identity = primary_qrf_worker_semantic_identity()
+    # Execution bindings become mutable artifact payloads; their edits must
+    # never change the shared identity used to authenticate later bindings.
+    semantic_identity = _json_clone(primary_qrf_worker_semantic_identity())
+    assert isinstance(semantic_identity, dict)
     result = {
         "schema_version": PRIMARY_QRF_WORKER_IDENTITY_SCHEMA_VERSION,
         "semantic_identity": semantic_identity,
@@ -1864,6 +1910,7 @@ __all__ = [
     "PRIMARY_QRF_WORKER_MODULE",
     "_legacy_worker_execution_mismatch_paths",
     "authenticate_legacy_worker_identity_attestation",
+    "clear_primary_qrf_worker_identity_cache",
     "current_worker_execution_authentication_receipt",
     "legacy_primary_qrf_worker_execution_binding",
     "primary_qrf_worker_bindings_semantically_equal",

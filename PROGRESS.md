@@ -4,8 +4,9 @@
 
 In progress on 2026-09-04 on `f1-portable-worker-identity`, starting at
 `50c9232b7597bd1f47897a3132ed08894fc11d93`. Baseline timing precedes all
-behavior changes. Both unchanged baselines passed; regression reproduction
-and implementation are next. Report and raw measurement logs are outside the repository:
+behavior changes. Both unchanged baselines and fail-before regressions are recorded.
+Memoization and session priming pass the focused post-fix regressions;
+full verification is next. Report and raw measurement logs are outside the repository:
 `/private/tmp/microcosm-pr871-ci-crawl/out.md`.
 
 ## Done
@@ -40,10 +41,28 @@ and implementation are next. Report and raw measurement logs are outside the rep
   cases, and lock-key reuse: 4 failed, 7 passed, 322 deselected; exit 1;
   30.073 seconds wall time (pytest 19.14s). No production edit preceded this.
 
+- Implemented process memoization keyed by raw lock argument and both bound
+  fit controls; exported the clear API and documented deliberate-mutation
+  resets. Retained the full uncached computation and all launch isolation.
+- Execution bindings clone the shared semantic graph so artifact mutations
+  cannot alter later authentication. Invalid lock/environment refusals remain.
+- Added a shared real session snapshot for stacked/H5/pool-tool tests and
+  explicit live opt-outs for identity/environment mutation tests. Live tests
+  clear before/after; runtime/stdlib/resource byte tests clear between edits.
+- Removed the redundant stacked config cache and H5 public-function cache;
+  removed H5's unnecessary deterministic env overrides. Legacy payloads copy
+  the real identity before artifact mutation. Preflight/fiscal seams stay stubbed.
+- Post-fix memo, environment/lock/refusal, artifact isolation, session binding,
+  and opted-out namespace-source checks: 13 passed, 322 deselected, exit 0,
+  64.224 seconds wall time (pytest 53.94s).
+- Verified the forbidden files, uv.lock, and complete operational-binding
+  inventory exclusion remain byte-for-byte unchanged from the starting commit.
+
 ## Next
 
-- Implement process memoization and the shared session/live fixture boundary;
-  add source-mutation opt-out and session-binding consistency regressions.
+- Run the same identity selector, the full stacked-spine file, and actual
+  us-qs/us-am CI process groups with per-file timings.
+- Finish independent review, Ruff/formatting, the spec-pin proof, and report.
 - Add process memoization and regressions; prime real identities per test
   session with explicit live-test opt-out and consistent fixture bindings.
 - Run the requested full-file, CI-group, Ruff, formatting, and spec checks;

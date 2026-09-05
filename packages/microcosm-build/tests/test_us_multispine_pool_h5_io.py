@@ -57,59 +57,11 @@ from microcosm.build.us_runtime.support_provenance import (
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
-@pytest.fixture(scope="module", autouse=True)
-def _reuse_real_worker_identity_for_manifest_checks() -> object:
-    """Reuse real identities while this module mutates only artifact payloads."""
-
-    original_binding = worker_identity_module.primary_qrf_worker_execution_binding
-    original_semantic = worker_identity_module.primary_qrf_worker_semantic_identity
-
-    def controls() -> tuple[str | None, str | None, int | None]:
-        return (
-            worker_identity_module.os.environ.get("POPULACE_FIT_N_JOBS"),
-            worker_identity_module.os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
-            worker_identity_module.os.cpu_count(),
-        )
-
-    @cache
-    def cached_semantic(
-        uv_lock_sha256: str | None,
-        _fit_jobs: str | None,
-        _predict_workers: str | None,
-        _cpu_count: int | None,
-    ) -> dict[str, object]:
-        return original_semantic(uv_lock_sha256=uv_lock_sha256)
-
-    def semantic_identity(*, uv_lock_sha256: str | None = None) -> dict[str, object]:
-        return deepcopy(cached_semantic(uv_lock_sha256, *controls()))
-
-    @cache
-    def cached_binding(
-        _fit_jobs: str | None,
-        _predict_workers: str | None,
-        _cpu_count: int | None,
-    ) -> dict[str, object]:
-        return original_binding()
-
-    def binding() -> dict[str, object]:
-        return deepcopy(cached_binding(*controls()))
-
-    # Each lock/control combination still constructs a real identity. Keep the
-    # cached expected values private and return independent copies so a re-signed
-    # malicious manifest or attestation cannot mutate the validation baseline.
-    # Source/cache mutation regressions live outside this module; production
-    # identity generation remains uncached after this fixture is torn down.
-    patcher = pytest.MonkeyPatch()
-    patcher.setattr(
-        worker_identity_module,
-        "primary_qrf_worker_semantic_identity",
-        semantic_identity,
-    )
-    patcher.setattr(
-        worker_identity_module, "primary_qrf_worker_execution_binding", binding
-    )
-    yield
-    patcher.undo()
+@pytest.fixture(autouse=True)
+def _reuse_real_worker_identity_for_manifest_checks(
+    prime_primary_qrf_worker_identity: None,
+) -> None:
+    """Prime the real session identity unless a test requests live computation."""
 
 
 def _sha256(path: Path) -> str:
@@ -1398,9 +1350,11 @@ def _rewrite_as_legacy_relocated_worker_pool(
             "transitive_environment_code_sha256": "0" * 64,
         }
     else:
-        semantic_identity = worker_identity.primary_qrf_worker_semantic_identity(
-            uv_lock_sha256=(
-                "27f47e385cfa35e2644a37410d1804b361ad9aee123577551c8421547bda65ee"
+        semantic_identity = deepcopy(
+            worker_identity.primary_qrf_worker_semantic_identity(
+                uv_lock_sha256=(
+                    "27f47e385cfa35e2644a37410d1804b361ad9aee123577551c8421547bda65ee"
+                )
             )
         )
     legacy_environment = (
@@ -2195,11 +2149,8 @@ def test_scoring_loader_rejects_semantic_worker_change(tmp_path: Path) -> None:
 
 def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pytest.importorskip("tables")
-    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
-    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
     manifest_path = _write_gate_failed_pool(tmp_path)
     recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
         manifest_path
@@ -2260,13 +2211,12 @@ def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
         )
 
 
+@pytest.mark.usefixtures("live_worker_identity")
 def test_scoring_loader_requires_complete_schema_nine_stacked_envelope(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pytest.importorskip("tables")
-    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
-    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
     manifest_path = _write_gate_failed_pool(tmp_path)
     recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
         manifest_path
@@ -2340,11 +2290,8 @@ def test_scoring_loader_requires_complete_schema_nine_stacked_envelope(
 
 def test_scoring_loader_rejects_mismatched_legacy_worker_attestation(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pytest.importorskip("tables")
-    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
-    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
     manifest_path = _write_gate_failed_pool(tmp_path)
     recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
         manifest_path
@@ -2365,11 +2312,8 @@ def test_scoring_loader_rejects_mismatched_legacy_worker_attestation(
 
 def test_legacy_manifest_cannot_supply_its_own_worker_authentication(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pytest.importorskip("tables")
-    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
-    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
     manifest_path = _write_gate_failed_pool(tmp_path)
     recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
         manifest_path
@@ -2392,11 +2336,8 @@ def test_legacy_manifest_cannot_supply_its_own_worker_authentication(
 
 def test_legacy_worker_authentication_cannot_be_stripped_for_release(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pytest.importorskip("tables")
-    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
-    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
     manifest_path = _write_gate_failed_pool(tmp_path)
     recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
         manifest_path
@@ -2443,12 +2384,9 @@ def test_legacy_worker_authentication_cannot_be_stripped_for_release(
 )
 def test_scoring_loader_rejects_changed_legacy_attestation_field(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     changed_field: str,
 ) -> None:
     pytest.importorskip("tables")
-    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
-    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
     manifest_path = _write_gate_failed_pool(tmp_path)
     recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
         manifest_path
@@ -2489,12 +2427,9 @@ def test_scoring_loader_rejects_changed_legacy_attestation_field(
 @pytest.mark.parametrize("mismatch_count", (1, 3))
 def test_scoring_loader_requires_exact_legacy_alias_mismatch_set(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     mismatch_count: int,
 ) -> None:
     pytest.importorskip("tables")
-    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
-    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
     manifest_path = _write_gate_failed_pool(tmp_path)
     _recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
         manifest_path
@@ -2526,11 +2461,8 @@ def test_scoring_loader_requires_exact_legacy_alias_mismatch_set(
 
 def test_release_loader_ignores_legacy_worker_attestation_and_refuses(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pytest.importorskip("tables")
-    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
-    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
     manifest_path = _write_gate_failed_pool(tmp_path)
     recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
         manifest_path
@@ -2550,11 +2482,8 @@ def test_release_loader_ignores_legacy_worker_attestation_and_refuses(
 
 def test_scoring_loader_refuses_ready_legacy_worker_even_with_attestation(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pytest.importorskip("tables")
-    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
-    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "18")
     manifest_path = _write_ready_pool(tmp_path, stacked=True)
     recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
         manifest_path

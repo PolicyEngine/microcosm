@@ -63,6 +63,11 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights, read_frame_ta
 _FIXTURE_SEED_PERSON_COLUMN = "takes_up_medicaid_if_eligible"
 
 
+@pytest.fixture(autouse=True)
+def _prime_worker_identity(prime_primary_qrf_worker_identity: None) -> None:
+    """Share the real session attestation unless a test opts into live identity."""
+
+
 @pytest.fixture(scope="module")
 def pool_tool() -> ModuleType:
     root = Path(__file__).resolve().parents[3]

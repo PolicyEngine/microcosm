@@ -104,3 +104,64 @@ class ODSBuilder:
 def ods() -> ODSBuilder:
     """Helpers for writing a small ODS file to a temporary path."""
     return ODSBuilder()
+
+
+@pytest.fixture(scope="session")
+def _session_primary_qrf_worker_identities():
+    """Attest the real installed worker once; retain pristine identities by key.
+
+    Additional lock/control keys (such as the sealed legacy lock) are populated
+    by the real code on first use in ordinary tests, never by a fabricated identity.
+    Import lazily so unrelated build tests need neither US extras nor a probe.
+    """
+    from copy import deepcopy
+
+    from microcosm.build.us_runtime import worker_identity
+
+    worker_identity.clear_primary_qrf_worker_identity_cache()
+    worker_identity.primary_qrf_worker_semantic_identity()
+    return deepcopy(worker_identity._PRIMARY_QRF_WORKER_IDENTITY_CACHE)
+
+
+@pytest.fixture
+def prime_primary_qrf_worker_identity(request: pytest.FixtureRequest):
+    """Restore the session attestation for pipeline/receipt tests.
+
+    Modules opt in with an autouse fixture. Tests changing identity inputs must
+    request ``live_worker_identity`` instead; their mutations never enter the
+    session snapshot. Neither public identity factory is replaced.
+    """
+    if "live_worker_identity" in request.fixturenames:
+        yield
+        return
+
+    from copy import deepcopy
+
+    from microcosm.build.us_runtime import worker_identity
+
+    identities = request.getfixturevalue("_session_primary_qrf_worker_identities")
+    memo = worker_identity._PRIMARY_QRF_WORKER_IDENTITY_CACHE
+    worker_identity.clear_primary_qrf_worker_identity_cache()
+    memo.update(deepcopy(identities))
+    try:
+        yield
+    finally:
+        for key, identity in memo.items():
+            # Preserve the original graph even when an artifact test tampers
+            # with a working copy; remember newly computed legitimate keys.
+            if key not in identities:
+                identities[key] = deepcopy(identity)
+        worker_identity.clear_primary_qrf_worker_identity_cache()
+
+
+@pytest.fixture
+def live_worker_identity():
+    """Opt out of session priming and expose reset for within-test byte edits."""
+    from microcosm.build.us_runtime import worker_identity
+
+    clear = worker_identity.clear_primary_qrf_worker_identity_cache
+    clear()
+    try:
+        yield clear
+    finally:
+        clear()
