@@ -982,3 +982,372 @@ def test_donor_change_invalidates_the_fit(tmp_path):
     fit = f"{rent.RENT_PREFIX}.fit.000"
     assert first.nodes[fit].key != second.nodes[fit].key
     assert not second.nodes[fit].hit
+
+
+# --------------------------------------------------------------------------
+# Declaration, producer and payload refusals inside a real run
+# --------------------------------------------------------------------------
+
+
+def _rewire(nodes, node_id, **changes):
+    return tuple(
+        replace(node, **changes) if node.id == node_id else node for node in nodes
+    )
+
+
+def _run_nodes(tmp_path, frame, nodes, donor_path, *, resume="forbid"):
+    donor_sha = _sha(donor_path)
+    codecs = SourceCodecRegistry()
+    codecs.register("frame-store", load_frame_store)
+    codecs.register(
+        rent_source.RENT_SOURCE_CODEC,
+        partial(rent_source.load_graph_acs_rent_source, expected_sha256=donor_sha),
+    )
+    kernels = KernelRegistry()
+    kernels.register(_Create())
+    kernels.register(_Consumer())
+    register_us_housing_source_kernels(kernels, source_codecs=codecs)
+    compiled = compile_graph(
+        Graph(
+            country="us",
+            sources=(
+                SourceRef("population", "frame-store"),
+                rent_source.RENT_SOURCE,
+            ),
+            nodes=nodes,
+        )
+    )
+    return run_graph(
+        compiled,
+        sources={
+            "population": ContentStore(tmp_path / "inputs").put_frame("a" * 64, frame),
+            rent_source.RENT_SOURCE_NAME: donor_path,
+        },
+        store=ContentStore(tmp_path / "store", codecs=codecs),
+        kernels=kernels,
+        resume=resume,
+    )
+
+
+def _declared(tmp_path, frame):
+    donor_path = _donor(tmp_path)
+    descriptor = rent_source.prepare_acs_rent_source_descriptor(
+        donor_path, expected_sha256=_sha(donor_path)
+    )
+    nodes, _columns = _nodes(frame, descriptor)
+    return nodes, donor_path
+
+
+def test_swapped_context_producer_on_the_merge_is_refused(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    nodes, donor_path = _declared(tmp_path, frame)
+    merge = next(node for node in nodes if node.id == f"{HOUSING_SOURCE_PREFIX}.merge")
+    swapped = tuple(
+        replace(edge, producer="source") if edge.name == "frame_context" else edge
+        for edge in merge.artifact_inputs
+    )
+    nodes = _rewire(nodes, f"{HOUSING_SOURCE_PREFIX}.merge", artifact_inputs=swapped)
+    with pytest.raises(NodeRejectedError, match="authored artifact producers"):
+        _run_nodes(tmp_path, frame, nodes, donor_path)
+
+
+@pytest.mark.parametrize(
+    "node_id",
+    [
+        HOUSING_SOURCE_POPULATION,
+        f"{HOUSING_SOURCE_PREFIX}.measured",
+        f"{HOUSING_SOURCE_PREFIX}.source_outputs",
+        HOUSING_SOURCE_MERGE_POPULATION,
+        f"{HOUSING_SOURCE_PREFIX}.merge",
+    ],
+)
+def test_wrong_outer_phase_is_refused_at_every_node(tmp_path, node_id):
+    frame = _relationship_base(_pool_frame())
+    nodes, donor_path = _declared(tmp_path, frame)
+    node = next(item for item in nodes if item.id == node_id)
+    nodes = _rewire(nodes, node_id, params={**dict(node.params), "phase": "post_clone"})
+    with pytest.raises(NodeRejectedError):
+        _run_nodes(tmp_path, frame, nodes, donor_path)
+
+
+def test_wrong_mode_param_is_refused_at_the_boundary(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    nodes, donor_path = _declared(tmp_path, frame)
+    node = next(item for item in nodes if item.id == HOUSING_SOURCE_POPULATION)
+    nodes = _rewire(
+        nodes,
+        HOUSING_SOURCE_POPULATION,
+        params={**dict(node.params), "mode": "complete_incumbent"},
+    )
+    with pytest.raises(NodeRejectedError, match="mode"):
+        _run_nodes(tmp_path, frame, nodes, donor_path)
+
+
+def test_conserving_mass_on_the_row_dropping_source_filter_is_refused(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    nodes, donor_path = _declared(tmp_path, frame)
+    nodes = _rewire(nodes, HOUSING_SOURCE_POPULATION, mass="conserve")
+    with pytest.raises(NodeRejectedError):
+        _run_nodes(tmp_path, frame, nodes, donor_path)
+
+
+def test_tampered_source_output_payload_is_refused_downstream(tmp_path, monkeypatch):
+    frame = _relationship_base(_pool_frame())
+    original = graph_housing_source.USHousingSourceOutputsKernel.run
+
+    def tampered(self, context):
+        result = original(self, context)
+        payload = bytearray(result.artifacts["source_outputs"])
+        payload[-1] ^= 0xFF
+        return replace(
+            result, artifacts={**result.artifacts, "source_outputs": bytes(payload)}
+        )
+
+    monkeypatch.setattr(
+        graph_housing_source.USHousingSourceOutputsKernel, "run", tampered
+    )
+    with pytest.raises(NodeRejectedError, match="digest"):
+        _run(tmp_path, frame)
+
+
+def test_source_output_bound_to_a_foreign_projection_is_refused(tmp_path, monkeypatch):
+    frame = _relationship_base(_pool_frame())
+    original = graph_housing_source.USHousingSourceOutputsKernel.run
+
+    def swapped(self, context):
+        result = original(self, context)
+        header, body = _split_outputs(result.artifacts["source_outputs"])
+        header["projection_sha256"] = "0" * 64
+        return replace(
+            result,
+            artifacts={
+                **result.artifacts,
+                "source_outputs": _reframe_outputs(header, body),
+            },
+        )
+
+    monkeypatch.setattr(
+        graph_housing_source.USHousingSourceOutputsKernel, "run", swapped
+    )
+    with pytest.raises(NodeRejectedError, match="stale"):
+        _run(tmp_path, frame)
+
+
+def _split_outputs(payload):
+    start = len(codec.OUTPUTS_MAGIC)
+    length = int.from_bytes(payload[start : start + 4], "big")
+    return (
+        json.loads(payload[start + 4 : start + 4 + length]),
+        payload[start + 4 + length :],
+    )
+
+
+def _reframe_outputs(header, body):
+    encoded = codec.encode_json(header)
+    return codec.OUTPUTS_MAGIC + len(encoded).to_bytes(4, "big") + encoded + body
+
+
+# --------------------------------------------------------------------------
+# Unsupported source scope and raw inputs
+# --------------------------------------------------------------------------
+
+
+def _with_person(frame: Frame, person: pd.DataFrame) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = person
+    return Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def test_post_clone_support_population_is_refused(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    person = frame.table("person").copy()
+    clone = person["person_support_clone_index"].to_numpy().copy()
+    clone[-1] = 1
+    person["person_support_clone_index"] = clone
+    with pytest.raises(NodeRejectedError, match="clone provenance"):
+        _run(tmp_path, _with_person(frame, person))
+
+
+def test_missing_assembly_manifest_is_refused(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    stripped = Frame(
+        {entity: frame.table(entity).copy() for entity in frame.entities},
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+    with pytest.raises(NodeRejectedError, match="assembly manifest"):
+        _run(tmp_path, stripped)
+
+
+def test_absent_raw_household_tenure_is_refused_at_declaration(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["household"] = tables["household"].drop(columns=["H_TENURE"])
+    stripped = Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    with pytest.raises(ValueError, match="H_TENURE"):
+        _nodes(stripped, b"{}")
+
+
+@pytest.mark.parametrize(
+    ("column", "values", "match"),
+    [
+        ("H_TENURE", [9.0, 2.0, 3.0, np.nan, np.nan], "unknown code"),
+        ("SPM_CAPHOUSESUB", None, "negative"),
+        ("SPM_TENMORTSTATUS", None, "constant"),
+    ],
+)
+def test_negative_raw_code_and_constancy_errors_are_refused(
+    tmp_path, column, values, match
+):
+    frame = _relationship_base(_pool_frame())
+    if column == "H_TENURE":
+        tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+        tables["household"]["H_TENURE"] = np.asarray(values, dtype=np.float64)
+        broken = Frame(
+            tables,
+            frame.schema,
+            {e: frame.weights_for(e) for e in frame.weighted_entities},
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata=frame.metadata,
+        )
+    else:
+        person = frame.table("person").copy()
+        raw = person[column].to_numpy(dtype=float).copy()
+        if column == "SPM_CAPHOUSESUB":
+            # Both members of the first SPM unit, so the constancy check passes
+            # and the negative-value check is the one that fires.
+            raw[:2] = -1.0
+        else:
+            raw[0] = raw[0] + 1.0
+        person[column] = raw
+        broken = _with_person(frame, person)
+    with pytest.raises(NodeRejectedError, match=match):
+        _run(tmp_path, broken)
+
+
+# --------------------------------------------------------------------------
+# Group-view reality and ID-only SPM rows
+# --------------------------------------------------------------------------
+
+
+def test_spm_group_views_are_real_id_only_rows_not_placeholders(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    manifest, _store, _nodes_, _donor_path = _run(tmp_path, frame)
+    merged = manifest.population(HOUSING_SOURCE_MERGE_POPULATION)
+    source = frame.select(frame.table("person")["PERIDNUM"].notna().to_numpy())
+    selected_ids = np.unique(source.table("person")["person_spm_unit_id"].to_numpy())
+    spm_unit = merged.table("spm_unit")
+    np.testing.assert_array_equal(
+        np.sort(spm_unit["spm_unit_id"].to_numpy()),
+        np.sort(frame.table("spm_unit")["spm_unit_id"].to_numpy()),
+    )
+    treated = spm_unit["spm_unit_id"].isin(selected_ids).to_numpy()
+    assert treated.sum() == len(selected_ids)
+    assert spm_unit.loc[treated, "receives_housing_assistance"].notna().all()
+    assert spm_unit.loc[~treated, "receives_housing_assistance"].isna().all()
+
+
+# --------------------------------------------------------------------------
+# Cache identity
+# --------------------------------------------------------------------------
+
+
+def test_string_option_change_rekeys_the_stage_without_touching_the_donor_fit(
+    tmp_path,
+):
+    frame = _relationship_base(_pool_frame())
+    first, _store, _nodes_, _donor_path = _run(tmp_path, frame)
+    with pd.option_context("mode.string_storage", "python"):
+        second, _s, _n, _d = _run(tmp_path, frame, resume="auto")
+    stage = f"{HOUSING_SOURCE_PREFIX}.measured"
+    assert first.nodes[stage].key != second.nodes[stage].key
+    assert not second.nodes[stage].hit
+
+
+def test_recipient_row_order_change_reuses_the_donor_fit(tmp_path, monkeypatch):
+    frame = _relationship_base(_pool_frame())
+    calls = []
+    original = graph_legacy_train.fit_target
+
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(graph_legacy_train, "fit_target", counted)
+    first, _store, _nodes_, _donor_path = _run(tmp_path, frame)
+    person = frame.table("person").copy()
+    person.index = pd.Index(np.arange(len(person)) * 11 + 3, name=person.index.name)
+    reordered = Frame(
+        {
+            **{entity: frame.table(entity).copy() for entity in frame.entities},
+            "person": person,
+        },
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata.set_axis(person.index),
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    second, _s, _n, _d = _run(tmp_path, reordered, resume="auto")
+    fit = f"{rent.RENT_PREFIX}.fit.000"
+    assert calls == [1]
+    assert first.nodes[fit].key == second.nodes[fit].key and second.nodes[fit].hit
+
+
+# --------------------------------------------------------------------------
+# Flat inventory and CI grouping
+# --------------------------------------------------------------------------
+
+
+def test_test_files_are_flat_and_land_in_the_authored_ci_groups():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_housing_ci_groups",
+        Path(__file__).resolve().parents[3] / "tools" / "ci_test_groups.py",
+    )
+    groups = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = groups
+    spec.loader.exec_module(groups)
+    for name in (
+        "test_us_graph_housing_source.py",
+        "test_us_graph_housing_source_artifacts.py",
+    ):
+        path = f"packages/microcosm-build/tests/{name}"
+        assert (Path(__file__).with_name(name)).is_file()
+        assert groups.engine_group(path) == "us-am"
+        assert groups.fast_group(path) == "rest"
+        assert groups.process_for("us-am", path) == "build"
+    assert not groups.stray_nested_test_files(groups.tracked_test_files())
+
+
+def test_new_runtime_modules_are_classified_and_source_blind():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_housing_blindness", Path(__file__).with_name("test_us_spine_blindness.py")
+    )
+    blindness = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = blindness
+    spec.loader.exec_module(blindness)
+    runtime = Path(graph_housing_source.__file__).parent
+    for name in ("graph_housing_source.py", "_graph_housing_source_artifacts.py"):
+        assert name in blindness._SPINE_BLIND_OPERATOR_MODULES
+        assert blindness._source_spine_accesses((runtime / name).read_text()) == ()
