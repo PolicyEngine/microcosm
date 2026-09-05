@@ -32,10 +32,12 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
 
+from microcosm.build.cd_benchmark.approval import RegistrationClaim
 from microcosm.build.cd_benchmark.canonical import (
     CanonicalJsonError,
     canonical_bytes,
     digest,
+    is_sha256_hex,
     strict_load,
 )
 from microcosm.build.cd_benchmark.protocol import (
@@ -62,6 +64,7 @@ __all__ = [
     "VerifiedLedger",
     "build_records",
     "exposed_families",
+    "registration_claim",
     "exposure_status",
     "new_evaluation_id",
     "verify_ledger",
@@ -317,7 +320,7 @@ def parse_record(value: object, *, protocol: CompiledProtocol) -> LedgerRecord:
         raise LedgerError(f"Unknown event_type {raw_event!r}.")
     event = EventType(raw_event)
     previous = value["previous_record_sha256"]
-    if previous is not None and (not isinstance(previous, str) or len(previous) != 64):
+    if previous is not None and not is_sha256_hex(previous):
         raise LedgerError("previous_record_sha256 must be null or a digest.")
     payload = _closed(value["payload"], _roster(protocol, event), str(event))
     if (
@@ -505,6 +508,40 @@ def exposed_families(ledger: VerifiedLedger) -> frozenset[str]:
         elif record.event_type is EventType.EXTERNAL_EXPOSURE_RECORDED:
             families.update(str(item) for item in record.payload["block_families"])
     return frozenset(families)
+
+
+def registration_claim(record: LedgerRecord) -> RegistrationClaim:
+    """Read a validated ``protocol_registered`` record as a registration claim.
+
+    This is the only route from ledger bytes to an activation decision, and it
+    carries no authority of its own: the claim still has to be resolved against
+    an injected :class:`~microcosm.build.cd_benchmark.approval.ApprovalAuthority`
+    that actually holds the approval artifacts the payload names.
+
+    Raises:
+        LedgerError: If ``record`` is not a ``protocol_registered`` record, or
+            its payload fields are not the shapes a claim needs.
+    """
+    if record.event_type is not EventType.PROTOCOL_REGISTERED:
+        raise LedgerError("Only a protocol_registered record carries a claim.")
+    payload = record.payload
+    try:
+        return RegistrationClaim(
+            protocol_sha256=payload["protocol_sha256"],
+            protocol_parent_sha256=payload["protocol_parent_sha256"],
+            legacy_parent_artifact_hashes=tuple(
+                payload["legacy_parent_artifact_hashes_if_first_version"]
+            ),
+            parameter_changes=tuple(
+                payload["parameter_changes_old_new_reason_evidence"]
+            ),
+            root_approval_artifact_sha256=payload["root_approval_artifact_sha256"],
+            peer_approval_artifact_sha256=payload["peer_approval_artifact_sha256"],
+            reference_inventory_sha256=payload["reference_inventory_sha256"],
+            block_definition_hashes=payload["block_definition_hashes"],
+        )
+    except (TypeError, ValueError) as error:
+        raise LedgerError(f"Registration payload is not a claim: {error}") from None
 
 
 @dataclass(frozen=True)

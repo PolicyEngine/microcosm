@@ -21,6 +21,7 @@ from microcosm.build.cd_benchmark.ledger import (
     exposed_families,
     exposure_status,
     new_evaluation_id,
+    registration_claim,
     verify_ledger,
 )
 from microcosm.build.cd_benchmark.protocol import canonical_protocol
@@ -505,3 +506,71 @@ def test_the_occupied_household_block_inherits_both_reserved_families(protocol):
             exposure_status(block, history)[0]
             is ExposureStatus.POST_EXPOSURE_CONFORMITY
         )
+
+
+def test_a_registration_record_becomes_a_claim_but_never_an_authority(protocol):
+    from microcosm.build.cd_benchmark.approval import (
+        ApprovalAuthority,
+        ApprovalRecord,
+        ApprovalScope,
+        ApprovalVerdict,
+        ReviewerRole,
+        resolve_action,
+    )
+
+    records = chain(protocol)
+    verified = verify_ledger(build_records(records), protocol=protocol)
+    claim = registration_claim(verified.ledger.records[0])
+    assert claim.protocol_sha256 == protocol.sha256
+    assert claim.reference_inventory_sha256 == protocol.reference_inventory_sha256
+    # The payload names digests "c"*64 and "d"*64. No authority holds them, so
+    # the ledger line cannot authorize itself.
+    empty = resolve_action(
+        protocol,
+        authority=ApprovalAuthority.empty(),
+        action=ApprovalScope.INVENTED_FIXTURE_IMPLEMENTATION_ONLY,
+        registration=claim,
+    )
+    assert empty.authorized is False
+    assert Reason.PROTOCOL_UNAPPROVED in empty.reasons
+    # Only an authority actually holding matching records resolves it, and the
+    # payload's digests are not those records' digests.
+    root = ApprovalRecord(
+        protocol.sha256,
+        ApprovalVerdict.APPROVE,
+        ReviewerRole.ROOT,
+        "root",
+        frozenset({ApprovalScope.INVENTED_FIXTURE_IMPLEMENTATION_ONLY}),
+        "c" * 64,
+    )
+    peer = ApprovalRecord(
+        protocol.sha256,
+        ApprovalVerdict.APPROVE,
+        ReviewerRole.PEER,
+        "peer",
+        frozenset({ApprovalScope.INVENTED_FIXTURE_IMPLEMENTATION_ONLY}),
+        "d" * 64,
+    )
+    mismatched = resolve_action(
+        protocol,
+        authority=ApprovalAuthority(records=(root, peer)),
+        action=ApprovalScope.INVENTED_FIXTURE_IMPLEMENTATION_ONLY,
+        registration=claim,
+    )
+    assert mismatched.authorized is False
+    assert mismatched.evidence["root_artifact_unresolved"] is True
+
+
+def test_only_a_registration_record_yields_a_claim(protocol):
+    records = chain(protocol)
+    verified = verify_ledger(build_records(records), protocol=protocol)
+    with pytest.raises(LedgerError):
+        registration_claim(verified.ledger.records[1])
+
+
+def test_a_previous_hash_must_be_a_lowercase_digest(protocol):
+    records = chain(protocol)
+    uppercased = build_records(records).replace(
+        records[0].sha256.encode(), records[0].sha256.upper().encode()
+    )
+    assert not verify_ledger(uppercased, protocol=protocol).ok
