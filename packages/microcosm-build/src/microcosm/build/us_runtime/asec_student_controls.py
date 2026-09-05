@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import os
+import stat
 import struct
 import tempfile
 from dataclasses import InitVar, dataclass
@@ -92,22 +93,32 @@ def _parent(source, ready, *, reconstruct_money=False):
 def _snapshot(path, destination, *, size):
     """Exact-size private capture; no candidate parser and no unbounded copy."""
     digest = hashlib.sha256()
-    with Path(path).open("rb") as src, destination.open("xb") as dst:
-        before = os.fstat(src.fileno())
+    # Opening a FIFO in ordinary blocking mode would wait before fstat could
+    # reject it. Use one nonblocking descriptor, then admit only regular files.
+    descriptor = os.open(Path(path), os.O_RDONLY | os.O_NONBLOCK)
+    try:
+        before = os.fstat(descriptor)
+        _require(stat.S_ISREG(before.st_mode), "STUDENT_SOURCE_FILE_KIND")
         _require(before.st_size == size, "STUDENT_SOURCE_SIZE")
         count = 0
-        while chunk := src.read(min(1024 * 1024, size - count + 1)):
-            count += len(chunk)
-            _require(count <= size, "STUDENT_SOURCE_SIZE")
-            digest.update(chunk)
-            dst.write(chunk)
-        after = os.fstat(src.fileno())
+        with (
+            os.fdopen(descriptor, "rb", closefd=False) as src,
+            destination.open("xb") as dst,
+        ):
+            while chunk := src.read(min(1024 * 1024, size - count + 1)):
+                count += len(chunk)
+                _require(count <= size, "STUDENT_SOURCE_SIZE")
+                digest.update(chunk)
+                dst.write(chunk)
+        after = os.fstat(descriptor)
         attrs = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
         _require(
             count == size
             and all(getattr(before, a) == getattr(after, a) for a in attrs),
             "STUDENT_SOURCE_CHANGED",
         )
+    finally:
+        os.close(descriptor)
     return digest.hexdigest()
 
 
