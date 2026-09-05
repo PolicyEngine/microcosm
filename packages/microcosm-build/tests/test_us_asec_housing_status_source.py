@@ -284,6 +284,35 @@ def test_new_status_view_cannot_mutate_parent_axes_or_weights(tmp_path, monkeypa
         composed.validate()
 
 
+@pytest.mark.parametrize("mutation", ["range_index", "weights"])
+def test_composed_storage_cannot_change_either_sealed_parent(
+    tmp_path, monkeypatch, mutation
+):
+    loaded, paths, *_ = invented_source(tmp_path, monkeypatch)
+    status = source.load_authenticated_housing_status(loaded, cohort_paths=paths)
+    parent = units.reconstruct_current_money_tax_units(loaded, loaded.ready())
+    # The source signature has already materialized pandas' RangeIndex cache.
+    source_digest = money_source._frame_signature(loaded.frame)
+    parent_digest = money_source._frame_signature(parent.frame)
+    composed = source.attach_housing_status(parent, status)
+    original_index = parent.frame.table("household").index
+    copied_index = composed.frame.table("household").index
+    assert type(copied_index) is type(original_index) is pd.RangeIndex
+    pd.testing.assert_index_equal(copied_index, original_index, exact=True)
+    if mutation == "range_index":
+        copied_index.array[0] = 999
+    else:
+        values = composed.frame.weights_for("household").values
+        values.setflags(write=True)
+        values[0] = 999.0
+    assert money_source._frame_signature(parent.frame) == parent_digest
+    assert money_source._frame_signature(loaded.frame) == source_digest
+    loaded.validate()
+    parent.validate()
+    with pytest.raises(housing.HousingStatusRefusalError):
+        composed.validate()
+
+
 def test_wrong_independently_issued_source_cannot_authenticate_replay(
     tmp_path, monkeypatch
 ):
