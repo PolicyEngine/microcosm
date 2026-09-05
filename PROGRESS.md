@@ -90,6 +90,11 @@ Memoization and session priming pass the focused regressions and the complete
   records. The skip is the opt-in 3.7 GB SIPP scan. Final other-shards process
   is running; independent final review found no actionable concerns.
 
+- Actual us-am:other-shards process: 1,000 passed, 2 skipped, 4 warnings;
+  exit 0; 139.672 seconds wall time (pytest 131.00s), with all 48
+  per-file records. All four initial CI processes completed successfully.
+  The spec-bundle priming-order regression is now running before its fix.
+
 ## Next
 
 - Finish the initial us-qs/us-am CI process groups with per-file timings.
