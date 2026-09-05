@@ -1198,9 +1198,12 @@ def us_housing_source_nodes(
                     f"{entity}.{column}; refusing an absent or incompatible "
                     "representation."
                 )
-        elif incumbent is not None and incumbent.dtype not in {"bool", "boolean"}:
+        elif incumbent is not None:
             raise ValueError(
-                f"US housing source {entity}.{column} incumbent must be boolean."
+                "US housing fresh_source requires assistance leaves to be absent: "
+                f"{entity}.{column} is already carried. Source bool and full-pool "
+                "nullable boolean representations cannot both rewrite one "
+                "carried dtype in this recipe."
             )
         measured_outputs.append(
             Owned(entity, column, source_dtype, rewrite=incumbent is not None)

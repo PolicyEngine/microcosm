@@ -75,7 +75,11 @@ The five outputs are exactly `person.pre_subsidy_rent`,
 population the two assistance leaves are physical `bool` and both tenure leaves
 are the canonical graph `string` (python storage, `pd.NA`); the registered
 full-pool merge normalizes the booleans to nullable `boolean`, exactly as the
-direct helper already does. Full-pool tenure incumbents must already use that
+direct helper already does. The two assistance leaves must be absent from the
+input pool, including all-null incumbents: this recipe cannot rewrite a carried
+column as both source `bool` and merged `boolean`. The factory refuses that
+unsupported case explicitly before graph compilation. Full-pool tenure
+incumbents must already use that
 canonical string representation: an absent or numeric incumbent is refused at
 declaration rather than silently widening the scope to object dtype. Native
 non-CPS rent and tenure cells survive the merge unchanged, and the merge

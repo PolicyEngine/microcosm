@@ -745,6 +745,34 @@ def test_unsupported_mode_is_refused_at_declaration(tmp_path):
         _nodes(frame, b"{}", mode="complete_incumbent")
 
 
+@pytest.mark.parametrize(
+    "column",
+    ["receives_housing_assistance", "takes_up_housing_assistance_if_eligible"],
+)
+@pytest.mark.parametrize("dtype", ["bool", "boolean"])
+def test_assistance_incumbents_refuse_explicitly_before_compile(
+    tmp_path, column, dtype
+):
+    frame = _relationship_base(_pool_frame())
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    spm = tables["spm_unit"]
+    spm[column] = pd.Series(False, index=spm.index, dtype=dtype)
+    carried = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    donor_path = _donor(tmp_path)
+    descriptor = rent_source.prepare_acs_rent_source_descriptor(
+        donor_path, expected_sha256=_sha(donor_path)
+    )
+    with pytest.raises(ValueError, match="assistance leaves to be absent"):
+        _nodes(carried, descriptor)
+
+
 def test_absent_string_tenure_incumbent_is_refused(tmp_path):
     frame = _relationship_base(_pool_frame())
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
