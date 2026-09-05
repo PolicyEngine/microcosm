@@ -33,3 +33,19 @@ Requested sibling worktree/output and R paths are read-only in this session. Wor
 - Author audit corrected real CREATE/SELECT capability variants and excluded atime from read-stability identity checks before real export. Per-node source pins are empty because shared run-source identities are not node-direct pins.
 - Earlier read-only shape probe failed on dict iteration; two rg glob probes failed under zsh no-match expansion; initial ruff found formatting violations, corrected. No failed attempt caused a candidate artifact or source read.
 - Next: root output-only G export, actual Python and TypeScript integration and browser verification. No G export has run from this component yet.
+
+## Final exporter handoff state
+State: exporter implementation and root output-only G integration complete. Final code SHA256 remains 970d95541f9f6d66f4d7adea3f7583d373bcc9b24c51fcc4324c2bf003cb055d. This final journal update does not change exporter code.
+
+Done:
+- Root reported first-attempt real G export PASS into the exclusive private quality-genuine root, with the unchanged Python writer and reader verified and no discovery index created.
+- Candidate SHA256: 70255b88035df59b5318032ad7602342c8c4cf2490a6e616987af17a203feb7f.
+- Graph attachment SHA256: 15bbfc84d4d153a22e96504931cd6c32a72f404c6fb3bac99991f770efec5b00.
+- Build summary SHA256: dbd80a9f7af5421b1c851175c4980ae64c78db0e3800cd0792c3a96d60cabd6e.
+- Root audited 32 G top-level reads, with no nested source-storage access, computational imports or binary decoding. Root reported 190 exact TypeScript oracle checks, real G and legacy F001 route checks, and eight real React cases passing.
+- Root verified original I, D, B, all 37 G top-level files and existing servers preserved.
+
+Next and residual limits:
+- Root freezes the complete author report and arranges independent review. No independent or Fable approval of this implementation is claimed.
+- Root reported dashboard broad Bun validation at 719 passing cases and three listener failures, TypeScript passing, and the single production build failing on Google Fonts DNS. Starting new port 4509 failed with EPERM; WebKit aborted with signal 6 before opening pages. Production browser viewport and interaction requirements remain unverified due to those concrete environment failures.
+- This exported candidate remains an excluded, uncalibrated 15-household engineering slice. Recorded parity and cache identity do not establish scientific acceptance, national or district coverage, policy impact or release eligibility.
