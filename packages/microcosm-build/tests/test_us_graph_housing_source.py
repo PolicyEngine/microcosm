@@ -75,6 +75,25 @@ from microcosm.graph.errors import NodeRejectedError
 from microcosm.graph.population import dtype_for_token
 
 GOLDEN = Path(__file__).with_name("golden") / "us_housing_source_pre_graph.json"
+#: The production commit this dependent worktree branched from, and the runtime
+#: the direct oracle in ``GOLDEN`` was captured against.
+_UNEDITED_RUNTIME_COMMIT = "f01964c7c71e1ae575ac4c16766dbdaed1a342d5"
+#: The two direct-path modules as they stand in that unedited runtime. Pinned
+#: here by hand so that re-running the external capture script — which stamps
+#: whatever is live at capture time — cannot quietly re-baseline the oracle's
+#: provenance to the edited tree.
+_UNEDITED_MODULE_SHA256 = {
+    "housing_inputs": (
+        "d75607c047872889a8cee78808c057d9db5f6a75f5abff6343ea5a383447cfd1"
+    ),
+    "multispine_pool": (
+        "14975d40054decbc2929eea5805d976581a5df2548f4644f1a1bac0ace61ffdd"
+    ),
+}
+#: The only direct-path module this branch may move. It gains registered
+#: helpers additively; no existing selection semantics or merge formula change,
+#: which ``test_direct_pre_edit_oracle_is_unchanged`` proves by value.
+_DECLARED_MODULE_DRIFT = frozenset({"multispine_pool"})
 SEED = pool.POOL_RANDOM_SEED
 N_ESTIMATORS = 2
 NUMERIC_RAW = (
@@ -526,6 +545,38 @@ def test_direct_pre_edit_oracle_is_unchanged(tmp_path, golden):
     )
     eligibility = _direct_eligibility(housing.frame)
     assert _snapshot_frame(eligibility.frame) == golden["eligibility"]["frame"]
+
+
+def test_oracle_records_the_unedited_runtime_and_declares_every_drift(golden):
+    """The golden's provenance stamp is checked, not decorative.
+
+    ``module_sha256`` records the two direct-path modules as they stand in the
+    unedited runtime ``runtime_source_commit``. This branch is only allowed to
+    move ``multispine_pool``, and only additively: the rent science and the
+    measured derivation in ``housing_inputs`` must be byte-identical, because
+    the oracle's values were captured from them. A silent edit to either module
+    that is not declared here fails rather than quietly re-baselining the
+    oracle it is supposed to be checked against.
+    """
+    assert golden["runtime_source_commit"] == _UNEDITED_RUNTIME_COMMIT
+    assert golden["module_sha256"] == _UNEDITED_MODULE_SHA256
+    live = {
+        name: hashlib.sha256(
+            Path(importlib.util.find_spec(module.__name__).origin).read_bytes()
+        ).hexdigest()
+        for name, module in (
+            ("housing_inputs", housing_inputs),
+            ("multispine_pool", pool),
+        )
+    }
+    assert set(live) == set(_UNEDITED_MODULE_SHA256)
+    assert live["housing_inputs"] == _UNEDITED_MODULE_SHA256["housing_inputs"]
+    moved = {
+        name
+        for name, digest in live.items()
+        if digest != _UNEDITED_MODULE_SHA256[name]
+    }
+    assert moved == _DECLARED_MODULE_DRIFT
 
 
 # --------------------------------------------------------------------------
