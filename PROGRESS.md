@@ -98,7 +98,13 @@ This session re-ran verification from the committed head to completion.
 | Lint | `ruff check .` | All checks passed |
 | CI partition | `tools/ci_test_groups.py --verify` | `verification=ok` |
 | Grouping | `--list rest` / `--list us-am` | both new files in each; never `[defaulted]` |
-| Related | 27 files touching `multispine_pool` / the rent graph / housing inputs | 1770 passed, 51 skipped, **10 failed** — all pre-existing and environmental, see below |
+| Related | 27 files touching `multispine_pool` / the rent graph / housing inputs | 1775 passed, 51 skipped, **10 failed** — all pre-existing and environmental, see below |
+
+The related suite was run twice: once at the landed head, and once again after
+the review fixes, because `multispine_pool.py` changed. The failing set is
+**byte-identical** across both runs and zero failures fall outside the one
+engine-gated file. The passed count moved 1770 → 1775, which is this session's
+five added tests.
 
 ### The 10 related failures are environmental, not a regression
 
