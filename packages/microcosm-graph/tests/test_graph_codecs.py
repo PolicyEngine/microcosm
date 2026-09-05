@@ -14,10 +14,12 @@ import pandas as pd
 import pytest
 
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.graph import codecs
 from microcosm.graph.codecs import (
     RAW_BYTES_MAX_BYTES,
     SOURCE_CODECS,
     SourceCodecRegistry,
+    load_csv_tables,
     load_source,
     load_source_bytes,
 )
@@ -238,6 +240,78 @@ def test_raw_bytes_reads_up_to_the_limit_and_refuses_one_byte_more(
         handle.truncate(RAW_BYTES_MAX_BYTES + 1)
     with pytest.raises(ValueError, match="larger than"):
         load_source_bytes("raw-bytes-v1", over_limit)
+
+
+def test_the_oversize_refusal_reads_no_more_than_the_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The refusal is not the bound; pin what the codec pulls off disk.
+
+    Asserting only that an oversized file raises leaves the bound untested: an
+    unbounded ``handle.read()`` reads the whole file and still refuses it on
+    size afterwards, with every other assertion here still green.
+    """
+
+    over_limit = tmp_path / "over_limit.bin"
+    with over_limit.open("wb") as handle:
+        handle.truncate(RAW_BYTES_MAX_BYTES + 1)
+
+    requested: list[int] = []
+    real_open = open
+
+    class Recording:
+        def __init__(self, handle: object) -> None:
+            self._handle = handle
+
+        def read(self, size: int = -1) -> bytes:
+            requested.append(size)
+            return self._handle.read(size)
+
+        def fileno(self) -> int:
+            return self._handle.fileno()
+
+        def __enter__(self) -> Recording:
+            self._handle.__enter__()
+            return self
+
+        def __exit__(self, *exception: object) -> object:
+            return self._handle.__exit__(*exception)
+
+    monkeypatch.setattr(
+        codecs,
+        "open",
+        lambda *args, **kwargs: Recording(real_open(*args, **kwargs)),
+        raising=False,
+    )
+
+    with pytest.raises(ValueError, match="larger than"):
+        load_source_bytes("raw-bytes-v1", over_limit)
+
+    assert requested == [RAW_BYTES_MAX_BYTES + 1]
+
+
+def test_registry_snapshots_are_read_only_and_do_not_track_later_registrations(
+    tmp_path: Path,
+) -> None:
+    registry = SourceCodecRegistry()
+
+    def byte_loader(_path: Path, *, store: ContentStore | None = None) -> bytes:
+        del store
+        return b""
+
+    registry.register_bytes("blob", byte_loader)
+    frame_snapshot = registry.as_mapping()
+    byte_snapshot = registry.as_bytes_mapping()
+
+    with pytest.raises(TypeError):
+        byte_snapshot["other"] = byte_loader
+    with pytest.raises(TypeError):
+        frame_snapshot["other"] = load_csv_tables
+
+    registry.register("tables", load_csv_tables)
+    assert dict(frame_snapshot) == {}
+    assert dict(byte_snapshot) == {"blob": byte_loader}
+    assert set(registry.as_mapping()) == {"tables"}
 
 
 def test_codec_names_are_unique_across_both_modes() -> None:
