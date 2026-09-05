@@ -2,12 +2,14 @@
 
 The population is three invented returns written to a temporary ``csv-tables``
 source; the factor levels are invented and the table says so. Nothing here
-reads a PUF, downloads anything, or imports a country engine.
+reads a PUF, downloads anything, or invokes a country-model calculation.
+Importing the package can initialize the ABI when US engine extras are installed.
 """
 
 import ast
 import inspect
 import json
+from dataclasses import replace
 from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +22,7 @@ from microcosm.build.us_runtime import puf_growth_graph
 from microcosm.build.us_runtime.puf_growth import (
     PROVENANCE_RECID_COLUMN,
     PROVENANCE_SOURCE_AGI_COLUMN,
+    CompiledPufGrowth,
     FieldRole,
     GrowthFactorTable,
     GrowthKind,
@@ -36,6 +39,7 @@ from microcosm.build.us_runtime.puf_growth_graph import (
     PUF_GROWTH_DESIGN_WEIGHT_NODE,
     PUF_GROWTH_MONEY_NODE,
     PufGrowthBoundaryKernel,
+    PufGrowthDesignWeightKernel,
     PufGrowthMoneyKernel,
     register_us_puf_growth_kernels,
     us_puf_growth_nodes,
@@ -58,7 +62,7 @@ from microcosm.graph import (
     source_hash,
 )
 from microcosm.graph.codecs import load_csv_tables
-from microcosm.graph.errors import NodeRejectedError
+from microcosm.graph.errors import NodeRejectedError, StoreMissError
 
 SOURCE_YEAR = 2021
 TARGET_YEAR = 2024
@@ -338,6 +342,129 @@ def test_actual_graph_cold_warm_required_match_the_direct_transform(prepared, tm
         node_id: dict(fresh.nodes[node_id].artifacts)
         for node_id in compiled_graph.order
     } == artifacts
+    fresh_table = fresh.population(PUF_GROWTH_BOUNDARY_NODE).table(ENTITY)
+    for column in expected.columns:
+        assert (
+            fresh_table[column].to_numpy().tobytes()
+            == expected[column].to_numpy().tobytes()
+        )
+
+
+def test_public_compiled_constructor_and_graph_use_the_same_table(tmp_path):
+    compiled = compile_puf_growth(growth_recipe(), factor_table())
+    public = CompiledPufGrowth(
+        compiled.recipe, compiled.factors, compiled.resolved, compiled.identity
+    )
+    compiled_graph, registry = build(public)
+    sources = {"puf_raw": write_source(tmp_path / "source")}
+    expected = apply_puf_growth(raw_tax_units().drop(columns="S006"), public).table
+    manifest = run_graph(
+        compiled_graph,
+        sources=sources,
+        store=ContentStore(tmp_path / "store"),
+        kernels=registry,
+        resume="forbid",
+    )
+    actual = manifest.population(PUF_GROWTH_BOUNDARY_NODE).table(ENTITY)
+    for column in expected.columns:
+        assert (
+            actual[column].to_numpy().tobytes() == expected[column].to_numpy().tobytes()
+        )
+    # A constructor with new valid levels and a recomputed identity cannot
+    # create a second direct result under the same attached factor table.
+    changed = tuple(
+        replace(factor, target_level="7.0", ratio_bits=np.float64(7).tobytes().hex())
+        if factor.field == "E00100"
+        else factor
+        for factor in public.resolved
+    )
+    identity = json.loads(public.identity)
+    identity["resolved"] = [factor.as_document() for factor in changed]
+    with pytest.raises(PufGrowthRefusalError, match="RESOLVED_FACTOR_BINDING"):
+        CompiledPufGrowth(public.recipe, public.factors, changed, canonical(identity))
+
+
+@pytest.mark.parametrize("dependency", ["numpy", "pandas"])
+def test_dependency_version_change_refuses_old_warm_cache(
+    prepared, monkeypatch, dependency
+):
+    from microcosm.graph import kernel as kernel_module
+
+    compiled_graph, sources, store, registry = prepared
+    first = run_graph(
+        compiled_graph, sources=sources, store=store, kernels=registry, resume="forbid"
+    )
+    warm = run_graph(
+        compiled_graph, sources=sources, store=store, kernels=registry, resume="require"
+    )
+    assert all(node.hit for node in warm.nodes.values())
+    classes = (
+        PufGrowthBoundaryKernel,
+        PufGrowthMoneyKernel,
+        PufGrowthDesignWeightKernel,
+    )
+    original_hashes = {cls: cls().implementation_hash() for cls in classes}
+    version = kernel_module.importlib_metadata.version
+    monkeypatch.setattr(
+        kernel_module.importlib_metadata,
+        "version",
+        lambda name: (
+            version(name) + ".changed" if name == dependency else version(name)
+        ),
+    )
+    assert all(cls().implementation_hash() != original_hashes[cls] for cls in classes)
+    with pytest.raises(StoreMissError):
+        run_graph(
+            compiled_graph,
+            sources=sources,
+            store=store,
+            kernels=registry,
+            resume="require",
+        )
+    recomputed = run_graph(
+        compiled_graph, sources=sources, store=store, kernels=registry, resume="auto"
+    )
+    assert recomputed.nodes["source"].hit
+    assert all(
+        not recomputed.nodes[name].hit
+        for name in (
+            PUF_GROWTH_BOUNDARY_NODE,
+            PUF_GROWTH_MONEY_NODE,
+            PUF_GROWTH_DESIGN_WEIGHT_NODE,
+        )
+    )
+    before = first.population(PUF_GROWTH_BOUNDARY_NODE).table(ENTITY)
+    after = recomputed.population(PUF_GROWTH_BOUNDARY_NODE).table(ENTITY)
+    pd.testing.assert_frame_equal(before, after, check_exact=True)
+
+
+def test_undeclared_raw_money_still_passes_through_pending_source_inventory(
+    tmp_path, monkeypatch
+):
+    """Document the admitted limitation; this stage is not a full source classifier."""
+    source = write_source(tmp_path / "source")
+    table = pd.read_csv(source / "tax_unit.csv")
+    table["E77777"] = [91.0, 92.0, 93.0]
+    table.to_csv(source / "tax_unit.csv", index=False)
+    schema = json.loads((source / "schema.json").read_text())
+    schema["dtypes"]["E77777"] = "float64"
+    (source / "schema.json").write_text(json.dumps(schema))
+    monkeypatch.setitem(
+        globals(),
+        "_CREATE_OUTPUTS",
+        (*_CREATE_OUTPUTS, Owned(ENTITY, "E77777", "float64")),
+    )
+    graph, registry = build(compile_puf_growth(growth_recipe(), factor_table()))
+    result = run_graph(
+        graph,
+        sources={"puf_raw": source},
+        store=ContentStore(tmp_path / "store"),
+        kernels=registry,
+        resume="forbid",
+    )
+    assert result.population(PUF_GROWTH_BOUNDARY_NODE).table(
+        ENTITY
+    ).E77777.tolist() == [91.0, 92.0, 93.0]
 
 
 def test_the_graph_carries_provenance_and_refuses_release_eligibility(prepared):

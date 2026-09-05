@@ -585,6 +585,13 @@ class FactorSeries:
         _require(
             type(self.levels) is tuple and bool(self.levels), "SERIES_LEVELS", name
         )
+        _require(
+            all(type(pair) in (tuple, list) and len(pair) == 2 for pair in self.levels),
+            "SERIES_LEVELS",
+            name,
+        )
+        # Own inner pairs too: frozen dataclasses do not freeze a caller's lists.
+        object.__setattr__(self, "levels", tuple(tuple(pair) for pair in self.levels))
         years = [year for year, _ in self.levels]
         _require(len(set(years)) == len(years), "DUPLICATE_SERIES_YEAR", name)
         _require(years == sorted(years), "UNORDERED_SERIES_YEARS", name)
@@ -613,6 +620,34 @@ def _finite_positive(text: str) -> bool:
     return bool(np.isfinite(value)) and value > 0.0
 
 
+def _freeze_provenance(value: object, depth: int = 0) -> object:
+    """Own a bounded JSON tree, including nested caller-supplied containers."""
+    _require(depth <= 64, "TABLE_PROVENANCE_DEPTH")
+    if isinstance(value, Mapping):
+        _require(all(type(key) is str for key in value), "TABLE_PROVENANCE_KEY")
+        return MappingProxyType(
+            {key: _freeze_provenance(item, depth + 1) for key, item in value.items()}
+        )
+    if type(value) in (tuple, list):
+        return tuple(_freeze_provenance(item, depth + 1) for item in value)
+    _require(
+        value is None or type(value) in (str, int, float, bool),
+        "TABLE_PROVENANCE_VALUE",
+    )
+    if type(value) is float:
+        _require(bool(np.isfinite(value)), "TABLE_PROVENANCE_VALUE")
+    return value
+
+
+def _provenance_document(value: object) -> object:
+    """Return detached JSON containers, never references into the owned tree."""
+    if isinstance(value, Mapping):
+        return {key: _provenance_document(item) for key, item in value.items()}
+    if type(value) is tuple:
+        return [_provenance_document(item) for item in value]
+    return value
+
+
 @dataclass(frozen=True)
 class GrowthFactorTable:
     """A parsed factor document: variable rows by year columns, plus authority.
@@ -629,6 +664,11 @@ class GrowthFactorTable:
     provenance: Mapping[str, object]
 
     def __post_init__(self) -> None:
+        _require(
+            type(self.document) is bytes
+            and 0 < len(self.document) <= MAX_DOCUMENT_BYTES,
+            "DOCUMENT_SIZE_OR_TYPE",
+        )
         _identifier(self.table_id, "TABLE_ID")
         _require(type(self.authority) is FactorAuthority, "TABLE_AUTHORITY")
         _require(
@@ -647,6 +687,8 @@ class GrowthFactorTable:
         )
         for item in self.series:
             _require(item.years == self.years, "SERIES_YEAR_COVERAGE", item.name)
+        _require(isinstance(self.provenance, Mapping), "TABLE_PROVENANCE")
+        object.__setattr__(self, "provenance", _freeze_provenance(self.provenance))
         # Re-serializing proves the retained bytes are the canonical document
         # for exactly this parsed state, so no field can drift from the bytes.
         _require(self.document == _json(self.as_document()), "TABLE_DOCUMENT")
@@ -712,14 +754,14 @@ class GrowthFactorTable:
             FactorAuthority(data["authority"]),
             years,
             tuple(series),
-            MappingProxyType(dict(data["provenance"])),
+            data["provenance"],
         )
 
     def as_document(self) -> dict:
         """The canonical document for this table's parsed state."""
         return {
             "authority": str(self.authority),
-            "provenance": dict(self.provenance),
+            "provenance": _provenance_document(self.provenance),
             "schema_version": FACTOR_TABLE_SCHEMA_VERSION,
             "series": {
                 item.name: {
@@ -769,17 +811,10 @@ class ResolvedFactor:
         _identifier(self.series, "RESOLVED_SERIES", field)
         _year(self.source_year, "RESOLVED_SOURCE_YEAR", field)
         _year(self.target_year, "RESOLVED_TARGET_YEAR", field)
-        _require(
-            _finite_positive(self.source_level) and _finite_positive(self.target_level),
-            "RESOLVED_LEVEL",
-            field,
-        )
         # The stored bits are the factor. Recomputing them here means a
         # hand-built ResolvedFactor cannot claim a factor its own levels do not
         # produce, so the bits are evidence rather than an assertion.
-        expected = struct.pack(
-            "<d", float(self.target_level) / float(self.source_level)
-        ).hex()
+        expected = _factor_ratio_bits(self.source_level, self.target_level, field)
         _require(self.ratio_bits == expected, "RESOLVED_RATIO_BITS", field)
 
     @property
@@ -858,7 +893,12 @@ class CompiledPufGrowth:
         )
         _require(actual == expected, "RESOLVED_COVERAGE")
         _require(
-            self.identity
+            self.resolved == _resolve_factors(self.recipe, self.factors),
+            "RESOLVED_FACTOR_BINDING",
+        )
+        _require(
+            type(self.identity) is bytes
+            and self.identity
             == _contract_identity(self.recipe, self.factors, self.resolved),
             "CONTRACT_BINDING",
         )
@@ -934,7 +974,7 @@ class CompiledPufGrowth:
 def compile_puf_growth(
     recipe: GrowthRecipe, factors: GrowthFactorTable
 ) -> CompiledPufGrowth:
-    """Bind a recipe to a factor table, resolving each factor exactly once.
+    """Bind a recipe to a table using the same resolver as constructor validation.
 
     Args:
         recipe: The closed rule set. Already coverage-validated.
@@ -951,6 +991,31 @@ def compile_puf_growth(
     """
     _require(type(recipe) is GrowthRecipe, "RECIPE_TYPE")
     _require(type(factors) is GrowthFactorTable, "FACTOR_TABLE_TYPE")
+    resolved = _resolve_factors(recipe, factors)
+    return CompiledPufGrowth(
+        recipe, factors, resolved, _contract_identity(recipe, factors, resolved)
+    )
+
+
+def _factor_ratio_bits(source_level: str, target_level: str, field: str) -> str:
+    """One finite positive float64 ratio for compiler and public constructors."""
+    _require(
+        all(
+            type(level) is str and level.strip() == level and _finite_positive(level)
+            for level in (source_level, target_level)
+        ),
+        "RESOLVED_LEVEL",
+        field,
+    )
+    ratio = float(target_level) / float(source_level)
+    _require(bool(np.isfinite(ratio)) and ratio > 0.0, "FACTOR_VALUE", field)
+    return struct.pack("<d", ratio).hex()
+
+
+def _resolve_factors(
+    recipe: GrowthRecipe, factors: GrowthFactorTable
+) -> tuple[ResolvedFactor, ...]:
+    """Resolve the complete recipe from the table's immutable named series."""
     resolved = []
     for rule in recipe.rules:
         if not rule.grows:
@@ -959,8 +1024,6 @@ def compile_puf_growth(
         _require(series.kind is rule.growth_kind, "FACTOR_KIND_MISMATCH", rule.field)
         source_level = series.level_text(rule.source_reference_year)
         target_level = series.level_text(rule.target_year)
-        ratio = float(target_level) / float(source_level)
-        _require(bool(np.isfinite(ratio)) and ratio > 0.0, "FACTOR_VALUE", rule.field)
         resolved.append(
             ResolvedFactor(
                 rule.field,
@@ -971,13 +1034,10 @@ def compile_puf_growth(
                 rule.target_year,
                 source_level,
                 target_level,
-                struct.pack("<d", ratio).hex(),
+                _factor_ratio_bits(source_level, target_level, rule.field),
             )
         )
-    resolved = tuple(resolved)
-    return CompiledPufGrowth(
-        recipe, factors, resolved, _contract_identity(recipe, factors, resolved)
-    )
+    return tuple(resolved)
 
 
 def _contract_identity(
@@ -1495,7 +1555,8 @@ PROPOSED_TY2015_FIELD_ROSTER: tuple[RosterEntry, ...] = (
     RosterEntry(
         "MARS",
         FieldRole.CODE,
-        "Filing status: 1 single, 2 joint, 3 separate, 4 head of household",
+        "Filing status: 0 marks four aggregate disclosure records; "
+        "1 single, 2 joint, 3 separate, 4 head of household",
         _STRUCTURAL_CITATION,
     ),
     RosterEntry(

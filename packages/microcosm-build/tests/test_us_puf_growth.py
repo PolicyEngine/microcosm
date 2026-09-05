@@ -1,6 +1,8 @@
 """Invented-input contract tests for the pure PUF growth transform.
 
-No PUF is read, no artifact is opened, no country engine is imported. Every
+No PUF is read and no country-model calculation is invoked. Package import
+can initialize an installed US engine's ABI; the engine-free test environment
+does not have that extra. Every
 amount, factor level and field roster used here is invented, and the factor
 table says so about itself.
 """
@@ -8,6 +10,8 @@ table says so about itself.
 import ast
 import inspect
 import json
+import struct
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
@@ -620,6 +624,110 @@ def test_a_hand_built_contract_cannot_disagree_with_its_own_recipe():
             contract.recipe, contract.factors, contract.resolved, b'{"a":1}'
         )
     assert error.value.reason == "CONTRACT_BINDING"
+
+
+@pytest.mark.parametrize("target_level", ["7.0", "1.250"])
+def test_resolved_levels_must_match_the_attached_table_even_with_new_identity(
+    target_level,
+):
+    """Different factors and numerically equal but unbound level text both refuse."""
+    contract = compiled()
+    changed = tuple(
+        replace(
+            factor,
+            target_level=target_level,
+            ratio_bits=struct.pack("<d", float(target_level)).hex(),
+        )
+        if factor.field == "E00100"
+        else factor
+        for factor in contract.resolved
+    )
+    identity = json.loads(contract.identity)
+    identity["resolved"] = [factor.as_document() for factor in changed]
+    with pytest.raises(PufGrowthRefusalError, match="RESOLVED_FACTOR_BINDING"):
+        CompiledPufGrowth(
+            contract.recipe, contract.factors, changed, canonical(identity)
+        )
+
+
+@pytest.mark.parametrize("source,target", [("1e-308", "1e308"), ("1e308", "1e-308")])
+def test_public_resolved_factor_refuses_overflow_or_underflow(source, target):
+    factor = compiled().factor_for("E00100", SignBranch.ANY)
+    with pytest.raises(PufGrowthRefusalError, match="FACTOR_VALUE"):
+        replace(
+            factor,
+            source_level=source,
+            target_level=target,
+            ratio_bits=struct.pack("<d", float(target) / float(source)).hex(),
+        )
+
+
+def test_factor_series_owns_mutable_pairs_before_table_compilation():
+    original = factors()
+    live_levels = [[SOURCE_YEAR, "1.0"], [TARGET_YEAR, "1.25"]]
+    series = tuple(
+        FactorSeries(item.name, item.kind, tuple(live_levels))
+        if item.name == "fixture.agi_per_return"
+        else item
+        for item in original.series
+    )
+    table = replace(original, series=series)
+    live_levels[1][1] = "7.0"
+    live_levels[0][0] = 2015
+    assert table.series_for("fixture.agi_per_return").level_text(TARGET_YEAR) == "1.25"
+    result = apply_puf_growth(money_view(), compile_puf_growth(recipe(), table))
+    assert result.table.E00100.tolist() == [1250.0, -625.0, 0.0]
+    assert result.receipt["factor_table_sha256"] == original.sha256
+
+
+@pytest.mark.parametrize("through_parser", [False, True])
+def test_factor_provenance_is_owned_and_deeply_immutable(through_parser):
+    original = factors()
+    provenance = {"nested": {"notes": ["invented", {"revision": 1}]}}
+    document = original.as_document()
+    document["provenance"] = provenance
+    raw = canonical(document)
+    table = (
+        GrowthFactorTable.from_bytes(raw)
+        if through_parser
+        else replace(original, document=raw, provenance=provenance)
+    )
+    provenance["nested"]["notes"][1]["revision"] = 2
+    with pytest.raises(TypeError):
+        table.provenance["nested"]["notes"][1]["revision"] = 3
+    with pytest.raises(TypeError):
+        table.provenance["nested"]["notes"][0] = "changed"
+    returned_document = table.as_document()
+    returned_document["provenance"]["nested"]["notes"][1]["revision"] = 4
+    assert table.as_document() == json.loads(raw)
+    assert table.document == raw
+    assert compile_puf_growth(recipe(), table).factors.sha256 == table.sha256
+
+
+def test_public_table_refuses_mutable_document_bytes_and_mismatched_state():
+    original = factors()
+    with pytest.raises(PufGrowthRefusalError, match="DOCUMENT_SIZE_OR_TYPE"):
+        replace(original, document=bytearray(original.document))
+    with pytest.raises(PufGrowthRefusalError, match="TABLE_DOCUMENT"):
+        replace(original, provenance={"note": "unbound to retained document"})
+
+
+def test_explicit_same_year_factor_one_remains_a_receipted_noop():
+    rules = tuple(
+        replace(rule, target_year=rule.source_reference_year) for rule in recipe().rules
+    )
+    contract = compile_puf_growth(GrowthRecipe("same-year-invented", rules), factors())
+    assert all(factor.value == 1.0 for factor in contract.resolved)
+    source = money_view()
+    result = apply_puf_growth(source, contract)
+    pd.testing.assert_frame_equal(
+        result.table[source.columns], source, check_exact=True
+    )
+    assert (
+        result.receipt["source_reference_year"]
+        == result.receipt["target_year"]
+        == SOURCE_YEAR
+    )
 
 
 def test_a_reviewed_table_would_also_have_to_state_its_generation_receipt():

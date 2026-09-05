@@ -5,8 +5,8 @@ Three nodes, in the shape the US build already uses for a source operation:
 ``<stage>.boundary``
     A ``FILTER`` node that keeps every person. It exists because a column a
     ``CREATE`` node loaded can only be rewritten once a structural node has
-    opened a new version, and because it is the one place that compiles the
-    declared contract before any array is touched. Its receipt states the
+    opened a new version. Each kernel reconstructs the declared contract from
+    its parameters before its computation. The boundary's receipt states the
     contract digest, the factor authority, and whether that authority could
     ever stand behind a release.
 
@@ -33,7 +33,8 @@ kernel runs, so it cannot mutate them in place either.
 The design weight this stage grows is the **raw source column**. Promoting it
 into a frame's typed design weights is a separate, later obligation with its
 own mass policy; nothing here touches ``Frame`` weights. The weight column is
-owned as ``float64``; a base version carrying it as an integer would need a
+owned as ``float64``, as are the money rewrites; a base version carrying any
+of those columns as an integer would need a
 declared dtype change, which is a reviewed decision rather than a cast here.
 
 **The closed read set is the transform's, not the frame's.**
@@ -184,6 +185,7 @@ class PufGrowthBoundaryKernel(_PufGrowthKernel):
         Determinism.DETERMINISTIC,
         structural=StructuralDelta.FILTER,
         numeric=Numeric.BITWISE,
+        dependencies=("numpy", "pandas"),
     )
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -201,7 +203,11 @@ class PufGrowthMoneyKernel(_PufGrowthKernel):
     """Grow every declared money field once, and copy the provenance columns."""
 
     ref = "us.puf.growth.money@1"
-    capabilities = Capabilities(Determinism.DETERMINISTIC, numeric=Numeric.BITWISE)
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC,
+        numeric=Numeric.BITWISE,
+        dependencies=("numpy", "pandas"),
+    )
 
     def run(self, context: KernelContext) -> KernelResult:
         entity, compiled = self.contract(context.params)
@@ -239,7 +245,11 @@ class PufGrowthDesignWeightKernel(_PufGrowthKernel):
     """Grow the raw design-weight column, and nothing else."""
 
     ref = "us.puf.growth.design_weight@1"
-    capabilities = Capabilities(Determinism.DETERMINISTIC, numeric=Numeric.BITWISE)
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC,
+        numeric=Numeric.BITWISE,
+        dependencies=("numpy", "pandas"),
+    )
 
     def run(self, context: KernelContext) -> KernelResult:
         entity, compiled = self.contract(context.params)
