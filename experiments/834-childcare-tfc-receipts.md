@@ -392,11 +392,22 @@ the gate verdict.
 | stale (back inside the bound; the rot rule says remove) | `hmrc/private_pension_income_count_income_band_100_000_to_150_000` +24.7% |
 
 None of the four is a #834 row: the seven new rows pass, and the A22 question (would the
-targeted row need a deferral?) is answered no. The three unsigned failures and the stale entry
-are the publication stack's open register questions — A21 for the CGT year; the two
-state-pension bands and the pension-band entry for the stack's next re-cut — and are put to
-María with this receipt rather than signed here. `release_candidate: false` throughout: the
+targeted row need a deferral?) is answered no. `release_candidate: false` throughout: the
 seam never signs shippability.
+
+**Run 5 (`l4-834/run5/`, the signed CGT deferral).** María ruled A21 as option 1 on 2026-09-05:
+the facts stay bound as published and the OBR miss is signed on the stack register —
+`obr.capital_gains_tax@2025`, adjudication microcosm#875 (the declared 2024-25 → 2025
+translation of the gains total: the index ruling, applying `uprating_index` in the compile
+step, the taxpayer count flat at 584k under the £3 000 exempt amount, the cash-lag mapping for
+self-assessed OBR lines), window 2026-09-05 → 2026-10-05, on `uk-publication-stack-834`
+(`7aab6959`); #736's "CGT 2025 level" item points at it. Every final ratio equals run 4's
+(max |difference| 0.0); the battery now reads five in-force deferrals (the four UC
+with-children cells and the CGT cell), two unsigned failures — the state-pension SPI bands
+50–70k +34.6% and 20–30k +25.3% — and the private-pension 100–150k entry stale (+24.7%). Those
+three are the stack's, not #834's, and stay open for its next re-cut. While the CGT entry is
+in force the calibrated 2025-26 base carries ~40% more CGT liability than OBR expects; the
+publication's known issues must say so.
 
 ## Part D — bus (#789)
 
