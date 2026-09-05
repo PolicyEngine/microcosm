@@ -43,6 +43,7 @@ Three codecs ship with the graph runtime:
 from __future__ import annotations
 
 import json
+import os
 import stat
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -506,6 +507,12 @@ def load_csv_tables(path: Path, *, store: ContentStore | None = None) -> Frame:
     return Frame(tables, schema, weights, strata)
 
 
+def _nonblocking_opener(path: str, flags: int) -> int:
+    """Open without blocking, so a FIFO in a source's place cannot hang a run."""
+
+    return os.open(path, flags | getattr(os, "O_NONBLOCK", 0))
+
+
 def load_raw_bytes(path: Path, *, store: ContentStore | None = None) -> bytes:
     """Read one regular file's bytes, bounded at :data:`RAW_BYTES_MAX_BYTES`.
 
@@ -514,37 +521,42 @@ def load_raw_bytes(path: Path, *, store: ContentStore | None = None) -> bytes:
     imports them validates their format. What this function does own is the
     refusal to read something that is not one bounded regular file.
 
-    ``stat`` follows symlinks, as the executor's ``resolve(strict=True)`` and
+    Symlinks are followed, as the executor's ``resolve(strict=True)`` and
     ``source_content_key`` already do. A directory, a FIFO, a device, or a
-    socket is refused by mode *before* anything is opened, so a codec never
-    blocks on a pipe or streams a device. The read itself is bounded rather
-    than trusted to ``st_size``, because a file may grow between the two
-    calls; the executor's post-run content check is what detects that a
-    source moved, and this bound is what keeps the codec from reading an
-    unbounded amount of it first.
+    socket is refused: the mode is read from the descriptor this function
+    itself opened, and the open is non-blocking, so the codec cannot be made
+    to wait on a pipe or stream a device. The read is bounded rather than
+    trusted to ``st_size``, because a file may grow after it is measured.
+    Detecting that a source moved is the executor's post-run content check;
+    this bound only keeps the codec from reading an unbounded amount first.
     """
 
     del store  # raw bytes are self-describing; no content store is consulted
     source = Path(path)
     try:
-        status = source.stat()
-    except OSError as error:
-        raise ValueError(f"Raw source at {source} is not readable: {error}") from error
-    if stat.S_ISDIR(status.st_mode):
+        handle = open(source, "rb", opener=_nonblocking_opener)
+    except IsADirectoryError as error:
         raise ValueError(
             f"Raw source at {source} is a directory; raw-bytes-v1 reads one "
             "regular file."
-        )
-    if not stat.S_ISREG(status.st_mode):
-        raise ValueError(
-            f"Raw source at {source} is not a regular file; raw-bytes-v1 reads "
-            "one regular file."
-        )
-    try:
-        with source.open("rb") as handle:
-            payload = handle.read(RAW_BYTES_MAX_BYTES + 1)
+        ) from error
     except OSError as error:
         raise ValueError(f"Raw source at {source} is not readable: {error}") from error
+    with handle:
+        # A directory never reaches here: opening one raises IsADirectoryError
+        # above.  Everything else that is not a regular file is refused from the
+        # descriptor's own mode, not from a second look at the path.
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise ValueError(
+                f"Raw source at {source} is not a regular file; raw-bytes-v1 "
+                "reads one regular file."
+            )
+        try:
+            payload = handle.read(RAW_BYTES_MAX_BYTES + 1)
+        except OSError as error:
+            raise ValueError(
+                f"Raw source at {source} is not readable: {error}"
+            ) from error
     if len(payload) > RAW_BYTES_MAX_BYTES:
         raise ValueError(
             f"Raw source at {source} is larger than the "
