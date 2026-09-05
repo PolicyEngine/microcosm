@@ -73,7 +73,9 @@ def _parse(value: bytes, limit: int = RESOURCE_MAX_BYTES) -> dict:
 
     try:
         result = json.loads(value, object_pairs_hook=pairs, parse_constant=constant)
-    except (UnicodeError, json.JSONDecodeError, RecursionError) as exc:
+    except MoneyRefusalError:
+        raise
+    except (ValueError, RecursionError) as exc:
         raise MoneyRefusalError("MALFORMED_JSON") from exc
     _require(type(result) is dict, "JSON_OBJECT_REQUIRED")
     return result

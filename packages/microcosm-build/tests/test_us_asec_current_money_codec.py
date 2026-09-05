@@ -137,6 +137,26 @@ def test_strict_resource_json(document):
         )
 
 
+def test_oversized_json_integer_has_a_sanitized_refusal():
+    with pytest.raises(MoneyRefusalError, match="MALFORMED_JSON"):
+        money._parse(b'{"value":' + b"9" * 5000 + b"}")
+
+
+def test_pinned_consumers_have_closed_current_money_ownership():
+    spec, _, _ = fixture()
+    document = json.loads(spec.resources.consumers)
+    addresses = document["addresses"]
+    assert len(addresses) == 33
+    assert {item["field"] for item in addresses} == set(money.FIELDS)
+    assert all(item["raw_alternates"] == [] for item in addresses)
+    assert all(item["cpi_owner"] == money.RECIPE for item in addresses)
+    assert all(item["input_basis"] == "target_current_2024" for item in addresses)
+    assert all(
+        "prior_year_employment_income" not in item["resulting_surfaces"]
+        for item in addresses
+    )
+
+
 def test_33_exact_fields_addresses_vintages_and_zero_mapping():
     spec, _, _ = fixture()
     data = json.loads(spec.resources.domains)
@@ -382,8 +402,14 @@ def test_all_artifact_arrays_are_immutable_and_ready_is_revalidated():
         with pytest.raises(ValueError):
             a[0] = 1
     malformed = replace(field, amount_bytes=bytearray(field.amount_bytes))
-    with pytest.raises(MoneyRefusalError):
-        encode_current_money(replace(value, fields=(malformed,) + value.fields[1:]))
+    with pytest.raises(MoneyRefusalError, match="FIELD_BUFFER_SHAPE"):
+        encode_current_money(
+            replace(
+                value,
+                fields=(malformed,) + value.fields[1:],
+                _token=money._STATE_TOKEN,
+            )
+        )
 
 
 @pytest.mark.parametrize("change", ["version", "bytes", "inventory", "size"])
