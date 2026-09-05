@@ -884,14 +884,14 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 65937000000.0,
+   "ledger_value": 69861000000.0,
    "name": "hmrc.cgt.gains_total",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 378000.0,
+   "ledger_value": 403000.0,
    "name": "hmrc.cgt.taxpayers_total",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."

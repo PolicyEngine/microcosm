@@ -3080,7 +3080,8 @@
       },
       "ledger_selector": {
         "source_name": "hmrc",
-        "source_concept": "hmrc.cgt_taxpayers_total"
+        "source_concept": "hmrc.cgt_taxpayers_total",
+        "groupby_dimension": "hmrc.cgt_table1_line"
       }
     },
     {
@@ -3121,7 +3122,8 @@
       },
       "ledger_selector": {
         "source_name": "hmrc",
-        "source_concept": "hmrc.cgt_gains_total"
+        "source_concept": "hmrc.cgt_gains_total",
+        "groupby_dimension": "hmrc.cgt_table1_line"
       }
     },
     {
@@ -3464,6 +3466,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_number_of_children",
+        "dimensions": [
+          "number_of_children"
+        ],
         "dimension_values": {
           "number_of_children": 1
         }
@@ -3520,6 +3525,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_number_of_children",
+        "dimensions": [
+          "number_of_children"
+        ],
         "dimension_values": {
           "number_of_children": 2
         }
@@ -3576,6 +3584,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_number_of_children",
+        "dimensions": [
+          "number_of_children"
+        ],
         "dimension_values": {
           "number_of_children": 3
         }
@@ -3632,6 +3643,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_number_of_children",
+        "dimensions": [
+          "number_of_children"
+        ],
         "dimension_values": {
           "number_of_children": 4
         }
@@ -3688,6 +3702,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_number_of_children",
+        "dimensions": [
+          "number_of_children"
+        ],
         "dimension_values": {
           "number_of_children": "5 or more"
         }
@@ -3739,6 +3756,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_family_type",
+        "dimensions": [
+          "family_type"
+        ],
         "dimension_values": {
           "family_type": "Single, no children"
         }
@@ -3790,6 +3810,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_family_type",
+        "dimensions": [
+          "family_type"
+        ],
         "dimension_values": {
           "family_type": "Single, with children"
         }
@@ -3841,6 +3864,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_family_type",
+        "dimensions": [
+          "family_type"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children"
         }
@@ -3892,6 +3918,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_family_type",
+        "dimensions": [
+          "family_type"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children"
         }
@@ -3943,6 +3972,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children"
         }
@@ -3994,6 +4027,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children"
         }
@@ -4045,6 +4082,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children"
         }
@@ -4096,6 +4137,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children"
         }
@@ -4108,8 +4153,8 @@
         "country"
       ],
       "measurement": {
-        "entity": "household",
-        "concept": "uk.household.count",
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
         "filters": [
           {
             "concept": "uk.geography.region",
@@ -4130,8 +4175,9 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/scotland_uc_households_child_under_1",
-          "reduce": "any",
-          "household_conditions": [
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
             {
               "variable": "region",
               "operator": "==",
@@ -4139,32 +4185,30 @@
             },
             {
               "variable": "universal_credit",
-              "entity": "benunit",
-              "reduce": "any",
               "operator": ">",
               "value": 0
             },
             {
-              "variable": "age",
-              "entity": "person",
-              "reduce": "any_child_under",
+              "variable": "youngest_child_age",
               "operator": "<",
               "value": 1
             }
           ],
-          "value_variable": "household_count",
-          "notes": "Scottish UC households with a child under 1 (compute/benefits.py:24-30)."
+          "notes": "Prepared benefit-unit count for Scottish UC units whose youngest child is under 1. The Chronicle monthly series is averaged over April-December 2025, matching the rest of the DWP Universal Credit family."
         },
         "axiom": {
           "metric_name": "dwp/scotland_uc_households_child_under_1",
           "status": "pending",
-          "value_rule": "uk.household.count"
+          "value_rule": "uk.benefit_unit.count"
         }
       },
       "ledger_selector": {
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_youngest_child_age",
+        "dimensions": [
+          "age_of_youngest_child_bands_and_single_year"
+        ],
         "dimension_values": {
           "age_of_youngest_child_bands_and_single_year": 0
         }
@@ -10618,7 +10662,7 @@
               "value": 0
             }
           ],
-          "notes": "Prepared benefit-unit indicator for receipt of Universal Credit; DWP household means the UC unit of assessment, not an ONS household."
+          "notes": "Prepared benefit-unit indicator for receipt of Universal Credit; DWP household means the UC unit of assessment, not an ONS household. This row binds DWP UC deductions statistics Table 1 total units. Its April-December 2025 calendar-year average is 6,758,889, 1.45% below the Stat-Xplore family-type sum of 6,858,287; chronicle#247 tracks a common-cube total."
         },
         "axiom": {
           "metric_name": "dwp/uc/households",
@@ -10628,7 +10672,9 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
-        "source_concept": "dwp.uc_benefit_units"
+        "source_concept": "dwp.uc_benefit_units",
+        "source_measure_id": "total_units",
+        "groupby_dimension": "dwp.uc_deductions_month"
       }
     },
     {

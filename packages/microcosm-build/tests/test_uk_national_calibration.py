@@ -228,6 +228,15 @@ def _fact_for_reference(
 ) -> dict:
     selector = dict(reference.ledger_selector)
     dimensions = dict(selector.get("dimension_values", {}))
+    layout = {
+        key: selector[key]
+        for key in (
+            "groupby_dimension",
+            "groupby_value_id",
+            "record_set_spec_id",
+        )
+        if key in selector
+    }
     return {
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:{reference.name}",
         "aggregation": {"method": "sum"},
@@ -237,10 +246,11 @@ def _fact_for_reference(
             "level": selector.get("geography_level", "country"),
             "id": selector.get("geography_id", "K02000001"),
         },
+        "layout": layout,
         "observed_measure": {
             "source_name": selector["source_name"],
             "source_concept": selector["source_concept"],
-            "source_measure_id": "value",
+            "source_measure_id": selector.get("source_measure_id", "value"),
             "unit": "gbp",
         },
         "period": {"type": "month", "value": f"{reference.period}-12"},
@@ -342,7 +352,9 @@ def test_uc_calibration_stage_accepts_benunit_grain_reference_on_nested_frame() 
 def test_stage_measure_resolver_injects_columns_then_restores_pristine_output() -> None:
     frame = _frame_without_uc_column()
     resolver = StubMeasureResolver()
-    original_columns = {entity: set(frame.table(entity).columns) for entity in frame.entities}
+    original_columns = {
+        entity: set(frame.table(entity).columns) for entity in frame.entities
+    }
     stage = UKNationalCalibrationStage(
         _registry(),
         band_edge_registry=_registry(),
@@ -865,9 +877,7 @@ def test_measure_resolution_never_touches_the_source_frame() -> None:
     from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
 
     frame = _materialization_binding_frame()
-    before = {
-        entity: list(frame.table(entity).columns) for entity in frame.entities
-    }
+    before = {entity: list(frame.table(entity).columns) for entity in frame.entities}
 
     class ProbeResolver:
         contract_targets = {

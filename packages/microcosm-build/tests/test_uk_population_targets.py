@@ -522,7 +522,11 @@ def test_uk_population_uc_households_target_counts_benunits() -> None:
     assert target["ledger_selector"] == {
         "source_name": "dwp",
         "source_concept": "dwp.uc_benefit_units",
+        "source_measure_id": "total_units",
+        "groupby_dimension": "dwp.uc_deductions_month",
     }
+    assert "6,758,889" in target["bindings"]["policyengine"]["notes"]
+    assert "1.45%" in target["bindings"]["policyengine"]["notes"]
 
 
 def test_uk_uc_composition_and_disability_children_targets_are_rebound() -> None:

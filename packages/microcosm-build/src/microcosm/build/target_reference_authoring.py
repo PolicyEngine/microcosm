@@ -99,6 +99,9 @@ class AreaTargetReferenceAuthoringConfig:
     selector_pins_by_target_id: Mapping[str, Mapping[str, Any]] = field(
         default_factory=dict
     )
+    reference_metadata_by_target_id: Mapping[str, Mapping[str, str]] = field(
+        default_factory=dict
+    )
     binding_vocabulary: frozenset[str] = frozenset()
     source_fact_feed: str = ""
 
@@ -538,6 +541,7 @@ def _area_reference_row(
             "measure_kind": "prepared_column",
             "geography_level": geography_level,
             "geography_id": area_id,
+            **dict(config.reference_metadata_by_target_id.get(target_id, {})),
         },
     }
     assertion_policy = target.get("assertion_policy")

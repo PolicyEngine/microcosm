@@ -104,9 +104,10 @@ def test_census_source_rows_are_reviewed_pointers() -> None:
         if source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS:
             pin = source["ledger_fact_pin"]
             assert pin["facts_sha256"] == (
-                "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48"
+                "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f"
             )
-            assert pin["source_commit"] == "33ca98a"
+            assert pin["source_commit"] == "6fb700e"
+            assert pin["source_repo"] == "PolicyEngine/chronicle"
         if source["status"] == SOURCE_STATUS_SIGNED_DEFERRED:
             assert source["signed_reason_id"], source["source_id"]
             assert source["signed_rationale"], source["source_id"]

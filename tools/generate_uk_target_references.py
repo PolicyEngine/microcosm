@@ -121,7 +121,7 @@ def main() -> None:
         selector_pins_by_target_id=_selector_pins(contract),
         signed_exclusions_by_target_id=_signed_exclusions(contract),
         binding_vocabulary=POLICYENGINE_BINDING_KEYS,
-        source_fact_feed=str(args.ledger_facts),
+        source_fact_feed=args.source_fact_feed or str(args.ledger_facts),
     )
     authored = author_target_references(contract, facts, config)
     _add_uk_membership_accounting(authored.membership_report, authored.references)
@@ -144,6 +144,10 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--ledger-facts", type=Path, required=True)
+    parser.add_argument(
+        "--source-fact-feed",
+        help="Stable display name recorded in the generated membership report.",
+    )
     parser.add_argument("--period", type=int, default=2025)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--membership-report", type=Path, required=True)
@@ -238,7 +242,10 @@ def _sum_target_ids(contract: Mapping[str, Any]) -> frozenset[str]:
         binding = target["bindings"]["policyengine"]
         if "value_expression" in binding:
             target_ids.add(str(target["target_id"]))
-        if any(isinstance(value, list) for value in selector.values()):
+        if any(
+            key != "dimensions" and isinstance(value, list)
+            for key, value in selector.items()
+        ):
             target_ids.add(str(target["target_id"]))
         dimension_values = selector.get("dimension_values")
         if isinstance(dimension_values, Mapping) and any(
@@ -250,10 +257,13 @@ def _sum_target_ids(contract: Mapping[str, Any]) -> frozenset[str]:
 
 def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]:
     operations = {target_id: "sum" for target_id in _sum_target_ids(contract)}
+    # ``dimensions: []`` is an exact-key-set selector pin, not a generic sum
+    # trigger. The UK all-ages population row is nevertheless a reviewed sum
+    # residue and must retain that operation explicitly.
+    operations["ons.population.uk_total"] = "sum"
     for target in contract.get("targets", ()):
-        selector = target["ledger_selector"]
         target_id = str(target["target_id"])
-        if selector.get("source_concept") == "dwp.uc_benefit_units":
+        if target.get("family") == "dwp_universal_credit":
             operations[target_id] = "calendar_year_average"
     return operations
 
@@ -263,9 +273,10 @@ def _selector_pins(contract: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     for target in contract.get("targets", ()):
         selector = target["ledger_selector"]
         dimension_values = selector.get("dimension_values")
-        if (
-            selector.get("source_concept") == "ons.mid_year_population_estimate"
-            and isinstance(dimension_values, Mapping)
+        if selector.get(
+            "source_concept"
+        ) == "ons.mid_year_population_estimate" and isinstance(
+            dimension_values, Mapping
         ):
             pins[str(target["target_id"])] = {
                 "dimensions": sorted(str(key) for key in dimension_values)
@@ -274,14 +285,23 @@ def _selector_pins(contract: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _signed_exclusions(contract: Mapping[str, Any]) -> dict[str, str]:
-    target_ids = {
-        str(target["target_id"])
-        for target in contract.get("targets", ())
+    target_ids = {str(target["target_id"]) for target in contract.get("targets", ())}
+    exclusions = {
+        "hmrc.spi.property_income.amount_by_total_income_band": (
+            PROPERTY_INCOME_SIGNED_EXCLUSION_RATIONALE
+        ),
+        "ons.population.scotland_households_3plus_children": (
+            "Signed out pending a Scotland household-composition fact: the "
+            "current selector reaches person-level ONS mid-year population "
+            "age rows, not households with three or more children. "
+            "microcosm#736 tracks the missing declaration."
+        ),
     }
-    target_id = "hmrc.spi.property_income.amount_by_total_income_band"
-    if target_id not in target_ids:
-        return {}
-    return {target_id: PROPERTY_INCOME_SIGNED_EXCLUSION_RATIONALE}
+    return {
+        target_id: rationale
+        for target_id, rationale in exclusions.items()
+        if target_id in target_ids
+    }
 
 
 def _fanout_name(
@@ -419,24 +439,17 @@ def _add_uk_membership_accounting(
             "signed_rationale": report["targets"][
                 "hmrc.spi.property_income.amount_by_total_income_band"
             ]["candidates"][0]["signed_rationale"],
-        }
-    ]
-    report["multi_fact_rationales"] = [
+        },
         {
             "family": "ons_population",
             "target_id": "ons.population.scotland_households_3plus_children",
-            "candidate_name": "ons/scotland_households_3plus_children",
-            "status": "adjudication_pending",
-            "signed_rationale": (
-                "Remaining multi_fact is genuine: the selector reaches ONS "
-                "mid-year population age rows for Scotland across six eligible "
-                "periods, while the contract target is a household count with "
-                "three or more children. No Ledger household-composition fact "
-                "at or before 2025 is selected by the current contract, so "
-                "Microcosm must not adjudicate a replacement source here."
-            ),
-        }
+            "status": "signed_excluded",
+            "signed_rationale": report["targets"][
+                "ons.population.scotland_households_3plus_children"
+            ]["candidates"][0]["signed_rationale"],
+        },
     ]
+    report["multi_fact_rationales"] = []
 
 
 _GEOGRAPHY_VALUE_IDS = frozenset(

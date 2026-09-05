@@ -27,6 +27,7 @@ from microcosm.build.uk_runtime.calibration_run import (
 )
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.ledger_targets import compile_uk_target_registry
+from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
 from microcosm.build.uk_runtime.measure_simulation import (
     UKMeasureResolver,
     apply_uk_calibration_measure_exclusions,
@@ -37,7 +38,9 @@ from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
 from microcosm.calibrate import TargetRegistry
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-_CANONICAL_UK_RELEASE_ID = re.compile(r"populace-uk-[1-9][0-9]*-[a-z0-9_]+-k[1-9][0-9]*")
+_CANONICAL_UK_RELEASE_ID = re.compile(
+    r"populace-uk-[1-9][0-9]*-[a-z0-9_]+-k[1-9][0-9]*"
+)
 _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 
 
@@ -47,6 +50,10 @@ def main(argv: list[str] | None = None) -> int:
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
         expected_manifest_sha256=args.ledger_manifest_sha256,
+    )
+    _check_committed_ledger_feed_pin(
+        artifact.facts_sha256,
+        allow_unpinned_feed=args.allow_unpinned_feed,
     )
     calibration_year = load_uk_frs_release().calibration_year
     compilation = compile_uk_target_registry(
@@ -111,7 +118,10 @@ def main(argv: list[str] | None = None) -> int:
             },
             "ledger_facts": _ledger_facts_pin(artifact),
         },
-        run_config_extra={"calibration_year": calibration_year},
+        run_config_extra={
+            "calibration_year": calibration_year,
+            "allow_unpinned_feed": args.allow_unpinned_feed,
+        },
         release_id=args.release_id,
         logbook_prev_row_digest=args.logbook_prev_row_digest,
     )
@@ -133,6 +143,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--ledger-facts", required=True, type=Path)
     parser.add_argument("--ledger-facts-sha256", required=True, type=_sha256)
     parser.add_argument("--ledger-manifest-sha256", required=True, type=_sha256)
+    parser.add_argument(
+        "--allow-unpinned-feed",
+        action="store_true",
+        help=(
+            "Allow a Chronicle fact feed whose content hash differs from the "
+            "committed UK feed pin; the override is recorded in the run manifest."
+        ),
+    )
     parser.add_argument("--staging-h5", required=True, type=Path)
     parser.add_argument("--diagnostics-json", required=True, type=Path)
     parser.add_argument("--build-record-json", required=True, type=Path)
@@ -205,6 +223,20 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _check_committed_ledger_feed_pin(
+    facts_sha256: str,
+    *,
+    allow_unpinned_feed: bool,
+) -> None:
+    committed = _LEDGER_FACT_FEED_PIN["facts_sha256"]
+    if facts_sha256 != committed and not allow_unpinned_feed:
+        raise SystemExit(
+            "error: Chronicle consumer facts differ from the committed UK feed pin: "
+            f"loaded {facts_sha256}, committed {committed}; pass "
+            "--allow-unpinned-feed only for an explicitly reviewed diagnostic run"
+        )
+
+
 def _validate_distinct_paths(paths: dict[str, Path]) -> None:
     resolved = {label: path.expanduser().resolve() for label, path in paths.items()}
     for (left_label, left), (right_label, right) in combinations(resolved.items(), 2):
@@ -223,7 +255,10 @@ def _paths_alias(left: Path, right: Path) -> bool:
         right_stat = right.stat()
     except FileNotFoundError:
         return False
-    return (left_stat.st_dev, left_stat.st_ino) == (right_stat.st_dev, right_stat.st_ino)
+    return (left_stat.st_dev, left_stat.st_ino) == (
+        right_stat.st_dev,
+        right_stat.st_ino,
+    )
 
 
 def _compare_frozen_register(path: Path | None, registry: Any) -> None:
@@ -252,7 +287,9 @@ def _compare_frozen_register(path: Path | None, registry: Any) -> None:
 
 def _ledger_facts_pin(artifact: Any) -> dict[str, object]:
     facts_path = (
-        artifact.path / "consumer_facts.jsonl" if artifact.path.is_dir() else artifact.path
+        artifact.path / "consumer_facts.jsonl"
+        if artifact.path.is_dir()
+        else artifact.path
     )
     return {"sha256": artifact.facts_sha256, "size_bytes": facts_path.stat().st_size}
 

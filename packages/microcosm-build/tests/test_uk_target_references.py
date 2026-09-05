@@ -7,7 +7,11 @@ resource only declares which 2023 country-level facts Microcosm activates.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import subprocess
+import sys
 from importlib import resources as importlib_resources
 from pathlib import Path
 
@@ -16,6 +20,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     compile_ledger_target_references,
@@ -24,12 +29,14 @@ from microcosm.build.target_reference_authoring import (
     TargetReferenceAuthoringConfig,
     author_target_references,
 )
+from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from tools.generate_uk_target_references import (
     POLICYENGINE_BINDING_KEYS,
     _annual_uc_award_band_token,
     _geography_pins,
+    _sum_target_ids,
     _value_operation_by_target_id,
 )
 
@@ -45,17 +52,115 @@ FIXTURE_REFERENCE_NAMES = {
     "obr.esa",
     "hmrc.cgt.gains_total",
     "hmrc.cgt.taxpayers_total",
+    "dwp.uc.households",
+    "dwp.uc.households_single_no_children",
 }
 
 FIXTURE_FEED_ROWS = (
     Path(__file__).parent / "fixtures" / "uk_target_reference_feed_rows.jsonl"
 )
 
+STABLE_UK_FACT_FEED_NAME = ".codex-work/consumer_facts_uk.jsonl"
+
 
 def _load_uk_resource(name: str) -> dict:
     return json.loads(
         importlib_resources.files("microcosm.build.uk").joinpath(name).read_text()
     )
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def test_committed_surfaces_regenerate_from_pinned_feed(tmp_path: Path) -> None:
+    root = Path(__file__).resolve().parents[3]
+    configured = os.environ.get("CHRONICLE_UK_FACTS")
+    feed = Path(configured) if configured else root / STABLE_UK_FACT_FEED_NAME
+    if not feed.exists():
+        pytest.skip("pinned UK Chronicle consumer feed is not present")
+
+    if feed.is_dir():
+        artifact_path = feed
+    else:
+        default_manifest = root / ".codex-work/consumer_facts_uk_manifest.json"
+        manifest = (
+            default_manifest if not configured else feed.with_name("manifest.json")
+        )
+        if not manifest.is_file():
+            pytest.skip("pinned UK Chronicle consumer manifest is not present")
+        artifact_path = tmp_path / "consumer-artifact"
+        artifact_path.mkdir()
+        (artifact_path / "consumer_facts.jsonl").symlink_to(feed.resolve())
+        (artifact_path / "manifest.json").symlink_to(manifest.resolve())
+
+    artifact = load_ledger_consumer_artifact(
+        artifact_path,
+        expected_facts_sha256=_LEDGER_FACT_FEED_PIN["facts_sha256"],
+        expected_manifest_sha256=_LEDGER_FACT_FEED_PIN["manifest_sha256"],
+    )
+    assert artifact.fact_row_count == 128_717
+    facts_path = (
+        artifact.path / "consumer_facts.jsonl"
+        if artifact.path.is_dir()
+        else artifact.path
+    )
+
+    package = root / "packages/microcosm-build/src/microcosm/build/uk"
+    generated = tmp_path / "generated"
+    generated.mkdir()
+    national = generated / "target_references.json"
+    national_membership = generated / "target_reference_membership.json"
+    local = generated / "local_target_references.json"
+    local_membership = generated / "local_target_reference_membership.json"
+    common = [sys.executable]
+    subprocess.run(
+        [
+            *common,
+            str(root / "tools/generate_uk_target_references.py"),
+            "--contract",
+            str(package / "uk_population_targets.json"),
+            "--ledger-facts",
+            str(facts_path),
+            "--source-fact-feed",
+            STABLE_UK_FACT_FEED_NAME,
+            "--output",
+            str(national),
+            "--membership-report",
+            str(national_membership),
+        ],
+        cwd=root,
+        check=True,
+    )
+    subprocess.run(
+        [
+            *common,
+            str(root / "tools/generate_uk_local_target_references.py"),
+            "--contract",
+            str(package / "uk_population_targets.json"),
+            "--ledger-facts",
+            str(facts_path),
+            "--source-fact-feed",
+            STABLE_UK_FACT_FEED_NAME,
+            "--crosswalk",
+            str(package / "local_area_crosswalk.json"),
+            "--output",
+            str(local),
+            "--membership-report",
+            str(local_membership),
+        ],
+        cwd=root,
+        check=True,
+    )
+
+    for regenerated, committed_name in (
+        (national, "target_references.json"),
+        (national_membership, "target_reference_membership.json"),
+        (local, "local_target_references.json"),
+        (local_membership, "local_target_reference_membership.json"),
+    ):
+        committed = package / committed_name
+        assert _sha256(regenerated) == _sha256(committed), committed_name
 
 
 def _contract_targets_by_id() -> dict[str, dict]:
@@ -75,6 +180,11 @@ def _uc_benefit_units_fact(period: str, *, value: float) -> dict:
         "aggregation": {"method": "sum"},
         "assertion": "observation",
         "geography": {"level": "country", "id": "K03000001"},
+        "layout": {
+            "groupby_dimension": "dwp.uc_deductions_month",
+            "measure_id": "total_units",
+            "record_set_id": f"dwp.uc_deductions.{period}.total_units",
+        },
         "observed_measure": {
             "source_name": "dwp",
             "source_concept": "dwp.uc_benefit_units",
@@ -104,6 +214,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "sum",
         "calendar_year_average",
         "latest_plateau",
+        "count_x_mean",
     ]
     assert len(names) == len(set(names))
 
@@ -176,12 +287,44 @@ def test_ons_age_total_targets_pin_exact_age_dimension_set() -> None:
         ]
     }
 
-    assert references["ons.population.scotland_babies_under_1"][
-        "ledger_selector"
-    ]["dimensions"] == ["age"]
-    assert references["ons.population.scotland_children_under_16"][
-        "ledger_selector"
-    ]["dimensions"] == ["age"]
+    assert references["ons.population.scotland_babies_under_1"]["ledger_selector"][
+        "dimensions"
+    ] == ["age"]
+    assert references["ons.population.scotland_children_under_16"]["ledger_selector"][
+        "dimensions"
+    ] == ["age"]
+
+
+def test_uc_composition_targets_pin_exact_dimension_sets_without_triggering_sum() -> (
+    None
+):
+    contract = _load_uk_resource("uk_population_targets.json")
+    targets = {target["target_id"]: target for target in contract["targets"]}
+    sum_target_ids = _sum_target_ids(contract)
+
+    composition = {
+        target_id: target
+        for target_id, target in targets.items()
+        if target["family"] == "dwp_universal_credit"
+        and "dimension_values" in target["ledger_selector"]
+    }
+    assert composition
+    for target_id, target in composition.items():
+        selector = target["ledger_selector"]
+        assert set(selector["dimension_values"]) <= set(selector["dimensions"])
+        assert target_id not in sum_target_ids
+
+    for target_id, target in composition.items():
+        selector = target["ledger_selector"]
+        if target_id.startswith("dwp.uc.households_children_"):
+            assert selector["dimensions"] == ["number_of_children"]
+        elif target_id.startswith(
+            (
+                "dwp.uc.households_single_",
+                "dwp.uc.households_couple_",
+            )
+        ):
+            assert selector["dimensions"] == ["family_type"]
 
 
 def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -> None:
@@ -281,9 +424,8 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
         "active": 408,
-        "multi_fact": 1,
         "no_fact_at_or_before_period": 7,
-        "signed_excluded": 1,
+        "signed_excluded": 2,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
@@ -348,24 +490,20 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "facts would knowingly calibrate to 10/19 of the incumbent "
                 "surface."
             ),
-        }
-    ]
-    assert membership["multi_fact_rationales"] == [
+        },
         {
             "family": "ons_population",
             "target_id": "ons.population.scotland_households_3plus_children",
-            "candidate_name": "ons/scotland_households_3plus_children",
-            "status": "adjudication_pending",
+            "status": "signed_excluded",
             "signed_rationale": (
-                "Remaining multi_fact is genuine: the selector reaches ONS "
-                "mid-year population age rows for Scotland across six eligible "
-                "periods, while the contract target is a household count with "
-                "three or more children. No Ledger household-composition fact "
-                "at or before 2025 is selected by the current contract, so "
-                "Microcosm must not adjudicate a replacement source here."
+                "Signed out pending a Scotland household-composition fact: "
+                "the current selector reaches person-level ONS mid-year "
+                "population age rows, not households with three or more "
+                "children. microcosm#736 tracks the missing declaration."
             ),
-        }
+        },
     ]
+    assert membership["multi_fact_rationales"] == []
 
 
 def test_uk_fixture_b_signed_differences_carry_ruled_rationales() -> None:
@@ -378,18 +516,15 @@ def test_uk_fixture_b_signed_differences_carry_ruled_rationales() -> None:
 
     assert "2023-24 outturn" in differences["hmrc.cgt.gains_total"]["reason"]
     assert "forecast/uprated value" in differences["hmrc.cgt.gains_total"]["reason"]
-    assert "single-age-90 share" in differences[
-        "ons.population.female_85_89"
-    ]["reason"]
-    assert "single-age-90 share" in differences[
-        "ons.population.male_85_89"
-    ]["reason"]
-    assert "ages 91+ unconstrained" in differences[
-        "ons.population.female_90_plus"
-    ]["reason"]
-    assert "ages 91+ unconstrained" in differences[
-        "ons.population.male_90_plus"
-    ]["reason"]
+    assert "single-age-90 share" in differences["ons.population.female_85_89"]["reason"]
+    assert "single-age-90 share" in differences["ons.population.male_85_89"]["reason"]
+    assert (
+        "ages 91+ unconstrained"
+        in differences["ons.population.female_90_plus"]["reason"]
+    )
+    assert (
+        "ages 91+ unconstrained" in differences["ons.population.male_90_plus"]["reason"]
+    )
 
 
 def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
@@ -443,9 +578,29 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     assert targets["hmrc.cgt.taxpayers_total"].value == 378_000
     assert targets["hmrc.cgt.gains_total"].metadata["ledger_fact_period"] == "2023"
 
+    caseload = targets["dwp.uc.households"]
+    assert caseload.value == pytest.approx(6_758_888.888888889)
+    assert caseload.metadata["ledger_member_fact_count"] == "9"
+    assert caseload.metadata["ledger_value_operation"] == "calendar_year_average"
 
-def test_uk_generator_assigns_calendar_average_to_uc_benefit_unit_targets() -> None:
+    family_type = targets["dwp.uc.households_single_no_children"]
+    assert family_type.value == 3_725_304
+    assert "ledger_member_fact_count" not in family_type.metadata
+    assert family_type.metadata["ledger_value_operation"] == "calendar_year_average"
+
+
+def test_uk_generator_assigns_calendar_average_to_the_whole_uc_family() -> None:
     contract = _load_uk_resource("uk_population_targets.json")
+    operations = _value_operation_by_target_id(contract)
+    uc_target_ids = {
+        target["target_id"]
+        for target in contract["targets"]
+        if target["family"] == "dwp_universal_credit"
+    }
+    assert uc_target_ids
+    assert all(
+        operations[target_id] == "calendar_year_average" for target_id in uc_target_ids
+    )
     facts = [
         _uc_benefit_units_fact("2025-04", value=6_380_000.0),
         *(
@@ -516,11 +671,16 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
     n_households = 3
     weights = np.array([10.0, 20.0, 30.0])
     household_columns: dict[str, np.ndarray] = {}
+    benunit_columns: dict[str, np.ndarray] = {}
     person_columns: dict[str, np.ndarray] = {}
     expected_aggregates: dict[str, float] = {}
     for index, compiled in enumerate(registry.specs):
         column = np.array([index + 1.0, 2.0 * (index + 1.0), 0.0])
-        columns = person_columns if compiled.entity == "person" else household_columns
+        columns = {
+            "person": person_columns,
+            "benunit": benunit_columns,
+            "household": household_columns,
+        }[compiled.entity]
         columns[compiled.measure] = column
         expected_aggregates[f"{compiled.name}@{compiled.period}"] = float(
             (column * weights).sum()
@@ -533,14 +693,16 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
                 {
                     "person_id": household_ids,
                     "person_household_id": household_ids,
+                    "person_benunit_id": household_ids,
                     **person_columns,
                 }
             ),
+            "benunit": pd.DataFrame({"benunit_id": household_ids, **benunit_columns}),
             "household": pd.DataFrame(
                 {"household_id": household_ids, **household_columns}
             ),
         },
-        EntitySchema(group_entities=("household",)),
+        EntitySchema(group_entities=("household", "benunit")),
         {"household": Weights(values=weights, kind=WeightKind.DESIGN)},
     )
 
