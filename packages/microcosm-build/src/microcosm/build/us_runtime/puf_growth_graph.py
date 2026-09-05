@@ -32,7 +32,19 @@ kernel runs, so it cannot mutate them in place either.
 
 The design weight this stage grows is the **raw source column**. Promoting it
 into a frame's typed design weights is a separate, later obligation with its
-own mass policy; nothing here touches ``Frame`` weights.
+own mass policy; nothing here touches ``Frame`` weights. The weight column is
+owned as ``float64``; a base version carrying it as an integer would need a
+declared dtype change, which is a reviewed decision rather than a cast here.
+
+**The closed read set is the transform's, not the frame's.**
+:func:`~microcosm.build.us_runtime.puf_growth.apply_puf_growth` refuses a table
+carrying a column no rule declares. These nodes cannot make that promise about
+the *population*: a ``CREATE`` node upstream may have loaded raw money columns
+this contract never mentions, and they pass through the stage ungrown, because a
+node only sees the slices it declares. Closing that gap needs a source-stage
+contract that declares the full raw column inventory and checks the population
+against it; that is a documented remaining obligation, not something this stage
+silently covers.
 """
 
 from __future__ import annotations

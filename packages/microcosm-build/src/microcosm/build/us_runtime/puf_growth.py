@@ -23,9 +23,9 @@ Why the row/column axes are named rather than iterated
 The archived producer looped ``for variable in uprating`` over a DataFrame
 pivoted to year columns, so it iterated years while believing it iterated
 variable names (:data:`ARCHIVED_PRODUCER_COMMIT`, ``datasets/puf/puf.py``
-against ``utils/uprating.py``). Its 2015→2021 step separately listed several
-sign-branched fields in a fallback group as well, so a sign-specific factor
-could be followed by a second growth factor. Both failure modes are structural
+against ``utils/uprating.py``). Its 2015→2021 step separately listed two of its
+three sign-branched fields in a fallback group as well, so for those two a
+sign-specific factor was followed by a second growth factor. Both failure modes are structural
 here: a series name is looked up in a variable-keyed mapping, a year is looked
 up in a year-keyed mapping, and the sign-branch cover is validated to be exactly
 disjoint before any array is touched.
@@ -121,11 +121,14 @@ SOURCE_AGI_FIELD = "E00100"
 #: Raw IRS PUF field carrying the sample weight (stored times 100).
 DESIGN_WEIGHT_FIELD = "S006"
 
-#: Immutable copy of ``RECID``, written before any growth.
+#: Copy of ``RECID``, written from the source before any growth. No rule may
+#: target this column or take its name, but the column itself is an ordinary
+#: pandas column: what protects it is the contract, and in the graph the fact
+#: that no node declares it as a rewrite.
 PROVENANCE_RECID_COLUMN = "puf_source_recid"
 
-#: Immutable copy of source-year AGI, written before any growth, for SOI
-#: banding (see :mod:`microcosm.build.us_runtime.puf_source_agi`).
+#: Copy of source-year AGI on the same terms, kept for the TY2015 SOI band
+#: assignment in :mod:`microcosm.build.us_runtime.puf_source_agi`.
 PROVENANCE_SOURCE_AGI_COLUMN = "puf_source_year_agi"
 
 #: The provenance columns this transform adds, in output order.
@@ -463,7 +466,12 @@ class GrowthRecipe:
 
     @property
     def fields(self) -> tuple[str, ...]:
-        """Every declared field name, in declaration order, without repeats."""
+        """Every declared field name, once each, in the rules' sorted order.
+
+        ``__post_init__`` sorts the rules by ``(field, sign_branch)``, so two
+        recipes that declare the same rules in a different order are the same
+        recipe and hash the same.
+        """
         ordered: list[str] = []
         for rule in self.rules:
             if rule.field not in ordered:
@@ -1167,6 +1175,11 @@ def apply_puf_growth(table: pd.DataFrame, compiled: CompiledPufGrowth) -> GrownP
     fresh ``RangeIndex`` and row *i* of the output is row *i* of the input. A
     caller that needs the input's labels back must reattach them.
 
+    The input is never mutated and no partial result is ever returned. Most
+    refusals happen before any arithmetic; the product guards
+    (``GROWN_NONFINITE``, ``SIGN_CHANGED``, ``FACTOR_APPLIED_TWICE``)
+    necessarily run after a candidate array has been computed in local memory.
+
     Returns:
         A :class:`GrownPufTable` whose frame carries the grown money columns,
         the byte-identical code/identifier/count columns, and the two
@@ -1443,21 +1456,28 @@ _DOCUMENTED_MONEY_MEANINGS: tuple[tuple[str, str], ...] = (
     ("T27800", "Farm income (Sch J)"),
 )
 
+_SOI_RENAME_CITATION = (
+    f"retired US data package @{ARCHIVED_PRODUCER_COMMIT}:"
+    "datasets/puf/uprate_puf.py SOI_TO_PUF_STRAIGHT_RENAMES"
+)
+
 _SCREENED_FIELD_CITATION = (
     f"retired US data package @{ARCHIVED_PRODUCER_COMMIT}:"
     "datasets/puf/aggregate_record_utils.py SCREENED_FIELDS"
 )
 
 #: The raw TY2015 PUF fields this lineage names, with the role each one plays.
-#: A **proposal**, not an authenticated raw-source manifest: it is the union of
-#: what the archived producer documented and what this repository already
-#: reads, and it declares no factor for any field. Adding or removing a field
-#: is a reviewed change, not something a recipe may do implicitly.
+#: A **proposal**, not an authenticated raw-source manifest: it is every money
+#: code the archived codebook describes, plus the four structural codes and the
+#: one screened code cited separately. It is not every code this repository
+#: reads, and not every code the delivered file contains. It declares no factor
+#: for any field. Adding or removing a field is a reviewed change, not something
+#: a recipe may do implicitly.
 PROPOSED_TY2015_FIELD_ROSTER: tuple[RosterEntry, ...] = (
     RosterEntry(
         SOURCE_RECID_FIELD,
         FieldRole.IDENTIFIER,
-        "Record id; aggregate rows are 999996-999999, synthetic rows start at 1000000",
+        "Record id (the archived producer copies it to household_id)",
         _STRUCTURAL_CITATION,
     ),
     RosterEntry(
@@ -1485,19 +1505,29 @@ PROPOSED_TY2015_FIELD_ROSTER: tuple[RosterEntry, ...] = (
         "Short-term capital gains",
         _SCREENED_FIELD_CITATION,
     ),
+    RosterEntry(
+        "E02500",
+        FieldRole.MONEY,
+        "Taxable social security (the archived SOI rename binds the SOI series"
+        " taxable_social_security to this code; the codebook has no entry)",
+        _SOI_RENAME_CITATION,
+    ),
     *(
         RosterEntry(field, FieldRole.MONEY, meaning, ROSTER_CITATION)
         for field, meaning in _DOCUMENTED_MONEY_MEANINGS
     ),
 )
 
-#: Fields the archived producer names but for which neither archived commit
-#: supplies any meaning. They are deliberately absent from the roster: a
-#: successor must resolve them against the real source documentation rather
-#: than inherit a guess. ``E22250`` is in the roster because the codebook
-#: documents it, but no archived code path reads it -- every path uses
+#: Three codes the archived producer names in executable code while neither
+#: archived commit says what they mean: ``DSI`` and ``EIC`` appear only in a
+#: predictor list, ``E25920`` only as a subtracted term. They are deliberately
+#: absent from the roster: a successor must resolve them against real source
+#: documentation rather than inherit a guess. This is **not** a complete
+#: inventory of undocumented codes -- it is the three this slice tripped over,
+#: and closing it is a documented remaining obligation. ``E22250`` is in the roster because the
+#: codebook documents it, but no archived code path reads it -- every path uses
 #: ``P22250`` -- so whether both codes exist in the delivered file is open.
-UNDOCUMENTED_SOURCE_FIELDS: tuple[str, ...] = ("DSI", "E02500", "E25920", "EIC")
+UNDOCUMENTED_SOURCE_FIELDS: tuple[str, ...] = ("DSI", "E25920", "EIC")
 
 #: The source tax year those roster fields are observed in.
 ROSTER_SOURCE_REFERENCE_YEAR = PUF_SOURCE_YEAR

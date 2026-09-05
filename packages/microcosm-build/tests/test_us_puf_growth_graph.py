@@ -5,9 +5,9 @@ source; the factor levels are invented and the table says so. Nothing here
 reads a PUF, downloads anything, or imports a country engine.
 """
 
+import ast
 import inspect
 import json
-import sys
 from pathlib import Path
 
 import numpy as np
@@ -449,7 +449,16 @@ def test_a_nonint64_record_identifier_is_refused_by_the_money_node(tmp_path):
 
 
 def test_the_graph_module_reads_no_file_and_imports_no_country_engine():
+    """Same lane-independent form as the pure module's guard."""
+    tree = ast.parse(inspect.getsource(puf_growth_graph))
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+    assert imported
+    assert not any(name.lower().startswith("policyengine") for name in imported)
     source = inspect.getsource(puf_growth_graph)
     for token in ("open(", "read_csv", "h5py", "urlopen", "requests", "Path("):
         assert token not in source
-    assert not any(name.startswith("policyengine") for name in sys.modules)
