@@ -241,6 +241,31 @@ def test_pool_summary_preserves_failure_units_and_never_certifies():
     assert gates == original
 
 
+@pytest.mark.parametrize(
+    "manifest",
+    [
+        {"pool_h5": None},
+        {"provenance_counts": None},
+        {"provenance_counts": {"household": None}},
+        {"provenance_counts": {"household": 8}},
+        {"pool_h5": "not-an-object", "provenance_counts": []},
+        {},
+    ],
+)
+def test_pool_summary_leaves_unexpected_receipt_fields_null(manifest):
+    """A partial or oddly typed receipt reads as null, never as an exception.
+
+    These summaries are attached opportunistically alongside whatever a build
+    left behind, so an interrupted or hand-edited receipt has to degrade to
+    missing evidence rather than raising out of the attachment path.
+    """
+    summary = summarize_pool_diagnostics(manifest, {})
+    assert summary["population_sha256"] is None
+    assert summary["household_record_count"] is None
+    assert summary["failures"] is None
+    assert summary["failure_string_count"] is None
+
+
 def _bundle(tmp_path):
     root = tmp_path / "bundle"
     root.mkdir()

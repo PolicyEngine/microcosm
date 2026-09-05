@@ -46,6 +46,11 @@ def _object(value: object, label: str) -> dict[str, Any]:
     return value
 
 
+def _mapping(value: object) -> Mapping[str, Any]:
+    """A nested receipt field that is absent or not an object reads as empty."""
+    return value if isinstance(value, Mapping) else {}
+
+
 def _string(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise CandidateQualityError(f"{label} must be a nonempty string.")
@@ -516,8 +521,8 @@ def summarize_pool_diagnostics(
         isinstance(item, str) for item in failures
     ):
         failures = None
-    population = manifest.get("pool_h5", {})
-    counts = manifest.get("provenance_counts", {})
+    population = _mapping(manifest.get("pool_h5"))
+    counts = _mapping(manifest.get("provenance_counts"))
     result = {
         "schema_version": "microcosm.pool_quality_summary.v1",
         "candidate_release_id": manifest.get("release_id"),
@@ -525,7 +530,7 @@ def summarize_pool_diagnostics(
         "status": manifest.get("status"),
         "simulation_ready": manifest.get("simulation_ready"),
         "passed": gates.get("passed"),
-        "household_record_count": counts.get("household", {}).get("rows"),
+        "household_record_count": _mapping(counts.get("household")).get("rows"),
         "failure_string_count": len(failures) if failures is not None else None,
         "failures": failures,
         "interpretation": "Failure strings are not counts of failed comparison IDs. Diagnostic evidence only.",
