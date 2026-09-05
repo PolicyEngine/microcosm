@@ -9,8 +9,9 @@ forked from root integration `9ff943e6896ee6c487c853e4da96ccdfd7d96ed5` (unchang
 
 ## State (2026-09-05)
 
-Implemented, tested green, documented, committed. Under adversarial review;
-not pushed, no PR, nothing wired into a build or a release.
+Implemented, adversarially reviewed, all findings answered, tested green,
+documented, committed. Not pushed, no PR, nothing wired into a build, a source
+pin, or a release. Root inspects independently.
 
 ## Done
 
@@ -36,11 +37,22 @@ not pushed, no PR, nothing wired into a build or a release.
 - `ruff check .` clean repo-wide; `tools/ci_test_groups.py --verify` reports
   `verification=ok`; both new files land in `us-p` and `rest`, never `[defaulted]`.
 
+- Ran a five-dimension adversarial review (transform arithmetic, contract
+  loopholes, graph semantics, honesty, coverage-by-mutation). It raised 40
+  findings; all 40 were answered — fixed, or restated where the defect was an
+  overclaim in prose. Two would have shown up in CI or hidden a regression: a
+  `sys.modules` country-engine guard that fails in the engine lane, and a
+  fresh-store parity assertion that compared node-key-derived ids rather than
+  values.
+- Final: 67 tests (56 contract, 11 graph), `ruff check .` clean repo-wide,
+  `tools/ci_test_groups.py --verify` = `verification=ok`.
+
 ## Next
 
-- Answer the adversarial review findings.
 - Hand to root for independent inspection. Root composes; this branch does not
   wire the stage into any build, pin, or release path.
+- The obligations that remain before any of this touches real data are in
+  `docs/us-puf-growth-first-slice.md`, "Remaining obligations".
 
 ## Scope fences (from the authorizing brief)
 
