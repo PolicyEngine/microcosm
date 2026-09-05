@@ -1111,8 +1111,18 @@ def test_implementation_modules_exist_and_include_every_bound_seam():
     assert HOUSING_SOURCE_DEPENDENCIES == ("numpy", "pandas", "pyarrow")
 
 
-def test_live_housing_output_roster_is_bound_not_hardcoded(monkeypatch):
-    assert codec.housing_output_family() == {
+def test_live_housing_output_roster_is_bound_not_hardcoded():
+    """The five leaves are read from the registry, and are these five.
+
+    The literal below pins *which* leaves this recipe owns. The identity check
+    against `PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES` is what makes the name
+    true: the roster is the registered one, not a private copy that could drift
+    from it. `test_live_output_roster_is_read_from_the_registry` in the codec
+    suite covers the refusal when the registry disagrees.
+    """
+    from microcosm.build.us_runtime import operator_boundary
+
+    expected = {
         "person": ("pre_subsidy_rent",),
         "household": ("tenure_type",),
         "spm_unit": (
@@ -1121,6 +1131,13 @@ def test_live_housing_output_roster_is_bound_not_hardcoded(monkeypatch):
             "takes_up_housing_assistance_if_eligible",
         ),
     }
+    assert codec.housing_output_family() == expected
+    registered = operator_boundary.PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+        "housing_inputs"
+    ]
+    assert {
+        entity: tuple(sorted(columns)) for entity, columns in registered.items()
+    } == expected
 
 
 # --------------------------------------------------------------------------
