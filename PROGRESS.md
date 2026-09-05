@@ -93,7 +93,7 @@ This session re-ran verification from the committed head to completion.
 
 | Check | Command | Result |
 | --- | --- | --- |
-| Targeted | `pytest test_us_graph_housing_source.py test_us_graph_housing_source_artifacts.py` | **113 passed** in 88.70s, 0 skipped |
+| Targeted | `pytest test_us_graph_housing_source.py test_us_graph_housing_source_artifacts.py` | **114 passed** in 82.09s, 0 skipped (113 before this session's added guard) |
 | Lint | `ruff check .` | All checks passed |
 | CI partition | `tools/ci_test_groups.py --verify` | `verification=ok` |
 | Grouping | `--list rest` / `--list us-am` | both new files in each; never `[defaulted]` |
