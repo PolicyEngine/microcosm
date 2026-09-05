@@ -20,15 +20,20 @@ comparison input and is not the root of anything below.
 | --- | --- |
 | `packages/microcosm-build/src/microcosm/build/us_runtime/puf_growth.py` | The contract types, the closed-coverage recipe, the factor table, and the pure transform. Reads no file. |
 | `packages/microcosm-build/src/microcosm/build/us_runtime/puf_growth_graph.py` | Three nodes and three kernels that run the transform inside a real population. |
-| `packages/microcosm-build/tests/test_us_puf_growth.py` | 56 contract tests on invented rows and invented factor levels. |
-| `packages/microcosm-build/tests/test_us_puf_growth_graph.py` | 11 tests: a real compiled graph, cold / warm / `resume="require"` / fresh-store parity against a direct-call oracle. |
+| `packages/microcosm-build/tests/test_us_puf_growth.py` | Contract and public-constructor regressions on invented rows and factor levels. |
+| `packages/microcosm-build/tests/test_us_puf_growth_graph.py` | Real compiled graph, cold / warm / `resume="require"` / fresh-store value parity, and dependency-version cache regressions. |
 
 Nothing was added to `us_runtime/__init__.py`; both modules are imported by
 path, as `asec_current_money` and its siblings are. Importing
-`microcosm.build.us_runtime` was measured in this environment: it succeeds and
-loads **no** `policyengine*` module, because every PolicyEngine import in that
-package — including `microcosm.frame.adapters.policyengine_us` — is lazy. So
-placing these files in `us_runtime` does not drag in a country engine.
+`microcosm.build.us_runtime` loaded no `policyengine*` module in the original
+author environment, which had neither PolicyEngine-US nor Core installed.
+This is an environment-specific measurement. Package initialization builds a
+spine registry and checks the installed US engine ABI through the take-up
+contract. When PolicyEngine-US is installed, that path can eagerly import it
+and initialize its tax-benefit system. An engine-free environment instead
+validates the committed ABI lock structurally without attesting its currency.
+The pure transforms invoke no country-model calculation; their package import
+is not a guarantee of engine-free preflight in an environment with US extras.
 
 ## The contract
 
@@ -124,15 +129,17 @@ per row and refuses `FACTOR_APPLIED_TWICE` if any row were ever selected twice.
   kernel's returned coordinates must equal the node's declared outputs, so it
   cannot write those columns at all; and the projected input view is frozen and
   its digest compared before and after the kernel runs, so it cannot mutate them
-  in place either. (There is no non-owned *storage-equality* check on an
-  ordinary node — that path exists only for `EXPAND`.)
+  in place either. The ordinary patch also checks storage outside the owned
+  rows of each written column. Structural `FILTER`, `REWEIGHT` and `EXPAND`
+  paths separately preserve carried storage under their respective rules.
 - Money growth and design-weight growth are separate entry points, separate
   graph nodes, and **separate column sets**. The design weight is not in the
   money view at all: `apply_puf_growth` refuses a table that contains it
   (`DESIGN_WEIGHT_NOT_IN_MONEY_VIEW`), and the money node does not declare it as
-  an input. That matters in the graph — if the money node read the weight
-  column, the executor would make the weight node its predecessor and a
-  weight-only factor change would recompute every money column.
+  an input. The compute nodes have separate read sets. They still carry the
+  whole recipe and factor table in their parameters, as does the structural
+  boundary: a weight-only factor edit conservatively invalidates the money
+  node too. Separate columns do not imply independent factor-cache identities.
 - Zeros are never selected, so a zero never enters arithmetic. A source negative
   zero is refused outright (`NEGATIVE_ZERO`) rather than carried through, so the
   grown column cannot hold a bit pattern that compares equal to zero while
@@ -145,10 +152,13 @@ per row and refuses `FACTOR_APPLIED_TWICE` if any row were ever selected twice.
 - The input frame is never mutated; every refusal happens before any array is
   written.
 - Raw `RECID` and the source-year AGI are copied into `puf_source_recid` and
-  `puf_source_year_agi` **before** any growth, so a later change to `E00100`'s
-  basis cannot destroy the input to the TY2015 SOI band assignment that
-  `puf_source_agi.py` and `puf_interest_components.py` depend on. "Immutable"
-  here means contract-enforced: the transform writes them once from pre-growth
+  `puf_source_year_agi` **before** any growth, retaining source-year AGI for a
+  future TY2015 banding path when `E00100` changes basis. In the existing
+  processed-donor route, `puf_donor_io.py` gets aligned AGI through
+  `puf_source_agi.py` and passes it to `puf_support.py`, which supplies that
+  explicit array to the interest splitter. `puf_interest_components.py` does
+  not read `E00100` itself. This slice does not wire the new provenance column
+  into that route. The transform writes the two columns from pre-growth
   values and no rule may target them.
 
 ## Monetary metadata
@@ -160,6 +170,9 @@ year (`real_per_return_aged_from_2015`, `nominal_price_restated_from_2015`).
 That is the vocabulary a future donor/recipient fit-boundary check needs. **The
 check itself is not implemented here**, and no existing consumer path was
 changed to consume this.
+The broad `sector=households` label is qualified by
+`perimeter=irs_individual_income_tax_returns`; it does not establish an ACS
+household denominator.
 
 ## Authority
 
@@ -221,6 +234,20 @@ The contract travels as node parameters — the recipe identity document and the
 factor document, verbatim — so a changed level moves the node key rather than
 being served from the store. `test_a_changed_factor_level_moves_the_node_key_and_is_not_reused`
 asserts exactly that.
+The three kernels also include the installed NumPy and pandas versions in
+their implementation hashes. A changed declared version makes required warm
+reuse miss; the regression then checks recomputation against the original
+values without changing the actual installed packages.
+
+Public factor tables own their level pairs and recursively freeze their
+provenance. Their canonical document must match that owned state. A compiled
+contract uses the same factor resolver as its public constructor: series,
+kind, years, exact level text and finite positive ratio bits must all match
+the attached table, even when a caller recomputes a proposed identity.
+Equal source and target years remain an explicitly receipted factor of one.
+The proposed field roster is advisory and is not a source authority or an
+implicit role validator; a future reviewed source manifest must establish that
+classification.
 
 The design weight this stage grows is the **raw source column** (`S006`). The
 frame's typed design weights are left exactly as the source loaded them;
@@ -232,7 +259,7 @@ own mass policy (below).
 ```bash
 uv sync --all-packages --locked          # no us/uk extras are needed
 uv run pytest packages/microcosm-build/tests/test_us_puf_growth.py \
-              packages/microcosm-build/tests/test_us_puf_growth_graph.py   # 67 tests
+              packages/microcosm-build/tests/test_us_puf_growth_graph.py
 uv run ruff check .
 uv run python tools/ci_test_groups.py --verify
 ```
