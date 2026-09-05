@@ -106,6 +106,10 @@ is being rerun after the additional spec-bundle priming fix. Report and raw meas
   now passes: 1 passed, 25 deselected; exit 0; 99.303 seconds wall time
   (pytest 87.24s). The affected us-qs:build process will now run on final code.
 
+- Final us-qs:build rerun has completed the spec-bundle module (26 passed)
+  and all first 26 files (1,024 passed, no failures). Full stacked-spine is
+  running next; final lint/format/spec/boundary checks are queued serially.
+
 ## Next
 
 - Finish the final us-qs:build rerun with per-file timings.
