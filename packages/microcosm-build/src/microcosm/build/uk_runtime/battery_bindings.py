@@ -1157,7 +1157,7 @@ def _target_fit_required_artifacts(
 ) -> frozenset[str]:
     if parameters.get("surface") == "local_candidate":
         return frozenset({"local_target_diagnostics"})
-    return frozenset({"parity_evidence"})
+    return frozenset({"parity_evidence", "exclusions_evaluated_on"})
 
 
 def _evaluate_input_mass_parity(
