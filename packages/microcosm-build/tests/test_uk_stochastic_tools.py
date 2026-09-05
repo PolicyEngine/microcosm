@@ -83,6 +83,44 @@ def test_childcare_fit_receipt_is_deterministic_with_seeded_runner(
     assert set(first["achieved"]) == set(tool.TARGET_IDS)
 
 
+def test_childcare_expected_counts_are_bilinear_in_the_extended_rate() -> None:
+    tool = _load_tool("fit_uk_childcare_takeup")
+    # Two rows: the first family is extended-eligible (loses targeted and
+    # universal when it claims extended), the second is not.
+    with_ext = {
+        "hmrc.tfc.government_top_up": np.array([100.0, 50.0]),
+        "hmrc.tfc.children_with_used_accounts": np.array([1.0, 1.0]),
+        "dfe.funded_childcare.working_parent_children_2_to_4": np.array([1.0, 0.0]),
+        "dfe.funded_childcare.early_learning_2_year_olds": np.array([0.0, 1.0]),
+        "dfe.funded_childcare.universal_only_children": np.array([0.0, 1.0]),
+    }
+    without_ext = {
+        **with_ext,
+        "dfe.funded_childcare.early_learning_2_year_olds": np.array([1.0, 1.0]),
+        "dfe.funded_childcare.universal_only_children": np.array([1.0, 1.0]),
+    }
+    basis = tool.ChildcareExpectationBasis(
+        with_extended=with_ext, without_extended=without_ext, rows=2
+    )
+    # RATE_KEYS order: tfc, extended, targeted, universal
+    expected = tool.expected_childcare_counts(basis, np.array([0.5, 0.25, 1.0, 0.4]))
+
+    assert expected["hmrc.tfc.government_top_up"] == pytest.approx(75.0)
+    assert expected["hmrc.tfc.children_with_used_accounts"] == pytest.approx(1.0)
+    assert expected["dfe.funded_childcare.working_parent_children_2_to_4"] == (
+        pytest.approx(0.25)
+    )
+    # targeted: family 1 is eligible only when it does not claim extended.
+    assert expected["dfe.funded_childcare.early_learning_2_year_olds"] == (
+        pytest.approx(1.0 * (0.75 + 1.0))
+    )
+    assert expected["dfe.funded_childcare.universal_only_children"] == (
+        pytest.approx(0.4 * (0.75 + 1.0))
+    )
+    ceiling = tool.expected_childcare_counts(basis, np.ones(4))
+    assert ceiling["dfe.funded_childcare.early_learning_2_year_olds"] == 1.0
+
+
 def test_childcare_fitter_family_allow_list_excludes_entitlement_spending() -> None:
     tool = _load_tool("fit_uk_childcare_takeup")
 

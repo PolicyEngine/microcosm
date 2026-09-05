@@ -46,8 +46,8 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.55,
         0.5,
         0.88,
-        0.812,
-        0.563,
+        0.6054,
+        0.4539,
         0.597,
         0.97,
         0.85,
@@ -67,6 +67,7 @@ def test_year_selection_uses_latest_value_at_or_before_build_year() -> None:
     assert contract.rate("child_benefit", 2021) == 0.97
     assert contract.rate("child_benefit", 2023) == 0.89
     assert contract.rate("tax_free_childcare", 2024) == 0.88
+    assert contract.rate("tax_free_childcare", 2023) == 0.586
     assert contract.rate("tv_licence_evasion_rate", 2024) == 0.1252
     assert contract.rate("tax_free_childcare_spend_routed_share", 2017) == 0.359
     assert contract.rate("tax_free_childcare_spend_routed_share", 2024) == 0.593

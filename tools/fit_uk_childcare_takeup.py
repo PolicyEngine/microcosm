@@ -30,7 +30,7 @@ from microcosm.build.uk_runtime.take_up_contract import (
 )
 from microcosm.calibrate import TargetRegistry
 
-TOOL_VERSION = 2
+TOOL_VERSION = 3
 TARGET_IDS = (
     "hmrc.tfc.government_top_up",
     "hmrc.tfc.children_with_used_accounts",
@@ -58,7 +58,8 @@ def draw_childcare_inputs(
     seed: int,
     contract: UKTakeUpContract,
 ) -> dict[str, np.ndarray]:
-    """Generate identity-keyed flags while holding the hours distribution fixed."""
+    """Identity-keyed flags with the hours distribution fixed (diagnostic helper;
+    the fit itself uses the expected-count objective)."""
     ids = np.asarray(benunit_ids)
     if np.asarray(params).shape != (4,):
         raise ValueError("childcare fitter accepts exactly four take-up rates")
@@ -125,9 +126,9 @@ def fit_childcare_takeup(
     ledger_facts_sha256: str | None = None,
     target_period: int = 2024,
     vintage_overrides: Mapping[str, int] | None = None,
-    seed: int = 42,
-    maxiter: int = 5,
-    eps: float = 1e-2,
+    seed: int = 0,
+    maxiter: int = 50,
+    eps: float = 1e-6,
     runner: SimulationRunner | None = None,
     generated_at: str | None = None,
     targets: Mapping[str, float] | None = None,
@@ -195,6 +196,7 @@ def fit_childcare_takeup(
         "input_h5": str(input_h5),
         "input_sha256": _sha256(input_h5),
         "seed": seed,
+        "objective": "expected_count",
         "generated_at": generated_at or datetime.now(UTC).date().isoformat(),
         "model_period": target_period,
         "vintage_overrides": overrides,
@@ -219,24 +221,109 @@ def fit_childcare_takeup(
             }
             for name in TARGET_IDS
         },
+        "ceilings_at_rate_1": _ceilings(input_h5, target_period, targets),
     }
 
 
-def _policyengine_runner(
-    input_h5: Path,
-    params: np.ndarray,
-    seed: int,
-    target_period: int,
-    contract: UKTakeUpContract,
-) -> Mapping[str, float]:
+def _ceilings(
+    input_h5: Path, target_period: int, targets: Mapping[str, float]
+) -> dict[str, dict[str, float]] | None:
+    """Each row's expectation with every rate at 1.0 (the frame's reach)."""
+
+    basis = _BASIS_CACHE.get((str(Path(input_h5).resolve()), int(target_period)))
+    if basis is None:
+        return None
+    ceiling = expected_childcare_counts(basis, np.ones(4))
+    return {
+        name: {"value": ceiling[name], "ratio": ceiling[name] / float(targets[name])}
+        for name in TARGET_IDS
+    }
+
+
+FLAG_OUTPUTS = (
+    "would_claim_tfc",
+    "would_claim_extended_childcare",
+    "would_claim_universal_childcare",
+    "would_claim_targeted_childcare",
+)
+OWN_RATE_BY_TARGET = {
+    "hmrc.tfc.government_top_up": "tax_free_childcare",
+    "hmrc.tfc.children_with_used_accounts": "tax_free_childcare",
+    "dfe.funded_childcare.working_parent_children_2_to_4": "extended_childcare",
+    "dfe.funded_childcare.early_learning_2_year_olds": "targeted_childcare",
+    "dfe.funded_childcare.universal_only_children": "universal_childcare",
+}
+
+
+class ChildcareExpectationBasis:
+    """Per-row weighted contributions with the take-up flags forced on.
+
+    ``with_extended`` holds each target's weighted per-row values when every
+    flag is True; ``without_extended`` the same with the extended flag False.
+    The engine's only cross-scheme interactions are its mutual exclusions
+    (targeted and universal require a family that is not extended-eligible),
+    so at rates ``r`` a target's expected value is
+    ``r_own * sum(with_ext * r_e + without_ext * (1 - r_e))`` — linear in the
+    own rate, bilinear with the extended rate — and the extended row is
+    ``r_e * sum(with_ext)``. The expectation is the quantity a take-up *rate*
+    controls: the spine's persisted flags are one draw from it, and later
+    stages clone and re-key rows, so no re-drawn realisation can sit on the
+    build's own — the expectation can.
+    """
+
+    __slots__ = ("with_extended", "without_extended", "rows")
+
+    def __init__(
+        self,
+        *,
+        with_extended: Mapping[str, np.ndarray],
+        without_extended: Mapping[str, np.ndarray],
+        rows: int,
+    ) -> None:
+        self.with_extended = dict(with_extended)
+        self.without_extended = dict(without_extended)
+        self.rows = int(rows)
+
+
+def expected_childcare_counts(
+    basis: ChildcareExpectationBasis, params: np.ndarray
+) -> dict[str, float]:
+    """Expected weighted aggregates at ``params`` (ordered as RATE_KEYS)."""
+
+    rates = dict(
+        zip(RATE_KEYS, map(float, np.asarray(params, dtype=float)), strict=True)
+    )
+    extended = rates["extended_childcare"]
+    expected: dict[str, float] = {}
+    for target, own in OWN_RATE_BY_TARGET.items():
+        with_ext = basis.with_extended[target]
+        if own == "extended_childcare":
+            expected[target] = extended * float(with_ext.sum())
+            continue
+        without_ext = basis.without_extended[target]
+        expected[target] = rates[own] * float(
+            (with_ext * extended + without_ext * (1.0 - extended)).sum()
+        )
+    return expected
+
+
+def _weighted_rows(
+    sim: Any, values: np.ndarray, entity: str, period: int
+) -> np.ndarray:
+    weights = np.asarray(sim.calculate(f"{entity}_weight", period), dtype=float)
+    return np.asarray(values, dtype=float) * weights
+
+
+def _basis_side(
+    input_h5: Path, target_period: int, contract: UKTakeUpContract, *, extended: bool
+) -> dict[str, np.ndarray]:
     from policyengine_uk import Microsimulation
 
     sim = Microsimulation(dataset=str(input_h5))
-    benunit_ids = np.asarray(sim.calculate("benunit_id", target_period))
-    for variable, values in draw_childcare_inputs(
-        benunit_ids, params, seed=seed, contract=contract
-    ).items():
-        sim.set_input(variable, target_period, values)
+    benunit_count = np.asarray(sim.calculate("benunit_id", target_period)).shape[0]
+    for variable in FLAG_OUTPUTS:
+        on = extended if variable == "would_claim_extended_childcare" else True
+        sim.set_input(variable, target_period, np.full(benunit_count, on, dtype=bool))
     person_count = np.asarray(sim.calculate("person_id", target_period)).shape[0]
     sim.set_input(
         "tax_free_childcare_spend_routed_share",
@@ -246,26 +333,71 @@ def _policyengine_runner(
             contract.rate("tax_free_childcare_spend_routed_share", target_period),
         ),
     )
+    variables = sim.tax_benefit_system.variables
+
+    def rows(variable: str, values: np.ndarray | None = None) -> np.ndarray:
+        entity = variables[variable].entity.key
+        raw = (
+            np.asarray(sim.calculate(variable, target_period))
+            if values is None
+            else values
+        )
+        return _weighted_rows(sim, raw, entity, target_period)
+
+    age = np.asarray(sim.calculate("age", target_period))
+    extended_receiving = np.asarray(
+        sim.calculate("is_child_receiving_extended_childcare", target_period)
+    )
     return {
-        "hmrc.tfc.government_top_up": float(
-            sim.calculate("tax_free_childcare", target_period).sum()
+        "hmrc.tfc.government_top_up": rows("tax_free_childcare"),
+        "hmrc.tfc.children_with_used_accounts": rows(
+            "is_child_receiving_tax_free_childcare"
         ),
-        "hmrc.tfc.children_with_used_accounts": float(
-            sim.calculate("is_child_receiving_tax_free_childcare", target_period).sum()
+        "dfe.funded_childcare.working_parent_children_2_to_4": rows(
+            "is_child_receiving_extended_childcare", extended_receiving & (age >= 2)
         ),
-        "dfe.funded_childcare.working_parent_children_2_to_4": float(
-            (
-                sim.calculate("is_child_receiving_extended_childcare", target_period)
-                & (sim.calculate("age", target_period) >= 2)
-            ).sum()
+        "dfe.funded_childcare.early_learning_2_year_olds": rows(
+            "is_child_receiving_targeted_childcare"
         ),
-        "dfe.funded_childcare.early_learning_2_year_olds": float(
-            sim.calculate("is_child_receiving_targeted_childcare", target_period).sum()
-        ),
-        "dfe.funded_childcare.universal_only_children": float(
-            sim.calculate("is_child_receiving_universal_childcare", target_period).sum()
+        "dfe.funded_childcare.universal_only_children": rows(
+            "is_child_receiving_universal_childcare"
         ),
     }
+
+
+def compute_childcare_basis(
+    input_h5: Path, target_period: int, contract: UKTakeUpContract
+) -> ChildcareExpectationBasis:
+    """Two engine runs (extended flag on / off, every other flag on)."""
+
+    with_extended = _basis_side(input_h5, target_period, contract, extended=True)
+    without_extended = _basis_side(input_h5, target_period, contract, extended=False)
+    return ChildcareExpectationBasis(
+        with_extended=with_extended,
+        without_extended=without_extended,
+        rows=int(with_extended["hmrc.tfc.children_with_used_accounts"].shape[0]),
+    )
+
+
+_BASIS_CACHE: dict[tuple[str, int], ChildcareExpectationBasis] = {}
+
+
+def _policyengine_runner(
+    input_h5: Path,
+    params: np.ndarray,
+    seed: int,
+    target_period: int,
+    contract: UKTakeUpContract,
+) -> Mapping[str, float]:
+    """Expected-count objective; ``seed`` is unused (no draw is taken)."""
+
+    del seed
+    key = (str(Path(input_h5).resolve()), int(target_period))
+    basis = _BASIS_CACHE.get(key)
+    if basis is None:
+        basis = compute_childcare_basis(input_h5, target_period, contract)
+        _BASIS_CACHE[key] = basis
+    return expected_childcare_counts(basis, params)
 
 
 def _parse_overrides(values: list[str]) -> dict[str, int]:
@@ -286,17 +418,24 @@ def main() -> None:
     parser.add_argument("--target-period", type=int, default=2024)
     parser.add_argument("--vintage-override", action="append", default=[])
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--maxiter", type=int, default=5)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=0,
+        help=(
+            "Recorded in the receipt; the expected-count objective takes no "
+            "draw (identity draws are a diagnostic helper only)."
+        ),
+    )
+    parser.add_argument("--maxiter", type=int, default=50)
     parser.add_argument(
         "--eps",
         type=float,
-        default=1e-2,
+        default=1e-6,
         help=(
-            "Finite-difference step for L-BFGS-B on the four rates. The draws "
-            "are identity-keyed thresholds, so a step smaller than one over the "
-            "eligible base flips no unit and reads as a zero gradient; the "
-            "targeted 2-year-old base is a few hundred sample children."
+            "Finite-difference step for L-BFGS-B on the four rates. The "
+            "expected-count objective is smooth (bilinear in the rates), so "
+            "a small step is exact; recorded in the receipt."
         ),
     )
     args = parser.parse_args()

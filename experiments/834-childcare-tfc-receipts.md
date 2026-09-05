@@ -232,7 +232,111 @@ sampling noise — for targeted, ±10–20% at this base. The exact fix — an e
 (rate × weight over the rules-eligible base, no draw) with an analytic gradient — is a fitter
 redesign outside this PR and is filed as a follow-up.
 
-**Second run (`fit_2024_eps05.json`: maxiter 10, eps 0.05):** pending.
+**Second run (`fit_2024_eps05.json`: maxiter 10, eps 0.05):** loss 0.302 → 0.077, still
+`success: false` at the iteration cap, and two of the four rates on the upper bound:
+
+| rate | incumbent | fitted | achieved ÷ target at the fitted vector |
+|---|---|---|---|
+| `tax_free_childcare` | 0.88 | **1.000 (bound)** | spend 0.806, children 1.142 |
+| `extended_childcare` | 0.812 | 0.562 | extended 2–4 0.948 |
+| `targeted_childcare` | 0.597 | **1.000 (bound)** | targeted 0.878 |
+| `universal_childcare` | 0.563 | 0.436 | universal-only 0.955 |
+
+The TFC objective is flat between 0.9 and 1.0 (spend 0.79–0.81 against children 1.10–1.14: the
+two HMRC rows cannot both be met once spend is routed at 0.593, because the frame's spend per
+child with a used account sits ~30% below HMRC's; uk-data's comparator ratios are 1.01 / 0.99 on
+its own frame), so the bound hit is the optimizer sliding along a flat valley, not a measured
+take-up of 100%. The targeted bound is the reachable-ceiling problem above. A rate of 1.0 also
+makes the persisted `would_claim_*` column constant, which the degenerate-surface gate refuses
+without a signed entry — a fit cannot sign that.
+
+**Third run — the fitter re-designed (`fit_2024_expected.json`, tool version 3):** the second
+run's rates were landed and the spine rebuilt, and the rebuilt twin exposed a seam the receipts
+must carry: the build keys every take-up flag as `seed 0 : output : int64 benunit_id` at the
+`frs_take_up` stage, and later stages (SPI support channel, CGT incidence clone, age tail)
+clone and re-key rows, so no re-drawn realisation can sit on the persisted one — re-hashing the
+final ids agrees with the persisted universal flag on 66% of rows, chance being 51% — and the
+fitter's own draws (seed 42 on the engine's int32-cast ids, 2³¹ < the spine's ids) were a third
+realisation. At identical rates the universal-only count read 397 592 / 434 097 / 463 758 across
+the three (fitter s42 / s0 / build). The fitter therefore no longer draws: two engine runs with
+the flags forced on (extended on, then off) give each row's weighted per-row contributions, and
+each target's expectation is linear in its own rate and bilinear with the extended rate through
+the engine's mutual exclusions (targeted and universal need a family that is not
+extended-eligible). The objective is smooth, exact for the build (the persisted flags are one
+draw from it), and reports each row's ceiling at a take-up of one. Checks: at the incumbent
+rates the expectations read spend 0.71, children 1.005, extended 1.32, targeted 0.49, universal
+1.06 against the L3 measurements 0.70 / 1.02 / 1.28 / 0.60 / 1.10 (draw noise, amplified for
+small bases by cloning); the unit test pins the bilinear form.
+
+| rate | incumbent | fitted (converged, loss 0.080) | expectation ÷ target | ceiling at 1.0 |
+|---|---|---|---|---|
+| `tax_free_childcare` | 0.88 | 0.997 | spend 0.804 · children 1.138 | 0.806 · 1.142 |
+| `extended_childcare` | 0.812 | **0.6054** | 0.986 | 1.629 |
+| `targeted_childcare` | 0.597 | 1.000 (bound) | 0.852 | 0.792 (0.852 at the fitted extended rate) |
+| `universal_childcare` | 0.563 | **0.4539** | 1.000 | 1.581 |
+
+**Landed (plan A6 as exercised):** `extended_childcare` 0.6054 and `universal_childcare`
+0.4539 as `2024-04-06` entries with `status: fitted_offline` and a `fitting_receipt` (receipt
+sha, seed, engine 2.94.0, input sha, feed sha, contract sha at fit, optimizer block, achieved ÷
+target). `tax_free_childcare` (0.88) and `targeted_childcare` (0.597) are **held at their
+incumbent values**: TFC sits at its ceiling because with spend routed at 0.593 the frame's
+spend per child with a used account is ~30% below HMRC's, so the two HMRC rows cannot both be
+met (spend 0.81 against children 1.14 anywhere above 0.9); targeted's eligible base — England, a
+qualifying benefit or UC/TC criterion, and not extended-eligible — reaches 0.85 of the Jan-2024
+count at a take-up of one. Both are put to María (A22/A23); a rate of 1.0 would also make the
+persisted flag column constant, which the degenerate-surface gate refuses. The two pairs are
+separable (targeted's rate does not move the extended count; TFC touches no DfE row), so the
+landed pair is the joint fit's own solution for those rows. The eps-0.05 landing above
+(0.5622 / 0.4356) is superseded.
+
+**Rebuilt on this contract (`l5-refit-twin-b/`, sha `37280e7c…`):** 28 stages, rows
+113 626 / 61 234 / 52 846, 15 / 15 spine gates; persisted shares extended 0.6053, universal
+0.4512 (rates 0.6054 / 0.4539). Payload against the L2 column twin
+(`l5b_vs_l2_payload.json`): benunit — the two re-fitted flags move (12 374 and 6 694 rows), the
+seven other draw columns byte-equal; person — 28 `student_loan_balance` rows (the stock
+top-up's selection); household — 33 imputed columns through the predictors, as in L2 vs L1
+(energy IPF 52 586 rows, property rescale 24 948 owners, wealth/consumption draws ≤ 445 rows);
+time_period byte-equal. Signed in the swap register as `childcare-take-up-refit-834`
+(`mechanism_change`, max |Δshare| 0.2068 / 0.1103 against the packaged reference). Release
+round trip (`l5b_refit_childcare_receipt.json`, engine 2.94.0, design weights):
+
+| target (basis 2024 / 2025) | L3 (incumbent rates) | twin-b (landed) | expectation at the landed vector |
+|---|---|---|---|
+| TFC top-up £ | 0.698 / 0.772 | 0.698 / 0.772 | 0.710 |
+| TFC children with used accounts | 1.020 / 0.951 | 1.020 / 0.951 | 1.005 |
+| extended 2–4, England | 1.283 / 1.261 | **0.999 / 0.982** | 0.986 |
+| targeted 2-year-olds, England | 0.596 / 0.738 | 0.628 / 0.772 | 0.509 |
+| universal-only 3–4s, England | 1.104 / 1.177 | **1.087 / 1.157** | 1.000 |
+
+The extended row lands on its expectation; universal realises 9% above and targeted 23% above
+theirs — the persisted flags are one identity-keyed draw and the SPI/CGT clone stages copy a
+source family's flag onto every clone, so the realised count's effective sample is far smaller
+than its row count on the small bases (targeted: ~157 candidate children). The expectation is
+what the rate controls; the calibration weights absorb the realisation.
+
+### L4 — composition on `uk-publication-stack-834`
+
+The composition branch (`repos/populace-834-l4`, `uk-publication-stack-834` = the #834 tree plus
+the publication stack's target-fit deferral register and its gate wiring, ported by hand from
+stack `6d3f984a`; main's local-candidate branch of the evaluator preserved) runs
+`tools/calibrate_uk_national_dataset.py` on the rebuilt twin against the pinned feed (facts
+`6ae49d7d…`, manifest `dcda51d6…`), 1 500 epochs, Adam 0.02, max weight ratio 10, the packaged
+measure exclusions, release id `uk-spine-assessment-834-l4`.
+
+**Run 1 (first landing 0.5622 / 0.4356, per-target uniform weights — superseded).** The runner
+was invoked without `--target-weight-rule`, so every one of the 371 targets weighed 1.0 where
+L4-pre had weighed families equally (`weight_kind: provided`, each UC cell ≈ 0.01). Loss 0.374 →
+0.0135, 95.4% within 10%, ESS 8 154; the seven new rows all within 0.2%, and three of the four
+deferred UC with-children cells inside 1.2% (children_5_or_more −28.3%) — but at the price the
+family weighting exists to prevent: `hmrc.cgt.gains_total` −30.3% (OBR CGT exact),
+`ons.savings_interest_income` −74.8%, `voa.council_tax_stock.band_a` +34.2%,
+`slc.borrowers.plan_2_liable` −26.6%. The 100-row UC family dominated the solve. Kept as the
+weighting-sensitivity receipt (`l4-834/run1/`), not as the composition measurement. The
+terminal battery also failed closed on the ported gate (`KeyError: exclusions_evaluated_on`):
+the binding's required-artifact set lacked the exclusion clock, fixed on the branch
+(`7234d305`).
+
+**Run 2 (converged landing 0.6054 / 0.4539, `family_equal` as L4-pre):** pending.
 
 ## Part D — bus (#789)
 

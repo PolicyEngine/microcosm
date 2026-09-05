@@ -711,6 +711,40 @@
      ]
     }
    }
+  },
+  {
+   "id": "childcare-take-up-refit-834",
+   "class": "mechanism_change",
+   "scope": {
+    "surface": "nonzero_shares",
+    "columns": [
+     "would_claim_extended_childcare",
+     "would_claim_universal_childcare"
+    ],
+    "entities": [
+     "benunit"
+    ]
+   },
+   "expectation": "column_differs",
+   "magnitude_evidence": "The extended and universal childcare take-up rates are re-fitted (#834 L5, plan A6) on the L2 column twin at the 2024 base year against the compiled DfE rows with the routed share in the frame: extended 0.812 -> 0.6054 and universal 0.563 -> 0.4539, expected-count fit (two engine runs, bilinear in the rates), so the persisted identity-keyed flags' nonzero shares move by the rate change (the incumbent's 0.812 / 0.561 were the pre-freeze fit). Re-measured on the rebuilt spine (sha256 37280e7c99af3f4d4f176c42722c56e1fd2c5170de8d3d97ba767db46de40b08): extended 0.6053, universal 0.4512. TFC and targeted are held at their incumbent rates (fit hit the 1.0 bound; plan A22/A23) and are not signed here.",
+   "evidence": "experiments/834-childcare-tfc-receipts.md#part-c--column-twin-l2-release-round-trip-l3-re-fit-l5-composition-l4",
+   "adjudicator": "juaristi22",
+   "adjudicated_on": "2026-09-05",
+   "quantitative": {
+    "shares": {
+     "would_claim_extended_childcare": {
+      "incumbent_share": 0.811982,
+      "direction": "candidate_below",
+      "max_abs_delta": 0.2068
+     },
+     "would_claim_universal_childcare": {
+      "incumbent_share": 0.561488,
+      "direction": "candidate_below",
+      "max_abs_delta": 0.1103
+     }
+    },
+    "magnitude_provenance": "max_abs_delta measured 2026-09-05 on the L5 rebuilt twin (sha256 37280e7c99af3f4d4f176c42722c56e1fd2c5170de8d3d97ba767db46de40b08) against the packaged reference, rounded up at 1e-4 grain."
+   }
   }
  ]
 }

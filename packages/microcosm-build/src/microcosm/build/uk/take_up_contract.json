@@ -118,7 +118,8 @@
       "output": "would_claim_extended_childcare",
       "entity": "benunit",
       "values": {
-        "2015-01-01": 0.812
+        "2015-01-01": 0.812,
+        "2024-04-06": 0.6054
       },
       "source": {
         "source": "FRS empirical fit",
@@ -127,9 +128,53 @@
         "status": "fitted_offline"
       },
       "fitting_receipt": {
-        "source": "incumbent UK pipeline @ ebf733c",
-        "seed": 42,
-        "status": "frozen parity value"
+        "source": "tools/fit_uk_childcare_takeup.py (microcosm#834 L5, licensed lane)",
+        "tool_version": 3,
+        "receipt_sha256": "c56ca568ef446f07f773ea03253bc2f9d878aeea6bc781ee38ed268d1fedde96",
+        "seed": 0,
+        "engine_version": "2.94.0",
+        "model_period": 2024,
+        "vintage_overrides": {
+          "dfe.funded_childcare.working_parent_children_2_to_4": 2025
+        },
+        "input_h5_sha256": "c2804c18c0fc6a1c00e2ccc68f5eda5cd8b739906970dcb95ca82471d9d436b8",
+        "ledger_facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "stochastic_contract_sha256_at_fit": "ba3daedade4c9e0115307eab2575e98c6921fb09357664ae3ea15644a86939e0",
+        "optimizer": {
+          "eps": 1e-06,
+          "loss": 0.07969210950295769,
+          "maxiter": 50,
+          "method": "L-BFGS-B",
+          "success": true
+        },
+        "achieved": {
+          "dfe.funded_childcare.early_learning_2_year_olds": {
+            "target": 115852.0,
+            "value": 98692.247,
+            "ratio": 0.8519
+          },
+          "dfe.funded_childcare.universal_only_children": {
+            "target": 416537.0,
+            "value": 416536.695,
+            "ratio": 1.0
+          },
+          "dfe.funded_childcare.working_parent_children_2_to_4": {
+            "target": 621482.0,
+            "value": 612914.443,
+            "ratio": 0.9862
+          },
+          "hmrc.tfc.children_with_used_accounts": {
+            "target": 1085020.0,
+            "value": 1235197.414,
+            "ratio": 1.1384
+          },
+          "hmrc.tfc.government_top_up": {
+            "target": 632200000.0,
+            "value": 508305122.499,
+            "ratio": 0.804
+          }
+        },
+        "status": "fitted on the L2 column twin at the 2024 base year (A6); hours distribution frozen; the same fit drove tax_free_childcare and targeted_childcare to the 1.0 bound, which are held at their incumbent values pending adjudication (plan A22/A23)"
       }
     },
     {
@@ -137,7 +182,8 @@
       "output": "would_claim_universal_childcare",
       "entity": "benunit",
       "values": {
-        "2015-01-01": 0.563
+        "2015-01-01": 0.563,
+        "2024-04-06": 0.4539
       },
       "source": {
         "source": "FRS empirical fit",
@@ -146,9 +192,53 @@
         "status": "fitted_offline"
       },
       "fitting_receipt": {
-        "source": "incumbent UK pipeline @ ebf733c",
-        "seed": 42,
-        "status": "frozen parity value"
+        "source": "tools/fit_uk_childcare_takeup.py (microcosm#834 L5, licensed lane)",
+        "tool_version": 3,
+        "receipt_sha256": "c56ca568ef446f07f773ea03253bc2f9d878aeea6bc781ee38ed268d1fedde96",
+        "seed": 0,
+        "engine_version": "2.94.0",
+        "model_period": 2024,
+        "vintage_overrides": {
+          "dfe.funded_childcare.working_parent_children_2_to_4": 2025
+        },
+        "input_h5_sha256": "c2804c18c0fc6a1c00e2ccc68f5eda5cd8b739906970dcb95ca82471d9d436b8",
+        "ledger_facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "stochastic_contract_sha256_at_fit": "ba3daedade4c9e0115307eab2575e98c6921fb09357664ae3ea15644a86939e0",
+        "optimizer": {
+          "eps": 1e-06,
+          "loss": 0.07969210950295769,
+          "maxiter": 50,
+          "method": "L-BFGS-B",
+          "success": true
+        },
+        "achieved": {
+          "dfe.funded_childcare.early_learning_2_year_olds": {
+            "target": 115852.0,
+            "value": 98692.247,
+            "ratio": 0.8519
+          },
+          "dfe.funded_childcare.universal_only_children": {
+            "target": 416537.0,
+            "value": 416536.695,
+            "ratio": 1.0
+          },
+          "dfe.funded_childcare.working_parent_children_2_to_4": {
+            "target": 621482.0,
+            "value": 612914.443,
+            "ratio": 0.9862
+          },
+          "hmrc.tfc.children_with_used_accounts": {
+            "target": 1085020.0,
+            "value": 1235197.414,
+            "ratio": 1.1384
+          },
+          "hmrc.tfc.government_top_up": {
+            "target": 632200000.0,
+            "value": 508305122.499,
+            "ratio": 0.804
+          }
+        },
+        "status": "fitted on the L2 column twin at the 2024 base year (A6); hours distribution frozen; the same fit drove tax_free_childcare and targeted_childcare to the 1.0 bound, which are held at their incumbent values pending adjudication (plan A22/A23)"
       }
     },
     {
