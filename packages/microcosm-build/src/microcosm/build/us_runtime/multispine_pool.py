@@ -77,6 +77,7 @@ from microcosm.build.us_runtime.operator_boundary import (
 )
 from microcosm.build.us_runtime.pregnancy import with_us_pregnancy_inputs
 from microcosm.build.us_runtime.prior_year_income import (
+    prepare_us_prior_year_person,
     with_us_prior_year_income_inputs,
 )
 from microcosm.build.us_runtime.puf_qrf_chain import PRIMARY_QRF_TARGET_ORDER
@@ -1986,6 +1987,131 @@ def observe_multispine_cps_carried_tables(
     ), _source_chain_receipt(
         phase=_PRE_CLONE_PHASE,
         operator_names=("derive_us_cps_carried_inputs",),
+        evidence_rows=boundary["cps_person_rows"],
+        receipts=[receipt],
+        output_families=PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+    )
+
+
+def multispine_prior_year_boundary_columns() -> tuple[str, ...]:
+    """Declare the existing pre-clone evidence at its registered source owner."""
+    return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
+
+
+def validate_multispine_prior_year_person_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Reject support populations before the source-only prior-year join."""
+    _assert_source_person_boundary(
+        person, metadata=metadata, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    return {"phase": _PRE_CLONE_PHASE, "cps_person_rows": int(mask.sum())}
+
+
+def multispine_prior_year_implementation_contract() -> dict[str, object]:
+    """Bind the live output and transient projections consumed by this operator."""
+    return {
+        "outputs": {
+            entity: sorted(columns)
+            for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+                "prior_year_income"
+            ].items()
+        },
+        "transient_outputs": _transient_source_outputs(
+            ("with_us_prior_year_income_inputs",),
+            PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+        ),
+        "seed": POOL_RANDOM_SEED,
+        "time_period": POOL_TIME_PERIOD,
+    }
+
+
+def observe_multispine_prior_year_person(
+    person: pd.DataFrame,
+    *,
+    weights: Weights,
+    metadata: Mapping[str, object],
+    pool_rows: Mapping[str, int],
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Run the real pre-clone join on its declared source person projection.
+
+    Canonical person weights are selected in the original person order. Actual
+    memberships determine selected group counts; authenticated full counts
+    describe the unchanged pool. No incomplete Frame is constructed. Support
+    role fields are removed only from the validated ephemeral source view, so
+    the helper's support-QRF path cannot run at this boundary.
+    """
+    boundary = validate_multispine_prior_year_person_boundary(person, metadata=metadata)
+    if (
+        not isinstance(weights, Weights)
+        or set(pool_rows) != set(US_SCHEMA.entities)
+        or any(type(value) is not int or value < 0 for value in pool_rows.values())
+        or pool_rows["person"] != len(person)
+        or len(weights) != len(person)
+    ):
+        raise ValueError("Prior-year population counts or weights are misaligned.")
+    for group in US_SCHEMA.group_entities:
+        if pool_rows[group] != int(
+            person[US_SCHEMA.membership_column(group)].nunique()
+        ):
+            raise ValueError("Prior-year population counts differ from memberships.")
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    selected = without_support_role_metadata(person.loc[mask], entity="person")
+    outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["prior_year_income"]
+    selected = selected.drop(
+        columns=_unavailable_output_columns(selected, outputs["person"])
+    )
+    selected_weights = weights.with_values(weights.values[mask], kind=weights.kind)
+    produced = prepare_us_prior_year_person(
+        selected,
+        weights=selected_weights,
+        seed=POOL_RANDOM_SEED,
+        time_period=POOL_TIME_PERIOD,
+    )
+    _assert_source_table_identity(
+        selected,
+        produced,
+        entity_id="person_id",
+        operator_name="with_us_prior_year_income_inputs",
+    )
+    merged, count = _merge_source_person_or_group_outputs(
+        person.copy(),
+        produced,
+        outputs["person"],
+        entity="person",
+        entity_id="person_id",
+        operator_name="with_us_prior_year_income_inputs",
+    )
+    selected_rows = {
+        "person": len(selected),
+        **{
+            group: int(selected[US_SCHEMA.membership_column(group)].nunique())
+            for group in US_SCHEMA.group_entities
+        },
+    }
+    receipt = _source_operator_receipt(
+        order_index=0,
+        operator_name="with_us_prior_year_income_inputs",
+        family="prior_year_income",
+        phase=_PRE_CLONE_PHASE,
+        contract=POOL_OPERATOR_CONTRACTS["with_us_prior_year_income_inputs"],
+        before_rows=dict(pool_rows),
+        available_rows=selected_rows,
+        output_rows=selected_rows,
+        merged_rows={"person": count},
+        declared_outputs=outputs,
+        formula_owned_removed={},
+        kernel_receipt={},
+        overlap_ownership=None,
+    )
+    return merged, _source_chain_receipt(
+        phase=_PRE_CLONE_PHASE,
+        operator_names=("with_us_prior_year_income_inputs",),
         evidence_rows=boundary["cps_person_rows"],
         receipts=[receipt],
         output_families=PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
