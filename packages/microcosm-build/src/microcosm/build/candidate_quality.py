@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
+import stat
 import tempfile
 from collections.abc import Mapping
 from datetime import datetime
@@ -46,6 +48,11 @@ def _object(value: object, label: str) -> dict[str, Any]:
     return value
 
 
+def _mapping(value: object) -> Mapping[str, Any]:
+    """A nested receipt field that is absent or not an object reads as empty."""
+    return value if isinstance(value, Mapping) else {}
+
+
 def _string(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise CandidateQualityError(f"{label} must be a nonempty string.")
@@ -64,7 +71,7 @@ def _bytes(payload: object) -> bytes:
             json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
             + "\n"
         ).encode()
-    except (ValueError, TypeError) as exc:
+    except (ValueError, TypeError, RecursionError) as exc:
         raise CandidateQualityError(f"Evidence must be finite JSON: {exc}") from exc
 
 
@@ -73,16 +80,85 @@ def _json(data: bytes, label: str) -> dict[str, Any]:
         raise CandidateQualityError(f"Non-finite JSON value {value} in {label}.")
 
     try:
-        result = json.loads(data, parse_constant=reject)
-    except (ValueError, UnicodeError) as exc:
+        text = data.decode("utf-8")
+        if text.startswith("\ufeff"):
+            raise CandidateQualityError("JSON must not begin with a byte order mark.")
+        result = json.loads(text, parse_constant=reject)
+
+        def finite(value: object) -> None:
+            if isinstance(value, (float, int)):
+                try:
+                    valid_number = math.isfinite(value)
+                except OverflowError:
+                    valid_number = False
+                if not valid_number:
+                    raise CandidateQualityError("JSON numbers must be finite.")
+            if isinstance(value, dict):
+                for child in value.values():
+                    finite(child)
+            elif isinstance(value, list):
+                for child in value:
+                    finite(child)
+
+        finite(result)
+    except (ValueError, UnicodeError, RecursionError) as exc:
         raise CandidateQualityError(f"Invalid JSON in {label}: {exc}") from exc
     return _object(result, label)
+
+
+def _read_bytes(path: Path, label: str, *, limit: int | None = None) -> bytes:
+    """Read a bounded regular file through one descriptor, including on a FIFO path."""
+    maximum = MAX_ATTACHMENT_BYTES if limit is None else limit
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        with os.fdopen(fd, "rb") as stream:
+            before = os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode) or before.st_size > maximum:
+                raise CandidateQualityError(f"{label} must be a bounded regular file.")
+            data = stream.read(maximum + 1)
+            after = os.fstat(stream.fileno())
+            if len(data) > maximum:
+                raise CandidateQualityError(f"{label} exceeds the size bound.")
+            fields = ("st_size", "st_mtime_ns", "st_ctime_ns")
+            if len(data) != before.st_size or any(
+                getattr(before, key) != getattr(after, key) for key in fields
+            ):
+                raise CandidateQualityError(f"{label} changed while being read.")
+            return data
+    except OSError as exc:
+        raise CandidateQualityError(f"Cannot read {label}: {exc.strerror}.") from exc
+
+
+def read_candidate_quality_json(path: Path) -> dict[str, Any]:
+    """Read a bounded local JSON control document without changing its values."""
+    return _json(
+        _read_bytes(Path(path), "candidate JSON input"), "candidate JSON input"
+    )
+
+
+def _timestamp(value: object, label: str) -> str:
+    value = _string(value, label)
+    parts = re.fullmatch(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+        r"(?:\.[0-9]+)?(?:Z|[+-]([0-9]{2}):([0-9]{2}))",
+        value,
+    )
+    if parts is None or (
+        parts[1] is not None and (int(parts[1]) > 23 or int(parts[2]) > 59)
+    ):
+        raise CandidateQualityError(f"{label} must be an ISO timestamp with timezone.")
+    try:
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise CandidateQualityError(f"Invalid {label}.") from exc
+    return value
 
 
 def _relative(root: Path, value: object) -> Path:
     path = PurePosixPath(_string(value, "relative path"))
     if (
-        path.is_absolute()
+        not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]*", value)
+        or path.is_absolute()
         or ".." in path.parts
         or "\\" in str(value)
         or ":" in str(value)
@@ -111,18 +187,17 @@ def _metadata(value: Mapping[str, object]) -> dict[str, Any]:
         raise CandidateQualityError("Invalid candidate_release_id.")
     if not re.fullmatch(r"[a-z]{2}", meta["country"]):
         raise CandidateQualityError("country must be a two-letter lowercase code.")
-    try:
-        timestamp = datetime.fromisoformat(meta["created_at"].replace("Z", "+00:00"))
-        if timestamp.tzinfo is None:
-            raise ValueError("timezone required")
-    except ValueError as exc:
-        raise CandidateQualityError(
-            "created_at must include a valid timezone."
-        ) from exc
-    if meta.get("execution_status") not in _EXECUTION:
+    _timestamp(meta["created_at"], "created_at")
+    if (
+        not isinstance(meta.get("execution_status"), str)
+        or meta["execution_status"] not in _EXECUTION
+    ):
         raise CandidateQualityError("Unknown execution_status.")
     eligibility = _object(meta.get("release_eligibility"), "release_eligibility")
-    if eligibility.get("status") not in _ELIGIBILITY:
+    if (
+        not isinstance(eligibility.get("status"), str)
+        or eligibility["status"] not in _ELIGIBILITY
+    ):
         raise CandidateQualityError("Unknown release eligibility status.")
     _string(eligibility.get("reason"), "release eligibility reason")
     if eligibility["status"] == "eligible" and meta["execution_status"] != "completed":
@@ -150,20 +225,52 @@ def _metadata(value: Mapping[str, object]) -> dict[str, Any]:
         _string(item, f"provenance {key}")
     if meta.get("geography") is not None:
         geography = _object(meta["geography"], "geography")
-        if not isinstance(geography.get("levels"), list) or not all(
-            isinstance(item, str) and item for item in geography["levels"]
-        ):
+        if not isinstance(geography.get("levels"), list):
             raise CandidateQualityError("geography levels must be a list of names.")
+        for item in geography["levels"]:
+            _string(item, "geography level")
         if "vintage" in geography:
             _string(geography["vintage"], "geography vintage")
     return meta
+
+
+def _bindings(
+    meta: Mapping[str, Any], item: Mapping[str, Any], name: str
+) -> dict[str, Any]:
+    """Authoritative bindings for present fields, never facts inferred from payloads."""
+    provenance = meta.get("provenance", {})
+    if item["scope"] == "model":
+        # A model inspection may have its own run/snapshot, independent of a build.
+        expected = {
+            key: value
+            for key, value in provenance.items()
+            if key in {"model_package", "model_version", "model_commit"}
+        }
+    else:
+        expected = {
+            **provenance,
+            "candidate_release_id": meta["candidate_release_id"],
+            "release_id": meta["candidate_release_id"],
+            "run_id": meta["run_id"],
+        }
+        if "chronicle_snapshot_id" in provenance:
+            expected["snapshot_id"] = provenance["chronicle_snapshot_id"]
+        if item["scope"] == "population":
+            expected["population_sha256"] = meta["population"]["sha256"]
+    expected["country"] = meta["country"]
+    if name == "cross_dataset" and item["scope"] == "population":
+        # Evaluation identity belongs to the bundle, not the calibration build.
+        for key in ("run_id", "snapshot_id", "chronicle_snapshot_id"):
+            expected.pop(key, None)
+        if "snapshot_id" in item["identity"]:
+            expected["chronicle_snapshot_id"] = item["identity"]["snapshot_id"]
+    return expected
 
 
 def _identity(meta: Mapping[str, Any], item: Mapping[str, Any], name: str) -> None:
     identity = _object(item.get("identity"), "attachment identity")
     scope = item.get("scope")
     population = meta.get("population")
-    provenance = meta.get("provenance", {})
     if scope == "population":
         if population is None:
             raise CandidateQualityError(
@@ -187,7 +294,9 @@ def _identity(meta: Mapping[str, Any], item: Mapping[str, Any], name: str) -> No
             key: _string(identity.get(key), f"identity {key}")
             for key in ("model_package", "model_version")
         }
-        if "population_sha256" in identity or "candidate_release_id" in identity:
+        if {"population_sha256", "candidate_release_id", "release_id"}.intersection(
+            identity
+        ):
             raise CandidateQualityError(
                 "Model-scoped identity cannot claim a population or candidate."
             )
@@ -195,18 +304,7 @@ def _identity(meta: Mapping[str, Any], item: Mapping[str, Any], name: str) -> No
         raise CandidateQualityError(
             "Attachment scope must be population, model or run."
         )
-    expected = {
-        "candidate_release_id": meta["candidate_release_id"],
-        "run_id": meta["run_id"],
-        **provenance,
-    }
-    if "chronicle_snapshot_id" in provenance:
-        expected["snapshot_id"] = provenance["chronicle_snapshot_id"]
-    if name == "cross_dataset" and scope == "population":
-        # Held-out evaluation has its own run and snapshot, which are checked
-        # against the actual bundle rather than the calibration/build pins.
-        expected.pop("run_id", None)
-        expected.pop("snapshot_id", None)
+    expected = _bindings(meta, item, name)
     for key, value in required.items():
         if identity.get(key) != value:
             raise CandidateQualityError(f"Attachment identity mismatch: {key}.")
@@ -216,12 +314,45 @@ def _identity(meta: Mapping[str, Any], item: Mapping[str, Any], name: str) -> No
             raise CandidateQualityError(f"Attachment identity mismatch: {key}.")
 
 
+def _embedded_identity(
+    meta: Mapping[str, Any],
+    item: Mapping[str, Any],
+    name: str,
+    payload: Mapping[str, Any],
+) -> None:
+    forbidden = set()
+    if item["scope"] == "run":
+        forbidden = {"population_sha256"}
+    elif item["scope"] == "model":
+        forbidden = {"population_sha256", "candidate_release_id", "release_id"}
+    if forbidden.intersection(payload):
+        raise CandidateQualityError("Embedded attachment claims an incompatible scope.")
+    expected = {**_bindings(meta, item, name), **item["identity"]}
+    if name == "cross_dataset" and item["scope"] == "population":
+        # The optional alias describes the same evaluation snapshot when present.
+        if "snapshot_id" in item["identity"]:
+            expected["chronicle_snapshot_id"] = item["identity"]["snapshot_id"]
+    for key, value in expected.items():
+        if key not in payload:
+            continue
+        actual = payload[key]
+        if key == "country" and isinstance(actual, dict):
+            # Existing country presentation blocks use `code`; labels are not IDs.
+            if "code" not in actual:
+                continue
+            actual = actual["code"]
+        if actual != value:
+            raise CandidateQualityError(
+                f"Embedded attachment identity mismatch: {key}."
+            )
+
+
 def _attachment(
     meta: Mapping[str, Any], item: Mapping[str, Any], name: str, *, source: bool
 ) -> dict[str, Any]:
     item = _json(_bytes(dict(item)), "attachment")
     status = item.get("status")
-    if status in {"pending", "missing", "failed"}:
+    if isinstance(status, str) and status in {"pending", "missing", "failed"}:
         if set(item) != {"status", "reason"}:
             raise CandidateQualityError(
                 "Unavailable attachment requires only status and reason."
@@ -247,7 +378,11 @@ def _attachment(
 
 
 def _bundle_blobs(
-    source_root: Path, payload: Mapping[str, Any], item: Mapping[str, Any], country: str
+    source_root: Path,
+    payload: Mapping[str, Any],
+    item: Mapping[str, Any],
+    country: str,
+    manifest_size: int,
 ) -> dict[str, bytes]:
     """Validate and preserve the existing bundle's relative partition layout."""
     if (
@@ -288,7 +423,7 @@ def _bundle_blobs(
         partitions.get(key) for key in ("summary", "groups", "fact_index")
     ] + facts
     blobs = {}
-    total = 0
+    total = manifest_size
     for raw in descriptors:
         descriptor = _object(raw, "cross-dataset partition")
         relative = _string(descriptor.get("path"), "partition path")
@@ -296,12 +431,11 @@ def _bundle_blobs(
         if relative == "manifest.json" or relative in blobs:
             raise CandidateQualityError("Cross-dataset partition paths collide.")
         expected = _sha(descriptor.get("sha256"))
-        size = path.stat().st_size
-        total += size
-        if size > MAX_ATTACHMENT_BYTES or total > 4 * MAX_ATTACHMENT_BYTES:
+        data = _read_bytes(path, "cross-dataset partition")
+        total += len(data)
+        if total > 4 * MAX_ATTACHMENT_BYTES:
             raise CandidateQualityError("Cross-dataset aggregate size bound exceeded.")
-        data = path.read_bytes()
-        if len(data) != size or hashlib.sha256(data).hexdigest() != expected:
+        if hashlib.sha256(data).hexdigest() != expected:
             raise CandidateQualityError("Cross-dataset partition digest mismatch.")
         partition = _json(data, relative)
         if partition.get("schema_version") != "cross_dataset.frontend_bundle.v1":
@@ -317,7 +451,7 @@ def _bundle_blobs(
 def _immutable(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
-        if path.read_bytes() != data:
+        if _read_bytes(path, "existing immutable artifact", limit=len(data)) != data:
             raise CandidateQualityError(
                 f"Existing immutable artifact differs: {path.name}."
             )
@@ -331,7 +465,10 @@ def _immutable(path: Path, data: bytes) -> None:
         try:
             os.link(temp, path)
         except FileExistsError:
-            if path.read_bytes() != data:
+            if (
+                _read_bytes(path, "existing immutable artifact", limit=len(data))
+                != data
+            ):
                 raise CandidateQualityError(
                     f"Existing immutable artifact differs: {path.name}."
                 ) from None
@@ -339,25 +476,58 @@ def _immutable(path: Path, data: bytes) -> None:
         os.unlink(temp)
 
 
-def _write_index(
+def _prepare_index(
     root: Path, meta: Mapping[str, Any], reference: Mapping[str, str]
-) -> None:
+) -> bytes:
     path = root / INDEX_PATH
-    index = (
-        _json(path.read_bytes(), INDEX_PATH)
-        if path.exists()
-        else {
+    if path.is_symlink():
+        raise CandidateQualityError("Candidate index must not be a symlink.")
+    if path.exists():
+        index = _json(_read_bytes(path, "candidate index"), INDEX_PATH)
+        if (
+            index.get("schema_version") != INDEX_SCHEMA
+            or index.get("country") != meta["country"]
+            or not isinstance(index.get("candidates"), list)
+        ):
+            raise CandidateQualityError("Candidate index schema/country mismatch.")
+        _timestamp(index.get("updated_at"), "index updated_at")
+        seen = set()
+        for raw in index["candidates"]:
+            entry = _object(raw, "candidate index row")
+            identifier = _string(entry.get("candidate_release_id"), "candidate ID")
+            if (
+                not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,299}", identifier)
+                or identifier in seen
+            ):
+                raise CandidateQualityError("Invalid or duplicate candidate index ID.")
+            seen.add(identifier)
+            _string(entry.get("run_id"), "index run_id")
+            status = entry.get("execution_status")
+            if not isinstance(status, str) or status not in _EXECUTION:
+                raise CandidateQualityError("Unknown index execution_status.")
+            eligibility = _object(entry.get("release_eligibility"), "index eligibility")
+            eligible_status = eligibility.get("status")
+            if (
+                not isinstance(eligible_status, str)
+                or eligible_status not in _ELIGIBILITY
+            ):
+                raise CandidateQualityError("Unknown index eligibility status.")
+            _string(eligibility.get("reason"), "index eligibility reason")
+            if eligible_status == "eligible" and status != "completed":
+                raise CandidateQualityError("Eligible index entry requires completion.")
+            _timestamp(entry.get("updated_at"), "index row updated_at")
+            manifest = _object(entry.get("manifest"), "index manifest")
+            digest = _sha(manifest.get("sha256"))
+            if manifest.get("path") != f"manifests/{digest}.json":
+                raise CandidateQualityError(
+                    "Index manifest path must be content-addressed."
+                )
+    else:
+        index = {
             "schema_version": INDEX_SCHEMA,
             "country": meta["country"],
             "candidates": [],
         }
-    )
-    if (
-        index.get("schema_version") != INDEX_SCHEMA
-        or index.get("country") != meta["country"]
-        or not isinstance(index.get("candidates"), list)
-    ):
-        raise CandidateQualityError("Candidate index schema/country mismatch.")
     row = {
         key: meta[key]
         for key in (
@@ -368,21 +538,28 @@ def _write_index(
         )
     }
     row.update(updated_at=meta["created_at"], manifest=dict(reference))
-    # One discovery row per candidate; older manifests remain directly usable.
+    # One discovery row per candidate; older direct manifests remain usable.
     rows = [
-        item
-        for item in index["candidates"]
-        if item.get("candidate_release_id") != meta["candidate_release_id"]
+        entry
+        for entry in index["candidates"]
+        if entry["candidate_release_id"] != meta["candidate_release_id"]
     ]
-    rows.append(row)
-    index.update(updated_at=meta["created_at"], candidates=rows)
+    index.update(updated_at=meta["created_at"], candidates=[*rows, row])
+    data = _bytes(index)
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        raise CandidateQualityError("Candidate index exceeds the size bound.")
+    return data
+
+
+def _write_index(root: Path, data: bytes) -> None:
+    # The caller preflights the whole index before immutable writes. Single writer.
     fd, temp = tempfile.mkstemp(dir=root)
     try:
         with os.fdopen(fd, "wb") as stream:
-            stream.write(_bytes(index))
+            stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temp, path)
+        os.replace(temp, root / INDEX_PATH)
     finally:
         if os.path.exists(temp):
             os.unlink(temp)
@@ -411,39 +588,18 @@ def write_candidate_quality(
         item = _attachment(meta, supplied, name, source=True)
         if item["status"] == "available":
             source_path = Path(item.pop("source"))
-            if (
-                source_path.suffix.lower() != ".json"
-                or source_path.stat().st_size > MAX_ATTACHMENT_BYTES
-            ):
+            if source_path.suffix.lower() != ".json":
                 raise CandidateQualityError(
                     "Only bounded aggregate JSON attachments are supported."
                 )
-            raw = source_path.read_bytes()
-            if len(raw) > MAX_ATTACHMENT_BYTES:
-                raise CandidateQualityError(
-                    "Aggregate JSON attachment exceeds size bound."
-                )
+            raw = _read_bytes(source_path, "aggregate JSON attachment")
             payload = _json(raw, name)
-            if (
-                item["scope"] == "population"
-                and "release_id" in payload
-                and payload["release_id"] != meta["candidate_release_id"]
-            ):
-                raise CandidateQualityError(
-                    "Embedded attachment identity mismatch: release_id."
-                )
-            # Check identity fields supplied by the underlying artifact as well
-            # as its sidecar. Existing schemas remain untouched.
-            for key, value in item["identity"].items():
-                if key in payload and payload[key] != value:
-                    raise CandidateQualityError(
-                        f"Embedded attachment identity mismatch: {key}."
-                    )
+            _embedded_identity(meta, item, name, payload)
             digest = hashlib.sha256(raw).hexdigest()
             if name == "cross_dataset":
                 prefix = f"artifacts/{digest}"
                 for relative, data in _bundle_blobs(
-                    source_path.parent, payload, item, meta["country"]
+                    source_path.parent, payload, item, meta["country"], len(raw)
                 ).items():
                     blobs[f"{prefix}/{relative}"] = data
                 item.update(path=f"{prefix}/manifest.json", sha256=digest)
@@ -461,14 +617,17 @@ def write_candidate_quality(
         )
     payload = {"schema_version": SCHEMA, **meta, "attachments": items}
     raw = _bytes(payload)
+    if len(raw) > MAX_ATTACHMENT_BYTES:
+        raise CandidateQualityError("Candidate manifest exceeds the size bound.")
     digest = hashlib.sha256(raw).hexdigest()
     reference = {"path": f"manifests/{digest}.json", "sha256": digest}
     root = Path(output_root).resolve()
+    index = _prepare_index(root, meta, reference) if update_index else None
     for relative, data in blobs.items():
         _immutable(_relative(root, relative), data)
     _immutable(_relative(root, reference["path"]), raw)
-    if update_index:
-        _write_index(root, meta, reference)
+    if index is not None:
+        _write_index(root, index)
     return reference
 
 
@@ -476,7 +635,7 @@ def read_candidate_quality(root: Path, manifest_sha256: str) -> dict[str, Any]:
     """Authenticate a direct manifest and all available local aggregate bytes."""
     root = Path(root).resolve()
     digest = _sha(manifest_sha256)
-    raw = _relative(root, f"manifests/{digest}.json").read_bytes()
+    raw = _read_bytes(_relative(root, f"manifests/{digest}.json"), "candidate manifest")
     if hashlib.sha256(raw).hexdigest() != digest:
         raise CandidateQualityError("Candidate manifest digest mismatch.")
     payload = _json(raw, "candidate manifest")
@@ -492,14 +651,13 @@ def read_candidate_quality(root: Path, manifest_sha256: str) -> dict[str, Any]:
         item = _attachment(meta, value, name, source=False)
         if item["status"] == "available":
             path = _relative(root, item["path"])
-            if path.stat().st_size > MAX_ATTACHMENT_BYTES:
-                raise CandidateQualityError("Attachment size bound exceeded.")
-            data = path.read_bytes()
+            data = _read_bytes(path, "candidate attachment")
             if hashlib.sha256(data).hexdigest() != item["sha256"]:
                 raise CandidateQualityError(f"Attachment digest mismatch: {name}.")
             parsed = _json(data, name)
+            _embedded_identity(meta, item, name, parsed)
             if name == "cross_dataset":
-                _bundle_blobs(path.parent, parsed, item, meta["country"])
+                _bundle_blobs(path.parent, parsed, item, meta["country"], len(data))
     return payload
 
 
@@ -516,8 +674,8 @@ def summarize_pool_diagnostics(
         isinstance(item, str) for item in failures
     ):
         failures = None
-    population = manifest.get("pool_h5", {})
-    counts = manifest.get("provenance_counts", {})
+    population = _mapping(manifest.get("pool_h5"))
+    counts = _mapping(manifest.get("provenance_counts"))
     result = {
         "schema_version": "microcosm.pool_quality_summary.v1",
         "candidate_release_id": manifest.get("release_id"),
@@ -525,7 +683,7 @@ def summarize_pool_diagnostics(
         "status": manifest.get("status"),
         "simulation_ready": manifest.get("simulation_ready"),
         "passed": gates.get("passed"),
-        "household_record_count": counts.get("household", {}).get("rows"),
+        "household_record_count": _mapping(counts.get("household")).get("rows"),
         "failure_string_count": len(failures) if failures is not None else None,
         "failures": failures,
         "interpretation": "Failure strings are not counts of failed comparison IDs. Diagnostic evidence only.",

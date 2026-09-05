@@ -73,12 +73,30 @@ and `identity`. A nonavailable entry contains only `status` (`pending`,
   claim a population. Use it for a source-load failure or execution profile
   before population construction.
 
-Standalone aggregate JSON is capped at 64 MiB. Supply existing calibrated
+The writer and authenticated reader compare every present payload identity
+against its scope and known manifest provenance, even when the descriptor omits
+that optional field. This includes build run, model, snapshot and country
+(`country.code` in an existing presentation object). Missing optional fields stay
+missing; a conflicting claim is refused. Model inspection runs may remain
+independent of a population build.
+
+All local JSON inputs, manifests, attachments and discovery indexes are bounded
+regular files capped at 64 MiB. Reads use one descriptor and reject files that
+change during the read. JSON must be UTF-8 without a byte order mark and contain
+only finite numbers, including after exponent parsing. Validation preserves the
+original attachment bytes. Timestamps use a real calendar date with `T`, seconds
+and `Z` or a numeric timezone; geography names must contain non-whitespace text.
+Existing discovery rows must have valid statuses, timestamps, unique candidate
+IDs and content-addressed manifest paths. A symlinked or malformed index is
+refused before new artifacts are written; index updates still require one writer.
+
+Supply existing calibrated
 schema-7 diagnostics unchanged. Support and distribution attachments must be
 actual aggregate outputs using their declared weight and geography definitions;
 this producer does not calculate them. `summarize_pool_diagnostics` projects
 existing pool receipts without loading/re-scoring H5: it labels failure-string
 counts precisely and never interprets them as counts of failed comparison IDs.
+Missing or malformed optional nested receipt fields produce null evidence.
 
 ## Cross-dataset bundles
 
@@ -90,7 +108,9 @@ selected source and country must occur in the bundle.
 The producer verifies all declared partition hashes/run/snapshot identities and
 copies the unchanged manifest to `artifacts/<sha256>/manifest.json` with all
 partitions at their original safe relative paths. Bundle content is bounded at
-256 MiB. Missing partitions, collisions, unsafe paths or mismatched identities
+256 MiB, including the bundle manifest. Safe paths contain only ASCII letters,
+digits, `.`, `_`, `-` and `/`, start with a letter or digit, and contain no empty,
+`.` or `..` path segments. Missing partitions, collisions, unsafe paths or mismatched identities
 fail before writing. The existing dashboard reader remains authoritative for
 the bundle's evaluation semantics.
 
