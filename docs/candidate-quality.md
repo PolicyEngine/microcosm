@@ -94,37 +94,26 @@ partitions at their original safe relative paths. Bundle content is bounded at
 fail before writing. The existing dashboard reader remains authoritative for
 the bundle's evaluation semantics.
 
-## Geographic release scope
+## Geography and acceptance are declarations, not decisions made here
 
-Exact-k configuration schema 2 requires:
+This transport does not decide, compute or grant release eligibility, and it
+grants no geographic eligibility in particular — national, state or
+congressional district. It has no acceptance-policy surface: nothing here reads
+or writes a release-scope configuration, and it adds no flag to any build CLI.
 
-```json
-{
-  "schema_version": 2,
-  "analysis": {
-    "requested_scope": "national",
-    "policy": "national_v1"
-  }
-}
-```
+`release_eligibility` is an attestation copied from a separate authoritative
+acceptance producer, which owns the scientific gate. This module only checks two
+consistency rules on that attestation — `eligible` requires a completed run, and
+`eligible` requires an actual population identity — and both are refusals, not
+grants. A completed run with a population is not thereby eligible; only the
+acceptance producer's own `eligible` attestation makes it so, and sealing that
+attestation does not verify it.
 
-All existing pool, ladder, target, calibration and release fields remain
-required. `national_v1` preserves the existing national release checks; it
-adds no CD accuracy claim. Schema 1 remains readable with its historical
-behavior and cannot accept a new CD request through undeclared fields.
-
-For explicit CD diagnostics use `requested_scope: "national_cd"` and
-`policy: "cd_support_diagnostic_v1"`. This enables existing CD missing,
-skipped and zero-support checks and records a geographic acceptance receipt.
-It also adds a terminal release failure because a reviewed CD fit and held-out
-protocol is still missing. It cannot certify CD analysis, even if support
-checks pass. The fiscal CLI exposes the same contract as `--analysis-scope`
-and `--acceptance-policy`. The older `--gate-congressional-district-targets`
-option alone retains its historical support-check behavior; it is not a CD
-certification declaration. Exact-k still requires `--no-staging`.
-
-The draft [CD acceptance protocol](us-cd-acceptance-protocol-draft.md) is for
-adjudication before any code can grant CD eligibility. Local development sizes
-must pass the complete end-to-end correctness checks and measured resource
-profile before increasing scale. Reduced survey fractions never become evidence
-that full-source CD release requirements have been met.
+`geography` is likewise a producer declaration of the levels and vintage a
+candidate's aggregates partition. A declared level names a partition; it
+establishes no source authority, no nesting between levels or vintages, and no
+certification that analysis at that level is sound. Congressional-district
+aggregates are inspectable evidence here whether or not a reviewed CD fit and
+held-out protocol exists; if one does not, that is a fact about the candidate
+that must be recorded in `release_eligibility.reason` by the acceptance
+producer, because this transport cannot detect it.
