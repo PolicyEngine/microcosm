@@ -1,0 +1,1 @@
+Add strict typed recipient feature matrices and a legacy QRF matrix-apply adapter that preserves prepared entity-ID indices, reuses donor models, and binds matrix bytes and producer identity across the target chain. Share the existing Slice application body without changing its state/raw formats; document required country finalizer placement checks and memory costs.

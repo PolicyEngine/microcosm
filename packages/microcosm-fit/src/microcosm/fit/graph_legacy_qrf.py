@@ -8,6 +8,8 @@ pandas indices; graph entity IDs are never substituted as QRF checkpoint indices
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from microcosm.fit._graph_legacy_qrf import (
     APPLY_STATE_TYPE,
     RAW_TARGET_TYPE,
@@ -29,6 +31,7 @@ __all__ = [
     "RAW_TARGET_TYPE",
     "legacy_qrf_train_nodes",
     "legacy_qrf_apply_nodes",
+    "legacy_qrf_apply_matrix_nodes",
     "read_raw_target",
 ]
 
@@ -135,3 +138,49 @@ def legacy_qrf_apply_nodes(prefix, *, population, fit_nodes, seed, phase):
             )
         )
     return tuple(nodes)
+
+
+def legacy_qrf_apply_matrix_nodes(
+    prefix,
+    *,
+    population,
+    fit_nodes,
+    matrix_producer,
+    matrix_artifact="matrix",
+    seed,
+    phase,
+):
+    """Declare one fixed recipient-matrix producer for the complete target chain."""
+    from microcosm.fit.graph_legacy_apply_matrix import (
+        MATRIX_APPLY_STATE_TYPE,
+        LegacyQRFApplyMatrixKernel,
+    )
+    from microcosm.fit.model_input import RECIPIENT_MATRIX_TYPE
+
+    nodes = legacy_qrf_apply_nodes(
+        prefix, population=population, fit_nodes=fit_nodes, seed=seed, phase=phase
+    )
+    matrix = ArtifactInput(
+        "matrix", matrix_producer, matrix_artifact, RECIPIENT_MATRIX_TYPE
+    )
+    return tuple(
+        replace(
+            node,
+            kernel=LegacyQRFApplyMatrixKernel.ref,
+            inputs=(),
+            artifact_inputs=(
+                *(
+                    replace(edge, type=MATRIX_APPLY_STATE_TYPE)
+                    if edge.name == "apply_state"
+                    else edge
+                    for edge in node.artifact_inputs
+                ),
+                matrix,
+            ),
+            artifact_outputs=(
+                ArtifactOutput("raw_draw", RAW_TARGET_TYPE),
+                ArtifactOutput("apply_state", MATRIX_APPLY_STATE_TYPE),
+            ),
+        )
+        for node in nodes
+    )

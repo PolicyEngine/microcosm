@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -516,3 +517,39 @@ def test_application_seed_controls_the_actual_second_seedsequence_stream(tmp_pat
         assert packet["state"] == expected.state.to_dict()
         state = expected.state
         raw[expected.target] = expected.raw_draw
+
+
+@pytest.mark.parametrize("case", ("positive", "hurdle", "zero_constant"))
+def test_slice_adapter_retains_pre_refactor_raw_and_state_bytes(tmp_path, case):
+    from microcosm.fit import _graph_legacy_qrf as codec
+
+    golden = json.loads(
+        (Path(__file__).parent / "golden/legacy-slice-apply-v1.json").read_text()
+    )
+    donor, recipient = fixture_frames(index=pd.Index([11, 19, 31, 97], name="row"))
+    if case == "hurdle":
+        donor.table("tax_unit").loc[:20, "y"] = 0.0
+    elif case == "zero_constant":
+        donor.table("tax_unit")["y"] = 0.0
+        donor.table("tax_unit")["z"] = 2.5
+    compiled, store, kernels, sources, fits, applies = setup_graph(
+        tmp_path, donor, recipient
+    )
+    manifest = run_graph(compiled, sources=sources, store=store, kernels=kernels)
+    for fit, apply, captured in zip(fits, applies, golden["cases"][case], strict=True):
+        assert store.load_bytes(
+            manifest.node(apply.id).opaque_artifacts["raw_draw"]
+        ) == bytes.fromhex(captured["raw_draw"])
+        # Forest identities are platform/version-bound. Only those independently
+        # supplied input records vary; every state/RNG/raw-history byte is frozen.
+        expected = codec.decode_json(bytes.fromhex(captured["apply_state"]))
+        inputs = codec.decode_json(
+            store.load_bytes(manifest.node(fit.id).opaque_artifacts["training_state"])
+        )
+        assert [item["target"] for item in expected["models"]] == [
+            item["target"] for item in inputs["models"]
+        ]
+        expected["models"] = inputs["models"]
+        assert store.load_bytes(
+            manifest.node(apply.id).opaque_artifacts["apply_state"]
+        ) == codec.encode_json(expected)

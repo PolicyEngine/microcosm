@@ -96,3 +96,82 @@ passes on both 1.8 and 1.9, so it coexists in one environment with a
 release that tracks the sklearn-1.9 tree ABI
 (zillow/quantile-forest#152, #153); older `quantile-forest` fails to import
 under sklearn 1.9.
+
+## Legacy draws from derived recipient matrices
+
+The target-at-a-time legacy protocol in `microcosm.fit.graph_legacy_qrf`
+retains the archived weighted fit, observed donor target prefix, raw recipient
+target prefix, sequential RNG streams and prediction chunking. It differs from
+the ID-keyed draw protocol above. Each donor fit owns a frozen model and a
+small training checkpoint; recipient changes can reuse these fits when the
+donor population has independent source ancestry.
+
+For prepared features whose existing pandas index differs from the population
+index, a build-owned preparation node can emit
+`ArtifactOutput("matrix", RECIPIENT_MATRIX_TYPE)` using
+`microcosm.fit.model_input.encode_recipient_matrix(features, entity=...,
+entity_ids=...)`. The graph does not create a population or change its index.
+V1 accepts only a nonempty ordinary int64 `pd.Index`, with a None/string name,
+exactly equal to the ordered unique entity IDs. Ordered predictor names must be
+unique, and every predictor must already be finite little-endian float64.
+RangeIndex, nullable Int64, object and MultiIndex inputs are refused without
+casting. The canonical header is limited to 64 KiB and numeric body lengths
+must match exactly. Recipient weights are absent because application does not
+consume them.
+
+```python
+from microcosm.fit.graph_legacy_apply_matrix import LegacyQRFApplyMatrixKernel
+from microcosm.fit.graph_legacy_qrf import legacy_qrf_apply_matrix_nodes
+from microcosm.fit.model_input import RECIPIENT_MATRIX_TYPE
+
+# fit_nodes is the complete tuple from legacy_qrf_train_nodes. The preparation
+# node owns the real matrix artifact and its country-specific row association.
+apply_nodes = legacy_qrf_apply_matrix_nodes(
+    "rent.apply",
+    population="recipient_stage",
+    fit_nodes=fit_nodes,
+    matrix_producer="rent.prepare_recipient",
+    seed=31,
+    phase="early_gap_fill",
+)
+```
+
+Register `LegacyQRFApplyMatrixKernel` alongside the existing training kernel.
+Every application reads the same declared matrix edge. It owns the unchanged
+raw-target format and a distinct `MATRIX_APPLY_STATE_TYPE` checkpoint wrapping
+the existing legacy packet, plus the matrix SHA-256 and actual graph producer
+key. Both bindings must agree across the chain, including when identical bytes
+come from a new producer. Model/sibling training provenance, platform scope,
+ordered raw-prefix digests and legacy state/RNG validation run in the same
+shared body used by the existing Slice adapter. Model envelopes validate
+version, implementation and the mandatory sibling SHA before trusted-local
+unpickling; they do not make foreign pickle safe. These artifacts are
+platform-bitwise and cannot silently cross architecture/OS/Python boundaries.
+
+Both application implementation hashes include that shared module; matrix
+application also includes its codec. The refactor rekeys existing Slice apply
+nodes once, while their state and raw-target bytes retain the legacy format.
+The committed golden fixture freezes pre-refactor raw bytes and all application
+state except platform-bound fitted-model identifiers. The portable test obtains
+only those identifiers from the actual independent sibling training outputs.
+
+A country finalizer must read `decode_matrix_apply_state`, the final raw draw
+and the preparation's placement artifact. It must verify that the state's
+matrix digest and actual producer key match the placement's matrix digest and
+producer key, and that the last raw-history digest equals the consumed raw
+artifact. It must reconstruct the original prepared index from placement IDs
+and name, independently recompute the current household-to-head association,
+and require exact agreement with the stored positions and person-row identity.
+For US rent, the original index is an unnamed household-ID int64 Index; scatter
+positions follow household draw order, which can differ from person order.
+Neither the generic raw decoder nor the matrix state parser certifies placement
+by itself. Finalization, decoding, calibration and acceptance remain build-owned.
+
+Storage is `8 * rows * (predictors + 1)` body bytes plus the header. At 62
+predictors this is 50.4 MB for 100,000 rows and 504 MB for one million rows
+(decimal MB). Encoding materializes the returned bytes and temporary buffers;
+decoding views the body but validates finiteness/uniqueness and constructs pandas
+index metadata. The existing application also copies predictor/raw-prefix data,
+and the executor loads and hashes artifact bytes for consumers. Peak memory is
+not a fixed multiple of payload size: measure the real small rung and per-target
+loads before scaling. This codec provides no streaming execution guarantee.
