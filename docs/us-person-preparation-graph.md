@@ -48,8 +48,11 @@ Both observers call the public pass-through predicate
 (`us_relationship_inputs_person_carries_signal`,
 `us_eligibility_inputs_person_carries_signal`) before the always-recomputing
 `prepare_us_*_person` helper. That preserves the Frame wrappers' order exactly:
-a signal-carrying incumbent surface passes through without resolving weights,
-without requiring raw ASEC columns, and without running the source stage.
+a signal-carrying incumbent surface passes through without reaching the
+helper's weight validation, without requiring raw ASEC columns, and without
+running the source stage. The canonical person weights are still selected
+before the predicate, because the direct chain's own Frame projection resolves
+selected weights before it calls the operator.
 Relationship pass-through requires all three leaves with more than one observed
 value each; eligibility requires all five leaves and more than one observed
 disability value, so a constant `is_blind` or `veterans_benefits` still passes
@@ -70,9 +73,24 @@ Relationship owns `is_household_head`, `is_separated` and
 helper's output and nullable `boolean` after the full-pool merge, so they are
 declared `boolean`; a `bool` or numeric incumbent is refused at declaration
 time rather than cast. `own_children_in_household` and `veterans_benefits` are
-`float64` and retain an existing numeric incumbent dtype. Native non-CPS cells
-survive the declared merge: an ACS-native `is_household_head` keeps its own
-values, and outputs the CPS derivation cannot reach stay null.
+`float64` and retain an existing numeric incumbent dtype exactly — a `float32`,
+`int64` or nullable `Int64` incumbent is declared and merged at that dtype.
+Refusing a physical `bool` incumbent is a deliberate narrowing: the shared
+merge would accept it and materialize nullable `boolean`, but the declared
+token would then disagree with the merged cell, so the adapter refuses at
+declaration time rather than cast. This mirrors the reviewed prior-year
+adapter. Native non-CPS cells survive the declared merge: an ACS-native
+`is_household_head` keeps its own values, and outputs the CPS derivation
+cannot reach stay null.
+
+A repeated person index label combined with an existing non-boolean incumbent
+is refused early by name. The unchanged shared merge writes an existing
+non-boolean output cell by index label (its boolean branch writes
+positionally), so that combination reaches pandas as an opaque length error
+late in the direct chain. The observer refuses it up front instead. The
+outcome is unchanged — both paths refuse — and no merge semantics are altered.
+Repeated labels on their own, and repeated labels with boolean incumbents,
+stay supported.
 
 Neither family's outputs are formula-owned, so each receipt reports an empty
 `transient_outputs_carried_through_clone` and no formula-owned removal. Money
@@ -81,7 +99,9 @@ stays nominal; neither adapter uprates or aligns source-year prices.
 ## Implementation identity
 
 `implementation_hash` binds the adapter module, both input modules, the shared
-`_person_signal_summary` validator both of them import, the shared
+`_person_signal_summary` validator both of them import — the graph route runs
+no gate, so that binding is conservative closure over the input modules rather
+than a claim that this route executes the validator — the shared
 Frame/graph/pool runtime closure, the `source_stages.json` resource, the
 declared dependency versions, the live registered output family and
 formula-owned projections, and the executed `POOL_RANDOM_SEED` /

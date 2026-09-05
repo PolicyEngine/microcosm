@@ -2207,8 +2207,11 @@ def observe_multispine_relationship_person(
     authenticated full counts describe the unchanged pool. No incomplete Frame
     is constructed. Support role fields are removed only from the validated
     ephemeral source view. The public pass-through predicate decides whether
-    the always-recomputing helper runs, so the wrapper's order — signal check
-    before weight validation and before any raw-column requirement — holds.
+    the always-recomputing helper runs, so the wrapper's order holds: a
+    signal-carrying surface never reaches the helper's own weight validation or
+    its raw-column requirement. The canonical weight vector is still selected
+    before the predicate, exactly as the direct chain's Frame projection
+    resolves selected weights before calling the operator.
     """
     return _observe_multispine_person_preparation(
         person,
@@ -2292,17 +2295,37 @@ def _observe_multispine_person_preparation(
             person[US_SCHEMA.membership_column(group)].nunique()
         ):
             raise ValueError(f"{label} population counts differ from memberships.")
+    outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family]
+    # Inherited seam, refused early rather than worked around: the shared
+    # source merge writes an existing non-boolean output cell by index label
+    # (its boolean branch writes positionally), so a repeated person label plus
+    # a numeric incumbent reaches pandas as an opaque length error late in the
+    # operation. Repeated labels with no numeric incumbent stay supported.
+    if person.index.has_duplicates:
+        by_label = sorted(
+            column
+            for column in outputs["person"]
+            if column in person.columns
+            and not pd.api.types.is_bool_dtype(person[column].dtype)
+        )
+        if by_label:
+            raise ValueError(
+                f"{label} refuses repeated person index labels with existing "
+                f"non-boolean incumbent column(s) {by_label}: the shared source "
+                "merge addresses those cells by label."
+            )
     mask = _cps_person_evidence_mask(
         person, person_entity="person", phase=_PRE_CLONE_PHASE
     )
     selected = without_support_role_metadata(person.loc[mask], entity="person")
-    outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family]
     selected = selected.drop(
         columns=_unavailable_output_columns(selected, outputs["person"])
     )
     selected_weights = weights.with_values(weights.values[mask], kind=weights.kind)
-    # The wrapper returns its frame untouched on a signal-carrying surface,
-    # reading neither weights nor raw source columns. Preserve that order.
+    # The wrapper returns its frame untouched on a signal-carrying surface, so
+    # the helper's own weight validation and raw-column requirement never run.
+    # Selecting the weight vector above is the direct chain's own Frame
+    # projection step, not the helper's validation.
     produced = (
         selected
         if carries_signal(selected)

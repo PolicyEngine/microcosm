@@ -41,11 +41,18 @@ author receipt under the review directory, and the build report.
 - Docs: `docs/us-person-preparation-graph.md`; pointer added to
   `docs/us-person-preparation-helpers.md`. Changelog fragment added.
 
+- Answered the root's independent native review and the Fable 5.1 review of
+  snapshot `988a8cf2` (both APPROVE). Implemented the one requested-but-missing
+  guard they identified (early named refusal for repeated person index labels
+  with a non-boolean incumbent), corrected the weights/validator wording,
+  documented the `bool`-incumbent narrowing against the merge's actual
+  behaviour, tested non-float64 numeric incumbents end to end, and made the
+  pinned pre-edit digests reproducible at both base and head.
+
 ## Next
 
-1. Broader regression sweep across pool/input/graph suites.
-2. Author receipt under `~/architecture-reviews/microcosm-20260904/`.
-3. `us-person-source-graph-build.md`.
+1. Finish the CI fast-lane sweep record.
+2. Keep the author receipt and build report in sync with the final head.
 
 ## Limits (standing)
 

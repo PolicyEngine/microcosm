@@ -1342,3 +1342,159 @@ def test_live_formula_owned_registry_binds_person_preparation(
     )
     assert transients() == {"person": [column]}
     assert instance.implementation_hash() != before
+
+
+def _with_repeated_person_labels(frame):
+    """Valid Frame with repeated person index labels; ``person_id`` stays unique."""
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"].index = pd.Index(
+        np.repeat(np.arange(1, len(tables["person"]) // 2 + 1), 2),
+        name=frame.person.index.name,
+    )
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata.set_axis(tables["person"].index),
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+@pytest.mark.parametrize("family", ("relationship", "eligibility"))
+def test_repeated_person_labels_with_fresh_outputs_stay_supported(family):
+    """Repeated index labels alone are not refused; they match the direct path."""
+    frame = _with_repeated_person_labels(_upstream(family))
+    assert frame.person.index.has_duplicates
+    expected = _direct(frame, _family_operator(family))
+    produced, receipt = _family_observer(family)(
+        frame.person,
+        weights=frame.resolve_weights("person"),
+        metadata=frame.metadata,
+        pool_rows={entity: frame.n(entity) for entity in frame.entities},
+    )
+    pd.testing.assert_frame_equal(produced, expected.frame.person)
+    assert canonical_json(receipt) == canonical_json(expected.receipt)
+
+
+@pytest.mark.parametrize(
+    ("family", "column"),
+    (
+        ("eligibility", "veterans_benefits"),
+        ("eligibility", "own_children_in_household"),
+    ),
+)
+def test_repeated_labels_with_numeric_incumbent_refuse_early_and_by_name(
+    tmp_path, family, column
+):
+    """The inherited by-label merge seam is refused early, not worked around.
+
+    The unchanged shared merge writes an existing non-boolean output cell by
+    index label, so a repeated person label plus a numeric incumbent reaches
+    pandas as an opaque length error late in the operation — reproduced here on
+    the direct chain. The registered observer refuses the same combination up
+    front with a named message. The outcome is unchanged (both refuse); only
+    the timing and the message improve, and no merge semantics are altered.
+    """
+    frame = _with_repeated_person_labels(_upstream(family))
+    frame.person[column] = np.zeros(len(frame.person), dtype=np.float64)
+    with pytest.raises(ValueError) as direct:
+        _direct(frame, _family_operator(family))
+    assert "Must have equal len keys and value" in str(direct.value)
+    with pytest.raises(ValueError, match="refuses repeated person index labels"):
+        _family_observer(family)(
+            frame.person,
+            weights=frame.resolve_weights("person"),
+            metadata=frame.metadata,
+            pool_rows={entity: frame.n(entity) for entity in frame.entities},
+        )
+    args, sources, store, kernels = _setup(tmp_path, frame, families=(family,))
+    with pytest.raises(NodeRejectedError, match="refuses repeated person index"):
+        run_graph(args, sources=sources, store=store, kernels=kernels)
+
+
+@pytest.mark.parametrize("family", ("relationship", "eligibility"))
+def test_repeated_labels_with_boolean_incumbents_stay_supported(family):
+    """The merge's boolean branch writes positionally, so it is not refused."""
+    frame = _with_repeated_person_labels(_upstream(family))
+    booleans = [
+        column
+        for column in _family_outputs(family)
+        if column
+        in {
+            "is_household_head",
+            "is_separated",
+            "is_surviving_spouse",
+            "is_disabled",
+            "is_blind",
+            "is_full_time_college_student",
+        }
+    ]
+    for column in booleans:
+        frame.person[column] = pd.Series(
+            [True, False] * (len(frame.person) // 2),
+            index=frame.person.index,
+            dtype="boolean",
+        )
+    expected = _direct(frame, _family_operator(family))
+    produced, receipt = _family_observer(family)(
+        frame.person,
+        weights=frame.resolve_weights("person"),
+        metadata=frame.metadata,
+        pool_rows={entity: frame.n(entity) for entity in frame.entities},
+    )
+    pd.testing.assert_frame_equal(produced, expected.frame.person)
+    assert canonical_json(receipt) == canonical_json(expected.receipt)
+
+
+@pytest.mark.parametrize("dtype", ("float32", "int64", "Int64"))
+def test_non_float64_numeric_incumbents_are_declared_and_merged_exactly(
+    tmp_path, dtype
+):
+    """A numeric incumbent keeps its own dtype through declaration and merge.
+
+    The helper writes float64, but the shared merge assigns into the existing
+    column, so the declared token follows the incumbent rather than the
+    helper. This is the ownership contract the declaration states; it is
+    measured here rather than assumed.
+    """
+    frame = _upstream("eligibility")
+    frame.person["own_children_in_household"] = pd.Series(
+        np.zeros(len(frame.person)), index=frame.person.index, dtype=dtype
+    )
+    nodes = us_eligibility_source_nodes(
+        frame_column_declarations(frame), base="source", context_producer="source"
+    )
+    declared = {value.column: value for value in nodes[-1].outputs}
+    assert declared["own_children_in_household"].dtype == dtype
+    assert declared["own_children_in_household"].rewrite is True
+    expected = _direct(frame, ("with_us_eligibility_inputs",))
+    assert str(expected.frame.person["own_children_in_household"].dtype) == dtype
+    args, sources, store, kernels = _setup(tmp_path, frame, families=("eligibility",))
+    result = run_graph(args, sources=sources, store=store, kernels=kernels)
+    _assert_equal(result.population(f"{ELIGIBILITY_NODE}.boundary"), expected.frame)
+    assert canonical_json(
+        result.node(ELIGIBILITY_NODE).receipt["source_preparation"]
+    ) == canonical_json(expected.receipt)
+
+
+def test_physical_bool_incumbent_is_a_declared_narrowing_not_a_merge_change():
+    """The adapter refuses at declaration what the shared merge would accept.
+
+    The merge materializes a physical ``bool`` incumbent as nullable
+    ``boolean``, which would leave the declared token disagreeing with the
+    merged cell. The adapter refuses up front rather than cast, mirroring the
+    reviewed prior-year adapter, and the direct path is unchanged.
+    """
+    frame = _upstream("relationship")
+    frame.person["is_household_head"] = pd.Series(
+        [True, False] * (len(frame.person) // 2),
+        index=frame.person.index,
+        dtype="bool",
+    )
+    merged = _direct(frame, ("with_us_relationship_inputs",)).frame.person
+    assert str(merged["is_household_head"].dtype) == "boolean"
+    with pytest.raises(ValueError, match="requires nullable boolean"):
+        us_relationship_source_nodes(
+            frame_column_declarations(frame), base="source", context_producer="source"
+        )

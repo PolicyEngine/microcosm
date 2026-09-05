@@ -67,7 +67,9 @@ incumbent checks against whatever person table and weight vector it assembles,
 without constructing a `Frame`. That adapter now exists: see
 [us-person-preparation-graph.md](us-person-preparation-graph.md). Its
 implementation source closure binds `_person_signal_summary.py` as well as both
-family modules, because both summary gates execute that shared validator.
+family modules. The graph route declares no gate and so does not execute the
+validator; the binding is the conservative whole-module closure over the family
+modules that import it, which is what the graph identity contract asks for.
 
 For graph integration, call the complete person predicate first. Relationship
 pass-through requires all three incumbent leaves and more than one observed
