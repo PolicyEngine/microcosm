@@ -18,8 +18,17 @@ Every IRS target must declare `soi_return_universe` in its metadata:
 | --- | --- |
 | `all_returns` | Actual `tax_unit_is_filer` plus the target's other restrictions |
 | `itemized_returns` | Actual filer and actual `tax_unit_itemizes`, plus other restrictions |
-| `returns_excluding_dependents` | Unsupported pending a verified return-level dependency input contract |
+| `returns_excluding_dependents` | Explicitly unsupported and dropped pending a verified return-level dependency input contract |
 | Missing, unknown, or contradictory | Refused before materialization |
+
+Unsupported targets retain their names, source universes, periods, measures, and
+reason in `unsupported_target_entries` and `dropped_target_names`. They never
+produce modeled rows or enter the materialized registry, even when a same-named
+column already exists. Table 4.3 facts pass through the real Ledger compiler and
+remain visible in cold and warm diagnostics. Existing coverage, parity, and
+release gates remain active: a dropped unsupported target is not calibrated.
+This change adds no reviewed exclusion and does not authorize launch with the
+missing universe.
 
 The itemized declaration requires itemization even without the redundant
 `itemized_only=true` flag. An explicit false flag or contradictory source layout
@@ -56,11 +65,23 @@ The compilation's `soi_return_universe` receipt records:
 - PolicyEngine-US and Core versions and hashes of the direct filing declarations.
   This is a direct declaration inventory, not a transitive model-source closure.
 
-Target-frame materializer version 12 invalidates earlier cache identities whose
-SOI rows may include nonfilers. Cold writes preserve the receipt in compilation
-metadata; warm reads require the same universe contract, tax-unit order, supplied
-input content, runtime versions, and direct declaration bytes. The receipt remains
-available at the same compilation key on either path.
+Target-frame materializer version 13 invalidates earlier cache identities. Cold
+writes preserve the receipt and `soi_live_input_frame_sha256` in compilation
+metadata. The live-input digest uses the existing deterministic late-producer
+Frame content hash over ordered entity and link tables, weights, strata, mass
+log, and metadata, with its existing string normalization and exclusion of the
+self-referential late-producer authority key. It is computed before design
+columns are added. This includes imputed filing propensities, credit take-up,
+and other inputs that may change after the source checkpoint hash is fixed.
+
+Warm reads first validate the stored filer receipt against the stored Frame.
+They then require the actual live base Frame and matching input digest, and
+validate its tax-unit order and supplied filing-input content against the
+receipt. Missing live inputs or a changed digest cause a cache miss and normal
+recomputation. Malformed stored receipts or input digests refuse. No filing
+calculation is run to decide cache reuse. Runtime versions and direct declaration
+bytes remain checked, and both receipt and digest remain available at their
+same compilation keys on either path.
 
 The checkpoint stores ordinary local compilation provenance. Its readback does
 not independently authenticate the original raw source, recalculate the filer
@@ -98,5 +119,6 @@ The regression in
 `packages/microcosm-build/tests/test_us_soi_filer_universe.py` uses four invented
 tax units in three households and the actual installed model. It covers required,
 credit-related and voluntary filing, positive nonfiler income, itemizers,
-geographic slices, explicit input/default origins, and checkpoint readback.
+geographic slices, explicit input/default origins, actual compiled Table 4.3 targets, changed live inputs,
+and checkpoint readback.
 It does not certify a population dataset.

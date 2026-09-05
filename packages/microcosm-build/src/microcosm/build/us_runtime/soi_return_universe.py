@@ -46,13 +46,15 @@ def soi_target_universe_contract(
 ) -> dict[str, Any]:
     """Validate source declarations before constructing any model simulation."""
     rows = []
+    unsupported = []
     for spec in target_specs:
         if spec.family != "irs_soi":
             continue
         details = spec.metadata
         universe = details.get("soi_return_universe")
         _require(
-            universe in {"all_returns", "itemized_returns"},
+            universe
+            in {"all_returns", "itemized_returns", "returns_excluding_dependents"},
             f"unsupported or missing source universe for {spec.name!r}",
         )
         _require(
@@ -68,9 +70,11 @@ def soi_target_universe_contract(
         record_set = details.get("ledger_layout_record_set_id", "")
         domain = details.get("ledger_domain", "")
         _require(
-            "excluding_dependents" not in record_set
-            and "excluding_dependents" not in domain,
-            "dependent-return exclusion lacks an established input contract",
+            not (
+                "excluding_dependents" in record_set or "excluding_dependents" in domain
+            )
+            or universe == "returns_excluding_dependents",
+            "source layout contradicts declared return universe",
         )
         _require(
             not (
@@ -82,24 +86,38 @@ def soi_target_universe_contract(
             ),
             "source layout contradicts declared return universe",
         )
-        rows.append(
-            {
-                "name": spec.name,
-                "measure": spec.measure,
-                "source_period": details.get("source_period"),
-                "target_period": str(period),
-                "source_universe": universe,
-                "requires_itemization": universe == "itemized_returns"
-                or itemized == "true",
-                "target_value_universe_bridge": details.get(
-                    "soi_return_universe_bridge"
-                ),
-            }
+        _require(
+            not (
+                universe == "returns_excluding_dependents"
+                and "all_returns" in record_set
+                and "excluding_dependents" not in record_set
+            ),
+            "source layout contradicts declared return universe",
         )
+        row = {
+            "name": spec.name,
+            "measure": spec.measure,
+            "source_period": details.get("source_period"),
+            "target_period": str(period),
+            "source_universe": universe,
+            "requires_itemization": universe == "itemized_returns"
+            or itemized == "true",
+            "target_value_universe_bridge": details.get("soi_return_universe_bridge"),
+        }
+        if universe == "returns_excluding_dependents":
+            unsupported.append(
+                {
+                    **row,
+                    "reason": "dependent_return_input_contract_not_established",
+                }
+            )
+        else:
+            rows.append(row)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "model_period": period,
         "targets": rows,
+        "unsupported_targets": unsupported,
         "measurement": "modeled_target_year_filers",
         "dependent_return_completeness": "not_established",
         "source_processing_year_and_geography_equivalence": "not_established",

@@ -512,7 +512,7 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
     # 12 = IRS target rows require actual filer masks and explicit universes;
     # schema 2 continues to preserve nullable boolean values and masks.
     assert identity["schema_version"] == 2
-    assert identity["materializer_version"] == 12
+    assert identity["materializer_version"] == 13
     # The SSI prior-weight basis is identity-bearing (microcosm#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None

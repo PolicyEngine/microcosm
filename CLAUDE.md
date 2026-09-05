@@ -22,8 +22,9 @@ dependency/resource failures require a scope review, not an automatic pin refres
 
 IRS fiscal targets require explicit supported return universes and actual model
 filer decisions before household aggregation. Target-frame materializer version
-12 invalidates older SOI measurements; its compilation receipt records filing
-inputs/defaults and modeled-universe limits. See
+13 invalidates older SOI measurements; its compilation receipt records filing
+inputs/defaults and modeled-universe limits. Unsupported dependent-return targets
+remain visibly dropped. Warm reuse binds the full live base-input Frame. See
 `docs/us-soi-modeled-return-universes.md` for the source and checkpoint boundaries.
 
 ## Commands
