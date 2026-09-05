@@ -96,11 +96,17 @@ class MappingStatus(StrEnum):
 
 
 class SupportVerdict(StrEnum):
-    """Origin-support outcome, independent of the benchmark metric."""
+    """Origin-support outcome, independent of the benchmark metric.
+
+    ``NOT_APPLICABLE`` is the ``/support/reference_zero_unknown_bin_carrier_floor``
+    case: the carrier floor does not apply to a bin whose published reference
+    share is zero, so mass and origin diagnostics are retained without a bound.
+    """
 
     WITHIN_BOUNDS = "within_bounds"
     BOUND_EXCEEDED = "bound_exceeded"
     UNDETERMINED = "undetermined"
+    NOT_APPLICABLE = "not_applicable"
 
 
 #: ``/status_contract/independent_axes_required`` — reported separately and
