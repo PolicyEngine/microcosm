@@ -64,3 +64,38 @@ Representation decisions (from the root decisions doc):
   absent or entirely null, refused at the boundary before any recipient work.
 - The projected operator context has empty metadata and empty mass_log; parent
   authority travels in the separate projection artifact.
+
+## State (2026-09-05, after implementation)
+
+Landed and green locally:
+
+- `packages/microcosm-build/src/microcosm/build/us_runtime/graph_housing_source.py`
+  — six kernels and the `us_housing_source_nodes` factory.
+- `.../_graph_housing_source_artifacts.py` — projection, five-leaf typed output
+  and merge-evidence codecs.
+- `.../multispine_pool.py` — seven small registered helpers, no change to any
+  existing selection semantics or merge formula.
+- `packages/microcosm-build/tests/test_us_graph_housing_source.py` (43 tests)
+  and `test_us_graph_housing_source_artifacts.py` (39 tests).
+- `packages/microcosm-build/tests/golden/us_housing_source_pre_graph.json` —
+  the pre-edit direct oracle.
+- `test_us_spine_blindness.py` classification, `docs/us-housing-source-graph.md`,
+  `changelog.d/20260905-us-housing-source-graph.added.md`.
+
+`tools/ci_test_groups.py --verify` reports `verification=ok`; both new files
+land in `[engine] us-am` / `[fast] rest` and never under `[defaulted]`.
+
+## Next
+
+1. Run the necessary related suites once (microcosm-build shard).
+2. Write the author receipt and the final answer file.
+
+## Limitations stated, not hidden
+
+- Full graph composition is **not** claimed. The relationship graph is still
+  under review, so the integration supplies the true direct
+  relationship-produced Frame as `base`, and the eligibility consumer is a stub
+  that only proves the accepted-context edge is required.
+- No scientific source-year adjustment; nominal engineering parity only.
+- The inherited repeated-label merge seam is refused at this boundary, not
+  fixed. Fixing the shared merge is a separate reviewed scope.
