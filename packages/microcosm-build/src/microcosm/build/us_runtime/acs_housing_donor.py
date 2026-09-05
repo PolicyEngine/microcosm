@@ -199,6 +199,10 @@ def _verified_snapshot(
     # Copy before verification, then consume this exact copy. Mutation after
     # verification cannot change the local table used by preparation or fitting.
     snapshot = table.copy(deep=True)
+    # pandas deep-copies cells but shares the axes' underlying arrays. Detach
+    # both before hashing so later public axis mutation cannot alter this copy.
+    snapshot.index = table.index.copy(deep=True)
+    snapshot.columns = table.columns.copy(deep=True)
     document = json.loads(receipt)
     try:
         identity = native_table_identity(snapshot)
