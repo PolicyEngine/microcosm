@@ -30,6 +30,14 @@ release gates remain active: a dropped unsupported target is not calibrated.
 This change adds no reviewed exclusion and does not authorize launch with the
 missing universe.
 
+The fiscal release builder checks the compiled Ledger registry before loading
+or downloading a base population, and refuses unsupported SOI universes with
+each target name, source universe, and reason. The check also applies to
+`--evidence-release`, whose existing exception covers terminal verdicts only.
+The diagnostic scorer and low-level materializers retain their supported and
+unsupported target reporting. Target substitution, parity, coverage, and final
+release gates remain active for builds that pass this preflight.
+
 The itemized declaration requires itemization even without the redundant
 `itemized_only=true` flag. An explicit false flag or contradictory source layout
 is an error. An `all_returns` row may still declare `itemized_only=true` for its

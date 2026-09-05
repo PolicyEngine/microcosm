@@ -509,7 +509,7 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 12 = IRS target rows require actual filer masks and explicit universes;
+    # 13 = unsupported SOI diagnostics and full live-input cache binding;
     # schema 2 continues to preserve nullable boolean values and masks.
     assert identity["schema_version"] == 2
     assert identity["materializer_version"] == 13
