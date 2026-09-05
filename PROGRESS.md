@@ -1,3 +1,35 @@
+# F1 portable worker identity — CI crawl fix
+
+## State
+
+In progress on 2026-09-04 on `f1-portable-worker-identity`, starting at
+`50c9232b7597bd1f47897a3132ed08894fc11d93`. Baseline timing precedes all
+behavior changes. Report and raw measurement logs are outside the repository:
+`/private/tmp/microcosm-pr871-ci-crawl/out.md`.
+
+## Done
+
+- Read the repository guide, prior journals, identity factories and launch,
+  stacked binding sites, worker bootstrap, and fixture-cache code.
+- Confirmed the assigned branch and clean initial worktree. No GitHub network,
+  push, branches, or stash. Forbidden files and spec pins remain untouched.
+- Read the GitNexus debugging skill; no callable GitNexus tools are available,
+  so source tracing and an independent test-fixture audit are being used.
+
+## Next
+
+- Measure the unchanged identity-heavy selector and first 200 source-order
+  tests, recording direct exit codes, test counts, and wall times.
+- Add process memoization and regressions; prime real identities per test
+  session with explicit live-test opt-out and consistent fixture bindings.
+- Run the requested full-file, CI-group, Ruff, formatting, and spec checks;
+  record all results and commit each coherent step.
+
+# Historical: Astra gate round 1 journal
+
+> The section below records the prior lane at `50c9232b`; its results and
+> next steps are historical, not the current CI-crawl fix state.
+
 # F1 portable worker identity — Astra gate round 1
 
 ## State
