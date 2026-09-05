@@ -81,6 +81,10 @@ Memoization and session priming pass the focused regressions and the complete
   All 29 per-file timing/count records are saved. Stacked-spine inside that
   process took 333.299s. This process will be rerun after bundle priming.
 
+- Actual us-qs:frame process: 84 passed, 8 skipped, 1 warning; exit 0;
+  111.252 seconds wall time (pytest 89.33s), with all 5 per-file records.
+  The us-am build process is running next.
+
 ## Next
 
 - Finish the initial us-qs/us-am CI process groups with per-file timings.
