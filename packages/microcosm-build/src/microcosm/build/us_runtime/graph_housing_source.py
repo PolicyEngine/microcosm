@@ -192,6 +192,35 @@ class _HousingKernel(KernelBase):
         ).hexdigest()
 
 
+def _assert_rewrite_declaration(
+    context: KernelContext,
+    document: Mapping[str, object],
+    coordinates: Sequence[tuple[str, str]],
+) -> None:
+    """Own a carried cell as a rewrite, and a fresh cell as a non-rewrite.
+
+    The executor supplies an incumbent only for a declared rewrite, so a caller
+    whose column inventory omitted an existing leaf would silently replace its
+    native cells with source-only values. The population's own context lists
+    every carried column, so the mismatch is refused here instead of trusted
+    from the declaration.
+    """
+    declared = {(item.entity, item.column): item for item in context.node.outputs}
+    for entity, column in coordinates:
+        owned = declared.get((entity, column))
+        if owned is None:
+            raise ValueError(
+                f"US housing source does not own the declared leaf {entity}.{column}."
+            )
+        carried = column in document["entities"][entity]["columns"]
+        if owned.rewrite != carried:
+            state = "carries" if carried else "does not carry"
+            raise ValueError(
+                f"US housing source {entity}.{column} must declare "
+                f"rewrite={carried!r}: this population {state} that incumbent."
+            )
+
+
 def _assert_declared_producers(
     context: KernelContext, expected: Mapping[str, str]
 ) -> None:
@@ -317,6 +346,13 @@ class USHousingSourceBoundaryKernel(_HousingKernel):
             # Frame.select can never be handed an empty selection.
             raise ValueError("US housing source found no CPS-evidenced person rows.")
         # Fresh-source scope: refuse observed CPS rent before any recipient work.
+        if _RENT_COLUMN in document["entities"]["person"]["columns"] and (
+            _RENT_COLUMN not in person
+        ):
+            raise ValueError(
+                "US housing source boundary must declare the available "
+                "pre_subsidy_rent incumbent so its fresh-source scope is checked."
+            )
         if _RENT_COLUMN in person:
             incumbent = person.loc[selection, _RENT_COLUMN]
             if str(incumbent.dtype) != "float64":
@@ -460,6 +496,11 @@ class USHousingMeasuredKernel(_HousingKernel):
             raise ValueError(
                 "US housing measured must own exactly its four declared leaves."
             )
+        _assert_rewrite_declaration(
+            context,
+            document,
+            sorted((entity, column) for entity, column, _d in expected),
+        )
         # Role columns can ride along on a FILTER; the ephemeral scientific view
         # removes them, exactly as the registered source projection does.
         views = {
@@ -749,6 +790,11 @@ class USHousingMergeKernel(_HousingKernel):
             },
         )
         document, bound = _context(context)
+        _assert_rewrite_declaration(
+            context,
+            document,
+            [(entity, column) for entity, column, _dtype in codec.merge_columns()],
+        )
         projection_value = codec.artifact(
             context, "projection", codec.HOUSING_SOURCE_PROJECTION_TYPE
         )

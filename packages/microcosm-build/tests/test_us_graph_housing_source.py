@@ -1581,3 +1581,50 @@ def test_wrong_outer_phase_on_the_gate_fails_the_gate_and_blocks_downstream(tmp_
     assert receipt.receipt["outcome"] == "fail"
     assert "authored outer phase" in receipt.receipt["evidence"]["message"]
     _assert_unreached(manifest, ("after",))
+
+
+@pytest.mark.parametrize(
+    ("node_id", "coordinate"),
+    [
+        (f"{HOUSING_SOURCE_PREFIX}.merge", ("person", "pre_subsidy_rent")),
+        (f"{HOUSING_SOURCE_PREFIX}.merge", ("household", "tenure_type")),
+        (f"{HOUSING_SOURCE_PREFIX}.measured", ("household", "tenure_type")),
+    ],
+)
+def test_a_declaration_that_hides_a_carried_incumbent_is_refused(
+    tmp_path, node_id, coordinate
+):
+    """Owning a carried leaf without a rewrite would erase its native cells."""
+    frame = _relationship_base(_pool_frame())
+    nodes, donor_path = _declared(tmp_path, frame)
+    node = next(item for item in nodes if item.id == node_id)
+    outputs = tuple(
+        replace(owned, rewrite=False)
+        if (owned.entity, owned.column) == coordinate
+        else owned
+        for owned in node.outputs
+    )
+    assert outputs != node.outputs
+    nodes = _rewire(nodes, node_id, outputs=outputs)
+    with pytest.raises(NodeRejectedError, match="must declare rewrite"):
+        _run_nodes(tmp_path, frame, nodes, donor_path)
+
+
+def test_a_declaration_that_hides_an_available_rent_incumbent_is_refused(tmp_path):
+    """The fresh-source scope cannot be evaded by narrowing the declared slice."""
+    frame = _relationship_base(_pool_frame())
+    nodes, donor_path = _declared(tmp_path, frame)
+    node = next(item for item in nodes if item.id == HOUSING_SOURCE_POPULATION)
+    narrowed = tuple(
+        replace(
+            view,
+            columns=tuple(
+                column for column in view.columns if column != "pre_subsidy_rent"
+            ),
+        )
+        for view in node.inputs
+    )
+    assert narrowed != node.inputs
+    nodes = _rewire(nodes, HOUSING_SOURCE_POPULATION, inputs=narrowed)
+    with pytest.raises(NodeRejectedError, match="must declare the available"):
+        _run_nodes(tmp_path, frame, nodes, donor_path)
