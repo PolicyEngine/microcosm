@@ -732,7 +732,7 @@ def prepare_us_prior_year_person(
     stage_person[_PERSON_WEIGHT_COLUMN] = weights.values
     if has_support_roles:
         if (
-            predictors is None
+            not isinstance(predictors, pd.DataFrame)
             or not predictors.index.equals(person.index)
             or tuple(predictors.columns) != _PUF_PREDICTORS
         ):
@@ -777,6 +777,7 @@ def with_us_prior_year_income_inputs(
     person = frame.table("person")
     if _prior_year_person_is_complete(person):
         return frame
+    weights = frame.resolve_weights("person")
     predictors = (
         _person_prior_year_income_predictors(frame)
         if has_support_role_metadata(person, entity="person")
@@ -784,7 +785,7 @@ def with_us_prior_year_income_inputs(
     )
     output = prepare_us_prior_year_person(
         person,
-        weights=frame.resolve_weights("person"),
+        weights=weights,
         seed=seed,
         time_period=time_period,
         predictors=predictors,

@@ -311,7 +311,9 @@ def test_person_helper_refuses_wrong_weight_length_and_untyped_weights():
         )
 
 
-@pytest.mark.parametrize("mismatch", ["absent", "reordered", "missing_column"])
+@pytest.mark.parametrize(
+    "mismatch", ["absent", "reordered", "missing_column", "wrong_type"]
+)
 def test_support_person_helper_requires_actual_aligned_predictor_projection(mismatch):
     frame = clone_us_frame_for_puf_support(_source_frame())
     predictors = module._person_prior_year_income_predictors(frame)
@@ -319,6 +321,8 @@ def test_support_person_helper_requires_actual_aligned_predictor_projection(mism
         predictors = None
     elif mismatch == "reordered":
         predictors = predictors.iloc[::-1]
+    elif mismatch == "wrong_type":
+        predictors = predictors.to_dict()
     else:
         predictors = predictors.drop(columns=["age"])
     with pytest.raises(ValueError, match="actual aligned PUF predictors"):
@@ -441,6 +445,52 @@ def test_puf_support_joint_qrf_is_weighted_signed_and_drops_formula_output(
     assert call["predictors"] == list(module._PUF_PREDICTORS)
     assert np.all(np.asarray(call["weights"]) > 0)
     assert call["kwargs"] == {"n_estimators": 100, "seed": 7}
+
+
+def test_support_helper_matches_wrapper_with_actual_predictor_projection(monkeypatch):
+    monkeypatch.setattr(module, "QRF", _QRF)
+    direct = with_us_prior_year_income_inputs(_source_frame(), seed=7, time_period=2024)
+    expanded = clone_us_frame_for_puf_support(direct)
+    predictors = module._person_prior_year_income_predictors(expanded)
+    before = predictors.copy(deep=True)
+    helper = module.prepare_us_prior_year_person(
+        expanded.person,
+        weights=expanded.resolve_weights("person"),
+        predictors=predictors,
+        seed=7,
+        time_period=2024,
+    )
+    wrapped = with_us_prior_year_income_inputs(expanded, seed=7, time_period=2024)
+    pd.testing.assert_frame_equal(helper, wrapped.person)
+    pd.testing.assert_frame_equal(predictors, before)
+    assert module._FORMULA_OWNED_OUTPUT not in helper
+
+
+def test_wrapper_keeps_weight_error_before_invalid_predictor_error():
+    source = with_us_prior_year_income_inputs(_source_frame(), seed=7, time_period=2024)
+    expanded = clone_us_frame_for_puf_support(source)
+    tables = {entity: expanded.table(entity).copy() for entity in expanded.entities}
+    tables["person"].drop(columns="has_esi", inplace=True)
+    # Valid explicit vectors, but person inheritance is ambiguous between two
+    # weighted groups. The predictor input is independently missing as well.
+    frame = Frame(
+        tables,
+        expanded.schema,
+        {
+            "household": expanded.weights_for("household"),
+            "tax_unit": expanded.resolve_weights("tax_unit"),
+        },
+        expanded.strata,
+        metadata=expanded.metadata,
+        mass_log=expanded.mass_log,
+    )
+    with pytest.raises(ValueError) as weights:
+        frame.resolve_weights("person")
+    with pytest.raises(SourceRuntimeError, match="has_esi"):
+        module._person_prior_year_income_predictors(frame)
+    with pytest.raises(ValueError) as actual:
+        with_us_prior_year_income_inputs(frame, seed=7, time_period=2024)
+    assert str(actual.value) == str(weights.value)
 
 
 def test_puf_qrf_rejects_zero_weight_capped_training_sample() -> None:

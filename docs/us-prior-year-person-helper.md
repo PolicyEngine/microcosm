@@ -4,7 +4,9 @@
 
 Before cloning, the table carries no support roles and requires no other entity or predictor table. It retains the original adjacent-income-year join, allocation-flag and unavailable-value handling, signed self-employment losses and fallback rules. It also preserves the original presence-based pass-through when all outputs exist and required raw fields are absent, including partially null incumbents; this pass-through is not a completeness certificate.
 
-The legacy post-clone path requires the actual person/tax-unit predictor projection, with the expected columns and identical person index. It runs the original joint QRF and removes the original formula-owned wage output. `with_us_prior_year_income_inputs` derives that projection from the full Frame, calls the same table helper, and preserves other entity tables, weights, strata, metadata and history. Existing complete Frames still pass through unchanged.
+The legacy post-clone path requires the actual person/tax-unit predictor projection, with the expected columns and identical person index. It runs the original joint QRF and removes the original formula-owned wage output. `with_us_prior_year_income_inputs` derives that projection from the full Frame, calls the same table helper, and preserves other entity tables, weights, strata, metadata and mass_log. Existing complete Frames still pass through unchanged.
+
+The helper is a module-level API in `microcosm.build.us_runtime.prior_year_income`; it is deliberately not re-exported from the broad `us_runtime` facade while graph consumers are introduced. The wrapper retains the original weight-resolution error precedence, and a support predictor argument must be an actual pandas DataFrame before its column/index checks apply.
 
 This extraction does not change monetary periods or apply inflation factors. Source-year alignment and graph fit/apply composition are separate work. Supplying the wrong number of weights, an untyped weight vector, missing or misaligned support predictors, or unrequested predictors on a source-only table is refused.
 
