@@ -97,8 +97,10 @@ unsupported case explicitly before graph compilation. Full-pool tenure
 incumbents must already use that
 canonical string representation: an absent or numeric incumbent is refused at
 declaration rather than silently widening the scope to object dtype. Native
-non-CPS rent and tenure cells survive the merge unchanged, and the merge
-evidence digests them before and after so the gate can attest it.
+non-CPS rent and tenure cells survive the merge unchanged. The merge evidence
+carries their digests before and after writing, and the gate compares both with
+the final cells. It requires both evidence sets to cover exactly the housing
+incumbents declared by the actual parent context.
 
 The typed `microcosm.us.housing_source_outputs` payload carries ordered int64
 IDs and exactly five column buffers — little-endian float64, canonical
