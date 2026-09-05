@@ -579,8 +579,7 @@ def fill_support_channel_from_source(
 
 
 def _coerce_zero_weight_declarations(
-    declarations: Sequence[UKZeroWeightStratumDeclaration]
-    | Sequence[Mapping[str, Any]],
+    declarations: Sequence[UKZeroWeightStratumDeclaration] | Sequence[Mapping[str, Any]],
 ) -> tuple[UKZeroWeightStratumDeclaration, ...]:
     materialized: list[UKZeroWeightStratumDeclaration] = []
     for declaration in declarations:
@@ -804,9 +803,11 @@ def _allocate_spi_prior_mass(
         dropna=False,
     )
     stratum_base_mass = grouped["_base_mass"].transform("sum").to_numpy(dtype=float)
-    stratum_spi_count = grouped["_spi_count"].transform("sum").to_numpy(dtype=np.int64)
-    unrepresented_base = (
-        base_mask & (stratum_base_mass > 0.0) & (stratum_spi_count == 0)
+    stratum_spi_count = grouped["_spi_count"].transform("sum").to_numpy(
+        dtype=np.int64
+    )
+    unrepresented_base = base_mask & (stratum_base_mass > 0.0) & (
+        stratum_spi_count == 0
     )
     if unrepresented_base.any():
         examples = (
@@ -833,7 +834,9 @@ def _allocate_spi_prior_mass(
     final_weights = np.zeros_like(pre_weights)
     final_weights[base_mask] = pre_weights[base_mask] * (1.0 - spi_prior_mass_share)
     final_weights[spi_mask] = (
-        stratum_base_mass[spi_mask] * spi_prior_mass_share / stratum_spi_count[spi_mask]
+        stratum_base_mass[spi_mask]
+        * spi_prior_mass_share
+        / stratum_spi_count[spi_mask]
     )
 
     # This is a newly assembled two-channel population, not an in-place

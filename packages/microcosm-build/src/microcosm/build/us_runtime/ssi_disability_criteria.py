@@ -1201,7 +1201,9 @@ def us_ssi_disability_criteria_summary(frame: Frame) -> dict[str, object]:
             clone_divergence_source_people = int((unique > 1).sum())
 
     age_column = "age" if "age" in person else "A_AGE"
-    age = pd.to_numeric(person[age_column], errors="coerce").to_numpy(dtype=np.float64)
+    age = pd.to_numeric(person[age_column], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
     reported = _reported_ssi_anchor(person, age=age) > 0.0
     native_role = np.ones(len(person), dtype=bool)
     if channel_values is not None:

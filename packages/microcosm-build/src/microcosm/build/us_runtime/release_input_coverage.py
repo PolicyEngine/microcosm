@@ -634,8 +634,12 @@ def _ecps_populated_layers() -> frozenset[str]:
             f"{_ECPS_PARITY_REFERENCE_RESOURCE}: 'nonzero_shares' must be a "
             "non-empty JSON object."
         )
-    historical = {str(name) for name, share in shares.items() if float(share) > 0.0}
-    projected = {REFERENCE_ECPS_LAYER_RENAMES.get(name, name) for name in historical}
+    historical = {
+        str(name) for name, share in shares.items() if float(share) > 0.0
+    }
+    projected = {
+        REFERENCE_ECPS_LAYER_RENAMES.get(name, name) for name in historical
+    }
     if len(projected) != len(historical):
         raise ValueError(
             f"{_ECPS_PARITY_REFERENCE_RESOURCE}: reference-layer rename "
