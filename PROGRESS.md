@@ -1,4 +1,276 @@
-# ACS predictor release join
+# F1 portable worker identity — CI crawl fix
+
+## State
+
+Complete on 2026-09-05 on `f1-portable-worker-identity`, started on
+2026-09-04 at `50c9232b7597bd1f47897a3132ed08894fc11d93`. Process memoization,
+real session priming, explicit live opt-outs, and all requested verification
+are complete. No GitHub network, push, new branch, or stash.
+Final report, exact commands, direct exits, and per-file timing tables:
+`/private/tmp/microcosm-pr871-ci-crawl/out.md`.
+
+## Done
+
+- Read the guide, prior journals, worker identity/bootstrap/launch, three live
+  stacked binding sites, and fixture caches. Used direct source tracing and
+  independent agent reviews; the GitNexus skill's tools were unavailable.
+- Completed both unchanged baselines before production/test behavior edits:
+  identity selection 77 passed, 245 deselected, exit 0, 734.406s wall;
+  first 200 tests 200 passed, 122 deselected, exit 0, 2033.172s wall.
+  Source-order collection used `-p no:randomly`, then 122 explicit deselections;
+  the final selected node was
+  `test_primary_refuses_missing_universe_receipt_before_callback`.
+- Repaired only ignored `.venv/bin/pytest` after its stale interpreter shebang
+  produced direct exit 127. Used the supplied synced Python 3.14.4 environment,
+  `uv run --no-sync`, and an external writable UV cache; no dependency sync.
+- Committed fail-before memo regressions: 4 failed, 7 passed, 322 deselected;
+  exit 1; 30.073s wall. Implemented the memo keyed by raw lock argument and
+  both bound fit-control environment values, with an exported/documented clear
+  API and shared read-only semantic graph. Execution bindings clone the graph
+  so artifact mutation cannot poison subsequent identities.
+- Primed real session identities for stacked-spine, H5, pool-tool, and the
+  indirectly reached spec-bundle suite. Removed redundant stacked/H5 caches.
+  Identity/source/runtime/backend/environment mutation tests explicitly opt out
+  and clear before/after; deliberate byte edits within a test clear between calls.
+  Preflight/fiscal-refresh tests already stub their live-binding paths.
+- Added 14 regression cases covering memo reuse/reset, both environment keys,
+  invalid controls and locks, lock separation, artifact-copy isolation, real
+  session consistency, opted-out namespace-byte changes, and generator ordering.
+  Memo/session checks passed: 13 passed, 322 deselected; exit 0; 64.224s wall.
+- Broader call-path audit found spec generation could precede function priming.
+  Committed a real ordering regression before the fixture fix: 1 failed,
+  25 deselected; exit 1; 129.447s wall. Ordered priming before cached generation;
+  the same test then passed: 1 passed, 25 deselected; exit 0; 99.303s wall.
+- Same post-fix identity selection: 90 passed, 245 deselected; exit 0;
+  160.517s wall, a 4.58x speedup despite 13 added selection cases.
+- Full stacked-spine file: 335 passed, 2,378 warnings, no failures/skips;
+  exit 0; 347.905s wall (5m 47.905s), pytest 337.74s.
+- Ran actual CI process expansions from `--list GROUP:PROCESS`; `--procs`
+  returns process names, so the prompt's literal per-file loop was not valid.
+  Every process ran serially with exact CI file arguments and no cacheprovider.
+  An external observation-only plugin saved each file's counts and wall span.
+- Initial us-qs:build before bundle priming: 1,368 passed, no skips; exit 0;
+  626.070s wall. Reran the affected complete process after its final fix.
+- Final CI process results (all exit 0):
+
+  | Process | Files | Passed | Skipped | Wall seconds |
+  |---|---:|---:|---:|---:|
+  | us-qs:build | 29 | 1,369 | 0 | 654.966 |
+  | us-qs:frame | 5 | 84 | 8 | 111.252 |
+  | us-am:build | 59 | 1,899 | 1 | 855.001 |
+  | us-am:other-shards | 48 | 1,000 | 2 | 139.672 |
+
+- Final groups total 4,352 passed, 11 existing skips, no failures/errors across
+  141 files. Skips cover eight optional Axiom cases, one opt-in 3.7 GB SIPP
+  audit, and two existing live data-loader tests. No skip was added by this fix.
+- Ruff packages/tools passed (exit 0, 0.066s); all six changed Python files
+  passed format checking (exit 0, 0.021s). Diff whitespace passed (0.036s).
+- Spec proof passed: 42,154/42,154 configuration fields, 41/41 inventories;
+  exit 0, 81.683s wall. No spec pins moved. Protected-file and AST verification
+  passed (exit 0, 0.080s): the uncached identity body, existing validators,
+  authenticator, probe, and launch policy are unchanged. The full
+  `worker_execution` subtree remains excluded from inventory digests.
+- Independent reviews found no actionable defects. Engine-free compatibility
+  was reviewed from source; no engine-free test run is claimed. Python 3.13,
+  GitHub/Linux runners, wheels, unrelated CI groups, and certification were
+  not run in this local fix lane. All command receipts are in the report.
+
+## Next
+
+No implementation or requested local verification remains. No push.
+
+# Historical: Astra gate round 1 journal
+
+> The section below records the prior lane at `50c9232b`; its results and
+> next steps are historical, not the current CI-crawl fix state.
+
+# F1 portable worker identity — Astra gate round 1
+
+## State
+
+Complete on 2026-09-04 on `f1-portable-worker-identity`, starting at
+`32ce6f518e8847647f23b3f6f11e4a8dc060ed01`. Both peer findings have committed
+fail-before regressions and fixes. All eight requested suites passed (964
+tests); Ruff, formatting, and the spec-pin proof passed. No pins moved.
+No GitHub network or push. Final report:
+`/private/tmp/microcosm-pr871-astra-round1/out.md`.
+
+## Done
+
+- Read `CLAUDE.md`, the prior Sol journal, the worker identity/bootstrap,
+  pinned QRF launcher, stacked launch/binding, and relevant test sections.
+- Confirmed the assigned branch and clean starting tree.
+- Read the GitNexus debugging workflow; its tools are unavailable, so trace
+  execution directly from source and offline tests.
+- Preserved the full `worker_execution` digest exclusion and all hard-boundary
+  files, including the seed-attested `puf_qrf_chain.py` launcher.
+- No concrete `-o` path was supplied. Asked asynchronously and wrote the
+  report outside the repository at the stated default path,
+  `/private/tmp/microcosm-pr871-astra-round1/out.md`.
+
+- Reproduced finding 1 before any production edit: the fresh interpreter at
+  the real stacked/chain launch observes Torch autoload `1` before the worker
+  module loads (expected `0`); one test failed, direct exit 1.
+- Reproduced finding 2 before any production edit: both source-tree and
+  inherited-prefix valid-header stale caches execute altered code in the
+  production identity probe; two cases failed, direct exit 1. Control children
+  prove that disabling bytecode writes alone still executes those caches.
+- The recovered pytest script uses an obsolete interpreter shebang. Use
+  `uv run --no-sync python -m pytest` with a writable `UV_CACHE_DIR`; direct
+  pytest script attempts exited 4 before collection. No sync was needed.
+- Recorded both failing commands and observations in the external report.
+
+- Fixed finding 1 by passing the semantic binding's forced overrides into
+  the stacked launch environment before Python starts. Retained the worker
+  bootstrap guard and corrected its comment; the pinned chain is untouched.
+- The fresh-interpreter first-Torch-import regression now passes: 1 passed
+  in 58.11s, direct exit 0. Its child sees `0` while the parent retains `1`.
+
+- Fixed finding 2 using a shared launch context that forces an empty fresh
+  `PYTHONPYCACHEPREFIX` and `PYTHONDONTWRITEBYTECODE=1` in both probe and stacked
+  worker. The execution binding records the stable `{empty_pycache_dir}`
+  placeholder, and traces refuse unexpected namespace/stdlib bytecode paths.
+- The cache reproduction now passes in both identity-probe and worker `-m`
+  modes across both cache locations: 4 passed in 22.62s, direct exit 0.
+  Probe/refusal/exception-cleanup checks also passed (5 passed in 23.95s).
+- Extended the real stacked launch regression to check child Python cache
+  flags, replacement of an inherited prefix, and cleanup without parent
+  environment mutation. Added semantic tamper coverage for both cache controls.
+
+- Extended only the test validation fixtures to reuse pristine real worker
+  identities by lock/fit controls and return independent deep copies. The
+  stacked mutation helper compares against an independently obtained baseline;
+  H5 tests mutate artifacts only. Production factories and source/cache
+  mutation regressions remain uncached. Focused H5 checks: 2 passed, exit 0.
+- Independent read-only review found no blocking issue in the startup/cache
+  fixes, regressions, hard boundaries, or fixture mutation separation.
+- Final repository Ruff passed; changed-file format check passed (5 files).
+  Required release-preflight (42), fiscal-refresh (224), and source-blindness
+  (497) suites passed with direct exit 0 each.
+
+- Extended the same test-only reuse to the 11-case tail-control matrix: it
+  mutates parent constants, while the fresh worker's installed source and
+  startup environment stay identical. Independent review confirmed the real
+  resource extraction and digest comparison remain active.
+- Interrupted the earlier focused worker run after discovering that matrix's
+  22 redundant identities: direct exit 130, 58 passes before interruption;
+  this is not final evidence. Restarted the complete requested worker selector.
+- Launch/binding integration passed (2 tests, exit 0). Required H5 (98),
+  inventory (15), coverage-tool (7), and imputation (4) suites passed, exit 0
+  each. Ruff and changed-file formatting passed after the last test edit.
+- Verified every forbidden path, docs/tools, and uv.lock is unchanged from
+  `32ce6f51`.
+
+- Standalone spec proof passed, direct exit 0: 42,154/42,154 configuration
+  fields and 41/41 inventory checks. No pins moved; the unchanged spec SHA is
+  `9db29b4d33424fbb21a83c63927c7de55ba9a333d631f6323935f67a496eee46`.
+- The focused worker rerun completed with direct exit 0: 77 passed, 244
+  deselected, 141 warnings in 866.48s. The real transfer-bank integration also
+  passed. All eight required suites total 964 passes, with no failures or skips.
+- Finished the external report with both fail-before commands/observations,
+  fix SHAs (`b131afb7`, `4a575d7d`), cache-isolation rationale, exact final
+  verification commands/counts, no-pin proof, and deliberate scope exclusions.
+
+## Next
+
+- Local review of the committed fixes and external report. No implementation
+  or verification work remains for these two findings; no push was performed.
+
+# Historical: Sol gate round 1 journal
+
+> The section below is the prior round's handoff at `32ce6f51`. Its pending
+> state and verification claims are preserved as historical evidence.
+
+# F1 portable worker identity — Sol gate round 1
+
+## State
+
+In progress on 2026-09-04 on `f1-portable-worker-identity`, starting from
+`b26708a1`. All four Sol findings have fail-before reproductions. The schema-9
+envelope, Torch backend-autoload, loaded-runtime/stdlib, and real-resource
+fixes are implemented and focused green. Pin proof and full verification remain.
+
+## Done
+
+- Read `CLAUDE.md` and the F1 PR body/progress brief.
+- Confirmed the requested branch and clean starting tree at `b26708a1`.
+- Read the GitNexus debugging workflow. This workspace exposes no GitNexus
+  query/resource tools, so call-path analysis is being performed directly from
+  source and tests.
+- Recorded the hard boundaries: keep the complete `worker_execution` subtree
+  out of spec-engine digests; do not edit graph interface/acceptance lock files;
+  refuse before side effects; keep tests offline; commit each coherent step.
+- Recorded the required focused and final verification suites and the
+  requirement to report only commands actually run in `out.md`.
+- Synced the locked all-package US/UK environment after directing uv's cache to
+  a sandbox-writable path; the unmodified command's two environment-specific
+  refusals and the successful command are recorded in `out.md`.
+- Added fail-before coverage proving that schema 9 accepts missing/wrong
+  pipelines and routes other missing envelope sections around the common
+  validator; the focused result was 1 passed and 1 failed, exit 1.
+- Added fail-before identity coverage proving that loaded-runtime and stdlib
+  mutations are unbound, a synthetic unapproved `torch.backends` provider is
+  accepted, and the real SOI interest-components resource is absent. The four
+  focused nodes failed as intended, exit 1.
+- Added a fail-before launcher regression proving that an inherited/caller
+  `TORCH_DEVICE_BACKEND_AUTOLOAD=1` reaches the child unchanged. The focused
+  node failed as intended, exit 1.
+- Replaced the prior unrelated `out.md` with the current round's reproduction
+  report; fix/pin/final-verification sections remain explicitly pending.
+- Fixed the schema-9 bypass: schema 9 now has an explicit complete stacked
+  field set, traverses the same envelope classifier as schema 10, and does so
+  before any compatibility attestation is read or authenticated.
+- The valid schema-9 metadata-restoration case and the seven-case malformed
+  envelope regression pass together (2 passed, exit 0).
+- Forced `TORCH_DEVICE_BACKEND_AUTOLOAD=0` in both the authenticated semantic
+  environment and the worker module bootstrap, before its QRF/Torch import.
+- Enumerated and bound selected `torch.backends` entry-point metadata, refused
+  provider distributions outside the installed-code closure before clean
+  worker import, and refused duplicate canonical distribution identities so a
+  colliding provider cannot evade RECORD hashing.
+- Focused provider-refusal, duplicate-provider, launch-override, semantic
+  tamper, and legacy relocated-worker acceptance checks pass (exit 0 each).
+- Replaced the two-file resource list with a fresh worker-import audit trace
+  using the same inherited startup search path as the real worker. The semantic
+  transitive-import digest now includes every opened
+  Microcosm namespace file, with bytecode canonicalized to source, portable
+  locators only, and ambiguous duplicate locators refused.
+- The trace freezes and revalidates namespace roots, captures transient import
+  origins and successful pre-open file paths, refuses disappeared namespace
+  files, and rejects an empty or displaced worker trace. Its opened stdlib
+  paths supplement final `sys.modules` so transient stdlib imports stay bound.
+- Resolved the loaded Python image through platform mapping with static and
+  sysconfig fallbacks, and bound its kind and byte digest without serializing
+  its path. The interpreter identity also binds the clean import's file-backed
+  stdlib source and extension bytes while excluding site packages.
+- The mocked runtime-byte and stdlib-source mutation tests pass together; the
+  real SOI interest-components resource is observed and changes the resource
+  closure digest; and a real full identity constructs and validates with the
+  mapped `libpython3.14.dylib` (all exit 0).
+- Kept worker identity schema v1 because it is the still-unreleased exact
+  schema introduced by this branch. Bumping it would churn authored spec
+  templates despite the requirement that spec-engine pins remain fixed;
+  structural validation now requires the added v1 fields.
+- Restored `puf_qrf_chain.py` byte-for-byte after the first pin run proved that
+  editing its operational launcher also moves the QRF seed-kernel source
+  attestation. The worker bootstrap now owns the override, keeping the existing
+  seed protocol and compiled seed-map pins intact without re-pinning.
+- Added bound-environment-keyed, deep-copied caches only to the stacked-spine
+  and H5 canonical test fixtures so parameterized/tiny-pool cases do not rebuild
+  one identical production identity apiece; production identity generation
+  remains uncached. The interrupted pre-cache final run had 9 passes before
+  exit 130 and is not treated as final evidence.
+- Added the same narrowly scoped reuse to the inventory and coverage-tool test
+  modules: each module constructs one real binding and deep-copies it for
+  repeated report builds whose digests deliberately strip `worker_execution`.
+  This does not cache the production resolver or replace its first real check.
+
+## Next
+
+- Prove spec-engine pins remain fixed, run the complete requested verification
+  block, and finish `out.md` with exact commands, counts, and exit codes.
+
+# Historical: ACS predictor release join
 
 > **Historical note (2026-08-28).** This journal describes the
 > `acs-predictor-release-join` lane as of 2026-08-27. The branch has since

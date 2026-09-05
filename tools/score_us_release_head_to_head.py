@@ -303,6 +303,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Optional external SHA-256 pin for a candidate pool manifest.",
     )
     parser.add_argument(
+        "--candidate-worker-identity-attestation",
+        type=Path,
+        help=(
+            "Explicit plan-gated compatibility attestation for a legacy "
+            "gate-failed candidate pool; scoring use only."
+        ),
+    )
+    parser.add_argument(
         "--age-targets",
         action=argparse.BooleanOptionalAction,
         default=False,
@@ -476,9 +484,7 @@ def _drop_historical_formula_owned_columns(
     for entity in frame.entities:
         columns = columns_by_entity.get(entity)
         cleaned_tables[entity] = (
-            tables[entity].drop(columns=columns)
-            if columns
-            else tables[entity].copy()
+            tables[entity].drop(columns=columns) if columns else tables[entity].copy()
         )
     cleaned_weights = {
         entity: frame.weights_for(entity) for entity in frame.weighted_entities
@@ -501,10 +507,12 @@ def _load_pool_manifest(
     manifest_path: Path,
     *,
     expected_manifest_sha256: str | None,
+    worker_identity_attestation: Path | None,
 ) -> LoadedArtifact:
     frame, manifest, authenticated = load_authenticated_us_multispine_pool_for_scoring(
         manifest_path,
         expected_manifest_sha256=expected_manifest_sha256,
+        worker_identity_attestation=worker_identity_attestation,
     )
     frame, formula_owned_receipt = _drop_historical_formula_owned_columns(frame)
     terminal_gates = manifest.get("terminal_gates")
@@ -522,6 +530,9 @@ def _load_pool_manifest(
         "manifest_sha256": authenticated.manifest_sha256,
         "publication_run_id": authenticated.publication_run_id,
         "release_id": manifest.get("release_id"),
+        "worker_execution_authentication": dict(
+            authenticated.worker_execution_authentication or {}
+        ),
     }
     return LoadedArtifact(
         frame=frame,
@@ -531,6 +542,9 @@ def _load_pool_manifest(
             "weight_kind": frame.weights_for("household").kind.value,
             "publication_status": manifest.get("status"),
             "simulation_ready": manifest.get("simulation_ready"),
+            "worker_execution_authentication": dict(
+                authenticated.worker_execution_authentication or {}
+            ),
         },
         h5_path=authenticated.path,
         terminal_gates=terminal_gates,
@@ -590,6 +604,7 @@ def load_artifact(
     path: Path,
     *,
     expected_manifest_sha256: str | None = None,
+    worker_identity_attestation: Path | None = None,
 ) -> LoadedArtifact:
     """Load a role-neutral H5 or authenticated pool into the common frame API."""
 
@@ -598,11 +613,16 @@ def load_artifact(
         artifact = _load_pool_manifest(
             resolved,
             expected_manifest_sha256=expected_manifest_sha256,
+            worker_identity_attestation=worker_identity_attestation,
         )
     else:
-        if expected_manifest_sha256 is not None:
+        if (
+            expected_manifest_sha256 is not None
+            or worker_identity_attestation is not None
+        ):
             raise ValueError(
-                "--candidate-manifest-sha256 applies only to a pool manifest."
+                "Candidate manifest authentication options apply only to a "
+                "pool manifest."
             )
         artifact = _load_h5(resolved)
     _assert_rss_below_limit(f"after loading {artifact.identity['filename']}")
@@ -1776,6 +1796,7 @@ def score_head_to_head(
         release.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
     ),
     candidate_manifest_sha256: str | None = None,
+    candidate_worker_identity_attestation: Path | None = None,
 ) -> dict[str, object]:
     """Compile once, then score incumbent and optional candidate sequentially."""
 
@@ -1788,15 +1809,32 @@ def score_head_to_head(
         allow_unaged_dollar_targets=allow_unaged_dollar_targets,
         congressional_district_vintage_crosswalk=crosswalk,
     )
-    artifact_paths = [("incumbent", incumbent, None)]
+    artifact_paths = [("incumbent", incumbent, None, None)]
     if candidate is not None:
-        artifact_paths.append(("candidate", candidate, candidate_manifest_sha256))
+        artifact_paths.append(
+            (
+                "candidate",
+                candidate,
+                candidate_manifest_sha256,
+                candidate_worker_identity_attestation,
+            )
+        )
+    elif candidate_worker_identity_attestation is not None:
+        raise ValueError(
+            "--candidate-worker-identity-attestation requires --candidate."
+        )
     artifacts: dict[str, dict[str, object]] = {}
     contracts: dict[str, tuple[tuple[str, str, str], ...]] = {}
-    for name, path, expected_manifest_sha256 in artifact_paths:
+    for (
+        name,
+        path,
+        expected_manifest_sha256,
+        worker_identity_attestation,
+    ) in artifact_paths:
         loaded = load_artifact(
             path,
             expected_manifest_sha256=expected_manifest_sha256,
+            worker_identity_attestation=worker_identity_attestation,
         )
         artifact_payload, contract = score_loaded_artifact(
             artifact=loaded,
@@ -2276,6 +2314,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
         candidate_manifest_sha256=args.candidate_manifest_sha256,
+        candidate_worker_identity_attestation=(
+            args.candidate_worker_identity_attestation
+        ),
     )
     json_path, markdown_path = write_scorecard(payload, args.out_prefix)
     print(

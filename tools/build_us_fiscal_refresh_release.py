@@ -8359,23 +8359,42 @@ def _exact_k_ladder_manifest_payload(
         raise RuntimeError("Validated pool manifest lost a required receipt block.")
     if agreement_gate.get("passed") is not True:
         raise RuntimeError("Validated pool manifest lost its passing agreement gate.")
+    worker_execution_authentication = (
+        authenticated_pool_h5.worker_execution_authentication
+    )
+    if (
+        pool_manifest.get("worker_execution_authentication")
+        != worker_execution_authentication
+    ):
+        raise RuntimeError(
+            "Validated pool manifest worker authentication receipt changed."
+        )
     pool_release_id = _assert_pool_release_id_value(
         args.pool_release_id,
         authenticated_pool_h5.publication_run_id,
     )
+    pool_receipt = {
+        "release_id": pool_release_id,
+        "release_id_source": "pool_manifest.publication_run_id",
+        "manifest_sha256": authenticated_pool_h5.manifest_sha256,
+        "publication_run_id": authenticated_pool_h5.publication_run_id,
+        "pool_h5_sha256": authenticated_pool_h5.sha256,
+        "pool_h5_size_bytes": authenticated_pool_h5.size_bytes,
+        "agreement_diagnostics_sha256": agreement_diagnostics.get("sha256"),
+    }
+    if worker_execution_authentication is not None:
+        if not isinstance(worker_execution_authentication, Mapping):
+            raise RuntimeError(
+                "Validated pool manifest has a malformed worker authentication receipt."
+            )
+        pool_receipt["worker_execution_authentication"] = dict(
+            worker_execution_authentication
+        )
     payload = exact_k_ladder_manifest_payload(
         outcome,
         k=int(args.exact_k),
         seed=int(args.seed),
-        pool={
-            "release_id": pool_release_id,
-            "release_id_source": "pool_manifest.publication_run_id",
-            "manifest_sha256": authenticated_pool_h5.manifest_sha256,
-            "publication_run_id": authenticated_pool_h5.publication_run_id,
-            "pool_h5_sha256": authenticated_pool_h5.sha256,
-            "pool_h5_size_bytes": authenticated_pool_h5.size_bytes,
-            "agreement_diagnostics_sha256": agreement_diagnostics.get("sha256"),
-        },
+        pool=pool_receipt,
         agreement_gate_reference={
             "passed": True,
             "publication_run_id": authenticated_pool_h5.publication_run_id,

@@ -3,7 +3,7 @@ pipeline_contract:
   artifact_protocol:
     artifact_kind: populace_us_stacked_pool_checkpoint_identity
     schema_version: 1
-    materializer_version: 12
+    materializer_version: 13
     pipeline: us-stacked-pool
   stacked_operator_order:
   - assemble_stacked_spine

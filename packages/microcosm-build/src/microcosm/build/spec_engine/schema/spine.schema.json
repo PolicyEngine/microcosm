@@ -288,7 +288,7 @@
        "const": "populace_us_stacked_pool_checkpoint_identity"
       },
       "schema_version": {"const": 1},
-      "materializer_version": {"const": 12},
+      "materializer_version": {"const": 13},
       "pipeline": {"const": "us-stacked-pool"}
      }
     },

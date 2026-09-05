@@ -228,6 +228,9 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_TRANSFER_GROUPS,
     us_late_producer_schedule_receipt,
 )
+from microcosm.build.us_runtime.worker_identity import (
+    current_worker_execution_authentication_receipt,
+)
 from microcosm.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -329,6 +332,7 @@ _STACKED_PIPELINE = "us-stacked-pool"
 _STACKED_CHECKPOINT_IDENTITY_ARTIFACT_KIND = (
     "populace_us_stacked_pool_checkpoint_identity"
 )
+# Version 13 binds the portable authenticated primary-QRF worker identity.
 # Version 12 binds the post-assembly household geography assignment authority,
 # target vintage, algorithm, operator order, and seed.  Earlier checkpoints
 # predate the congressional-district support required by release preflight.
@@ -336,7 +340,7 @@ _STACKED_CHECKPOINT_IDENTITY_ARTIFACT_KIND = (
 # Earlier checkpoints must rebuild rather than resume with a nullable
 # s_corp_income leaf. Version 10 bound the complete late-resource semantics and
 # corrected outer order (the primary PUF callback is nested inside the DAG).
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 12
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 13
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|004|010|025|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
@@ -1648,9 +1652,7 @@ def _ordered_household_geography_receipt(
         dtype=np.float64,
         na_value=np.nan,
     )
-    valid_ids = np.isfinite(household_ids) & (
-        household_ids == np.floor(household_ids)
-    )
+    valid_ids = np.isfinite(household_ids) & (household_ids == np.floor(household_ids))
     if not valid_ids.all():
         raise ValueError("Stacked geography output household IDs must be integral.")
 
@@ -1718,9 +1720,11 @@ def _validate_stacked_geography_assignment_receipt(
 ) -> None:
     """Bind a live assembled-or-later Frame to its assignment receipt."""
 
-    if receipt.get("artifact_kind") != (
-        "populace_us_stacked_household_geography_assignment"
-    ) or receipt.get("schema_version") != 1:
+    if (
+        receipt.get("artifact_kind")
+        != ("populace_us_stacked_household_geography_assignment")
+        or receipt.get("schema_version") != 1
+    ):
         raise ValueError(f"{boundary}: geography assignment receipt is unsupported.")
     expected_contract = _stacked_geography_assignment_contract()
     if _json_ready(receipt.get("contract")) != _json_ready(expected_contract):
@@ -1729,9 +1733,7 @@ def _validate_stacked_geography_assignment_receipt(
         target_districts
     )
     if receipt.get("target_universe") != expected_universe:
-        raise ValueError(
-            f"{boundary}: congressional-district target universe changed."
-        )
+        raise ValueError(f"{boundary}: congressional-district target universe changed.")
     output = receipt.get("output")
     if not isinstance(output, Mapping):
         raise ValueError(f"{boundary}: geography assignment output is missing.")
@@ -1759,9 +1761,10 @@ def _validate_stacked_geography_assignment_receipt(
         clone_index = pd.to_numeric(household[clone_column], errors="coerce")
         native_household = household.loc[clone_index.eq(0)]
     expected_order = receipt.get("pre_assignment_household_order")
-    if (
-        len(native_household) != assigned_rows
-        or expected_order != _ordered_household_id_receipt(native_household)
+    if len(
+        native_household
+    ) != assigned_rows or expected_order != _ordered_household_id_receipt(
+        native_household
     ):
         raise ValueError(
             f"{boundary}: ordered native household IDs differ from the seeded "
@@ -1901,9 +1904,7 @@ def _assign_stacked_household_geography(
         "schema_version": 1,
         "contract": _stacked_geography_assignment_contract(),
         "pre_assignment_household_order": pre_assignment_order,
-        "assigned_household_geography": _ordered_household_geography_receipt(
-            household
-        ),
+        "assigned_household_geography": _ordered_household_geography_receipt(household),
         "target_universe": _target_congressional_district_universe_receipt(
             target_districts
         ),
@@ -4130,6 +4131,49 @@ def _stacked_run_config_receipt(
     return normalized
 
 
+def _stacked_worker_execution_authentication(
+    stage_receipts: Mapping[str, object],
+) -> dict[str, object]:
+    """Derive publication evidence from the signed primary-QRF DAG resource."""
+
+    impute = stage_receipts.get("impute")
+    dag = (
+        impute.get("stacked_late_producer_dag") if isinstance(impute, Mapping) else None
+    )
+    execution = dag.get("execution") if isinstance(dag, Mapping) else None
+    primary_rows = [
+        row
+        for row in execution or ()
+        if isinstance(row, Mapping) and row.get("producer") == "primary_puf_qrf"
+    ]
+    if len(primary_rows) != 1:
+        raise ValueError(
+            "Stacked publication must carry exactly one primary-QRF execution row."
+        )
+    available = primary_rows[0].get("available_input_receipts")
+    config_receipt = (
+        available.get("tax_unit.@primary_puf_execution_config")
+        if isinstance(available, Mapping)
+        else None
+    )
+    config = (
+        config_receipt.get("binding") if isinstance(config_receipt, Mapping) else None
+    )
+    qrf = config.get("qrf") if isinstance(config, Mapping) else None
+    if (
+        not isinstance(config, Mapping)
+        or config.get("schema_version") != 5
+        or not isinstance(qrf, Mapping)
+    ):
+        raise ValueError("Stacked publication primary execution config changed.")
+    return current_worker_execution_authentication_receipt(
+        qrf.get("worker_execution"),
+        manifest_schema_version=POOL_MANIFEST_SCHEMA_VERSION,
+        execution_config_schema_version=5,
+        boundary="stacked publication primary-QRF worker",
+    )
+
+
 def _stacked_manifest_payload(
     *,
     result: StackedPoolBuildResult,
@@ -4177,6 +4221,9 @@ def _stacked_manifest_payload(
     _assert_stacked_geography_verified_inputs(verified_inputs)
     gates = _stacked_gate_payload(result)
     stack_manifest = _json_ready(result.stack_receipt)
+    worker_execution_authentication = _stacked_worker_execution_authentication(
+        result.stage_receipts
+    )
     return {
         "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
@@ -4237,6 +4284,7 @@ def _stacked_manifest_payload(
         "provenance_counts": result.provenance_counts,
         "stage_receipts": result.stage_receipts,
         "stage_checkpoints": checkpoint_provenance,
+        "worker_execution_authentication": worker_execution_authentication,
         "terminal_gates": gates,
         # Compatibility alias for existing simulation-ready manifest readers.
         # Its contents are the stacked terminal battery, never us_spine_agreement.
@@ -4468,6 +4516,9 @@ def _write_stacked_outputs(
         publication_run_id=publication_run_id,
     )
     gates = _stacked_gate_payload(result)
+    worker_execution_authentication = _stacked_worker_execution_authentication(
+        result.stage_receipts
+    )
     diagnostics = {
         "artifact_kind": US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
@@ -4478,6 +4529,7 @@ def _write_stacked_outputs(
         "publication_run_id": publication_run_id,
         "terminal_gates": gates,
         "agreement_gate": gates,
+        "worker_execution_authentication": worker_execution_authentication,
     }
     try:
         write_nullable_us_h5(
@@ -4489,9 +4541,7 @@ def _write_stacked_outputs(
             materializer_version=US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
             root_attributes={
                 CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: (
-                    verified_inputs[
-                        _STACKED_CD_CROSSWALK_INPUT_ROLE
-                    ].actual_sha256
+                    verified_inputs[_STACKED_CD_CROSSWALK_INPUT_ROLE].actual_sha256
                 ),
                 CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
                     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
