@@ -58,10 +58,17 @@ full verification is next. Report and raw measurement logs are outside the repos
 - Verified the forbidden files, uv.lock, and complete operational-binding
   inventory exclusion remain byte-for-byte unchanged from the starting commit.
 
+- Independent read-only review found no actionable defects. AST comparison
+  confirmed the uncached attestation body, validators, authenticator, launch
+  environment, and probe are unchanged apart from the factory's private name.
+- Same post-fix identity selector: 90 passed (13 new regression cases),
+  245 deselected, exit 0, 160.517 seconds wall time versus 734.406 before.
+  This is a 4.58x measured speedup despite the additional regressions.
+
 ## Next
 
-- Run the same identity selector, the full stacked-spine file, and actual
-  us-qs/us-am CI process groups with per-file timings.
+- Run the full stacked-spine file and actual us-qs/us-am CI process groups
+  with per-file timings.
 - Finish independent review, Ruff/formatting, the spec-pin proof, and report.
 - Add process memoization and regressions; prime real identities per test
   session with explicit live-test opt-out and consistent fixture bindings.
