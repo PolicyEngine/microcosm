@@ -97,6 +97,7 @@ __all__ = [
     "apply_puf_design_weight_growth",
     "apply_puf_growth",
     "compile_puf_growth",
+    "parse_growth_recipe",
     "roster_role",
     "puf_growth_monetary_metadata",
 ]
@@ -438,6 +439,73 @@ class GrowthRecipe:
                 "rules": [rule.as_document() for rule in self.rules],
             }
         )
+
+
+def parse_growth_recipe(document: bytes) -> GrowthRecipe:
+    """Rebuild a recipe from its own :attr:`GrowthRecipe.identity` bytes.
+
+    Round-tripping through the identity document is how a recipe travels as a
+    graph node parameter without becoming an opaque blob: the bytes a node
+    carries are exactly the bytes the recipe hashes to.
+
+    Args:
+        document: A recipe identity document.
+
+    Returns:
+        The recipe those bytes describe.
+
+    Raises:
+        PufGrowthRefusalError: If the document is malformed, is a different
+            schema version, or does not round-trip to itself.
+    """
+    data = _parse(document)
+    _require(
+        set(data) == {"schema_version", "recipe_id", "rules"}, "RECIPE_DOCUMENT_SCHEMA"
+    )
+    _require(data["schema_version"] == RECIPE_SCHEMA_VERSION, "RECIPE_SCHEMA_VERSION")
+    _require(
+        type(data["rules"]) is list and bool(data["rules"]), "RECIPE_DOCUMENT_RULES"
+    )
+    rules = []
+    for entry in data["rules"]:
+        _require(
+            type(entry) is dict
+            and set(entry)
+            == {
+                "field",
+                "role",
+                "source_reference_year",
+                "target_year",
+                "growth_kind",
+                "sign_branch",
+                "factor_series",
+            },
+            "RECIPE_DOCUMENT_RULES",
+        )
+        for key, values in (
+            ("role", FieldRole),
+            ("growth_kind", GrowthKind),
+            ("sign_branch", SignBranch),
+        ):
+            _require(
+                entry[key] in tuple(str(value) for value in values),
+                "RECIPE_DOCUMENT_RULES",
+                entry["field"] if type(entry["field"]) is str else "contract",
+            )
+        rules.append(
+            GrowthRule(
+                entry["field"],
+                FieldRole(entry["role"]),
+                entry["source_reference_year"],
+                entry["target_year"],
+                GrowthKind(entry["growth_kind"]),
+                SignBranch(entry["sign_branch"]),
+                entry["factor_series"],
+            )
+        )
+    recipe = GrowthRecipe(data["recipe_id"], tuple(rules))
+    _require(recipe.identity == document, "RECIPE_DOCUMENT_ROUNDTRIP")
+    return recipe
 
 
 def _rule_order(rule: GrowthRule) -> tuple[str, str]:
