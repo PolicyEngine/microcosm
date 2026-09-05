@@ -163,6 +163,7 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     # source-spine column: selection comes from the registered pool helpers.
     "_graph_housing_source_artifacts.py",
     "graph_housing_source.py",
+    "graph_preclone.py",
     "acs_transfer.py",
     "adult_care.py",
     "alimony.py",

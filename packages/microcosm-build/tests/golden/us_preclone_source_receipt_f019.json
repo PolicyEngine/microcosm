@@ -1,0 +1,457 @@
+{
+  "donor_fixture_sha256": "da3587119207a0a41763cce7481dfbfe26c44cfd8e9c597fc6c8b687d1c5bae3",
+  "final_frame_canonical_sha256": "827bd2d8480cede2a5028e6d6b84be09175422e529c569a2b5443837bc327c41",
+  "final_frame_equals_original_housing_golden_eligibility": true,
+  "n_estimators": 2,
+  "operator_order": [
+    "derive_us_cps_carried_inputs",
+    "with_us_hours_worked_inputs",
+    "with_us_prior_year_income_inputs",
+    "with_us_relationship_inputs",
+    "with_us_housing_inputs",
+    "with_us_eligibility_inputs"
+  ],
+  "receipt": {
+    "cps_source_evidence": {
+      "column": "PERIDNUM",
+      "person_rows": 6
+    },
+    "operator_order": [
+      "derive_us_cps_carried_inputs",
+      "with_us_hours_worked_inputs",
+      "with_us_prior_year_income_inputs",
+      "with_us_relationship_inputs",
+      "with_us_housing_inputs",
+      "with_us_eligibility_inputs"
+    ],
+    "phase": "pre_clone",
+    "suboperators": [
+      {
+        "cps_available_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "execution_scope": "cps_source",
+        "family": "cps_carried",
+        "formula_owned_outputs_removed": {},
+        "kernel_receipt": {},
+        "merged_rows": {
+          "person": 6,
+          "spm_unit": 3
+        },
+        "operator": "derive_us_cps_carried_inputs",
+        "operator_input_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "operator_output_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "operator_projection": {
+          "lineage_state_persisted": false,
+          "selection": "PERIDNUM",
+          "support_role_metadata_exposed": false
+        },
+        "order_index": 0,
+        "output_columns": {
+          "person": [
+            "age",
+            "alimony_income",
+            "employment_income_before_lsr",
+            "farm_operations_income",
+            "has_champva_health_coverage_at_interview",
+            "has_esi",
+            "has_indian_health_service_coverage_at_interview",
+            "has_marketplace_health_coverage_at_interview",
+            "has_medicaid_health_coverage_at_interview",
+            "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+            "has_other_means_tested_health_coverage_at_interview",
+            "has_tricare_health_coverage_at_interview",
+            "has_va_health_coverage_at_interview",
+            "health_insurance_premiums_without_medicare_part_b",
+            "is_female",
+            "long_term_capital_gains_before_response",
+            "miscellaneous_income",
+            "non_qualified_dividend_income",
+            "other_medical_expenses",
+            "over_the_counter_health_expenses",
+            "qualified_dividend_income",
+            "receives_wic",
+            "rental_income",
+            "self_employment_income_before_lsr",
+            "short_term_capital_gains",
+            "social_security_dependents",
+            "social_security_disability",
+            "social_security_retirement",
+            "social_security_survivors",
+            "strike_benefits",
+            "tax_exempt_private_pension_income",
+            "taxable_interest_income",
+            "taxable_ira_distributions",
+            "taxable_private_pension_income",
+            "unemployment_compensation"
+          ],
+          "spm_unit": [
+            "receives_snap",
+            "receives_tanf",
+            "spm_unit_pre_subsidy_childcare_expenses"
+          ]
+        },
+        "overlap_ownership": null,
+        "phase": "pre_clone",
+        "pool_input_rows": {
+          "family": 5,
+          "household": 5,
+          "marital_unit": 8,
+          "person": 8,
+          "spm_unit": 5,
+          "tax_unit": 5
+        }
+      },
+      {
+        "cps_available_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "execution_scope": "cps_source",
+        "family": "hours_worked",
+        "formula_owned_outputs_removed": {},
+        "kernel_receipt": {
+          "hours_worked_signal_gate": {
+            "details": {
+              "mean_weekly_hours_band": [
+                30.0,
+                45.0
+              ],
+              "mean_weekly_hours_workers": 37.50000000000001,
+              "unique_counts": {
+                "hours_worked_last_week": 3,
+                "weekly_hours_worked_before_lsr": 3,
+                "weeks_worked": 3
+              },
+              "worked_share": 0.49999999999999994,
+              "worked_share_band": [
+                0.35,
+                0.62
+              ]
+            },
+            "failures": [],
+            "name": "hours_worked_signal",
+            "passed": true
+          },
+          "pool_excluded_outputs_removed": {
+            "person": [
+              "weeks_worked"
+            ]
+          }
+        },
+        "merged_rows": {
+          "person": 6
+        },
+        "operator": "with_us_hours_worked_inputs",
+        "operator_input_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "operator_output_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "operator_projection": {
+          "lineage_state_persisted": false,
+          "selection": "PERIDNUM",
+          "support_role_metadata_exposed": false
+        },
+        "order_index": 1,
+        "output_columns": {
+          "person": [
+            "hours_worked_last_week",
+            "weekly_hours_worked_before_lsr"
+          ]
+        },
+        "overlap_ownership": null,
+        "phase": "pre_clone",
+        "pool_input_rows": {
+          "family": 5,
+          "household": 5,
+          "marital_unit": 8,
+          "person": 8,
+          "spm_unit": 5,
+          "tax_unit": 5
+        }
+      },
+      {
+        "cps_available_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "execution_scope": "cps_source",
+        "family": "prior_year_income",
+        "formula_owned_outputs_removed": {},
+        "kernel_receipt": {},
+        "merged_rows": {
+          "person": 6
+        },
+        "operator": "with_us_prior_year_income_inputs",
+        "operator_input_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "operator_output_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "operator_projection": {
+          "lineage_state_persisted": false,
+          "selection": "PERIDNUM",
+          "support_role_metadata_exposed": false
+        },
+        "order_index": 2,
+        "output_columns": {
+          "person": [
+            "employment_income_last_year",
+            "previous_year_income_available",
+            "self_employment_income_last_year"
+          ]
+        },
+        "overlap_ownership": null,
+        "phase": "pre_clone",
+        "pool_input_rows": {
+          "family": 5,
+          "household": 5,
+          "marital_unit": 8,
+          "person": 8,
+          "spm_unit": 5,
+          "tax_unit": 5
+        }
+      },
+      {
+        "cps_available_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "execution_scope": "cps_source",
+        "family": "relationship_inputs",
+        "formula_owned_outputs_removed": {},
+        "kernel_receipt": {},
+        "merged_rows": {
+          "person": 6
+        },
+        "operator": "with_us_relationship_inputs",
+        "operator_input_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "operator_output_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "operator_projection": {
+          "lineage_state_persisted": false,
+          "selection": "PERIDNUM",
+          "support_role_metadata_exposed": false
+        },
+        "order_index": 3,
+        "output_columns": {
+          "person": [
+            "is_household_head",
+            "is_separated",
+            "is_surviving_spouse"
+          ]
+        },
+        "overlap_ownership": null,
+        "phase": "pre_clone",
+        "pool_input_rows": {
+          "family": 5,
+          "household": 5,
+          "marital_unit": 8,
+          "person": 8,
+          "spm_unit": 5,
+          "tax_unit": 5
+        }
+      },
+      {
+        "cps_available_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "execution_scope": "cps_source",
+        "family": "housing_inputs",
+        "formula_owned_outputs_removed": {},
+        "kernel_receipt": {},
+        "merged_rows": {
+          "household": 3,
+          "person": 6,
+          "spm_unit": 3
+        },
+        "operator": "with_us_housing_inputs",
+        "operator_input_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "operator_output_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "operator_projection": {
+          "lineage_state_persisted": false,
+          "selection": "PERIDNUM",
+          "support_role_metadata_exposed": false
+        },
+        "order_index": 4,
+        "output_columns": {
+          "household": [
+            "tenure_type"
+          ],
+          "person": [
+            "pre_subsidy_rent"
+          ],
+          "spm_unit": [
+            "receives_housing_assistance",
+            "spm_unit_tenure_type",
+            "takes_up_housing_assistance_if_eligible"
+          ]
+        },
+        "overlap_ownership": null,
+        "phase": "pre_clone",
+        "pool_input_rows": {
+          "family": 5,
+          "household": 5,
+          "marital_unit": 8,
+          "person": 8,
+          "spm_unit": 5,
+          "tax_unit": 5
+        }
+      },
+      {
+        "cps_available_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "execution_scope": "cps_source",
+        "family": "eligibility_inputs",
+        "formula_owned_outputs_removed": {},
+        "kernel_receipt": {},
+        "merged_rows": {
+          "person": 6
+        },
+        "operator": "with_us_eligibility_inputs",
+        "operator_input_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "operator_output_rows": {
+          "family": 3,
+          "household": 3,
+          "marital_unit": 6,
+          "person": 6,
+          "spm_unit": 3,
+          "tax_unit": 3
+        },
+        "operator_projection": {
+          "lineage_state_persisted": false,
+          "selection": "PERIDNUM",
+          "support_role_metadata_exposed": false
+        },
+        "order_index": 5,
+        "output_columns": {
+          "person": [
+            "is_blind",
+            "is_disabled",
+            "is_full_time_college_student",
+            "own_children_in_household",
+            "veterans_benefits"
+          ]
+        },
+        "overlap_ownership": null,
+        "phase": "pre_clone",
+        "pool_input_rows": {
+          "family": 5,
+          "household": 5,
+          "marital_unit": 8,
+          "person": 8,
+          "spm_unit": 5,
+          "tax_unit": 5
+        }
+      }
+    ],
+    "transient_outputs_carried_through_clone": {
+      "person": [
+        "employment_income_last_year"
+      ]
+    }
+  },
+  "runtime_source_commit": "f01964c7c71e1ae575ac4c16766dbdaed1a342d5",
+  "schema_version": 1,
+  "seed": 0,
+  "time_period": 2024
+}
