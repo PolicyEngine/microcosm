@@ -38,6 +38,8 @@ from microcosm.build.us_runtime.graph_housing_source import (
     _HOUSING_IMPLEMENTATION_MODULES,
     HOUSING_SOURCE_ACCEPTED_CONTEXT,
     HOUSING_SOURCE_DEPENDENCIES,
+    HOUSING_SOURCE_MEASURED,
+    HOUSING_SOURCE_MERGE,
     HOUSING_SOURCE_MERGE_POPULATION,
     HOUSING_SOURCE_POPULATION,
     HOUSING_SOURCE_PREFIX,
@@ -75,6 +77,25 @@ from microcosm.graph.errors import NodeRejectedError
 from microcosm.graph.population import dtype_for_token
 
 GOLDEN = Path(__file__).with_name("golden") / "us_housing_source_pre_graph.json"
+#: The production commit this dependent worktree branched from, and the runtime
+#: the direct oracle in ``GOLDEN`` was captured against.
+_UNEDITED_RUNTIME_COMMIT = "f01964c7c71e1ae575ac4c16766dbdaed1a342d5"
+#: The two direct-path modules as they stand in that unedited runtime. Pinned
+#: here by hand so that re-running the external capture script — which stamps
+#: whatever is live at capture time — cannot quietly re-baseline the oracle's
+#: provenance to the edited tree.
+_UNEDITED_MODULE_SHA256 = {
+    "housing_inputs": (
+        "d75607c047872889a8cee78808c057d9db5f6a75f5abff6343ea5a383447cfd1"
+    ),
+    "multispine_pool": (
+        "14975d40054decbc2929eea5805d976581a5df2548f4644f1a1bac0ace61ffdd"
+    ),
+}
+#: The only direct-path module this branch may move. It gains registered
+#: helpers additively; no existing selection semantics or merge formula change,
+#: which ``test_direct_pre_edit_oracle_is_unchanged`` proves by value.
+_DECLARED_MODULE_DRIFT = frozenset({"multispine_pool"})
 SEED = pool.POOL_RANDOM_SEED
 N_ESTIMATORS = 2
 NUMERIC_RAW = (
@@ -358,6 +379,25 @@ def _nodes(frame: Frame, descriptor: bytes, *, consumer=True, **kwargs):
     return tuple(nodes), columns
 
 
+def _population_key(frame: Frame) -> str:
+    """Key the stored population by its content, not by a constant.
+
+    Sibling graph tests pin their input under a fixed ``"a" * 64`` because they
+    run the graph once. The cache tests here run it twice with *different*
+    frames, so a constant key would make the second run replay the first
+    frame's cached source node and the change under test would never reach the
+    graph at all.
+    """
+    digest = hashlib.sha256()
+    for entity in sorted(frame.entities):
+        digest.update(entity.encode())
+        digest.update(frame.table(entity).to_json(orient="table").encode())
+    for entity in sorted(frame.weighted_entities):
+        digest.update(frame.weights_for(entity).values.tobytes())
+    digest.update(frame.strata.to_json(orient="table").encode())
+    return digest.hexdigest()
+
+
 def _setup(tmp_path, frame, *, donor_path=None, **kwargs):
     donor_path = _donor(tmp_path) if donor_path is None else Path(donor_path)
     donor_sha = _sha(donor_path)
@@ -384,7 +424,9 @@ def _setup(tmp_path, frame, *, donor_path=None, **kwargs):
     kernels.register(_Consumer())
     register_us_housing_source_kernels(kernels, source_codecs=codecs)
     store = ContentStore(tmp_path / "store", codecs=codecs)
-    population = ContentStore(tmp_path / "inputs").put_frame("a" * 64, frame)
+    population = ContentStore(tmp_path / "inputs").put_frame(
+        _population_key(frame), frame
+    )
     sources = {
         "population": population,
         rent_source.RENT_SOURCE_NAME: donor_path,
@@ -526,6 +568,36 @@ def test_direct_pre_edit_oracle_is_unchanged(tmp_path, golden):
     )
     eligibility = _direct_eligibility(housing.frame)
     assert _snapshot_frame(eligibility.frame) == golden["eligibility"]["frame"]
+
+
+def test_oracle_records_the_unedited_runtime_and_declares_every_drift(golden):
+    """The golden's provenance stamp is checked, not decorative.
+
+    ``module_sha256`` records the two direct-path modules as they stand in the
+    unedited runtime ``runtime_source_commit``. This branch is only allowed to
+    move ``multispine_pool``, and only additively: the rent science and the
+    measured derivation in ``housing_inputs`` must be byte-identical, because
+    the oracle's values were captured from them. A silent edit to either module
+    that is not declared here fails rather than quietly re-baselining the
+    oracle it is supposed to be checked against.
+    """
+    assert golden["runtime_source_commit"] == _UNEDITED_RUNTIME_COMMIT
+    assert golden["module_sha256"] == _UNEDITED_MODULE_SHA256
+    live = {
+        name: hashlib.sha256(
+            Path(importlib.util.find_spec(module.__name__).origin).read_bytes()
+        ).hexdigest()
+        for name, module in (
+            ("housing_inputs", housing_inputs),
+            ("multispine_pool", pool),
+        )
+    }
+    assert set(live) == set(_UNEDITED_MODULE_SHA256)
+    assert live["housing_inputs"] == _UNEDITED_MODULE_SHA256["housing_inputs"]
+    moved = {
+        name for name, digest in live.items() if digest != _UNEDITED_MODULE_SHA256[name]
+    }
+    assert moved == _DECLARED_MODULE_DRIFT
 
 
 # --------------------------------------------------------------------------
@@ -815,6 +887,36 @@ def test_numeric_tenure_incumbent_is_refused(tmp_path):
         _nodes(numeric, descriptor)
 
 
+def test_the_label_guard_decides_from_the_produced_values_like_the_merge():
+    """The merge picks its write path from the source, so the guard must too.
+
+    ``_merge_source_person_or_group_outputs`` branches on
+    ``_is_physical_boolean_series(source_values)``. A boolean incumbent with a
+    non-boolean produced column therefore still takes the unsafe label-based
+    write, and deciding from the incumbent alone would wave it through.
+    """
+    target = pd.DataFrame(
+        {
+            "spm_unit_id": [1, 2],
+            "leaf": pd.Series([True, False], dtype="boolean"),
+        },
+        index=pd.Index([7, 7], name="person_id"),
+    )
+    produced = pd.DataFrame({"spm_unit_id": [1, 2], "leaf": [1.5, 2.5]})
+    # Incumbent-only: boolean, so the old check saw nothing to refuse.
+    pool.assert_multispine_source_merge_labels_supported(
+        target, ["leaf"], entity="spm_unit", operator_name="with_us_housing_inputs"
+    )
+    with pytest.raises(ValueError, match="repeated index labels"):
+        pool.assert_multispine_source_merge_labels_supported(
+            target,
+            ["leaf"],
+            entity="spm_unit",
+            operator_name="with_us_housing_inputs",
+            source=produced,
+        )
+
+
 def test_repeated_person_labels_with_numeric_incumbent_are_refused(tmp_path):
     """The inherited shared-merge label seam is refused, not worked around."""
     frame = _relationship_base(_pool_frame())
@@ -889,6 +991,66 @@ def test_failed_completion_gate_leaves_downstream_unreached(tmp_path, monkeypatc
     gate = manifest.nodes[HOUSING_SOURCE_ACCEPTED_CONTEXT]
     assert gate.receipt["outcome"] == "fail"
     assert not gate.opaque_artifacts
+    _assert_unreached(manifest, ("after",))
+
+
+def test_gate_refuses_evidence_whose_pre_merge_native_digest_disagrees(
+    tmp_path, monkeypatch
+):
+    """The gate attests preservation, not the merge kernel's word for it.
+
+    The merge records the native cells as it saw them before writing and as
+    they stood after. A merge that reported a pre-merge digest disagreeing with
+    the post-merge one has not preserved the native cells, and the gate must
+    refuse it even though the post-merge digest still matches the final table.
+    """
+    frame = _relationship_base(_pool_frame())
+    original = USHousingMergeKernel.run
+
+    def tampered(self, context):
+        result = original(self, context)
+        payload = json.loads(result.artifacts["merge_evidence"])
+        assert payload["incumbent_cells"], "expected a carried native incumbent"
+        payload["incumbent_cells"][0]["digest"] = "0" * 64
+        return replace(
+            result,
+            artifacts={
+                **result.artifacts,
+                "merge_evidence": canonical_json(payload),
+            },
+        )
+
+    monkeypatch.setattr(USHousingMergeKernel, "run", tampered)
+    manifest, _store, _nodes_, _donor_path = _run(tmp_path, frame)
+    gate = manifest.nodes[HOUSING_SOURCE_ACCEPTED_CONTEXT]
+    assert gate.receipt["outcome"] == "fail"
+    assert not gate.opaque_artifacts
+    _assert_unreached(manifest, ("after",))
+
+
+def test_gate_requires_native_evidence_for_every_actual_parent_incumbent(
+    tmp_path, monkeypatch
+):
+    frame = _relationship_base(_pool_frame())
+    original = USHousingMergeKernel.run
+
+    def omitted(self, context):
+        result = original(self, context)
+        evidence = json.loads(result.artifacts["merge_evidence"])
+        assert evidence["native_cells"] and evidence["incumbent_cells"]
+        evidence["native_cells"] = []
+        evidence["incumbent_cells"] = []
+        return replace(
+            result,
+            artifacts={
+                **result.artifacts,
+                "merge_evidence": canonical_json(evidence),
+            },
+        )
+
+    monkeypatch.setattr(USHousingMergeKernel, "run", omitted)
+    manifest, _, _, _ = _run(tmp_path, frame)
+    assert manifest.nodes[HOUSING_SOURCE_ACCEPTED_CONTEXT].receipt["outcome"] == "fail"
     _assert_unreached(manifest, ("after",))
 
 
@@ -967,8 +1129,18 @@ def test_implementation_modules_exist_and_include_every_bound_seam():
     assert HOUSING_SOURCE_DEPENDENCIES == ("numpy", "pandas", "pyarrow")
 
 
-def test_live_housing_output_roster_is_bound_not_hardcoded(monkeypatch):
-    assert codec.housing_output_family() == {
+def test_live_housing_output_roster_is_bound_not_hardcoded():
+    """The five leaves are read from the registry, and are these five.
+
+    The literal below pins *which* leaves this recipe owns. The identity check
+    against `PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES` is what makes the name
+    true: the roster is the registered one, not a private copy that could drift
+    from it. `test_live_output_roster_is_read_from_the_registry` in the codec
+    suite covers the refusal when the registry disagrees.
+    """
+    from microcosm.build.us_runtime import operator_boundary
+
+    expected = {
         "person": ("pre_subsidy_rent",),
         "household": ("tenure_type",),
         "spm_unit": (
@@ -977,6 +1149,13 @@ def test_live_housing_output_roster_is_bound_not_hardcoded(monkeypatch):
             "takes_up_housing_assistance_if_eligible",
         ),
     }
+    assert codec.housing_output_family() == expected
+    registered = operator_boundary.PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+        "housing_inputs"
+    ]
+    assert {
+        entity: tuple(sorted(columns)) for entity, columns in registered.items()
+    } == expected
 
 
 # --------------------------------------------------------------------------
@@ -1009,9 +1188,23 @@ def test_recipient_changes_reuse_the_actual_fitted_forest(tmp_path, monkeypatch)
     )
     second, _, _, _ = _run(tmp_path, changed, resume="auto")
     fit = f"{rent.RENT_PREFIX}.fit.000"
+    # The recipient change must actually reach the graph, or "the fit was
+    # reused" would be satisfied by the whole run being a cache hit.
+    assert first.nodes["source"].key != second.nodes["source"].key
+    for node_id in (
+        HOUSING_SOURCE_POPULATION,
+        HOUSING_SOURCE_MEASURED,
+        f"{rent.RENT_PREFIX}.recipient",
+        f"{rent.RENT_PREFIX}.apply.000",
+        HOUSING_SOURCE_MERGE,
+        HOUSING_SOURCE_ACCEPTED_CONTEXT,
+    ):
+        assert first.nodes[node_id].key != second.nodes[node_id].key, node_id
+        assert not second.nodes[node_id].hit, node_id
     assert calls == [1]
     assert first.nodes[fit].key == second.nodes[fit].key
     assert second.nodes[fit].hit
+    assert second.nodes[f"{rent.RENT_PREFIX}.donor"].hit
 
 
 def test_donor_change_invalidates_the_fit(tmp_path):
