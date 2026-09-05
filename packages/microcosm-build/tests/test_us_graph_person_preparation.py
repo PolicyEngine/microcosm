@@ -706,6 +706,16 @@ def test_registered_observer_uses_actual_selected_weights_and_ids(monkeypatch, f
     assert not {"person_support_channel", "person_support_clone_index"} & set(
         selected.columns
     )
+    # The helper receives exactly the direct chain's available projection: role
+    # metadata removed and union-created all-null outputs omitted.
+    evidence = pool._cps_source_evidence_mask(frame, phase="pre_clone")
+    available = pool._without_unavailable_output_columns(
+        pool._source_available_projection(frame, evidence, phase="pre_clone"),
+        pool.PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+            "relationship_inputs" if family == "relationship" else "eligibility_inputs"
+        ],
+    )
+    assert list(selected.columns) == list(available.table("person").columns)
     canonical = frame.resolve_weights("person")
     assert weights.tobytes() == canonical.values[measured.to_numpy()].tobytes()
     assert len(set(weights.tolist())) > 1
@@ -1078,3 +1088,123 @@ def test_adapter_never_names_source_role_or_selection_columns():
         "without_support_role_metadata",
     ):
         assert token not in text
+
+
+@pytest.mark.parametrize("family", ("relationship", "eligibility"))
+def test_absent_cps_evidence_refuses_at_the_boundary(tmp_path, family):
+    """An empty source-evidence column refuses exactly as the direct chain does."""
+    frame = _upstream(family)
+    frame.person["PERIDNUM"] = pd.Series(
+        pd.NA, index=frame.person.index, dtype="string"
+    )
+    with pytest.raises(ValueError) as direct:
+        _direct(frame, _family_operator(family))
+    args, sources, store, kernels = _setup(tmp_path, frame, families=(family,))
+    with pytest.raises(NodeRejectedError) as graph:
+        run_graph(args, sources=sources, store=store, kernels=kernels)
+    assert str(direct.value) in str(graph.value)
+
+
+def test_eligibility_context_producer_seam_is_caller_controlled(tmp_path):
+    """Housing's slot is a caller-bound seam, not a neighbour this module names."""
+    frame = _frame()
+    with_seam, sources, store, kernels = _setup(tmp_path, frame)
+    without_seam, other_sources, other_store, other_kernels = _setup(
+        tmp_path / "direct",
+        frame,
+        families=("cps_carried", "hours", "prior_year", "relationship", "eligibility"),
+    )
+    seamed = run_graph(with_seam, sources=sources, store=store, kernels=kernels)
+    plain = run_graph(
+        without_seam,
+        sources=other_sources,
+        store=other_store,
+        kernels=other_kernels,
+    )
+    _assert_equal(
+        seamed.population(f"{ELIGIBILITY_NODE}.boundary"),
+        plain.population(f"{ELIGIBILITY_NODE}.boundary"),
+    )
+    assert canonical_json(
+        seamed.node(ELIGIBILITY_NODE).receipt["source_preparation"]
+    ) == canonical_json(plain.node(ELIGIBILITY_NODE).receipt["source_preparation"])
+    boundary = next(
+        node
+        for node in with_seam.graph.nodes
+        if node.id == f"{ELIGIBILITY_NODE}.boundary"
+    )
+    assert boundary.artifact_inputs[0].producer == "early_preparation.housing_seam"
+    pending = replace(
+        boundary,
+        artifact_inputs=(replace(boundary.artifact_inputs[0], producer=HOURS_PHASE),),
+    )
+    with pytest.raises(ValueError, match="type"):
+        compile_graph(
+            replace(
+                with_seam.graph,
+                nodes=tuple(
+                    pending if node.id == boundary.id else node
+                    for node in with_seam.graph.nodes
+                ),
+            )
+        )
+
+
+def test_person_preparation_never_constructs_a_qrf():
+    """Neither deterministic family carries a quantile-forest path."""
+    for module in (relationship, eligibility):
+        assert not hasattr(module, "QRF")
+    text = Path(
+        import_module("microcosm.build.us_runtime.graph_person_preparation").__file__
+    ).read_text()
+    assert "QRF" not in text
+
+
+def test_changed_implementation_identity_invalidates_the_cached_node(
+    tmp_path, monkeypatch
+):
+    frame = _upstream("relationship")
+    args, sources, store, kernels = _setup(tmp_path, frame, families=("relationship",))
+    first = run_graph(
+        args, sources=sources, store=store, kernels=kernels, resume="auto"
+    )
+    replayed = run_graph(
+        args, sources=sources, store=store, kernels=kernels, resume="auto"
+    )
+    assert replayed.node(RELATIONSHIP_NODE).hit
+    target = Path(
+        import_module("microcosm.build.us_runtime.graph_person_preparation").__file__
+    ).resolve()
+    original = Path.read_bytes
+    monkeypatch.setattr(
+        Path,
+        "read_bytes",
+        lambda path: (
+            original(path) + b"\n# independent revision\n"
+            if path.resolve() == target
+            else original(path)
+        ),
+    )
+    revised = run_graph(
+        args, sources=sources, store=store, kernels=kernels, resume="auto"
+    )
+    assert not revised.node(RELATIONSHIP_NODE).hit
+    _assert_equal(
+        revised.population(f"{RELATIONSHIP_NODE}.boundary"),
+        first.population(f"{RELATIONSHIP_NODE}.boundary"),
+    )
+
+
+def test_adapter_carries_no_source_fence_exemption():
+    spec = importlib.util.spec_from_file_location(
+        "_person_preparation_blindness",
+        Path(__file__).with_name("test_us_spine_blindness.py"),
+    )
+    blindness = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = blindness
+    spec.loader.exec_module(blindness)
+    assert (
+        "graph_person_preparation.py" not in blindness._SOURCE_SPINE_PROVENANCE_OWNERS
+    )
+    assert "graph_person_preparation.py" in blindness._OTHER_US_RUNTIME_MODULES
+    assert "graph_person_preparation.py" in blindness._CLASSIFIED_US_RUNTIME_MODULES
