@@ -1,0 +1,52 @@
+# Native-compiler regression for two declarations that lower to the same
+# dense relation key with disjoint related inputs. The current PyO3 batch
+# conversion overwrites one declaration; Microcosm must refuse this module
+# before execution until Axiom exposes a safe union capability.
+format: rulespec/v1
+module:
+  summary: |-
+    microcosm-frame duplicate dense-relation-key capability fixture.
+units:
+  - name: EUR
+    kind: currency
+    minor_units: 2
+rules:
+  - name: member_of_household
+    kind: data_relation
+    data_relation:
+      arity: 2
+  - name: toy_member_is_eligible
+    kind: derived
+    entity: Person
+    dtype: Judgment
+    versions:
+      - effective_from: '2025-01-01'
+        formula: toy_is_eligible
+  - name: eligible_member_of_household
+    kind: derived_relation
+    derived_relation:
+      arity: 2
+      source_relation: zz:policies/tests/axiom_toy_duplicate_relation#relation.member_of_household
+    versions:
+      - effective_from: '2025-01-01'
+        formula: toy_member_is_eligible
+  - name: toy_household_income
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Year
+    unit: EUR
+    source: populace-frame relation fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: sum(member_of_household.toy_taxable_income)
+  - name: toy_eligible_household_income
+    kind: derived
+    entity: Household
+    dtype: Money
+    period: Year
+    unit: EUR
+    source: populace-frame relation fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: sum(eligible_member_of_household.toy_other_income)

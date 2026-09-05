@@ -1,3 +1,65 @@
+# Axiom relation-adapter review repair
+
+## State
+
+Complete locally on 2026-08-31 from exact adapter commit `f07b79fb`. All six
+review findings are repaired or fail closed at their true owner boundary. No
+push, PR, merge, publication, or external Axiom repository change occurred.
+
+## Done
+
+- Read `AGENTS.md`, `CLAUDE.md`, and the GitNexus debugging workflow.
+- Confirmed the worktree was clean at `f07b79fb` on
+  `feature/axiom-relation-bindings`, one commit above `origin/main`.
+- Read `/tmp/armenia-relation-review.md` and recorded all six required repair
+  areas: native duplicate-key behavior, owned execution snapshots and live
+  revalidation, general receipt IDs, naturally empty link tables, live output
+  authentication, and ordinary materialize sequence compatibility.
+- Confirmed GitNexus graph tools are unavailable in this session; source and
+  call-site tracing is the documented fallback.
+- Confirmed the live branch remained based on current `origin/main` at
+  `d1e3e397`; the only intervening commit was this lane's repair journal.
+- Reproduced the native defect in an actual compiled RuleSpec: a filtered
+  derived relation and its source relation expose two PyO3 schemas with the
+  same batch key and disjoint inputs. The current Rust conversion overwrites
+  one schema. Microcosm now rejects this exact unsafe shape before execution,
+  with a native regression, until Axiom exposes a safe union capability.
+- Moved all root and related dense inputs onto owned NumPy snapshots, hashed
+  them before execution, and re-hashes them afterward. The adapter revalidates
+  the live Frame after execution and verifies the complete live input/output
+  receipt before returning. Adversarial tests cover root-snapshot mutation,
+  relation-snapshot mutation, and concurrent live-frame mutation.
+- Generalized receipt and relation IDs from signed-int64-only to homogeneous
+  integer or string IDs. Integers retain the existing canonical int64 bytes;
+  strings use canonical JSON UTF-8. Relation matching uses internal positions,
+  so relation-free and relation-backed string-keyed Frames both materialize.
+- Canonicalized naturally empty object-typed edge columns against the linked
+  entity ID family. Both fake and real Axiom executions accept an empty link
+  table and return a valid all-zero relation result.
+- Made live output arrays mandatory for receipt verification. The verifier now
+  checks exact output names, entity cardinality, declared dtype/period
+  coherence, canonical encoding/storage pairs, and recomputed live identities.
+- Restored ordinary `materialize` compatibility: empty requests validate and
+  return `{}`, and duplicate variable names remain harmless. The stricter
+  receipted surface still requires a nonempty unique request.
+- Focused adapter verification passes with the native extension: 69 passed,
+  4 skipped (only the expected missing rulespec-be pilot and installed-engine
+  inverse skip). The complete frame shard passes 303 tests with 25 dependency
+  skips. Repository Ruff, focused Ruff format, `git diff --check`, and the
+  317-file CI inventory verifier all pass.
+
+## Next
+
+- Dispatcher review, rebase of the policy-materialization lane onto this
+  repaired adapter, then PR/Fable gating.
+- Filtered/composed relations that emit a repeated native batch key remain
+  deliberately unavailable until Axiom fixes or advertises safe union
+  conversion; ordinary one-schema relations execute normally.
+- Related-side engine entity names remain an outer signed-manifest/runtime-pin
+  responsibility because Axiom's current relation schema does not expose them.
+
+---
+
 # ACS predictor release join
 
 > **Historical note (2026-08-28).** This journal describes the
