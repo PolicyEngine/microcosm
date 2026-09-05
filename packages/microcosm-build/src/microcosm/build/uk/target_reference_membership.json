@@ -1,14 +1,13 @@
 {
   "source_fact_feed": ".codex-work/consumer_facts_uk.jsonl",
   "target_period": 2025,
-  "candidate_count": 417,
-  "contract_target_count": 189,
-  "active_reference_count": 408,
+  "candidate_count": 430,
+  "contract_target_count": 202,
+  "active_reference_count": 415,
   "status_counts": {
-    "active": 408,
-    "multi_fact": 1,
+    "active": 415,
     "no_fact_at_or_before_period": 7,
-    "signed_excluded": 1
+    "signed_excluded": 8
   },
   "geography_pins": {
     "obr.income_tax": {
@@ -766,9 +765,62 @@
     "dwp.uc.households": {
       "geography_level": "country",
       "geography_id": "K03000001"
+    },
+    "hmrc.tfc.government_top_up": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.tfc.children_with_used_accounts": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "dfe.funded_childcare.working_parent_children_2_to_4": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dfe.funded_childcare.early_learning_2_year_olds": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dfe.funded_childcare.universal_only_children": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_fare_receipts.england": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_net_support.england": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_fare_receipts.london": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_net_support.london": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_fare_receipts.england_outside_london": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_net_support.england_outside_london": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_fare_receipts.uk": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dft.bus_net_support.uk": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
     }
   },
   "genuine_sum_residue": [
+    "dfe.funded_childcare.working_parent_children_2_to_4",
     "obr.esa",
     "ons.population.age_0_9_by_region",
     "ons.population.age_10_19_by_region",
@@ -1574,12 +1626,12 @@
     },
     {
       "name": "hmrc.cgt.taxpayers_total",
-      "from": "2023",
+      "from": "2024",
       "to": "2025"
     },
     {
       "name": "hmrc.cgt.gains_total",
-      "from": "2023",
+      "from": "2024",
       "to": "2025"
     },
     {
@@ -1609,552 +1661,552 @@
     },
     {
       "name": "dwp.uc.households_children_1",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp.uc.households_children_2",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp.uc.households_children_3",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp.uc.households_children_4",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp.uc.households_children_5_or_more",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp.uc.households_single_no_children",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp.uc.households_single_with_children",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp.uc.households_couple_no_children",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp.uc.households_couple_with_children",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_0_to_1_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_1_200_to_2_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_12_000_to_13_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_13_200_to_14_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_14_400_to_15_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_15_600_to_16_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_16_800_to_18_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_18_000_to_19_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_19_200_to_20_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_20_400_to_21_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_21_600_to_22_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_22_800_to_24_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_2_400_to_3_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_24_000_to_25_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_25_200_to_26_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_26_400_to_27_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_27_600_to_28_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_3_600_to_4_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_4_800_to_6_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_6_000_to_7_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_7_200_to_8_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_8_400_to_9_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_9_600_to_10_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/SINGLE_annual_payment_10_800_to_12_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_0_to_1_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_1_200_to_2_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_12_000_to_13_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_13_200_to_14_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_14_400_to_15_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_15_600_to_16_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_16_800_to_18_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_18_000_to_19_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_19_200_to_20_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_20_400_to_21_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_21_600_to_22_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_22_800_to_24_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_2_400_to_3_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_24_000_to_25_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_25_200_to_26_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_26_400_to_27_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_27_600_to_28_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_28_800_to_30_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_3_600_to_4_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_4_800_to_6_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_6_000_to_7_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_7_200_to_8_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_8_400_to_9_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_9_600_to_10_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_10_800_to_12_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_0_to_1_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_1_200_to_2_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_12_000_to_13_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_13_200_to_14_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_14_400_to_15_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_15_600_to_16_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_16_800_to_18_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_18_000_to_19_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_19_200_to_20_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_20_400_to_21_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_21_600_to_22_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_22_800_to_24_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_2_400_to_3_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_24_000_to_25_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_25_200_to_26_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_26_400_to_27_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_27_600_to_28_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_28_800_to_30_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_3_600_to_4_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_4_800_to_6_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_6_000_to_7_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_7_200_to_8_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_8_400_to_9_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_9_600_to_10_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_10_800_to_12_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_0_to_1_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_1_200_to_2_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_12_000_to_13_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_13_200_to_14_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_14_400_to_15_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_15_600_to_16_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_16_800_to_18_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_18_000_to_19_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_19_200_to_20_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_20_400_to_21_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_21_600_to_22_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_22_800_to_24_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_2_400_to_3_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_24_000_to_25_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_25_200_to_26_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_26_400_to_27_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_27_600_to_28_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_28_800_to_30_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_3_600_to_4_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_4_800_to_6_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_6_000_to_7_200",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_7_200_to_8_400",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_8_400_to_9_600",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_9_600_to_10_800",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_10_800_to_12_000",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
       "name": "dwp.uc.scotland_households_child_under_1",
-      "from": "2025-05",
+      "from": "2025-12",
       "to": "2025"
     },
     {
@@ -2650,6 +2702,21 @@
     {
       "name": "dwp.uc.households",
       "from": "2025-12",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_2_to_4",
+      "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.early_learning_2_year_olds",
+      "from": "2025-01",
+      "to": "2025"
+    },
+    {
+      "name": "dfe.funded_childcare.universal_only_children",
+      "from": "2025-01",
       "to": "2025"
     }
   ],
@@ -4015,7 +4082,7 @@
           "status": "signed_excluded",
           "matched_fact_count_overall": 13,
           "matched_fact_count_at_or_before_period": 13,
-          "signed_rationale": "Signed out pending a first-class value-scaling operation or a Chronicle package for HMRC Property Rental Income Statistics with declared reconciliation: the Ledger facts are official HMRC SPI Table 3.7 net property-income amounts, while the incumbent calibration target applies the populace-side x1.9 property-income undercount adjustment. The x1.9 trace is policyengine-uk-data PR #311 / issue policyengine-uk-data#230: SPI covers only taxpayers with liability, and HMRC Property Rental Income Statistics show GBP 46.68bn versus SPI about GBP 24.5bn for 2020-21. Binding the raw SPI facts would knowingly calibrate to 10/19 of the incumbent surface."
+          "signed_rationale": "Signed out pending a first-class value-scaling operation or a Chronicle package for HMRC Property Rental Income Statistics with declared reconciliation: the Ledger facts are official HMRC SPI Table 3.7 net property-income amounts, while the incumbent calibration target applies the populace-side x1.9 property-income undercount adjustment. The x1.9 trace is uk-data PR #311 / issue uk-data#230: SPI covers only taxpayers with liability, and HMRC Property Rental Income Statistics show GBP 46.68bn versus SPI about GBP 24.5bn for 2020-21. Binding the raw SPI facts would knowingly calibrate to 10/19 of the incumbent surface."
         }
       ]
     },
@@ -4700,12 +4767,12 @@
         {
           "name": "hmrc.cgt.taxpayers_total",
           "status": "active",
-          "matched_fact_count_overall": 37,
-          "matched_fact_count_at_or_before_period": 37,
+          "matched_fact_count_overall": 38,
+          "matched_fact_count_at_or_before_period": 38,
           "resolved_period": 2025,
-          "resolved_value": 378000.0,
-          "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_78fb64bd2e9774df4b2f2d56"
+          "resolved_value": 584000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ec8cf88ffb8304ce72228e8b"
         }
       ]
     },
@@ -4715,12 +4782,12 @@
         {
           "name": "hmrc.cgt.gains_total",
           "status": "active",
-          "matched_fact_count_overall": 37,
-          "matched_fact_count_at_or_before_period": 37,
+          "matched_fact_count_overall": 38,
+          "matched_fact_count_at_or_before_period": 38,
           "resolved_period": 2025,
-          "resolved_value": 65937000000.0,
-          "resolved_fact_period": "2023",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1b082e386beee3c6900e9dfa"
+          "resolved_value": 127316000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a9969c2a306f713f6bb203fc"
         }
       ]
     },
@@ -4829,12 +4896,12 @@
         {
           "name": "dwp.uc.households_children_1",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 1269512.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_644c4f00ec93656261edcf42"
+          "resolved_value": 1278537.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_75d899ad408d26f0c2a0b4b2"
         }
       ]
     },
@@ -4844,12 +4911,12 @@
         {
           "name": "dwp.uc.households_children_2",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 1103880.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_9ab84c46af8587c44e728bf3"
+          "resolved_value": 1100617.5555555555,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_970b3f74426e7a9ca57d4f3f"
         }
       ]
     },
@@ -4859,12 +4926,12 @@
         {
           "name": "dwp.uc.households_children_3",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 497665.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_6dcdc6d11cf3afee5beeffa6"
+          "resolved_value": 494553.22222222225,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8d071172a1212492c8895356"
         }
       ]
     },
@@ -4874,12 +4941,12 @@
         {
           "name": "dwp.uc.households_children_4",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 176202.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_615b1a43ca3d51a46d4f46a6"
+          "resolved_value": 174668.88888888888,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d46a42194825aa8ac424c18d"
         }
       ]
     },
@@ -4889,12 +4956,12 @@
         {
           "name": "dwp.uc.households_children_5_or_more",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 77894.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d0e380e6527f49dd3585c634"
+          "resolved_value": 77376.77777777778,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c672eb5959db157315a3a3e6"
         }
       ]
     },
@@ -4904,12 +4971,12 @@
         {
           "name": "dwp.uc.households_single_no_children",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 3191316.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_459c91f3fc3a98a523da443f"
+          "resolved_value": 3446962.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8f37a13228973c48fc995636"
         }
       ]
     },
@@ -4919,12 +4986,12 @@
         {
           "name": "dwp.uc.households_single_with_children",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 2213760.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_41f5ed85cf8b0bb1e30ed3c0"
+          "resolved_value": 2226220.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0e4512db88ae6dfb508d365d"
         }
       ]
     },
@@ -4934,12 +5001,12 @@
         {
           "name": "dwp.uc.households_couple_no_children",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 266160.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_db1b0c763265b66903558f63"
+          "resolved_value": 284345.55555555556,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5d1c98b108eaac7236138260"
         }
       ]
     },
@@ -4949,12 +5016,12 @@
         {
           "name": "dwp.uc.households_couple_with_children",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 911392.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d4b90e6010117d5593724efa"
+          "resolved_value": 899534.6666666666,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_388f703e509e490c85497a81"
         }
       ]
     },
@@ -4964,252 +5031,252 @@
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_0_to_1_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 101189.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_7c22cffc1a38778c7c43ed3c"
+          "resolved_value": 89479.33333333333,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2ab0a2ad4fff5a73eb430af0"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_1_200_to_2_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 121018.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d3e756c93a3c0143508d1266"
+          "resolved_value": 127403.22222222222,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4da96f3f87204e3b63a7197e"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_12_000_to_13_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 106102.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_7403d7adc181e8d2f6c832d0"
+          "resolved_value": 122035.55555555556,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_100f173ee4233f5ed3616bbc"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_13_200_to_14_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 182183.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b7e5703a6a7e90d9384d821e"
+          "resolved_value": 197163.22222222222,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_263205affbfb94c0a87b7834"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_14_400_to_15_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 191730.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_40ccf757e12c655dde7c28a9"
+          "resolved_value": 209497.33333333334,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f4e51bd6399c4a72f10e625f"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_15_600_to_16_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 130302.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_5495d957950548ee5265e578"
+          "resolved_value": 149963.22222222222,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_746aa1e8d116c4543251b137"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_16_800_to_18_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 86110.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_7f32751b273236019d0798b0"
+          "resolved_value": 108689.66666666667,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0dc82a9ba1ce7a8ea1855991"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_18_000_to_19_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 47330.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_52effa75479c574acf4134d9"
+          "resolved_value": 61718.666666666664,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4399ab26a944d2d46a12311d"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_19_200_to_20_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 27065.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_073ef8770019305805c7074e"
+          "resolved_value": 34050.444444444445,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b8ab0a63fbef46e02aa34d37"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_20_400_to_21_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 18536.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_05d7866882726d294cb2b698"
+          "resolved_value": 22338.333333333332,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d22d996cd3edb838030ab0dc"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_21_600_to_22_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 12726.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ed6eafde744f64d26d82dbf2"
+          "resolved_value": 14685.777777777777,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_404ce9f1ea3e17ec602a1de9"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_22_800_to_24_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 9793.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_16597c41c14d5cebd04c4378"
+          "resolved_value": 11133.666666666666,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d2268373d3e5894e10f3f004"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_2_400_to_3_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 173855.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_92ccc0cdeecc8d39c5addbbc"
+          "resolved_value": 197136.66666666666,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_37e9e071fb187dab220f3876"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_24_000_to_25_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 6398.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fd890e1b94309f81f9ec55bb"
+          "resolved_value": 6951.222222222223,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8af773c191130cd03d9de884"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_25_200_to_26_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 6020.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_afeee8c7da377064d0933593"
+          "resolved_value": 6508.222222222223,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f46b09c321cf98f8e0d12b89"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_26_400_to_27_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 5488.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_9745e30f3384edf22e35cded"
+          "resolved_value": 5913.444444444444,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a763ca2d87febd61de26d8b0"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_27_600_to_28_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 1829.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_9327cf3a591e2df94e342811"
+          "resolved_value": 1884.111111111111,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8b6d8894debcbda5e38c0923"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 1543.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_029a3e490eb607ddc8e6e0e8"
+          "resolved_value": 1653.7777777777778,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_aa3077a36f37ae73562e57fc"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_3_600_to_4_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 369404.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_014f43c525c174241f9ae3f2"
+          "resolved_value": 377063.1111111111,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_988e854b9584a36b1b62810f"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_4_800_to_6_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 197717.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_6f4d510b41bea88731dbad53"
+          "resolved_value": 195983.22222222222,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7a3e7c9563c15ba28ffd3c3e"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_6_000_to_7_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 106706.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_7b0eac6a3e7fa0fdf30ae20b"
+          "resolved_value": 114033.33333333333,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_294fdb23cc02a98334267137"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_7_200_to_8_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 143277.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b956dc2e29d5cd357cfb526e"
+          "resolved_value": 149043.77777777778,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5d4a92d292c96a2f440dee5a"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_8_400_to_9_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 379652.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b66198d395778d35ce86a34a"
+          "resolved_value": 399750.22222222225,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ad92f85c0ac85ea7bb6e8ca3"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_9_600_to_10_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 341457.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3818f2d9e159770543dac328"
+          "resolved_value": 386411.6666666667,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e2bbf1fe386cfcd8db712026"
         },
         {
           "name": "dwp/uc_payment_dist/SINGLE_annual_payment_10_800_to_12_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 94296.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1cf99ad91d162c4b4a10ba6d"
+          "resolved_value": 104891.11111111111,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_de2719af6e4d5f9ffe65aaee"
         }
       ]
     },
@@ -5219,252 +5286,252 @@
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_0_to_1_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 24828.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_4273e312b98b380662c03f93"
+          "resolved_value": 26670.222222222223,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7b17c88cf49645b2d3ef44a6"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_1_200_to_2_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 34587.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0694e810a066ab1790440425"
+          "resolved_value": 36208.11111111111,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_765ace417ceafd524ffda4c0"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_12_000_to_13_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 129699.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b673f0ea23294b3fa927464d"
+          "resolved_value": 125798.44444444444,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eaddee052a3861f259b93272"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_13_200_to_14_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 129699.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_960bd045472cf623c35cf664"
+          "resolved_value": 129133.66666666667,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b8d66013c8a68e423f507be8"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_14_400_to_15_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 117812.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_210996567d5bf54f88063c27"
+          "resolved_value": 115856.66666666667,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1bc84efe74c485d143caab7b"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_15_600_to_16_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 128991.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_222b9723363faf4129bbdf63"
+          "resolved_value": 125660.22222222222,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e26d2d7e425a94fd9fde3d17"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_16_800_to_18_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 139675.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3dd7c7c9e33c076b3d69bc58"
+          "resolved_value": 135836.77777777778,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8fa2e062c33297530d458054"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_18_000_to_19_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 134650.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0c94d038c83605df1791d447"
+          "resolved_value": 135444.88888888888,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_77cb72042ffb9b2b1af769e3"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_19_200_to_20_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 106818.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_5a7d3c0f71bf8db13f2a649a"
+          "resolved_value": 106341.88888888889,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_acb89a96425fd7af119e0c3b"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_20_400_to_21_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 86255.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_bea1b398332d1d61c0471393"
+          "resolved_value": 85490.44444444444,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3aa5825f5e5e8dbc570c0af1"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_21_600_to_22_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 80273.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fd5aac9d266aee092d14bd76"
+          "resolved_value": 80226.88888888889,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c5a0ee450c3ad7f882dfb167"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_22_800_to_24_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 70319.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_44b81b3b7676500a87a60938"
+          "resolved_value": 71259.55555555556,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_13ffca0d11c038fc7d096ec9"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_2_400_to_3_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 43550.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a316ad8358830ca46c06b8a3"
+          "resolved_value": 46312.77777777778,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6619e26753d01d76247e1759"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_24_000_to_25_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 50805.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_bd5c3628d5556986948de1a5"
+          "resolved_value": 51301.666666666664,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4a935006e5c346bfe0009055"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_25_200_to_26_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 43132.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_6a09ee4de44449dfc8c84307"
+          "resolved_value": 43305.22222222222,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e64560bd9c14d083cd03c985"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_26_400_to_27_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 34342.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_44655134e1437b8245aadfd5"
+          "resolved_value": 34910.555555555555,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8e16d0c97924701eb074c25d"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_27_600_to_28_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 27650.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_06c7d10a8b8ad631c14e5aa2"
+          "resolved_value": 28513.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cf9757018b0d313f20342b59"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_28_800_to_30_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 22058.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b138657095f80dfd0a4ba4dc"
+          "resolved_value": 22593.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6bede883f015e48e86c0a2de"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_3_600_to_4_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 55560.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_6d87d6eb32df7d87c29c57f7"
+          "resolved_value": 60310.11111111111,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b0710535c8b6006db118eb3b"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_4_800_to_6_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 68058.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_54b83995b46b86deae16f2a3"
+          "resolved_value": 67858.66666666667,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b4008c8b22190b4ee185d4f6"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_6_000_to_7_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 89174.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_cc4b36a430821375a2ed82e0"
+          "resolved_value": 89577.44444444444,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1d1fadffae053bf60d7fcd7e"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_7_200_to_8_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 117236.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_cf9c6c694bfbd98b7fb42670"
+          "resolved_value": 116076.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fae65610a14d6c22f475d757"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_8_400_to_9_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 98877.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_397b502ee3e68b1b94361cd8"
+          "resolved_value": 97511.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_540c0869e23edc4a402166bf"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_9_600_to_10_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 102069.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_28de432bddc47503ed9234dc"
+          "resolved_value": 102343.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a170bf444a17ae88a80766b0"
         },
         {
           "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_10_800_to_12_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 125466.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_8a9d5f54da5f13cda4d7c879"
+          "resolved_value": 123718.11111111111,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b7d0d6add859217e797a66ea"
         }
       ]
     },
@@ -5474,252 +5541,252 @@
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_0_to_1_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 7553.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_822a65a1958c79035950ef6d"
+          "resolved_value": 7506.333333333333,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e8af6f4ef9d70ded4a4bf6b5"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_1_200_to_2_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 8732.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_8f96da01c8e98a3e520ad3af"
+          "resolved_value": 8797.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_28514ff922f7b00a4706e74b"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_12_000_to_13_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 15096.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1320bfc5a74354fc0b932e45"
+          "resolved_value": 16121.444444444445,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8b8e20276b7af9f670009f64"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_13_200_to_14_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 12422.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_266208dfcf14fec7202d3f81"
+          "resolved_value": 13317.333333333334,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_22e83b92481a8b2267a15309"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_14_400_to_15_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 17851.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2ad978ed7754cd1bff3ec521"
+          "resolved_value": 19657.333333333332,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_42f1cbfe9fee5eb33f69088d"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_15_600_to_16_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 14493.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_703d368c208e2bbfdd0ee5f8"
+          "resolved_value": 16443.222222222223,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_aed9bf66bdbc046ee991fcf5"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_16_800_to_18_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 11914.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2326bacf548613787d0e5265"
+          "resolved_value": 13441.111111111111,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7ccb1420b8ca3e26048291b9"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_18_000_to_19_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 9478.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3c8b4dcf3516206f4f91536f"
+          "resolved_value": 10728.555555555555,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a7057ddde3cd2ffaed246687"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_19_200_to_20_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 8479.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_64fc1a0b6ffa5d083131e00f"
+          "resolved_value": 9653.222222222223,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3e228ab480713f15af6e847c"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_20_400_to_21_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 5764.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_61477c25c1bda2189013f5d8"
+          "resolved_value": 6486.888888888889,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ecfd0dfe25ebc098ade1e902"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_21_600_to_22_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 3525.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1bfbe99d32b115fb101c16f3"
+          "resolved_value": 3981.8888888888887,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2bbf9ab64d9fde9025452375"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_22_800_to_24_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 2356.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e7b1f279ad3f7193ae68fc74"
+          "resolved_value": 2761.4444444444443,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f19a927835e2aa12a94f6279"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_2_400_to_3_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 11606.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d4d9c99c13e5ffddf9807229"
+          "resolved_value": 12256.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_46ba331006269a96f7aee844"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_24_000_to_25_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 1797.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_64cb01bb1cff7752e7ac9fd6"
+          "resolved_value": 2131.222222222222,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dd2ddbef54fc0ec48f61d7b0"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_25_200_to_26_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 1214.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c3cdf2a650039f3befb16629"
+          "resolved_value": 1475.3333333333333,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3ea2b4312343be8d41a37265"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_26_400_to_27_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 958.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_03928eb7a88eb005e4e749af"
+          "resolved_value": 1073.7777777777778,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_55cf1a8742443b096e81b33e"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_27_600_to_28_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 654.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_4f7d04b28e459dfa105f04a2"
+          "resolved_value": 746.3333333333334,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6cd7a2f97a5e43ba25481719"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_28_800_to_30_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 578.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d6b8079542fdf9ba694c65d4"
+          "resolved_value": 605.7777777777778,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3f50c2d6d58a3a45681f0c5d"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_3_600_to_4_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 10672.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_58fdd30eacb059011b021576"
+          "resolved_value": 10945.444444444445,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0ead4e96f4e609a16cf1e53e"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_4_800_to_6_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 12199.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_47d90f6b52d026e685875309"
+          "resolved_value": 12492.444444444445,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6823b2987ba44d1b85428d2b"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_6_000_to_7_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 12405.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_082b5365b7fdf6c1c7040844"
+          "resolved_value": 12979.666666666666,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3a3fc258bd18da8c60177380"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_7_200_to_8_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 15632.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_065a04ded463b0db36bc03f1"
+          "resolved_value": 16484.444444444445,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b75ef335d484f8dd9ae13a70"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_8_400_to_9_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 14298.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_398a20f6c941d7755751b050"
+          "resolved_value": 15272.444444444445,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fcd000da1af753b61c9ac5df"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_9_600_to_10_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 17626.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3d6203f0f1f7d8a09fbbd123"
+          "resolved_value": 19142.333333333332,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3d38fa50aa9bf0e85549ec9a"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_10_800_to_12_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 12318.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_81b85753a70cc5e10a83f605"
+          "resolved_value": 13313.333333333334,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6697a9dc6c88a1a0b0472a1e"
         }
       ]
     },
@@ -5729,252 +5796,252 @@
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_0_to_1_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 18896.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e61e3d1fb68d75f854dd7925"
+          "resolved_value": 19073.555555555555,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8c1548028e499fa8399d1246"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_1_200_to_2_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 22614.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_8d35301acbeaea0ec16d784b"
+          "resolved_value": 22775.777777777777,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff2fef9bd96e583203e111d6"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_12_000_to_13_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 41349.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_9d5313777ece292ab0076e87"
+          "resolved_value": 40009.555555555555,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fee1fd2227a87871edfe2bfa"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_13_200_to_14_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 40850.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_532aa299693f3fa7546b54ca"
+          "resolved_value": 39972.555555555555,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3b0427c86dc3df13761ab5b0"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_14_400_to_15_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 42101.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1bc71ee7fea828fe2503e115"
+          "resolved_value": 40518.77777777778,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bfd9a57597b46f356ef9cfc9"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_15_600_to_16_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 38379.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_5975a3ac278b3656e0f56800"
+          "resolved_value": 37118.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_328ed88b561971d4ee47d852"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_16_800_to_18_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 38725.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fa8e258f094fc3ec208b2813"
+          "resolved_value": 37177.77777777778,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c50c761ddfaab3cbfba62bfd"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_18_000_to_19_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 38124.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_031b8e5a3da66a77e7116170"
+          "resolved_value": 37164.555555555555,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_74d32efc9f1984f60cbd9397"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_19_200_to_20_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 33871.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_287bb8dc3393d9ebe342c045"
+          "resolved_value": 33309.555555555555,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_90b7e15c6554b1c74e7055f3"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_20_400_to_21_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 29950.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_9d97c8b17ae6e786901f969a"
+          "resolved_value": 29102.555555555555,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_96f9b06f2d2afb65af9a224a"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_21_600_to_22_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 28186.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fa0e34a52ba5fb25f60b470c"
+          "resolved_value": 27534.666666666668,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e65a50de282324e8c188863a"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_22_800_to_24_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 25960.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_12f9a2c5aa63563eae9aef60"
+          "resolved_value": 25584.777777777777,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_16f48d435925ffa44f4d6871"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_2_400_to_3_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 26768.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1df3a18d5e1e627972812530"
+          "resolved_value": 26502.666666666668,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_93fd0534df01d1dade53397e"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_24_000_to_25_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 23231.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0c182b7ed2813f434c7faf96"
+          "resolved_value": 22927.777777777777,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ffb787487a36c86f94d25a25"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_25_200_to_26_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 20598.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_89cd3e4f357479a172b9e1a4"
+          "resolved_value": 20334.666666666668,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2f4d504be6f184b7834f2687"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_26_400_to_27_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 17650.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1cfec0935e609d67288403ee"
+          "resolved_value": 17535.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_719022eef2836c069c4b02d0"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_27_600_to_28_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 15499.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_14e996afeb0a61b020c8e38a"
+          "resolved_value": 15399.888888888889,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3b1d8f6516b32e39ecad3873"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_28_800_to_30_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 12912.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_59b6b903ae94ade8466c9f8f"
+          "resolved_value": 12836.222222222223,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_115a9ea1e35d76db13756149"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_3_600_to_4_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 29288.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0bedfcd27e528d6ad1ede930"
+          "resolved_value": 29027.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_255e8c862df5351282c29809"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_4_800_to_6_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 33072.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_53248eeb98cd236f5f3474d3"
+          "resolved_value": 32427.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_32261034f242507c0a7337b3"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_6_000_to_7_200",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 35834.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e5dd88072bae31da148f1987"
+          "resolved_value": 34956.88888888889,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6f40664df124c4dca50524b8"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_7_200_to_8_400",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 38337.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f9ceb07914176c0c6e3b7306"
+          "resolved_value": 37410.77777777778,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_27b091b1a00bc33ab68139f8"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_8_400_to_9_600",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 40556.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f010d0b94b60241806a2ccac"
+          "resolved_value": 39910.333333333336,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_22b16b470c0b51499fb2f042"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_9_600_to_10_800",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 40399.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_359b4b0c64a9f950a630fd06"
+          "resolved_value": 39368.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7dbca9e2f8508f1066399b73"
         },
         {
           "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_10_800_to_12_000",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 41858.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_010fe13b9bcf93223a51f16b"
+          "resolved_value": 40805.444444444445,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_23cf62e7e58211e783c52d2e"
         }
       ]
     },
@@ -5984,12 +6051,12 @@
         {
           "name": "dwp.uc.scotland_households_child_under_1",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
-          "resolved_value": 14412.0,
-          "resolved_fact_period": "2025-05",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a2cdcfc2cd3c4f56e33bfba2"
+          "resolved_value": 14333.222222222223,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e88b27e010e08ac8d36d0d30"
         }
       ]
     },
@@ -6969,14 +7036,14 @@
       ]
     },
     "ons.population.scotland_households_3plus_children": {
-      "status": "multi_fact",
+      "status": "signed_excluded",
       "candidates": [
         {
-          "name": "ons/scotland_households_3plus_children",
-          "status": "multi_fact",
-          "matched_fact_count_overall": 6,
-          "matched_fact_count_at_or_before_period": 6,
-          "error": "ledger_reference_compile_status_multi_fact"
+          "name": "ons.population.scotland_households_3plus_children",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 552,
+          "matched_fact_count_at_or_before_period": 552,
+          "signed_rationale": "Signed out pending a Scotland household-composition fact: the current selector reaches person-level ONS mid-year population age rows, not households with three or more children. microcosm#736 tracks the missing declaration."
         }
       ]
     },
@@ -6991,7 +7058,7 @@
           "resolved_period": 2025,
           "resolved_value": 4316000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c9c67fe2978eaa513a44a926"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b2ee6bff131571b7dcd4c33c"
         }
       ]
     },
@@ -7006,7 +7073,7 @@
           "resolved_period": 2025,
           "resolved_value": 4254000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e6c50ddf29ed1ab77864b6a2"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4178a72ada0e0b5b53fd62b3"
         }
       ]
     },
@@ -7021,7 +7088,7 @@
           "resolved_period": 2025,
           "resolved_value": 813000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3ec0cf9defbe2ab83ab41571"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_191e954854307c61fca2d539"
         }
       ]
     },
@@ -7036,7 +7103,7 @@
           "resolved_period": 2025,
           "resolved_value": 8119000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b11f5e90017de17e52604807"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_861314257d00193080069624"
         }
       ]
     },
@@ -7051,7 +7118,7 @@
           "resolved_period": 2025,
           "resolved_value": 5439000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_12ff8cdd70354a89e79666d2"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_04ac3660df720d6f8effbdb2"
         }
       ]
     },
@@ -7066,7 +7133,7 @@
           "resolved_period": 2025,
           "resolved_value": 931000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b7f864011603a30bf3d9a36d"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3432d322cadb6a40f0c3ebc8"
         }
       ]
     },
@@ -7081,7 +7148,7 @@
           "resolved_period": 2025,
           "resolved_value": 1848000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a14d855449d9c8dc5e885d7e"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4d36f952f4dd650bcab7ba7f"
         }
       ]
     },
@@ -7096,7 +7163,7 @@
           "resolved_period": 2025,
           "resolved_value": 1835000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e71a9da14a3e6459fb4280b3"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e9746f29548db6f6047842cb"
         }
       ]
     },
@@ -7111,7 +7178,7 @@
           "resolved_period": 2025,
           "resolved_value": 1204000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_5dabc71ee334f3c3246258bf"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9c7f117f90bc24f073f4e14f"
         }
       ]
     },
@@ -7126,7 +7193,7 @@
           "resolved_period": 2025,
           "resolved_value": 244000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b4156d9db1a22d31bfaa20ff"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a0cd8874e5334242ce7b8ce0"
         }
       ]
     },
@@ -7738,7 +7805,184 @@
           "resolved_period": 2025,
           "resolved_value": 6758888.888888889,
           "resolved_fact_period": "2025-12",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f1f95c868e686f543d161ff0"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3270b0f656838ddd01b1ac5f"
+        }
+      ]
+    },
+    "hmrc.tfc.government_top_up": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.tfc.government_top_up",
+          "status": "active",
+          "matched_fact_count_overall": 9,
+          "matched_fact_count_at_or_before_period": 9,
+          "resolved_period": 2025,
+          "resolved_value": 599800000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_988715985f9e98bbb332e83d"
+        }
+      ]
+    },
+    "hmrc.tfc.children_with_used_accounts": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.tfc.children_with_used_accounts",
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 1151515.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7aa1c663447037b35ea1c999"
+        }
+      ]
+    },
+    "dfe.funded_childcare.working_parent_children_2_to_4": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.working_parent_children_2_to_4",
+          "status": "active",
+          "matched_fact_count_overall": 11,
+          "matched_fact_count_at_or_before_period": 9,
+          "resolved_period": 2025,
+          "resolved_value": 621482.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a57a0c03ac43b62dde04fabd"
+        }
+      ]
+    },
+    "dfe.funded_childcare.early_learning_2_year_olds": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.early_learning_2_year_olds",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 11,
+          "resolved_period": 2025,
+          "resolved_value": 95031.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a2b30af28303935159ba0edc"
+        }
+      ]
+    },
+    "dfe.funded_childcare.universal_only_children": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfe.funded_childcare.universal_only_children",
+          "status": "active",
+          "matched_fact_count_overall": 770,
+          "matched_fact_count_at_or_before_period": 686,
+          "resolved_period": 2025,
+          "resolved_value": 396965.0,
+          "resolved_fact_period": "2025-01",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_471573def13ebdc67ff1f40a"
+        }
+      ]
+    },
+    "dft.bus_fare_receipts.england": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_fare_receipts.england",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 3417388656.43538,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2ece7c3d283b6de43b30389f"
+        }
+      ]
+    },
+    "dft.bus_net_support.england": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dft.bus_net_support.england",
+          "status": "active",
+          "matched_fact_count_overall": 3,
+          "matched_fact_count_at_or_before_period": 3,
+          "resolved_period": 2025,
+          "resolved_value": 3024904320.8399997,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a12dfcdc0662c8a5e48bf003"
+        }
+      ]
+    },
+    "dft.bus_fare_receipts.london": {
+      "status": "signed_excluded",
+      "candidates": [
+        {
+          "name": "dft.bus_fare_receipts.london",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "signed_rationale": "Region target held until the UK target compiler has a declared region roster and cross-grain leg; tracked by #790."
+        }
+      ]
+    },
+    "dft.bus_net_support.london": {
+      "status": "signed_excluded",
+      "candidates": [
+        {
+          "name": "dft.bus_net_support.london",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "signed_rationale": "Region target held until the UK target compiler has a declared region roster and cross-grain leg; tracked by #790."
+        }
+      ]
+    },
+    "dft.bus_fare_receipts.england_outside_london": {
+      "status": "signed_excluded",
+      "candidates": [
+        {
+          "name": "dft.bus_fare_receipts.england_outside_london",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "signed_rationale": "Chronicle stamps this row at statistical_scope; Microcosm has no declared statistical-scope pin and must not bind the England total accidentally."
+        }
+      ]
+    },
+    "dft.bus_net_support.england_outside_london": {
+      "status": "signed_excluded",
+      "candidates": [
+        {
+          "name": "dft.bus_net_support.england_outside_london",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "signed_rationale": "Chronicle stamps this row at statistical_scope; Microcosm has no declared statistical-scope pin and must not bind the England total accidentally."
+        }
+      ]
+    },
+    "dft.bus_fare_receipts.uk": {
+      "status": "signed_excluded",
+      "candidates": [
+        {
+          "name": "dft.bus_fare_receipts.uk",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "signed_rationale": "BUS05i publishes no UK total and Microcosm declares no method to construct one."
+        }
+      ]
+    },
+    "dft.bus_net_support.uk": {
+      "status": "signed_excluded",
+      "candidates": [
+        {
+          "name": "dft.bus_net_support.uk",
+          "status": "signed_excluded",
+          "matched_fact_count_overall": 0,
+          "matched_fact_count_at_or_before_period": 0,
+          "signed_rationale": "BUS05i publishes no UK total and Microcosm declares no method to construct one."
         }
       ]
     }
@@ -7769,16 +8013,14 @@
       "family": "hmrc_spi",
       "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
       "status": "signed_excluded",
-      "signed_rationale": "Signed out pending a first-class value-scaling operation or a Chronicle package for HMRC Property Rental Income Statistics with declared reconciliation: the Ledger facts are official HMRC SPI Table 3.7 net property-income amounts, while the incumbent calibration target applies the populace-side x1.9 property-income undercount adjustment. The x1.9 trace is policyengine-uk-data PR #311 / issue policyengine-uk-data#230: SPI covers only taxpayers with liability, and HMRC Property Rental Income Statistics show GBP 46.68bn versus SPI about GBP 24.5bn for 2020-21. Binding the raw SPI facts would knowingly calibrate to 10/19 of the incumbent surface."
-    }
-  ],
-  "multi_fact_rationales": [
+      "signed_rationale": "Signed out pending a first-class value-scaling operation or a Chronicle package for HMRC Property Rental Income Statistics with declared reconciliation: the Ledger facts are official HMRC SPI Table 3.7 net property-income amounts, while the incumbent calibration target applies the populace-side x1.9 property-income undercount adjustment. The x1.9 trace is uk-data PR #311 / issue uk-data#230: SPI covers only taxpayers with liability, and HMRC Property Rental Income Statistics show GBP 46.68bn versus SPI about GBP 24.5bn for 2020-21. Binding the raw SPI facts would knowingly calibrate to 10/19 of the incumbent surface."
+    },
     {
       "family": "ons_population",
       "target_id": "ons.population.scotland_households_3plus_children",
-      "candidate_name": "ons/scotland_households_3plus_children",
-      "status": "adjudication_pending",
-      "signed_rationale": "Remaining multi_fact is genuine: the selector reaches ONS mid-year population age rows for Scotland across six eligible periods, while the contract target is a household count with three or more children. No Ledger household-composition fact at or before 2025 is selected by the current contract, so Microcosm must not adjudicate a replacement source here."
+      "status": "signed_excluded",
+      "signed_rationale": "Signed out pending a Scotland household-composition fact: the current selector reaches person-level ONS mid-year population age rows, not households with three or more children. microcosm#736 tracks the missing declaration."
     }
-  ]
+  ],
+  "multi_fact_rationales": []
 }

@@ -4,8 +4,10 @@
   "allowed_value_operations": [
     "identity",
     "sum",
+    "difference",
     "calendar_year_average",
-    "latest_plateau"
+    "latest_plateau",
+    "count_x_mean"
   ],
   "target_references": [
     {
@@ -13,6 +15,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.income_tax",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -31,6 +34,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.ni_total",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -49,6 +53,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.ni_employee",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -67,6 +72,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.ni_employer",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -85,6 +91,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.ni_self_employed",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -103,6 +110,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.vat",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -121,6 +129,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.fuel_duties",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -139,6 +148,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.capital_gains_tax",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -157,6 +167,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.sdlt",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -175,6 +186,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.attendance_allowance",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -193,6 +205,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.carers_allowance",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -211,6 +224,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.child_benefit",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -247,6 +261,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.incapacity_benefits",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -266,6 +281,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.housing_benefit",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -284,6 +300,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.jobseekers_allowance",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -302,6 +319,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.pension_credit",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -320,6 +338,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.dla_and_pip",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -338,6 +357,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.state_pension",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -356,6 +376,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.statutory_maternity_pay",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -374,6 +395,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.tv_licence_fee",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -392,6 +414,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.universal_credit_in_cap",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -410,6 +433,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.universal_credit_outside_cap",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -428,6 +452,7 @@
       "ledger_selector": {
         "source_name": "obr",
         "source_concept": "obr.winter_fuel_payment",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -621,6 +646,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -644,6 +670,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -667,6 +694,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -690,6 +718,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -713,6 +742,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -736,6 +766,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -759,6 +790,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -782,6 +814,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -805,6 +838,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -828,6 +862,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -851,6 +886,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -874,6 +910,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -897,6 +934,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1219,6 +1257,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1242,6 +1281,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1265,6 +1305,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1288,6 +1329,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1311,6 +1353,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1334,6 +1377,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1357,6 +1401,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1380,6 +1425,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1403,6 +1449,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1426,6 +1473,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1449,6 +1497,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1472,6 +1521,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1495,6 +1545,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_self_employment_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1817,6 +1868,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1840,6 +1892,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1863,6 +1916,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1886,6 +1940,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1909,6 +1964,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1932,6 +1988,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1955,6 +2012,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -1978,6 +2036,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2001,6 +2060,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2024,6 +2084,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2047,6 +2108,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2070,6 +2132,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2093,6 +2156,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_dividend_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2714,6 +2778,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2737,6 +2802,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2760,6 +2826,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2783,6 +2850,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2806,6 +2874,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2829,6 +2898,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2852,6 +2922,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2875,6 +2946,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2898,6 +2970,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2921,6 +2994,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2944,6 +3018,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2967,6 +3042,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -2990,6 +3066,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_private_pension_income_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3312,6 +3389,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3335,6 +3413,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3358,6 +3437,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3381,6 +3461,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3404,6 +3485,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3427,6 +3509,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3450,6 +3533,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3473,6 +3557,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3496,6 +3581,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3519,6 +3605,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3542,6 +3629,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3565,6 +3653,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3588,6 +3677,7 @@
         "source_name": "hmrc",
         "source_concept": "hmrc.spi_state_pension_amount",
         "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "K02000001",
         "dimension_values": {
@@ -3909,6 +3999,7 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.cgt_taxpayers_total",
+        "groupby_dimension": "hmrc.cgt_table1_line",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -3920,7 +4011,7 @@
         "contract_target_id": "hmrc.cgt.taxpayers_total",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2023",
+      "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
     {
@@ -3928,6 +4019,8 @@
       "ledger_selector": {
         "source_name": "hmrc",
         "source_concept": "hmrc.cgt_gains_total",
+        "groupby_dimension": "hmrc.cgt_table1_line",
+        "entity_name": "tax_unit",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -3939,7 +4032,7 @@
         "contract_target_id": "hmrc.cgt.gains_total",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2023",
+      "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
     {
@@ -4052,6 +4145,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_number_of_children",
+        "dimensions": [
+          "number_of_children"
+        ],
         "dimension_values": {
           "number_of_children": 1
         },
@@ -4066,7 +4162,8 @@
         "contract_target_id": "dwp.uc.households_children_1",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4075,6 +4172,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_number_of_children",
+        "dimensions": [
+          "number_of_children"
+        ],
         "dimension_values": {
           "number_of_children": 2
         },
@@ -4089,7 +4189,8 @@
         "contract_target_id": "dwp.uc.households_children_2",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4098,6 +4199,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_number_of_children",
+        "dimensions": [
+          "number_of_children"
+        ],
         "dimension_values": {
           "number_of_children": 3
         },
@@ -4112,7 +4216,8 @@
         "contract_target_id": "dwp.uc.households_children_3",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4121,6 +4226,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_number_of_children",
+        "dimensions": [
+          "number_of_children"
+        ],
         "dimension_values": {
           "number_of_children": 4
         },
@@ -4135,7 +4243,8 @@
         "contract_target_id": "dwp.uc.households_children_4",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4144,6 +4253,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_number_of_children",
+        "dimensions": [
+          "number_of_children"
+        ],
         "dimension_values": {
           "number_of_children": "5 or more"
         },
@@ -4158,7 +4270,8 @@
         "contract_target_id": "dwp.uc.households_children_5_or_more",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4167,6 +4280,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_family_type",
+        "dimensions": [
+          "family_type"
+        ],
         "dimension_values": {
           "family_type": "Single, no children"
         },
@@ -4181,7 +4297,8 @@
         "contract_target_id": "dwp.uc.households_single_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4190,6 +4307,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_family_type",
+        "dimensions": [
+          "family_type"
+        ],
         "dimension_values": {
           "family_type": "Single, with children"
         },
@@ -4204,7 +4324,8 @@
         "contract_target_id": "dwp.uc.households_single_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4213,6 +4334,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_family_type",
+        "dimensions": [
+          "family_type"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children"
         },
@@ -4227,7 +4351,8 @@
         "contract_target_id": "dwp.uc.households_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4236,6 +4361,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_family_type",
+        "dimensions": [
+          "family_type"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children"
         },
@@ -4250,7 +4378,8 @@
         "contract_target_id": "dwp.uc.households_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4259,6 +4388,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a30.01 to \u00a3100.00"
@@ -4274,7 +4407,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4283,6 +4417,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a3100.01 to \u00a3200.00"
@@ -4298,7 +4436,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4307,6 +4446,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a31000.01 to \u00a31100.00"
@@ -4322,7 +4465,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4331,6 +4475,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a31100.01 to \u00a31200.00"
@@ -4346,7 +4494,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4355,6 +4504,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a31200.01 to \u00a31300.00"
@@ -4370,7 +4523,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4379,6 +4533,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a31300.01 to \u00a31400.00"
@@ -4394,7 +4552,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4403,6 +4562,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a31400.01 to \u00a31500.00"
@@ -4418,7 +4581,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4427,6 +4591,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a31500.01 to \u00a31600.00"
@@ -4442,7 +4610,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4451,6 +4620,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a31600.01 to \u00a31700.00"
@@ -4466,7 +4639,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4475,6 +4649,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a31700.01 to \u00a31800.00"
@@ -4490,7 +4668,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4499,6 +4678,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a31800.01 to \u00a31900.00"
@@ -4514,7 +4697,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4523,6 +4707,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a31900.01 to \u00a32000.00"
@@ -4538,7 +4726,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4547,6 +4736,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a3200.01 to \u00a3300.00"
@@ -4562,7 +4755,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4571,6 +4765,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a32000.01 to \u00a32100.00"
@@ -4586,7 +4784,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4595,6 +4794,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a32100.01 to \u00a32200.00"
@@ -4610,7 +4813,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4619,6 +4823,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a32200.01 to \u00a32300.00"
@@ -4634,7 +4842,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4643,6 +4852,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a32300.01 to \u00a32400.00"
@@ -4658,7 +4871,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4667,6 +4881,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a32400.01 to \u00a32500.00"
@@ -4682,7 +4900,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4691,6 +4910,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a3300.01 to \u00a3400.00"
@@ -4706,7 +4929,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4715,6 +4939,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a3400.01 to \u00a3500.00"
@@ -4730,7 +4958,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4739,6 +4968,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a3500.01 to \u00a3600.00"
@@ -4754,7 +4987,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4763,6 +4997,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a3600.01 to \u00a3700.00"
@@ -4778,7 +5016,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4787,6 +5026,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a3700.01 to \u00a3800.00"
@@ -4802,7 +5045,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4811,6 +5055,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a3800.01 to \u00a3900.00"
@@ -4826,7 +5074,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4835,6 +5084,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, no children",
           "monthly_award_amount_bands": "\u00a3900.01 to \u00a31000.00"
@@ -4850,7 +5103,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_single",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4859,6 +5113,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a30.01 to \u00a3100.00"
@@ -4874,7 +5132,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4883,6 +5142,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a3100.01 to \u00a3200.00"
@@ -4898,7 +5161,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4907,6 +5171,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a31000.01 to \u00a31100.00"
@@ -4922,7 +5190,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4931,6 +5200,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a31100.01 to \u00a31200.00"
@@ -4946,7 +5219,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4955,6 +5229,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a31200.01 to \u00a31300.00"
@@ -4970,7 +5248,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -4979,6 +5258,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a31300.01 to \u00a31400.00"
@@ -4994,7 +5277,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5003,6 +5287,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a31400.01 to \u00a31500.00"
@@ -5018,7 +5306,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5027,6 +5316,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a31500.01 to \u00a31600.00"
@@ -5042,7 +5335,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5051,6 +5345,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a31600.01 to \u00a31700.00"
@@ -5066,7 +5364,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5075,6 +5374,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a31700.01 to \u00a31800.00"
@@ -5090,7 +5393,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5099,6 +5403,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a31800.01 to \u00a31900.00"
@@ -5114,7 +5422,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5123,6 +5432,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a31900.01 to \u00a32000.00"
@@ -5138,7 +5451,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5147,6 +5461,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a3200.01 to \u00a3300.00"
@@ -5162,7 +5480,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5171,6 +5490,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a32000.01 to \u00a32100.00"
@@ -5186,7 +5509,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5195,6 +5519,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a32100.01 to \u00a32200.00"
@@ -5210,7 +5538,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5219,6 +5548,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a32200.01 to \u00a32300.00"
@@ -5234,7 +5567,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5243,6 +5577,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a32300.01 to \u00a32400.00"
@@ -5258,7 +5596,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5267,6 +5606,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a32400.01 to \u00a32500.00"
@@ -5282,7 +5625,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5291,6 +5635,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a3300.01 to \u00a3400.00"
@@ -5306,7 +5654,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5315,6 +5664,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a3400.01 to \u00a3500.00"
@@ -5330,7 +5683,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5339,6 +5693,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a3500.01 to \u00a3600.00"
@@ -5354,7 +5712,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5363,6 +5722,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a3600.01 to \u00a3700.00"
@@ -5378,7 +5741,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5387,6 +5751,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a3700.01 to \u00a3800.00"
@@ -5402,7 +5770,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5411,6 +5780,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a3800.01 to \u00a3900.00"
@@ -5426,7 +5799,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5435,6 +5809,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Single, with children",
           "monthly_award_amount_bands": "\u00a3900.01 to \u00a31000.00"
@@ -5450,7 +5828,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_lone_parent",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5459,6 +5838,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a30.01 to \u00a3100.00"
@@ -5474,7 +5857,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5483,6 +5867,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a3100.01 to \u00a3200.00"
@@ -5498,7 +5886,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5507,6 +5896,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a31000.01 to \u00a31100.00"
@@ -5522,7 +5915,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5531,6 +5925,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a31100.01 to \u00a31200.00"
@@ -5546,7 +5944,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5555,6 +5954,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a31200.01 to \u00a31300.00"
@@ -5570,7 +5973,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5579,6 +5983,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a31300.01 to \u00a31400.00"
@@ -5594,7 +6002,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5603,6 +6012,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a31400.01 to \u00a31500.00"
@@ -5618,7 +6031,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5627,6 +6041,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a31500.01 to \u00a31600.00"
@@ -5642,7 +6060,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5651,6 +6070,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a31600.01 to \u00a31700.00"
@@ -5666,7 +6089,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5675,6 +6099,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a31700.01 to \u00a31800.00"
@@ -5690,7 +6118,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5699,6 +6128,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a31800.01 to \u00a31900.00"
@@ -5714,7 +6147,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5723,6 +6157,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a31900.01 to \u00a32000.00"
@@ -5738,7 +6176,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5747,6 +6186,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a3200.01 to \u00a3300.00"
@@ -5762,7 +6205,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5771,6 +6215,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a32000.01 to \u00a32100.00"
@@ -5786,7 +6234,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5795,6 +6244,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a32100.01 to \u00a32200.00"
@@ -5810,7 +6263,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5819,6 +6273,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a32200.01 to \u00a32300.00"
@@ -5834,7 +6292,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5843,6 +6302,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a32300.01 to \u00a32400.00"
@@ -5858,7 +6321,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5867,6 +6331,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a32400.01 to \u00a32500.00"
@@ -5882,7 +6350,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5891,6 +6360,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a3300.01 to \u00a3400.00"
@@ -5906,7 +6379,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5915,6 +6389,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a3400.01 to \u00a3500.00"
@@ -5930,7 +6408,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5939,6 +6418,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a3500.01 to \u00a3600.00"
@@ -5954,7 +6437,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5963,6 +6447,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a3600.01 to \u00a3700.00"
@@ -5978,7 +6466,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -5987,6 +6476,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a3700.01 to \u00a3800.00"
@@ -6002,7 +6495,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6011,6 +6505,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a3800.01 to \u00a3900.00"
@@ -6026,7 +6524,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6035,6 +6534,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, no children",
           "monthly_award_amount_bands": "\u00a3900.01 to \u00a31000.00"
@@ -6050,7 +6553,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_no_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6059,6 +6563,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a30.01 to \u00a3100.00"
@@ -6074,7 +6582,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6083,6 +6592,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a3100.01 to \u00a3200.00"
@@ -6098,7 +6611,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6107,6 +6621,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a31000.01 to \u00a31100.00"
@@ -6122,7 +6640,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6131,6 +6650,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a31100.01 to \u00a31200.00"
@@ -6146,7 +6669,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6155,6 +6679,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a31200.01 to \u00a31300.00"
@@ -6170,7 +6698,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6179,6 +6708,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a31300.01 to \u00a31400.00"
@@ -6194,7 +6727,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6203,6 +6737,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a31400.01 to \u00a31500.00"
@@ -6218,7 +6756,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6227,6 +6766,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a31500.01 to \u00a31600.00"
@@ -6242,7 +6785,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6251,6 +6795,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a31600.01 to \u00a31700.00"
@@ -6266,7 +6814,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6275,6 +6824,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a31700.01 to \u00a31800.00"
@@ -6290,7 +6843,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6299,6 +6853,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a31800.01 to \u00a31900.00"
@@ -6314,7 +6872,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6323,6 +6882,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a31900.01 to \u00a32000.00"
@@ -6338,7 +6901,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6347,6 +6911,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a3200.01 to \u00a3300.00"
@@ -6362,7 +6930,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6371,6 +6940,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a32000.01 to \u00a32100.00"
@@ -6386,7 +6959,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6395,6 +6969,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a32100.01 to \u00a32200.00"
@@ -6410,7 +6988,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6419,6 +6998,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a32200.01 to \u00a32300.00"
@@ -6434,7 +7017,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6443,6 +7027,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a32300.01 to \u00a32400.00"
@@ -6458,7 +7046,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6467,6 +7056,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a32400.01 to \u00a32500.00"
@@ -6482,7 +7075,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6491,6 +7085,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a3300.01 to \u00a3400.00"
@@ -6506,7 +7104,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6515,6 +7114,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a3400.01 to \u00a3500.00"
@@ -6530,7 +7133,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6539,6 +7143,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a3500.01 to \u00a3600.00"
@@ -6554,7 +7162,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6563,6 +7172,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a3600.01 to \u00a3700.00"
@@ -6578,7 +7191,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6587,6 +7201,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a3700.01 to \u00a3800.00"
@@ -6602,7 +7220,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6611,6 +7230,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a3800.01 to \u00a3900.00"
@@ -6626,7 +7249,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6635,6 +7259,10 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_monthly_award_band",
+        "dimensions": [
+          "family_type",
+          "monthly_award_amount_bands"
+        ],
         "dimension_values": {
           "family_type": "Couple, with children",
           "monthly_award_amount_bands": "\u00a3900.01 to \u00a31000.00"
@@ -6650,7 +7278,8 @@
         "contract_target_id": "dwp.uc.payment_distribution_couple_with_children",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -6659,6 +7288,9 @@
         "source_name": "dwp",
         "source_concept": "dwp.uc_households",
         "groupby_dimension": "dwp.uc_youngest_child_age",
+        "dimensions": [
+          "age_of_youngest_child_bands_and_single_year"
+        ],
         "dimension_values": {
           "age_of_youngest_child_bands_and_single_year": 0
         },
@@ -6673,7 +7305,8 @@
         "contract_target_id": "dwp.uc.scotland_households_child_under_1",
         "measure_kind": "prepared_column"
       },
-      "uprating_from_period": "2025-05",
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     },
     {
@@ -7063,6 +7696,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 10,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7101,6 +7735,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 10,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7139,6 +7774,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 10,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7177,6 +7813,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 10,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7215,6 +7852,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 10,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7253,6 +7891,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 10,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7291,6 +7930,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 10,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7329,6 +7969,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 10,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7367,6 +8008,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 10,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7402,6 +8044,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7437,6 +8080,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7472,6 +8116,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7507,6 +8152,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7542,6 +8188,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7577,6 +8224,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7612,6 +8260,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7647,6 +8296,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7682,6 +8332,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7717,6 +8368,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7752,6 +8404,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7787,6 +8440,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7822,6 +8476,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7857,6 +8512,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7892,6 +8548,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7927,6 +8584,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7962,6 +8620,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -7997,6 +8656,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8028,6 +8688,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 1,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8063,6 +8724,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8098,6 +8760,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8133,6 +8796,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8168,6 +8832,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8203,6 +8868,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8238,6 +8904,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8273,6 +8940,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8308,6 +8976,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8343,6 +9012,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8378,6 +9048,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8413,6 +9084,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8448,6 +9120,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8483,6 +9156,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8518,6 +9192,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8553,6 +9228,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8588,6 +9264,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8623,6 +9300,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8658,6 +9336,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 5,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8689,6 +9368,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 1,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8733,6 +9413,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 16,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -8762,6 +9443,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "sum",
+      "expected_member_count": 1,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -9325,6 +10007,7 @@
         "dimension_values": {
           "social_security_line": "scottish_child_payment"
         },
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "S92000003"
       },
@@ -9343,6 +10026,7 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.ukea_haxv",
+        "entity_name": "household",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -9379,6 +10063,7 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.e44r",
+        "entity_name": "institutional_sector",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -9398,6 +10083,7 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.e44n",
+        "entity_name": "institutional_sector",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -9417,6 +10103,7 @@
       "ledger_selector": {
         "source_name": "ons",
         "source_concept": "ons.e43b",
+        "entity_name": "institutional_sector",
         "geography_level": "country",
         "geography_id": "K02000001"
       },
@@ -9439,6 +10126,7 @@
         "source_measure_id": [
           "total_higher_education"
         ],
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -9462,6 +10150,7 @@
         "source_measure_id": [
           "plan_1"
         ],
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -9486,6 +10175,7 @@
           "plan_2_full_time",
           "plan_2_part_time"
         ],
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -9510,6 +10200,7 @@
           "plan_3_postgraduate_masters",
           "plan_3_postgraduate_doctoral"
         ],
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -9534,6 +10225,7 @@
           "plan_5_full_time",
           "plan_5_part_time"
         ],
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -9665,6 +10357,7 @@
       "ledger_selector": {
         "source_name": "slc",
         "source_concept": "slc.maintenance_loan_amount_paid",
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -9709,6 +10402,7 @@
         "dimension_values": {
           "student_support_product": "parents_learning_allowance"
         },
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -9753,6 +10447,7 @@
         "dimension_values": {
           "student_support_product": "adult_dependants_grant"
         },
+        "entity_name": "person",
         "geography_level": "country",
         "geography_id": "E92000001"
       },
@@ -9772,6 +10467,8 @@
       "ledger_selector": {
         "source_name": "dwp",
         "source_concept": "dwp.uc_benefit_units",
+        "source_measure_id": "total_units",
+        "groupby_dimension": "dwp.uc_deductions_month",
         "geography_level": "country",
         "geography_id": "K03000001"
       },
@@ -9786,6 +10483,192 @@
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.tfc.government_top_up",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.tax_free_childcare.government_top_up_gbp_million",
+        "entity_name": "government",
+        "period_type": "fiscal_year",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/tfc/government_top_up",
+      "family": "hmrc_tfc",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.tfc.government_top_up",
+        "measure_kind": "prepared_column",
+        "observation_basis": "annual_flow"
+      }
+    },
+    {
+      "name": "hmrc.tfc.children_with_used_accounts",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.tax_free_childcare.children_with_used_accounts_total",
+        "entity_name": "person",
+        "period_type": "fiscal_year",
+        "dimension_values": {
+          "definition_regime": "payment_and_open_at_reference_date"
+        },
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/tfc/children_with_used_accounts",
+      "family": "hmrc_tfc",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.tfc.children_with_used_accounts",
+        "measure_kind": "prepared_column",
+        "observation_basis": "annual_unique_count"
+      }
+    },
+    {
+      "name": "dfe.funded_childcare.working_parent_children_2_to_4",
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Working parents",
+          "age": [
+            "2 years",
+            "3 to 4 years"
+          ],
+          "registration_basis": "registered_children",
+          "provision": "all"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dfe/funded_childcare/working_parent_children_2_to_4",
+      "family": "dfe_funded_childcare",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfe.funded_childcare.working_parent_children_2_to_4",
+        "measure_kind": "prepared_column",
+        "observation_basis": "january_stock"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 2,
+      "uprating_from_period": "2025-01",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dfe.funded_childcare.early_learning_2_year_olds",
+      "ledger_selector": {
+        "source_name": "dfe",
+        "source_concept": "dfe.number_of_registered_children",
+        "source_measure_id": "registered_children_count",
+        "entity_name": "person",
+        "dimension_values": {
+          "entitlement_type": "Early learning for 2-year-olds",
+          "age": "2 years",
+          "registration_basis": "registered_children"
+        },
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dfe/funded_childcare/early_learning_2_year_olds",
+      "family": "dfe_funded_childcare",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfe.funded_childcare.early_learning_2_year_olds",
+        "measure_kind": "prepared_column",
+        "observation_basis": "january_stock"
+      },
+      "uprating_from_period": "2025-01",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dfe.funded_childcare.universal_only_children",
+      "ledger_selector": {
+        "source_name": "dfe",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dfe/funded_childcare/universal_only_children",
+      "family": "dfe_funded_childcare",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfe.funded_childcare.universal_only_children",
+        "measure_kind": "prepared_column",
+        "observation_basis": "january_stock"
+      },
+      "value_operation": "difference",
+      "value_operands": [
+        {
+          "role": "minuend",
+          "source_concept": "dfe.number_of_registered_children_nursery",
+          "source_measure_id": "registered_children_nursery_count",
+          "dimension_values": {
+            "entitlement_type": "Universal",
+            "age": "Total"
+          }
+        },
+        {
+          "role": "subtrahend",
+          "source_concept": "dfe.number_of_registered_children",
+          "source_measure_id": "registered_children_count",
+          "dimension_values": {
+            "entitlement_type": "Working parents",
+            "age": "3 to 4 years"
+          }
+        }
+      ],
+      "uprating_from_period": "2025-01",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dft.bus_fare_receipts.england",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_fare_receipts",
+        "layout_groupby_value_id": "england",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "household",
+      "measure": "dft/bus_fare_receipts/england",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_fare_receipts.england",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      }
+    },
+    {
+      "name": "dft.bus_net_support.england",
+      "ledger_selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_total_estimated_net_support",
+        "layout_groupby_value_id": "england",
+        "entity_name": "institutional_sector",
+        "period_type": "fiscal_year",
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "household",
+      "measure": "dft/bus_net_support/england",
+      "family": "dft_local_bus",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dft.bus_net_support.england",
+        "measure_kind": "prepared_column",
+        "observation_basis": "fiscal_year_flow"
+      }
     }
   ]
 }

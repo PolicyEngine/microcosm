@@ -83,10 +83,13 @@ _LEDGER_FACT_FEED_PIN: dict[str, str] = {
     "artifact": ".codex-work/consumer_facts_uk.jsonl",
     "manifest": ".codex-work/consumer_facts_uk_manifest.json",
     "facts_sha256": (
-        "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48"
+        "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f"
+    ),
+    "manifest_sha256": (
+        "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0"
     ),
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "33ca98a",
+    "source_commit": "6fb700e",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
 }
 

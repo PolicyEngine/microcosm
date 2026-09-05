@@ -52,8 +52,17 @@ def main() -> None:
         areas_by_geography_level=_areas_by_geography_level(crosswalk),
         area_signed_deferrals=tuple(_area_signed_deferrals(contract, crosswalk)),
         value_operation_by_target_id=_value_operation_by_target_id(contract),
+        reference_metadata_by_target_id={
+            "ons.rent.private_rent": {
+                "fact_aggregation": "time_mean",
+                "period_basis_note": (
+                    "Calendar-year average of the available 2025 PIPR monthly "
+                    "area price levels; approved by María on 2026-09-05."
+                ),
+            }
+        },
         binding_vocabulary=POLICYENGINE_BINDING_KEYS,
-        source_fact_feed=str(args.ledger_facts),
+        source_fact_feed=args.source_fact_feed or str(args.ledger_facts),
     )
     authored = author_area_target_references(
         contract,
@@ -84,6 +93,10 @@ def _parser() -> argparse.ArgumentParser:
     # The pinned consumer feed is licensed and untracked: it must be named
     # explicitly so a regeneration never silently binds to a stale local copy.
     parser.add_argument("--ledger-facts", type=Path, required=True)
+    parser.add_argument(
+        "--source-fact-feed",
+        help="Stable display name recorded in the generated membership report.",
+    )
     parser.add_argument(
         "--crosswalk", type=Path, default=UK_PACKAGE_ROOT / "local_area_crosswalk.json"
     )
@@ -157,6 +170,8 @@ def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]
             "ons.tenure.social_rent",
         }:
             operations[target_id] = "sum"
+        if target_id == "ons.rent.private_rent":
+            operations[target_id] = "calendar_year_average"
     return operations
 
 
@@ -196,11 +211,6 @@ def _area_signed_deferrals(
         "E08000016",
         "E08000019",
         "E09000001",
-    )
-    pipr_after_target_period_area_ids = tuple(
-        area_id
-        for area_id in local_authority_ids
-        if area_id[:1] in {"E", "W"} and area_id not in pipr_lad_absent_area_ids
     )
     spi_la_measure_gap_area_ids = ("E06000027", "E06000053")
     deferrals: list[AreaSignedDeferral] = []
@@ -352,29 +362,22 @@ def _area_signed_deferrals(
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
-        reason_id="private_rent_pipr_after_target_period",
-        rationale="The pinned feed contains one PIPR period, 2026-06: 348 facts total, including 316 LA ids. Of those, 314 overlap the 2025 crosswalk (292 England and all 22 Wales); E08000038 and E08000039 are outside it. No PIPR fact is at or before the 2025 target period, so all 314 matching cells remain deferred.",
-        area_ids=pipr_after_target_period_area_ids,
-    )
-    add(
-        target_id="ons.rent.private_rent",
-        geography_level="local_authority",
         reason_id="private_rent_pipr_english_lad_absent",
-        rationale="The pinned feed's sole PIPR period (2026-06) carries 294 English LA ids, of which 292 overlap the crosswalk and two (E08000038, E08000039) do not. It omits four English crosswalk authorities: E06000053, E08000016, E08000019, and E09000001.",
+        rationale="The pinned PIPR monthly series carries 294 English LA ids, of which 292 overlap the crosswalk and two (E08000038, E08000039) do not. It omits four English crosswalk authorities: E06000053, E08000016, E08000019, and E09000001.",
         area_ids=pipr_lad_absent_area_ids,
     )
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
         reason_id="private_rent_pipr_scotland_brma_grain",
-        rationale="The pinned feed's sole PIPR period (2026-06) carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred.",
+        rationale="The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred.",
         area_ids=scottish_local_authorities,
     )
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
         reason_id="private_rent_pipr_ni_absent",
-        rationale="The pinned feed's 348 PIPR facts at 2026-06 contain zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent.",
+        rationale="The pinned PIPR monthly series contains zero Northern Ireland rows at any geography level, so all 11 Northern Ireland local-authority cells remain signed absent.",
         area_ids=ni_local_authorities,
     )
     return deferrals

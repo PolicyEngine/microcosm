@@ -603,6 +603,7 @@ class TestE3ManifestLockstep:
             "assign_binary_from_rate",
             "assign_binary_from_banded_rates",
             "assign_uniform_draw",
+            "assign_period_constant",
         ]
         assert [op.kind for op in stages["frs_household_draws"].operations] == [
             "assign_binary_from_rate",
@@ -926,9 +927,7 @@ class TestE3ManifestLockstep:
         assert stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 43
         assert stages["uc_reporter_redraw"].operations[3].parameters["seed"] == 44
-        assert (
-            stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
-        )
+        assert stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
 
     def test_e8_declared_seed_lockstep(self) -> None:
         stages = load_country_spec("uk").sources.stage_map()

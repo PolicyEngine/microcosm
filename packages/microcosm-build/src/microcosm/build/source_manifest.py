@@ -47,6 +47,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_binary_from_rate",
         "assign_binary_with_anchored_residual",
         "assign_clipped_normal",
+        "assign_period_constant",
         "assign_student_loan_plan_cohorts",
         "assign_uniform_draw",
         "aggregate_person_to_benunit",

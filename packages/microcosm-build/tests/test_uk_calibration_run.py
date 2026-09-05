@@ -10,7 +10,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.chronicle_epoch import (
+    CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
+    LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
+    PUBLISHED_CONSUMER_ARTIFACT_SCHEMA_VERSION,
+)
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.uk_runtime import calibration_run
 from microcosm.build.uk_runtime.calibration_run import (
@@ -137,9 +143,7 @@ def _write_spine_sidecar(
             entity: int(len(frame.table(entity))) for entity in frame.entities
         },
         "household_weight_kind": uk_household_weight_kind(frame).value,
-        "household_weight_total": float(
-            frame.weights_for("household").values.sum()
-        ),
+        "household_weight_total": float(frame.weights_for("household").values.sum()),
     }
     sidecar.update(overrides)
     input_h5.with_suffix(".build.json").write_text(
@@ -178,8 +182,13 @@ def _admin_anchor_values():
 
 def test_gate_scope_classifies_every_uk_gate():
     all_ids = {entry.id for entry in load_country_spec("uk").gates.gates}
-    assert set(UK_CALIBRATION_GATE_SCOPE) | set(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS) == all_ids
-    assert set(UK_CALIBRATION_GATE_SCOPE).isdisjoint(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS)
+    assert (
+        set(UK_CALIBRATION_GATE_SCOPE) | set(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS)
+        == all_ids
+    )
+    assert set(UK_CALIBRATION_GATE_SCOPE).isdisjoint(
+        UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS
+    )
     assert all(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS.values())
 
 
@@ -233,9 +242,15 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: P
     assert paths.diagnostics_json.exists()
     assert paths.build_record_json.exists()
     assert paths.terminal_gate_json.exists()
-    assert result.build_record["artifacts"]["staging_h5"]["sha256"] == _sha(paths.staging_h5)
-    assert result.build_record["artifacts"]["diagnostics_json"]["sha256"] == _sha(paths.diagnostics_json)
-    assert result.build_record["artifacts"]["terminal_gate_json"]["sha256"] == _sha(paths.terminal_gate_json)
+    assert result.build_record["artifacts"]["staging_h5"]["sha256"] == _sha(
+        paths.staging_h5
+    )
+    assert result.build_record["artifacts"]["diagnostics_json"]["sha256"] == _sha(
+        paths.diagnostics_json
+    )
+    assert result.build_record["artifacts"]["terminal_gate_json"]["sha256"] == _sha(
+        paths.terminal_gate_json
+    )
     # The record makes no shippability claim of its own — the hand-written
     # literal retired with the #757 release-cut audit — and instead points
     # at the certification artifact whose verdict is authoritative.
@@ -251,9 +266,13 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: P
     assert spine_provenance["stage_records"] == spine_sidecar["stage_records"]
     assert spine_provenance["stage_evidence"] == spine_sidecar["stage_evidence"]
     assert spine_provenance["artifact_pins"] == spine_sidecar["artifact_pins"]
-    assert spine_provenance["input_artifact_pins"] == spine_sidecar["input_artifact_pins"]
+    assert (
+        spine_provenance["input_artifact_pins"] == spine_sidecar["input_artifact_pins"]
+    )
     assert spine_provenance["resource_pins"] == spine_sidecar["resource_pins"]
-    assert spine_provenance["stage_artifact_pins"] == spine_sidecar["stage_artifact_pins"]
+    assert (
+        spine_provenance["stage_artifact_pins"] == spine_sidecar["stage_artifact_pins"]
+    )
     assert spine_provenance["declared_seeds"] == spine_sidecar["declared_seeds"]
     assert spine_provenance["rules_engine"] == spine_sidecar["rules_engine"]
     assert spine_provenance["source_vintages"] == spine_sidecar["source_vintages"]
@@ -272,7 +291,10 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: P
     signature = attestation["signature"]
     attestation["signature"] = None
     key = b"0123456789abcdef0123456789abcdef"
-    assert hmac.new(key, canonical_json_bytes(report), hashlib.sha256).hexdigest() == signature
+    assert (
+        hmac.new(key, canonical_json_bytes(report), hashlib.sha256).hexdigest()
+        == signature
+    )
     assert result.logbook_spool.exists()
 
 
@@ -456,10 +478,13 @@ def test_run_uk_calibration_refuses_input_sha_before_outputs(tmp_path: Path):
             doctrine_overrides={},
             measure_resolver=None,
             source_pins={
-                "input_h5": {"sha256": _sha(input_h5), "size_bytes": input_h5.stat().st_size}
+                "input_h5": {
+                    "sha256": _sha(input_h5),
+                    "size_bytes": input_h5.stat().st_size,
+                }
             },
             run_config_extra={"calibration_year": 2025},
-                release_id="bad-sha",
+            release_id="bad-sha",
         )
     assert not paths.staging_h5.exists()
     assert not paths.diagnostics_json.exists()
@@ -496,7 +521,7 @@ def test_run_uk_calibration_refuses_absent_input_sidecar(tmp_path: Path):
                 }
             },
             run_config_extra={"calibration_year": 2025},
-                release_id="missing-sidecar",
+            release_id="missing-sidecar",
         )
 
     assert not paths.staging_h5.exists()
@@ -549,7 +574,7 @@ def test_run_uk_calibration_refuses_unbound_input_sidecar(
                 }
             },
             run_config_extra={"calibration_year": 2025},
-                release_id="unbound-sidecar",
+            release_id="unbound-sidecar",
         )
 
     assert not paths.staging_h5.exists()
@@ -612,7 +637,10 @@ def test_seam_never_modifies_data_variables(monkeypatch, tmp_path: Path):
         doctrine_overrides={},
         measure_resolver=None,
         source_pins={
-            "input_h5": {"sha256": _sha(input_h5), "size_bytes": input_h5.stat().st_size}
+            "input_h5": {
+                "sha256": _sha(input_h5),
+                "size_bytes": input_h5.stat().st_size,
+            }
         },
         run_config_extra={},
         release_id="invariant-run",
@@ -749,7 +777,7 @@ def test_refusal_records_a_failed_attempt_and_stages_nothing(tmp_path: Path):
                 }
             },
             run_config_extra={"calibration_year": 2025},
-                release_id="refused-run",
+            release_id="refused-run",
         )
 
     # Every terminal disposition is a row; a refusal that left the chain
@@ -806,7 +834,7 @@ def test_attempt_ids_are_unique_across_reruns_of_one_release(
             measure_resolver=None,
             source_pins=source_pins,
             run_config_extra={"calibration_year": 2025},
-                release_id="one-release-id",
+            release_id="one-release-id",
         )
         build_ids.append(result.build_record["build_id"])
 
@@ -857,7 +885,10 @@ def test_verified_ledger_identity_reaches_the_run_evidence(monkeypatch, tmp_path
         doctrine_overrides={},
         measure_resolver=None,
         source_pins={
-            "input_h5": {"sha256": _sha(input_h5), "size_bytes": input_h5.stat().st_size}
+            "input_h5": {
+                "sha256": _sha(input_h5),
+                "size_bytes": input_h5.stat().st_size,
+            }
         },
         run_config_extra={"calibration_year": 2025},
         release_id="ledger-identity",
@@ -875,3 +906,169 @@ def test_verified_ledger_identity_reaches_the_run_evidence(monkeypatch, tmp_path
     # A bare feed carries no manifest, and that absence is recorded rather
     # than invented.
     assert calibration_run._ledger_provenance(object())["manifest_sha256"] is None
+
+
+def _consumer_fact_row(
+    *,
+    aggregate_fact_key: str,
+    semantic_fact_key: str,
+    schema_version: str,
+    source_release_key: str | None = None,
+) -> dict:
+    row = {
+        "aggregate_fact_key": aggregate_fact_key,
+        "semantic_fact_key": semantic_fact_key,
+        "schema_version": schema_version,
+        "value": 1.0,
+        "period": {"type": "tax_year", "value": 2025},
+        "geography": {"level": "country", "id": "K02000001"},
+        "entity": {"name": "household"},
+        "aggregation": {"method": "sum"},
+        "observed_measure": {"source_name": "ons", "unit": "gbp"},
+        "source": {"source_name": "ons"},
+        "lineage": {"source_record_id": "ons.2025.total"},
+    }
+    if source_release_key is not None:
+        row["source_release_key"] = source_release_key
+    return row
+
+
+def _mixed_epoch_artifact_dir(tmp_path: Path) -> Path:
+    """A cutover-window feed: ledger-era history, chronicle-era rows, and one
+    Chronicle-namespace key spelling nothing declares.
+
+    The manifest declares what Chronicle's ``main`` stamps today
+    (``policyengine_ledger.consumer_artifact.v2``), so this is the shape a UK
+    run is handed now, not a hypothetical one.
+    """
+    rows = [
+        _consumer_fact_row(
+            aggregate_fact_key="ledger.aggregate_fact.v2:aaa",
+            semantic_fact_key="ledger.semantic_fact.v2:aaa",
+            schema_version=LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
+        ),
+        _consumer_fact_row(
+            aggregate_fact_key="chronicle.aggregate_fact.v3:bbb",
+            semantic_fact_key="chronicle.semantic_fact.v3:bbb",
+            schema_version=CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
+        ),
+        _consumer_fact_row(
+            aggregate_fact_key="ledger.aggregate_fact.v2:ccc",
+            semantic_fact_key="ledger.semantic_fact.v2:ccc",
+            schema_version=LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
+            source_release_key="chronicle.source_release.v9:undeclared",
+        ),
+    ]
+    artifact_dir = tmp_path / "chronicle-artifact"
+    artifact_dir.mkdir()
+    payload = "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows)
+    (artifact_dir / "consumer_facts.jsonl").write_text(payload)
+    (artifact_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": PUBLISHED_CONSUMER_ARTIFACT_SCHEMA_VERSION,
+                "artifact_id": "chronicle-uk-artifact-mixed",
+                "profile": "uk-national",
+                "fact_row_count": len(rows),
+                "facts_sha256": hashlib.sha256(payload.encode()).hexdigest(),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    return artifact_dir
+
+
+def test_mixed_epoch_feed_epochs_reach_the_uk_release_evidence(monkeypatch, tmp_path):
+    """A UK run says which Chronicle era resolved its targets.
+
+    The run's own provenance block used to be assembled field by field from
+    the artifact, which is how it came to carry the hashes but not the epoch
+    witnesses the loader had already computed. It now delegates to the shared
+    block, so a cutover-window feed is visible in the signed diagnostics and
+    in the build record — including the one Chronicle-namespace spelling this
+    build does not declare, named rather than folded into an era.
+    """
+    pytest.importorskip("tables")  # pandas HDF backend
+    monkeypatch.setattr(
+        calibration_run,
+        "uk_aggregate_admin_totals",
+        lambda frame, manifest: (_admin_anchor_values(), []),
+    )
+    input_h5 = tmp_path / "input.h5"
+    frame = _frame()
+    write_uk_national_frame(frame, input_h5)
+    _write_spine_sidecar(input_h5, frame)
+    artifact = load_ledger_consumer_artifact(_mixed_epoch_artifact_dir(tmp_path))
+    diagnostics_json = tmp_path / "diagnostics.json"
+
+    result = run_uk_calibration(
+        paths=UKCalibrationRunPaths(
+            input_h5=input_h5,
+            staging_h5=tmp_path / "staged.h5",
+            diagnostics_json=diagnostics_json,
+            build_record_json=tmp_path / "build_record.json",
+            terminal_gate_json=tmp_path / "terminal_gates.json",
+        ),
+        input_sha256=_sha(input_h5),
+        ledger_artifact=artifact,
+        register_registry=_registry(),
+        band_edge_registry=_registry(),
+        calibration_year=2025,
+        exclusion_receipt={},
+        doctrine=UKNationalSolveDoctrine(epochs=5),
+        doctrine_overrides={},
+        measure_resolver=None,
+        source_pins={
+            "input_h5": {
+                "sha256": _sha(input_h5),
+                "size_bytes": input_h5.stat().st_size,
+            }
+        },
+        run_config_extra={"calibration_year": 2025},
+        release_id="chronicle-mixed-epoch",
+    )
+
+    ledger = result.build_record["run_config"]["ledger"]
+    # The observed manifest id, verbatim, and the era it belongs to.
+    assert ledger["manifest"]["schema_version"] == (
+        PUBLISHED_CONSUMER_ARTIFACT_SCHEMA_VERSION
+    )
+    assert ledger["schema_epoch"] == "ledger"
+    # The feed straddles the cutover, and says so rather than reporting one era.
+    assert ledger["fact_key_epochs"] == ["ledger", "chronicle", "undeclared"]
+    assert ledger["undeclared_fact_key_domains"] == ["chronicle.source_release.v9"]
+    assert ledger["fact_schema_versions"] == [
+        CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
+        LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
+    ]
+    # The hashes the block always carried are unchanged by the delegation.
+    assert ledger["facts_sha256"] == artifact.facts_sha256
+    assert ledger["fact_row_count"] == 3
+
+    # The same block is what the signed diagnostics carry, so the evidence a
+    # release assembler reads witnesses the era too.
+    diagnostics = json.loads(diagnostics_json.read_text())
+    assert diagnostics["build"]["ledger"] == ledger
+
+
+def test_the_uk_block_delegates_rather_than_reassembling_the_shared_one(tmp_path):
+    """Every field of the shared provenance block reaches the UK block.
+
+    Pinned as a property, not as a list: the failure being prevented is a
+    field the loader learns and this seam silently drops, and a test that
+    enumerated today's fields would not catch tomorrow's.
+    """
+    artifact = load_ledger_consumer_artifact(_mixed_epoch_artifact_dir(tmp_path))
+    shared = artifact.provenance()
+
+    block = calibration_run._ledger_provenance(artifact)
+
+    for field, value in shared.items():
+        if field in {"path_name", "schema_version", "profiles"}:
+            # Not identity of the feed: the directory name is local, and the
+            # manifest id is carried in the narrower manifest sub-block.
+            continue
+        assert block[field] == value, field
+    assert block["manifest"]["schema_version"] == shared["schema_version"]

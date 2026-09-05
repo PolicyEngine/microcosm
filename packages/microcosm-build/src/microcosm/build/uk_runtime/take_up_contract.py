@@ -29,6 +29,7 @@ UK_ALLOWED_RATE_STATUSES = frozenset(
         "frozen_by_adjudication",
     }
 )
+UK_ALLOWED_RATE_ENTITIES = frozenset({"person", "benunit", "household"})
 
 
 @dataclass(frozen=True)
@@ -167,6 +168,12 @@ def _entries(values: object, *, section: str) -> tuple[UKRateEntry, ...]:
         if key in seen:
             raise ValueError(f"duplicate UK take-up contract key {key!r}.")
         seen.add(key)
+        entity = item.get("entity")
+        if entity not in UK_ALLOWED_RATE_ENTITIES:
+            raise ValueError(
+                f"UK take-up contract {key!r} has invalid entity {entity!r}; "
+                f"expected one of {sorted(UK_ALLOWED_RATE_ENTITIES)}."
+            )
         entry_values = item.get("values")
         if not isinstance(entry_values, Mapping) or not entry_values:
             raise ValueError(f"UK take-up contract {key!r} requires values.")

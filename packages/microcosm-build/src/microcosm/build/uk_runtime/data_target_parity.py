@@ -442,7 +442,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "dataset_anchor_bus_subsidy_and_fares",
         "status": "routed",
         "classification": "imputation_anchor",
-        "reason": "BUS05 subsidy/fare totals and the NTS0705 quintile IPF belong to WS-E/F (#148).",
+        "reason": "BUS05 subsidy/fare totals are consumed by the #789 rows; the NTS0705 quintile gradient remains routed to WS-E/F (#148).",
         "evidence": "uk-data datasets/imputations/services/services.py:33 and datasets/imputations/consumption.py:790,830; Chronicle#200/#202.",
         "fence": _fence(
             "uk-data post-imputation-rescaled bus subsidy and fares, including London share and quintile rates.",

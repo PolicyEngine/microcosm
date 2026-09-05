@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -21,15 +23,21 @@ def _load_tool(name: str):
     return module
 
 
-def test_childcare_draws_use_seeded_default_rng_not_global_seed(monkeypatch) -> None:
+def test_childcare_draws_are_identity_keyed_and_hold_hours_fixed(monkeypatch) -> None:
     tool = _load_tool("fit_uk_childcare_takeup")
 
     def forbidden_seed(*args, **kwargs):
         raise AssertionError("np.random.seed must not be used")
 
     monkeypatch.setattr(tool.np.random, "seed", forbidden_seed)
-    first = tool.draw_childcare_inputs(5, tool.INITIAL_PARAMS, seed=42)
-    second = tool.draw_childcare_inputs(5, tool.INITIAL_PARAMS, seed=42)
+    contract = load_uk_take_up_contract()
+    ids = np.array([5, 4, 3, 2, 1])
+    first = tool.draw_childcare_inputs(
+        ids, tool.INITIAL_PARAMS, seed=42, contract=contract
+    )
+    second = tool.draw_childcare_inputs(
+        ids, tool.INITIAL_PARAMS, seed=42, contract=contract
+    )
 
     for key in first:
         np.testing.assert_array_equal(first[key], second[key])
@@ -42,33 +50,88 @@ def test_childcare_fit_receipt_is_deterministic_with_seeded_runner(
     input_h5 = tmp_path / "fixture.h5"
     input_h5.write_bytes(b"synthetic")
 
-    def runner(path: Path, params: np.ndarray, seed: int):
+    targets = {name: float(index + 1) for index, name in enumerate(tool.TARGET_IDS)}
+
+    def runner(path: Path, params: np.ndarray, seed: int, period: int, contract):
         scale = float(params.sum()) + seed * 0.0 + len(path.read_bytes()) * 0.0
-        spending = {
-            "tfc": 0.63 + scale * 0.0,
-            "extended": 2.5,
-            "targeted": 0.6,
-            "universal": 1.7,
-        }
-        caseload = {
-            "tfc": 985,
-            "extended": 740,
-            "targeted": 130,
-            "universal": 490,
-        }
-        return spending, caseload
+        assert period == 2024
+        assert contract.resource_sha256
+        return {name: value + scale * 0.0 for name, value in targets.items()}
 
     first = tool.fit_childcare_takeup(
-        input_h5, seed=42, maxiter=1, runner=runner, generated_at="2026-08-17"
+        input_h5,
+        seed=42,
+        maxiter=1,
+        runner=runner,
+        generated_at="2026-08-17",
+        targets=targets,
     )
     second = tool.fit_childcare_takeup(
-        input_h5, seed=42, maxiter=1, runner=runner, generated_at="2026-08-17"
+        input_h5,
+        seed=42,
+        maxiter=1,
+        runner=runner,
+        generated_at="2026-08-17",
+        targets=targets,
     )
 
     assert first == second
     assert first["input_sha256"]
     assert first["seed"] == 42
-    assert first["target_citations"]["tfc"].startswith("HMRC")
+    assert set(first["params"]) == set(tool.RATE_KEYS)
+    assert len(first["params"]) == 4
+    assert set(first["achieved"]) == set(tool.TARGET_IDS)
+
+
+def test_childcare_expected_counts_are_bilinear_in_the_extended_rate() -> None:
+    tool = _load_tool("fit_uk_childcare_takeup")
+    # Two rows: the first family is extended-eligible (loses targeted and
+    # universal when it claims extended), the second is not.
+    with_ext = {
+        "hmrc.tfc.government_top_up": np.array([100.0, 50.0]),
+        "hmrc.tfc.children_with_used_accounts": np.array([1.0, 1.0]),
+        "dfe.funded_childcare.working_parent_children_2_to_4": np.array([1.0, 0.0]),
+        "dfe.funded_childcare.early_learning_2_year_olds": np.array([0.0, 1.0]),
+        "dfe.funded_childcare.universal_only_children": np.array([0.0, 1.0]),
+    }
+    without_ext = {
+        **with_ext,
+        "dfe.funded_childcare.early_learning_2_year_olds": np.array([1.0, 1.0]),
+        "dfe.funded_childcare.universal_only_children": np.array([1.0, 1.0]),
+    }
+    basis = tool.ChildcareExpectationBasis(
+        with_extended=with_ext, without_extended=without_ext, rows=2
+    )
+    # RATE_KEYS order: tfc, extended, targeted, universal
+    expected = tool.expected_childcare_counts(basis, np.array([0.5, 0.25, 1.0, 0.4]))
+
+    assert expected["hmrc.tfc.government_top_up"] == pytest.approx(75.0)
+    assert expected["hmrc.tfc.children_with_used_accounts"] == pytest.approx(1.0)
+    assert expected["dfe.funded_childcare.working_parent_children_2_to_4"] == (
+        pytest.approx(0.25)
+    )
+    # targeted: family 1 is eligible only when it does not claim extended.
+    assert expected["dfe.funded_childcare.early_learning_2_year_olds"] == (
+        pytest.approx(1.0 * (0.75 + 1.0))
+    )
+    assert expected["dfe.funded_childcare.universal_only_children"] == (
+        pytest.approx(0.4 * (0.75 + 1.0))
+    )
+    ceiling = tool.expected_childcare_counts(basis, np.ones(4))
+    assert ceiling["dfe.funded_childcare.early_learning_2_year_olds"] == 1.0
+
+
+def test_childcare_fitter_family_allow_list_excludes_entitlement_spending() -> None:
+    tool = _load_tool("fit_uk_childcare_takeup")
+
+    assert tool.TARGET_IDS == (
+        "hmrc.tfc.government_top_up",
+        "hmrc.tfc.children_with_used_accounts",
+        "dfe.funded_childcare.working_parent_children_2_to_4",
+        "dfe.funded_childcare.early_learning_2_year_olds",
+        "dfe.funded_childcare.universal_only_children",
+    )
+    assert not any("spending" in target_id for target_id in tool.TARGET_IDS[1:])
 
 
 def test_identity_stability_receipt_compares_by_entity_id() -> None:
@@ -100,8 +163,16 @@ def test_e4_identity_receipt_survives_permutation_on_synthetic_frame() -> None:
     tool = _load_tool("verify_uk_identity_stability")
 
     class Contract:
-        def rate(self, key: str) -> float:
+        build_year = 2024
+
+        def rate(self, key: str, build_year: int | None = None) -> float:
+            if key == "tax_free_childcare_spend_routed_share":
+                return 0.593
             return 0.5 if not key.startswith("scp") else 0.9
+
+        def entry(self, key: str):
+            assert key == "tax_free_childcare_spend_routed_share"
+            return SimpleNamespace(raw={"entity": "person"})
 
         def continuous_entry(self, key: str):
             return {"mean": 15.019, "sd": 4.972, "lower": 0, "upper": 30}

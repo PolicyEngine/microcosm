@@ -103,7 +103,7 @@
       "source": {
         "source": "FRS empirical fit and HMRC Tax-Free Childcare statistics, June 2025 release",
         "agency": "HMRC",
-        "citation": "The 2015 value is the incumbent offline FRS fit; the 2024 value reflects HMRC 2024-25 TFC spending and annual unique children reached.",
+        "citation": "The 2024 value was a manual bump fitted on Enhanced FRS 2022-23 before the pipeline moved to FRS 2024-25; one scalar cannot hit caseload and spending when the award is wrong.",
         "url": "https://www.gov.uk/government/statistics/tax-free-childcare-statistics-june-2025",
         "status": "fitted_offline"
       },
@@ -118,7 +118,8 @@
       "output": "would_claim_extended_childcare",
       "entity": "benunit",
       "values": {
-        "2015-01-01": 0.812
+        "2015-01-01": 0.812,
+        "2024-04-06": 0.6054
       },
       "source": {
         "source": "FRS empirical fit",
@@ -127,9 +128,53 @@
         "status": "fitted_offline"
       },
       "fitting_receipt": {
-        "source": "incumbent UK pipeline @ ebf733c",
-        "seed": 42,
-        "status": "frozen parity value"
+        "source": "tools/fit_uk_childcare_takeup.py (microcosm#834 L5, licensed lane)",
+        "tool_version": 3,
+        "receipt_sha256": "c56ca568ef446f07f773ea03253bc2f9d878aeea6bc781ee38ed268d1fedde96",
+        "seed": 0,
+        "engine_version": "2.94.0",
+        "model_period": 2024,
+        "vintage_overrides": {
+          "dfe.funded_childcare.working_parent_children_2_to_4": 2025
+        },
+        "input_h5_sha256": "c2804c18c0fc6a1c00e2ccc68f5eda5cd8b739906970dcb95ca82471d9d436b8",
+        "ledger_facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "stochastic_contract_sha256_at_fit": "ba3daedade4c9e0115307eab2575e98c6921fb09357664ae3ea15644a86939e0",
+        "optimizer": {
+          "eps": 1e-06,
+          "loss": 0.07969210950295769,
+          "maxiter": 50,
+          "method": "L-BFGS-B",
+          "success": true
+        },
+        "achieved": {
+          "dfe.funded_childcare.early_learning_2_year_olds": {
+            "target": 115852.0,
+            "value": 98692.247,
+            "ratio": 0.8519
+          },
+          "dfe.funded_childcare.universal_only_children": {
+            "target": 416537.0,
+            "value": 416536.695,
+            "ratio": 1.0
+          },
+          "dfe.funded_childcare.working_parent_children_2_to_4": {
+            "target": 621482.0,
+            "value": 612914.443,
+            "ratio": 0.9862
+          },
+          "hmrc.tfc.children_with_used_accounts": {
+            "target": 1085020.0,
+            "value": 1235197.414,
+            "ratio": 1.1384
+          },
+          "hmrc.tfc.government_top_up": {
+            "target": 632200000.0,
+            "value": 508305122.499,
+            "ratio": 0.804
+          }
+        },
+        "status": "fitted on the L2 column twin at the 2024 base year (A6); hours distribution frozen; the same fit drove tax_free_childcare and targeted_childcare to the 1.0 bound, which are held at their incumbent values pending adjudication (plan A22/A23)"
       }
     },
     {
@@ -137,7 +182,8 @@
       "output": "would_claim_universal_childcare",
       "entity": "benunit",
       "values": {
-        "2015-01-01": 0.563
+        "2015-01-01": 0.563,
+        "2024-04-06": 0.4539
       },
       "source": {
         "source": "FRS empirical fit",
@@ -146,9 +192,53 @@
         "status": "fitted_offline"
       },
       "fitting_receipt": {
-        "source": "incumbent UK pipeline @ ebf733c",
-        "seed": 42,
-        "status": "frozen parity value"
+        "source": "tools/fit_uk_childcare_takeup.py (microcosm#834 L5, licensed lane)",
+        "tool_version": 3,
+        "receipt_sha256": "c56ca568ef446f07f773ea03253bc2f9d878aeea6bc781ee38ed268d1fedde96",
+        "seed": 0,
+        "engine_version": "2.94.0",
+        "model_period": 2024,
+        "vintage_overrides": {
+          "dfe.funded_childcare.working_parent_children_2_to_4": 2025
+        },
+        "input_h5_sha256": "c2804c18c0fc6a1c00e2ccc68f5eda5cd8b739906970dcb95ca82471d9d436b8",
+        "ledger_facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
+        "stochastic_contract_sha256_at_fit": "ba3daedade4c9e0115307eab2575e98c6921fb09357664ae3ea15644a86939e0",
+        "optimizer": {
+          "eps": 1e-06,
+          "loss": 0.07969210950295769,
+          "maxiter": 50,
+          "method": "L-BFGS-B",
+          "success": true
+        },
+        "achieved": {
+          "dfe.funded_childcare.early_learning_2_year_olds": {
+            "target": 115852.0,
+            "value": 98692.247,
+            "ratio": 0.8519
+          },
+          "dfe.funded_childcare.universal_only_children": {
+            "target": 416537.0,
+            "value": 416536.695,
+            "ratio": 1.0
+          },
+          "dfe.funded_childcare.working_parent_children_2_to_4": {
+            "target": 621482.0,
+            "value": 612914.443,
+            "ratio": 0.9862
+          },
+          "hmrc.tfc.children_with_used_accounts": {
+            "target": 1085020.0,
+            "value": 1235197.414,
+            "ratio": 1.1384
+          },
+          "hmrc.tfc.government_top_up": {
+            "target": 632200000.0,
+            "value": 508305122.499,
+            "ratio": 0.804
+          }
+        },
+        "status": "fitted on the L2 column twin at the 2024 base year (A6); hours distribution frozen; the same fit drove tax_free_childcare and targeted_childcare to the 1.0 bound, which are held at their incumbent values pending adjudication (plan A22/A23)"
       }
     },
     {
@@ -161,7 +251,7 @@
       "source": {
         "source": "FRS empirical fit",
         "agency": "PolicyEngine",
-        "citation": "Incumbent offline FRS childcare take-up fit.",
+        "citation": "Incumbent offline FRS childcare take-up fit. DfE's published 74.8% figure is not transferred directly because its denominator is not comparable to the model's eligibility base.",
         "status": "fitted_offline"
       },
       "fitting_receipt": {
@@ -265,6 +355,32 @@
         "url": "https://www.gov.uk/government/statistics/monthly-property-transactions-completed-in-the-uk-with-value-40000-or-above",
         "status": "sourced_administrative_derived"
       }
+    },
+    {
+      "key": "tax_free_childcare_spend_routed_share",
+      "output": "tax_free_childcare_spend_routed_share",
+      "entity": "person",
+      "values": {
+        "2017-04-01": 0.359,
+        "2018-04-01": 0.489,
+        "2019-04-01": 0.542,
+        "2020-04-01": 0.471,
+        "2021-04-01": 0.575,
+        "2022-04-01": 0.584,
+        "2023-04-01": 0.589,
+        "2024-04-01": 0.593,
+        "2025-04-01": 0.582
+      },
+      "source": {
+        "source": "HMRC Tax-Free Childcare statistics, March 2026, Table 2 (children with used accounts, monthly and annual-unique)",
+        "agency": "HMRC",
+        "status": "sourced_administrative_derived",
+        "url": "https://www.gov.uk/government/statistics/tax-free-childcare-statistics-march-2026",
+        "chronicle_package_id": "hmrc-tax-free-childcare-march-2026",
+        "ods_sha256": "c2a8e82a7d1e6c85cbe119ffe0a51e692fac3e5014a37f845484dee710e7a29d",
+        "derivation": "sum(monthly children with used accounts) / annual-unique children / 12, per HMRC financial year; quality report defines a used account",
+        "citation": "A calibration adjustment, not a measured routed-expenditure share: an account-active-duration proxy assuming uniform spend through the year and full routing in active months; HMRC warns payment dates need not be care dates. Assigned as the published mean, no invented distribution. Denominator is the whole year; the engine defines the share over the eligible period, and the two coincide while tax_free_childcare_eligible_declaration_periods is 0 or 4. HMRC's used-account definition changed from April 2025 and applies to annual figures from FY2024-25."
+      }
     }
   ],
   "continuous": [
@@ -278,15 +394,14 @@
       "lower": 0,
       "upper": 30,
       "source": {
-        "source": "FRS empirical fit",
+        "source": "FRS empirical fit, frozen by microcosm#834 adjudication",
         "agency": "PolicyEngine",
-        "citation": "Incumbent offline childcare usage fit, clipped to [0, 30] hours.",
-        "status": "fitted_offline"
-      },
-      "fitting_receipt": {
-        "source": "incumbent UK pipeline @ ebf733c",
-        "seed": 42,
-        "status": "frozen parity value"
+        "citation": "Incumbent offline childcare usage fit, clipped to [0, 30] hours. Frozen because it is underidentified without an independent extended-spending observation; replacing it needs evidence on hours actually used.",
+        "status": "frozen_by_adjudication",
+        "freeze": {
+          "decision": "Hold 15.019 / 4.972 / 0 / 30 fixed while fitting only four take-up rates",
+          "followup": "microcosm#834"
+        }
       }
     }
   ]

@@ -886,10 +886,18 @@
       "survey": "Family Resources Survey 2024-25"
     },
     "frs_person_draws": {
-      "artifacts": [],
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "take_up_contract.json",
+          "role": "stochastic_contract"
+        }
+      ],
       "grain": "person",
       "nonnegative_outputs": [
-        "attends_private_school_random_draw"
+        "attends_private_school_random_draw",
+        "tax_free_childcare_spend_routed_share"
       ],
       "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; higher_earner_tie_break is intentionally not produced.",
       "operations": [
@@ -920,12 +928,20 @@
           "kind": "assign_uniform_draw",
           "output": "attends_private_school_random_draw",
           "seed": 0
+        },
+        {
+          "contract_key": "tax_free_childcare_spend_routed_share",
+          "dtype": "float64",
+          "kind": "assign_period_constant",
+          "output": "tax_free_childcare_spend_routed_share",
+          "period_source": "build_year"
         }
       ],
       "outputs": [
         "would_claim_marriage_allowance",
         "would_claim_scp",
-        "attends_private_school_random_draw"
+        "attends_private_school_random_draw",
+        "tax_free_childcare_spend_routed_share"
       ],
       "rewrites": [],
       "source": "Sourced UK take-up contract rates and identity-keyed deterministic draws.",

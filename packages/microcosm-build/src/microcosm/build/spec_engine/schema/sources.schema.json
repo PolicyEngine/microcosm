@@ -5765,6 +5765,34 @@
      "required": [
       "kind",
       "output",
+      "contract_key",
+      "period_source",
+      "dtype"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_period_constant"
+      },
+      "output": {
+       "type": "string"
+      },
+      "contract_key": {
+       "type": "string"
+      },
+      "period_source": {
+       "const": "build_year"
+      },
+      "dtype": {
+       "const": "float64"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
       "draw",
       "draw_dtype",
       "resource",

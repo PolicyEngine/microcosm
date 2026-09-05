@@ -55,9 +55,9 @@ from microcosm.frame import engine_tables
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: The shared exclusion-expiry clock, fixed inside the committed register's
-#: validity window (approved 2026-08-10, expires 2027-02-10) so the suite
+#: validity window (latest approval 2026-09-05, expires 2027-02-10) so the suite
 #: never drifts across an expiry boundary.
-CLOCK = date(2026, 9, 1)
+CLOCK = date(2026, 9, 5)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
@@ -1000,14 +1000,14 @@ class TestPreflightBindings:
         )
 
         assert result.passed is True
-        assert result.details["candidate_targets"] == 19_618
+        assert result.details["candidate_targets"] == 19_932
         assert result.details["reference_targets"] == 22_530
-        # 1,901 signed area deferrals from the membership file plus the 1,011
+        # 1,587 signed area deferrals from the membership file plus the 1,011
         # ladder-derived households@area rows: census_households binds from the
         # OA-ladder artifact (microcosm#542), never from Chronicle facts, so the
         # in-code default surface excludes it by rule rather than by absence.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 1_901 + 1_011
+        assert len(exclusions) == 1_587 + 1_011
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]

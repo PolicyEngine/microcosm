@@ -524,9 +524,10 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48",
+        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "source_commit": "33ca98a",
+        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
+        "source_commit": "6fb700e",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "Unbanded area statistics in the pinned Ledger fact feed supply the local HMRC count targets directly and the amount targets via the signed count_x_mean construction. The feed publishes SPI target count/mean measures for 650/650 constituencies except self_employment_income_mean at E14001416 (so that one amount row is signed deferred), and for 359/361 crosswalk local authorities; E06000027 has only median SPI measures and E06000053 has no SPI local-authority target-measure rows. This remains a different surface from the 208 banded Total Income facts held fenced by the national adjudication.",
@@ -545,9 +546,10 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48",
+        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "source_commit": "33ca98a",
+        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
+        "source_commit": "6fb700e",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries the PCON24 constituency population age specs for all 650 constituencies across the ONS, NRS, and NISRA publisher legs. Mid-year estimates cover the total usual-resident population \u2014 see the population_universe_private_households adjudication.",
@@ -566,9 +568,10 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48",
+        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "source_commit": "33ca98a",
+        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
+        "source_commit": "6fb700e",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries local-authority population age specs for all 361 crosswalk local authorities. Covers the total usual-resident population \u2014 see the population_universe_private_households adjudication.",
@@ -630,9 +633,10 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48",
+        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "source_commit": "33ca98a",
+        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
+        "source_commit": "6fb700e",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries DWP Stat-Xplore UC household facts for 632/650 constituencies and 350/361 local authorities, plus the four constituency child-bucket specs. DWP UC official statistics in this feed cover Great Britain; the 18 Northern Ireland constituencies and 11 Northern Ireland local authorities are signed deferred. DWP counts UC claim households \u2014 see the uc_unit_vs_household_grain adjudication.",
@@ -651,9 +655,10 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48",
+        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "source_commit": "33ca98a",
+        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
+        "source_commit": "6fb700e",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "Model-based estimates built from the Family Resources Survey \u2014 see the frs_model_based_target_circularity adjudication. The BHC and AHC measures are independently modelled and not directly comparable \u2014 see the ons_bhc_ahc_noncomparable adjudication. MSOA-to-local-authority aggregation is signed deferred for this run; England and Wales only.",
@@ -675,9 +680,10 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48",
+        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "source_commit": "33ca98a",
+        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
+        "source_commit": "6fb700e",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned Ledger fact feed carries tenure specs for all 361 crosswalk local authorities across ONS Census 2021, NRS Census 2022, and NISRA Census 2021 publisher legs. Private-rent and social-rent tenure rows are additive over publisher-native subclasses and compile through the signed sum operation.",
@@ -696,9 +702,10 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48",
+        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "source_commit": "33ca98a",
+        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
+        "source_commit": "6fb700e",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "PIPR publishes average rent price levels, not additive rent totals. All 361 local-authority cells remain signed deferred for the 2025 compile: 314 are after-period, four English cells have no matching LA id, 32 Scottish cells are represented only at BRMA grain without a signed translation, and 11 Northern Ireland cells are absent.",
@@ -719,9 +726,10 @@
       "ledger_fact_pin": {
         "artifact": ".codex-work/consumer_facts_uk.jsonl",
         "build": "build-bundle --suite uk -> build-consumer-artifact",
-        "facts_sha256": "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48",
+        "facts_sha256": "6ae49d7d7ab297df25a0b9bfe2d6776827c672d284fbb360957fe8337089549f",
         "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-        "source_commit": "33ca98a",
+        "manifest_sha256": "dcda51d6496aea67f768a284e7955c7520e7c8b91e2bed3569f247567b7153f0",
+        "source_commit": "6fb700e",
         "source_repo": "PolicyEngine/chronicle"
       },
       "notes": "The pinned feed record-set spec uk.local_geography.council_tax_stock.by_local_authority.v1 supplies 2,541 active band cells: bands B-G cover all 318 England/Wales crosswalk authorities, band A covers 317 because E09000001 is suppressed, and band H covers 316 because W06000019 and W06000024 are absent. Scotland's 32 authorities have no VOA band-count rows and Northern Ireland's 11 LGDs use domestic rates; all 347 absent cells are signed deferrals. The feed has no comparable 2025 LA net series across the roster, so council_tax/net is not declared.",

@@ -1,11 +1,11 @@
 {
- "compiled_count": 217,
+ "compiled_count": 222,
  "counts_by_kind": {
   "calibration_drift": 12,
   "fixture_only": 125,
-  "ledger_only": 193
+  "ledger_only": 198
  },
- "difference_count": 330,
+ "difference_count": 335,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -884,15 +884,50 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 65937000000.0,
+   "ledger_value": 124211.0,
+   "name": "dfe.funded_childcare.early_learning_2_year_olds",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 437147.0,
+   "name": "dfe.funded_childcare.universal_only_children",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3105254075.49544,
+   "name": "dft.bus_fare_receipts.england",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2247884765.6,
+   "name": "dft.bus_net_support.england",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 69861000000.0,
    "name": "hmrc.cgt.gains_total",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 378000.0,
+   "ledger_value": 403000.0,
    "name": "hmrc.cgt.taxpayers_total",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 624500000.0,
+   "name": "hmrc.tfc.government_top_up",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

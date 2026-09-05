@@ -1,11 +1,11 @@
 {
- "compiled_count": 408,
+ "compiled_count": 415,
  "counts_by_kind": {
-  "calibration_drift": 170,
+  "calibration_drift": 172,
   "fixture_only": 267,
-  "ledger_only": 38
+  "ledger_only": 45
  },
- "difference_count": 475,
+ "difference_count": 484,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -1878,6 +1878,41 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 95031.0,
+   "name": "dfe.funded_childcare.early_learning_2_year_olds",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 396965.0,
+   "name": "dfe.funded_childcare.universal_only_children",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 621482.0,
+   "name": "dfe.funded_childcare.working_parent_children_2_to_4",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3417388656.43538,
+   "name": "dft.bus_fare_receipts.england",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3024904320.8399997,
+   "name": "dft.bus_net_support.england",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 597920.0,
    "name": "dwp.uc.two_child_limit.children_affected",
    "period": 2025,
@@ -1999,6 +2034,20 @@
    "kind": "ledger_only",
    "ledger_value": 5500000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1151515.0,
+   "name": "hmrc.tfc.children_with_used_accounts",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 599800000.0,
+   "name": "hmrc.tfc.government_top_up",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -2161,7 +2210,7 @@
   {
    "fixture_value": 1222944.0,
    "kind": "calibration_drift",
-   "ledger_value": 1269512.0,
+   "ledger_value": 1278537.0,
    "name": "dwp.uc.households_children_1",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2169,7 +2218,7 @@
   {
    "fixture_value": 1058967.0,
    "kind": "calibration_drift",
-   "ledger_value": 1103880.0,
+   "ledger_value": 1100617.5555555555,
    "name": "dwp.uc.households_children_2",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2177,7 +2226,7 @@
   {
    "fixture_value": 473500.0,
    "kind": "calibration_drift",
-   "ledger_value": 497665.0,
+   "ledger_value": 494553.22222222225,
    "name": "dwp.uc.households_children_3",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2185,7 +2234,7 @@
   {
    "fixture_value": 166790.0,
    "kind": "calibration_drift",
-   "ledger_value": 176202.0,
+   "ledger_value": 174668.88888888888,
    "name": "dwp.uc.households_children_4",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2193,7 +2242,7 @@
   {
    "fixture_value": 75910.0,
    "kind": "calibration_drift",
-   "ledger_value": 77894.0,
+   "ledger_value": 77376.77777777778,
    "name": "dwp.uc.households_children_5_or_more",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2201,7 +2250,7 @@
   {
    "fixture_value": 231368.0,
    "kind": "calibration_drift",
-   "ledger_value": 266160.0,
+   "ledger_value": 284345.55555555556,
    "name": "dwp.uc.households_couple_no_children",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2209,7 +2258,7 @@
   {
    "fixture_value": 839379.0,
    "kind": "calibration_drift",
-   "ledger_value": 911392.0,
+   "ledger_value": 899534.6666666666,
    "name": "dwp.uc.households_couple_with_children",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2217,7 +2266,7 @@
   {
    "fixture_value": 2868011.0,
    "kind": "calibration_drift",
-   "ledger_value": 3191316.0,
+   "ledger_value": 3446962.0,
    "name": "dwp.uc.households_single_no_children",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2225,7 +2274,7 @@
   {
    "fixture_value": 2156879.0,
    "kind": "calibration_drift",
-   "ledger_value": 2213760.0,
+   "ledger_value": 2226220.0,
    "name": "dwp.uc.households_single_with_children",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2233,7 +2282,7 @@
   {
    "fixture_value": 14000.0,
    "kind": "calibration_drift",
-   "ledger_value": 14412.0,
+   "ledger_value": 14333.222222222223,
    "name": "dwp.uc.scotland_households_child_under_1",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2241,7 +2290,7 @@
   {
    "fixture_value": 7610.0,
    "kind": "calibration_drift",
-   "ledger_value": 7553.0,
+   "ledger_value": 7506.333333333333,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_0_to_1_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2249,7 +2298,7 @@
   {
    "fixture_value": 12370.0,
    "kind": "calibration_drift",
-   "ledger_value": 12318.0,
+   "ledger_value": 13313.333333333334,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_10_800_to_12_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2257,7 +2306,7 @@
   {
    "fixture_value": 15175.0,
    "kind": "calibration_drift",
-   "ledger_value": 15096.0,
+   "ledger_value": 16121.444444444445,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_12_000_to_13_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2265,7 +2314,7 @@
   {
    "fixture_value": 12297.0,
    "kind": "calibration_drift",
-   "ledger_value": 12422.0,
+   "ledger_value": 13317.333333333334,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_13_200_to_14_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2273,7 +2322,7 @@
   {
    "fixture_value": 17828.0,
    "kind": "calibration_drift",
-   "ledger_value": 17851.0,
+   "ledger_value": 19657.333333333332,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_14_400_to_15_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2281,7 +2330,7 @@
   {
    "fixture_value": 14427.0,
    "kind": "calibration_drift",
-   "ledger_value": 14493.0,
+   "ledger_value": 16443.222222222223,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_15_600_to_16_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2289,7 +2338,7 @@
   {
    "fixture_value": 11892.0,
    "kind": "calibration_drift",
-   "ledger_value": 11914.0,
+   "ledger_value": 13441.111111111111,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_16_800_to_18_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2297,7 +2346,7 @@
   {
    "fixture_value": 9463.0,
    "kind": "calibration_drift",
-   "ledger_value": 9478.0,
+   "ledger_value": 10728.555555555555,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_18_000_to_19_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2305,7 +2354,7 @@
   {
    "fixture_value": 8443.0,
    "kind": "calibration_drift",
-   "ledger_value": 8479.0,
+   "ledger_value": 9653.222222222223,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_19_200_to_20_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2313,7 +2362,7 @@
   {
    "fixture_value": 8906.0,
    "kind": "calibration_drift",
-   "ledger_value": 8732.0,
+   "ledger_value": 8797.0,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_1_200_to_2_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2321,7 +2370,7 @@
   {
    "fixture_value": 5770.0,
    "kind": "calibration_drift",
-   "ledger_value": 5764.0,
+   "ledger_value": 6486.888888888889,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_20_400_to_21_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2329,7 +2378,7 @@
   {
    "fixture_value": 3485.0,
    "kind": "calibration_drift",
-   "ledger_value": 3525.0,
+   "ledger_value": 3981.8888888888887,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_21_600_to_22_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2337,7 +2386,7 @@
   {
    "fixture_value": 2360.0,
    "kind": "calibration_drift",
-   "ledger_value": 2356.0,
+   "ledger_value": 2761.4444444444443,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_22_800_to_24_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2345,7 +2394,7 @@
   {
    "fixture_value": 1815.0,
    "kind": "calibration_drift",
-   "ledger_value": 1797.0,
+   "ledger_value": 2131.222222222222,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_24_000_to_25_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2353,7 +2402,7 @@
   {
    "fixture_value": 1186.0,
    "kind": "calibration_drift",
-   "ledger_value": 1214.0,
+   "ledger_value": 1475.3333333333333,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_25_200_to_26_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2361,7 +2410,7 @@
   {
    "fixture_value": 935.0,
    "kind": "calibration_drift",
-   "ledger_value": 958.0,
+   "ledger_value": 1073.7777777777778,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_26_400_to_27_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2369,7 +2418,7 @@
   {
    "fixture_value": 632.0,
    "kind": "calibration_drift",
-   "ledger_value": 654.0,
+   "ledger_value": 746.3333333333334,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_27_600_to_28_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2377,7 +2426,7 @@
   {
    "fixture_value": 580.0,
    "kind": "calibration_drift",
-   "ledger_value": 578.0,
+   "ledger_value": 605.7777777777778,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_28_800_to_30_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2385,7 +2434,7 @@
   {
    "fixture_value": 11750.0,
    "kind": "calibration_drift",
-   "ledger_value": 11606.0,
+   "ledger_value": 12256.0,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_2_400_to_3_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2393,7 +2442,7 @@
   {
    "fixture_value": 10802.0,
    "kind": "calibration_drift",
-   "ledger_value": 10672.0,
+   "ledger_value": 10945.444444444445,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_3_600_to_4_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2401,7 +2450,7 @@
   {
    "fixture_value": 12168.0,
    "kind": "calibration_drift",
-   "ledger_value": 12199.0,
+   "ledger_value": 12492.444444444445,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_4_800_to_6_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2409,7 +2458,7 @@
   {
    "fixture_value": 12461.0,
    "kind": "calibration_drift",
-   "ledger_value": 12405.0,
+   "ledger_value": 12979.666666666666,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_6_000_to_7_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2417,7 +2466,7 @@
   {
    "fixture_value": 15787.0,
    "kind": "calibration_drift",
-   "ledger_value": 15632.0,
+   "ledger_value": 16484.444444444445,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_7_200_to_8_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2425,7 +2474,7 @@
   {
    "fixture_value": 14248.0,
    "kind": "calibration_drift",
-   "ledger_value": 14298.0,
+   "ledger_value": 15272.444444444445,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_8_400_to_9_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2433,7 +2482,7 @@
   {
    "fixture_value": 17559.0,
    "kind": "calibration_drift",
-   "ledger_value": 17626.0,
+   "ledger_value": 19142.333333333332,
    "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_9_600_to_10_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2441,7 +2490,7 @@
   {
    "fixture_value": 18714.0,
    "kind": "calibration_drift",
-   "ledger_value": 18896.0,
+   "ledger_value": 19073.555555555555,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_0_to_1_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2449,7 +2498,7 @@
   {
    "fixture_value": 42188.0,
    "kind": "calibration_drift",
-   "ledger_value": 41858.0,
+   "ledger_value": 40805.444444444445,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_10_800_to_12_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2457,7 +2506,7 @@
   {
    "fixture_value": 41520.0,
    "kind": "calibration_drift",
-   "ledger_value": 41349.0,
+   "ledger_value": 40009.555555555555,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_12_000_to_13_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2465,7 +2514,7 @@
   {
    "fixture_value": 41159.0,
    "kind": "calibration_drift",
-   "ledger_value": 40850.0,
+   "ledger_value": 39972.555555555555,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_13_200_to_14_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2473,7 +2522,7 @@
   {
    "fixture_value": 42515.0,
    "kind": "calibration_drift",
-   "ledger_value": 42101.0,
+   "ledger_value": 40518.77777777778,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_14_400_to_15_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2481,7 +2530,7 @@
   {
    "fixture_value": 38527.0,
    "kind": "calibration_drift",
-   "ledger_value": 38379.0,
+   "ledger_value": 37118.0,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_15_600_to_16_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2489,7 +2538,7 @@
   {
    "fixture_value": 38894.0,
    "kind": "calibration_drift",
-   "ledger_value": 38725.0,
+   "ledger_value": 37177.77777777778,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_16_800_to_18_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2497,7 +2546,7 @@
   {
    "fixture_value": 38659.0,
    "kind": "calibration_drift",
-   "ledger_value": 38124.0,
+   "ledger_value": 37164.555555555555,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_18_000_to_19_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2505,7 +2554,7 @@
   {
    "fixture_value": 34318.0,
    "kind": "calibration_drift",
-   "ledger_value": 33871.0,
+   "ledger_value": 33309.555555555555,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_19_200_to_20_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2513,7 +2562,7 @@
   {
    "fixture_value": 22489.0,
    "kind": "calibration_drift",
-   "ledger_value": 22614.0,
+   "ledger_value": 22775.777777777777,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_1_200_to_2_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2521,7 +2570,7 @@
   {
    "fixture_value": 30116.0,
    "kind": "calibration_drift",
-   "ledger_value": 29950.0,
+   "ledger_value": 29102.555555555555,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_20_400_to_21_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2529,7 +2578,7 @@
   {
    "fixture_value": 28519.0,
    "kind": "calibration_drift",
-   "ledger_value": 28186.0,
+   "ledger_value": 27534.666666666668,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_21_600_to_22_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2537,7 +2586,7 @@
   {
    "fixture_value": 26014.0,
    "kind": "calibration_drift",
-   "ledger_value": 25960.0,
+   "ledger_value": 25584.777777777777,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_22_800_to_24_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2545,7 +2594,7 @@
   {
    "fixture_value": 23159.0,
    "kind": "calibration_drift",
-   "ledger_value": 23231.0,
+   "ledger_value": 22927.777777777777,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_24_000_to_25_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2553,7 +2602,7 @@
   {
    "fixture_value": 20618.0,
    "kind": "calibration_drift",
-   "ledger_value": 20598.0,
+   "ledger_value": 20334.666666666668,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_25_200_to_26_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2561,7 +2610,7 @@
   {
    "fixture_value": 17493.0,
    "kind": "calibration_drift",
-   "ledger_value": 17650.0,
+   "ledger_value": 17535.0,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_26_400_to_27_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2569,7 +2618,7 @@
   {
    "fixture_value": 15437.0,
    "kind": "calibration_drift",
-   "ledger_value": 15499.0,
+   "ledger_value": 15399.888888888889,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_27_600_to_28_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2577,7 +2626,7 @@
   {
    "fixture_value": 12836.0,
    "kind": "calibration_drift",
-   "ledger_value": 12912.0,
+   "ledger_value": 12836.222222222223,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_28_800_to_30_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2585,7 +2634,7 @@
   {
    "fixture_value": 26734.0,
    "kind": "calibration_drift",
-   "ledger_value": 26768.0,
+   "ledger_value": 26502.666666666668,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_2_400_to_3_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2593,7 +2642,7 @@
   {
    "fixture_value": 29189.0,
    "kind": "calibration_drift",
-   "ledger_value": 29288.0,
+   "ledger_value": 29027.0,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_3_600_to_4_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2601,15 +2650,23 @@
   {
    "fixture_value": 33137.0,
    "kind": "calibration_drift",
-   "ledger_value": 33072.0,
+   "ledger_value": 32427.0,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_4_800_to_6_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 35834.0,
+   "kind": "calibration_drift",
+   "ledger_value": 34956.88888888889,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_6_000_to_7_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },
   {
    "fixture_value": 38338.0,
    "kind": "calibration_drift",
-   "ledger_value": 38337.0,
+   "ledger_value": 37410.77777777778,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_7_200_to_8_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2617,7 +2674,7 @@
   {
    "fixture_value": 40685.0,
    "kind": "calibration_drift",
-   "ledger_value": 40556.0,
+   "ledger_value": 39910.333333333336,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_8_400_to_9_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2625,7 +2682,7 @@
   {
    "fixture_value": 40564.0,
    "kind": "calibration_drift",
-   "ledger_value": 40399.0,
+   "ledger_value": 39368.0,
    "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_9_600_to_10_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2633,7 +2690,7 @@
   {
    "fixture_value": 24639.0,
    "kind": "calibration_drift",
-   "ledger_value": 24828.0,
+   "ledger_value": 26670.222222222223,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_0_to_1_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2641,7 +2698,7 @@
   {
    "fixture_value": 126949.0,
    "kind": "calibration_drift",
-   "ledger_value": 125466.0,
+   "ledger_value": 123718.11111111111,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_10_800_to_12_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2649,7 +2706,7 @@
   {
    "fixture_value": 131129.0,
    "kind": "calibration_drift",
-   "ledger_value": 129699.0,
+   "ledger_value": 125798.44444444444,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_12_000_to_13_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2657,7 +2714,7 @@
   {
    "fixture_value": 131289.0,
    "kind": "calibration_drift",
-   "ledger_value": 129699.0,
+   "ledger_value": 129133.66666666667,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_13_200_to_14_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2665,7 +2722,7 @@
   {
    "fixture_value": 119355.0,
    "kind": "calibration_drift",
-   "ledger_value": 117812.0,
+   "ledger_value": 115856.66666666667,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_14_400_to_15_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2673,7 +2730,7 @@
   {
    "fixture_value": 130802.0,
    "kind": "calibration_drift",
-   "ledger_value": 128991.0,
+   "ledger_value": 125660.22222222222,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_15_600_to_16_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2681,7 +2738,7 @@
   {
    "fixture_value": 141848.0,
    "kind": "calibration_drift",
-   "ledger_value": 139675.0,
+   "ledger_value": 135836.77777777778,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_16_800_to_18_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2689,7 +2746,7 @@
   {
    "fixture_value": 136835.0,
    "kind": "calibration_drift",
-   "ledger_value": 134650.0,
+   "ledger_value": 135444.88888888888,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_18_000_to_19_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2697,7 +2754,7 @@
   {
    "fixture_value": 107556.0,
    "kind": "calibration_drift",
-   "ledger_value": 106818.0,
+   "ledger_value": 106341.88888888889,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_19_200_to_20_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2705,7 +2762,7 @@
   {
    "fixture_value": 34670.0,
    "kind": "calibration_drift",
-   "ledger_value": 34587.0,
+   "ledger_value": 36208.11111111111,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_1_200_to_2_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2713,7 +2770,7 @@
   {
    "fixture_value": 86616.0,
    "kind": "calibration_drift",
-   "ledger_value": 86255.0,
+   "ledger_value": 85490.44444444444,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_20_400_to_21_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2721,7 +2778,7 @@
   {
    "fixture_value": 80294.0,
    "kind": "calibration_drift",
-   "ledger_value": 80273.0,
+   "ledger_value": 80226.88888888889,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_21_600_to_22_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2729,7 +2786,7 @@
   {
    "fixture_value": 70309.0,
    "kind": "calibration_drift",
-   "ledger_value": 70319.0,
+   "ledger_value": 71259.55555555556,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_22_800_to_24_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2737,7 +2794,7 @@
   {
    "fixture_value": 50510.0,
    "kind": "calibration_drift",
-   "ledger_value": 50805.0,
+   "ledger_value": 51301.666666666664,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_24_000_to_25_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2745,7 +2802,7 @@
   {
    "fixture_value": 42522.0,
    "kind": "calibration_drift",
-   "ledger_value": 43132.0,
+   "ledger_value": 43305.22222222222,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_25_200_to_26_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2753,7 +2810,7 @@
   {
    "fixture_value": 33508.0,
    "kind": "calibration_drift",
-   "ledger_value": 34342.0,
+   "ledger_value": 34910.555555555555,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_26_400_to_27_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2761,7 +2818,7 @@
   {
    "fixture_value": 27063.0,
    "kind": "calibration_drift",
-   "ledger_value": 27650.0,
+   "ledger_value": 28513.0,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_27_600_to_28_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2769,7 +2826,7 @@
   {
    "fixture_value": 21663.0,
    "kind": "calibration_drift",
-   "ledger_value": 22058.0,
+   "ledger_value": 22593.0,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_28_800_to_30_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2777,7 +2834,7 @@
   {
    "fixture_value": 43623.0,
    "kind": "calibration_drift",
-   "ledger_value": 43550.0,
+   "ledger_value": 46312.77777777778,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_2_400_to_3_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2785,7 +2842,7 @@
   {
    "fixture_value": 55622.0,
    "kind": "calibration_drift",
-   "ledger_value": 55560.0,
+   "ledger_value": 60310.11111111111,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_3_600_to_4_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2793,7 +2850,7 @@
   {
    "fixture_value": 67901.0,
    "kind": "calibration_drift",
-   "ledger_value": 68058.0,
+   "ledger_value": 67858.66666666667,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_4_800_to_6_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2801,7 +2858,7 @@
   {
    "fixture_value": 89314.0,
    "kind": "calibration_drift",
-   "ledger_value": 89174.0,
+   "ledger_value": 89577.44444444444,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_6_000_to_7_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2809,7 +2866,7 @@
   {
    "fixture_value": 118641.0,
    "kind": "calibration_drift",
-   "ledger_value": 117236.0,
+   "ledger_value": 116076.0,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_7_200_to_8_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2817,7 +2874,7 @@
   {
    "fixture_value": 99069.0,
    "kind": "calibration_drift",
-   "ledger_value": 98877.0,
+   "ledger_value": 97511.0,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_8_400_to_9_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2825,7 +2882,7 @@
   {
    "fixture_value": 102251.0,
    "kind": "calibration_drift",
-   "ledger_value": 102069.0,
+   "ledger_value": 102343.0,
    "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_9_600_to_10_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2833,7 +2890,7 @@
   {
    "fixture_value": 102312.0,
    "kind": "calibration_drift",
-   "ledger_value": 101189.0,
+   "ledger_value": 89479.33333333333,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_0_to_1_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2841,7 +2898,7 @@
   {
    "fixture_value": 95698.0,
    "kind": "calibration_drift",
-   "ledger_value": 94296.0,
+   "ledger_value": 104891.11111111111,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_10_800_to_12_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2849,7 +2906,7 @@
   {
    "fixture_value": 106663.0,
    "kind": "calibration_drift",
-   "ledger_value": 106102.0,
+   "ledger_value": 122035.55555555556,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_12_000_to_13_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2857,7 +2914,7 @@
   {
    "fixture_value": 181180.0,
    "kind": "calibration_drift",
-   "ledger_value": 182183.0,
+   "ledger_value": 197163.22222222222,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_13_200_to_14_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2865,7 +2922,7 @@
   {
    "fixture_value": 189861.0,
    "kind": "calibration_drift",
-   "ledger_value": 191730.0,
+   "ledger_value": 209497.33333333334,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_14_400_to_15_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2873,7 +2930,7 @@
   {
    "fixture_value": 129174.0,
    "kind": "calibration_drift",
-   "ledger_value": 130302.0,
+   "ledger_value": 149963.22222222222,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_15_600_to_16_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2881,7 +2938,7 @@
   {
    "fixture_value": 84690.0,
    "kind": "calibration_drift",
-   "ledger_value": 86110.0,
+   "ledger_value": 108689.66666666667,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_16_800_to_18_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2889,7 +2946,7 @@
   {
    "fixture_value": 46244.0,
    "kind": "calibration_drift",
-   "ledger_value": 47330.0,
+   "ledger_value": 61718.666666666664,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_18_000_to_19_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2897,7 +2954,7 @@
   {
    "fixture_value": 26481.0,
    "kind": "calibration_drift",
-   "ledger_value": 27065.0,
+   "ledger_value": 34050.444444444445,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_19_200_to_20_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2905,7 +2962,7 @@
   {
    "fixture_value": 120819.0,
    "kind": "calibration_drift",
-   "ledger_value": 121018.0,
+   "ledger_value": 127403.22222222222,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_1_200_to_2_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2913,7 +2970,7 @@
   {
    "fixture_value": 18143.0,
    "kind": "calibration_drift",
-   "ledger_value": 18536.0,
+   "ledger_value": 22338.333333333332,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_20_400_to_21_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2921,7 +2978,7 @@
   {
    "fixture_value": 12325.0,
    "kind": "calibration_drift",
-   "ledger_value": 12726.0,
+   "ledger_value": 14685.777777777777,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_21_600_to_22_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2929,7 +2986,7 @@
   {
    "fixture_value": 9555.0,
    "kind": "calibration_drift",
-   "ledger_value": 9793.0,
+   "ledger_value": 11133.666666666666,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_22_800_to_24_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2937,7 +2994,7 @@
   {
    "fixture_value": 6230.0,
    "kind": "calibration_drift",
-   "ledger_value": 6398.0,
+   "ledger_value": 6951.222222222223,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_24_000_to_25_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2945,7 +3002,7 @@
   {
    "fixture_value": 5884.0,
    "kind": "calibration_drift",
-   "ledger_value": 6020.0,
+   "ledger_value": 6508.222222222223,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_25_200_to_26_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2953,7 +3010,7 @@
   {
    "fixture_value": 5362.0,
    "kind": "calibration_drift",
-   "ledger_value": 5488.0,
+   "ledger_value": 5913.444444444444,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_26_400_to_27_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2961,7 +3018,7 @@
   {
    "fixture_value": 1786.0,
    "kind": "calibration_drift",
-   "ledger_value": 1829.0,
+   "ledger_value": 1884.111111111111,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_27_600_to_28_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2969,7 +3026,7 @@
   {
    "fixture_value": 1491.0,
    "kind": "calibration_drift",
-   "ledger_value": 1543.0,
+   "ledger_value": 1653.7777777777778,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2977,7 +3034,7 @@
   {
    "fixture_value": 173925.0,
    "kind": "calibration_drift",
-   "ledger_value": 173855.0,
+   "ledger_value": 197136.66666666666,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_2_400_to_3_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2985,7 +3042,7 @@
   {
    "fixture_value": 375706.0,
    "kind": "calibration_drift",
-   "ledger_value": 369404.0,
+   "ledger_value": 377063.1111111111,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_3_600_to_4_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -2993,7 +3050,7 @@
   {
    "fixture_value": 200713.0,
    "kind": "calibration_drift",
-   "ledger_value": 197717.0,
+   "ledger_value": 195983.22222222222,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_4_800_to_6_000",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -3001,7 +3058,7 @@
   {
    "fixture_value": 107860.0,
    "kind": "calibration_drift",
-   "ledger_value": 106706.0,
+   "ledger_value": 114033.33333333333,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_6_000_to_7_200",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -3009,7 +3066,7 @@
   {
    "fixture_value": 144036.0,
    "kind": "calibration_drift",
-   "ledger_value": 143277.0,
+   "ledger_value": 149043.77777777778,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_7_200_to_8_400",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -3017,7 +3074,7 @@
   {
    "fixture_value": 377221.0,
    "kind": "calibration_drift",
-   "ledger_value": 379652.0,
+   "ledger_value": 399750.22222222225,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_8_400_to_9_600",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -3025,7 +3082,7 @@
   {
    "fixture_value": 341138.0,
    "kind": "calibration_drift",
-   "ledger_value": 341457.0,
+   "ledger_value": 386411.6666666667,
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_9_600_to_10_800",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
@@ -3033,10 +3090,18 @@
   {
    "fixture_value": 67727478991.59665,
    "kind": "calibration_drift",
-   "ledger_value": 65937000000.0,
+   "ledger_value": 127316000000.0,
    "name": "hmrc.cgt.gains_total",
    "period": 2025,
    "reason": "Ledger carries the HMRC 2023-24 outturn value GBP 65,937,000,000 and holds it by identity under the current doctrine; the incumbent Fixture B row is GBP 67,727,478,991.60 at 2025 because it carries a forecast/uprated value. Signed as a doctrine consequence, not a binding error."
+  },
+  {
+   "fixture_value": 378000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 584000.0,
+   "name": "hmrc.cgt.taxpayers_total",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },
   {
    "fixture_value": 1236000000.0,

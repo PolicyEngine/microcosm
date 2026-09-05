@@ -80,9 +80,7 @@ def test_driver_refuses_release_candidate_outright(tmp_path: Path):
     # The refusal is unconditional — an otherwise doctrine-clean invocation
     # is refused too, not just ones with override flags.
     with pytest.raises(SystemExit):
-        driver._parse_args(
-            _args(tmp_path) + ["--release-candidate", "--epochs", "128"]
-        )
+        driver._parse_args(_args(tmp_path) + ["--release-candidate", "--epochs", "128"])
 
 
 def test_driver_refuses_canonical_release_ids(tmp_path: Path):
@@ -125,7 +123,24 @@ def test_driver_refuses_bad_sha_and_path_alias(tmp_path: Path):
         driver._parse_args(args)
 
 
-def test_driver_threads_registry_exclusions_resolver_and_overrides(monkeypatch, tmp_path, capsys):
+def test_driver_refuses_feed_outside_the_committed_pin_without_override():
+    driver = _load_driver_module()
+
+    with pytest.raises(SystemExit, match="committed UK feed pin"):
+        driver._check_committed_ledger_feed_pin(
+            "b" * 64,
+            allow_unpinned_feed=False,
+        )
+
+    driver._check_committed_ledger_feed_pin(
+        "b" * 64,
+        allow_unpinned_feed=True,
+    )
+
+
+def test_driver_threads_registry_exclusions_resolver_and_overrides(
+    monkeypatch, tmp_path, capsys
+):
     driver = _load_driver_module()
     calls = []
     registry = _registry()
@@ -133,12 +148,14 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(monkeypatch, 
     artifact = SimpleNamespace(
         path=tmp_path / "ledger",
         facts=({"fact": 1},),
-        facts_sha256="b" * 64,
+        facts_sha256=driver._LEDGER_FACT_FEED_PIN["facts_sha256"],
         manifest_sha256="c" * 64,
     )
     artifact.path.mkdir()
     (artifact.path / "consumer_facts.jsonl").write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(driver, "load_ledger_consumer_artifact", lambda *a, **k: artifact)
+    monkeypatch.setattr(
+        driver, "load_ledger_consumer_artifact", lambda *a, **k: artifact
+    )
     monkeypatch.setattr(
         driver,
         "compile_uk_target_registry",
@@ -149,7 +166,9 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(monkeypatch, 
         "load_uk_frs_release",
         lambda: SimpleNamespace(calibration_year=2025),
     )
-    monkeypatch.setattr(driver, "load_uk_calibration_measure_exclusions", lambda path: ())
+    monkeypatch.setattr(
+        driver, "load_uk_calibration_measure_exclusions", lambda path: ()
+    )
     monkeypatch.setattr(
         driver,
         "apply_uk_calibration_measure_exclusions",
@@ -191,8 +210,17 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(monkeypatch, 
     assert call["doctrine"].epochs == 128
     assert call["doctrine_overrides"] == {"epochs": {"default": 256, "effective": 128}}
     assert isinstance(call["measure_resolver"], FakeResolver)
-    assert call["measure_resolver"].kwargs["simulation_source"] == call["paths"].input_h5
-    assert call["source_pins"]["ledger_facts"] == {"sha256": "b" * 64, "size_bytes": 2}
+    assert (
+        call["measure_resolver"].kwargs["simulation_source"] == call["paths"].input_h5
+    )
+    assert call["source_pins"]["ledger_facts"] == {
+        "sha256": driver._LEDGER_FACT_FEED_PIN["facts_sha256"],
+        "size_bytes": 2,
+    }
+    assert call["run_config_extra"] == {
+        "calibration_year": 2025,
+        "allow_unpinned_feed": False,
+    }
     assert "uk_target_fit" in capsys.readouterr().out
 
 

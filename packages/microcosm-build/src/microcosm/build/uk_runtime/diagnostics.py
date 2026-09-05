@@ -832,6 +832,11 @@ def uk_calibration_diagnostics_payload(
         "weights": weights,
         "zero_weight_rows_by_stratum": strata,
         "target_pass_rates_by_geography_level": pass_rates,
+        "target_observation_basis": {
+            spec.to_target().row_name: str(spec.metadata["observation_basis"])
+            for spec in registry.specs
+            if spec.metadata.get("observation_basis")
+        },
     }
     if local_area_support is not None:
         uk_diagnostics["weakest_families"] = uk_weakest_families(target_rows)

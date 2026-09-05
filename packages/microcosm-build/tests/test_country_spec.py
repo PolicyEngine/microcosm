@@ -931,6 +931,7 @@ class TestUKCountryPackage:
             "regional_land_values.json",
             "source_stages.json",
             "take_up_contract.json",
+            "target_reference_signed_exclusions.json",
             "input_mass_reviewed_exclusions.json",
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
@@ -1022,6 +1023,7 @@ class TestExistingPackagesGeneralize:
             "regional_land_values.json",
             "source_stages.json",
             "take_up_contract.json",
+            "target_reference_signed_exclusions.json",
             "input_mass_reviewed_exclusions.json",
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
@@ -1055,7 +1057,7 @@ class TestExistingPackagesGeneralize:
         spec = load_country_spec("uk")
 
         references = {reference.name: reference for reference in spec.target_references}
-        assert len(references) == 408
+        assert len(references) == 415
         assert references["obr.esa"].value_operation == "sum"
         assert references["dwp.uc.households"].value_operation == (
             "calendar_year_average"

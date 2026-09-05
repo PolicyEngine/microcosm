@@ -640,7 +640,11 @@ stages:
   survey: Family Resources Survey 2024-25
   source: Sourced UK take-up contract rates and identity-keyed deterministic draws.
   grain: person
-  artifacts: []
+  artifacts:
+  - role: stochastic_contract
+    resource: take_up_contract.json
+    kind: public_aggregate_reference
+    format: json
   operations:
   - kind: assign_binary_from_rate
     output: would_claim_marriage_allowance
@@ -659,12 +663,19 @@ stages:
   - kind: assign_uniform_draw
     output: attends_private_school_random_draw
     seed: 0
+  - kind: assign_period_constant
+    output: tax_free_childcare_spend_routed_share
+    contract_key: tax_free_childcare_spend_routed_share
+    period_source: build_year
+    dtype: float64
   outputs:
   - would_claim_marriage_allowance
   - would_claim_scp
   - attends_private_school_random_draw
+  - tax_free_childcare_spend_routed_share
   nonnegative_outputs:
   - attends_private_school_random_draw
+  - tax_free_childcare_spend_routed_share
   notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; higher_earner_tie_break is intentionally not produced.
 - stage: frs_household_draws
   survey: Family Resources Survey 2024-25

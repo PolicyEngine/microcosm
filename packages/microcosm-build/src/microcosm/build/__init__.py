@@ -49,6 +49,22 @@ def _assert_frame_compatible(version: str, required: tuple[int, int]) -> None:
 
 _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 
+from microcosm.build.chronicle_epoch import (  # noqa: E402 - after the compat gate
+    ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS,
+    ACCEPTED_CONSUMER_FACT_SCHEMA_VERSIONS,
+    CHRONICLE_EPOCH,
+    DECLARED_IDENTITIES,
+    DECLARED_IDENTITY_EPOCHS,
+    EPOCHS,
+    LEDGER_EPOCH,
+    UNDECLARED,
+    fact_key_epoch,
+    fact_key_epoch_label,
+    feed_fact_key_epochs,
+    feed_undeclared_fact_key_domains,
+    is_chronicle_fact_key,
+    parse_fact_key,
+)
 from microcosm.build.country_spec import (  # noqa: E402 - after the compat gate
     CountryResourceRow,
     CountrySpec,
@@ -126,6 +142,15 @@ from microcosm.build.ledger_targets import (  # noqa: E402 - after the compat ga
     select_ledger_targets_from_jsonl,
     target_spec_from_ledger_fact,
 )
+
+# Only ``logbook_env_names`` is re-exported here. The reader function is
+# spelled ``logbook_env`` — the same name as its module — so binding it on
+# the package would make ``import microcosm.build.logbook_env as env`` hand
+# back the function instead of the module. Import the function from its
+# module: ``from microcosm.build.logbook_env import logbook_env``.
+from microcosm.build.logbook_env import (  # noqa: E402 - after the compat gate
+    logbook_env_names,
+)
 from microcosm.build.monetary_profile import (  # noqa: E402 - after compat gate
     MonetaryTargetContract,
     MonetaryTargetProfile,
@@ -196,6 +221,14 @@ __all__ = [
     "StagingTelemetry",
     "TargetCoverageRequirement",
     "TargetFitRequirement",
+    "ACCEPTED_CONSUMER_ARTIFACT_SCHEMA_VERSIONS",
+    "ACCEPTED_CONSUMER_FACT_SCHEMA_VERSIONS",
+    "CHRONICLE_EPOCH",
+    "DECLARED_IDENTITIES",
+    "DECLARED_IDENTITY_EPOCHS",
+    "EPOCHS",
+    "LEDGER_EPOCH",
+    "UNDECLARED",
     "LedgerConsumerArtifact",
     "LedgerTargetMapping",
     "LedgerTargetSelection",
@@ -204,6 +237,13 @@ __all__ = [
     "MonetaryTargetProfile",
     "PreparedMonetaryMeasure",
     "add_ledger_artifact_args",
+    "logbook_env_names",
+    "fact_key_epoch",
+    "fact_key_epoch_label",
+    "feed_fact_key_epochs",
+    "feed_undeclared_fact_key_domains",
+    "is_chronicle_fact_key",
+    "parse_fact_key",
     "aggregate_admin_gate",
     "area_support_gate",
     "column_implication_gate",
