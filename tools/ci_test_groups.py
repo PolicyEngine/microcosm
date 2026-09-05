@@ -33,6 +33,7 @@ ENGINE_ONLY = (
 EXPLICIT_SHARED_SPEC = (
     "packages/microcosm-build/tests/test_candidate_quality.py",
     "packages/microcosm-build/tests/test_cross_grain.py",
+    "packages/microcosm-build/tests/test_graph_evidence.py",
     "packages/microcosm-build/tests/test_quality_aggregates.py",
     "packages/microcosm-build/tests/test_transfer_graph_example.py",
 )

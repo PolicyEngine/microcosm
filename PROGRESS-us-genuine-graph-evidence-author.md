@@ -20,3 +20,8 @@ Plan SHA256: 45544637213278dca2b2e126fcda78af1f8c77e849bf5bb454f69de92e088d15.
 
 ## Environment limits and output
 Requested sibling worktree/output and R paths are read-only in this session. Worktrees, exclusive quality output, and author artifacts are staged under /private/tmp/us-genuine-graph-evidence-author-20260905-O0IgKV. No shared discovery registration is authorized. Final report: review-artifacts/us-genuine-graph-evidence-author-report.md. No push, merge, deployment, source pin change, kernel execution, source read, or raw array decoding.
+
+## Exporter fixture step
+- Added invented-only two-implementation/four-node receipt fixtures and refusal tests before exporter implementation.
+- Frozen common graph contract at review-artifacts/graph-contract.md.
+- Next: implement pure exporter, then focused tests before any G export.
