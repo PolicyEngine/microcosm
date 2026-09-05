@@ -1,0 +1,1 @@
+Add aggregate population support and fixed-bin distribution evidence using Frame-resolved weights, explicit producer-declared geography levels and vintages, and complete partitions with declared unknown areas.

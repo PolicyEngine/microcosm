@@ -69,6 +69,9 @@ _US_RUNTIME = (
 )
 _US_RUNTIME_IMPORT_PREFIX = "microcosm.build.us_runtime"
 _SPINE_BLIND_BUILD_TOOLS = (_REPOSITORY_ROOT / "tools" / "build_us_multispine_pool.py",)
+# Shared diagnostic producers get the ordinary non-owner/source-channel scans;
+# their placement outside us_runtime does not create a provenance exemption.
+_SPINE_BLIND_SHARED_MODULES = (_US_RUNTIME.parent / "quality_aggregates.py",)
 _REQUIRED_POOL_RUNTIME_MODULES = frozenset(
     {
         "late_producer_dag.py",
@@ -3375,6 +3378,15 @@ def test_registered_population_operators_do_not_read_any_source_channel() -> Non
         "support clone indices instead of source-channel columns. "
         f"Found: {offenders}"
     )
+
+
+def test_shared_quality_producers_are_source_spine_blind() -> None:
+    for path in _SPINE_BLIND_SHARED_MODULES:
+        assert path.is_file(), f"shared producer module is missing: {path.name}"
+        source = path.read_text()
+        assert not _non_owner_source_spine_accesses(path.name, source)
+        assert not _operator_source_channel_reads(source)
+        assert not _frame_metadata_drops(source)
 
 
 def test_physical_source_accessor_is_confined_to_reviewed_gates() -> None:
