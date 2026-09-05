@@ -97,7 +97,37 @@ This session re-ran verification from the committed head to completion.
 | Lint | `ruff check .` | All checks passed |
 | CI partition | `tools/ci_test_groups.py --verify` | `verification=ok` |
 | Grouping | `--list rest` / `--list us-am` | both new files in each; never `[defaulted]` |
-| Related | 27 files touching `multispine_pool` / the rent graph / housing inputs | see below |
+| Related | 27 files touching `multispine_pool` / the rent graph / housing inputs | 1770 passed, 51 skipped, **10 failed** — all pre-existing and environmental, see below |
+
+### The 10 related failures are environmental, not a regression
+
+All 10 are in `test_us_multispine_pool_tool.py`, a file this branch does not
+touch. Each raises `ImportError: The PolicyEngine-US metadata index requires
+the 'policyengine-us' package` from `microcosm/frame/adapters/policyengine_us.py`.
+The in-worktree env is `uv sync --all-packages --locked` without `--extra us`,
+so no engine is installed; that file is in the `us-am` CI group only, and the
+`engine-us` lane syncs `--extra us --extra uk`.
+
+Proved by experiment, not asserted: swapping the **base `f01964c7`**
+`multispine_pool.py` (sha256 `14975d40…`) into place and re-running the file
+produces the identical 10 failures with the identical `ImportError`. The
+worktree was restored immediately and `git status` is clean.
+
+Pre-existing repo observation, deliberately **not** fixed here: those tests are
+engine-dependent but carry only `importorskip("tables")`, so they fail rather
+than skip without an engine. `CLAUDE.md` says to convert an existing
+`importorskip` guard only when already editing that test for another reason.
+
+### Author-found defect fixed in this session
+
+The golden oracle's `module_sha256` recorded whatever `multispine_pool` digest
+was live when the capture script last ran — which was the already-edited tree
+(`b41b0f3f…`), a value matching neither the base nor the current file — and
+nothing asserted it. The stamp now records the unedited `f01964c7` digests and
+`test_oracle_records_the_unedited_runtime_and_declares_every_drift` checks
+them: `housing_inputs` must stay byte-identical and `multispine_pool` is the
+only declared drift. Verified by three mutations (stale digest, wrong
+`housing_inputs` digest, wrong runtime commit), each of which now fails.
 
 The environment is the in-worktree isolated locked sync: Python 3.14.4,
 pandas 3.0.3, numpy 2.4.6, scikit-learn 1.8.0, pyarrow 25.0.0. No
