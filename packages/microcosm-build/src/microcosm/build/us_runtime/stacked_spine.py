@@ -12080,6 +12080,11 @@ def _run_stacked_puf_pass_evaluate(
                     "stale predictions."
                 )
             resume_status = "resumed"
+            # The sidecar's bytes are retained on resume, so the receipt must
+            # carry the sidecar's own authenticated self-digest: the live
+            # binding's digest hashes the current audit aliases, which may
+            # differ from the relocated sidecar's without changing meaning.
+            reported_input_binding_sha256 = observed_input_binding["sha256"]
         else:
             if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):
                 raise ValueError(
@@ -12108,6 +12113,7 @@ def _run_stacked_puf_pass_evaluate(
             temporary_binding_path.write_bytes(input_binding_bytes)
             temporary_binding_path.replace(input_binding_path)
             resume_status = "initialized"
+            reported_input_binding_sha256 = normalized_input_binding["sha256"]
         predictor_universe_receipt = (
             primary_puf_qrf_recipient_predictor_universe_receipt(checkpoint_dir)
         )
@@ -12127,7 +12133,7 @@ def _run_stacked_puf_pass_evaluate(
             "mode": "checkpoint_chain",
             "resume_status": resume_status,
             "checkpoint_manifest": str(manifest_path.resolve()),
-            "input_binding_sha256": normalized_input_binding["sha256"],
+            "input_binding_sha256": reported_input_binding_sha256,
             "recipient_predictor_universe": predictor_universe_receipt,
         }
 

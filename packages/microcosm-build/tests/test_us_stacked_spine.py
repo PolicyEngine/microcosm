@@ -9,6 +9,7 @@ per-family declared metrics.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import inspect
 import json
@@ -5813,6 +5814,98 @@ def test_stacked_primary_qrf_refuses_stale_bound_checkpoint(
             primary_qrf_checkpoint_dir=checkpoint_dir,
             primary_qrf_input_binding=binding(changed_donor),
         )
+
+
+def test_relocated_checkpoint_resume_reports_the_retained_sidecar_digest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Resume across a worker relocation keeps the sidecar's bytes, so the
+    receipt must report the sidecar's own authenticated digest, not the live
+    binding's, which hashes the current audit aliases."""
+    checkpoint_identity = "a" * 64
+    checkpoint_dir = tmp_path / checkpoint_identity
+    donor = pd.DataFrame({"fixture_donor": [1.0]})
+
+    def initialize(_frame: Frame, _donor: pd.DataFrame, root: Path, **_kwargs) -> None:
+        root.mkdir(parents=True)
+        (root / stacked_spine_module.PRIMARY_QRF_MANIFEST_FILENAME).write_text(
+            "{}",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(
+        stacked_spine_module, "initialize_primary_puf_qrf_chain", initialize
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "primary_puf_qrf_recipient_predictor_universe_receipt",
+        lambda _root: {"fixture": "recipient-universe"},
+    )
+    monkeypatch.setattr(
+        stacked_spine_module, "run_primary_puf_qrf_chain", lambda _root, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "finalize_primary_puf_qrf_chain",
+        lambda frame, _root, **_kwargs: (frame, frame.resolve_weights("tax_unit").kind),
+    )
+
+    def binding(bound_donor: pd.DataFrame) -> dict[str, object]:
+        resources = stacked_spine_module.stacked_late_primary_resource_receipts(
+            bound_donor,
+            primary_qrf_checkpoint_identity_sha256=checkpoint_identity,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            seed=0,
+            n_estimators=100,
+            fit_records_enabled=True,
+            tail_bound_diagnostics_enabled=True,
+        )
+        return stacked_spine_module.stacked_late_primary_checkpoint_input_binding(
+            resources
+        )
+
+    def run(input_binding: dict[str, object]):
+        return stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
+            _late_primary_entry(_stacked_gap_fixture()),
+            donor,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            fit_records=[],
+            tail_bound_diagnostics=[],
+            primary_qrf_checkpoint_dir=checkpoint_dir,
+            primary_qrf_input_binding=input_binding,
+        )
+
+    initialized = run(binding(donor)).receipt["primary_puf_qrf"]
+    sidecar_path = checkpoint_dir / "late-producer-input-binding.json"
+    sidecar_bytes = sidecar_path.read_bytes()
+    sidecar_digest = json.loads(sidecar_bytes)["sha256"]
+    assert initialized["resume_status"] == "initialized"
+    assert initialized["input_binding_sha256"] == sidecar_digest
+
+    real_binding = stacked_spine_module._late_primary_qrf_worker_execution_binding
+
+    def relocated_binding() -> dict[str, object]:
+        relocated = copy.deepcopy(real_binding())
+        relocated["audit_aliases"]["sys_executable"] = "/relocated/venv/bin/python"
+        relocated["audit_aliases"]["sys_prefix"] = "/relocated/venv"
+        return relocated
+
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "_late_primary_qrf_worker_execution_binding",
+        relocated_binding,
+    )
+    live_binding = binding(donor)
+    assert live_binding["sha256"] != sidecar_digest, "aliases must move the live digest"
+
+    resumed = run(live_binding).receipt["primary_puf_qrf"]
+
+    assert resumed["resume_status"] == "resumed"
+    assert sidecar_path.read_bytes() == sidecar_bytes
+    assert resumed["input_binding_sha256"] == sidecar_digest
 
 
 def test_late_transfer_rejects_identityless_bank_before_dispatch() -> None:
