@@ -1565,3 +1565,19 @@ def test_typed_artifact_payloads_stay_small_and_bounded(tmp_path):
     # The five-leaf export is a bounded header plus exact column buffers, not a
     # Frame copy: it stays far under the projection's own carried columns.
     assert sizes["source_outputs"] < 8 * 1024
+
+
+def test_wrong_outer_phase_on_the_gate_fails_the_gate_and_blocks_downstream(tmp_path):
+    frame = _relationship_base(_pool_frame())
+    nodes, donor_path = _declared(tmp_path, frame)
+    gate = next(item for item in nodes if item.id == HOUSING_SOURCE_ACCEPTED_CONTEXT)
+    nodes = _rewire(
+        nodes,
+        HOUSING_SOURCE_ACCEPTED_CONTEXT,
+        params={**dict(gate.params), "phase": "post_clone"},
+    )
+    manifest = _run_nodes(tmp_path, frame, nodes, donor_path)
+    receipt = manifest.nodes[HOUSING_SOURCE_ACCEPTED_CONTEXT]
+    assert receipt.receipt["outcome"] == "fail"
+    assert "authored outer phase" in receipt.receipt["evidence"]["message"]
+    _assert_unreached(manifest, ("after",))

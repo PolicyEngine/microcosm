@@ -312,7 +312,9 @@ class USHousingSourceBoundaryKernel(_HousingKernel):
             person, metadata=document["metadata"]
         )
         selection = mask.to_numpy(dtype=bool, copy=True)
-        if not selection.any() or selection.all() and len(person) == 0:
+        if not selection.any():
+            # The registered mask already refuses this; keep the local guard so
+            # Frame.select can never be handed an empty selection.
             raise ValueError("US housing source found no CPS-evidenced person rows.")
         # Fresh-source scope: refuse observed CPS rent before any recipient work.
         if _RENT_COLUMN in person:
@@ -1121,7 +1123,9 @@ def us_housing_source_nodes(
             "fresh_source only and does not claim the complete-incumbent path."
         )
     inventory = _inventory(columns)
-    family = codec.housing_output_family()
+    # Reads the live registered roster and refuses if it no longer matches the
+    # five leaves this recipe declares.
+    codec.housing_output_family()
     boundary_columns = multispine_housing_boundary_columns()
     for column in boundary_columns:
         if ("person", column) not in inventory:
@@ -1334,7 +1338,6 @@ def us_housing_source_nodes(
         ),
         artifact_outputs=source_context,
     )
-    del family
     return (
         source,
         measured,
