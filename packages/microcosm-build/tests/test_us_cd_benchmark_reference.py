@@ -1334,8 +1334,15 @@ def test_a_capture_without_a_published_geo_id_is_refused(protocol):
     is refused rather than projected under the canonical identity alone.
     """
     document = _bundle(protocol, include_geo_id=False)
-    assert document["acs"]["S0101"]["geographies"][0]["published_geo_id"] is None
-    with pytest.raises(ReferenceProjectionError, match="published GEO_ID"):
+    for table in sorted(RESERVED_FAMILY_TABLES | {"S0101"}):
+        assert document["acs"][table]["geographies"][0]["published_geo_id"] is None
+    # Anchored on the ``_text`` refusal for a record's own published GEO_ID; a
+    # bare "published GEO_ID" also matches the unrelated cross-table message
+    # "Table ... published GEO_IDs differ from ...".
+    with pytest.raises(
+        ReferenceProjectionError,
+        match=r"the published GEO_ID of '.*' in '.*' must be a nonempty string",
+    ):
         ReferenceInventory.from_document(document, protocol=protocol)
 
 
@@ -1575,6 +1582,10 @@ def test_the_command_line_writes_bytes_it_can_be_held_to(tmp_path, bundle, capsy
     assert json.loads(written.decode("utf-8"))["kind"] == (
         "us_cd_reference_projection_completeness"
     )
+    # The bytes are the canonical form, not merely some form whose digest was
+    # printed honestly: an indented file with a correctly printed digest would
+    # satisfy the two assertions above.
+    assert written == canonical_bytes(json.loads(written.decode("utf-8"))) + b"\n"
 
     # A rerun refuses, and the record it refused to replace is byte-identical.
     assert main(argv) == 1
@@ -1636,6 +1647,37 @@ def test_the_command_line_refuses_a_pathologically_nested_document(tmp_path, cap
     assert "Reference projection failed:" in capsys.readouterr().err
 
 
+def test_the_command_line_without_an_output_writes_the_same_bytes_to_stdout(
+    tmp_path, bundle, capsys
+):
+    """The default branch is the one an operator sees first, and it was untested.
+
+    This diff replaced an indented ``json.dumps`` with the canonical bytes the
+    file receives, so the tool's default human-facing output changed with
+    neither the old nor the new form pinned.
+    """
+    path, sha256 = _write(tmp_path, bundle)
+    assert (
+        main(
+            [
+                "--inventory",
+                str(path),
+                "--expect-sha256",
+                sha256,
+                "--aggregate-only",
+                "--all-roster-districts",
+                "--block",
+                "population_total",
+            ]
+        )
+        == 0
+    )
+    written = capsys.readouterr().out.encode("utf-8")
+    assert written == canonical_bytes(json.loads(written.decode("utf-8"))) + b"\n"
+    assert written.count(b"\n") == 1
+    assert json.loads(written.decode("utf-8"))["inventory_sha256"] == sha256
+
+
 def test_the_command_line_judges_its_arguments_before_it_opens_the_inventory(
     tmp_path, bundle, capsys
 ):
@@ -1662,6 +1704,26 @@ def test_the_command_line_judges_its_arguments_before_it_opens_the_inventory(
         main([*base, "--district", "5001900US0101", "--district", "5001900US0101"]) == 1
     )
     assert "district was requested twice" in capsys.readouterr().err
+
+    assert (
+        main(
+            [
+                "--inventory",
+                str(absent),
+                "--expect-sha256",
+                sha256,
+                "--aggregate-only",
+                "--district",
+                "5001900US0101",
+                "--block",
+                "population_total",
+                "--block",
+                "population_total",
+            ]
+        )
+        == 1
+    )
+    assert "block was requested twice" in capsys.readouterr().err
 
     assert not absent.exists()
 
