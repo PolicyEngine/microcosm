@@ -74,6 +74,15 @@ down as integers; reading them costs no array decode. The cohort selection
 receipt is read as bounded JSON for counts and the selection rule only — the
 selected household id digests stay digests, and no identifier is ever decoded.
 
+The recorded rule `floor(fraction * eligible)` is applied **per source cohort**,
+not over the frame as a whole, and the surface says so. That qualification is
+checked rather than assumed: in both genuine runs the rule reproduces each
+cohort exactly per stratum, and in both it fails over the whole frame — the
+larger run realises 505 households where `floor(0.003 * 168852)` is 506, and the
+smaller realises 15 where `floor(0.0001 * 168852)` is 16. This profile derives no
+count from the rule; it republishes the producer's own string with the scope in
+which that string is true.
+
 On top of agreement, the size has to be arithmetically coherent with the rest of
 the evidence:
 
