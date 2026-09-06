@@ -52,6 +52,8 @@ from microcosm.build.us_runtime.cps_carried_current import (
     derive_cps_carried_current_leaves,
 )
 from microcosm.build.us_runtime.graph_asec_income import (
+    ACCOUNTING_COLUMNS,
+    EVIDENCE_COLUMNS,
     RESULT_COLUMNS,
     bind_income_observations,
     derive_reported_income,
@@ -790,7 +792,28 @@ def test_leaves_and_accounting_match_the_standalone_prepared_derivation(executed
         accounting.array("A_AGE")[order],
         income.array("A_AGE")[rows.array("person", "source_positions")],
     )
-    for axis in ("WSAL_VAL.status", "WSAL_VAL.validity", "WSAL_VAL.zero_origin"):
+    # The observation axes ride in the artifact, byte for byte, and none of
+    # them is written back as a population cell.
+    graph_accounting = _payload(
+        manifest, store, measures.REPORTED_INCOME_NODE, "reported_income"
+    )
+    header = json.loads(
+        graph_accounting[
+            len(b"MCAINACC\x03") + 4 : len(b"MCAINACC\x03")
+            + 4
+            + int.from_bytes(
+                graph_accounting[
+                    len(b"MCAINACC\x03") : len(b"MCAINACC\x03") + 4
+                ],
+                "little",
+            )
+        ]
+    )
+    assert [item["name"] for item in header["columns"]] == list(ACCOUNTING_COLUMNS)
+    assert set(EVIDENCE_COLUMNS) <= set(ACCOUNTING_COLUMNS)
+    person_columns = set(_bound_frame(manifest).table("person").columns)
+    assert not person_columns & set(EVIDENCE_COLUMNS)
+    for axis in EVIDENCE_COLUMNS:
         assert len(accounting.array(axis)) == len(order)
 
 
@@ -1358,6 +1381,26 @@ def test_the_declarations_write_only_under_the_arm_mask(executed):
         binding.arm_row_column(entity) for entity in binding.BOUND_ENTITIES
     }
     assert all(owned.dtype == "bool" for owned in bind_node.outputs)
+
+
+def test_the_graph_declares_the_same_binding_without_geography(executed):
+    """The geography-free composition takes the same three nodes, one version up."""
+    root, *_rest = executed
+    graph = measures.composed_asec_population_graph(
+        _columns(root),
+        sample_fraction=FRACTION,
+        sample_seed=SEED,
+        geography=False,
+    )
+    compiled = compile_graph(graph)
+    ids = {node.id for node in graph.nodes}
+    assert {
+        binding.BIND_NODE,
+        measures.LEAVES_NODE,
+        measures.REPORTED_INCOME_NODE,
+    } <= ids
+    assert GEOGRAPHY_PHASE not in ids
+    assert compiled.versions[binding.BIND_NODE] == composed.HARMONIZE_NODE
 
 
 def test_registry_declares_exactly_the_kernels_this_graph_runs(executed):
