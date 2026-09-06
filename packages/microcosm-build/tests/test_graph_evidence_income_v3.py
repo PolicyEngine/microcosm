@@ -566,9 +566,12 @@ def test_income_accounting_annotation_and_incomplete_quality(tmp_path):
         "holdouts",
         "national_totals",
         "congressional_district_pass",
-        "prior_wages",
     ):
         assert absent in graph["quality"]["missing"]
+    # The release scope is cross-sectional; earnings history is excluded,
+    # rather than a missing requirement for this dataset.
+    assert "prior_wages" not in graph["quality"]["missing"]
+    assert "prior_wages" in accounting["not_claimed"]
     assert graph["scope"]["households"] == 15
     assert graph["scope"]["households_by_source_cohort"] == [
         {"income_year": year, "households": 5} for year in ("2022", "2023", "2024")

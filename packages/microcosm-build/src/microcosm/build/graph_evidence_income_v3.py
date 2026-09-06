@@ -1251,7 +1251,7 @@ def _export(
         housing_universe_evidence_fields=HOUSING_UNIVERSE_EVIDENCE_FIELDS,
         housing_universe_carried_cells=len(direct["selected_hu_carried_cells_sha256"]),
         loaded_module_count=pins.loaded_module_count,
-        note="Fifteen recorded households from three source cohorts. An engineering slice, not a sample of any population.",
+        note="Fifteen sampled households from three source cohorts. This small engineering sample does not establish population accuracy.",
     )
     missing = [
         "calibration",
@@ -1260,7 +1260,6 @@ def _export(
         "national_totals",
         "congressional_district_pass",
         "completed_eight_component_acs_bridge",
-        "prior_wages",
         "distributions",
         "support",
         "model_validation",
