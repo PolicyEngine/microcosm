@@ -440,7 +440,7 @@ def test_every_person_is_counted_once_into_the_right_band():
         (85, "people_age_85_plus"),
         (99, "people_age_85_plus"),
         (115, "people_age_85_plus"),
-        (200, "people_age_85_plus"),
+        (120, "people_age_85_plus"),
     ],
 )
 def test_band_boundaries_and_topcoded_ages(age, column):
@@ -521,6 +521,18 @@ def test_group_quarters_people_are_counted_with_their_membership_intact():
         EXPECTED[column][quarters] for column in COLUMNS
     )
     assert int(table.to_numpy().sum()) == len(PEOPLE)
+
+
+@pytest.mark.parametrize("age", [121, 200, 999])
+def test_ages_outside_the_declared_envelope_refuse(age):
+    node = national_age_count_node(population="assembled")
+    context = count_context(fixture_frame(), node)
+    person = context.tables["person"].copy()
+    person.loc[person.index[0], "age"] = age
+    with pytest.raises(ValueError, match="declared maximum"):
+        NationalAgeCountKernel().run(
+            replace(context, tables={**context.tables, "person": person})
+        )
 
 
 def test_counts_do_not_read_weights():

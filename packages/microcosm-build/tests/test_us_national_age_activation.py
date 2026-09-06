@@ -41,20 +41,15 @@ from microcosm.calibrate.registry import TargetRegistry
 #: Point ``MICROCOSM_US_NATIONAL_ACS_BUNDLE`` at it to run the pinned tests;
 #: everywhere else, including CI, they skip and the invented bundle carries the
 #: behavioural coverage.
-BUNDLE = Path(
-    os.environ.get(
-        "MICROCOSM_US_NATIONAL_ACS_BUNDLE",
-        "/Users/maxghenis/architecture-reviews/microcosm-20260904/"
-        "national-acs-2024-reference-bundle-v1",
-    )
-)
+_bundle_path = os.environ.get("MICROCOSM_US_NATIONAL_ACS_BUNDLE")
+BUNDLE = Path(_bundle_path) if _bundle_path else None
 INVENTORY = "national-derived-inventory.json"
 ACCEPTED_INVENTORY_SHA256 = (
     "750b624e89557944c442600befb5557847dd75be6ce439c20daa9dfea5a0baf7"
 )
 
 pinned_bundle = pytest.mark.skipif(
-    not (BUNDLE / INVENTORY).is_file(),
+    BUNDLE is None or not (BUNDLE / INVENTORY).is_file(),
     reason="the accepted national reference bundle is not present locally",
 )
 
@@ -580,6 +575,25 @@ def test_a_reserved_holdout_can_never_be_activated(tmp_path, table):
 
     with pytest.raises(ActivationError, match=f"RESERVED_TABLE_RELABELLED:{table}"):
         activate_invented(tmp_path / "bundle", mutate=relabel)
+
+
+@pytest.mark.parametrize("reservation", [None, []])
+def test_malformed_holdout_reservation_raises_activation_error(tmp_path, reservation):
+    def malformed(inventory):
+        inventory["acs"]["B19001"]["reservation"] = reservation
+
+    with pytest.raises(ActivationError, match="RESERVED_RESERVATION_SHAPE:B19001"):
+        activate_invented(tmp_path / "bundle", mutate=malformed)
+
+
+def test_missing_source_digest_raises_activation_error(tmp_path):
+    def malformed(inventory):
+        for entry in inventory["sources"]["census"]:
+            if entry["kind"] == "metadata":
+                entry.pop("sha256")
+
+    with pytest.raises(ActivationError, match="SOURCE_DIGEST:metadata"):
+        activate_invented(tmp_path / "bundle", mutate=malformed)
 
 
 def test_the_activated_registry_never_mentions_a_reserved_family(tmp_path):

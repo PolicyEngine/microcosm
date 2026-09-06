@@ -164,3 +164,14 @@ them through the real Adam solver, and a fresh Python process replays all four
 nodes from the content store with every kernel forbidden to run. No Census
 value, registry activation or genuine population calibration is established by
 any of that.
+
+## Root review amendments, 2026-09-06
+
+The development count operator declares a 0–120 input age envelope. Values
+outside it refuse the run rather than silently entering the open 85-plus band;
+the receipt reports the minimum and maximum observed ages. This envelope is an
+operational guard, not validation of source age or evidence of population
+coverage. The operator's age convention must agree with the activation.
+Household IDs retain exact signed 64-bit values; complex or overflowing casts
+are refused. Pinned reference tests require an explicitly configured
+`MICROCOSM_US_NATIONAL_ACS_BUNDLE` directory.

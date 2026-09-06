@@ -86,6 +86,13 @@ AGE_COUNT_SCHEMA_VERSION = 1
 #: interview. No birth date is consulted, no one is aged forward, and no claim
 #: is made that the person was observed in the target period.
 SUPPORTED_AGE_CONVENTION = "observed_interview_age_completed_years"
+if SUPPORTED_AGE_CONVENTION != NATIONAL_AGE_ACTIVATION.age_convention_id:
+    raise ValueError("The age-count operator and target activation must agree on age.")
+
+# Operational input envelope for this development connection, not an assertion
+# that every source age within it is observed or valid. Outliers refuse rather
+# than silently entering the open top band.
+MAX_SUPPORTED_AGE = 120
 
 _AGE_COLUMN = "age"
 _PERSON = US_SCHEMA.person_entity
@@ -106,6 +113,7 @@ _PARAMS = frozenset(
         "household_columns",
         "age_convention",
         "schema_version",
+        "maximum_age",
     }
 )
 
@@ -175,6 +183,7 @@ def _node_from_schema(schema: str, *, population: str, node_id: str) -> Node:
             "household_columns": _HOUSEHOLD_COLUMNS,
             "age_convention": SUPPORTED_AGE_CONVENTION,
             "schema_version": AGE_COUNT_SCHEMA_VERSION,
+            "maximum_age": MAX_SUPPORTED_AGE,
         },
     )
 
@@ -318,6 +327,9 @@ class NationalAgeCountKernel(KernelBase):
                 "bands": params["bands"],
                 "people_counted": int(counts.sum()),
                 "households": int(len(index)),
+                "maximum_observed_age": int(age.max()) if len(age) else None,
+                "minimum_observed_age": int(age.min()) if len(age) else None,
+                "maximum_supported_age": MAX_SUPPORTED_AGE,
                 "consumes_weights": False,
                 "universe": "every person on the population, group quarters included",
                 "release_eligible": False,
@@ -371,6 +383,10 @@ def _ages(person: pd.DataFrame) -> np.ndarray:
         raise ValueError("Person age must be finite.")
     if np.any(values < 0):
         raise ValueError("Person age must not be negative.")
+    if np.any(values > MAX_SUPPORTED_AGE):
+        raise ValueError(
+            f"Person age exceeds the declared maximum of {MAX_SUPPORTED_AGE}."
+        )
     if not np.all(values == np.floor(values)):
         raise ValueError("Person age must be a whole number of completed years.")
     return values

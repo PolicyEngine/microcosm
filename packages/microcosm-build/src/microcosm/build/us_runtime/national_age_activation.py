@@ -344,6 +344,11 @@ def _selected_source(inventory: dict, declaration: NationalAgeActivation, kind: 
     ]
     _require(len(entries) == 1, f"SOURCE_ENTRY_NOT_UNIQUE:{kind}:{len(entries)}")
     entry = entries[0]
+    digest = entry.get("sha256")
+    _require(
+        isinstance(digest, str) and _HEX64.fullmatch(digest) is not None,
+        f"SOURCE_DIGEST:{kind}",
+    )
     _require(entry.get("dataset") == declaration.dataset, f"SOURCE_DATASET:{kind}")
     _require(entry.get("year") == declaration.acs_year, f"SOURCE_YEAR:{kind}")
     _require(
@@ -508,8 +513,13 @@ def activate_national_age_targets(
     for reserved in sorted(RESERVED_FAMILIES):
         held = tables.get(reserved)
         _require(isinstance(held, dict), f"RESERVED_TABLE_ABSENT:{reserved}")
+        held_reservation = held.get("reservation")
         _require(
-            held["reservation"]["status"] == "reserved_same_source_holdout",
+            isinstance(held_reservation, dict),
+            f"RESERVED_RESERVATION_SHAPE:{reserved}",
+        )
+        _require(
+            held_reservation.get("status") == "reserved_same_source_holdout",
             f"RESERVED_TABLE_RELABELLED:{reserved}",
         )
 
