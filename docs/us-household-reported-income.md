@@ -158,7 +158,7 @@ all-other-income component `OIP` nor an unallocated residual, and no residual
 may be labelled "other income". The ASEC household composition is fixed at the
 survey date exactly as the ACS composition is fixed at the interview date, so
 that axis does not distinguish the arms — the reference *window* does. Both
-published universes are occupied housing units: the CPS household count
+published tabulation universes are occupied housing units: the CPS household count
 excludes persons living in group quarters, and the ACS file carries
 group-quarters rows and declares `HINCP` not applicable on them.
 
@@ -245,7 +245,9 @@ measured = measure_asec_household_reported_income(
 The prepared household table has no `income_year` column. `asec_HTOTVAL` is
 attached by `with_asec_household_observations`, which derives each household's
 income year from its members' `source_year` and refuses when members disagree.
-A caller projects the same way, in household-table order:
+A caller projects the same way, in household-table order. This example assumes
+the observation attachment has already validated source-year agreement and
+household-key coverage on this same frame:
 
 ```python
 keys = (

@@ -126,4 +126,7 @@ target activation. Author worktree
 - No new mask API and no out-of-universe rule added to either measurement
   function.
 - No provenance exemption added to the classification allowlists.
-- Author worktree and every other listed worktree/environment left untouched.
+- The author worktree was briefly edited in error. Those edits were captured,
+  removed with `git checkout --`, and replayed in the correction worktree. The
+  author worktree was verified clean at `da7fe1d4` before and after; no other
+  listed worktree or environment was changed.
