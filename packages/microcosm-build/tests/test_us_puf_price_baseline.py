@@ -11,6 +11,7 @@ run supplies.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import math
@@ -1222,9 +1223,12 @@ def test_without_a_weight_array_the_receipt_declares_and_does_not_measure(
     assert weight["declared_series"] == DESIGN_WEIGHT_IDENTITY_SERIES
     assert weight["declared_return_mass_transition"] == "none"
     assert "after_sha256" not in weight
-    # What *can* be measured without a second array, is.
-    assert weight["declared_factor_applied_to_source_weights_is_identity"] is True
-    assert weight["identity_rows_changed"] == 0
+    assert "rows_changed" not in weight
+    # Nothing is dressed up as a measurement. The gate has already required
+    # the declared factor to be exactly 1.0, so multiplying the source weights
+    # by it and reporting that nothing moved would be a tautology, not
+    # evidence about this run, and the receipt does not carry one.
+    assert not any("identity" in key for key in weight)
     assert (
         weight["before_sha256"]
         == hashlib.sha256(
@@ -1333,3 +1337,88 @@ def test_the_sum_tolerance_is_scaled_by_the_gross_not_the_net(fixture, contract)
     # This fixture column cancels: the gross is strictly the larger scale.
     assert losses["gross_source_sum_absolute"] > abs(losses["exact_source_sum"])
     assert losses["relative_difference"] <= losses["relative_difference_net_scaled"]
+
+
+def test_a_design_weight_on_another_series_or_another_year_is_declined(fixture):
+    """The weight's own series and source year are part of the declaration."""
+    series = {
+        PRICE_BASELINE_SERIES_NAME: price_series(2015, 2024),
+        DESIGN_WEIGHT_IDENTITY_SERIES: identity_weight_series(),
+        "some.other.identity": identity_weight_series(),
+    }
+    compiled = compiled_case(
+        baseline_rules(weight_series="some.other.identity"), series
+    )
+    error = refusal_from_both_entries(fixture, compiled)
+    assert error.reason == "PRICE_BASELINE_DESIGN_WEIGHT_SERIES"
+
+    # ``GrowthRecipe`` already pins the weight's target year to the money
+    # target year, so the open dimension is its source year.
+    rules = [
+        rule for rule in baseline_rules().rules if str(rule.role) != "design_weight"
+    ]
+    rules.append(
+        GrowthRule(
+            "S006",
+            FieldRole.DESIGN_WEIGHT,
+            2014,
+            2024,
+            GrowthKind.DESIGN_WEIGHT_GROWTH,
+            SignBranch.ANY,
+            DESIGN_WEIGHT_IDENTITY_SERIES,
+            "case",
+        )
+    )
+    # Every series must span the table's whole year set, so the price series
+    # carries a 2014 column too. No money rule names it.
+    compiled = compiled_case(
+        GrowthRecipe("case_recipe_v1", tuple(rules)),
+        {
+            PRICE_BASELINE_SERIES_NAME: {
+                "kind": "nominal_price_restatement",
+                "levels": {"2014": "236.736", "2015": "237.017", "2024": "313.689"},
+            },
+            DESIGN_WEIGHT_IDENTITY_SERIES: {
+                "kind": "design_weight_growth",
+                "levels": {"2014": "1", "2015": "1", "2024": "1"},
+            },
+        },
+    )
+    error = refusal_from_both_entries(fixture, compiled)
+    assert error.reason == "PRICE_BASELINE_DESIGN_WEIGHT_YEAR"
+
+
+def test_a_grown_table_missing_a_provenance_column_is_refused(fixture, contract):
+    adaptation, grown = grown_for(fixture, contract)
+    del grown.table[PROVENANCE_RECID_COLUMN]
+    with pytest.raises(PufGrowthRefusalError) as error:
+        price_baseline_invariants(adaptation, grown, contract)
+    assert error.value.reason == "PROVENANCE_COLUMN_MISSING"
+    assert error.value.field == PROVENANCE_RECID_COLUMN
+
+
+def test_a_weight_side_that_is_not_one_dimensional_is_refused(fixture, contract):
+    """The before side is checked too, not only the array a caller passes."""
+    adaptation, grown = grown_for(fixture, contract)
+    forged = dataclasses.replace(
+        adaptation, design_weight=adaptation.design_weight.reshape(-1, 1)
+    )
+    with pytest.raises(PufGrowthRefusalError) as error:
+        price_baseline_invariants(forged, grown, contract)
+    assert error.value.reason == "DESIGN_WEIGHT_SHAPE"
+
+
+def test_a_pairwise_column_present_on_only_one_side_is_refused(fixture):
+    """Absent on both sides is an observation not made; absent on one is a bug."""
+    decoded, status, _, _ = fixture
+    subset = compile_price_baseline(
+        [f for f in PACKAGED_THIRTEEN.fields if f != "E00650"], **FIXTURE_RESOURCE
+    )
+    adaptation = adapt_projection_to_money_view(decoded, status, subset)
+    grown = apply_puf_growth(adaptation.money_view, subset)
+    assert "E00650" not in adaptation.money_view.columns
+    grown.table["E00650"] = np.zeros(len(grown.table), dtype="float64")
+    with pytest.raises(PufGrowthRefusalError) as error:
+        price_baseline_invariants(adaptation, grown, subset)
+    assert error.value.reason == "PAIRWISE_COLUMN_ASYMMETRY"
+    assert error.value.field == "qualified_within_ordinary_dividends"

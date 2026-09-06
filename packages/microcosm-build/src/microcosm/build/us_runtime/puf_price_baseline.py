@@ -1028,20 +1028,13 @@ def _design_weight_observation(
             np.ascontiguousarray(before, dtype="<i8").tobytes()
         ).hexdigest(),
     }
-    # One thing that can always be measured here, without a second array and
-    # without running the weight transform: the contract's own declared factor
-    # applied to *this run's* S006 leaves every row bit-identical. That is a
-    # measurement over the delivered weights, not a restatement of the levels.
+    # Deliberately *not* multiplying the source weights by the declared factor
+    # here and reporting that nothing moved. The gate has already required
+    # that factor to be exactly 1.0, and ``x * 1.0 == x`` for every float64,
+    # so such a check could not fail and its "measured" result would be an
+    # arithmetic tautology dressed as evidence about this run's weights. The
+    # only real observation needs the array the caller carried forward.
     before64 = before.astype("float64")
-    with np.errstate(over="ignore", under="ignore"):
-        identity = before64 * declared.value
-    _require(
-        int(np.count_nonzero(_bits(identity) != _bits(before64))) == 0,
-        "DESIGN_WEIGHT_FACTOR_NOT_IDENTITY",
-        rule.field,
-    )
-    record["declared_factor_applied_to_source_weights_is_identity"] = True
-    record["identity_rows_changed"] = 0
     if design_weight_after is None:
         record["observed"] = False
         record["basis"] = "declared_only_no_post_growth_weight_supplied"
