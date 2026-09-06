@@ -14,21 +14,32 @@ exporting or installing anything.
 
 ## Done
 
-- (nothing yet)
+1. Read the Fable 5.1 review, the exporter, the base exporter, both test modules,
+   the export doc, the two source contracts, the accounting and engine kernels,
+   the root pins document, the accepted root output review and the dashboard
+   reader's attachment checks. Recorded the pre-change hashes.
+2. Finding 1 — publish `census_ccpiu_annual_2024`, the price basis the kernel's
+   own contract names, with the contract digest beside it, and require the
+   accounting node to record that contract. CPI-U-RS is gone from the bytes.
+3. Finding 2 — `_node_receipt_bindings` binds the engine node's
+   `evaluation_sha256` and the accounting node's `accounting_sha256` when the
+   run records them. `accounting_sha256` is the payload digest, traced to
+   `graph_asec_income.py`.
+4. Finding 3 — each graph phase's `reported_income` summary is validated against
+   the summary contract and required to equal the direct block field for field.
+5. Finding 4 — `_resealed_manifest_mutation` restores the content body, the
+   content key and each phase receipt's recorded key, so node cases reach
+   `_nodes`. Every case asserts its own refusal text. `INPUT_PRODUCERS` makes
+   "accounting never consumes the engine" an enforced rule.
+6. Finding 5 — focused negatives for the accounting layout, the carried housing
+   cells, the lineage roster and the graph summary.
+7. Doc updated, including the reader boundary and the closed identifier roster.
+8. 167 income-v3 + 59 four-node + 74 writer tests green; ruff clean repo-wide;
+   `tools/ci_test_groups.py --verify` ok.
+9. Verified against the accepted genuine run, without exporting: every changed
+   validator accepts it.
 
 ## Next
 
-1. Read the reviewed four-node + income-v3 exporter/test/doc bytes and record
-   their pre-change hashes.
-2. Fix finding 1: publish the source contract's own price basis name.
-3. Fix finding 2: bind engine `evaluation_sha256` and accounting `accounting_sha256`.
-4. Fix finding 3: validate each graph `reported_income` summary against direct.
-5. Fix finding 4: port the four-node resealing helper; assert specific refusals.
-6. Fix finding 5: accounting-column, carried-cells and lineage negatives.
-7. Re-run old + new suites, ruff, and write the report.
-
-## Constraints
-
-- Local only. No source opens, no model runs, no push, no deploy, no export.
-- The provisional export at `R/us-income-v3-genuine-graph-candidate` is a
-  REJECTED audit artifact; never overwrite it.
+- Root re-reviews this code, then re-exports to a new namespace.
+- Reader extension is separate work and is documented, not attempted.
