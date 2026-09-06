@@ -2,6 +2,11 @@
 
 `packages/microcosm-build/src/microcosm/build/graph_evidence_income_v3.py` exports
 the five-node `microcosm.income_v3_first_genuine_graph_run.v1` engineering rung.
+A sample-size-aware successor to this profile is documented in
+[the sized export note](us-income-sized-graph-evidence-export.md); it imports
+this module and changes nothing in it, and neither profile accepts the other's
+root binding.
+
 It is a second explicit profile beside the reviewed four-node exporter, not a
 generic successor: the original `graph_evidence.py` is unchanged, still accepts
 only its own pinned run, and refuses an income-v3 receipt; this profile refuses
