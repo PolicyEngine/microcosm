@@ -1053,7 +1053,8 @@ def bind_composed_asec_arm_rows(
     declared_buffers = data["buffers"]
     _require(
         type(declared_buffers) is list
-        and len(declared_buffers) == len(_ARM_ROWS_BUFFERS),
+        and len(declared_buffers) == len(_ARM_ROWS_BUFFERS)
+        and all(type(item) is dict for item in declared_buffers),
         "ARM_ROWS_BUFFER_ROSTER",
     )
     cursor, buffers = start + size, []

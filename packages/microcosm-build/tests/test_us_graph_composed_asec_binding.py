@@ -1243,14 +1243,17 @@ def test_a_mapping_that_bound_an_unbound_demographic_refuses(
 
 
 @pytest.mark.parametrize(
-    "roster", ["short", "not_a_list", "mapping"], ids=["short", "string", "mapping"]
+    "roster",
+    ["short", "not_a_list", "mapping", "not_objects"],
+    ids=["short", "string", "mapping", "non-objects"],
 )
 def test_the_arm_rows_header_refuses_a_malformed_buffer_roster(executed, roster):
     """A header whose ``buffers`` is not the four declared entries is typed.
 
     Every other malformed shape in this artifact refuses with a reason; a
-    strict zip against a wrong-length or wrong-type roster would raise a bare
-    ValueError or TypeError instead.
+    strict zip against a wrong-length roster would raise a bare ValueError, and
+    a roster of the right length whose entries are not objects would refuse
+    with a per-buffer reason that misdescribes what is actually wrong.
     """
     _root, manifest, store, *_rest = executed
     payload = _payload(manifest, store, binding.BIND_NODE, "arm_rows")
@@ -1268,6 +1271,7 @@ def test_the_arm_rows_header_refuses_a_malformed_buffer_roster(executed, roster)
             "short": header["buffers"][:3],
             "not_a_list": "four buffers",
             "mapping": {item["name"]: item for item in header["buffers"]},
+            "not_objects": [item["sha256"] for item in header["buffers"]],
         }[roster],
     )
     reframed = _json(broken)
