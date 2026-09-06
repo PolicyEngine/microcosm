@@ -330,7 +330,7 @@ def test_real_kernel_refuses_changed_lineage_and_inputs(executed, mutation):
         "selected_producer": "ARTIFACT_PRODUCER_SPLIT",
         "source_type": "ARTIFACT_EDGE:income_observations",
         "source_year": "ACCOUNTING_SOURCE_COHORTS",
-        "selection_positions": "ACCOUNTING_SOURCE_POSITIONS",
+        "selection_positions": "SELECTED_REPLAY_BINDING",
         "incumbent": "OWNED_LEAF_INCUMBENT",
     }
     with pytest.raises(ValueError, match=reasons[mutation]):
