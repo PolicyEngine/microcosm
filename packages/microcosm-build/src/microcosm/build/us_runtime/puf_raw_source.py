@@ -96,6 +96,7 @@ __all__ = [
     "SourcePin",
     "USPufRawReturnStatusSummaryKernel",
     "USPufRawSourceKernel",
+    "csv_acceptance_profile",
     "decode_puf_raw_source",
     "decode_return_status",
     "encode_return_status",
@@ -536,6 +537,53 @@ class PufRawReturnStatus:
         return int(self.facts["rows"])
 
 
+def csv_acceptance_profile() -> dict[str, object]:
+    """The effective CSV acceptance state this decoder actually parses under.
+
+    ``csv.field_size_limit`` is process-global state that silently changes
+    which deliveries parse: at a lowered limit a file that was admitted is
+    refused, and at a raised limit a file that was refused is admitted. It is
+    therefore part of the producer's identity, exactly as
+    :mod:`asec_income_observations` and :mod:`acs_housing_universe_source`
+    already bind it. This function only *reads* it — nothing in this module
+    ever sets it, so no other stage's acceptance is disturbed.
+
+    The remaining entries are the reader semantics :func:`_reader` fixes
+    itself; the delimiter, quote character and doublequote flag come from the
+    closed definition and are checked against it at decode time.
+    """
+
+    return {
+        "engine": "stdlib_csv_reader",
+        "encoding": "utf-8-strict",
+        "newline": "",
+        "quoting": int(csv.QUOTE_MINIMAL),
+        "strict": True,
+        "csv.field_size_limit": csv.field_size_limit(),
+    }
+
+
+def _check_csv_profile(profile: Mapping[str, object]) -> None:
+    """Refuse when the effective acceptance state is not the pinned one.
+
+    The packaged definition states ``field_size_limit``. Before this check it
+    was a decorative fact: the decoder relied on the process default happening
+    to match. Now the pinned value is the value the parse actually ran under,
+    or the decode refuses — a lowered limit is a refusal, never a silent
+    reparse, and a raised limit is a refusal, never a silent widening.
+    """
+
+    declared = profile["field_size_limit"]
+    if not isinstance(declared, int) or isinstance(declared, bool) or declared <= 0:
+        raise _refuse("DEFINITION_CSV_FIELD_SIZE_LIMIT")
+    if csv.field_size_limit() != declared:
+        raise _refuse("CSV_FIELD_SIZE_LIMIT")
+    if profile["quoting"] != "QUOTE_MINIMAL" or profile["strict"] is not True:
+        raise _refuse("DEFINITION_CSV_PROFILE")
+    if profile["encoding"] != "utf-8-strict" or profile["newline"] != "":
+        raise _refuse("DEFINITION_CSV_PROFILE")
+
+
 def _reader(payload: bytes, profile: Mapping[str, object]):
     if not isinstance(payload, bytes):
         raise _refuse("DECODE_PAYLOAD_TYPE")
@@ -661,6 +709,7 @@ def decode_puf_raw_source(
     if not isinstance(definition, PufRawSourceDefinition):
         raise _refuse("DECODE_DEFINITION_TYPE")
     profile = definition.document["csv_profile"]
+    _check_csv_profile(profile)
     widths = _widths(definition)
     domains = _domains(definition)
     agerange = _agerange_domains(definition)
@@ -1335,6 +1384,7 @@ def decode_return_status(
 # --------------------------------------------------------------------------
 
 _IMPLEMENTATION_MODULES = ("microcosm.build.us_runtime.puf_raw_source",)
+_IMPLEMENTATION_IDENTITY_MAGIC = b"us.puf.raw_source/implementation/2\n"
 
 
 class USPufRawSourceKernel(KernelBase):
@@ -1368,12 +1418,25 @@ class USPufRawSourceKernel(KernelBase):
         )
 
     def implementation_hash(self) -> str:
+        """Module source, dependency versions **and** the effective CSV profile.
+
+        The acceptance profile is process state the parse runs under, so it
+        belongs in the producer's identity: change it and this node's key
+        moves, which is a recompute or a ``require`` miss. It can no longer
+        reuse an admission made under a different acceptance.
+        """
+
         from importlib import import_module
 
-        return source_hash(
+        base = source_hash(
             *(import_module(name) for name in _IMPLEMENTATION_MODULES),
             dependencies=self.capabilities.dependencies,
         )
+        digest = hashlib.sha256(_IMPLEMENTATION_IDENTITY_MAGIC)
+        digest.update(base.encode("ascii"))
+        digest.update(b"\0")
+        digest.update(canonical_json(csv_acceptance_profile()))
+        return digest.hexdigest()
 
     def run(self, context: KernelContext) -> KernelResult:
         definition = self.definition
@@ -1414,6 +1477,7 @@ class USPufRawSourceKernel(KernelBase):
                     "artifact_bytes": len(payload),
                     "main_sha256": definition.main.sha256,
                     "demographic_sha256": definition.demographic.sha256,
+                    "csv_acceptance_profile": csv_acceptance_profile(),
                     **{
                         key: value
                         for key, value in status.facts.items()
