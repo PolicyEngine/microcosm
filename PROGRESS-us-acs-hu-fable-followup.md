@@ -27,7 +27,8 @@ any scoped update, so none was made.
 - [x] Docs: seeded CREATE, 64 MiB envelope, vacancy refusals, new reason codes
 - [x] GREEN: 310/310, zero failures/errors/skips (`us-acs-hu-followup-tests-green-first`)
 - [x] Restored the pre-existing repo `PROGRESS.md` this file had wrongly replaced
-- [ ] Freeze commit + durable report/receipt
+- [x] Freeze commit + durable report/receipt in
+      `architecture-reviews/microcosm-20260904/us-acs-hu-fable-followup-{REPORT.md,receipt.json}`
 
 ## Done
 
