@@ -75,6 +75,11 @@ def _pinned_bytes(
     size: int,
     code: str,
 ) -> bytes:
+    # A pinned object the store does not hold is a sanitized refusal here, not
+    # an operating-system error escaping the authority boundary.
+    obj = Path(store.object_path(key))
+    if obj.is_symlink() or not obj.is_dir():
+        raise ReadbackError(code + ":OBJECT_ABSENT")
     payload = s._bounded_object(store, key, scratch, kind=kind, binding=binding)
     _require(len(payload) == size and s._sha(payload) == sha256, code)
     return payload

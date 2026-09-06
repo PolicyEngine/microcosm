@@ -93,9 +93,19 @@ class SippEquityContract:
 
 @cache
 def load_contract() -> SippEquityContract:
-    """Read, validate and identify the packaged contract resource."""
-    raw = (files(__package__) / CONTRACT_RESOURCE).read_bytes()
-    document = json.loads(raw)
+    """Read, validate and identify the packaged contract resource.
+
+    This is the only production route to a contract. Tests build invented
+    contracts through :func:`_contract_from_document`, which is deliberately
+    private: a caller-supplied pin never becomes production authority.
+    """
+    return _contract_from_document(
+        json.loads((files(__package__) / CONTRACT_RESOURCE).read_bytes())
+    )
+
+
+def _contract_from_document(document) -> SippEquityContract:
+    """Validate and identify a contract document. Test-only construction route."""
     if not isinstance(document, dict):
         raise ContractError("CONTRACT_SHAPE")
     if document.get("contract_id") != "sipp-nominal-equity-consumer/1":

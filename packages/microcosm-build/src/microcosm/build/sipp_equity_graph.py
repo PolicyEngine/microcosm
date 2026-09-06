@@ -15,6 +15,7 @@ import stat
 from collections import Counter
 from dataclasses import dataclass
 from decimal import Decimal
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -284,9 +285,9 @@ def _donor_frame(admitted, coverage, admission, contract, readback_result) -> Fr
             lineage_people.append(
                 {"person_id": person_id, "ssuid": ssuid, "pnum": int(pnum)}
             )
-    person = pd.DataFrame(person_rows, columns=["person_id", "household_id"]).astype(
-        {"person_id": "int64", "household_id": "int64"}
-    )
+    person = pd.DataFrame(
+        person_rows, columns=["person_id", "person_household_id"]
+    ).astype({"person_id": "int64", "person_household_id": "int64"})
     household = pd.DataFrame(
         {
             "household_id": np.array(household_ids, dtype=np.int64),
@@ -334,10 +335,16 @@ def _donor_frame(admitted, coverage, admission, contract, readback_result) -> Fr
     )
 
 
-def load_sipp_equity_donor_frame(path, *, store: ContentStore | None = None) -> Frame:
-    """Frame codec: prepared closed source store -> admitted donor Frame."""
+def load_sipp_equity_donor_frame(
+    path, *, store: ContentStore | None = None, contract=None
+) -> Frame:
+    """Frame codec: prepared closed source store -> admitted donor Frame.
+
+    ``contract`` is the explicit test-only construction route for invented pins;
+    the production registration binds the packaged contract.
+    """
     del store
-    contract = contract_module.load_contract()
+    contract = contract or contract_module.load_contract()
     root = Path(path)
     _check_closed_roster(root, contract)
     scratch = root.parent / _SCRATCH_DIRNAME
@@ -350,9 +357,14 @@ def load_sipp_equity_donor_frame(path, *, store: ContentStore | None = None) -> 
     return _donor_frame(admitted, coverage, admission, contract, result)
 
 
-def register_codecs(registry) -> None:
+def register_codecs(registry, *, contract=None) -> None:
     """Register this consumer's Frame codec on a caller-owned registry."""
-    registry.register(DONOR_CODEC, load_sipp_equity_donor_frame)
+    if contract is None:
+        registry.register(DONOR_CODEC, load_sipp_equity_donor_frame)
+        return
+    registry.register(
+        DONOR_CODEC, partial(load_sipp_equity_donor_frame, contract=contract)
+    )
 
 
 # --------------------------------------------------------------------------
@@ -383,9 +395,15 @@ class SippDonorCreateKernel(KernelBase):
             dependencies=self.capabilities.dependencies,
         )
 
+    def __init__(self, *, contract=None, registry=None):
+        # Both are the explicit test-only construction route; production uses
+        # the packaged contract and the shipped registry.
+        self._contract = contract
+        self._registry = registry
+
     def run(self, context: KernelContext) -> KernelResult:
         node = context.node
-        contract = contract_module.load_contract()
+        contract = self._contract or contract_module.load_contract()
         if node.artifact_outputs != (
             ArtifactOutput("donor_support", DONOR_SUPPORT_TYPE),
         ) or node.artifact_inputs:
@@ -396,7 +414,13 @@ class SippDonorCreateKernel(KernelBase):
             concept=context.params["concept"], period=context.params["period"]
         )
         (name,) = node.sources
-        frame = load_source(DONOR_CODEC, context.sources[name])
+        frame = (
+            load_source(DONOR_CODEC, context.sources[name])
+            if self._registry is None
+            else load_source(
+                DONOR_CODEC, context.sources[name], registry=self._registry
+            )
+        )
         table = frame.table("household")
         sizes = sorted({int(v) for v in table[contract.predictor["name"]]})
         metadata = frame.metadata
@@ -446,8 +470,11 @@ class SippRecipientRosterKernel(KernelBase):
             type(self), contract_module, dependencies=self.capabilities.dependencies
         )
 
+    def __init__(self, *, contract=None):
+        self._contract = contract
+
     def run(self, context: KernelContext) -> KernelResult:
-        contract = contract_module.load_contract()
+        contract = self._contract or contract_module.load_contract()
         node = context.node
         if set(context.params) != {"codec"}:
             raise EquityGraphError("RECIPIENT_NODE_PARAMS")
@@ -458,7 +485,8 @@ class SippRecipientRosterKernel(KernelBase):
         person = frame.table("person")
         if roster in household.columns:
             raise EquityGraphError("RECIPIENT_ROSTER_COLUMN_SUPPLIED")
-        counts = person.groupby("household_id").size()
+        membership = frame.schema.membership_column("household")
+        counts = person.groupby(membership).size()
         ids = household["household_id"].to_numpy()
         # The Frame already refused orphan or dangling membership; this refuses
         # a supplied size claim that disagrees with the roster it must equal.
@@ -504,8 +532,11 @@ class SippSupportValidationKernel(KernelBase):
             type(self), contract_module, dependencies=self.capabilities.dependencies
         )
 
+    def __init__(self, *, contract=None):
+        self._contract = contract
+
     def run(self, context: KernelContext) -> KernelResult:
-        contract = contract_module.load_contract()
+        contract = self._contract or contract_module.load_contract()
         node = context.node
         roster = contract.predictor["roster_column"]
         predictor = contract.predictor["name"]
