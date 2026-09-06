@@ -372,8 +372,11 @@ def test_a_second_valid_source_store_moves_the_donor_and_descendant_keys(
 
     The variant adds one more admitted two-person residence, so it is a second
     *valid* accepted artifact rather than a corrupted one, and both runs
-    execute to a draw. The recipient bytes are identical in both arms, so its
-    node still hits: the store is warm, and the donor chain moved anyway.
+    execute to a draw. The recipient bytes are identical in both arms, but its
+    node declares the contract identity, which moves with the source pins, so
+    it re-executes as well; the assertions below require exactly that. Warmth
+    is therefore established by replaying the first source under
+    ``resume="require"``, which serves all five nodes from this same store.
     """
     store_root = tmp_path / "store"
     base = _Harness(monkeypatch, tmp_path, namespace="base")

@@ -31,6 +31,11 @@ import microcosm.build.sipp_equity_graph as equity
 import microcosm.graph as mgraph
 from microcosm.graph.canonical import canonical_json, sha256_domain
 
+#: This test file lives at ``<worktree>/packages/microcosm-build/tests/``, so
+#: the checkout the warm subprocess must have loaded its modules from is four
+#: levels up. Nothing here reads the repository through Git.
+_WORKTREE = Path(__file__).resolve().parents[3]
+
 TARGET = contract_module.TARGET_NAME
 PREDICTOR = contract_module.PREDICTOR_NAME
 ROSTER = contract_module.ROSTER_PREDICTOR_NAME
@@ -403,12 +408,22 @@ manifest = mgraph.run_graph(
 donor = manifest.nodes[equity.DONOR_POPULATION]
 evidence = store.load_bytes(dict(donor.opaque_artifacts)["donor_evidence"])
 support = store.load_bytes(dict(donor.opaque_artifacts)["donor_support"])
-modules = {{
-    name: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
-    for name, module in sorted(sys.modules.items())
-    if (name == "microcosm" or name.startswith("microcosm."))
-    and getattr(module, "__file__", None)
-}}
+worktree = Path({worktree}).resolve()
+modules = {{}}
+for name, module in sorted(sys.modules.items()):
+    if not (name == "microcosm" or name.startswith("microcosm.")):
+        continue
+    filename = getattr(module, "__file__", None)
+    if not filename:
+        continue
+    resolved = Path(filename).resolve()
+    inside = resolved.is_relative_to(worktree)
+    modules[name] = {{
+        "sha256": hashlib.sha256(resolved.read_bytes()).hexdigest(),
+        "path": str(resolved),
+        "inside_worktree": inside,
+        "relative_path": str(resolved.relative_to(worktree)) if inside else None,
+    }}
 print(json.dumps({{
     "all_hits": all(r.hit for r in manifest.nodes.values()),
     "kernel_calls": calls["n"],
@@ -425,6 +440,7 @@ print(json.dumps({{
     ),
     "modules": modules,
     "module_count": len(modules),
+    "worktree": str(worktree),
 }}))
 """
 
@@ -437,6 +453,7 @@ def _fresh_process_warm(bench, tmp_path):
         store=json.dumps(str(bench.tmp_path / "store")),
         source_store=json.dumps(str(bench.source_store)),
         recipient=json.dumps(str(bench.recipient)),
+        worktree=json.dumps(str(_WORKTREE)),
     )
     environment = dict(os.environ)
     environment["PYTHONPATH"] = os.pathsep.join(
@@ -495,8 +512,17 @@ def test_cold_and_fresh_process_warm_evidence_and_receipts_are_identical(
     ]
     assert np.array_equal(np.array(warm["draws"]), cold_draws.to_numpy())
     # Every microcosm module the warm process loaded came from this checkout.
+    # The subprocess reports each module's resolved path, so "from this
+    # checkout" is asserted rather than implied by a digest of the right
+    # length: the path must be inside this worktree, and the bytes at that
+    # path must still hash here to the digest the subprocess reported.
     assert warm["module_count"] > 0
-    assert all(len(digest) == 64 for digest in warm["modules"].values())
+    assert warm["worktree"] == str(_WORKTREE)
+    assert all(entry["inside_worktree"] for entry in warm["modules"].values())
+    for entry in warm["modules"].values():
+        loaded = _WORKTREE / entry["relative_path"]
+        assert loaded.is_file()
+        assert hashlib.sha256(loaded.read_bytes()).hexdigest() == entry["sha256"]
 
 
 def test_direct_cold_and_warm_donor_evidence_agree(tmp_path, monkeypatch):
@@ -600,13 +626,22 @@ def test_a_narrower_selection_is_refused_rather_than_compared(tmp_path, monkeypa
 def test_the_packaged_contract_reconciles_against_the_root_plans_counts():
     """The genuine reconciliation is wired to the genuine numbers, not to zero."""
     contract = contract_module.load_contract()
-    assert contract.admission["expected_admitted_residences"] == 17588
-    assert contract.admission["expected_excluded_zero_weight"] == 20
-    assert contract.admission["expected_excluded_unknown_target"] == 38
-    assert contract.source["counts"]["december_residences"] == 17646
-    # The three pinned counts exhaust the pinned roster, so agreeing on them
-    # leaves no room for an unpinned exclusion reason.
-    assert 17588 + 20 + 38 == 17646
+    admitted = contract.admission["expected_admitted_residences"]
+    zero_weight = contract.admission["expected_excluded_zero_weight"]
+    unknown_target = contract.admission["expected_excluded_unknown_target"]
+    residences = contract.source["counts"]["december_residences"]
+    assert (admitted, zero_weight, unknown_target, residences) == (
+        17588,
+        20,
+        38,
+        17646,
+    )
+    # Exhaustiveness is asserted on the contract's own fields rather than on
+    # the literals above. ``reconcile_admission`` compares four numbers and
+    # concludes there is no room for an unpinned exclusion reason; that
+    # conclusion holds only while the three expectations sum to the pinned
+    # roster, so a future contract edit that broke it must fail here.
+    assert admitted + zero_weight + unknown_target == residences
 
 
 def test_admission_records_expected_versus_observed(tmp_path, monkeypatch):
