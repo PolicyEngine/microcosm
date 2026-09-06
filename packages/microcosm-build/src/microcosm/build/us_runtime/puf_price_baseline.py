@@ -300,14 +300,6 @@ def price_baseline_recipe(
     return GrowthRecipe(recipe_id, tuple(rules))
 
 
-#: The one contract shape this module will describe. Every constant this
-#: module goes on to state as fact — the source and target year, the exact
-#: rational, the identifier identity, the no-return-mass-transition
-#: declaration — is a property of a contract, not of the module, so a contract
-#: that does not have it is declined rather than described.
-_IDENTITY_LEVEL = "1"
-
-
 def require_price_baseline_contract(compiled: CompiledPufGrowth) -> None:
     """Refuse any contract that is not the adopted price baseline.
 
@@ -329,9 +321,10 @@ def require_price_baseline_contract(compiled: CompiledPufGrowth) -> None:
       ``SignBranch.ANY``, on the one named CPI series, resolving to the
       published level texts and to the exact float64 of ``313689/237017``;
     * exactly one identifier rule, on ``RECID``, at the baseline source year;
-    * exactly one design-weight rule, on ``S006``, on the declared identity
-      series whose two levels are both ``1`` and whose factor is exactly
-      ``1.0``;
+    * exactly one design-weight rule, on ``S006``, at the same two years, on
+      the declared identity series, whose resolved factor is exactly ``1.0``
+      and whose two level texts are the same text — not two texts whose
+      float64 quotient happens to round to one;
     * no rule in any other role.
 
     The *field set* is deliberately not fixed: a contract over a subset of the
@@ -399,28 +392,31 @@ def require_price_baseline_contract(compiled: CompiledPufGrowth) -> None:
             field,
         )
         resolved = compiled.factor_for(field, SignBranch.ANY)
+        # The substantive claim first — this is the one float64 — and then the
+        # two level texts it must have come from. The order matters because
+        # more than one pair of texts divides to the same double, and this
+        # baseline is the published pair, not merely a pair that agrees.
+        _require(
+            resolved.ratio_bits == PRICE_BASELINE_FACTOR_BITS,
+            "PRICE_BASELINE_FACTOR",
+            field,
+        )
         _require(
             resolved.source_level == source_level, "PRICE_BASELINE_SOURCE_LEVEL", field
         )
         _require(
             resolved.target_level == target_level, "PRICE_BASELINE_TARGET_LEVEL", field
         )
-        _require(
-            resolved.ratio_bits == PRICE_BASELINE_FACTOR_BITS,
-            "PRICE_BASELINE_FACTOR",
-            field,
-        )
 
+    # ``GrowthRecipe`` already requires exactly one identifier field, and
     # ``GrowthRule`` already fixes a non-money, non-weight role to
-    # ``GrowthKind.NONE`` with equal years, so what is open here is which
-    # field carries the role and which year it names.
-    _require(len(identifiers) == 1, "PRICE_BASELINE_IDENTIFIER")
-    identifier = identifiers[0]
+    # ``GrowthKind.NONE`` with equal years. What is open here is which field
+    # carries the role and which year it names.
     _require(
-        identifier.field == SOURCE_RECID_FIELD,
+        len(identifiers) == 1 and identifiers[0].field == SOURCE_RECID_FIELD,
         "PRICE_BASELINE_IDENTIFIER",
-        identifier.field,
     )
+    identifier = identifiers[0]
     _require(
         identifier.source_reference_year == PRICE_BASELINE_SOURCE_YEAR,
         "PRICE_BASELINE_IDENTIFIER_YEAR",
@@ -430,13 +426,11 @@ def require_price_baseline_contract(compiled: CompiledPufGrowth) -> None:
     # Likewise the design-weight role already fixes the kind and the sign
     # branch. What is open is the field, the series, and whether the declared
     # factor really is one.
-    _require(len(weights) == 1, "PRICE_BASELINE_DESIGN_WEIGHT")
-    weight = weights[0]
     _require(
-        weight.field == DESIGN_WEIGHT_FIELD,
+        len(weights) == 1 and weights[0].field == DESIGN_WEIGHT_FIELD,
         "PRICE_BASELINE_DESIGN_WEIGHT",
-        weight.field,
     )
+    weight = weights[0]
     _require(
         weight.factor_series == DESIGN_WEIGHT_IDENTITY_SERIES,
         "PRICE_BASELINE_DESIGN_WEIGHT_SERIES",
@@ -449,15 +443,17 @@ def require_price_baseline_contract(compiled: CompiledPufGrowth) -> None:
         weight.field,
     )
     resolved_weight = compiled.factor_for(weight.field, SignBranch.ANY)
-    _require(
-        resolved_weight.source_level == _IDENTITY_LEVEL
-        and resolved_weight.target_level == _IDENTITY_LEVEL,
-        "PRICE_BASELINE_DESIGN_WEIGHT_LEVEL",
-        weight.field,
-    )
+    # The substantive claim first: the declared weight factor is exactly one.
+    # Then the two level texts, which must be the same text and not merely two
+    # texts whose float64 quotient rounds to one.
     _require(
         resolved_weight.value == 1.0,
         "PRICE_BASELINE_DESIGN_WEIGHT_FACTOR",
+        weight.field,
+    )
+    _require(
+        resolved_weight.source_level == resolved_weight.target_level,
+        "PRICE_BASELINE_DESIGN_WEIGHT_LEVEL",
         weight.field,
     )
 

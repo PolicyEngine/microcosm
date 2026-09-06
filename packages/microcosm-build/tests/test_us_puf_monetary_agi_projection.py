@@ -10,7 +10,9 @@ exactly what it was.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -667,3 +669,76 @@ def test_a_node_declaration_that_is_not_this_contract_is_refused():
     with pytest.raises(PufMonetaryRefusalError) as error:
         USPufMonetaryAgiSourceKernel().run(_Context())
     assert error.value.reason == "NODE_DECLARATION"
+
+
+# --------------------------------------------------------------------------
+# The generator's edit to the frozen module is scoped, including on failure
+# --------------------------------------------------------------------------
+
+
+def load_layout_tool():
+    """Import the extension generator by path, without running it.
+
+    Importing only defines names — the module's top level computes paths and
+    nothing else — so this reads no booklet, no document and no microdata. The
+    two calls that would are not made here; the lane's own
+    ``…-generator-reentrancy-*.json`` runs make them against a documents
+    directory this repository does not carry.
+    """
+    path = ROOT / "tools/build_us_puf_agi_source_layout.py"
+    spec = importlib.util.spec_from_file_location("_agi_layout_tool_for_test", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:  # pragma: no cover - import of a path-loaded module
+        del sys.modules[spec.name]
+        raise
+    return module
+
+
+class _FrozenParentStub:
+    """Only the two module globals the extension edits."""
+
+    def __init__(self):
+        self.PROJECTION = ("twelve", "declarations")
+        self.NOTABLE_SOURCE_ONLY = {AGI_FIELD: "source-only upstream", "E01100": "x"}
+
+
+def test_the_extension_restores_the_cached_parents_declarations():
+    """``load_parent`` caches the module, so the edit must not outlive the call."""
+    tool = load_layout_tool()
+    parent = _FrozenParentStub()
+    projection, notable = parent.PROJECTION, dict(parent.NOTABLE_SOURCE_ONLY)
+
+    with tool.extended_parent(parent, "thirteenth"):
+        assert parent.PROJECTION == (*projection, "thirteenth")
+        assert AGI_FIELD not in parent.NOTABLE_SOURCE_ONLY
+
+    assert parent.PROJECTION == projection
+    assert parent.NOTABLE_SOURCE_ONLY == notable
+
+
+def test_the_declarations_are_restored_when_the_block_refuses():
+    """The failure path is the one that matters: a retry must see twelve.
+
+    Without this, a caller that caught one ``GenerationError`` and tried again
+    would be told the frozen parent no longer reproduces the accepted
+    twelve-field document — a claim about the accepted artifact produced
+    entirely by the extension's own leftover state.
+    """
+    tool = load_layout_tool()
+    parent = _FrozenParentStub()
+    projection, notable = parent.PROJECTION, dict(parent.NOTABLE_SOURCE_ONLY)
+
+    with pytest.raises(tool.GenerationError):
+        with tool.extended_parent(parent, "thirteenth"):
+            raise tool.GenerationError("a refusal raised inside the block")
+
+    assert parent.PROJECTION == projection
+    assert parent.NOTABLE_SOURCE_ONLY == notable
+
+    # And again, because a second entry must start from the restored state.
+    with tool.extended_parent(parent, "thirteenth"):
+        assert len(parent.PROJECTION) == len(projection) + 1
+    assert parent.PROJECTION == projection
