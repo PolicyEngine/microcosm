@@ -114,7 +114,8 @@ current-money tax reconstruction, and composes the housing universe on the
 result. Its receipt records `housing_content_sha256`,
 `housing_attachment_receipt_sha256`, `pre_housing_universe_frame_sha256` and
 `parent_kind: HousingStatusAttachedAsec`. `graph_asec_prepared.py` declares the
-`us.asec_prepared.create@3` node and carries the composed frame;
+`asec_prepared.create` node, whose kernel reference is
+`us.asec_prepared.create@3`, and carries the composed frame;
 `graph_housing_universe.py` binds the universe transport by checking that same
 `parent_kind`. `asec_housing_universe_source.py` accepts
 `HousingStatusAttachedAsec` as a parent alongside `CurrentMoneyTaxUnitResult`.
