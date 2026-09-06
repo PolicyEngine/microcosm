@@ -1,0 +1,1 @@
+Add a SIPP December-2022 nominal vehicle-equity graph consumer: a bounded readback of the accepted projection, a packaged pin contract, a source-derived donor Frame, and a support validator that owns the predictor DRAW reads.
