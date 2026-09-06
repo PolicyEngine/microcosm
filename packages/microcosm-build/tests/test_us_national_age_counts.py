@@ -689,9 +689,10 @@ def test_the_composition_wires_counts_into_the_existing_calibration_node():
     assert calibration.weights == WeightTransition(
         "household", "calibrated", mass="free"
     )
-    # No frame-context artifact is produced or relabelled by this composition.
+    # No frame-context artifact is produced or relabelled by this composition:
+    # the diagnostics edge is the only artifact either node emits.
     assert count.artifact_outputs == ()
-    assert calibration.artifact_outputs[0].name == "diagnostics"
+    assert tuple(item.name for item in calibration.artifact_outputs) == ("diagnostics",)
 
 
 def test_a_registry_that_disagrees_with_the_bands_is_refused():
