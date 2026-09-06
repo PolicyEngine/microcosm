@@ -1,3 +1,5 @@
+> Integration note, 2026-09-06: this lane was merged locally into the US launch integration checkout. The state and next steps below are historical. Root reviewed the later buffer-member refusal and retained the original author’s observation-axis assertions. Genuine composed-run validation and calibration remain separate work.
+
 # Composed prepared-ASEC / native-ACS binding lane
 
 Session journal (history, not state — see `CLAUDE.md` "Root journals are history").
