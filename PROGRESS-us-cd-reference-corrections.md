@@ -235,6 +235,32 @@ than kept because they looked safer:
   parametrized test now pins the disclosure for both the DC alias and an
   invented id.
 
+### Final state of this continuation
+
+Head `afa7524e20403324b6dcf506ed8d7a7efc2dbab1`, clean, 143 ahead of and 0 behind
+`origin/main`, still three changed files and nothing else. `F` is untouched at
+`9eed2e31…`, clean, and the first attempt's report, evidence, logs and
+counterexample refutation are preserved byte-for-byte with their original
+timestamps.
+
+- Focused four-file group: **156 passed**, exit 0, 19.15 s, CPython 3.14.4;
+  59 + 22 + 4 + 71 sums to 156. The reader file went 43 → 71 collected cases
+  (39 → 60 test functions; the counts differ because several tests are
+  parametrized).
+- Module origin measured from the run that produced those results, via a
+  `pytest_sessionfinish` hook: **235** microcosm modules, all inside `W`, all
+  byte-identical to their committed blobs, zero foreign, no foreign shard entry
+  left on `sys.path`.
+- All six protocol-pinned modules, the packaged protocol document and the pure
+  `cd_benchmark` package: unchanged and matching.
+- ruff clean on both changed files and across the workspace `check`;
+  `ci_test_groups.py --verify` → `verification=ok`.
+- Root's counterexamples replayed at this head against a fixture bundle hashing
+  to the same digest root recorded: both refused, file and reading unchanged.
+
 ### Next
 
-The continuation report. Still **no genuine projection**.
+1. Root review, then the independent review.
+2. Only then, the fresh-output aggregate-only command recorded in
+   `R/us-cd-reference-projection-corrections-REPORT-continuation.md`. Still **no
+   genuine projection**.
