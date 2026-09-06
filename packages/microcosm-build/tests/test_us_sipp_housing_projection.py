@@ -8,8 +8,10 @@ what the recipe must refuse and how it must classify evidence it is given.
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import pathlib
+import subprocess
 import sys
 import types
 from decimal import Decimal
@@ -48,6 +50,20 @@ RENTER = {
     "EEHC_VOUCHER": "",
     "AEHC_VOUCHER": "0",
 }
+# Version 3 predictor columns. A single-member household built from these
+# agrees with its own roster on both counts, so a test that is about something
+# else never trips a disagreement diagnostic by accident.
+PREDICTORS = {
+    "TEHC_ST": "24",
+    "AEHC_ST": "1",
+    "RHNUMPER": "1",
+    "AHNUMPER": "1",
+    "RHNUMU18": "0",
+    "AHNUMU18": "1",
+    "THTOTINC": "4200",
+    "AHTOTINC": "1",
+    "TAGE_EHC": "44",
+}
 OWNER = {
     **RENTER,
     "ETENURE": "1",
@@ -71,8 +87,19 @@ def _row(ssuid="0001", pnum=101, residence="100001", weight="1000", **overrides)
         ERESIDENCEID=residence,
         WPFINWGT=weight,
         **RENTER,
+        **PREDICTORS,
     )
     values.update(overrides)
+    return m.SippRow(values)
+
+
+def _bare_row(ssuid="0001", pnum=101, residence="100001", weight="1000", **overrides):
+    """The same household with the nine predictor columns absent entirely."""
+    values = {
+        k: v
+        for k, v in _row(ssuid, pnum, residence, weight, **overrides).values.items()
+        if k not in predictors.PREDICTOR_FIELDS
+    }
     return m.SippRow(values)
 
 
@@ -1240,3 +1267,668 @@ def test_a_published_voucher_answer_conflicts_whatever_erentsub_carries(rentsub)
     assert household.exclusion == "assistance_universe_conflict"
     without = _household(_row(**rentsub))
     assert without.assistance != "assistance_universe_conflict"
+
+
+# --- version 3 predictor transcription --------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("field", "flag", "page", "grain", "length"),
+    [
+        ("TEHC_ST", "AEHC_ST", 3310, "person_month", 2),
+        ("RHNUMPER", "AHNUMPER", 890, "household_concept_person_month", 2),
+        ("RHNUMU18", "AHNUMU18", 891, "household_concept_person_month", 2),
+        ("THTOTINC", "AHTOTINC", 2865, "household_concept_person_month", 12),
+        ("TAGE_EHC", None, 796, "person_month", 2),
+    ],
+)
+def test_each_predictor_field_carries_its_reread_locator_flag_and_grain(
+    field, flag, page, grain, length
+):
+    entry = next(e for e in hp.field_contracts() if e["name"] == field)
+    assert entry["status_flag"] == flag
+    assert entry["dictionary_zero_based_page"] == page
+    assert entry["dictionary_printed_page"] == page + 1
+    assert entry["grain"] == grain
+    assert entry["file_class"] == "Person-month"
+    assert entry["dictionary_length"] == length
+    assert entry["prospective_predictor"] is True
+    assert entry["participates_in_exclusion_order"] is False
+    assert entry["universe"] == "THHLDSTATUS in (1,2,3,4)"
+    assert entry["limitations"]
+
+
+def test_the_state_domain_is_the_published_fifty_three_code_set():
+    entry = next(e for e in hp.field_contracts() if e["name"] == "TEHC_ST")
+    codes = entry["codes"]
+    assert len(codes) == 53
+    # A range would admit 3, 7, 14, 43, 52 and 57-59; the published list does not.
+    assert not {3, 7, 14, 43, 52, 57, 58, 59} & set(codes)
+    assert codes[:3] == [1, 2, 4] and codes[-2:] == [60, 61]
+    assert entry["code_labels"]["60"] == "Puerto Rico and Island Areas"
+    assert entry["code_labels"]["61"] == "Foreign Country"
+    geography = hp.recipe_document()["prospective_predictors"]["state_geography"]
+    assert geography["published_code_count"] == 53
+    assert geography["state_and_dc_code_count"] == 51
+    assert geography["codes_that_are_not_a_state_or_dc"] == [60, 61]
+    assert geography["domain_is_a_published_code_set_not_the_range_01_56"] is True
+
+
+@pytest.mark.parametrize("code", ["3", "07", "43", "52", "57", "62", "0"])
+def test_an_unpublished_state_code_refuses_the_value(code):
+    household = _project(_row(TEHC_ST=code)).predictors[0]
+    state = household.household("TEHC_ST")
+    assert state.value is None
+    assert hm.measurement_class(state) == "unknown"
+    assert household.status == "predictor_unknown"
+
+
+def test_the_income_domain_is_signed_and_its_sentinel_lies_outside_it():
+    entry = next(e for e in hp.field_contracts() if e["name"] == "THTOTINC")
+    assert entry["minimum"] == -10_000_000_000
+    assert entry["maximum"] == 10_000_000_000
+    assert entry["unit"] == "USD_nominal_2022_monthly"
+    assert entry["kind"] == "amount"
+    sentinel = entry["out_of_domain_sentinel"]
+    assert not entry["minimum"] <= sentinel <= entry["maximum"]
+    assert entry["documented_numeric_missing_sentinel"] is None
+    # Every predictor amount's sentinel must sit outside its own domain.
+    for name, spec in predictors._PREDICTOR_AMOUNTS.items():
+        assert not spec.low <= spec.sentinel <= spec.high, name
+
+
+def test_a_sentinel_inside_a_published_domain_refuses_rather_than_hides_a_value():
+    broken = hm._Amount(
+        "AHTOTINC",
+        -10_000_000_000,
+        10_000_000_000,
+        "household_concept_person_month",
+        "invented",
+        "invented",
+        "invented",
+        "invented",
+        0,
+        unit="USD_nominal_2022_monthly",
+        sentinel=hm._UNDOCUMENTED_SENTINEL,
+    )
+    with pytest.raises(
+        hm.HousingMeasurementError, match="SENTINEL_INSIDE_DOMAIN:THTOTINC"
+    ):
+        hm._amount_lexical({"THTOTINC": "5"}, "THTOTINC", broken)
+
+
+def test_the_age_column_publishes_no_status_flag_and_no_allocation_quality():
+    entry = next(e for e in hp.field_contracts() if e["name"] == "TAGE_EHC")
+    assert entry["status_flag"] is None
+    assert entry["minimum"] == 0 and entry["maximum"] == 90
+    assert entry["kind"] == "age"
+    age = _project(_row()).predictors[0].person_age_measurements[0]
+    assert hm.measurement_quality(age) == "no_published_status_flag"
+    assert hm.measurement_class(age) == "observed_without_status_flag"
+    assert age.observations[0].origin == "published_source_value_without_status_flag"
+    declared = hp.recipe_document()["prospective_predictors"]["age"]
+    assert declared["allocation_quality_available"] is False
+    assert declared["domain_maximum_called_a_topcode"] is False
+
+
+def test_the_projection_carries_thirty_eight_declared_columns():
+    assert len(hp.PROJECTION_FIELDS) == 38
+    assert len(set(hp.PROJECTION_FIELDS)) == 38
+    assert hp.PROJECTION_FIELDS[-9:] == predictors.PREDICTOR_FIELDS
+    assert set(hp.recipe_document()["fields"]) == set(hp.PROJECTION_FIELDS)
+    # field_contracts() refuses any column that is not declared or flagged.
+    assert {e["name"] for e in hp.field_contracts()} <= set(hp.PROJECTION_FIELDS)
+
+
+def test_columns_left_out_are_declared_absent_rather_than_silently_dropped():
+    absent = hp.recipe_document()["prospective_predictors"][
+        "fields_deliberately_absent"
+    ]
+    assert absent["TEHC_METRO"] == "metro_status_unused_in_this_increment"
+    assert absent["AEHC_METRO"] == "metro_status_unused_in_this_increment"
+    for variant in ("RHNUMPERWT2", "RHNUMU18WT2", "THTOTINCT2"):
+        assert absent[variant] == "type_2_inclusive_variant_not_carried"
+    assert absent["THHLDSTATUS"].startswith("published_universe_gate")
+    assert not set(absent) & set(hp.PROJECTION_FIELDS)
+
+
+# --- version 3 predictor grain and copy agreement ---------------------------
+
+
+def test_a_predictor_copy_disagreement_is_a_conflict_and_never_a_majority():
+    result = _project(
+        _row(pnum=101, TEHC_ST="24"),
+        _row(pnum=102, TEHC_ST="24"),
+        _row(pnum=103, TEHC_ST="51"),
+    )
+    state = result.predictors[0].household("TEHC_ST")
+    assert state.value is None
+    assert "household_copy_conflict" in state.reasons
+    assert hm.measurement_class(state) == "copy_conflict"
+    assert result.predictors[0].status == "predictor_copy_conflict"
+    diagnostics = result.diagnostics["prospective_predictors"]
+    assert diagnostics["predictor_copy_conflicts"]["TEHC_ST"] == 1
+    assert diagnostics["predictor_copy_conflicts"]["THTOTINC"] == 0
+
+
+def test_a_predictor_copy_conflict_never_changes_the_household_exclusion():
+    conflicted = _project(
+        _row(pnum=101, THTOTINC="4200"), _row(pnum=102, THTOTINC="9900")
+    )
+    clean = _project(_row(pnum=101), _row(pnum=102))
+    assert conflicted.predictors[0].status == "predictor_copy_conflict"
+    assert clean.predictors[0].status == "predictor_complete"
+    assert conflicted.households[0].exclusion is None
+    assert (
+        conflicted.diagnostics["exclusions_exclusive"]
+        == clean.diagnostics["exclusions_exclusive"]
+        == {"admitted": 1}
+    )
+
+
+def test_an_absent_predictor_column_is_distinct_from_a_blank_one():
+    absent = _project(_bare_row()).predictors[0]
+    blank = _project(_row(THTOTINC="", AHTOTINC="")).predictors[0]
+    assert absent.household("THTOTINC").value is None
+    assert blank.household("THTOTINC").value is None
+    raw_absent = absent.household("THTOTINC").observations[0].raw_fields[0]
+    raw_blank = blank.household("THTOTINC").observations[0].raw_fields[0]
+    assert (raw_absent.present, raw_absent.input_type) == (False, "absent")
+    assert (raw_blank.present, raw_blank.value) == (True, "")
+    assert "THTOTINC:absent" in absent.household("THTOTINC").reasons
+    assert "THTOTINC:blank" in blank.household("THTOTINC").reasons
+
+
+# --- version 3 zero, universe, unknown and signed values --------------------
+
+
+def test_zero_children_under_18_stays_an_observed_value():
+    household = _project(_row(RHNUMU18="0")).predictors[0]
+    measure = household.household("RHNUMU18")
+    assert measure.value == 0
+    assert hm.measurement_class(measure) == "observed"
+    assert measure.observations[0].lexical_class == "numeric_zero"
+    assert household.status == "predictor_complete"
+
+
+def test_a_zero_household_size_is_outside_its_published_minimum_of_one():
+    measure = _project(_row(RHNUMPER="0")).predictors[0].household("RHNUMPER")
+    assert measure.value is None
+    assert measure.observations[0].lexical_class == "invalid_domain"
+
+
+def test_a_negative_household_income_is_preserved_as_a_signed_observation():
+    measure = _project(_row(THTOTINC="-1750")).predictors[0].household("THTOTINC")
+    assert measure.value == Decimal("-1750")
+    assert hm.measurement_class(measure) == "observed"
+    assert _project(_row(THTOTINC="-1750")).diagnostics["prospective_predictors"][
+        "income_sign"
+    ] == {"negative": 1}
+
+
+def test_a_ten_million_dollar_loss_is_a_value_not_a_missing_sentinel():
+    # The housing kernel's default out-of-domain token is -10,000,000, which is
+    # a legitimate THTOTINC amount. A per-field sentinel keeps it a value.
+    measure = _project(_row(THTOTINC="-10000000")).predictors[0].household("THTOTINC")
+    assert measure.value == Decimal("-10000000")
+    assert measure.observations[0].lexical_class == "numeric"
+
+
+def test_an_income_below_the_published_minimum_is_out_of_domain():
+    measure = (
+        _project(_row(THTOTINC="-10000000001")).predictors[0].household("THTOTINC")
+    )
+    assert measure.value is None
+    assert measure.observations[0].lexical_class == "invalid_domain"
+
+
+def test_a_not_in_universe_predictor_flag_yields_no_value_and_its_own_status():
+    result = _project(_row(RHNUMPER="", AHNUMPER="0"))
+    household = result.predictors[0]
+    measure = household.household("RHNUMPER")
+    assert measure.value is None
+    assert hm.measurement_class(measure) == "not_in_universe"
+    assert household.status == "predictor_not_in_universe"
+    assert result.diagnostics["prospective_predictors"][
+        "predictor_status_exclusive"
+    ] == {"predictor_not_in_universe": 1}
+
+
+@pytest.mark.parametrize(
+    ("flag", "quality"),
+    [
+        (2, "hot_deck_imputed"),
+        (3, "logically_imputed"),
+        (4, "model_imputed"),
+        (5, "cold_deck_imputed"),
+        (6, "range_imputed"),
+        (7, "reported_and_imputed_components"),
+        (8, "imputed_components"),
+        (9, "component_derived_allocation_unresolved"),
+    ],
+)
+def test_every_predictor_allocation_class_stays_distinct_from_reported(flag, quality):
+    result = _project(_row(AHTOTINC=str(flag)))
+    measure = result.predictors[0].household("THTOTINC")
+    assert measure.value == Decimal("4200")
+    assert hm.measurement_class(measure) == "allocated"
+    assert hm.measurement_quality(measure) == quality == m._QUALITY[flag]
+    assert result.diagnostics["prospective_predictors"]["predictor_field_quality"][
+        "THTOTINC"
+    ] == {quality: 1}
+    assert result.diagnostics["prospective_predictors"]["predictor_field_classes"][
+        "THTOTINC"
+    ] == {"allocated": 1}
+
+
+def test_a_suppressed_predictor_flag_is_neither_observed_nor_a_value():
+    measure = _project(_row(AEHC_ST="-99")).predictors[0].household("TEHC_ST")
+    assert measure.value is None
+    assert hm.measurement_class(measure) == "suppressed"
+
+
+# --- version 3 age universe and coverage ------------------------------------
+
+
+def test_the_maximum_age_uses_only_admissible_person_observations():
+    result = _project(
+        _row(pnum=101, TAGE_EHC="44", RHNUMPER="3", RHNUMU18="1"),
+        _row(pnum=102, TAGE_EHC="71", RHNUMPER="3", RHNUMU18="1"),
+        _row(pnum=103, TAGE_EHC="9", RHNUMPER="3", RHNUMU18="1"),
+    )
+    household = result.predictors[0]
+    assert household.maximum_member_age.value == 71
+    assert household.maximum_member_age.status == "household_maximum_member_age"
+    assert household.diagnostics["age_coverage"] == "complete"
+    assert household.diagnostics["age_covered_members"] == 3
+    assert household.diagnostics["maximum_age_is_lower_bound"] is False
+    assert household.diagnostics["roster_december_members_under_18"] == 1
+    assert household.diagnostics["children_under_18_agreement"] == "agree"
+
+
+def test_partial_age_coverage_yields_a_declared_lower_bound_not_a_maximum():
+    result = _project(
+        _row(pnum=101, TAGE_EHC="44", RHNUMPER="2"),
+        _row(pnum=102, TAGE_EHC="", RHNUMPER="2"),
+    )
+    household = result.predictors[0]
+    assert household.maximum_member_age.value == 44
+    assert (
+        household.maximum_member_age.status
+        == "household_maximum_member_age_lower_bound"
+    )
+    assert "age_coverage:partial" in household.maximum_member_age.reasons
+    assert household.diagnostics["age_coverage"] == "partial"
+    assert household.diagnostics["maximum_age_is_lower_bound"] is True
+    # The child roster counterpart is withheld, not guessed, and the household
+    # cannot be prospectively complete.
+    assert household.diagnostics["roster_december_members_under_18"] is None
+    assert (
+        household.diagnostics["children_under_18_agreement"]
+        == "roster_coverage_incomplete"
+    )
+    assert household.status == "predictor_age_coverage_incomplete"
+    assert hp.recipe_document()["prospective_predictors"]["age"][
+        "partial_coverage_is_a_lower_bound_not_a_maximum"
+    ]
+
+
+def test_no_admissible_age_leaves_the_household_maximum_unknown():
+    household = _project(_row(TAGE_EHC="")).predictors[0]
+    assert household.maximum_member_age.value is None
+    assert household.maximum_member_age.status == "unknown_household_maximum_member_age"
+    assert household.diagnostics["age_coverage"] == "none"
+    assert household.status == "predictor_age_coverage_incomplete"
+
+
+def test_an_age_at_the_published_maximum_is_recorded_without_calling_it_a_topcode():
+    result = _project(_row(TAGE_EHC="90"))
+    household = result.predictors[0]
+    assert household.maximum_member_age.value == 90
+    assert household.diagnostics["maximum_age_at_domain_maximum"] is True
+    diagnostics = result.diagnostics["prospective_predictors"]
+    assert diagnostics["maximum_age_at_domain_maximum_households"] == 1
+    declared = hp.recipe_document()["prospective_predictors"]["age"]
+    assert declared["domain_maximum"] == 90
+    assert declared["domain_maximum_called_a_topcode"] is False
+    assert (
+        hp.recipe_document()["non_claims"]["age_domain_maximum_called_a_topcode"]
+        is False
+    )
+    # The topcode marker surface belongs to TRENTMORT and TUTILS only; age adds
+    # nothing to it.
+    assert set(hm.PERSON_TOPCODE_AMOUNTS) == {
+        "TRNTMT_MED",
+        "TRNTMT_STD",
+        "TUTILS_MED",
+        "TUTILS_STD",
+    }
+    assert "TAGE_EHC" not in hm.PERSON_TOPCODE_AMOUNTS
+
+
+# --- version 3 publisher versus roster counts -------------------------------
+
+
+def test_the_publisher_and_roster_household_sizes_are_both_retained():
+    result = _project(
+        _row(pnum=101, RHNUMPER="3"),
+        _row(pnum=102, RHNUMPER="3"),
+    )
+    household = result.predictors[0]
+    assert household.household("RHNUMPER").value == 3
+    assert household.diagnostics["roster_december_member_count"] == 2
+    assert household.diagnostics["household_size_agreement"] == "disagree"
+    assert household.diagnostics["household_size_difference"] == 1
+    # A disagreement is a diagnostic, never a correction and never an exclusion.
+    assert household.status == "predictor_complete"
+    assert result.households[0].exclusion is None
+    diagnostics = result.diagnostics["prospective_predictors"]
+    assert diagnostics["household_size_agreement"] == {"disagree": 1}
+    assert diagnostics["household_size_difference_counts"] == {"1": 1}
+    declared = hp.recipe_document()["prospective_predictors"]["household_size"]
+    assert declared["both_retained"] is True
+    assert declared["publisher_corrected_against_roster"] is False
+    assert declared["roster_corrected_against_publisher"] is False
+    assert declared["type_2_person_treatment_adjudicated"] is False
+
+
+def test_an_unknown_publisher_size_is_reported_apart_from_a_disagreement():
+    result = _project(_row(RHNUMPER="", AHNUMPER=""))
+    assert result.predictors[0].diagnostics["household_size_agreement"] == (
+        "publisher_unknown"
+    )
+    assert result.diagnostics["prospective_predictors"]["household_size_agreement"] == {
+        "publisher_unknown": 1
+    }
+
+
+# --- version 3 separation from the measurement admission ladder --------------
+
+
+def test_the_admission_ladder_is_identical_with_and_without_the_predictor_columns():
+    def ladder(builder):
+        rows = [
+            builder(ssuid="0001", residence="100001"),
+            builder(ssuid="0002", residence="100002", **OWNER),
+            builder(ssuid="0003", residence="100003", ETENURE="3", EEHC_TEN="3"),
+            builder(ssuid="0004", residence="100004", ERENTSUB="1"),
+            builder(ssuid="0005", residence="100005", ARENTSUB="2"),
+            builder(ssuid="0006", residence="100006", ERENTSUB="", ARENTSUB=""),
+            builder(ssuid="0007", residence="100007", TRENTMORT=""),
+            builder(ssuid="0008", residence="100008", weight="0"),
+            builder(ssuid="0009", residence="100009", EVOUCHER="1", AVOUCHER="1"),
+            builder(ssuid="0010", residence="100010", ETENURE="9"),
+            builder(ssuid="0011", residence="100011", ERENTSUB="", ARENTSUB="0"),
+            builder(ssuid="0012", residence="100012", EVOUCHER="9", AVOUCHER="0"),
+        ]
+        result = hp.project(rows, source=SOURCE, selection="all_ssuids")
+        return (
+            result.diagnostics["exclusions_exclusive"],
+            result.diagnostics["admitted_unassisted_renter_households"],
+            result.diagnostics["assistance_classes"],
+            result.diagnostics["tenure_classes"],
+            [h.exclusion for h in result.households],
+        )
+
+    assert ladder(_row) == ladder(_bare_row)
+
+
+def test_the_predictor_status_ladder_is_exclusive_and_declared():
+    rows = [
+        _row(ssuid="0001", residence="100001"),
+        _row(ssuid="0002", residence="100002", pnum=101, THTOTINC="4200"),
+        _row(ssuid="0002", residence="100002", pnum=102, THTOTINC="9900"),
+        _row(ssuid="0003", residence="100003", RHNUMPER="", AHNUMPER="0"),
+        _row(ssuid="0004", residence="100004", TEHC_ST=""),
+        _row(ssuid="0005", residence="100005", TAGE_EHC=""),
+    ]
+    result = hp.project(rows, source=SOURCE, selection="all_ssuids")
+    diagnostics = result.diagnostics["prospective_predictors"]
+    assert diagnostics["predictor_status_exclusive"] == {
+        "predictor_age_coverage_incomplete": 1,
+        "predictor_complete": 1,
+        "predictor_copy_conflict": 1,
+        "predictor_not_in_universe": 1,
+        "predictor_unknown": 1,
+    }
+    assert set(diagnostics["predictor_status_exclusive"]) - {"predictor_complete"} == (
+        set(predictors.PREDICTOR_STATUS_ORDER)
+    )
+    assert diagnostics["predictor_status_order_exclusive"] == list(
+        predictors.PREDICTOR_STATUS_ORDER
+    )
+    # Not one of the five is excluded by the measurement ladder.
+    assert result.diagnostics["exclusions_exclusive"] == {"admitted": 5}
+
+
+def test_predictor_validity_is_reported_separately_for_admitted_households():
+    rows = [
+        _row(ssuid="0001", residence="100001"),
+        _row(ssuid="0002", residence="100002", **OWNER),
+        _row(ssuid="0003", residence="100003", TEHC_ST=""),
+    ]
+    result = hp.project(rows, source=SOURCE, selection="all_ssuids")
+    diagnostics = result.diagnostics["prospective_predictors"]
+    assert diagnostics["households"] == 3
+    assert diagnostics["admitted_households"] == 2
+    assert diagnostics["predictor_status_exclusive"] == {
+        "predictor_complete": 2,
+        "predictor_unknown": 1,
+    }
+    assert diagnostics["predictor_status_exclusive_admitted"] == {
+        "predictor_complete": 1,
+        "predictor_unknown": 1,
+    }
+
+
+def test_the_recipe_declares_that_no_predictor_state_joined_the_exclusion_order():
+    declared = hp.recipe_document()["prospective_predictors"]
+    assert declared["exclusion_order_unchanged"] is True
+    assert declared["predictor_states_added_to_the_exclusion_order"] == []
+    assert declared["exclusion_order_exclusive"] == list(hm.EXCLUSION_ORDER)
+    assert declared["computed_after_admission"] is True
+    assert not set(hm.EXCLUSION_ORDER) & set(predictors.PREDICTOR_STATUS_ORDER)
+    separation = _project(_row()).diagnostics["prospective_predictors"][
+        "separation_from_the_measurement_ladder"
+    ]
+    assert separation["predictor_values_read_by_the_exclusion_rule"] == []
+    assert separation["predictors_computed_after_admission"] is True
+
+
+def test_the_exclusion_rule_takes_no_predictor_argument():
+    # A structural check, not a description: _exclusion's signature is the whole
+    # set of things that can decide an admission.
+    parameters = inspect.signature(hm._exclusion).parameters
+    assert tuple(parameters) == ("tenure", "assistance", "rent", "weight")
+
+
+# --- version 3 identity, digest and replay ----------------------------------
+
+
+def test_the_recipe_moved_to_version_three_and_records_what_it_supersedes():
+    assert hp.RECIPE_VERSION == "sipp-december-housing-projection/3"
+    assert hp.RECEIPT_FORMAT == "sipp_december_housing_projection_v3"
+    assert hp.SUPERSEDED_RECIPE_VERSIONS == (
+        "sipp-december-housing-projection/1",
+        "sipp-december-housing-projection/2",
+    )
+    document = hp.recipe_document()
+    assert document["version"] == hp.RECIPE_VERSION
+    assert document["superseded_versions"] == list(hp.SUPERSEDED_RECIPE_VERSIONS)
+    assert hashlib.sha256(hp.recipe_bytes()).hexdigest() == hp.RECIPE_SHA256
+
+
+def test_the_receipt_binds_the_predictor_module_and_carries_a_predictor_digest():
+    result = _project(_row())
+    receipt = json.loads(result.receipt_json)
+    assert (
+        "microcosm.build.sipp_housing_predictors"
+        in receipt["implementation"]["module_sha256"]
+    )
+    assert (
+        receipt["implementation"]["module_sha256"][
+            "microcosm.build.sipp_housing_predictors"
+        ]
+        == hashlib.sha256(pathlib.Path(predictors.__file__).read_bytes()).hexdigest()
+    )
+    assert receipt["predictor_digest"] != receipt["measurement_digest"]
+    # The recipe names what is bound; the digest itself stays out of the bytes
+    # it would otherwise have to hash.
+    recipe = hp.recipe_bytes().decode()
+    assert "microcosm.build.sipp_housing_predictors" in recipe
+    assert (
+        receipt["implementation"]["module_sha256"][
+            "microcosm.build.sipp_housing_predictors"
+        ]
+        not in recipe
+    )
+    assert receipt["predictor_digest"] not in recipe
+
+
+def test_a_moved_predictor_value_moves_the_predictor_digest_and_the_receipt():
+    first = json.loads(_project(_row(TAGE_EHC="44")).receipt_json)
+    second = json.loads(_project(_row(TAGE_EHC="45")).receipt_json)
+    assert first["predictor_digest"] != second["predictor_digest"]
+    # The measurement surface the admission ladder read did not move with it.
+    assert first["measurement_digest"] == second["measurement_digest"]
+    assert first["membership_digest"] == second["membership_digest"]
+    assert first["recipe_sha256"] == second["recipe_sha256"]
+
+
+def test_the_predictor_pass_refuses_a_roster_it_did_not_measure():
+    rows = [_row(ssuid="0001", residence="100001")]
+    other = hm.december_housing(
+        [_row(ssuid="0002", residence="100002")],
+        source=SOURCE,
+        complete_membership=True,
+    )
+    with pytest.raises(
+        predictors.HousingPredictorError, match="PREDICTOR_ROSTER_DISAGREEMENT"
+    ):
+        predictors.december_predictors(
+            rows, other, source=SOURCE, complete_membership=True
+        )
+
+
+def test_predictor_diagnostics_refuse_households_they_were_not_measured_against():
+    rows = [_row(ssuid="0001", residence="100001")]
+    measured = hm.december_housing(rows, source=SOURCE, complete_membership=True)
+    computed = predictors.december_predictors(
+        rows, measured, source=SOURCE, complete_membership=True
+    )
+    other = hm.december_housing(
+        [_row(ssuid="0002", residence="100002")],
+        source=SOURCE,
+        complete_membership=True,
+    )
+    with pytest.raises(
+        predictors.HousingPredictorError, match="PREDICTOR_HOUSEHOLD_ALIGNMENT"
+    ):
+        predictors.predictor_diagnostics(computed, other)
+
+
+def test_the_receipt_is_byte_identical_cold_and_on_a_fresh_warm_replay():
+    # Fresh-warm: the modules are already imported and have been used by every
+    # test above, so a second projection over the same rows must reproduce the
+    # first exactly.
+    warm_first = _project(_row(pnum=101), _row(pnum=102, TAGE_EHC="9"))
+    warm_second = _project(_row(pnum=101), _row(pnum=102, TAGE_EHC="9"))
+    assert warm_first.receipt_json == warm_second.receipt_json
+
+    # Cold: a process that has never imported these modules must land on the
+    # same bytes, so nothing in the receipt depends on import order or on state
+    # this session accumulated.
+    script = """
+import hashlib, json, sys
+from microcosm.build import sipp_december_source as source
+from microcosm.build import sipp_housing_projection as hp
+from microcosm.build import sipp_measurements as m
+
+payload = json.loads(sys.argv[1])
+rows = [m.SippRow(values) for values in payload]
+result = hp.project(
+    rows,
+    source=m.SippSource(
+        source._PINS.sha256, source._PINS.metadata_sha256, 2023, 2022
+    ),
+    selection="first_32_ssuids",
+)
+print(hashlib.sha256(result.receipt_json).hexdigest())
+"""
+    rows = [
+        dict(_row(pnum=101).values),
+        dict(_row(pnum=102, TAGE_EHC="9").values),
+    ]
+    cold = subprocess.run(
+        [sys.executable, "-c", script, json.dumps(rows)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert cold.stdout.strip() == warm_first.receipt_sha256
+
+
+# --- version 3 non-claims ----------------------------------------------------
+
+
+def test_no_bridge_fit_draw_or_model_binding_is_declared_or_performed():
+    document = hp.recipe_document()
+    assert document["prospective_predictors"]["not_performed"] == [
+        "price_bridge",
+        "annualization",
+        "fit",
+        "draw",
+        "donor_mask_selection",
+        "model_input_binding",
+        "recipient_mapping",
+        "policyengine_calculation",
+    ]
+    income = document["prospective_predictors"]["income"]
+    assert income["period"] == "December_2022_monthly"
+    assert income["annualization"] == "not_applied"
+    assert income["price_rebasing"] == "not_applied"
+    assert income["log_or_floor_transform"] == "not_applied"
+    assert document["non_claims"]["monthly_income_annualized_or_rebased"] is False
+    assert document["non_claims"]["predictor_validity_is_a_fit_admission"] is False
+    assert document["non_claims"]["launch_readiness_declared"] is False
+    assert document["period_and_basis_declarations"]["annualization"] == "not_applied"
+    # The income observation itself is the published monthly amount, untouched.
+    assert _project(_row()).predictors[0].household("THTOTINC").value == Decimal("4200")
+
+
+def test_no_sub_state_geography_is_derived_and_the_non_state_codes_stay_visible():
+    document = hp.recipe_document()
+    geography = document["prospective_predictors"]["state_geography"]
+    assert geography["sub_state_geography_published_on_this_column"] is False
+    assert geography["sub_state_values_derived"] is False
+    assert geography["geography_is_source_geography"] is True
+    assert document["non_claims"]["sub_state_geography_derived"] is False
+    result = _project(
+        _row(ssuid="0001", residence="100001", TEHC_ST="24"),
+        _row(ssuid="0002", residence="100002", TEHC_ST="60"),
+        _row(ssuid="0003", residence="100003", TEHC_ST="61"),
+    )
+    diagnostics = result.diagnostics["prospective_predictors"]
+    assert diagnostics["state_of_residence_codes"] == {"24": 1, "60": 1, "61": 1}
+    assert diagnostics["state_published_non_state_area_households"] == 2
+    assert diagnostics["state_codes_that_are_not_a_state_or_dc"] == [60, 61]
+
+
+def test_the_state_arm_of_the_eehc_rentsub_universe_is_observed_without_a_reclass():
+    with_state = _project(
+        _row(ssuid="0001", residence="100001", TEHC_ST="24"),
+        _row(ssuid="0002", residence="100002", TEHC_ST="61"),
+    )
+    without_state = _project(
+        _bare_row(ssuid="0001", residence="100001"),
+        _bare_row(ssuid="0002", residence="100002"),
+    )
+    diagnostics = with_state.diagnostics["prospective_predictors"]
+    assert diagnostics["eehc_rentsub_state_arm"] == {
+        "state_code_above_60": 1,
+        "state_code_at_most_60": 1,
+    }
+    assert diagnostics["eehc_rentsub_state_arm_changes_no_classification"] is True
+    for key in ("assistance_classes", "person_month_codes", "exclusions_exclusive"):
+        assert with_state.diagnostics[key] == without_state.diagnostics[key]
