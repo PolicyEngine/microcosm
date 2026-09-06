@@ -33,9 +33,20 @@ The exact CSV readset is `PERIDNUM`, `PH_SEQ`, `A_LINENO`, `A_AGE`,
 string until the exact native-key join. The demographic tokens must be ASCII
 digits within the printed field width; blanks, missing tokens, signs,
 whitespace, decimals, and non-ASCII numerals refuse the member without
-coercion. Every accepted receipt records zero missing tokens. A digit token
-that fits the width but is outside the named semantic codes is preserved and
-classified as unresolved, with domain counts per cohort.
+coercion, and the coordinates `PERIDNUM`, `PH_SEQ`, `A_LINENO` and `A_AGE` are
+admitted on the same terms. A digit token that fits the width but is outside
+the named semantic codes is preserved and classified as unresolved, with
+domain counts per cohort.
+
+Every accepted receipt therefore records zero missing tokens, zero incumbent
+conflicts, zero coordinate conflicts and zero unreferenced source rows. Those
+zeros are the shadow of the refusal policy, not a measurement: any nonzero
+value refuses the whole run before an artifact exists, so a successful receipt
+could not have recorded anything else. The receipt names them itself under
+`counters_zero_in_every_successful_receipt`, with the same statement in
+`zero_counter_semantics`. A refused run produces no artifact and no aggregate
+count at all — not a zero — so the aggregate diagnostics named below exist
+only for a cohort set that was admitted end to end.
 
 The pinned members are the original `pppub23.csv`, `pppub24.csv`, and
 `pppub25.csv` from the existing education-assistance archive registry. Their
@@ -49,6 +60,27 @@ Sex is admitted only for `A_SEX` 1/2 with `AXSEX` 0/4. The derived integer
 states distinguish unbound, male, and female, with a separate no-change or
 Census-allocated state. Unknown sex never becomes male; unnamed allocation
 codes 1/2/3 remain unresolved.
+
+Household reference status is a statement about the household the Census
+published, identified by `(income_year, source_household_id)` — the native
+`PH_SEQ` inside one income year, since an unrelated household in another year
+legitimately carries the same native id. Classification groups instead by the
+parent roster's remapped `person_household_id`, and a per-row equality between
+that roster's `source_household_id` and the member's `PH_SEQ` says nothing
+about how either column *groups*. So the two partitions are proven identical
+in both directions before any household verdict is formed: a grouping
+household carrying persons from more than one published household, and a
+published household split across more than one grouping household, are both
+refused, while native-id reuse across cohorts is admitted and counted. The
+verification is recorded in the artifact receipt under `household_membership`
+with per-cohort household counts, and its refusals name only a column.
+
+The authenticated money parent's own loader already requires the same
+equivalence: `asec_household_observations._household_keys` refuses both
+directions, and it is reached from `_scope`, so from every
+`AuthenticatedCurrentMoneySource.validate()` this reader performs. The check
+here is the module-local restatement inside the module that forms the headship
+verdict, and it is what puts the result in this artifact's own receipt.
 
 Household reference status is admitted only when every household relationship
 code is named and exactly one member has `A_EXPRRP` 1 or 2. Missing references,
@@ -70,11 +102,21 @@ person column, entity, weight, stratum, or metadata. No model boolean is bound.
 Candidate artifact bytes are admitted only after independent reconstruction
 from the pinned members; a modified candidate refuses.
 
+Two refusal-surface limits are known and deliberately unchanged here. A
+refusal raised by the reused member snapshotter or path checker is a
+`MoneyRefusalError`, and the loader's wrapper relabels it as the generic
+`DEMOGRAPHIC_SOURCE_CONTRACT`, so its specific value-free reason does not
+reach the caller. Narrowing that would change an already reviewed refusal
+identity and is left for an explicit decision.
+
 The diagnostic ACS helper preserves `RELSHIPP == 20` as observed housing-unit
 reference status, and codes 37/38 as distinct institutional/noninstitutional
 group-quarters source codes. All-GQ households have no observed reference
 person. Missing/duplicate HU references, mixed HU/GQ households, and invalid
-relationship codes stay unbound. It changes no ACS values and is not wired
+relationship codes stay unbound. Its `housing_unit_households` count is every
+household that is not group-quarters-only, so it includes the mixed and
+invalid households the same diagnostics then report separately and leave
+unbound; it is a denominator, not a count of admitted housing units. It changes no ACS values and is not wired
 into the existing ACS producer, whose GQ relationship recode remains 14.
 
 ## Identity and next source increment
@@ -92,9 +134,14 @@ Before genuine use, review this exact source revision and the fixture receipt.
 The next bounded extraction should authenticate each existing original CSV,
 restore the three demographic fields plus the diagnostic sequence by native
 key into a new output directory, and report aggregate domain, missingness,
-allocation, reference-cardinality, incumbent-disagreement, and `P_SEQ`
-crosscheck counts for each cohort. Preserve all frozen parents and source
-pins. That extraction has not been run here.
+allocation, reference-cardinality, household-membership,
+incumbent-disagreement, and `P_SEQ` crosscheck counts for each cohort.
+Preserve all frozen parents and source pins. That extraction has not been run
+here. Expect it to produce either a complete artifact or nothing: a malformed
+token, an incumbent sex/allocation/sequence conflict, or an unequal household
+partition refuses the whole run, and the refusal names a column rather than a
+cohort, so a first failing extraction may yield no aggregate counts to
+review.
 
 Only after reviewing those aggregate results should a separate integration
 declare the demographic artifact in the prepared-source manifest/readset,
