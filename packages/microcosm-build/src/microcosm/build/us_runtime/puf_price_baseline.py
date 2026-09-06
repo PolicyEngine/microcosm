@@ -995,7 +995,7 @@ def _design_weight_observation(
     adaptation: PufMoneyViewAdaptation,
     compiled: CompiledPufGrowth,
     design_weight_after: Sequence[float] | np.ndarray | None,
-) -> tuple[Mapping[str, object], bool | None]:
+) -> tuple[dict[str, object], bool | None]:
     """What the design weight did, separating the declaration from a measurement.
 
     The declaration is the contract's: an identity series whose two levels are
@@ -1051,7 +1051,7 @@ def _design_weight_observation(
             "this caller carried forward are in fact unchanged is not "
             "measured here; pass design_weight_after to measure it."
         )
-        return MappingProxyType(record), None
+        return record, None
     after = np.asarray(design_weight_after)
     _require(after.ndim == 1, "DESIGN_WEIGHT_AFTER_SHAPE", rule.field)
     _require(
@@ -1074,4 +1074,4 @@ def _design_weight_observation(
     record["after_sha256"] = hashlib.sha256(
         np.ascontiguousarray(after64).tobytes()
     ).hexdigest()
-    return MappingProxyType(record), True
+    return record, True
