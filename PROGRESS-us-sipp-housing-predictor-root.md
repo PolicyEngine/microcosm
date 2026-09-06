@@ -82,9 +82,25 @@ lineage reference.
 - Suite at this head: **172 passed**. `tools/ci_test_groups.py --verify` is ok.
   `ruff check` passes on the changed files and on the restored ones.
 
+- Wrote the lane report to
+  `R/us-sipp-housing-predictor-projection-REPORT.md` and `.json`. The
+  predecessor's report, written at the intermediate head `aa102314` and stale by
+  eight commits, was preserved as
+  `…-REPORT.superseded-aa102314.{md,json}` rather than overwritten, and nothing
+  in it was copied.
+
 ## Next
 
 - Nothing outstanding in this lane. The next increment is the donor-table
-  preparation contract in `R/us-sipp-housing-predictor-projection-REPORT.md`,
-  which must run against the combined ASEC + ACS survey population, not an
-  ASEC-only route.
+  preparation contract in section 8 of that report, which must run against the
+  combined ASEC + ACS survey population and never an ASEC-only route. The
+  undeclared period and price bridge between `THTOTINC`'s signed December-2022
+  monthly amount and an annual recipient income is its largest open item.
+
+## What this lane is not
+
+This is a source and method acceptance at this head. It is not a launch
+readiness declaration, not an adoption of the housing-launch-method-decision
+memo - whose state domain, exclusion-rung and column-count proposals were each
+declined on source grounds - and not evidence about any quantity a version 3
+extraction has not yet produced. No extraction has been run at version 3.
