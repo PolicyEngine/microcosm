@@ -273,11 +273,30 @@ def evaluate_scope(
     ``protocol_unapproved`` and every measured block result is still retained
     for inspection.
 
+    ``allowed_missing_mandatory_block_fraction`` is zero, so every mandatory
+    block the contract declares must appear for each supplied geography; a
+    missing one is ``required_cell_or_district_missing``. A block from another
+    district cannot fill that gap. District coverage is the caller's to
+    establish with :func:`district_scope_reasons` and pass in through
+    ``scope_reasons``.
+
     This package takes no ledger lock and creates no ledger.
     ``ledger_writer_available=False`` is a caller-declared state that yields
     ``ledger_busy``; it is not an observation this module makes.
     """
     problems: list[Reason] = []
+    mandatory = {item.id for item in protocol.blocks if item.mandatory}
+    missing_blocks = tuple(sorted(mandatory - {item.block_id for item in blocks}))
+    present_by_geography: dict[str, set[str]] = {}
+    for item in blocks:
+        present_by_geography.setdefault(item.geography_id, set()).add(item.block_id)
+    missing_block_geographies = tuple(
+        (geography, block_id)
+        for geography, present in sorted(present_by_geography.items())
+        for block_id in sorted(mandatory - present)
+    )
+    if missing_blocks or missing_block_geographies:
+        problems.append(Reason.REQUIRED_CELL_OR_DISTRICT_MISSING)
     scoring = (
         approval.authorized
         and approval.registration_resolved
@@ -337,6 +356,11 @@ def evaluate_scope(
         evidence=MappingProxyType(
             {
                 "scope_reduction_order": protocol.scope_reduction_order,
+                "missing_mandatory_blocks": missing_blocks,
+                "missing_mandatory_block_geographies": missing_block_geographies,
+                "allowed_missing_mandatory_block_fraction": str(
+                    protocol.scope.allowed_missing_mandatory_block_fraction
+                ),
                 "mapping_status_is_unapproved_without_authentication": (
                     binding.status is MappingStatus.UNAPPROVED
                 ),

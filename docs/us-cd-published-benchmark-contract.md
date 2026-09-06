@@ -203,6 +203,16 @@ evidence as `reference_precision_inadequate`, and absent support evidence as
 origin coverage cannot be established. So a caller cannot reach
 `benchmark_conforming` by supplying only the axis that happens to pass.
 
+The scope reducer also requires all five mandatory blocks for every supplied
+geography. An empty block list or an omitted block produces
+`required_cell_or_district_missing`; blocks from different districts cannot
+fill each other's omissions. Evidence retains the globally missing IDs and
+missing `(geography_id, block_id)` pairs, while preserving measured results
+and nonconformities. This checks the submitted block roster. The authenticated
+complete district inventory still has to be checked with
+`district_scope_reasons` and its reasons passed to `evaluate_scope`; this pure
+fixture interface does not discover or authenticate that inventory itself.
+
 ## Where this package's reading fills a gap
 
 Four things the document leaves open are decided here and named as

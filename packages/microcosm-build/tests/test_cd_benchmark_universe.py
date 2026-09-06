@@ -36,7 +36,7 @@ from microcosm.build.cd_benchmark.evaluation import (
     evaluate_block,
     evaluate_scope,
 )
-from microcosm.build.cd_benchmark.metrics import point_check
+from microcosm.build.cd_benchmark.metrics import categorical_check, point_check
 from microcosm.build.cd_benchmark.protocol import canonical_protocol
 from microcosm.build.cd_benchmark.reasons import (
     AXES,
@@ -46,6 +46,7 @@ from microcosm.build.cd_benchmark.reasons import (
     Reason,
 )
 from microcosm.build.cd_benchmark.reference import (
+    published_percentage_precision,
     reference_cell,
     relative_moe_precision,
 )
@@ -362,6 +363,27 @@ def population_cell():
     )
 
 
+def percentage_cell():
+    """A published percentage cell whose printed margin is 0.5 points."""
+    return reference_cell(
+        {
+            "E": "6.4",
+            "M": "0.5",
+            "EA": None,
+            "MA": None,
+            "published_GEO_ID": "5001900US0601",
+            "canonical_geography_id": "5001900US0601",
+            "dataset": "acs/acs1/subject",
+            "table": "S0101",
+            "variable": "S0101_C02_002",
+            "year": 2024,
+            "congress": 119,
+            "units": "percent",
+            "universe": "population",
+        }
+    )
+
+
 def complete_axes(protocol):
     """Precision and support evidence a mandatory block cannot go without."""
     block = protocol.block("population_total")
@@ -398,6 +420,79 @@ def conforming_block(protocol):
     )
 
 
+def support_reading(protocol, block_id):
+    return denominator_support(
+        protocol.support,
+        [
+            SourceRecord(origin_key=f"origin-{index}", weight=1, contribution=1)
+            for index in range(1000)
+        ],
+        block_id=block_id,
+        geography_id="5001900US0601",
+        measure_kind=SupportMeasure.PERSONS,
+    )
+
+
+def exact_distribution(protocol, block_id):
+    """A candidate partition that matches its reference cell for cell."""
+    block = protocol.block(block_id)
+    ids = [item.id for item in block.known_bins]
+    counts = dict.fromkeys(ids, 100)
+    total = 100 * len(ids)
+    return categorical_check(
+        block,
+        partition=protocol.partition,
+        candidate_bin_masses=counts,
+        unclassified_mass=0,
+        candidate_denominator=total,
+        reference_counts=counts,
+        reference_total=total,
+        geography_id="5001900US0601",
+    )
+
+
+def every_mandatory_block(protocol):
+    """One conforming, fully evidenced evaluation per mandatory block."""
+    reserved_exposure = ExposureStatus.FRESH_SAME_SOURCE_HOLDOUT_ELIGIBLE
+    unreserved = ExposureStatus.NOT_RESERVED_CONFORMITY
+    results = [conforming_block(protocol)]
+    households = protocol.block("occupied_household_total")
+    results.append(
+        evaluate_block(
+            households,
+            geography_id="5001900US0601",
+            metric=point_check(households, candidate=1000, reference=1000),
+            precision=(
+                relative_moe_precision(
+                    population_cell(),
+                    ceiling=households.reference_relative_moe_ceiling,
+                ),
+            ),
+            support=(support_reading(protocol, households.id),),
+            exposure=reserved_exposure,
+        )
+    )
+    for block_id in ("age_distribution", "income_distribution", "tenure_distribution"):
+        block = protocol.block(block_id)
+        results.append(
+            evaluate_block(
+                block,
+                geography_id="5001900US0601",
+                metric=exact_distribution(protocol, block_id),
+                precision=(
+                    published_percentage_precision(
+                        percentage_cell(), ceiling=block.reference_moe_ceiling_pp
+                    ),
+                ),
+                support=(support_reading(protocol, block_id),),
+                exposure=unreserved
+                if block_id == "age_distribution"
+                else reserved_exposure,
+            )
+        )
+    return results
+
+
 def authenticated_binding(protocol):
     slots = {
         name: ArtifactRef(f"artifact:{name}", "a" * 64)
@@ -422,7 +517,7 @@ def test_implementation_approval_never_permits_scoring(protocol):
         protocol,
         approval=approval,
         binding=authenticated_binding(protocol),
-        blocks=[conforming_block(protocol)],
+        blocks=every_mandatory_block(protocol),
     )
     assert result.scoring_permitted is False
     assert result.verdict is BenchmarkVerdict.SCOPE_INCOMPLETE
@@ -445,12 +540,17 @@ def test_the_six_axes_are_reported_separately(protocol):
         protocol,
         approval=approval,
         binding=authenticated_binding(protocol),
-        blocks=[conforming_block(protocol)],
+        blocks=every_mandatory_block(protocol),
     )
     assert result.scoring_permitted is True
     assert result.verdict is BenchmarkVerdict.BENCHMARK_CONFORMING
     assert set(result.axes) == set(AXES) == set(protocol.independent_axes)
     assert result.axes["mapping_status"] == str(MappingStatus.APPROVED)
+    assert result.axes["scope_completeness"] is True
+    assert result.evidence["missing_mandatory_blocks"] == ()
+    assert dict(result.axes["exposure_status"])["income_distribution"] == (
+        "fresh_same_source_holdout_eligible"
+    )
 
 
 def test_an_unapproved_mapping_alone_makes_the_scope_incomplete(protocol):
@@ -467,7 +567,7 @@ def test_an_unapproved_mapping_alone_makes_the_scope_incomplete(protocol):
         protocol,
         approval=approval,
         binding=resolve_binding(protocol, CandidateBinding.empty()),
-        blocks=[conforming_block(protocol)],
+        blocks=every_mandatory_block(protocol),
     )
     assert result.verdict is BenchmarkVerdict.SCOPE_INCOMPLETE
     assert result.axes["mapping_status"] == str(MappingStatus.UNAPPROVED)
@@ -492,11 +592,12 @@ def test_nonconformity_is_retained_under_an_incomplete_scope(protocol):
         exposure=ExposureStatus.NOT_RESERVED_CONFORMITY,
         **complete_axes(protocol),
     )
+    blocks = [failing, *every_mandatory_block(protocol)[1:]]
     scoped = evaluate_scope(
         protocol,
         approval=approval,
         binding=authenticated_binding(protocol),
-        blocks=[failing],
+        blocks=blocks,
         scope_reasons=(Reason.REQUIRED_CELL_OR_DISTRICT_MISSING,),
     )
     assert scoped.verdict is BenchmarkVerdict.SCOPE_INCOMPLETE
@@ -506,7 +607,7 @@ def test_nonconformity_is_retained_under_an_incomplete_scope(protocol):
         protocol,
         approval=approval,
         binding=authenticated_binding(protocol),
-        blocks=[failing],
+        blocks=blocks,
     )
     assert without_scope_gap.verdict is BenchmarkVerdict.BENCHMARK_NONCONFORMING
 
@@ -525,7 +626,7 @@ def test_a_busy_ledger_writer_stops_scoring_before_it_starts(protocol):
         protocol,
         approval=approval,
         binding=authenticated_binding(protocol),
-        blocks=[conforming_block(protocol)],
+        blocks=every_mandatory_block(protocol),
         ledger_writer_available=False,
     )
     assert Reason.LEDGER_BUSY in result.reasons
@@ -642,7 +743,7 @@ def test_reviewer_verdicts_alone_do_not_activate_the_protocol(protocol):
         protocol,
         approval=bare,
         binding=authenticated_binding(protocol),
-        blocks=[conforming_block(protocol)],
+        blocks=every_mandatory_block(protocol),
     )
     assert result.scoring_permitted is False
     assert Reason.PROTOCOL_UNAPPROVED in result.reasons
@@ -658,7 +759,112 @@ def test_reviewer_verdicts_alone_do_not_activate_the_protocol(protocol):
             protocol,
             approval=activated,
             binding=authenticated_binding(protocol),
-            blocks=[conforming_block(protocol)],
+            blocks=every_mandatory_block(protocol),
         ).scoring_permitted
         is True
     )
+
+
+def test_every_mandatory_block_must_be_present(protocol):
+    injected, registration = authority(
+        protocol, frozenset({ApprovalScope.CANDIDATE_SCORING})
+    )
+    approval = resolve_action(
+        protocol,
+        authority=injected,
+        action=ApprovalScope.CANDIDATE_SCORING,
+        registration=registration,
+    )
+    assert protocol.scope.allowed_missing_mandatory_block_fraction == 0
+    partial = evaluate_scope(
+        protocol,
+        approval=approval,
+        binding=authenticated_binding(protocol),
+        blocks=[conforming_block(protocol)],
+    )
+    assert partial.verdict is BenchmarkVerdict.SCOPE_INCOMPLETE
+    assert Reason.REQUIRED_CELL_OR_DISTRICT_MISSING in partial.reasons
+    assert partial.evidence["missing_mandatory_blocks"] == (
+        "age_distribution",
+        "income_distribution",
+        "occupied_household_total",
+        "tenure_distribution",
+    )
+
+
+def test_districts_cannot_fill_each_others_mandatory_block_gaps(protocol):
+    """All five IDs globally do not establish five blocks in either district."""
+    injected, registration = authority(
+        protocol, frozenset({ApprovalScope.CANDIDATE_SCORING})
+    )
+    approval = resolve_action(
+        protocol,
+        authority=injected,
+        action=ApprovalScope.CANDIDATE_SCORING,
+        registration=registration,
+    )
+    blocks = every_mandatory_block(protocol)
+    # Scope reduction consumes declared BlockEvaluation identities. Move just
+    # one completed block to a second invented district to isolate that roster.
+    blocks[0] = dataclasses.replace(blocks[0], geography_id="5001900US0602")
+    result = evaluate_scope(
+        protocol,
+        approval=approval,
+        binding=authenticated_binding(protocol),
+        blocks=blocks,
+    )
+    assert result.verdict is BenchmarkVerdict.SCOPE_INCOMPLETE
+    assert Reason.REQUIRED_CELL_OR_DISTRICT_MISSING in result.reasons
+    assert result.evidence["missing_mandatory_blocks"] == ()
+    assert result.evidence["missing_mandatory_block_geographies"] == (
+        ("5001900US0601", "population_total"),
+        ("5001900US0602", "age_distribution"),
+        ("5001900US0602", "income_distribution"),
+        ("5001900US0602", "occupied_household_total"),
+        ("5001900US0602", "tenure_distribution"),
+    )
+    assert result.blocks == tuple(blocks)
+
+
+@pytest.mark.parametrize(
+    "omitted",
+    [
+        "population_total",
+        "occupied_household_total",
+        "age_distribution",
+        "income_distribution",
+        "tenure_distribution",
+        "all",
+    ],
+)
+def test_each_mandatory_block_and_empty_scope_refuse(protocol, omitted):
+    injected, registration = authority(
+        protocol, frozenset({ApprovalScope.CANDIDATE_SCORING})
+    )
+    approval = resolve_action(
+        protocol,
+        authority=injected,
+        action=ApprovalScope.CANDIDATE_SCORING,
+        registration=registration,
+    )
+    complete = every_mandatory_block(protocol)
+    blocks = (
+        []
+        if omitted == "all"
+        else [block for block in complete if block.block_id != omitted]
+    )
+    result = evaluate_scope(
+        protocol,
+        approval=approval,
+        binding=authenticated_binding(protocol),
+        blocks=blocks,
+    )
+    assert result.verdict is BenchmarkVerdict.SCOPE_INCOMPLETE
+    expected = (
+        tuple(sorted(block.block_id for block in complete))
+        if omitted == "all"
+        else (omitted,)
+    )
+    assert result.evidence["missing_mandatory_blocks"] == expected
+    assert result.axes["scope_completeness"] is False
+    assert result.blocks == tuple(blocks)

@@ -65,3 +65,14 @@ dedicated worktree. Nothing pushed. No PR opened.
   binding-slot reason classification, per-bin ESS floor.
 - A real `ProducerAuthenticator` is the next hard piece; it must open artifacts
   and verify candidate/population binding, not echo references back.
+
+## Recovery finalization, 2026-09-05
+
+The external author run ended on capacity limits with two owned files dirty.
+Recovery preserved that patch and all six commits after12843164, starting from
+actual082886c4. Mandatory-block completeness now checks every supplied geography,
+so districts cannot fill one another's missing blocks. A focused invented
+counterexample failed on the preserved union-only patch and is included with
+each omitted-block/empty-scope case. Exact final test/head receipts and the
+new durable author report are maintained under the architecture-review directory;
+this historical journal does not authorize scoring, registration or launch.
