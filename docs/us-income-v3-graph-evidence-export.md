@@ -40,7 +40,14 @@ The five nodes are `create`, `select_households`, `cps_carried_current`,
 `engine_current_money` and `reported_income`; every kernel reference is `@3`.
 `create` issues five typed artifacts, adding `housing_universe` and
 `income_observations`; `reported_income` issues `reported_income` and
-`frame_context` and consumes only `create` and `select_households`. The recorded
+`frame_context` and consumes only `create` and `select_households`. That last
+sentence is an enforced rule, not an observation: `INPUT_PRODUCERS` names, per
+node, which earlier node its typed inputs may come from, read from the five
+kernels rather than inferred from roster order. `engine_current_money` may name
+only `cps_carried_current`, and `reported_income` may name only `create` and
+`select_households`, so an accounting node that consumed the engine is refused
+by name. The earlier "any node with a lower index" shortcut admitted exactly
+that graph. The recorded
 cold call list must be six entries with the prefix create, source preparation,
 select, the remaining three in either engine/accounting order, and leaves before
 engine; the warm phase must call nothing. Fifteen households, fifty-two people
@@ -57,9 +64,34 @@ header divergence is required to equal the approved lineage field roster exactly
 a lineage difference is not a value difference, and the recorded body digest and
 column roster must agree.
 
+Two per-node receipt digests are bound rather than accepted unread. When the
+engine node records `evaluation_sha256`, it must equal the recorded graph
+evaluation digest and the named engine output bytes; when the accounting node
+records `accounting_sha256`, it must equal the recorded accounting **payload**
+digest, which is what the kernel writes there — not the body digest carried
+inside the payload header. Both keys are pin-approved optional metadata, so each
+is required to agree only when the run records it. The graph phases must also
+record the same `reported_income` summary as the direct path: each phase's block
+is validated against the summary contract on its own, and then required to equal
+the direct block field for field, signed-value counts and zero-origin class
+counts included. Only three digest maps were compared before, so a graph receipt
+could carry different signed-value counts and still export.
+
 The published accounting block states its own basis: observed reported source
 income, nominal amounts as recorded, restated to a 2024 price target, over an
-interview household one year after the income year. The unallocated column is a
+interview household one year after the income year. The price basis is
+`census_ccpiu_annual_2024`, the name the kernel's own contract
+`us_runtime/asec_current_money_price_basis_v1.json` gives it — the Census P60
+annual index workbook, cells 163.6, 170.0 and 174.4, which
+`asec_income_observations_v1.json` describes as "2024 annual average C-CPI-U
+dollars (census_ccpiu_annual_2024)". CPI-U-RS is a different series; an earlier
+draft published `cpi_u_rs_2024_price_target_year` and was factually wrong in the
+attachment bytes. The name is not asserted: the accounting node's recorded
+implementation manifest must pin that contract file at
+`88cec207a3c73e5de93d677acf16e8db9ddae9761c644c06da92cacf0feb3f63`, and the
+export publishes that digest beside the name. Unlike the two optional digests,
+this binding is required — a run that does not record it cannot publish a price
+basis at all. The unallocated column is a
 signed accounting residual, not an estimate of any income category. No eight
 component ACS completion, prior wages, simulated SSI or TANF input is claimed.
 The published quality block carries no score, states `incomplete`, and lists what
@@ -70,3 +102,43 @@ cache equality authorize no release, national claim or district analysis.
 Attachments, bounds, refusal behaviour, the `update_index=False` writer contract
 and the absence of any discovery index are as documented for the four-node
 profile in `docs/us-graph-evidence-export.md`.
+
+## Invented negative coverage
+
+The invented suite reseals what it edits. A manifest carries the execution
+nodes, a `content_addressed` body derived from them and a content key over that
+body, so editing a node and leaving the other two alone is refused by the
+content-body check before any node is read. `_resealed_manifest_mutation`
+rebuilds the body, recomputes the key and updates each phase receipt's recorded
+key, which is how a node case reaches `_nodes`; `_manifest_mutation` deliberately
+does not, and covers the body and key checks themselves.
+`test_unsealed_node_edits_never_reach_the_node_validator` pins both halves
+against the accounting-consumes-engine case, and
+`test_resealing_alone_leaves_the_export_valid` is the control that the helper
+changes no contract on its own. Every negative case asserts the refusal text it
+is written for rather than any refusal.
+
+## Reader boundary: still to extend
+
+The dashboard reader has not been extended for this profile and this export
+does not attempt to make it fit. Two separate things block it.
+
+`shape()` requires an exact key count, so the graph shape, the fields shared
+with the build summary, the direct check and the per-execution check all reject
+the new keys; the `reported_income` block, the price basis fields, the accounting
+column roster and the lineage divergence block are all new. Whether
+`microcosm.graph_receipts.v1` should keep its name while the shape grows is a
+decision for root, not something the exporter settles.
+
+`text()` rejects any string containing `person_id` or `household_id`, which are
+`TEXT_MARKERS` alongside `.local`, `.h5`, `macbook` and `_buildo-runtime`. Those
+markers exist to keep per-record identity out of an aggregate attachment, and
+they do that job for free text. Accounting column names are not free text: they
+are schema labels from `graph_asec_income.py` — `COORDINATES` plus
+`RESULT_COLUMNS` plus `EVIDENCE_COLUMNS`, twenty-eight names of which the first
+is literally `person_id` — and they carry no per-person value. The published
+roster gives each name a dtype and a digest, never a cell. So the extension must
+validate column names against a closed identifier roster held by the reader, and
+must not route them through the blanket marker check. Widening `text()` or
+dropping `person_id` from `TEXT_MARKERS` would be the wrong fix: it would
+re-admit the free-text case the marker was added for.
