@@ -1,5 +1,11 @@
 # PROGRESS — us-puf-raw-source-first-slice-20260905
 
+This opening section records the earlier raw-source slice, not the current
+packaging state. The monetary projection revision relocated the unchanged
+`puf_2015_raw_source_definition.json` from `microcosm/build/us/` to
+`microcosm/build/us_runtime/` and revised the raw loader's implementation
+identity. Previously accepted raw artifacts and their evidence remain intact.
+
 ## State
 COMPLETE (local build only). Branch `us-puf-raw-source-first-slice-20260905`,
 a fresh dependent child of `9ece4cadddd1933524231a46a959086b0ff74429` — the

@@ -705,10 +705,10 @@ def test_the_production_kernel_refuses_anything_but_the_packaged_bytes(invented)
 
 
 def test_the_raw_source_module_matches_the_reviewed_packaging_identity():
-    """This slice imports the reviewed producer; it must not edit it.
+    """Pin the raw producer's reviewed resource-loader revision.
 
-    An edit would move ``USPufRawSourceKernel.implementation_hash`` and with
-    it every node key and artifact already accepted under the reviewed run.
+    This identity includes the relocation into ``us_runtime``. Earlier raw
+    runs retain their own implementation identity and accepted artifacts.
     """
 
     path = Path(puf.__file__).resolve()

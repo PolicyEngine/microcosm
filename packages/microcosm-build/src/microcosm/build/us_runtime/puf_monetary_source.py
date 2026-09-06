@@ -57,11 +57,12 @@ identical to that artifact's. ``demographic_status`` is carried from it rather
 than re-joined, so the two artifacts cannot disagree about which returns
 matched.
 
-*The reviewed producer's bytes are untouched.* This module imports
-:mod:`puf_raw_source` for its definition, codec and artifact decoder but edits
-none of it, so ``USPufRawSourceKernel.implementation_hash`` and every key and
-artifact already accepted under it stay exactly where they are. The CSV reader
-helpers here are deliberately this module's own for the same reason.
+*The raw producer has an explicit packaging revision.* This module imports
+:mod:`puf_raw_source` for its definition, codec and artifact decoder. Moving
+the unchanged definition bytes into ``us_runtime`` changed the raw resource
+loader and its implementation identity. New runs use that revised identity;
+previously accepted raw artifacts retain their original keys and evidence.
+The CSV reader helpers here remain local to this monetary projection.
 """
 
 from __future__ import annotations
