@@ -27,25 +27,7 @@ def make(root, checkout):
     from microcosm.build.us_runtime.graph_sources import frame_column_declarations
 
     with pytest.MonkeyPatch.context() as patch:
-        preparation = peer(checkout, "test_us_asec_prepared_source")
-        fixture = preparation._money_fixture()
-        original_frame = fixture.Frame
-        from microcosm.frame import Weights
-
-        def zero_weight_frame(tables, schema, weights, strata, **kwargs):
-            values = weights["household"].values.copy()
-            values[0] = 0
-            return original_frame(
-                tables,
-                schema,
-                {"household": Weights(values, weights["household"].kind)},
-                strata,
-                **kwargs,
-            )
-
-        fixture.Frame = zero_weight_frame
-        preparation._money_fixture = lambda: fixture
-        preparation.invented_prepared_directory(
+        peer(checkout, "test_us_asec_prepared_source").invented_prepared_directory(
             root,
             patch,
             households_per_cohort=1,

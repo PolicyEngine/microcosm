@@ -48,3 +48,11 @@ Fixture correction and stronger proof:
 - Expanded actual loaded Git-file proof to nested fixture imports and the runner;
   added exact demographic state comparisons and raising raw source-codec stubs.
 Next: rerun all phases from new invented source bytes on this committed revision.
+
+Accepted-source boundary:
+- r3 deliberately attempted an invented zero-weight ASEC raw checkpoint; the
+  accepted v4 input validator correctly requires strictly positive ASEC weights.
+- Removed that incompatible fixture extension without weakening the validator.
+  Integrated zero-weight coverage remains nonvacuous through the ACS GQ household;
+  accepted native-lineage tests separately cover downstream zero-weight ASEC rows.
+Next: rerun with valid original-source contracts and corrected ACS lexical tokens.
