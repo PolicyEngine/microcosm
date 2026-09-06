@@ -382,6 +382,13 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "asec_housing_universe.py",
         "asec_housing_universe_source.py",
         "graph_housing_universe.py",
+        # Reads the validated status/occupied-HU artifacts and attachments above
+        # and states which SPM units that evidence can place. It opens no source
+        # file, derives no new source semantics and treats no population.
+        "asec_housing_receipt_consumer.py",
+        # Builds invented households and measures the installed engine through
+        # the real export gate; it reads no source and treats no population.
+        "housing_charge_probes.py",
         # Pure ACS housing-unit semantics, the closed two-archive source
         # reconstruction behind them, and the CREATE/SELECT graph transport.
         # Only CREATE authenticates bytes; selection emits identities and

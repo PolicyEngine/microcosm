@@ -146,6 +146,9 @@ class TestMultiSpmUnitConservationAndTheReplicationHazard:
         import pandas as pd
 
         from microcosm.build.us_runtime import asec_housing_status as housing
+        from microcosm.build.us_runtime import (
+            asec_housing_universe as universe_module,
+        )
 
         observations = pd.DataFrame(
             {
@@ -167,8 +170,25 @@ class TestMultiSpmUnitConservationAndTheReplicationHazard:
         interpretation = consumer.interpret_household_receipt(
             consumer.receipt_columns_from_status(status)
         )
+        # The same invented household seen by the occupied-HU classifier: an
+        # interviewed primary household inside a housing unit.
+        universe = universe_module.classify_synthetic_housing_universe(
+            pd.DataFrame(
+                {
+                    "household_id": [1],
+                    "income_year": [2023],
+                    "H_SEQ": [1],
+                    "H_HHTYPE": [1],
+                    "H_LIVQRT": [1],
+                    "HRHTYPE": [1],
+                    "H_TENURE": [2],
+                },
+                dtype=np.int64,
+            )
+        )
         scope = consumer.resolve_spm_receipt_scope(
             interpretation,
+            housing_unit=consumer.housing_unit_evidence_from_universe(universe),
             household_id=np.array([1], dtype="int64"),
             spm_unit_id=np.array([1, 2], dtype="int64"),
             person_household_id=np.array([1, 1, 1], dtype="int64"),
@@ -187,14 +207,18 @@ class TestTheReceiptFlagHasRealDollarConsequences:
         assert baseline["rent"][5] == 12_000.0
         assert baseline["rent"][6] == 3_600.0
 
-    def test_the_engine_default_makes_a_wrong_false_silently_cheap_to_assert(self):
+    def test_both_flag_inputs_exist_and_no_charge_fusion_substitutes_for_them(self):
+        """The two flags are real engine inputs; no fusion produces the charge.
+
+        The $8,400 gap those flags move is measured in the test above. It is what
+        an unjustified ``False`` would assert, which is why the consumer refuses a
+        blanket engine Boolean rather than defaulting a withheld unit.
+        """
         from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
         adapter = PolicyEngineUSEngine()
         assert "receives_housing_assistance" in adapter.variables()
         assert "takes_up_housing_assistance_if_eligible" in adapter.variables()
-        # $8,400 a year for one invented unit is what an unjustified False costs,
-        # which is why the consumer refuses a blanket engine Boolean.
         with pytest.raises(consumer.HousingReceiptRefusalError):
             consumer.compose_full_contract_charge(
                 reported_contract_rent=np.array([1.0]),

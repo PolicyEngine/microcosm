@@ -1,8 +1,24 @@
 """Declared household-to-SPM housing receipt interpretation and quantity separation.
 
-This consumer reads only the status, validity, quality, zero-origin and period
-evidence the frozen ``asec_housing_status`` artifact already carries. It derives
-no new source semantics, opens no source file, and never rewrites the artifact.
+This consumer reads only the status, validity, quality, zero-origin, routing and
+period evidence the frozen ``asec_housing_status`` artifact already carries, plus
+the occupied-housing-unit evidence the frozen ``asec_housing_universe`` artifact
+already carries. It derives no new source semantics, opens no source file, and
+never rewrites either artifact.
+
+Three bindings hold before any SPM unit can be assigned:
+
+* the interpretation carries the artifact's own ``household_id`` and
+  ``income_year``, and a caller whose household axis differs -- reordered or
+  simply different -- is refused rather than positionally aligned;
+* the attached-frame reader takes a validated ``HousingStatusAttachedAsec`` and
+  derives its authentication, period kind, content digest and household axis from
+  that attachment, so no caller string can label synthetic columns verified; and
+* occupied-HU evidence is a required input bound to the same households, the same
+  income-year cohort and the same authentication, and a household outside a
+  housing unit, of an unestablished kind, or whose kind disagrees with the
+  status's own group-quarters column keeps its raw observation but is withheld
+  from assignment.
 
 Five quantities stay separate here and are never fused:
 
@@ -26,24 +42,68 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-import pandas as pd
 
 from .asec_housing_status import (
     DERIVED_COLUMNS,
+    AuthenticatedHousingStatus,
+    SyntheticHousingStatus,
     _HousingStatus,
 )
-from .asec_housing_status_source import ATTACHED_COLUMNS
+from .asec_housing_status_source import ATTACHED_COLUMNS, HousingStatusAttachedAsec
+from .asec_housing_universe import (
+    DERIVED_COLUMNS as UNIVERSE_DERIVED_COLUMNS,
+)
+from .asec_housing_universe import (
+    AuthenticatedHousingUniverse,
+    SyntheticHousingUniverse,
+    _HousingUniverse,
+)
+from .asec_housing_universe_source import (
+    ATTACHED_COLUMNS as UNIVERSE_ATTACHED_COLUMNS,
+)
+from .asec_housing_universe_source import (
+    HousingUniverseAttachedAsec,
+)
 
-CONSUMER_VERSION = 1
-CONSUMER_KIND = "microcosm.asec_housing_receipt_interpretation.v1"
+CONSUMER_VERSION = 2
+CONSUMER_KIND = "microcosm.asec_housing_receipt_interpretation.v2"
 
-#: Carried status codes reused verbatim; this consumer renames, never rederives.
-RECEIPT_VIEWS = (
-    "unknown",
-    "observed_receipt",
-    "observed_nonreceipt",
-    "not_in_universe",
-    "conflict",
+#: Carried status code name -> this consumer's view name. The consumer renames;
+#: it never renumbers, so the carried codebook must present exactly this map.
+STATUS_VIEW_NAMES = (
+    ("unknown", "unknown"),
+    ("receipt", "observed_receipt"),
+    ("nonreceipt", "observed_nonreceipt"),
+    ("not_in_universe", "not_in_universe"),
+    ("conflict", "conflict"),
+)
+RECEIPT_VIEWS = tuple(view for _, view in STATUS_VIEW_NAMES)
+
+#: Carried ``asec_housing_status`` group-quarters states, in code order.
+GROUP_QUARTERS_STATES = ("not_gq", "gq", "unavailable")
+
+#: Carried ``asec_housing_universe`` states, in code order.
+OCCUPIED_HU_STATES = (
+    "not_established",
+    "occupied_housing_unit",
+    "outside_housing_unit",
+)
+HOUSEHOLD_KINDS = (
+    "source_zero_or_not_established",
+    "primary_household",
+    "group_quarters",
+)
+
+#: The household kind each carried group-quarters state implies. Both columns
+#: are HRHTYPE-derived by their own frozen classifiers, so a disagreement is a
+#: conflict between two source artifacts, never something to average away.
+_KIND_FOR_GROUP_QUARTERS = tuple(
+    HOUSEHOLD_KINDS.index(kind)
+    for kind in (
+        "primary_household",
+        "group_quarters",
+        "source_zero_or_not_established",
+    )
 )
 
 #: SPM-grain assignment outcomes. Only the ``assigned_`` members may reach an
@@ -57,6 +117,9 @@ ASSIGNMENTS = (
     "withheld_unknown",
     "withheld_conflict",
     "withheld_not_in_universe",
+    "withheld_outside_housing_unit",
+    "withheld_housing_unit_not_established",
+    "withheld_housing_unit_conflict",
 )
 ASSIGNED = tuple(name for name in ASSIGNMENTS if name.startswith("assigned_"))
 
@@ -68,7 +131,16 @@ RECEIPT_INPUT_CODES = {"false": 0, "true": 1, "withheld": 2}
 #: income-year participation, and this module derives no bridge to one.
 SUPPORTED_PERIOD_KIND = "interview_status"
 
+#: The only supported carried occupied-HU period kind.
+SUPPORTED_UNIVERSE_PERIOD_KIND = "interview_household_universe"
+
 MULTI_UNIT_NEGATIVE_POLICIES = ("refuse", "distribute")
+
+#: Portable in-repository requirement for the still-unbound counterfactual
+#: charge. It is a required future measurement, not a completed one, and this
+#: module implements none of it.
+CHARGE_REQUIREMENTS_DOCUMENT = "docs/us-housing-counterfactual-charge-requirements.md"
+CHARGE_REQUIREMENTS_DEPENDENCY = "microcosm.build.sipp_december_source"
 
 TAKE_UP_NOTE = (
     "policyengine-us takes_up_housing_assistance_if_eligible defaults to True. "
@@ -131,7 +203,8 @@ HOUSING_QUANTITIES: dict[str, dict[str, Any]] = {
         "additive_to_tenant_rent": False,
         "note": (
             "A model output cannot define its own pre_subsidy_rent input. HAP may "
-            "also exceed rent to owner, reimbursing tenant-paid utilities."
+            "also exceed rent to owner, reimbursing tenant-paid utilities the "
+            "installed engine never pays out."
         ),
     },
     "capped_spm_valuation": {
@@ -186,71 +259,191 @@ def _sha(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def _by_code(entry: tuple[str, int]) -> int:
+    """Sort key for one carried ``name -> code`` codebook entry.
+
+    Annotated so the module keeps no unannotated (and therefore opaque) binding
+    under a subscript; a lambda parameter cannot carry an annotation.
+    """
+    return entry[1]
+
+
+def _sealed(values: np.ndarray) -> np.ndarray:
+    """Return an independent, non-writeable copy of a carried array."""
+    owned = np.array(values, copy=True)
+    owned.flags.writeable = False
+    return owned
+
+
 def _counts(codes: np.ndarray, names: tuple[str, ...]) -> dict[str, int]:
     tally = np.bincount(codes.astype("int64"), minlength=len(names))
     return {name: int(tally[index]) for index, name in enumerate(names)}
 
 
-def _bit_counts(values: np.ndarray, codebook: dict[str, int]) -> dict[str, int]:
-    return {
-        name: int(((values.astype("int64") & bit) > 0).sum())
-        for name, bit in sorted(codebook.items(), key=lambda item: item[1])
-    }
+def _ordered_codebook_names(codebook: Any, reason: str) -> tuple[str, ...]:
+    """Carried ordinal-code names in code order; a gapped map refuses."""
+    _require(type(codebook) is dict and len(codebook) > 0, reason)
+    entries = sorted(codebook.items(), key=_by_code)
+    _require(
+        all(type(name) is str and type(code) is int for name, code in entries), reason
+    )
+    _require(tuple(code for _, code in entries) == tuple(range(len(entries))), reason)
+    return tuple(name for name, _ in entries)
+
+
+def _bit_counts(values: np.ndarray, codebook: Any, reason: str) -> dict[str, int]:
+    """Count each carried bit. The bit map is the source codebook's, not ours."""
+    _require(type(codebook) is dict and len(codebook) > 0, reason)
+    counts: dict[str, int] = {}
+    for name, bit in sorted(codebook.items(), key=_by_code):
+        _require(type(name) is str and type(bit) is int and bit > 0, reason)
+        counts[name] = int(((values.astype("int64") & bit) > 0).sum())
+    return counts
+
+
+def _int64_axis(values: Any, reason: str) -> np.ndarray:
+    _require(type(values) is np.ndarray, reason)
+    _require(values.dtype == np.dtype("int64") and values.ndim == 1, reason)
+    return values
 
 
 def receipt_columns_from_status(status: _HousingStatus) -> dict[str, Any]:
-    """Project the carried derived columns and provenance out of an artifact.
+    """Project the carried derived columns, household axis and provenance.
 
-    The artifact validates itself first, so a tampered buffer cannot reach the
-    consumer. Synthetic and authenticated statuses both work; the projection
-    carries ``source_authentication`` so a synthetic-derived interpretation stays
+    ``content_sha256`` validates the artifact, so a tampered buffer cannot reach
+    the consumer and the validation runs exactly once. Synthetic and
+    authenticated statuses both work; the projection carries
+    ``source_authentication`` so a synthetic-derived interpretation stays
     visibly unauthenticated downstream.
     """
-    status.validate()
+    _require(
+        type(status) in (SyntheticHousingStatus, AuthenticatedHousingStatus),
+        "STATUS_TYPE",
+    )
+    digest = status.content_sha256
     header = status.header_data
     return {
         "columns": {name: status.array(name) for name in DERIVED_COLUMNS},
+        "household_id": status.array("household_id"),
+        "income_year": status.array("income_year"),
         "source_period_kind": header["source_period_kind"],
         "source_authentication": header["source_authentication"],
         "zero_origin_policy": header["zero_origin_policy"],
+        "non_housing_unit_scope": header["non_housing_unit_scope"],
         "codebook": header["codebook"],
-        "status_content_sha256": status.content_sha256,
+        "status_content_sha256": digest,
+        "attachment_receipt_sha256": None,
     }
 
 
 def receipt_columns_from_attached_household(
-    household: pd.DataFrame, *, source_period_kind: str, source_authentication: str
+    attached: HousingStatusAttachedAsec,
 ) -> dict[str, Any]:
-    """Read the attached ``asec_housing_observed_*`` columns off a household table."""
-    _require(type(household) is pd.DataFrame, "HOUSEHOLD_TABLE")
+    """Project a validated status attachment, deriving every label from it.
+
+    There is no caller-supplied authentication, period kind or digest: the
+    attachment validator has already bound the attached ``uint8`` columns to the
+    status bytes and the frame's household axis to the status household axis, so
+    those are the only honest sources for this projection's provenance.
+    """
+    _require(type(attached) is HousingStatusAttachedAsec, "ATTACHED_ASEC")
+    attached.validate()
+    status = attached.status
+    digest = status.content_sha256
+    header = status.header_data
+    household = attached.frame.table("household")
     _require(set(ATTACHED_COLUMNS) <= set(household.columns), "ATTACHED_COLUMNS")
+    columns: dict[str, np.ndarray] = {}
+    for name, alias in zip(DERIVED_COLUMNS, ATTACHED_COLUMNS, strict=True):
+        values = household[alias]
+        # Never coerce: the attachment validator guarantees uint8 already, and a
+        # silent uint8 cast of a wider column would wrap an out-of-domain value.
+        _require(values.dtype == np.dtype("uint8"), "ATTACHED_DTYPE")
+        columns[name] = values.to_numpy(copy=True)
+    household_id = household["household_id"]
+    _require(household_id.dtype == np.dtype("int64"), "ATTACHED_HOUSEHOLD_DTYPE")
+    _require(
+        np.array_equal(household_id.to_numpy(), status.array("household_id")),
+        "ATTACHED_HOUSEHOLD_IDENTITY",
+    )
     return {
-        "columns": {
-            name: household[attached].to_numpy(dtype="uint8", copy=True)
-            for name, attached in zip(DERIVED_COLUMNS, ATTACHED_COLUMNS, strict=True)
-        },
-        "source_period_kind": source_period_kind,
-        "source_authentication": source_authentication,
-        "zero_origin_policy": None,
-        "codebook": None,
-        "status_content_sha256": None,
+        "columns": columns,
+        "household_id": household_id.to_numpy(copy=True),
+        "income_year": status.array("income_year"),
+        "source_period_kind": header["source_period_kind"],
+        "source_authentication": header["source_authentication"],
+        "zero_origin_policy": header["zero_origin_policy"],
+        "non_housing_unit_scope": header["non_housing_unit_scope"],
+        "codebook": header["codebook"],
+        "status_content_sha256": digest,
+        "attachment_receipt_sha256": _sha(_json(attached.receipt)),
     }
 
 
 @dataclass(frozen=True)
 class HouseholdReceiptInterpretation:
-    """Household-grain receipt view with every carried invalidity preserved."""
+    """Household-grain receipt view with every carried column preserved.
 
-    receipt_view: np.ndarray
-    receipt_valid: np.ndarray
-    conflicts: np.ndarray
-    unknown_reasons: np.ndarray
-    public_quality: np.ndarray
-    lower_quality: np.ndarray
-    zero_origin: dict[str, np.ndarray]
+    The stored arrays are non-writeable, so a diagnostic or a caller cannot
+    mutate an interpretation out of agreement with its own receipt.
+    """
+
+    household_id: np.ndarray
+    income_year: np.ndarray
+    columns: dict[str, np.ndarray]
+    codebook: dict[str, Any]
     source_period_kind: str
     source_authentication: str
+    non_housing_unit_scope: str
+    zero_origin_policy: Any
     status_content_sha256: str | None
+    attachment_receipt_sha256: str | None
+
+    def column(self, name: str) -> np.ndarray:
+        """Return one carried derived column by its own source name."""
+        if name not in DERIVED_COLUMNS:
+            raise KeyError(name)
+        return self.columns[name]
+
+    @property
+    def receipt_view(self) -> np.ndarray:
+        return self.column("status")
+
+    @property
+    def receipt_valid(self) -> np.ndarray:
+        return self.column("receipt_valid")
+
+    @property
+    def route(self) -> np.ndarray:
+        return self.column("route")
+
+    @property
+    def group_quarters(self) -> np.ndarray:
+        return self.column("group_quarters")
+
+    @property
+    def conflicts(self) -> np.ndarray:
+        return self.column("conflicts")
+
+    @property
+    def unknown_reasons(self) -> np.ndarray:
+        return self.column("unknown_reasons")
+
+    @property
+    def public_quality(self) -> np.ndarray:
+        return self.column("public_quality")
+
+    @property
+    def lower_quality(self) -> np.ndarray:
+        return self.column("lower_quality")
+
+    @property
+    def zero_origin(self) -> dict[str, np.ndarray]:
+        return {
+            name: self.columns[name]
+            for name in DERIVED_COLUMNS
+            if name.endswith("_zero_origin")
+        }
 
     @property
     def rows(self) -> int:
@@ -266,9 +459,11 @@ def interpret_household_receipt(
     """Rename the carried household status into an explicit receipt view.
 
     Every carried invariant is rechecked rather than trusted: the code domains,
-    the ``receipt_valid`` mask's agreement with the status, and the exclusivity
-    of conflict. No unknown, conflict or not-in-universe household becomes
-    observed nonreceipt, and no zero-origin evidence is discarded.
+    the ``receipt_valid`` mask's agreement with the status, the exclusivity of
+    conflict, the household axis's uniqueness, and the carried codebook's
+    agreement with the view names this consumer renames into. No unknown,
+    conflict or not-in-universe household becomes observed nonreceipt, and no
+    zero-origin, routing or group-quarters evidence is discarded.
     """
     _require(type(projection) is dict, "PROJECTION_TYPE")
     columns = projection.get("columns")
@@ -278,6 +473,22 @@ def interpret_household_receipt(
     _require(period_kind == SUPPORTED_PERIOD_KIND, "UNSUPPORTED_PERIOD_KIND")
     authentication = projection.get("source_authentication")
     _require(type(authentication) is str and authentication, "SOURCE_AUTHENTICATION")
+    scope_declaration = projection.get("non_housing_unit_scope")
+    _require(type(scope_declaration) is str and scope_declaration, "SCOPE_DECLARATION")
+    codebook = projection.get("codebook")
+    _require(type(codebook) is dict, "CODEBOOK_MISSING")
+    _require(
+        _ordered_codebook_names(codebook.get("status"), "CODEBOOK_STATUS")
+        == tuple(name for name, _ in STATUS_VIEW_NAMES),
+        "CODEBOOK_STATUS",
+    )
+    _require(
+        _ordered_codebook_names(codebook.get("group_quarters"), "CODEBOOK_QUARTERS")
+        == GROUP_QUARTERS_STATES,
+        "CODEBOOK_QUARTERS",
+    )
+    route_names = _ordered_codebook_names(codebook.get("route"), "CODEBOOK_ROUTE")
+    quality_names = _ordered_codebook_names(codebook.get("quality"), "CODEBOOK_QUALITY")
     rows = None
     for name in DERIVED_COLUMNS:
         value = columns[name]
@@ -288,14 +499,31 @@ def interpret_household_receipt(
         _require(value.shape[0] == rows, "COLUMN_LENGTH")
     _require(rows is not None and rows > 0, "ROW_COUNT")
 
+    household_id = _int64_axis(projection.get("household_id"), "HOUSEHOLD_AXIS")
+    income_year = _int64_axis(projection.get("income_year"), "COHORT_AXIS")
+    _require(household_id.shape[0] == rows, "HOUSEHOLD_AXIS")
+    _require(income_year.shape[0] == rows, "COHORT_AXIS")
+    _require(
+        len(np.unique(household_id)) == household_id.shape[0], "DUPLICATE_HOUSEHOLD_ID"
+    )
+
     status = columns["status"]
     _require(bool((status < len(RECEIPT_VIEWS)).all()), "STATUS_DOMAIN")
-    _require(bool((columns["route"] <= 4).all()), "ROUTE_DOMAIN")
+    _require(bool((columns["route"] < len(route_names)).all()), "ROUTE_DOMAIN")
     _require(
-        bool((columns["public_quality"] <= 3).all())
-        and bool((columns["lower_quality"] <= 3).all()),
+        bool((columns["group_quarters"] < len(GROUP_QUARTERS_STATES)).all()),
+        "QUARTERS_DOMAIN",
+    )
+    _require(
+        bool((columns["public_quality"] < len(quality_names)).all())
+        and bool((columns["lower_quality"] < len(quality_names)).all()),
         "QUALITY_DOMAIN",
     )
+    for name in ("HPUBLIC_valid", "HLORENT_valid"):
+        _require(bool((columns[name] <= 1).all()), "ANSWER_VALIDITY_DOMAIN")
+    for name in DERIVED_COLUMNS:
+        if name.endswith("_zero_origin"):
+            _require(bool((columns[name] <= 1).all()), "ZERO_ORIGIN_DOMAIN")
     receipt_valid = columns["receipt_valid"]
     _require(bool((receipt_valid <= 1).all()), "VALIDITY_DOMAIN")
     _require(
@@ -310,20 +538,163 @@ def interpret_household_receipt(
         "UNKNOWN_REASON_ON_VALID_RECEIPT",
     )
     return HouseholdReceiptInterpretation(
-        receipt_view=status.copy(),
-        receipt_valid=receipt_valid.copy(),
-        conflicts=conflicts.copy(),
-        unknown_reasons=unknown_reasons.copy(),
-        public_quality=columns["public_quality"].copy(),
-        lower_quality=columns["lower_quality"].copy(),
-        zero_origin={
-            name: columns[name].copy()
-            for name in DERIVED_COLUMNS
-            if name.endswith("_zero_origin")
-        },
+        household_id=_sealed(household_id),
+        income_year=_sealed(income_year),
+        columns={name: _sealed(columns[name]) for name in DERIVED_COLUMNS},
+        codebook=codebook,
         source_period_kind=period_kind,
         source_authentication=authentication,
+        non_housing_unit_scope=scope_declaration,
+        zero_origin_policy=projection.get("zero_origin_policy"),
         status_content_sha256=projection.get("status_content_sha256"),
+        attachment_receipt_sha256=projection.get("attachment_receipt_sha256"),
+    )
+
+
+@dataclass(frozen=True)
+class HousingUnitEvidence:
+    """Carried occupied-HU evidence with its own household axis and provenance."""
+
+    household_id: np.ndarray
+    income_year: np.ndarray
+    occupied_hu: np.ndarray
+    household_kind: np.ndarray
+    codebook: dict[str, Any]
+    source_authentication: str
+    universe_content_sha256: str | None
+    attachment_receipt_sha256: str | None
+
+    @property
+    def rows(self) -> int:
+        return int(self.occupied_hu.shape[0])
+
+    def occupied_hu_counts(self) -> dict[str, int]:
+        return _counts(self.occupied_hu, OCCUPIED_HU_STATES)
+
+    def household_kind_counts(self) -> dict[str, int]:
+        return _counts(self.household_kind, HOUSEHOLD_KINDS)
+
+
+def _housing_unit_evidence(
+    *,
+    household_id: np.ndarray,
+    income_year: np.ndarray,
+    occupied_hu: np.ndarray,
+    household_kind: np.ndarray,
+    header: dict[str, Any],
+    universe_content_sha256: str,
+    attachment_receipt_sha256: str | None,
+) -> HousingUnitEvidence:
+    """Recheck the carried occupied-HU domains without rederiving any of them."""
+    _require(
+        header["source_period_kind"] == SUPPORTED_UNIVERSE_PERIOD_KIND,
+        "UNSUPPORTED_UNIVERSE_PERIOD_KIND",
+    )
+    authentication = header["source_authentication"]
+    _require(type(authentication) is str and authentication, "UNIVERSE_AUTHENTICATION")
+    codebook = header["codebook"]
+    _require(type(codebook) is dict, "UNIVERSE_CODEBOOK")
+    _require(
+        _ordered_codebook_names(codebook.get("occupied_hu"), "CODEBOOK_OCCUPIED_HU")
+        == OCCUPIED_HU_STATES,
+        "CODEBOOK_OCCUPIED_HU",
+    )
+    _require(
+        _ordered_codebook_names(codebook.get("household_kind"), "CODEBOOK_KIND")
+        == HOUSEHOLD_KINDS,
+        "CODEBOOK_KIND",
+    )
+    rows = household_id.shape[0]
+    _require(rows > 0, "UNIVERSE_ROW_COUNT")
+    for values in (occupied_hu, household_kind):
+        _require(type(values) is np.ndarray, "UNIVERSE_COLUMN_TYPE")
+        _require(values.dtype == np.dtype("uint8"), "UNIVERSE_COLUMN_DTYPE")
+        _require(values.ndim == 1 and values.shape[0] == rows, "UNIVERSE_COLUMN_LENGTH")
+    _require(income_year.shape[0] == rows, "UNIVERSE_COHORT_AXIS")
+    _require(bool((occupied_hu < len(OCCUPIED_HU_STATES)).all()), "OCCUPIED_HU_DOMAIN")
+    _require(
+        bool((household_kind < len(HOUSEHOLD_KINDS)).all()), "HOUSEHOLD_KIND_DOMAIN"
+    )
+    _require(len(np.unique(household_id)) == rows, "DUPLICATE_UNIVERSE_HOUSEHOLD_ID")
+    return HousingUnitEvidence(
+        household_id=_sealed(household_id),
+        income_year=_sealed(income_year),
+        occupied_hu=_sealed(occupied_hu),
+        household_kind=_sealed(household_kind),
+        codebook=codebook,
+        source_authentication=authentication,
+        universe_content_sha256=universe_content_sha256,
+        attachment_receipt_sha256=attachment_receipt_sha256,
+    )
+
+
+def housing_unit_evidence_from_universe(
+    universe: _HousingUniverse,
+) -> HousingUnitEvidence:
+    """Read occupied-HU evidence out of a validated universe artifact."""
+    _require(
+        type(universe) in (SyntheticHousingUniverse, AuthenticatedHousingUniverse),
+        "UNIVERSE_TYPE",
+    )
+    digest = universe.content_sha256
+    return _housing_unit_evidence(
+        household_id=_int64_axis(
+            universe.array("household_id"), "UNIVERSE_HOUSEHOLD_AXIS"
+        ),
+        income_year=_int64_axis(universe.array("income_year"), "UNIVERSE_COHORT_AXIS"),
+        occupied_hu=universe.array("occupied_hu"),
+        household_kind=universe.array("household_kind"),
+        header=universe.header_data,
+        universe_content_sha256=digest,
+        attachment_receipt_sha256=None,
+    )
+
+
+def housing_unit_evidence_from_attached_universe(
+    attached: HousingUniverseAttachedAsec,
+) -> HousingUnitEvidence:
+    """Read occupied-HU evidence off a validated universe attachment.
+
+    As with the status attachment, nothing here is caller-asserted: the
+    attachment validator binds the attached ``uint8`` columns to the universe
+    bytes and the frame's household axis to the universe household axis.
+    """
+    _require(type(attached) is HousingUniverseAttachedAsec, "ATTACHED_UNIVERSE_ASEC")
+    attached.validate()
+    universe = attached.universe
+    digest = universe.content_sha256
+    household = attached.frame.table("household")
+    _require(
+        set(UNIVERSE_ATTACHED_COLUMNS) <= set(household.columns),
+        "UNIVERSE_ATTACHED_COLUMNS",
+    )
+    carried: dict[str, np.ndarray] = {}
+    for name, alias in zip(
+        UNIVERSE_DERIVED_COLUMNS, UNIVERSE_ATTACHED_COLUMNS, strict=True
+    ):
+        if name not in ("occupied_hu", "household_kind"):
+            continue
+        values = household[alias]
+        # Never coerce: the attachment validator guarantees uint8 already.
+        _require(values.dtype == np.dtype("uint8"), "UNIVERSE_ATTACHED_DTYPE")
+        carried[name] = values.to_numpy(copy=True)
+    _require(
+        set(carried) == {"occupied_hu", "household_kind"}, "UNIVERSE_COLUMN_ROSTER"
+    )
+    household_id = household["household_id"]
+    _require(
+        household_id.dtype == np.dtype("int64")
+        and np.array_equal(household_id.to_numpy(), universe.array("household_id")),
+        "UNIVERSE_ATTACHED_HOUSEHOLD_IDENTITY",
+    )
+    return _housing_unit_evidence(
+        household_id=household_id.to_numpy(copy=True),
+        income_year=_int64_axis(universe.array("income_year"), "UNIVERSE_COHORT_AXIS"),
+        occupied_hu=carried["occupied_hu"],
+        household_kind=carried["household_kind"],
+        header=universe.header_data,
+        universe_content_sha256=digest,
+        attachment_receipt_sha256=_sha(_json(attached.receipt)),
     )
 
 
@@ -335,8 +706,12 @@ class SpmReceiptScope:
     household_row: np.ndarray
     receipt_view: np.ndarray
     spm_units_in_household: np.ndarray
+    occupied_hu: np.ndarray
+    household_kind: np.ndarray
+    housing_unit_valid: np.ndarray
     assignment: np.ndarray
     interpretation: HouseholdReceiptInterpretation
+    housing_unit: HousingUnitEvidence
 
     @property
     def rows(self) -> int:
@@ -398,15 +773,58 @@ def _membership(
     return household_row, units_per_household
 
 
+def _bind_housing_unit(
+    interpretation: HouseholdReceiptInterpretation, housing_unit: HousingUnitEvidence
+) -> np.ndarray:
+    """Bind occupied-HU evidence to the same households, cohort and authority.
+
+    Returns the household-grain mask of kinds that disagree with the status's own
+    group-quarters column. Both columns are HRHTYPE-derived by their own frozen
+    classifier, so a disagreement is a real conflict between two artifacts.
+    """
+    _require(type(housing_unit) is HousingUnitEvidence, "HOUSING_UNIT_TYPE")
+    _require(housing_unit.rows == interpretation.rows, "HOUSING_UNIT_ALIGNMENT")
+    _require(
+        np.array_equal(housing_unit.household_id, interpretation.household_id),
+        "HOUSING_UNIT_HOUSEHOLD_IDENTITY",
+    )
+    _require(
+        np.array_equal(housing_unit.income_year, interpretation.income_year),
+        "HOUSING_UNIT_COHORT",
+    )
+    _require(
+        housing_unit.source_authentication == interpretation.source_authentication,
+        "HOUSING_UNIT_AUTHENTICATION",
+    )
+    implied = np.asarray(_KIND_FOR_GROUP_QUARTERS, dtype="uint8")[
+        interpretation.group_quarters
+    ]
+    return housing_unit.household_kind != implied
+
+
 def resolve_spm_receipt_scope(
     interpretation: HouseholdReceiptInterpretation,
     *,
+    housing_unit: HousingUnitEvidence,
     household_id: np.ndarray,
     spm_unit_id: np.ndarray,
     person_household_id: np.ndarray,
     person_spm_unit_id: np.ndarray,
 ) -> SpmReceiptScope:
     """Carry the household observation to SPM units without inventing a recipient.
+
+    The caller's household axis must be the artifact's own household axis, in the
+    artifact's own order. Nothing here re-derives an identity, so a reordered or
+    unrelated axis is refused rather than aligned by position; person and SPM-unit
+    order remain free and are resolved by identity.
+
+    ``housing_unit`` has no default. An engine assignment asserts something about
+    an occupied housing unit, and the ASEC status alone does not establish one:
+    the frozen classifier declares its non-housing-unit scope "not_derived" and
+    classifies group-quarters households as ordinary receipt. A household outside
+    a housing unit, of an unestablished kind, or whose kind disagrees with the
+    carried group-quarters column keeps its observed view and takes its own
+    withheld class. Missing evidence is never a default ``True`` or ``False``.
 
     A household-level positive answer names the housing unit, not one of several
     SPM units sharing it, so a multi-SPM-unit household's receipt stays
@@ -421,7 +839,13 @@ def resolve_spm_receipt_scope(
     _require(
         type(interpretation) is HouseholdReceiptInterpretation, "INTERPRETATION_TYPE"
     )
+    _int64_axis(household_id, "MEMBERSHIP_DTYPE")
     _require(household_id.shape[0] == interpretation.rows, "HOUSEHOLD_ALIGNMENT")
+    _require(
+        np.array_equal(household_id, interpretation.household_id),
+        "CALLER_HOUSEHOLD_IDENTITY",
+    )
+    kind_conflict = _bind_housing_unit(interpretation, housing_unit)
     household_row, units_per_household = _membership(
         household_id=household_id,
         spm_unit_id=spm_unit_id,
@@ -429,25 +853,53 @@ def resolve_spm_receipt_scope(
         person_spm_unit_id=person_spm_unit_id,
     )
     view = interpretation.receipt_view[household_row]
+    occupied = housing_unit.occupied_hu[household_row]
+    kind = housing_unit.household_kind[household_row]
+    conflicting = kind_conflict[household_row]
     units = units_per_household[household_row]
     sole = units == 1
+    receipt = RECEIPT_VIEWS.index("observed_receipt")
+    nonreceipt = RECEIPT_VIEWS.index("observed_nonreceipt")
+    observed = (view == receipt) | (view == nonreceipt)
+    inside = occupied == OCCUPIED_HU_STATES.index("occupied_housing_unit")
+    primary = kind == HOUSEHOLD_KINDS.index("primary_household")
+    bound = inside & primary & ~conflicting
     assignment = np.full(view.shape[0], ASSIGNMENTS.index("withheld_unknown"), "uint8")
     for mask, name in (
-        (view == 4, "withheld_conflict"),
-        (view == 3, "withheld_not_in_universe"),
-        ((view == 1) & sole, "assigned_receipt_sole_spm_unit"),
-        ((view == 1) & ~sole, "withheld_scope_ambiguous_receipt"),
-        ((view == 2) & sole, "assigned_nonreceipt_sole_spm_unit"),
-        ((view == 2) & ~sole, "withheld_scope_ambiguous_nonreceipt"),
+        (view == RECEIPT_VIEWS.index("conflict"), "withheld_conflict"),
+        (view == RECEIPT_VIEWS.index("not_in_universe"), "withheld_not_in_universe"),
+        (
+            observed & (occupied == OCCUPIED_HU_STATES.index("outside_housing_unit")),
+            "withheld_outside_housing_unit",
+        ),
+        (
+            observed & (occupied == OCCUPIED_HU_STATES.index("not_established")),
+            "withheld_housing_unit_not_established",
+        ),
+        (
+            observed & ((inside & ~primary) | conflicting),
+            "withheld_housing_unit_conflict",
+        ),
+        ((view == receipt) & bound & sole, "assigned_receipt_sole_spm_unit"),
+        ((view == receipt) & bound & ~sole, "withheld_scope_ambiguous_receipt"),
+        ((view == nonreceipt) & bound & sole, "assigned_nonreceipt_sole_spm_unit"),
+        (
+            (view == nonreceipt) & bound & ~sole,
+            "withheld_scope_ambiguous_nonreceipt",
+        ),
     ):
         assignment[mask] = ASSIGNMENTS.index(name)
     return SpmReceiptScope(
-        spm_unit_id=spm_unit_id.copy(),
-        household_row=household_row,
-        receipt_view=view,
-        spm_units_in_household=units,
-        assignment=assignment,
+        spm_unit_id=_sealed(spm_unit_id),
+        household_row=_sealed(household_row),
+        receipt_view=_sealed(view),
+        spm_units_in_household=_sealed(units),
+        occupied_hu=_sealed(occupied),
+        household_kind=_sealed(kind),
+        housing_unit_valid=_sealed(bound),
+        assignment=_sealed(assignment),
         interpretation=interpretation,
+        housing_unit=housing_unit,
     )
 
 
@@ -471,7 +923,7 @@ class EngineReceiptProjection:
 
     def code_counts(self) -> dict[str, int]:
         names = tuple(
-            name for name, _ in sorted(RECEIPT_INPUT_CODES.items(), key=lambda i: i[1])
+            name for name, _ in sorted(RECEIPT_INPUT_CODES.items(), key=_by_code)
         )
         return _counts(self.code, names)
 
@@ -483,19 +935,24 @@ def project_engine_receipt_inputs(
 
     ``multi_unit_negative`` has no default: the caller must declare whether a
     multi-SPM-unit household's negative answer distributes to each unit
-    (``"distribute"``) or stays withheld (``"refuse"``). Every other withheld
-    class stays withheld under both policies.
+    (``"distribute"``) or stays withheld (``"refuse"``). Only units with bound
+    occupied-HU evidence may distribute, and every other withheld class -- unknown,
+    conflict, not-in-universe, ambiguous receipt, and each occupied-HU class --
+    stays withheld under both policies.
     """
     _require(type(scope) is SpmReceiptScope, "SCOPE_TYPE")
     _require(
         multi_unit_negative in MULTI_UNIT_NEGATIVE_POLICIES,
         "MULTI_UNIT_NEGATIVE_POLICY",
     )
-    assignment = scope.assignment.copy()
+    assignment = np.array(scope.assignment, copy=True)
     if multi_unit_negative == "distribute":
-        assignment[
+        distributable = (
             assignment == ASSIGNMENTS.index("withheld_scope_ambiguous_nonreceipt")
-        ] = ASSIGNMENTS.index("assigned_nonreceipt_household_negative")
+        ) & scope.housing_unit_valid
+        assignment[distributable] = ASSIGNMENTS.index(
+            "assigned_nonreceipt_household_negative"
+        )
     code = np.full(assignment.shape[0], RECEIPT_INPUT_CODES["withheld"], dtype="uint8")
     code[assignment == ASSIGNMENTS.index("assigned_receipt_sole_spm_unit")] = (
         RECEIPT_INPUT_CODES["true"]
@@ -506,6 +963,7 @@ def project_engine_receipt_inputs(
     ):
         code[assignment == ASSIGNMENTS.index(name)] = RECEIPT_INPUT_CODES["false"]
     interpretation = scope.interpretation
+    housing_unit = scope.housing_unit
     receipt = {
         "schema_version": CONSUMER_VERSION,
         "artifact_kind": CONSUMER_KIND,
@@ -513,20 +971,26 @@ def project_engine_receipt_inputs(
         "source_authentication": interpretation.source_authentication,
         "source_period_kind": interpretation.source_period_kind,
         "status_content_sha256": interpretation.status_content_sha256,
+        "status_attachment_receipt_sha256": interpretation.attachment_receipt_sha256,
+        "non_housing_unit_scope": interpretation.non_housing_unit_scope,
+        "housing_unit_authentication": housing_unit.source_authentication,
+        "universe_content_sha256": housing_unit.universe_content_sha256,
+        "universe_attachment_receipt_sha256": housing_unit.attachment_receipt_sha256,
         "annual_income_year_participation": "not_established",
         "multi_unit_negative": multi_unit_negative,
         "engine_input": "receives_housing_assistance",
         "engine_take_up_input": "not_derived",
         "take_up_note": TAKE_UP_NOTE,
         "household_view_counts": interpretation.view_counts(),
+        "occupied_hu_counts": housing_unit.occupied_hu_counts(),
         "assignment_counts": _counts(assignment, ASSIGNMENTS),
         "spm_unit_rows": int(assignment.shape[0]),
         "withheld_rows": int((code == RECEIPT_INPUT_CODES["withheld"]).sum()),
     }
     return EngineReceiptProjection(
-        spm_unit_id=scope.spm_unit_id.copy(),
-        code=code,
-        assignment=assignment,
+        spm_unit_id=_sealed(scope.spm_unit_id),
+        code=_sealed(code),
+        assignment=_sealed(assignment),
         multi_unit_negative=multi_unit_negative,
         _receipt=_json(receipt),
     )
@@ -615,7 +1079,13 @@ def compose_full_contract_charge(**quantities: np.ndarray) -> np.ndarray:
 
 
 def counterfactual_charge_availability() -> dict[str, Any]:
-    """Report the unavailable counterfactual charge and its blocking defects."""
+    """Report the unavailable counterfactual charge and its blocking defects.
+
+    ``requirements`` is a repository-relative document and
+    ``requirements_dependency`` names the producer that would have to grow the
+    fields. Both describe a required future measurement. This consumer produces
+    no charge, and nothing in this module implements any part of that lane.
+    """
     quantity = HOUSING_QUANTITIES["counterfactual_full_contract_charge"]
     return {
         "available": quantity["available"],
@@ -627,9 +1097,10 @@ def counterfactual_charge_availability() -> dict[str, Any]:
             "pha_payment_standard carries an undated LA branch",
         ),
         "refused_shortcut": "FMR_WITHOUT_YEAR_CORRECT_SOURCE_AND_UTILITY_CONTRACT",
-        "requirements": (
-            "R/us-housing-consumer-sipp-december-projection-requirements.md"
-        ),
+        "requirements": CHARGE_REQUIREMENTS_DOCUMENT,
+        "requirements_kind": "required_future_measurement",
+        "requirements_dependency": CHARGE_REQUIREMENTS_DEPENDENCY,
+        "measured_here": False,
     }
 
 
@@ -638,36 +1109,45 @@ def housing_receipt_diagnostics(
     scope: SpmReceiptScope | None = None,
     projection: EngineReceiptProjection | None = None,
 ) -> dict[str, Any]:
-    """Raw status, unknown-reason, conflict, quality and zero-origin counts."""
+    """Raw status, routing, quarters, quality, zero-origin and occupied-HU counts.
+
+    Every code and bit name is read out of the carried source codebook, so a
+    codebook change in a frozen artifact moves these labels instead of silently
+    desynchronizing them from a copy kept here.
+    """
     _require(
         type(interpretation) is HouseholdReceiptInterpretation, "INTERPRETATION_TYPE"
     )
-    quality_names = (
-        "not_applicable",
-        "no_allocation_code_origin_unresolved",
-        "allocated",
-        "conflict",
+    codebook = interpretation.codebook
+    quality_names = _ordered_codebook_names(codebook.get("quality"), "CODEBOOK_QUALITY")
+    route_names = _ordered_codebook_names(codebook.get("route"), "CODEBOOK_ROUTE")
+    quarters_names = _ordered_codebook_names(
+        codebook.get("group_quarters"), "CODEBOOK_QUARTERS"
     )
     payload: dict[str, Any] = {
         "schema_version": CONSUMER_VERSION,
         "source_authentication": interpretation.source_authentication,
         "source_period_kind": interpretation.source_period_kind,
+        "non_housing_unit_scope": interpretation.non_housing_unit_scope,
+        "zero_origin_policy": interpretation.zero_origin_policy,
         "household_rows": interpretation.rows,
         "household_view_counts": interpretation.view_counts(),
         "receipt_valid_rows": int(interpretation.receipt_valid.sum()),
+        "route_counts": _counts(interpretation.route, route_names),
+        "group_quarters_counts": _counts(interpretation.group_quarters, quarters_names),
+        "observed_answer_valid_counts": {
+            name: int(interpretation.column(name).sum())
+            for name in ("HPUBLIC_valid", "HLORENT_valid")
+        },
         "unknown_reason_counts": _bit_counts(
             interpretation.unknown_reasons,
-            {"parent_answer": 1, "lower_answer": 2, "scope": 4},
+            codebook.get("unknown_reason_bits"),
+            "CODEBOOK_UNKNOWN_REASON_BITS",
         ),
         "conflict_counts": _bit_counts(
             interpretation.conflicts,
-            {
-                "excluded_scope": 1,
-                "parent_route": 2,
-                "public_allocation": 4,
-                "lower_allocation": 8,
-                "context": 16,
-            },
+            codebook.get("conflict_bits"),
+            "CODEBOOK_CONFLICT_BITS",
         ),
         "public_quality_counts": _counts(interpretation.public_quality, quality_names),
         "lower_quality_counts": _counts(interpretation.lower_quality, quality_names),
@@ -682,6 +1162,14 @@ def housing_receipt_diagnostics(
         payload["assignment_counts"] = scope.assignment_counts()
         payload["multi_spm_unit_households"] = int(
             len(np.unique(scope.household_row[scope.spm_units_in_household > 1]))
+        )
+        payload["housing_unit_authentication"] = (
+            scope.housing_unit.source_authentication
+        )
+        payload["occupied_hu_counts"] = scope.housing_unit.occupied_hu_counts()
+        payload["household_kind_counts"] = scope.housing_unit.household_kind_counts()
+        payload["spm_units_with_bound_housing_unit"] = int(
+            scope.housing_unit_valid.sum()
         )
     if projection is not None:
         _require(type(projection) is EngineReceiptProjection, "PROJECTION_TYPE")
@@ -701,9 +1189,15 @@ def describe_integration_seam() -> dict[str, Any]:
             "artifact": "microcosm.asec_housing_status_observations.v1",
             "attachment": "microcosm.asec_housing_status_attachment.v1",
             "attached_columns": list(ATTACHED_COLUMNS),
+            "housing_unit_artifact": "microcosm.asec_housing_universe.v1",
+            "housing_unit_attachment": (
+                "microcosm.asec_housing_universe_attachment.v1"
+            ),
+            "housing_unit_attached_columns": list(UNIVERSE_ATTACHED_COLUMNS),
         },
         "attaches_after": (
-            "microcosm.build.us_runtime.asec_housing_status_source.attach_housing_status"
+            "microcosm.build.us_runtime.asec_housing_universe_source"
+            ".attach_housing_universe"
         ),
         "membership_source": (
             "the attached Frame's household_id, spm_unit_id and person memberships"
