@@ -1063,6 +1063,51 @@ def test_refuses_an_extra_or_missing_parameter(tmp_path):
         _run(tmp_path, _pool(), mutate=mutate, label="extra-param")
 
 
+def test_refuses_a_relaxed_mass_policy(tmp_path):
+    """Conservation is the stage's contract, not a default it may drop."""
+
+    def mutate(nodes):
+        expand, claim = nodes
+        return (
+            Node(
+                id=expand.id,
+                kernel=expand.kernel,
+                inputs=expand.inputs,
+                params=dict(expand.params),
+                structural=expand.structural,
+                base=expand.base,
+                mass="free",
+            ),
+            claim,
+        )
+
+    with pytest.raises(NodeRejectedError, match="NODE_MASS"):
+        _run(tmp_path, _pool(), mutate=mutate, label="mass-free")
+
+
+def test_refuses_a_node_that_admits_entrants(tmp_path):
+    """This stage copies households; it never invents one."""
+
+    def mutate(nodes):
+        expand, claim = nodes
+        return (
+            Node(
+                id=expand.id,
+                kernel=expand.kernel,
+                inputs=expand.inputs,
+                params=dict(expand.params),
+                structural=expand.structural,
+                base=expand.base,
+                mass="free",
+                entrants=True,
+            ),
+            claim,
+        )
+
+    with pytest.raises(NodeRejectedError, match="NODE_ENTRANTS"):
+        _run(tmp_path, _pool(), mutate=mutate, label="entrants")
+
+
 def test_refuses_an_undeclared_input_slice(tmp_path):
     def mutate(nodes):
         expand, claim = nodes
