@@ -402,6 +402,52 @@ def test_no_component_or_split_claim_is_made_by_either_arm():
     assert "CAP_VAL" in asec.evidence["component_reconstruction"]
 
 
+def test_asec_vintage_pins_match_the_packaged_current_money_authority():
+    """The ASEC constants restate existing authenticated repo metadata."""
+
+    resource = Path(acs_pums.__file__).parent / "asec_current_money_domains_v1.json"
+    fields = {item["name"]: item for item in json.loads(resource.read_text())["fields"]}
+    htotval = fields["HTOTVAL"]
+    assert htotval["entity"] == "household"
+    assert htotval["column"] == reported.ASEC_HTOTVAL_ORIGIN.publisher_column
+    assert htotval["domain"]["encoded_range_inclusive"] == {
+        "minimum": reported.ASEC_HTOTVAL_MINIMUM,
+        "maximum": reported.ASEC_HTOTVAL_MAXIMUM,
+    }
+    assert {
+        vintage["income_year"]: (
+            vintage["survey_year"],
+            vintage["pdf_sha256"],
+            vintage["pdf_page_1based"],
+        )
+        for vintage in htotval["vintages"]
+    } == dict(reported.ASEC_HTOTVAL_VINTAGES)
+    assert {vintage["universe_as_printed"] for vintage in htotval["vintages"]} == {
+        reported.ASEC_HTOTVAL_ORIGIN.universe_as_printed
+    }
+    # PTOTVAL is the person analogue and keeps its own narrower universe.
+    assert {
+        vintage["universe_as_printed"] for vintage in fields["PTOTVAL"]["vintages"]
+    } == {"All Persons aged 15+"}
+
+
+def test_acs_dictionary_pin_matches_the_existing_repository_authority():
+    donor = json.loads(
+        (Path(acs_pums.__file__).parent / "acs_2024_housing_donor.json").read_text()
+    )
+    acs_authority = {
+        item["sha256"]
+        for item in reported.ACS_2024_HINCP_ORIGIN.as_json()["authority"]
+        if item["document"].startswith("2024 ACS PUMS Data Dictionary")
+    }
+    assert acs_authority == {donor["dictionary"]["sha256"]}
+    universe = json.loads(
+        (Path(acs_pums.__file__).parent / "acs_2024_housing_universe.json").read_text()
+    )
+    assert universe["dictionary"]["sha256"] == donor["dictionary"]["sha256"]
+    assert universe["B19001_B25003_activation"] is False
+
+
 def test_version_one_roster_matches_the_executed_loader_exactly():
     assert ACS_HOUSEHOLD_SOURCE_COLUMNS_V1.required == acs_pums._HOUSEHOLD_REQUIRED
     assert ACS_HOUSEHOLD_SOURCE_COLUMNS_V1.optional == (
