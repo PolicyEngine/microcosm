@@ -1963,3 +1963,52 @@ def test_the_state_arm_of_the_eehc_rentsub_universe_is_observed_without_a_reclas
     assert diagnostics["eehc_rentsub_state_arm_changes_no_classification"] is True
     for key in ("assistance_classes", "person_month_codes", "exclusions_exclusive"):
         assert with_state.diagnostics[key] == without_state.diagnostics[key]
+
+
+def test_no_predictor_amount_identifier_or_age_reaches_the_receipt():
+    # The predictor diagnostics are a new aggregate surface, so the receipt's
+    # existing "aggregates only" contract is re-checked against it directly.
+    result = _project(
+        _row(
+            ssuid="7777777777",
+            pnum=101,
+            residence="399888",
+            weight="8642.1357",
+            TEHC_ST="24",
+            RHNUMPER="2",
+            RHNUMU18="1",
+            THTOTINC="987654",
+            TAGE_EHC="73",
+        ),
+        _row(
+            ssuid="7777777777",
+            pnum=202,
+            residence="399888",
+            weight="8642.1357",
+            TEHC_ST="24",
+            RHNUMPER="2",
+            RHNUMU18="1",
+            THTOTINC="987654",
+            TAGE_EHC="8",
+        ),
+    )
+    receipt = result.receipt_json.decode()
+    for token in ("987654", "7777777777", "399888", '"73"', '"101"', '"202"'):
+        assert token not in receipt, token
+    diagnostics = result.diagnostics["prospective_predictors"]
+    # Income and age reach the receipt only as class counts, never as values.
+    assert diagnostics["income_sign"] == {"positive": 1}
+    assert diagnostics["income_at_domain_minimum_households"] == 0
+    assert diagnostics["income_at_domain_maximum_households"] == 0
+    assert diagnostics["age_coverage"] == {"complete": 1}
+    assert diagnostics["maximum_age_at_domain_maximum_households"] == 0
+    assert "maximum_age" not in json.dumps(diagnostics).replace(
+        "maximum_age_lower_bound_households", ""
+    ).replace("maximum_age_at_domain_maximum_households", "").replace(
+        "maximum_age_unknown_households", ""
+    )
+    # The state code is an aggregate that a lone household still discloses, so
+    # it is asserted present rather than pretended away.
+    assert diagnostics["state_of_residence_codes"] == {"24": 1}
+    # The already-disclosed weight exposure is unchanged, not widened.
+    assert '"8642.1357"' in receipt

@@ -547,7 +547,7 @@ blocks expose that household's mean member `WPFINWGT`, and version 3's
 `state_of_residence_codes` counter likewise exposes a lone household's state
 code. No income amount and no age appear at all — the predictor diagnostics
 report income only by sign and domain boundary, and age only by coverage and
-domain-maximum counts. The returned measurement and predictor tuples do carry
+domain-maximum counts, which a test checks against the receipt bytes directly. The returned measurement and predictor tuples do carry
 individual amounts and identifiers, and must not be printed in a report.
 
 ### Implementation binding
