@@ -122,6 +122,20 @@ def _integer(value: object, label: str) -> int:
     return value
 
 
+def _list(container: Mapping[str, Any], key: str, label: str) -> list[Any]:
+    """Read a required roster, refusing an absent key and a non-list value.
+
+    Compilation is total: an absent section leaks no ``KeyError`` and a string
+    in a roster's place is never iterated per character into field names.
+    """
+    if key not in container:
+        raise ProtocolError(f"{label} is required and absent.")
+    value = container[key]
+    if not isinstance(value, list):
+        raise ProtocolError(f"{label} must be a JSON array.")
+    return value
+
+
 def _bound(value: object, label: str) -> Decimal | None:
     """A bin edge: an exact integer, or ``None`` for an open side."""
     if value is None:
@@ -522,7 +536,10 @@ def compile_protocol(raw: bytes) -> CompiledProtocol:
         ),
         unknown_bin_id=_text(unknown_bin.get("id"), "unknown bin id"),
         applies_to=frozenset(
-            _text(item, "partition applies_to") for item in partition_doc["applies_to"]
+            _text(item, "partition applies_to")
+            for item in _list(
+                partition_doc, "applies_to", "/categorical_partition/applies_to"
+            )
         ),
     )
     support_doc = _object(document.get("support"), "/support")
@@ -601,8 +618,22 @@ def compile_protocol(raw: bytes) -> CompiledProtocol:
         exposure_status_values=frozenset(
             _object(ledger_doc.get("exposure_status_values"), "exposure_status_values")
         ),
-        independent_axes=tuple(status_doc["independent_axes_required"]),
-        scope_reduction_order=tuple(status_doc["scope_reduction_order"]),
+        independent_axes=tuple(
+            _text(item, "independent axis")
+            for item in _list(
+                status_doc,
+                "independent_axes_required",
+                "/status_contract/independent_axes_required",
+            )
+        ),
+        scope_reduction_order=tuple(
+            _text(item, "scope reduction step")
+            for item in _list(
+                status_doc,
+                "scope_reduction_order",
+                "/status_contract/scope_reduction_order",
+            )
+        ),
         scoring_permitted_in_document=_flag(
             approval_doc.get("scoring_permitted"), "/approval/scoring_permitted"
         ),
@@ -626,34 +657,59 @@ def compile_protocol(raw: bytes) -> CompiledProtocol:
             _object(ledger_doc.get("record_fields"), "record_fields")
         ),
         ledger_snapshot_fields=tuple(
-            _text(item, "snapshot field") for item in ledger_doc["snapshot_fields"]
+            _text(item, "snapshot field")
+            for item in _list(
+                ledger_doc, "snapshot_fields", "/exposure_ledger/snapshot_fields"
+            )
         ),
         attempt_payload_fields=_payload_fields(
-            ledger_doc["evaluation_attempt_payload"]
+            _list(
+                ledger_doc,
+                "evaluation_attempt_payload",
+                "/exposure_ledger/evaluation_attempt_payload",
+            )
         ),
         completion_payload_fields=_payload_fields(
-            ledger_doc["evaluation_completion_payload"]
+            _list(
+                ledger_doc,
+                "evaluation_completion_payload",
+                "/exposure_ledger/evaluation_completion_payload",
+            )
         ),
         registration_payload_fields=tuple(
             _text(item, "registration payload field")
-            for item in ledger_doc["protocol_registration_payload"]
+            for item in _list(
+                ledger_doc,
+                "protocol_registration_payload",
+                "/exposure_ledger/protocol_registration_payload",
+            )
         ),
         quality_required_fields=tuple(
             _text(item, "quality required field")
-            for item in ledger_doc["quality_required_fields"]
+            for item in _list(
+                ledger_doc,
+                "quality_required_fields",
+                "/exposure_ledger/quality_required_fields",
+            )
         ),
         amendment_change_fields=tuple(
             _text(item, "amendment change field")
-            for item in _object(
-                document.get("protocol_amendments"), "/protocol_amendments"
-            )["required_change_fields"]
+            for item in _list(
+                _object(document.get("protocol_amendments"), "/protocol_amendments"),
+                "required_change_fields",
+                "/protocol_amendments/required_change_fields",
+            )
         ),
         required_binding_slots=tuple(
             _text(item, "binding slot")
-            for item in _object(
-                document.get("candidate_binding_requirements"),
-                "/candidate_binding_requirements",
-            )["must_authenticate_before_scoring"]
+            for item in _list(
+                _object(
+                    document.get("candidate_binding_requirements"),
+                    "/candidate_binding_requirements",
+                ),
+                "must_authenticate_before_scoring",
+                "/candidate_binding_requirements/must_authenticate_before_scoring",
+            )
         ),
     )
 

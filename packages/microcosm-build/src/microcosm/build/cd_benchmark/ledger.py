@@ -20,7 +20,15 @@ Exposure precedence and attempt terminality follow
 ``/exposure_ledger/attempt_terminality`` exactly. In particular a started
 attempt is prior exposure for related later attempts even if it never
 completed, an interrupted attempt can never receive a retroactive completion,
-and unknown history is never fresh.
+and unknown history is never fresh. Terminality is also an ordering: an
+unfinished attempt has to receive its completion or its interruption before a
+further attempt is appended, so a verified ledger never accumulates abandoned
+attempts whose fate nothing records.
+
+Payload fields this package reads as arrays of identifiers are typed where the
+record is parsed, never where it is reduced. A bare JSON string in a family
+array would otherwise be iterated per character and manufacture freshness for
+the very family it names.
 """
 
 from __future__ import annotations
@@ -53,6 +61,7 @@ __all__ = [
     "EXTERNAL_EXPOSURE_PAYLOAD_FIELDS",
     "EventType",
     "ExposureHistory",
+    "IDENTIFIER_LIST_FIELDS",
     "INTERRUPTION_PAYLOAD_FIELDS",
     "LEDGER_SCHEMA_VERSION",
     "LedgerError",
@@ -130,6 +139,26 @@ class EventType(StrEnum):
     EVALUATION_INTERRUPTED = "evaluation_interrupted"
     EXTERNAL_EXPOSURE_RECORDED = "external_exposure_recorded"
     LEDGER_RECOVERY = "ledger_recovery"
+
+
+#: Payload fields this package reads as arrays of identifiers. Each must be a
+#: JSON array of nonempty strings, because a bare string iterates per character:
+#: ``"B19001"`` would otherwise contribute ``B``, ``1``, ``9`` and ``0`` as
+#: families, leaving the real family absent and a reserved block reading as
+#: fresh. Typing them is a parse obligation, not a reducer's defensive check.
+IDENTIFIER_LIST_FIELDS: Mapping[EventType, tuple[str, ...]] = MappingProxyType(
+    {
+        EventType.EVALUATION_ATTEMPT: (
+            "all_derivative_reference_family_ids",
+            "tuning_family_root_ids",
+        ),
+        EventType.EXTERNAL_EXPOSURE_RECORDED: (
+            "block_families",
+            "prior_evaluation_ids",
+        ),
+        EventType.LEDGER_RECOVERY: ("unresolved_attempt_ids",),
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -262,6 +291,22 @@ def _closed(
     return payload
 
 
+def _identifier_list(value: object, name: str, label: str) -> tuple[str, ...]:
+    """Read a payload field that is an array of identifiers, or refuse it.
+
+    A bare string is not a one-element array here: iterating it would yield its
+    characters, so ``"B19001"`` would report four one-character families and
+    never the family itself.
+    """
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or not item for item in value
+    ):
+        raise LedgerError(
+            f"{label} payload field {name!r} must be a list of nonempty strings."
+        )
+    return tuple(value)
+
+
 def _roster(
     protocol: CompiledProtocol, event: EventType
 ) -> tuple[tuple[str, tuple[str, ...] | None], ...]:
@@ -323,6 +368,8 @@ def parse_record(value: object, *, protocol: CompiledProtocol) -> LedgerRecord:
     if previous is not None and not is_sha256_hex(previous):
         raise LedgerError("previous_record_sha256 must be null or a digest.")
     payload = _closed(value["payload"], _roster(protocol, event), str(event))
+    for name in IDENTIFIER_LIST_FIELDS.get(event, ()):
+        _identifier_list(payload[name], name, str(event))
     if (
         event is EventType.EVALUATION_INTERRUPTED
         and payload["exposure_possible"] is not True
@@ -363,6 +410,15 @@ def _transitions(
             if evaluation_id in attempts or evaluation_id in linked_evaluation_ids:
                 raise LedgerError(
                     "Duplicate evaluation_id; a collision is refused, never reused."
+                )
+            unfinished = [
+                state.evaluation_id for state in attempts.values() if state.unfinished
+            ]
+            if unfinished:
+                raise LedgerError(
+                    "A new evaluation attempt requires the prior attempt to be "
+                    f"terminal: {unfinished} is unfinished, and the contract "
+                    "appends an interruption before another attempt starts."
                 )
             attempts[evaluation_id] = AttemptState(
                 evaluation_id=evaluation_id,
@@ -415,7 +471,10 @@ def verify_ledger(
     being truncated back to a valid prefix. Sequences must start at zero and be
     consecutive, ``previous_record_sha256`` must be null only at sequence zero
     and otherwise cover the complete previous record, and every attempt must
-    obey the terminality rule.
+    obey the terminality rule and be terminal before the next attempt starts.
+
+    On success the evidence carries ``unfinished_attempt_ids``: the attempts
+    still awaiting a terminal record, which is at most the last one.
     """
     notes: dict[str, object] = {}
     if not isinstance(data, bytes):
@@ -453,6 +512,9 @@ def verify_ledger(
                     raise LedgerError("The record hash chain is broken or forked.")
             records.append(record)
         attempts = _transitions(records, linked_evaluation_ids)
+        notes["unfinished_attempt_ids"] = tuple(
+            state.evaluation_id for state in attempts.values() if state.unfinished
+        )
     except (LedgerError, CanonicalJsonError) as error:
         notes["refusal"] = str(error)
         return LedgerVerification(

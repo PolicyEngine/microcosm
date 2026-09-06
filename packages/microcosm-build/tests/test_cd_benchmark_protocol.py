@@ -540,3 +540,120 @@ def test_importing_the_pure_core_loads_no_engine_or_us_runtime():
         [sys.executable, "-c", program], capture_output=True, text=True, check=True
     )
     assert result.stdout.strip() == "[]"
+
+
+def _scope_pair(protocol, scope, artifacts):
+    """One root and one peer APPROVE covering exactly ``scope``."""
+    return tuple(
+        ApprovalRecord(
+            protocol_sha256=protocol.sha256,
+            verdict=ApprovalVerdict.APPROVE,
+            reviewer_role=role,
+            reviewer_id=f"{role}:{scope}",
+            scopes=frozenset({scope}),
+            review_artifact_sha256=artifact,
+        )
+        for role, artifact in zip(
+            (ReviewerRole.ROOT, ReviewerRole.PEER), artifacts, strict=True
+        )
+    )
+
+
+def test_registration_must_name_the_records_that_authorize_the_action(protocol):
+    """A registration of the implementation-only approvals never activates scoring."""
+    fixture = _scope_pair(protocol, FIXTURE_SCOPE, ("1" * 64, "2" * 64))
+    scoring = _scope_pair(
+        protocol, ApprovalScope.CANDIDATE_SCORING, ("3" * 64, "4" * 64)
+    )
+    authority = ApprovalAuthority(records=(*fixture, *scoring))
+    named = resolve_action(
+        protocol,
+        authority=authority,
+        action=ApprovalScope.CANDIDATE_SCORING,
+        registration=_registration(protocol, *scoring),
+    )
+    assert named.authorized is True
+    assert named.reasons == ()
+    assert named.root is scoring[0]
+    assert named.peer is scoring[1]
+    borrowed = resolve_action(
+        protocol,
+        authority=authority,
+        action=ApprovalScope.CANDIDATE_SCORING,
+        registration=_registration(protocol, *fixture),
+    )
+    assert borrowed.authorized is False
+    assert borrowed.registration_resolved is False
+    assert Reason.PROTOCOL_UNAPPROVED in borrowed.reasons
+    assert borrowed.evidence["root_artifact_scope_missing"] is True
+    assert borrowed.evidence["peer_artifact_scope_missing"] is True
+    assert borrowed.evidence["root_artifact_not_the_resolved_record"] is True
+    assert borrowed.root is None
+    assert borrowed.peer is None
+
+
+def test_a_registered_artifact_must_approve_this_protocol(protocol):
+    """An approval of some other digest cannot be the registered artifact."""
+    authority, root, peer = _authority(protocol)
+    foreign = ApprovalRecord(
+        protocol_sha256="a" * 64,
+        verdict=ApprovalVerdict.APPROVE,
+        reviewer_role=ReviewerRole.ROOT,
+        reviewer_id="root:some-other-contract",
+        scopes=frozenset({FIXTURE_SCOPE}),
+        review_artifact_sha256="7" * 64,
+    )
+    held = ApprovalAuthority(records=(*authority.records, foreign))
+    baseline = resolve_action(
+        protocol,
+        authority=held,
+        action=FIXTURE_SCOPE,
+        registration=_registration(protocol, root, peer),
+    )
+    assert baseline.authorized is True
+    assert baseline.reasons == ()
+    result = resolve_action(
+        protocol,
+        authority=held,
+        action=FIXTURE_SCOPE,
+        registration=_registration(
+            protocol, root, peer, root_approval_artifact_sha256=foreign.sha256
+        ),
+    )
+    assert result.authorized is False
+    assert Reason.IDENTITY_MISMATCH in result.reasons
+    assert result.evidence["root_artifact_protocol_mismatch"] is True
+    assert result.evidence["root_artifact_not_the_resolved_record"] is True
+
+
+#: Rosters ``compile_protocol`` reads positionally, whose absence used to leak a
+#: ``KeyError`` and whose replacement by a string used to be iterated per character.
+REQUIRED_ROSTERS = (
+    ("categorical_partition", "applies_to"),
+    ("status_contract", "independent_axes_required"),
+    ("status_contract", "scope_reduction_order"),
+    ("exposure_ledger", "snapshot_fields"),
+    ("exposure_ledger", "evaluation_attempt_payload"),
+    ("exposure_ledger", "evaluation_completion_payload"),
+    ("exposure_ledger", "protocol_registration_payload"),
+    ("exposure_ledger", "quality_required_fields"),
+    ("protocol_amendments", "required_change_fields"),
+    ("candidate_binding_requirements", "must_authenticate_before_scoring"),
+)
+
+
+@pytest.mark.parametrize(("section", "key"), REQUIRED_ROSTERS)
+def test_an_absent_or_mistyped_required_roster_is_a_protocol_error(section, key):
+    raw = load_canonical_bytes()
+    document = json.loads(raw)
+    assert canonical_bytes(document) == raw
+    assert compile_protocol(canonical_bytes(document)).canonical is True
+    absent = json.loads(raw)
+    del absent[section][key]
+    with pytest.raises(ProtocolError):
+        compile_protocol(canonical_bytes(absent))
+    for replacement in ("a_string_is_not_a_roster", {"a": 1}, 4):
+        mistyped = json.loads(raw)
+        mistyped[section][key] = replacement
+        with pytest.raises(ProtocolError):
+            compile_protocol(canonical_bytes(mistyped))

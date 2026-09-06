@@ -574,3 +574,140 @@ def test_a_previous_hash_must_be_a_lowercase_digest(protocol):
         records[0].sha256.encode(), records[0].sha256.upper().encode()
     )
     assert not verify_ledger(uppercased, protocol=protocol).ok
+
+
+def external_exposure_payload(**overrides):
+    payload = {
+        "prior_evaluation_ids": [SECOND],
+        "related_ancestry": "invented tuning family",
+        "block_families": ["B25003"],
+        "occurred_at": "2026-08-01T00:00:00Z",
+        "artifacts": [],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_a_family_list_is_typed_and_never_a_string_iterated_per_character(protocol):
+    """A bare string cannot pass as a family array and manufacture freshness."""
+    zero = record(
+        0, EventType.PROTOCOL_REGISTERED, registration_payload(protocol), None
+    )
+    listed = record(
+        1,
+        EventType.EVALUATION_ATTEMPT,
+        attempt_payload(protocol, FIRST, families=("B19001",)),
+        zero.sha256,
+    )
+    baseline = verify_ledger(build_records([zero, listed]), protocol=protocol)
+    assert baseline.ok
+    assert exposed_families(baseline.ledger) == {"B19001"}
+    bare = attempt_payload(protocol, FIRST)
+    bare["all_derivative_reference_family_ids"] = "B19001"
+    result = verify_ledger(
+        build_records(
+            [zero, record(1, EventType.EVALUATION_ATTEMPT, bare, zero.sha256)]
+        ),
+        protocol=protocol,
+    )
+    assert not result.ok
+    assert result.reasons == (Reason.LEDGER_INTEGRITY_UNKNOWN,)
+    assert "list of nonempty strings" in result.evidence["refusal"]
+
+
+@pytest.mark.parametrize(
+    "field", ["all_derivative_reference_family_ids", "tuning_family_root_ids"]
+)
+@pytest.mark.parametrize("value", ["B19001", ["B19001", 4], ["B19001", ""], {"a": 1}])
+def test_attempt_identifier_lists_admit_only_nonempty_strings(protocol, field, value):
+    zero = record(
+        0, EventType.PROTOCOL_REGISTERED, registration_payload(protocol), None
+    )
+    payload = attempt_payload(protocol, FIRST)
+    payload[field] = value
+    assert not verify_ledger(
+        build_records(
+            [zero, record(1, EventType.EVALUATION_ATTEMPT, payload, zero.sha256)]
+        ),
+        protocol=protocol,
+    ).ok
+
+
+@pytest.mark.parametrize("field", ["block_families", "prior_evaluation_ids"])
+def test_external_exposure_identifier_lists_are_typed(protocol, field):
+    zero = record(
+        0, EventType.PROTOCOL_REGISTERED, registration_payload(protocol), None
+    )
+    baseline = verify_ledger(
+        build_records(
+            [
+                zero,
+                record(
+                    1,
+                    EventType.EXTERNAL_EXPOSURE_RECORDED,
+                    external_exposure_payload(),
+                    zero.sha256,
+                ),
+            ]
+        ),
+        protocol=protocol,
+    )
+    assert baseline.ok
+    assert exposed_families(baseline.ledger) == {"B25003"}
+    result = verify_ledger(
+        build_records(
+            [
+                zero,
+                record(
+                    1,
+                    EventType.EXTERNAL_EXPOSURE_RECORDED,
+                    external_exposure_payload(**{field: "B25003"}),
+                    zero.sha256,
+                ),
+            ]
+        ),
+        protocol=protocol,
+    )
+    assert not result.ok
+    assert "list of nonempty strings" in result.evidence["refusal"]
+
+
+def test_a_new_attempt_waits_for_the_prior_attempt_to_be_terminal(protocol):
+    """An interruption or a completion is appended before the next attempt starts."""
+    for terminal in ("completion", "interrupted"):
+        prior = chain(protocol, terminal=terminal)
+        following = [
+            *prior,
+            record(
+                3,
+                EventType.EVALUATION_ATTEMPT,
+                attempt_payload(protocol, SECOND),
+                prior[2].sha256,
+            ),
+        ]
+        verified = verify_ledger(build_records(following), protocol=protocol)
+        assert verified.ok, terminal
+        assert set(verified.ledger.attempts) == {FIRST, SECOND}
+        assert verified.ledger.attempts[SECOND].unfinished is True
+    started = chain(protocol)[:2]
+    overlapping = [
+        *started,
+        record(
+            2,
+            EventType.EVALUATION_ATTEMPT,
+            attempt_payload(protocol, SECOND),
+            started[1].sha256,
+        ),
+    ]
+    result = verify_ledger(build_records(overlapping), protocol=protocol)
+    assert not result.ok
+    assert result.reasons == (Reason.LEDGER_INTEGRITY_UNKNOWN,)
+    assert "unfinished" in result.evidence["refusal"]
+
+
+def test_a_verified_ledger_surfaces_its_unfinished_attempt(protocol):
+    started = verify_ledger(build_records(chain(protocol)[:2]), protocol=protocol)
+    assert started.ok
+    assert started.evidence["unfinished_attempt_ids"] == (FIRST,)
+    finished = verify_ledger(build_records(chain(protocol)), protocol=protocol)
+    assert finished.evidence["unfinished_attempt_ids"] == ()
