@@ -21,6 +21,7 @@ from microcosm.build.us_runtime import asec_current_money as money
 from microcosm.build.us_runtime import asec_current_money_source as legacy
 from microcosm.build.us_runtime import asec_current_money_units as units
 from microcosm.build.us_runtime import asec_housing_universe_source as hu_source
+from microcosm.build.us_runtime import asec_income_observations as income
 from microcosm.build.us_runtime import asec_person_income_source as restoration
 from microcosm.build.us_runtime import asec_prepared_source as prepared
 from microcosm.build.us_runtime import asec_student_controls as student
@@ -167,6 +168,9 @@ def invented_prepared_directory(
         loaded.frame.person["PTOTVAL"] = np.tile(
             [np.nan] * 4 + [-9999.0, 0.0], households_per_cohort
         )
+        loaded.frame.person["PAW_VAL"] = np.tile(
+            [1200.0, 0.0, 0.0, 0.0, 500.0, 0.0], households_per_cohort
+        )
         # Both ages in this fixture are outside the Census 16–54 universe.
         # Preserve the genuine old-cohort NaN pattern; S supplies exact observed
         # zero codes through aliases instead of filling these original columns.
@@ -217,6 +221,9 @@ def invented_prepared_directory(
                 "A_LINENO": [1, 2] * households_per_cohort,
                 "A_AGE": [55, 14] * households_per_cohort,
                 "PTOTVAL": [-9999, 0] * households_per_cohort,
+                "PAW_VAL": [{2022: 1200, 2023: 0, 2024: 500}[year], 0]
+                * households_per_cohort,
+                "PAW_YN": [1, 0] * households_per_cohort,
                 "A_ENRLW": [0, 0] * households_per_cohort,
                 "A_FTPT": [0, 0] * households_per_cohort,
             }
@@ -234,6 +241,7 @@ def invented_prepared_directory(
         )
     monkeypatch.setattr(restoration, "_MEMBER_PINS", tuple(pins))
     monkeypatch.setattr(student, "_MEMBER_PINS", tuple(pins))
+    monkeypatch.setattr(income, "_MEMBER_PINS", tuple(pins))
     restored = tmp_path / "restored"
     restoration.restore_asec_person_income_source(
         parent, attachment, member_paths=members, output_dir=restored

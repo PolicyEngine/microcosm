@@ -105,9 +105,12 @@ def test_unrelated_operator_body_and_quality_file_do_not_invalidate(
             "geography",
         ),
         *(
-            ("microcosm.build", "us_runtime/" + name, "asec_prepared_v2", "geography")
+            ("microcosm.build", "us_runtime/" + name, "asec_prepared_v3", "geography")
             for name in (
                 "asec_prepared_source.py",
+                "asec_income_observations.py",
+                "asec_income_observations_v1.json",
+                "graph_asec_income.py",
                 "asec_housing_universe.py",
                 "asec_housing_universe_source.py",
                 "graph_housing_universe.py",
@@ -149,7 +152,7 @@ def test_live_registry_projection_invalidates_source_not_geography(monkeypatch):
         "asec_codec_v4",
         "acs_codec_2024",
         "assembly_prepare",
-        "asec_prepared_v2",
+        "asec_prepared_v3",
     ):
         assert after[stage] != before[stage]
     assert after["geography"] == before["geography"]
@@ -333,6 +336,7 @@ def test_codec_name_loader_and_capabilities_match_manifest(monkeypatch):
         USAsecPreparedCreateKernel,
         USAsecPreparedLeavesKernel,
         USAsecPreparedSelectionKernel,
+        USAsecReportedIncomeKernel,
     )
     from microcosm.build.us_runtime.graph_geography import (
         USGeographyAssignKernel,
@@ -348,11 +352,12 @@ def test_codec_name_loader_and_capabilities_match_manifest(monkeypatch):
         (graph_sources.USAssemblyCreateKernel, "assembly_prepare"),
         (graph_sources.USSpineHarmonizeKernel, "assembly_harmonize"),
         *(
-            (kernel, "asec_prepared_v2")
+            (kernel, "asec_prepared_v3")
             for kernel in (
                 USAsecPreparedCreateKernel,
                 USAsecPreparedSelectionKernel,
                 USAsecPreparedLeavesKernel,
+                USAsecReportedIncomeKernel,
             )
         ),
         *(
@@ -385,7 +390,7 @@ def test_prepared_codec_is_bound_without_claiming_assembly_uses_it(monkeypatch):
 
     codecs = graph_sources.us_source_codecs()
     assert codecs.get(graph_sources.ASEC_PREPARED_CODEC) is load_graph_asec_prepared
-    manifest = impl.implementation_manifest("asec_prepared_v2")
+    manifest = impl.implementation_manifest("asec_prepared_v3")
     assert manifest["codecs"] == {
         graph_sources.ASEC_PREPARED_CODEC: {
             "loader": "microcosm.build.us_runtime.asec_prepared_source:load_graph_asec_prepared"

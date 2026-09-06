@@ -43,6 +43,7 @@ from microcosm.graph.canonical import canonical_json
 from microcosm.graph.codecs import SourceCodecRegistry, load_raw_bytes
 from microcosm.graph.population import dtype_for_token, token_for_dtype
 
+from .acs_housing_universe_source import ACS_HU_CODEC, load_graph_acs_housing_universe
 from .acs_inputs import map_acs_native_inputs
 from .acs_pums import AcsPumsSource, build_acs_pums_unit_frame
 from .asec_checkpoint import load_asec_raw_stage_checkpoint_v4
@@ -71,7 +72,7 @@ from .support_provenance import support_channel_column
 
 ASEC_CODEC = "us-asec-raw-stage-v4"
 ACS_CODEC = "us-acs-native-2024-v1"
-ASEC_PREPARED_CODEC = "us-asec-prepared-current-money-v2"
+ASEC_PREPARED_CODEC = "us-asec-prepared-current-money-v3"
 ASSEMBLY_PHASE = "assemble_stacked_spine"
 US_STACK_PREPARATION_TYPE = ArtifactType("microcosm.us.stacked_spine_preparation", 1)
 US_SOURCE_DEPENDENCIES = STAGE_DEPENDENCIES["assembly_prepare"]
@@ -203,6 +204,7 @@ def us_source_codecs() -> SourceCodecRegistry:
     # second preparation path.
     codecs.register(ASEC_PREPARED_CODEC, load_graph_asec_prepared)
     codecs.register_bytes("raw-bytes-v1", load_raw_bytes)
+    codecs.register(ACS_HU_CODEC, load_graph_acs_housing_universe)
     validate_source_codecs(codecs)
     return codecs
 

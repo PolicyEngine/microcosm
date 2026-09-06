@@ -9,6 +9,7 @@ to an unbound helper. Updating that inventory requires a scope review.
 from __future__ import annotations
 
 import ast
+import csv
 import hashlib
 import importlib.metadata as importlib_metadata
 import importlib.util
@@ -26,6 +27,13 @@ STAGE_DEPENDENCIES = MappingProxyType(
     {
         "asec_codec_v4": ("numpy", "pandas", "h5py"),
         "acs_codec_2024": ("numpy", "pandas", "microunit", "PyYAML", "pyarrow"),
+        "acs_housing_universe_2024": (
+            "numpy",
+            "pandas",
+            "microunit",
+            "PyYAML",
+            "pyarrow",
+        ),
         "assembly_prepare": (
             "numpy",
             "pandas",
@@ -42,7 +50,7 @@ STAGE_DEPENDENCIES = MappingProxyType(
         # a pinned field of every admitted closure contract, so engine drift
         # refuses there. Putting it here instead would make a secrets-free lane
         # without the engine extra unable to hash any stage of this graph.
-        "asec_prepared_v2": (
+        "asec_prepared_v3": (
             "numpy",
             "pandas",
             "microunit",
@@ -63,11 +71,15 @@ _CODECS = MappingProxyType(
             "acs_codec_2024",
             "microcosm.build.us_runtime.graph_sources:load_graph_acs",
         ),
-        "us-asec-prepared-current-money-v2": (
-            "asec_prepared_v2",
+        "us-asec-prepared-current-money-v3": (
+            "asec_prepared_v3",
             "microcosm.build.us_runtime.asec_prepared_source:load_graph_asec_prepared",
         ),
         "raw-bytes-v1": ("geography", "microcosm.graph.codecs:load_raw_bytes"),
+        "us-acs-housing-universe-2024-v1": (
+            "acs_housing_universe_2024",
+            "microcosm.build.us_runtime.acs_housing_universe_source:load_graph_acs_housing_universe",
+        ),
     }
 )
 _RESOURCE_CALLS = frozenset(
@@ -317,8 +329,9 @@ def validate_source_codecs(codecs) -> None:
         loaders = (
             codecs.get("us-asec-raw-stage-v4"),
             codecs.get("us-acs-native-2024-v1"),
-            codecs.get("us-asec-prepared-current-money-v2"),
+            codecs.get("us-asec-prepared-current-money-v3"),
             codecs.get("raw-bytes-v1"),
+            codecs.get("us-acs-housing-universe-2024-v1"),
         )
     except Exception as error:
         raise ValueError("US source codec loader missing.") from error
@@ -370,11 +383,18 @@ def implementation_manifest(stage: str) -> dict:
                 "pandas.future.infer_string": pd.get_option("future.infer_string"),
                 "acs_reader_resolved_string_storage": pd.StringDtype().storage,
             }
-            if stage in {"acs_codec_2024", "assembly_prepare"}
+            if stage
+            in {"acs_codec_2024", "assembly_prepare", "acs_housing_universe_2024"}
             else {}
         ),
         "codecs": {},
     }
+    if stage in {"asec_prepared_v3", "acs_housing_universe_2024"}:
+        # Both stages parse pinned official CSV members with the stdlib reader.
+        # csv's field size limit is process state, so it belongs in the identity
+        # of each stage that reads under it. No other stage binds it, so no
+        # existing stage identity moves.
+        manifest["runtime_options"]["csv.field_size_limit"] = csv.field_size_limit()
     if stage == "assembly_prepare":
         for name, (codec_stage, loader) in _CODECS.items():
             if codec_stage in ("asec_codec_v4", "acs_codec_2024"):
@@ -386,7 +406,8 @@ def implementation_manifest(stage: str) -> dict:
         "asec_codec_v4",
         "acs_codec_2024",
         "geography",
-        "asec_prepared_v2",
+        "asec_prepared_v3",
+        "acs_housing_universe_2024",
     ):
         manifest["codecs"] = {
             name: {"loader": loader}

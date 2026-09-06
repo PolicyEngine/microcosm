@@ -47,6 +47,10 @@ _HEADER_KEYS = frozenset(
 )
 
 
+ACCEPTED_PREPARED_RECEIPT_SCHEMAS = ("microcosm.us.asec_prepared_receipt.v3",)
+ACCEPTED_PREPARED_SOURCE_KINDS = ("us_asec_prepared_current_money_v3",)
+
+
 @dataclass(frozen=True)
 class BoundHousingUniverse:
     """Immutable native buffers with graph bindings, no full-source authority."""
@@ -78,8 +82,8 @@ def bind_housing_universe(
         )
         binding = prepared_receipt["housing_universe"]
         hu._require(
-            prepared_receipt["schema"] == "microcosm.us.asec_prepared_receipt.v2"
-            and prepared_receipt["source_kind"] == "us_asec_prepared_current_money_v2"
+            prepared_receipt["schema"] in ACCEPTED_PREPARED_RECEIPT_SCHEMAS
+            and prepared_receipt["source_kind"] in ACCEPTED_PREPARED_SOURCE_KINDS
             and prepared_receipt["release_eligible"] is False
             and binding["parent_kind"] == "HousingStatusAttachedAsec"
             and binding["source_period_kind"] == "interview_household_universe"
