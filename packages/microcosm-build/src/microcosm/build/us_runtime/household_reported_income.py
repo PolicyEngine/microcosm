@@ -127,6 +127,17 @@ _ASEC_PRICE_BASIS_RESOURCE = "asec_current_money_price_basis_v1.json"
 _ASEC_PRICE_BASIS_SHA256 = (
     "88cec207a3c73e5de93d677acf16e8db9ddae9761c644c06da92cacf0feb3f63"
 )
+#: The Census workbook's own bytes, as recorded in the packaged resource's
+#: immutable ``workbook`` object -- distinct from ``_ASEC_PRICE_BASIS_SHA256``,
+#: which authenticates the packaged JSON itself, not the workbook it restates.
+_ASEC_PRICE_BASIS_WORKBOOK_URL = (
+    "https://www2.census.gov/programs-surveys/demo/tables/p60/"
+    "286/annual-index-value_annual-percent-change.xls"
+)
+_ASEC_PRICE_BASIS_WORKBOOK_SHA256 = (
+    "8a5ef078b02c48c9e6414f3ca0cbdfe4a013ce6acf1a3fda42e6bd9c7da49e48"
+)
+_ASEC_PRICE_BASIS_WORKBOOK_SIZE_BYTES = 41_472
 ASEC_HTOTVAL_MINIMUM = -999_999
 ASEC_HTOTVAL_MAXIMUM = 99_999_999
 ASEC_INCOME_YEARS = (2022, 2023, 2024)
@@ -356,14 +367,16 @@ ASEC_HTOTVAL_ORIGIN = ReportedIncomeOrigin(
         MappingProxyType(
             {
                 "document": (
-                    "Packaged microcosm resource asec_current_money_price_"
-                    "basis_v1.json (census_ccpiu_annual_2024)"
+                    "Census P60-286 annual index value / annual percent "
+                    "change workbook, restated by packaged microcosm "
+                    "resource asec_current_money_price_basis_v1.json "
+                    "(census_ccpiu_annual_2024)"
                 ),
-                "url": (
-                    "https://www2.census.gov/programs-surveys/demo/tables/p60/"
-                    "286/annual-index-value_annual-percent-change.xls"
-                ),
-                "sha256": _ASEC_PRICE_BASIS_SHA256,
+                "url": _ASEC_PRICE_BASIS_WORKBOOK_URL,
+                "sha256": _ASEC_PRICE_BASIS_WORKBOOK_SHA256,
+                "size_bytes": _ASEC_PRICE_BASIS_WORKBOOK_SIZE_BYTES,
+                "resource": _ASEC_PRICE_BASIS_RESOURCE,
+                "resource_sha256": _ASEC_PRICE_BASIS_SHA256,
                 "establishes": "the authoritative ASEC current-money restatement",
             }
         ),

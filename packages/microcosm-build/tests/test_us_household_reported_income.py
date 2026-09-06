@@ -7,6 +7,7 @@ tiny and explicit; no genuine Census microdata is read.
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -579,6 +580,38 @@ def test_asec_vintage_pins_match_the_packaged_current_money_authority():
     assert {
         vintage["universe_as_printed"] for vintage in fields["PTOTVAL"]["vintages"]
     } == {"All Persons aged 15+"}
+
+
+def test_asec_price_basis_authority_pairs_url_with_workbook_digest():
+    """The final ASEC authority entry authenticates the bytes its URL serves.
+
+    A downstream mirror that verifies this entry by downloading its `url`
+    must land on the entry's `sha256`. The packaged JSON resource that
+    restates the workbook has a different digest and stays explicitly and
+    separately labelled, so neither identity is lost.
+    """
+
+    resource_path = (
+        Path(acs_pums.__file__).parent / "asec_current_money_price_basis_v1.json"
+    )
+    basis = json.loads(resource_path.read_text())
+    workbook = basis["workbook"]
+    resource_sha256 = hashlib.sha256(resource_path.read_bytes()).hexdigest()
+
+    authority = reported.ASEC_HTOTVAL_ORIGIN.as_json()["authority"]
+    workbook_entries = [item for item in authority if item["url"] == workbook["url"]]
+    assert len(workbook_entries) == 1
+    entry = workbook_entries[0]
+
+    # The URL is paired with the bytes that URL actually serves...
+    assert entry["sha256"] == workbook["sha256"]
+    assert entry["size_bytes"] == workbook["size_bytes"]
+    # ...which is a different digest from the packaged JSON resource...
+    assert entry["sha256"] != resource_sha256
+    # ...and that packaged resource keeps its own identity, explicitly labelled.
+    assert entry["resource"] == "asec_current_money_price_basis_v1.json"
+    assert entry["resource_sha256"] == resource_sha256
+    assert entry["resource_sha256"] != entry["sha256"]
 
 
 def test_acs_dictionary_pin_matches_the_existing_repository_authority():
