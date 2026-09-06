@@ -29,11 +29,17 @@ Other lanes own CD references, housing source authority, dynamics, and the dashb
 
 ## State
 
-- [x] Read AGENTS.md/CLAUDE.md, root integration decision, `R/us-reported-rent-consumer-bridge.md`.
+- [x] Read AGENTS.md/CLAUDE.md, root integration decision, `R/us-reported-rent-consumer-bridge.md`,
+      `R/us-housing-receipt-restoration-source-contract.md`, `docs/us-asec-housing-status.md`,
+      and the frozen `asec_housing_status{,_source}.py` implementations.
 - [x] Recorded K/origin relation; created dependent branch + worktree; synced pinned venv.
+- [x] First exploratory engine probe against installed policyengine-us 1.819.0 confirms:
+      HAP can exceed the SPM unit's own pre-subsidy charge (utility allowance in gross rent),
+      `rent` floors at zero, each SPM unit in one household independently draws the
+      household's full payment standard, and the capped SPM valuation differs from HAP.
 - [ ] Consumer module + interpretation contract.
-- [ ] Engine probes on invented households.
-- [ ] Tests.
+- [ ] Engine probes on invented households (committed tests + preserved R driver).
+- [ ] Consumer tests.
 - [ ] SIPP December unassisted-comparable-rent source projection requirements.
 - [ ] `R/us-housing-consumer-REPORT.md` / `.json` with tests, JUnit, logs.
 
