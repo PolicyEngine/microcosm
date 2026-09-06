@@ -47,13 +47,18 @@ kernels rather than inferred from roster order. `engine_current_money` may name
 only `cps_carried_current`, and `reported_income` may name only `create` and
 `select_households`, so an accounting node that consumed the engine is refused
 by name. The earlier "any node with a lower index" shortcut admitted exactly
-that graph. The recorded
-cold call list must be six entries with the prefix create, source preparation,
-select, the remaining three in either engine/accounting order, and leaves before
-engine; the warm phase must call nothing. Fifteen households, fifty-two people
-and twenty-five tax units from three cohorts of five, thirty-three money field
-axes and a twenty-eight column accounting body of ninety-one bytes per row are
-required exactly, and the accounting layout is checked as a contiguous row.
+that graph.
+
+The recorded cold call list must be six entries with the prefix create, source
+preparation, select, the remaining three in either engine/accounting order, and
+leaves before engine; the warm phase must call nothing. Fifteen households,
+fifty-two people and twenty-five tax units from three cohorts of five,
+thirty-three money field axes and a twenty-eight column accounting body of
+ninety-one bytes per row are required exactly, and the accounting layout is
+checked as a contiguous row: contiguous offsets, a supported dtype whose width
+times the person rows is the recorded byte count, distinct names, the six
+declared result columns present, and a total that is the recorded row size times
+the rows.
 
 Direct and graph paths keep separate identities. The housing-universe and
 income-observation payloads are required to be byte-identical across the direct
@@ -91,9 +96,9 @@ implementation manifest must pin that contract file at
 `88cec207a3c73e5de93d677acf16e8db9ddae9761c644c06da92cacf0feb3f63`, and the
 export publishes that digest beside the name. Unlike the two optional digests,
 this binding is required — a run that does not record it cannot publish a price
-basis at all. The unallocated column is a
-signed accounting residual, not an estimate of any income category. No eight
-component ACS completion, prior wages, simulated SSI or TANF input is claimed.
+basis at all. The unallocated column is a signed accounting residual, not an
+estimate of any income category. No eight component ACS completion, prior wages,
+simulated SSI or TANF input is claimed.
 The published quality block carries no score, states `incomplete`, and lists what
 is missing: calibration, fit, holdouts, national totals, a congressional district
 pass, distributions, support and model validation. Engineering completion and
