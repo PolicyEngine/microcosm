@@ -22,7 +22,13 @@ from microcosm.frame import MassChangeRecord
 
 
 def invented_source(
-    tmp_path, monkeypatch, *, change=None, object_block=False, history=False
+    tmp_path,
+    monkeypatch,
+    *,
+    change=None,
+    object_block=False,
+    history=False,
+    after_write=None,
 ):
     """Reuse the real tiny source fixture; enrich only its invented household CSV analogs."""
     pytest.importorskip("microunit")
@@ -66,6 +72,12 @@ def invented_source(
                 table["NOT_TO_BE_UNPICKLED"] = [{"not": "source values"}] * len(table)
                 with pytest.warns(pd.errors.PerformanceWarning):
                     return original(table, path, *args, **kwargs)
+            written = original(table, path, *args, **kwargs)
+            if after_write is not None:
+                # Damage the invented bytes before anything pins their digest,
+                # so the loader meets the corruption instead of a stale hash.
+                after_write(Path(path))
+            return written
         return original(table, path, *args, **kwargs)
 
     with monkeypatch.context() as patch:
@@ -418,3 +430,171 @@ def test_source_reader_and_frame_implementation_drift_invalidate_old_status(
         status.validate()
     monkeypatch.setattr(money_source, "_verification_identity", original)
     status.validate()
+
+
+def _decoyed(table, year):
+    """Put the scope's only real native key last, behind contradictory decoys."""
+    decoys = pd.concat([table] * 3, ignore_index=True)
+    decoys["H_SEQ"] = np.array([91, 92, 93], dtype=np.int64)
+    decoys["HPUBLIC"] = np.array([1, 1, 1], dtype=np.int64)
+    decoys["HLORENT"] = np.array([0, 0, 0], dtype=np.int64)
+    decoys["I_HPUBLI"] = np.array([1, 1, 1], dtype=np.int64)
+    decoys["I_HLOREN"] = np.array([0, 0, 0], dtype=np.int64)
+    return pd.concat([decoys, table], ignore_index=True)
+
+
+def test_exact_native_key_join_ignores_row_order_and_unreferenced_rows(
+    tmp_path, monkeypatch
+):
+    """Every cohort answer must come from H_SEQ, never from a row position."""
+    plain_dir, decoyed_dir = tmp_path / "plain", tmp_path / "decoyed"
+    plain_dir.mkdir()
+    decoyed_dir.mkdir()
+    plain, plain_paths, *_ = invented_source(plain_dir, monkeypatch)
+    expected = source.load_authenticated_housing_status(plain, cohort_paths=plain_paths)
+    loaded, paths, *_ = invented_source(decoyed_dir, monkeypatch, change=_decoyed)
+    status = source.load_authenticated_housing_status(loaded, cohort_paths=paths)
+    # The decoys sit at positions 0-2 and would have produced allocated receipt.
+    for name in housing.RAW_COLUMNS:
+        assert status.array(name).tolist() == expected.array(name).tolist()
+    assert status.array("HPUBLIC").tolist() == [1, 2, 2]
+    assert status.array("I_HPUBLI").tolist() == [0, 0, 0]
+    assert status.array("status").tolist() == [1, 1, 2]
+    for row in status.header_data["source"]["joins"]:
+        assert row["source_rows"] == 4
+        assert row["joined_rows"] == 1
+        assert row["unreferenced_source_rows"] == 3
+
+
+def test_duplicate_cohort_native_keys_refuse_in_both_layers(tmp_path, monkeypatch):
+    """The reviewed HU adapter refuses first; housing must not depend on that."""
+    upstream = tmp_path / "upstream"
+    upstream.mkdir()
+    with pytest.raises(ValueError, match="repeats H_SEQ"):
+        invented_source(
+            upstream,
+            monkeypatch,
+            change=lambda t, y: pd.concat([t, t], ignore_index=True),
+        )
+    clean = tmp_path / "housing"
+    clean.mkdir()
+    loaded, paths, *_ = invented_source(clean, monkeypatch)
+    original = source._read_cohort
+    monkeypatch.setattr(
+        source,
+        "_read_cohort",
+        lambda staged: pd.concat([original(staged)] * 2, ignore_index=True),
+    )
+    with pytest.raises(housing.HousingStatusRefusalError, match="NATIVE_KEY"):
+        source.load_authenticated_housing_status(loaded, cohort_paths=paths)
+
+
+def test_cohort_missing_a_scope_household_refuses_incomplete_coverage(
+    tmp_path, monkeypatch
+):
+    """The sealed scope must be covered exactly; a dropped key cannot be skipped."""
+    loaded, paths, *_ = invented_source(tmp_path, monkeypatch)
+    original = source._read_cohort
+
+    def drop_the_scope_key(staged):
+        raw = original(staged)
+        return raw.assign(H_SEQ=raw.H_SEQ.to_numpy() + 100)
+
+    monkeypatch.setattr(source, "_read_cohort", drop_the_scope_key)
+    with pytest.raises(
+        housing.HousingStatusRefusalError, match="SOURCE_KEY_COVERAGE"
+    ):
+        source.load_authenticated_housing_status(loaded, cohort_paths=paths)
+
+
+def test_cohort_missing_a_required_answer_column_refuses(tmp_path, monkeypatch):
+    loaded, paths, *_ = invented_source(
+        tmp_path, monkeypatch, change=lambda t, y: t.drop(columns=["HLORENT"])
+    )
+    with pytest.raises(
+        housing.HousingStatusRefusalError, match="SOURCE_CONTRACT_REFUSAL"
+    ):
+        source.load_authenticated_housing_status(loaded, cohort_paths=paths)
+
+
+def test_external_link_value_storage_refuses_before_reading_any_answer(
+    tmp_path, monkeypatch
+):
+    """Selected values must live in the verified file, not behind a link out of it."""
+    h5py = pytest.importorskip("h5py")
+    loaded, paths, *_ = invented_source(tmp_path, monkeypatch)
+    original = source._read_cohort
+    relinked = tmp_path / "relinked"
+    relinked.mkdir()
+
+    def read_an_externally_linked_copy(staged):
+        # The staged bytes already passed hash and file-identity checks; this
+        # isolates the storage-shape refusal the reader owes the housing loader.
+        copy = relinked / Path(staged).name
+        copy.write_bytes(Path(staged).read_bytes())
+        with h5py.File(copy, "r+") as handle:
+            group = handle["household"]
+            name = next(
+                key
+                for key in group
+                if key.endswith("_values") and group[key].dtype == np.dtype("<i8")
+            )
+            values = group[name][()]
+            del group[name]
+            elsewhere = relinked / f"values-outside-{copy.stem}.h5"
+            with h5py.File(elsewhere, "w") as target:
+                target.create_dataset("values", data=values)
+            group[name] = h5py.ExternalLink(str(elsewhere), "values")
+        with h5py.File(copy, "r") as handle:
+            assert not isinstance(
+                handle["household"].get(name, getlink=True), h5py.HardLink
+            )
+        return original(copy)
+
+    monkeypatch.setattr(source, "_read_cohort", read_an_externally_linked_copy)
+    with pytest.raises(
+        housing.HousingStatusRefusalError, match="SOURCE_CONTRACT_REFUSAL"
+    ):
+        source.load_authenticated_housing_status(loaded, cohort_paths=paths)
+
+
+def test_housing_load_never_opens_a_genuine_storage_path(tmp_path, monkeypatch):
+    """This suite is invented-only; a genuine cohort read would fail the test."""
+    loaded, paths, *_ = invented_source(tmp_path, monkeypatch)
+    opened = []
+    real_open = Path.open
+
+    def record_and_refuse_genuine(self, *args, **kwargs):
+        resolved = str(Path(self).resolve())
+        opened.append(resolved)
+        assert "policyengine-us-data" not in resolved, resolved
+        assert "/storage/census_cps_" not in resolved, resolved
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", record_and_refuse_genuine)
+    status = source.load_authenticated_housing_status(loaded, cohort_paths=paths)
+    monkeypatch.undo()
+    assert status.array("status").tolist() == [1, 1, 2]
+    assert any(name in path for path in opened for name in ("invented-cohort-",))
+
+
+def test_loaded_modules_are_this_worktree_bytes(tmp_path, monkeypatch):
+    """Implementation identity must describe the checkout actually under test."""
+    root = Path(source.__file__).resolve().parents[6]
+    assert (root / ".git").exists(), root
+    for module in (housing, source, money_source, units, reader):
+        path = Path(module.__file__).resolve()
+        assert path.is_relative_to(root), path
+    package = Path(housing.__file__).resolve().parent
+    loaded, paths, *_ = invented_source(tmp_path, monkeypatch)
+    status = source.load_authenticated_housing_status(loaded, cohort_paths=paths)
+    implementation = status.header_data["implementation"]
+    for name, digest in implementation["modules"].items():
+        actual = hashlib.sha256((package / name).read_bytes()).hexdigest()
+        assert digest == actual, name
+    assert (
+        implementation["definition_sha256"] == housing._definition_identity()
+    )
+    assert hashlib.sha256(
+        (package / housing.AUTHORITY_RESOURCE).read_bytes()
+    ).hexdigest() == housing.AUTHORITY_SHA256
