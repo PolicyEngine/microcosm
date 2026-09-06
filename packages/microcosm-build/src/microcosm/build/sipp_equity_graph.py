@@ -41,6 +41,7 @@ from microcosm.graph import (
     load_source,
     source_hash,
 )
+from microcosm.graph.codecs import SOURCE_CODECS
 from microcosm.graph.canonical import canonical_json, sha256_domain
 from microcosm.graph.store import ContentStore
 
@@ -80,6 +81,7 @@ DRAW_NODE = "sipp.equity.draw"
 DONOR_SUPPORT_TYPE = ArtifactType("microcosm.build.sipp_equity_support", 1)
 _SUPPORT_MAX_BYTES = 64 * 1024
 _SCRATCH_DIRNAME = "readback-scratch"
+RANDOM_STREAM = ("sha256-u53-v1", "sipp-nominal-equity-dec2022-v1", 0, 0)
 _STORE_MEMBERS = ("objects", "tmp")
 
 
@@ -357,6 +359,10 @@ def load_sipp_equity_donor_frame(
     return _donor_frame(admitted, coverage, admission, contract, result)
 
 
+SOURCE_CODECS.register(DONOR_CODEC, load_sipp_equity_donor_frame)
+"""Production registration: the executor resolves codec availability here."""
+
+
 def register_codecs(registry, *, contract=None) -> None:
     """Register this consumer's Frame codec on a caller-owned registry."""
     if contract is None:
@@ -499,6 +505,10 @@ class SippRecipientRosterKernel(KernelBase):
             supplied.to_numpy().astype(np.int64), sizes
         ):
             raise EquityGraphError("RECIPIENT_SIZE_CONFLICT")
+        # CREATE owns exactly its declared columns: a supplied, agreeing size
+        # claim is checked and then dropped, never carried as a second column.
+        if supplied is not None:
+            household = household.drop(columns=[contract.predictor["name"]])
         household = household.assign(**{roster: sizes})
         rebuilt = Frame(
             {"person": person, "household": household},
@@ -674,7 +684,7 @@ def build_sipp_equity_graph(
         artifact_inputs=(
             ArtifactInput("model", FIT_NODE, "model", graph_models.QRF_MODEL_TYPE),
         ),
-        params={"random_stream": "sipp-equity-dec2022/1", "period": period},
+        params={"random_stream": RANDOM_STREAM, "period": period},
     )
     return Graph(
         country="us",
