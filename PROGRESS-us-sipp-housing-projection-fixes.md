@@ -13,8 +13,10 @@ source extraction, no fit, no transfer, no publication, no push.
 
 ## State
 
-S1–S6 implemented; tests and docs updated. Remaining: final verification run
-with saved logs/JUnit, and the report.
+Complete and root-reviewable. S1–S6 closed, verified, documented. Nothing was
+pushed and no PR exists; no genuine extraction was run and no SIPP byte was
+opened. The report is `us-sipp-housing-projection-fixes-REPORT.md`/`.json` under
+`/Users/maxghenis/architecture-reviews/microcosm-20260904/`.
 
 ## Done
 
@@ -64,6 +66,27 @@ with saved logs/JUnit, and the report.
   admissions now refuse, the expected blank stays admitted, and 40 SSUIDs
   labelled `first_32` refuse with `SELECTION_EXCEEDS_FIRST_32`.
 
-## Next
+## Verification
 
-- Final narrow verification run with saved logs and JUnit, then REPORT.md/.json.
+- 275 passed across the four SIPP files (240 before; the housing file went from
+  70 to 105 tests). JUnit and logs under
+  `us-sipp-housing-projection-fixes-work/`.
+- `tools/ci_test_groups.py --verify` = `verification=ok`; `ruff check` clean over
+  `packages/`, `docs/`, `tools/` and both new proposal scripts.
+- The proposal version 2 self-check passes every assertion, including a
+  continuity refusal that leaves the output directory empty and an
+  `OUTPUT_EXISTS` refusal reached before a nonexistent parent is touched.
+- Every module in the frozen producer's `_contract()` binding closure is
+  byte-identical to the reviewed head, so already-published vehicle-equity
+  receipts keep their producer binding.
+- 55 loaded `microcosm.*` module files, all inside this worktree and all
+  matching `HEAD`.
+
+## Next (for root, not this lane)
+
+- Review this lane, then run
+  `us-sipp-housing-projection-extract-v2.py --execute` for `first_32_ssuids`.
+- Read the topcode-marker state counts in that output **before** interpreting
+  any marker total; the real incidence of zero utilities markers is unknown.
+- Only after reading that receipt and diagnostics, consider the gated
+  `all_ssuids` rung, whose approval flag is unchanged.
