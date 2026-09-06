@@ -39,9 +39,52 @@ lineage reference.
   per lane and the root `PROGRESS.md` is an unrelated F1 journal that a previous
   lane had already overwritten once; it is not touched here.
 
+- **Verified the dictionary independently.** The cached PDF hashes to the pinned
+  `0f1c5fbd…6db894f` and holds 3,371 pages. For each of the nine fields the page
+  carrying its own `Name:` line was located from the extractor's page list and
+  the printed number read off the foot of that same page, never inferred from a
+  text-stream boundary. All five value fields agree with the transcription:
+  `TAGE_EHC` 797 flag `NA`, `RHNUMPER` 891 flag `AHNUMPER`, `RHNUMU18` 892 flag
+  `AHNUMU18`, `THTOTINC` 2866 flag `AHTOTINC`, `TEHC_ST` 3311 flag `AEHC_ST`.
+  The four `A*` flags have no `Name:` entry of their own, as claimed.
+  `TEHC_ST`'s published list is 53 codes across printed pages 3311-3312, and the
+  transcribed `_STATE_CODES`/`_STATE_LABELS` pair equals it exactly, in order.
+  51 are a state or DC; `03 07 14 43 52 57 58 59` are not published at all.
+  The secondary locators are right too: `RHNUMPERWT2` 899, `RHNUMU18WT2` 900,
+  `THTOTINCT2` 2867, `THCYINCPOV` 2880 flag `AHCYINCPOV`, `TEHC_METRO` 3301.
+  Cross-checking all 24 recipe entries against the PDF found **zero** mismatches
+  of page, printed page, status flag, universe, length or file class; the only
+  entries without a page are the five identity columns the recipe declares as
+  `kind: identity` with authority delegated to the frozen producer.
+- **Stripped the formatter sweep.** `7b5589f0` had carried thirty-seven
+  unrelated files. Parsing each at the base and at `f20e413a` gave an identical
+  AST in all thirty-seven, so they were reflow only and were restored to the
+  accepted base. The increment's diff is now the nine files it means to change.
+- **Verified the frozen producer.** `sipp_december_source.py` and
+  `sipp_measurements.py` hash identically at `5534a0fc` and at this head.
+- **Verified the version 2 continuity pins by running the base.** The accepted
+  base implementation was extracted and run over the same ladder fixture: it
+  produces `66b03416…` and `d6fe1555…`, exactly the constants the test pins, and
+  the same per-household exclusions as this head. With the nine columns absent
+  from the rows entirely, both digests and every exclusion are unchanged again.
+- **Fixed a real gap in the published contract.** `predictor_complete` was
+  emitted but absent from the declared status order, and `DISAGREEMENT_STATES`
+  and `INCOME_SIGN_STATES` were never published at all (the latter was
+  referenced nowhere). All are now declared in the diagnostics and the recipe,
+  with a test that drives every state and asserts each counter's keys are a
+  subset of its declared vocabulary. `RECIPE_SHA256` moved to `66ed8871…`.
+- **Probed the behaviour adversarially.** Out-of-domain and sentinel ages give
+  coverage `none` and no maximum and no bound; partial coverage gives no maximum
+  and a real bound with distinct reasons; two members at 90 give a maximum of 90
+  recorded as the domain maximum; negative and published-minimum incomes are
+  preserved signed; publisher-vs-roster disagreement is reported and corrected
+  in neither direction; `TEHC_ST` 60 against 61 is a copy conflict.
+- Suite at this head: **172 passed**. `tools/ci_test_groups.py --verify` is ok.
+  `ruff check` passes on the changed files and on the restored ones.
+
 ## Next
 
-- Verify the inherited dictionary locators directly against the cached PDF.
-- Strip the thirty-eight formatter-only files that commit `7b5589f0` swept in.
-- Verify the frozen sixteen-field producer is byte-identical to the base.
-- Re-run the suite and the replay contracts at this head.
+- Nothing outstanding in this lane. The next increment is the donor-table
+  preparation contract in `R/us-sipp-housing-predictor-projection-REPORT.md`,
+  which must run against the combined ASEC + ACS survey population, not an
+  ASEC-only route.
