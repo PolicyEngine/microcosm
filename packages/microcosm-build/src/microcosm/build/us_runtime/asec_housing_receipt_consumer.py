@@ -301,6 +301,16 @@ def _bit_counts(values: np.ndarray, codebook: Any, reason: str) -> dict[str, int
     return counts
 
 
+def _bit_domain(values: np.ndarray, codebook: Any, reason: str) -> None:
+    """Refuse any set bit the carried codebook does not name."""
+    _require(type(codebook) is dict and len(codebook) > 0, reason)
+    allowed = 0
+    for name, bit in sorted(codebook.items(), key=_by_code):
+        _require(type(name) is str and type(bit) is int and bit > 0, reason)
+        allowed |= bit
+    _require(bool(((values.astype("int64") & (~allowed)) == 0).all()), reason)
+
+
 def _int64_axis(values: Any, reason: str) -> np.ndarray:
     _require(type(values) is np.ndarray, reason)
     _require(values.dtype == np.dtype("int64") and values.ndim == 1, reason)
@@ -532,7 +542,13 @@ def interpret_household_receipt(
     )
     conflicts = columns["conflicts"]
     _require(bool(((conflicts > 0) == (status == 4)).all()), "CONFLICT_DISAGREES")
+    _bit_domain(conflicts, codebook.get("conflict_bits"), "CONFLICT_BIT_DOMAIN")
     unknown_reasons = columns["unknown_reasons"]
+    _bit_domain(
+        unknown_reasons,
+        codebook.get("unknown_reason_bits"),
+        "UNKNOWN_REASON_BIT_DOMAIN",
+    )
     _require(
         bool((unknown_reasons[receipt_valid == 1] == 0).all()),
         "UNKNOWN_REASON_ON_VALID_RECEIPT",

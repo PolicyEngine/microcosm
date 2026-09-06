@@ -238,6 +238,16 @@ class TestHouseholdInterpretation:
         ):
             consumer.interpret_household_receipt(projection)
 
+    def test_a_bit_the_carried_codebook_never_names_is_refused(self):
+        projection = consumer.receipt_columns_from_status(status_for([CONFLICT]))
+        conflicts = projection["columns"]["conflicts"].copy()
+        conflicts[0] = 32
+        projection["columns"]["conflicts"] = conflicts
+        with pytest.raises(
+            consumer.HousingReceiptRefusalError, match="CONFLICT_BIT_DOMAIN"
+        ):
+            consumer.interpret_household_receipt(projection)
+
     def test_a_renumbered_status_codebook_is_refused(self):
         projection = consumer.receipt_columns_from_status(status_for([NONRECEIPT]))
         codebook = dict(projection["codebook"])
