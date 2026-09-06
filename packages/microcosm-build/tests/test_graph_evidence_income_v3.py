@@ -44,8 +44,15 @@ RECEIPT_METADATA = {
     IDS[0]: ["capabilities", "implementation", "prepared"],
     IDS[1]: ["capabilities", "implementation", "mass"],
     IDS[2]: ["capabilities", "contract", "implementation"],
-    IDS[3]: ["capabilities", "engine", "implementation"],
-    IDS[4]: ["accounting", "capabilities", "implementation"],
+    IDS[3]: ["capabilities", "engine", "evaluation_sha256", "implementation"],
+    IDS[4]: ["accounting_sha256", "arithmetic_order", "capabilities", "implementation"],
+}
+# The invented stand-in for the recorded implementation manifest. Only the one
+# resource digest the exporter binds the published price basis to is meaningful.
+INVENTED_IMPLEMENTATION = {
+    "schema": "microcosm.us.implementation-manifest.v1",
+    "stage": "asec_prepared_v3",
+    "resources": {income.PRICE_BASIS_RESOURCE: income.PRICE_BASIS_RESOURCE_SHA256},
 }
 LINEAGE = [
     "selected_money_sha256",
@@ -95,6 +102,22 @@ def canonical(value):
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode()
+
+
+def node_receipt_metadata(node_id):
+    """Invented metadata whose digest keys match the invented output bytes."""
+    values = {name: 1 for name in RECEIPT_METADATA[node_id]}
+    if "implementation" in values:
+        values["implementation"] = copy.deepcopy(INVENTED_IMPLEMENTATION)
+    if "evaluation_sha256" in values:
+        values["evaluation_sha256"] = digest(
+            SHARED_BYTES[(IDS[3], "engine_evaluation")]
+        )
+    if "accounting_sha256" in values:
+        values["accounting_sha256"] = digest((IDS[4] + "reported_income").encode())
+    if "arithmetic_order" in values:
+        values["arithmetic_order"] = income.ARITHMETIC_ORDER
+    return values
 
 
 def invented(tmp_path):
@@ -203,7 +226,7 @@ def invented(tmp_path):
             receipt={
                 "phase": income.NODE_PHASE,
                 "release_eligible": False,
-                **{k: 1 for k in RECEIPT_METADATA[node_id]},
+                **node_receipt_metadata(node_id),
             },
             seed=0,
             typed_artifacts={"inputs": inputs, "outputs": typed},
@@ -549,7 +572,15 @@ def test_income_accounting_annotation_and_incomplete_quality(tmp_path):
     )
     accounting = graph["reported_income"]
     assert accounting["basis"]["measure"] == "observed_reported_source_income"
-    assert accounting["basis"]["price_target"] == "cpi_u_rs_2024_price_target_year"
+    # The kernel converts with census_ccpiu_annual_2024, the Census P60 annual
+    # chained-CPI-U index. CPI-U-RS is a different series and must not appear.
+    assert accounting["basis"]["price_basis"] == "census_ccpiu_annual_2024"
+    assert accounting["basis"]["price_target_year"] == "2024"
+    assert (
+        accounting["basis"]["price_basis_resource_sha256"]
+        == income.PRICE_BASIS_RESOURCE_SHA256
+    )
+    assert "cpi_u_rs" not in canonical(graph).decode().lower()
     assert (
         accounting["basis"]["residual_meaning"]
         == "signed_source_accounting_residual_not_acs_other_income"

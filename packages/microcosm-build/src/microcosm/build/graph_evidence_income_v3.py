@@ -126,6 +126,19 @@ DETERMINISM = (
     "deterministic",
 )
 SEED_SOURCE = ("none", "param", "none", "none", "none")
+# Which earlier node each node's typed inputs may actually name, read from the
+# five kernels at head 9ece4cad rather than inferred from roster order: select
+# consumes create; the carried-leaf node consumes create and select; the engine
+# consumes only the carried leaves; accounting consumes create and select and
+# never the engine. The reviewed graph's own inputs are exactly this roster, so
+# "accounting never consumes the engine" is enforced here, not merely observed.
+INPUT_PRODUCERS = (
+    (),
+    (IDS[0],),
+    (IDS[0], IDS[1]),
+    (IDS[2],),
+    (IDS[0], IDS[1]),
+)
 
 SOURCES = _base.SOURCES
 ROOTS = _base.ROOTS
@@ -144,6 +157,23 @@ ACCOUNTING_DTYPE_BYTES = {"<f8": 8, "<i8": 8, "u1": 1}
 ARITHMETIC_ORDER = (
     "W=WSAL_VAL;E=SEMP_VAL+FRSE_VAL;S=SSI_VAL;P=PAW_VAL_2024_price;"
     "T=PTOTVAL;U=T-(((W+E)+S)+P)"
+)
+# The price basis is the kernel's own contract, never an exporter assertion. The
+# converted amounts come from us_runtime/asec_current_money_price_basis_v1.json,
+# whose "price_basis" is census_ccpiu_annual_2024 with cells 163.6, 170.0 and
+# 174.4 from the Census P60 annual index workbook; asec_income_observations_v1
+# states the same valuation, "2024 annual average C-CPI-U dollars
+# (census_ccpiu_annual_2024)". CPI-U-RS is a different series and is not used
+# here. The name is published only when the accounting node's own recorded
+# implementation manifest pins that contract file by digest, so the published
+# string is bound to the bytes the conversion actually read.
+PRICE_BASIS = "census_ccpiu_annual_2024"
+PRICE_TARGET_YEAR = "2024"
+PRICE_BASIS_RESOURCE = (
+    "microcosm.build/us_runtime/asec_current_money_price_basis_v1.json"
+)
+PRICE_BASIS_RESOURCE_SHA256 = (
+    "88cec207a3c73e5de93d677acf16e8db9ddae9761c644c06da92cacf0feb3f63"
 )
 ZERO_CLASSES = (
     "observed_amount",
@@ -412,10 +442,11 @@ def _nodes(manifest: dict, pins: IncomeV3Pins, *, warm: bool) -> list[dict]:
             require(artifact["key"] not in output_keys, "Duplicate typed output key.")
             output_keys.add(artifact["key"])
         for name, artifact in typed["inputs"].items():
-            producer = raw_nodes.get(artifact.get("producer"))
+            producer_id = artifact.get("producer")
+            producer = raw_nodes.get(producer_id)
             require(
-                producer is not None and IDS.index(artifact["producer"]) < i,
-                "Missing, cyclic or unreached typed producer.",
+                producer is not None and producer_id in INPUT_PRODUCERS[i],
+                "Typed input names a producer outside this node's reviewed roster.",
             )
             source = producer["typed_artifacts"]["outputs"].get(
                 artifact.get("artifact")
@@ -620,10 +651,12 @@ def _reported_summary(reported: dict) -> dict:
         basis={
             "measure": "observed_reported_source_income",
             "nominal_source": "asec_reported_nominal_amounts",
-            "price_target": "cpi_u_rs_2024_price_target_year",
+            "price_basis": PRICE_BASIS,
+            "price_target_year": PRICE_TARGET_YEAR,
+            "price_basis_resource_sha256": PRICE_BASIS_RESOURCE_SHA256,
             "reference_period": "interview_household_one_year_after_income_year",
             "residual_meaning": "signed_source_accounting_residual_not_acs_other_income",
-            "note": "Reported amounts as recorded by the source, restated to a 2024 price target. The unallocated column is a signed accounting residual, not an estimate of any income category.",
+            "note": "Reported amounts as recorded by the source, restated to 2024 annual average C-CPI-U dollars on the census_ccpiu_annual_2024 basis that the accounting node records. The unallocated column is a signed accounting residual, not an estimate of any income category.",
         },
         not_claimed=list(NOT_CLAIMED),
     )
@@ -855,6 +888,16 @@ def _graph_result(
         == direct["selected_hu_carried_cells_sha256"],
         "Graph accounting body or housing cells differ from the direct path.",
     )
+    # The published accounting block comes from the direct receipt, so each graph
+    # phase must satisfy the same summary contract and record the same summary:
+    # signed-value counts and zero-origin class counts included, not only the
+    # three digest maps the producer attested.
+    require(
+        _reported_summary(recorded["reported_income"])
+        == _reported_summary(direct["reported_income"])
+        and recorded["reported_income"] == direct["reported_income"],
+        "Graph reported income summary differs from the direct path.",
+    )
     divergence = recorded["reported_income_header_divergence_from_direct"]
     require(
         isinstance(divergence, list)
@@ -871,6 +914,43 @@ def _graph_result(
     bounded_tree(recorded["hu_typed_descriptor"])
     bounded_tree(recorded["income_typed_descriptors"])
     return recorded
+
+
+def _node_receipt_bindings(manifest: dict, recorded: dict, engine_output: str) -> None:
+    """Bind what the two producing node receipts record to the recorded outputs.
+
+    ``evaluation_sha256`` and ``accounting_sha256`` are pin-approved optional
+    metadata, so each is required to agree only when the run records it; the
+    recorded result digests they are compared against are themselves already
+    bound to the named output bytes. The price-basis contract digest is not
+    optional: this export publishes a price basis name, and an unbound name
+    would be an exporter assertion rather than recorded evidence. Both graph
+    phases are checked, and the direct path inherits the binding because its
+    accounting summary and body must equal the graph's.
+    """
+    engine = manifest["nodes"][IDS[3]]["receipt"]
+    if "evaluation_sha256" in engine:
+        require(
+            engine["evaluation_sha256"]
+            == recorded["evaluation_sha256"]
+            == engine_output,
+            "Engine node receipt evaluation digest differs from the recorded output.",
+        )
+    accounting = manifest["nodes"][IDS[4]]["receipt"]
+    if "accounting_sha256" in accounting:
+        require(
+            accounting["accounting_sha256"]
+            == recorded["reported_income_payload_sha256"],
+            "Accounting node receipt digest differs from the recorded payload.",
+        )
+    implementation = accounting.get("implementation")
+    require(
+        isinstance(implementation, dict)
+        and isinstance(implementation.get("resources"), dict)
+        and implementation["resources"].get(PRICE_BASIS_RESOURCE)
+        == PRICE_BASIS_RESOURCE_SHA256,
+        "Accounting node does not record the published price basis contract.",
+    )
 
 
 def _export(
@@ -1145,6 +1225,11 @@ def _export(
             "Computation content key and execution byte digest are distinct identities.",
         )
         nodes = _nodes(manifest, pins, warm=warm)
+        _node_receipt_bindings(
+            manifest,
+            recorded,
+            output_records[f"{mode}-{IDS[3]}-engine_evaluation.bin"]["sha256"],
+        )
         require(
             recorded["nodes"] == {n["id"]: n["node_key"] for n in nodes}
             and recorded["artifacts"]
