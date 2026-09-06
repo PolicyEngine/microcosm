@@ -1655,18 +1655,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         written = canonical_bytes(summary.payload()) + b"\n"
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
-            with args.output.open("xb") as stream:
-                stream.write(written)
-    except FileExistsError:
-        # Explicitly, and before the broader OSError arm: refusing to replace an
-        # aggregate record is a deliberate outcome of this tool, not an
-        # incidental filesystem error.
-        print(
-            f"Reference projection failed: {args.output} already exists and is "
-            "not replaced; name a fresh --output path.",
-            file=sys.stderr,
-        )
-        return 1
+            try:
+                with args.output.open("xb") as stream:
+                    stream.write(written)
+            except FileExistsError:
+                # Handled explicitly, and only around the exclusive create, so
+                # this message can never describe some other FileExistsError.
+                # Refusing to replace an aggregate record is a deliberate
+                # outcome of this tool, not an incidental filesystem error.
+                raise ReferenceProjectionError(
+                    f"{args.output} already exists and is not replaced; name a "
+                    "fresh --output path."
+                ) from None
     except (ReferenceProjectionError, CanonicalJsonError, OSError, ValueError) as error:
         print(f"Reference projection failed: {error}", file=sys.stderr)
         return 1
