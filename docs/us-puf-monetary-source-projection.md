@@ -13,7 +13,7 @@ column carries `target_year_use: refused_pending_independent_growth_decision`.
 
 ## What it produces
 
-`microcosm.us.puf_2015_monetary_source_projection` v1: one opaque,
+`microcosm.us.puf_2015_monetary_source_projection` v3: one opaque,
 self-describing payload at source-return grain, 207,696 rows in delivered
 main-file order.
 
@@ -22,8 +22,8 @@ main-file order.
 | identity | `RECID` | `int64` |
 | status | `disclosure_aggregate` | `uint8`, derived from `RECID` |
 | status | `demographic_status` | `int8`, **carried from the status artifact** |
-| amounts | the twelve enumerated fields | `int64` whole dollars |
-| amounts | the same twelve, lexically | 13-byte NUL-padded ASCII |
+| amounts | the twelve enumerated fields | `int64` whole dollars on individual returns; the minimum-`int64` out-of-universe sentinel on the four aggregates |
+| amounts | the same twelve, lexically | 13-byte NUL-padded ASCII, the delivered token for every row |
 
 262 bytes a row, so 207,696 rows is 54,416,352 bytes — under the 64 MiB body
 bound, with room for one more column of the same shape and not many more.
@@ -159,9 +159,11 @@ passive loss specifically, not a generic gross loss), `E01100`, `E22320`,
 ## Every delivered record is projected
 
 All 207,696, including the 88,021 with no demographic row and the four
-publisher aggregates. Nothing is filtered. Every derived fact — row count,
-zero, negative and positive census, minimum, maximum and sum — is reported for
-three **disjoint** row classes that must partition the rows exactly once:
+publisher aggregates. Nothing is filtered. Facts are reported for three
+**disjoint** row classes that must partition the rows exactly once — the two
+per-return classes carry the numeric census (row count, zero, negative and
+positive, minimum, maximum and sum), the aggregate class carries token classes
+only:
 
 - `disclosure_aggregate` — the four `RECID`s 999996–999999, which stand for
   1,124 excluded returns each side of an AGI cut. An aggregate is an aggregate
@@ -170,6 +172,78 @@ three **disjoint** row classes that must partition the rows exactly once:
 - `demographic_matched` — non-aggregate rows the demographic file matched.
 - `demographic_unmatched` — non-aggregate rows it did not. Absence of a
   demographic row says nothing about an amount and zeroes nothing.
+
+## The individual-return amount universe
+
+A row is inside the individual-return amount universe **if and only if** its
+authenticated `disclosure_aggregate` flag is 0. The decoded object exposes that
+rule as a read-only `amount_known` mask, derived from the flag on every access.
+Both the mask and decoded typed columns have immutable byte backing, so a
+caller cannot re-enable writing with NumPy's `setflags` or change a disclosure
+flag after obtaining a mask. The header facts carry the
+rule as the declared string `amount_known == (disclosure_aggregate == 0)`.
+
+**Individual returns are unchanged.** Same integer grammar, same twelve-digit
+bound, same width, same empty-token and negative-zero refusals. A fractional
+token on a flag-0 row still refuses with `AMOUNT_TOKEN_GRAMMAR` — the reason
+code the first genuine monetary run produced on `E00200` — and leaves no
+partial artifact.
+
+**The four aggregates leave that universe.** Their typed slots hold
+`AGGREGATE_SENTINEL`, the minimum `int64`, which is unreachable for a token of
+at most twelve digits, so no individual return can hold it and readback can
+assert it exactly. A physical zero is refused there: zero is a delivered value
+in these columns, so a zero in an aggregate slot would invent a known amount.
+
+**The delivered token is the authority for those rows.** Each is validated by a
+second, separately bounded lexical grammar applied only where the flag is 1 and
+never on a flag-0 row: optional leading minus, one or more digits, at most one
+point followed by one or more digits; no plus sign, exponent, whitespace,
+embedded NUL, empty token or negative zero in either spelling; at most twelve
+digits and at most the declared column width. Its refusals carry their own
+`AGGREGATE_TOKEN_*` codes. Integer tokens remain valid on aggregate rows —
+nothing in the audits says an aggregate must be fractional. The token is stored
+exactly as delivered and never parsed to a number, rounded, grown or dropped.
+
+This grammar is an **explicit operational input bound for this pinned
+delivered file**, not a newly discovered IRS specification. The retained
+booklet-derived projection document's bytes are unchanged; the encoded column
+metadata now scopes its integer, whole-dollar semantics to individual returns
+(`amount_units_scope: individual_return_rows_only`) and declares the aggregate
+treatment, sentinel and grammar alongside it. Each column also carries
+`aggregate_token_max_digits` (12), `aggregate_token_max_width` (13), and
+`aggregate_token_grammar_authority`
+(`operational_input_bound_for_pinned_delivery_not_publisher_specification`).
+Readback reconstructs these limits from the authenticated column definition
+and refuses a changed declaration.
+
+**Order of operations.** Amount tokens are collected first, the status
+alignment runs, and only then is each column parsed by universe. No row's
+grammar is chosen before the status artifact has proved which row it is.
+
+**Aggregate diagnostics are token classes, never amounts.** The aggregate row
+class has its own closed fact key set — `rows`, `integer_tokens`,
+`fractional_tokens`, `negative_tokens`, `max_token_width` — with no zero, sign,
+minimum, maximum or sum key, so no header, receipt or summary can spell an
+aggregate amount. The summary kernel reports the per-return negative census for
+the two return classes only (the superseded receipt summed all three, counting
+an aggregate token as a negative return amount) plus the aggregate token
+classes. Exact row/token pairs are available only from
+`PufMonetarySourceProjection.aggregate_lexical_rows()`, a local accessor no
+kernel calls.
+
+**Version 3.** The artifact type, magic line, both kernel refs and the
+implementation-identity magic move to version 3, because a node written against
+the version-2 amount universe must not bind to this kernel. The reader refuses
+the version-1 and version-2 magics by name (`ENVELOPE_SUPERSEDED_MAGIC`)
+instead of reinterpreting them. There is no completed genuine schema-2 monetary
+artifact to migrate — the first genuine run refused before writing one — but
+invented schema-2 artifacts do exist in test evidence, and the failed run and
+the frozen version-2 code remain as historical evidence. Readback branches on
+the flag: flag-0 rows re-parse under the integer grammar and must equal their
+typed value, flag-1 rows validate under the aggregate grammar and must hold the
+sentinel (`READBACK_AGGREGATE_SLOT` otherwise), and a sentinel parked on an
+ordinary row is caught as a lexical disagreement.
 
 ## Bound to the reviewed status artifact
 
@@ -237,9 +311,11 @@ the publisher's wording to reconcile it.
 
 ## Metadata at the consumer boundary
 
-Artifact schema version 2 carries per-column grain, units, period status,
-fitting refusal, unresolved codes, sign evidence and zero semantics in its
-facts. The decoded object exposes the same metadata as an immutable mapping,
+Artifact schema version 3 carries per-column grain, units, unit scope, the
+amount-universe rule, the aggregate treatment, sentinel, grammar and lexical
+authority, period status, fitting refusal, unresolved codes, sign evidence and
+zero semantics in its facts. The decoded object exposes the same metadata as
+an immutable mapping,
 and both graph receipts retain it. Readback reconstructs these declarations
 from the authenticated projection document and refuses altered metadata.
 No fitting consumer is implemented; metadata preserves the required decision
@@ -279,6 +355,19 @@ None of this is done, and none of it is implied by anything above.
    rather than widening the grammar. The twelve-digit bound, the whole-dollar
    grammar and the "no missing sentinel" policy are all propositions a first
    genuine parse can legitimately refuse.
+
+   The first genuine run did refuse: `E00200` with `AMOUNT_TOKEN_GRAMMAR`,
+   after its status phase reproduced the accepted status artifact byte for
+   byte. That immutable failed run stands as evidence and is not re-run to
+   pass here. **The runner has not been amended by this change** and cannot
+   execute against version 3 as written: its roster pins the schema-2 magic
+   and `[type, 2]`, both `@1` kernel refs, the producer and summary
+   implementation hashes, the `puf_monetary_source.py` module digest and the
+   schema-2 `column_metadata` key list, and its fact checks require a
+   `zero + negative + positive == rows` sign census on all three row classes —
+   a check the aggregate class no longer has keys for. Re-pinning those, and
+   adding the aggregate token-class and sentinel checks, is a separate
+   reviewed runner change.
 2. **Donor-to-recipient contract.** Construct the ASEC+ACS survey multispine
    first, prepare its common predictors and gap fills, then attach
    PUF-enriched clones of that combined pool. Survey records supply household
@@ -304,10 +393,10 @@ None of this is done, and none of it is implied by anything above.
    calibration. The monetary metadata vocabulary exists in
    `puf_growth.puf_growth_monetary_metadata`; wiring these columns into it is a
    separate reviewed step.
-7. **Aggregate-record disaggregation.** The four aggregates stay tagged and
-   whole. Turning them into returns is a separate reviewed decision, and the
-   `AGIR1` cutpoints printed on PDF 13 disagree with the disclosure paragraph
-   on PDF 4.
+7. **Aggregate-record disaggregation.** The four aggregates stay tagged,
+   whole and lexical. Turning them into returns — or into any number at all —
+   is a separate reviewed decision, and the `AGIR1` cutpoints printed on PDF 13
+   disagree with the disclosure paragraph on PDF 4.
 8. **The other 161 amount fields.** They are declared, cited and source-only.
    Selecting any of them is another increment with the same per-column burden.
 
