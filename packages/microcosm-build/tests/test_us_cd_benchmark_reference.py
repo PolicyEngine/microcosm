@@ -1426,55 +1426,55 @@ def test_an_empty_projection_stays_empty_and_is_never_roster_complete(
     ]
 
 
-def test_dc_cannot_be_counted_under_both_of_its_published_identities(
-    protocol, inventory
+@pytest.mark.parametrize("outside", (DC_PUBLISHED, "5001900US9999"))
+def test_a_geography_outside_the_roster_is_disclosed_not_counted_as_a_district(
+    protocol, inventory, outside
 ):
-    """One real district, two published ids, and only one of them is a district.
+    """``districts_projected`` counts projections, not roster districts.
 
-    DC is the one district whose canonical id and published GEO_ID differ, and
-    ``…1198`` is exactly what the raw ACS ``GEO_ID`` column carries, so an
-    operator naming both is a natural mistake. Keyed on the identity string
-    alone, that produced ``districts_projected`` 4 against a
-    ``roster_district_count`` of 3 — more districts projected than the roster
-    holds, which is root's counterexample in a second form.
+    DC's published ``…1198`` alias is what the raw ACS ``GEO_ID`` column carries,
+    so an operator may name it alongside the canonical id — but the alias is not
+    a key in the inventory's geographies, so it yields a zero-cell incomplete
+    projection rather than a second reading of DC. Nothing DC-specific happens:
+    an invented id behaves identically. What matters is that the payload says so
+    in the same breath rather than letting ``districts_projected`` read as a
+    roster count.
     """
     roster = district_roster(inventory, protocol=protocol)
-    canonical = project_block(
-        inventory,
-        block_id="population_total",
-        geography_id=DC_CANONICAL,
-        protocol=protocol,
-    )
-    alias = project_block(
-        inventory,
-        block_id="population_total",
-        geography_id=DC_PUBLISHED,
-        protocol=protocol,
-    )
-    with pytest.raises(ReferenceProjectionError, match="the same district"):
-        projection_completeness(
-            [canonical, alias], protocol=protocol, roster=roster, inventory=inventory
+    projections = [
+        project_block(
+            inventory,
+            block_id="population_total",
+            geography_id=geography_id,
+            protocol=protocol,
         )
+        for geography_id in ("5001900US0101", "5001900US0612", DC_CANONICAL, outside)
+    ]
+    assert projections[-1].cells == ()
+    assert projections[-1].complete is False
 
-    # Either identity alone still counts once, and the roster is never exceeded.
-    for single in (canonical, alias):
-        payload = projection_completeness(
-            [single], protocol=protocol, roster=roster, inventory=inventory
-        ).payload()
-        assert payload["blocks"][0]["districts_projected"] == 1
-        assert (
-            payload["blocks"][0]["districts_projected"]
-            <= (payload["roster_district_count"])
-        )
+    payload = projection_completeness(
+        projections, protocol=protocol, roster=roster, inventory=inventory
+    ).payload()
+    block = payload["blocks"][0]
+    assert block["districts_projected"] == 4
+    assert payload["roster_district_count"] == 3
+    # The real districts are each read exactly once, and the surplus is named.
+    assert block["districts_complete"] == 3
+    assert block["districts_incomplete"] == 1
+    assert block["cells_projected"] == 3
+    assert payload["roster_scope_notes"]["unexpected_districts"] == [outside]
 
 
-def test_the_payload_names_only_reserved_families_it_actually_read(protocol, inventory):
-    """Declared exposure families are not the same as cells read into values.
+def test_the_payload_separates_exposure_consumed_from_cells_read(protocol, inventory):
+    """Two different questions about reserved families, answered separately.
 
-    ``occupied_household_total`` declares both reserved families but projects a
-    single ``B25003_001`` cell; the same run records ``B19001_001`` in
-    ``duplicate_reference_aliases_not_projected``. Reporting B19001 as projected
-    would have the artifact contradict its own evidence.
+    ``occupied_household_total`` reads one ``B25003_001`` cell, and the protocol
+    says that comparison "marks both B19001 and B25003 aliases" because
+    ``B19001_001`` is the same published number — so the run consumes B19001's
+    holdout exposure while reading no B19001 cell, and records ``B19001_001`` in
+    ``duplicate_reference_aliases_not_projected``. Reporting only one of the two
+    answers would misstate the run in one direction or the other.
     """
     projection = project_block(
         inventory,
@@ -1486,11 +1486,13 @@ def test_the_payload_names_only_reserved_families_it_actually_read(protocol, inv
     assert projection.evidence["duplicate_reference_aliases_not_projected"] == (
         "B19001_001",
     )
+    assert {item.cell.table for item in projection.cells} == {"B25003"}
+
     payload = projection_completeness(
         [projection], protocol=protocol, inventory=inventory
     ).payload()
-    assert payload["reserved_families_projected_into_values"] == ["B25003"]
-    assert {item.cell.table for item in projection.cells} == {"B25003"}
+    assert payload["reserved_families_exposure_consumed"] == ["B19001", "B25003"]
+    assert payload["reserved_families_with_cells_read"] == ["B25003"]
 
 
 def test_a_payload_with_no_inventory_states_nothing_about_reserved_tables(protocol):
@@ -1519,7 +1521,8 @@ def test_the_payload_states_that_reserved_tables_were_indexed(protocol, inventor
         [projection], protocol=protocol, inventory=inventory
     ).payload()
     assert payload["reserved_families_indexed_for_structure"] == ["B19001", "B25003"]
-    assert payload["reserved_families_projected_into_values"] == []
+    assert payload["reserved_families_exposure_consumed"] == []
+    assert payload["reserved_families_with_cells_read"] == []
     assert "no reserved" in payload["reserved_table_indexing"]
 
     reserved = project_block(
@@ -1531,7 +1534,8 @@ def test_the_payload_states_that_reserved_tables_were_indexed(protocol, inventor
     named = projection_completeness(
         [reserved], protocol=protocol, inventory=inventory
     ).payload()
-    assert named["reserved_families_projected_into_values"] == ["B25003"]
+    assert named["reserved_families_exposure_consumed"] == ["B25003"]
+    assert named["reserved_families_with_cells_read"] == ["B25003"]
 
 
 # --------------------------------------------------------------------------

@@ -145,17 +145,19 @@ before it was fixed.
   `ReferenceProjectionError` as a rejected bundle cannot turn its own mistake
   into a false statement about the inventory. Every other keyword gets Python's
   own diagnostic.
-- **`reserved_families_projected_into_values` over-claimed.** It was derived
-  from blocks' *declared* exposure families, so `occupied_household_total`
-  reported B19001 as projected in the same payload whose evidence recorded
-  `B19001_001` as a duplicate alias **not** projected. It is now derived from
-  the cells actually projected.
-- **DC could be counted twice.** The duplicate key was the identity string, so
-  DC under its canonical id and under the `…1198` alias the raw `GEO_ID` column
-  carries were two keys: `districts_projected` 4 against a
-  `roster_district_count` of 3 — root's counterexample in a second form. The
-  alias is now folded onto the canonical id before the key is formed, and the
-  refusal names the earlier identity.
+- **One reserved-family field was answering two questions.** A reviewer read
+  `reserved_families_projected_into_values` as a claim about cells and called it
+  an over-claim, because `occupied_household_total` reported B19001 while the
+  same payload's evidence recorded `B19001_001` as a duplicate alias **not**
+  projected. The adversarial verifier refuted that: the protocol's
+  `/exposure_ledger/reference_family_identity` says the occupied-HU comparison
+  "marks both B19001 and B25003 aliases" because the two cells are the same
+  published number, and `ledger.exposure_status` classifies holdout freshness
+  off `block.exposure_families`, not off cells — so the declared derivation was
+  right for exposure. Both answers are now reported under names that cannot be
+  confused: `reserved_families_exposure_consumed` (declared, unchanged
+  semantics) and `reserved_families_with_cells_read` (cell-derived), with the
+  payload prose explaining why they differ.
 - **The reserved-indexing sentence was unconditional.** A payload built with no
   inventory still stated that indexing had validated every required table's
   structure. It now says no inventory was indexed, and the family list is empty.
@@ -164,9 +166,13 @@ before it was fixed.
   that protocol's digest. It now calls `_canonical_only` too.
 - **"Only mutability is removed" was false.** A `mappingproxy` is not a `dict`,
   so the frozen document is not directly serializable, picklable or
-  deep-copyable — `canonical_bytes(inventory.document)` fails where it succeeded
-  before the freeze. Nothing computes a wrong value; it fails loudly. The
-  docstring now says so and says how a consumer thaws.
+  deep-copyable: `json.dumps`, `canonical_bytes`, `copy.deepcopy` and `pickle`
+  all refuse it. Nothing computes a wrong value; it fails loudly. The docstring
+  now says so and says how a consumer thaws. The reviewer also called this a
+  regression from the frozen head; the verifier refuted that half — the frozen
+  head already exposed `MappingProxyType(dict(document))`, so the top level was
+  never directly serializable. Only the docstring was wrong, and only the
+  nesting is new.
 - **`from_document` was weaker than the byte route on values.** `strict_load`
   refuses `NaN`/`Infinity`; `_frozen_json` passed any float through. It now
   refuses nonfinite floats, so the claim that the two routes are equally strict
@@ -180,7 +186,8 @@ before it was fixed.
   depth-2000 document refuses with `maximum recursion depth exceeded` on exit 1.
 - **A taken `--output` was judged last, after the whole run.** The docstring
   claimed every inventory-independent argument is judged before the read; the
-  one that costs the most to learn late was the exception. It is now checked
+  one that costs the most to learn late was the exception — a verifier measured
+  the refusal arriving after essentially a whole successful run's work. It is now checked
   beside the other pre-load checks, with the exclusive create left as the
   authority because it is the arm that cannot be raced.
 - **The `FileExistsError` handler wrapped open, write and close**, so its
@@ -206,7 +213,28 @@ and 0.012 s to digest the same 38.8 MB, ~88 MB peak for the freeze alone, and
 recursion is not a risk — the producer's shape nests 6 deep against a limit of
 3000.
 
+### Two changes this continuation made and then withdrew
+
+Adversarial verification cut both ways. Two findings reproduced exactly and were
+still refuted as defects, and the changes made from them were reverted rather
+than kept because they looked safer:
+
+- **The reserved-family derivation** — reverted to the declared exposure
+  families, for the protocol reason above, with the cell-derived answer added
+  beside it instead of replacing it.
+- **A refusal for DC's two published identities.** `districts_projected` counts
+  projections supplied for a block, not roster districts. The `…1198` alias is
+  simply not a key in the inventory's geographies, so it yields a zero-cell,
+  incomplete, flagged projection — DC's real values are still read exactly once
+  — and nothing about it is DC-specific: an invented `…9999` behaves
+  identically. The payload already discloses the surplus through
+  `roster_district_count`, `districts_incomplete` and
+  `roster_scope_notes.unexpected_districts`. Special-casing DC to refuse a case
+  the module already reports correctly would have been a repair, not a refusal,
+  and it would not even have covered the general shape. The refusal is gone; a
+  parametrized test now pins the disclosure for both the DC alias and an
+  invented id.
+
 ### Next
 
-Remaining review dimensions, then the continuation report. Still **no genuine
-projection**.
+The continuation report. Still **no genuine projection**.

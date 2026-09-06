@@ -1410,7 +1410,8 @@ class ProjectionCompleteness:
     blocks: tuple[Mapping[str, object], ...]
     inventory_indexed: bool
     reserved_families_indexed: tuple[str, ...]
-    reserved_families_projected: tuple[str, ...]
+    reserved_families_exposed: tuple[str, ...]
+    reserved_families_with_cells_read: tuple[str, ...]
     roster_reasons: tuple[str, ...]
     roster_notes: Mapping[str, object]
     claims_not_established: tuple[str, ...] = PROJECTION_CLAIMS_NOT_ESTABLISHED
@@ -1440,12 +1441,17 @@ class ProjectionCompleteness:
             "reserved_families_indexed_for_structure": list(
                 self.reserved_families_indexed
             ),
-            # Derived from the cells actually projected, never from the blocks'
-            # declared exposure families: a block may declare a reserved family
-            # whose only cell is a duplicate alias this run recorded as *not*
-            # projected, and the artifact must not contradict its own evidence.
-            "reserved_families_projected_into_values": list(
-                self.reserved_families_projected
+            # Two different questions, and the answers differ by design. A
+            # block consumes a family's exposure whenever it reads that family's
+            # published quantity, including through an alias: the occupied-HU
+            # total marks both B19001 and B25003 because B19001_001 and
+            # B25003_001 are the same number, so the run consumes B19001's
+            # holdout exposure while reading only a B25003 cell — and records
+            # B19001_001 in ``duplicate_reference_aliases_not_projected``.
+            # Reporting only one of these would misstate the run either way.
+            "reserved_families_exposure_consumed": list(self.reserved_families_exposed),
+            "reserved_families_with_cells_read": list(
+                self.reserved_families_with_cells_read
             ),
             "reserved_table_indexing": (
                 (
@@ -1453,7 +1459,8 @@ class ProjectionCompleteness:
                     "the reserved families included, because the protocol's "
                     "required district set must be identical across them; no "
                     "reserved estimate or margin was classified or read into a "
-                    "value unless its family is listed above"
+                    "value unless its family is listed under "
+                    "reserved_families_with_cells_read"
                 )
                 if self.inventory_indexed
                 else (
@@ -1489,11 +1496,17 @@ def projection_completeness(
     districts, cells, validity classes, precision statuses and reasons. It never
     adds an estimate to another estimate.
 
-    The same block at the same district may be supplied only once, and DC's two
-    published identities are the same district: the canonical id and the ``…1198``
-    alias the raw GEO_ID column carries both name it, so supplying both would
-    report more districts projected than the roster contains. Counting one
-    district twice is the one thing a completeness statement must not do.
+    The same block at the same geography id may be supplied only once. Counting
+    one district twice would report more districts projected than were ever
+    requested, which is the one thing a completeness statement must not do.
+
+    ``districts_projected`` counts projections supplied for a block, not
+    districts of the roster, and the two can legitimately differ: a geography id
+    the roster does not hold — DC's published ``…1198`` alias as much as any
+    invented id — yields a zero-cell, incomplete projection rather than a second
+    reading of a real district, and ``roster_district_count``,
+    ``districts_incomplete`` and ``roster_scope_notes.unexpected_districts``
+    disclose it in the same payload.
 
     The protocol argument must be the canonical document, as it must be for
     indexing: the payload mixes canonically derived fields with this protocol's
@@ -1502,41 +1515,27 @@ def projection_completeness(
 
     Raises:
         ReferenceProjectionError: On a non-canonical protocol, on a projection
-            repeated for the same block and district — including the same
-            district under both of its published identities — or on an input
-            that is not a :class:`BlockProjection`.
+            repeated for the same block and geography id, or on an input that is
+            not a :class:`BlockProjection`.
     """
     protocol = _canonical_only(protocol or canonical_protocol())
     grouped: dict[str, list[BlockProjection]] = {}
     districts: list[str] = []
-    seen: dict[tuple[str, str], str] = {}
+    seen: set[tuple[str, str]] = set()
     for projection in projections:
         if not isinstance(projection, BlockProjection):
             raise ReferenceProjectionError(
                 "Completeness counts BlockProjection values, not "
                 f"{type(projection).__name__}."
             )
-        # The alias is folded onto the canonical id before the key is formed, so
-        # two identities of one district collide here instead of counting twice.
-        canonical_id = (
-            protocol.scope.dc_canonical_id
-            if projection.geography_id == protocol.scope.dc_published_id
-            else projection.geography_id
-        )
-        key = (projection.block_id, canonical_id)
+        key = (projection.block_id, projection.geography_id)
         if key in seen:
-            already = seen[key]
-            alias = (
-                ""
-                if already == projection.geography_id
-                else f" (already supplied as {already!r}, the same district)"
-            )
             raise ReferenceProjectionError(
                 f"Block {projection.block_id!r} at {projection.geography_id!r} "
-                f"was supplied twice{alias}; a district counted twice is not a "
+                "was supplied twice; a district counted twice is not a "
                 "completeness statement."
             )
-        seen[key] = projection.geography_id
+        seen.add(key)
         grouped.setdefault(projection.block_id, []).append(projection)
         if projection.geography_id not in districts:
             districts.append(projection.geography_id)
@@ -1619,7 +1618,17 @@ def projection_completeness(
             if inventory is not None
             else ()
         ),
-        reserved_families_projected=tuple(sorted(projected_reserved)),
+        reserved_families_exposed=tuple(
+            sorted(
+                {
+                    str(family)
+                    for block in blocks
+                    for family in block["exposure_families"]
+                    if str(family) in RESERVED_FAMILY_TABLES
+                }
+            )
+        ),
+        reserved_families_with_cells_read=tuple(sorted(projected_reserved)),
         roster_reasons=tuple(str(reason) for reason in reasons_tuple),
         roster_notes=notes,
     )
