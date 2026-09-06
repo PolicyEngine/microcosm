@@ -2042,3 +2042,69 @@ def test_no_predictor_amount_identifier_or_age_reaches_the_receipt():
     assert diagnostics["state_of_residence_codes"] == {"24": 1}
     # The already-disclosed weight exposure is unchanged, not widened.
     assert '"8642.1357"' in receipt
+
+
+# --- allocation and copy conflict are reported, never folded into admission --
+
+
+def test_all_allocated_predictors_stay_complete_but_are_reported_as_allocated():
+    """An allocated value is published evidence, not a missing answer.
+
+    ``_status`` therefore has no allocated rung and such a household is
+    ``predictor_complete``. Root asked for fit-eligibility restrictions to be
+    reported separately, so the allocation state is a non-exclusive counter the
+    fit lane can restrict on. Nothing here gains observed class.
+    """
+    result = _project(_row(AEHC_ST="2", AHNUMPER="2", AHNUMU18="2", AHTOTINC="2"))
+    household = result.predictors[0]
+    assert household.status == "predictor_complete"
+    assert household.diagnostics["predictor_allocation"] == "any_allocated"
+    for name in predictors.FLAGGED_FIELDS:
+        assert hm.measurement_class(household.household(name)) == "allocated"
+
+    diagnostics = result.diagnostics["prospective_predictors"]
+    assert diagnostics["predictor_status_exclusive"] == {"predictor_complete": 1}
+    assert diagnostics["predictor_complete_allocation_exclusive"] == {
+        "any_allocated": 1
+    }
+    assert diagnostics["predictor_allocation_exclusive"] == {"any_allocated": 1}
+    # A wholly reported household is separated from it.
+    reported = _project(_row()).diagnostics["prospective_predictors"]
+    assert reported["predictor_complete_allocation_exclusive"] == {"all_reported": 1}
+
+
+def test_a_copy_conflict_reports_the_members_outside_the_universe_behind_it():
+    """A conflict outranks ``not_in_universe``, so its cause is counted.
+
+    One member published inside the universe beside one published outside it
+    produces a differing signature and therefore a copy conflict. Without these
+    counters the first real reading could not tell that cause from a genuine
+    disagreement between two answered members, and this projection carries no
+    ``THHLDSTATUS`` to ask.
+    """
+    result = _project(
+        _row(pnum=101, RHNUMPER="2", THTOTINC="4200", AHTOTINC="1"),
+        _row(pnum=102, RHNUMPER="2", THTOTINC="", AHTOTINC="0"),
+    )
+    household = result.predictors[0]
+    assert household.status == "predictor_copy_conflict"
+    assert "household_copy_conflict" in household.household("THTOTINC").reasons
+    assert hm.measurement_class(household.household("THTOTINC")) == "copy_conflict"
+    diagnostics = result.diagnostics["prospective_predictors"]
+    assert diagnostics["predictor_copy_conflicts"]["THTOTINC"] == 1
+    assert (
+        diagnostics["predictor_copy_conflict_members_not_in_universe"]["THTOTINC"] == 1
+    )
+    assert (
+        diagnostics["predictor_copy_conflicts_with_a_member_not_in_universe"][
+            "THTOTINC"
+        ]
+        == 1
+    )
+    # A conflict between two answered members is not counted as a universe case.
+    other = _project(
+        _row(pnum=101, RHNUMPER="2", THTOTINC="4200", AHTOTINC="1"),
+        _row(pnum=102, RHNUMPER="2", THTOTINC="5100", AHTOTINC="1"),
+    ).diagnostics["prospective_predictors"]
+    assert other["predictor_copy_conflicts"]["THTOTINC"] == 1
+    assert other["predictor_copy_conflict_members_not_in_universe"]["THTOTINC"] == 0

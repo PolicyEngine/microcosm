@@ -113,6 +113,10 @@ _STATE_LABELS = (
 )
 NON_STATE_AREA_CODES = (60, 61)
 
+# The household predictors that publish an allocation flag. ``TAGE_EHC``
+# prints "Status Flag: NA" and so cannot be graded against one.
+FLAGGED_FIELDS = ("TEHC_ST", "RHNUMPER", "RHNUMU18", "THTOTINC")
+
 _ALL_PERSONS_UNIVERSE = "THHLDSTATUS in (1,2,3,4)"
 
 _PREDICTOR_CATEGORIES: Mapping[str, hm._Category] = {
@@ -468,6 +472,20 @@ def _maximum_member_age(
     return maximum, lower_bound, coverage, covered
 
 
+def _allocation(household: Mapping[str, m.Measurement]) -> str:
+    """Whether every flagged predictor was reported, or any was allocated.
+
+    Reported here rather than in ``_status`` because an allocated value is
+    published evidence, not a missing answer: folding it into the exclusive
+    ladder would say the household had no answer to give. ``not_resolved``
+    covers every household the ladder already separates for another reason.
+    """
+    classes = [hm.measurement_class(household[name]) for name in FLAGGED_FIELDS]
+    if any(state not in ("observed", "allocated") for state in classes):
+        return "not_resolved"
+    return "any_allocated" if "allocated" in classes else "all_reported"
+
+
 def _status(
     household: Mapping[str, m.Measurement],
     maximum_age: m.Measurement,
@@ -575,6 +593,13 @@ def _household_predictors(
             name: hm.measurement_quality(lookup[name])
             for name in HOUSEHOLD_RESOLVED_FIELDS
         },
+        # ``_status`` has no allocated rung on purpose: an allocated value is a
+        # published value and is not missing. That makes a household whose
+        # predictors are entirely hot-deck imputed ``predictor_complete``, so
+        # the allocation state is reported here, separately and
+        # non-exclusively, for the fit lane to restrict on if it chooses. It is
+        # not an admission decision and no value gains observed class from it.
+        "predictor_allocation": _allocation(lookup),
         # Both counts are retained. Neither is corrected against the other, and
         # the projection carries no THHLDSTATUS, so the Type 2 treatment behind
         # a disagreement is recorded as unadjudicated rather than explained.
@@ -723,6 +748,50 @@ def predictor_diagnostics(
             )
             for name in HOUSEHOLD_RESOLVED_FIELDS
         },
+        # A copy conflict outranks ``predictor_not_in_universe`` in the
+        # exclusive ladder, so a household holding one member outside the
+        # universe beside members inside it is counted as a conflict and its
+        # cause is hidden. These counts separate the two without carrying
+        # THHLDSTATUS: they say how many member observations inside a conflicted
+        # household published flag 0.
+        "predictor_copy_conflict_members_not_in_universe": {
+            name: sum(
+                observation.flag == 0
+                for p in predictors
+                if "household_copy_conflict" in p.household(name).reasons
+                for observation in p.household(name).observations
+            )
+            for name in HOUSEHOLD_RESOLVED_FIELDS
+        },
+        "predictor_copy_conflicts_with_a_member_not_in_universe": {
+            name: sum(
+                any(
+                    observation.flag == 0
+                    for observation in p.household(name).observations
+                )
+                for p in predictors
+                if "household_copy_conflict" in p.household(name).reasons
+            )
+            for name in HOUSEHOLD_RESOLVED_FIELDS
+        },
+        # Non-exclusive, beside the status ladder: allocation is a published
+        # quality, never an admission.
+        "predictor_allocation_exclusive": _counter(
+            str(p.diagnostics["predictor_allocation"]) for p in predictors
+        ),
+        "predictor_allocation_exclusive_admitted": _counter(
+            str(p.diagnostics["predictor_allocation"]) for p in admitted
+        ),
+        "predictor_complete_allocation_exclusive": _counter(
+            str(p.diagnostics["predictor_allocation"])
+            for p in predictors
+            if p.status == "predictor_complete"
+        ),
+        "predictor_complete_allocation_exclusive_admitted": _counter(
+            str(p.diagnostics["predictor_allocation"])
+            for p in admitted
+            if p.status == "predictor_complete"
+        ),
         "predictor_unknown_measurements": {
             name: sum(p.household(name).value is None for p in predictors)
             for name in HOUSEHOLD_RESOLVED_FIELDS
