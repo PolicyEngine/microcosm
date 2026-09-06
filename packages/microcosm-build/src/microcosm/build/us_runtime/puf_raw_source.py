@@ -92,7 +92,7 @@ __all__ = [
     "RETURN_STATUS_TYPE",
     "PufRawReturnStatus",
     "PufRawSourceDefinition",
-    "PufRawSourceRefusal",
+    "PufRawSourceRefusalError",
     "SourcePin",
     "USPufRawReturnStatusSummaryKernel",
     "USPufRawSourceKernel",
@@ -176,7 +176,7 @@ _INT64_MAX = 2**63 - 1
 _DIGITS = frozenset(b"0123456789")
 
 
-class PufRawSourceRefusal(ValueError):
+class PufRawSourceRefusalError(ValueError):
     """A refusal. The reason is a code and aggregates, never a source token."""
 
     def __init__(self, reason: str, *detail: object) -> None:
@@ -184,8 +184,8 @@ class PufRawSourceRefusal(ValueError):
         self.reason = reason
 
 
-def _refuse(reason: str, *detail: object) -> PufRawSourceRefusal:
-    return PufRawSourceRefusal(reason, *detail)
+def _refuse(reason: str, *detail: object) -> PufRawSourceRefusalError:
+    return PufRawSourceRefusalError(reason, *detail)
 
 
 # --------------------------------------------------------------------------
@@ -324,9 +324,7 @@ def _definition_from_document(
 
 def _packaged_bytes() -> bytes:
     return (
-        resources.files(_DEFINITION_PACKAGE)
-        .joinpath(_DEFINITION_RESOURCE)
-        .read_bytes()
+        resources.files(_DEFINITION_PACKAGE).joinpath(_DEFINITION_RESOURCE).read_bytes()
     )
 
 
@@ -646,7 +644,9 @@ def decode_puf_raw_source(
     )
 
     lexical: dict[str, list[str]] = {
-        name: list(main["RECID_lexical"] if name == "RECID" else main[f"{name}_lexical"])
+        name: list(
+            main["RECID_lexical"] if name == "RECID" else main[f"{name}_lexical"]
+        )
         for name in _MAIN_FIELDS
     }
     for name in _DEMOGRAPHIC_FIELDS:
@@ -775,9 +775,7 @@ def _decode_demographic(
     pin = definition.demographic
     reader = _reader(payload, profile)
     header = _check_header(reader, pin, profile=profile)
-    index = {
-        name: header.index(name) for name in ("RECID", *_DEMOGRAPHIC_FIELDS)
-    }
+    index = {name: header.index(name) for name in ("RECID", *_DEMOGRAPHIC_FIELDS)}
     by_key: dict[str, dict[str, str]] = {}
     numeric_keys: set[int] = set()
     records = 0
@@ -815,7 +813,9 @@ def _fixed_ascii(values: Sequence[str], width: int, label: str) -> bytes:
     return bytes(body)
 
 
-def _read_fixed_ascii(body: bytes, rows: int, width: int, label: str) -> tuple[str, ...]:
+def _read_fixed_ascii(
+    body: bytes, rows: int, width: int, label: str
+) -> tuple[str, ...]:
     values = []
     for position in range(rows):
         cell = body[position * width : (position + 1) * width]
@@ -835,9 +835,7 @@ def _payload_bound(
     sizes = {
         name: rows * np.dtype(_TYPED_DTYPES[name]).itemsize for name in _TYPED_COLUMNS
     }
-    sizes.update(
-        {f"{name}_lexical": rows * widths[name] for name in _LEXICAL_COLUMNS}
-    )
+    sizes.update({f"{name}_lexical": rows * widths[name] for name in _LEXICAL_COLUMNS})
     return sum(sizes.values()), sizes
 
 
@@ -1128,9 +1126,7 @@ class USPufRawReturnStatusSummaryKernel(KernelBase):
                     "producer_key": value.producer_key,
                     "rows": status.rows,
                     "matched_keys": status.facts["matched_keys"],
-                    "main_unmatched_records": status.facts[
-                        "main_unmatched_records"
-                    ],
+                    "main_unmatched_records": status.facts["main_unmatched_records"],
                     "aggregate_records": status.facts["aggregate_records"],
                     "period_semantics": status.facts["period_semantics"],
                     "weight_units": status.facts["weight_units"],

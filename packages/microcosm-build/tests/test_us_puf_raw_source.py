@@ -28,8 +28,7 @@ from microcosm.build.us_runtime.puf_raw_source import (
     PUF_RAW_SOURCE_NODE,
     RETURN_STATUS_SUMMARY_NODE,
     RETURN_STATUS_TYPE,
-    PufRawSourceRefusal,
-    USPufRawReturnStatusSummaryKernel,
+    PufRawSourceRefusalError,
     USPufRawSourceKernel,
     decode_puf_raw_source,
     decode_return_status,
@@ -65,7 +64,7 @@ from microcosm.graph.codecs import (
     load_csv_tables,
     load_raw_bytes,
 )
-from microcosm.graph.errors import NodeRejectedError
+from microcosm.graph.errors import NodeRejectedError, StoreMissError
 from microcosm.graph.store import StoreUnavailable
 
 PACKAGED = packaged_definition()
@@ -243,12 +242,12 @@ def test_fixture_route_refuses_production_authority_or_a_packaged_pin(invented):
     main, demographic, _ = invented
     document = fixture_document(main, demographic)
     document["authority"] = PACKAGED.document["authority"]
-    with pytest.raises(PufRawSourceRefusal, match="FIXTURE_AUTHORITY"):
+    with pytest.raises(PufRawSourceRefusalError, match="FIXTURE_AUTHORITY"):
         fixture_definition(document)
 
     document = fixture_document(main, demographic)
     document["sources"]["main"]["sha256"] = PACKAGED.main.sha256
-    with pytest.raises(PufRawSourceRefusal, match="FIXTURE_RESTATES_PACKAGED_PIN"):
+    with pytest.raises(PufRawSourceRefusalError, match="FIXTURE_RESTATES_PACKAGED_PIN"):
         fixture_definition(document)
 
 
@@ -265,12 +264,12 @@ def test_definition_route_and_header_digest_are_checked(invented):
     main, demographic, _ = invented
     document = fixture_document(main, demographic)
     document["sources"]["main"]["header_record_canonical_sha256"] = "0" * 64
-    with pytest.raises(PufRawSourceRefusal, match="DEFINITION_HEADER_DIGEST"):
+    with pytest.raises(PufRawSourceRefusalError, match="DEFINITION_HEADER_DIGEST"):
         fixture_definition(document)
 
     document = fixture_document(main, demographic)
     document["route"] = "packaged"
-    with pytest.raises(PufRawSourceRefusal, match="DEFINITION_ROUTE"):
+    with pytest.raises(PufRawSourceRefusalError, match="DEFINITION_ROUTE"):
         fixture_definition(document)
 
 
@@ -306,7 +305,7 @@ def test_codec_refuses_a_wrong_length_or_wrong_digest(
     document["sources"]["main"][field] = value
     definition = fixture_definition(document)
     path = write(tmp_path / "main.csv", main)
-    with pytest.raises(PufRawSourceRefusal, match=reason):
+    with pytest.raises(PufRawSourceRefusalError, match=reason):
         load_pinned_puf_bytes(path, pin=definition.main)
 
 
@@ -316,19 +315,19 @@ def test_codec_refuses_a_mutated_file_of_the_same_length(invented, tmp_path):
     mutated[-2] ^= 0x01
     path = write(tmp_path / "main.csv", bytes(mutated))
     assert path.stat().st_size == definition.main.bytes
-    with pytest.raises(PufRawSourceRefusal, match="CODEC_SHA256"):
+    with pytest.raises(PufRawSourceRefusalError, match="CODEC_SHA256"):
         load_pinned_puf_bytes(path, pin=definition.main)
 
 
 def test_codec_refuses_a_directory_a_fifo_a_socket_and_a_symlink(invented, tmp_path):
     main, _, definition = invented
     (tmp_path / "directory").mkdir()
-    with pytest.raises(PufRawSourceRefusal, match="CODEC_(OPEN|NOT_REGULAR_FILE)"):
+    with pytest.raises(PufRawSourceRefusalError, match="CODEC_(OPEN|NOT_REGULAR_FILE)"):
         load_pinned_puf_bytes(tmp_path / "directory", pin=definition.main)
 
     fifo = tmp_path / "fifo"
     os.mkfifo(fifo)
-    with pytest.raises(PufRawSourceRefusal, match="CODEC_NOT_REGULAR_FILE"):
+    with pytest.raises(PufRawSourceRefusalError, match="CODEC_NOT_REGULAR_FILE"):
         load_pinned_puf_bytes(fifo, pin=definition.main)
 
     # AF_UNIX paths are short; bind from the directory rather than an absolute
@@ -339,7 +338,7 @@ def test_codec_refuses_a_directory_a_fifo_a_socket_and_a_symlink(invented, tmp_p
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
             server.bind("socket")
             with pytest.raises(
-                PufRawSourceRefusal, match="CODEC_(OPEN|NOT_REGULAR_FILE)"
+                PufRawSourceRefusalError, match="CODEC_(OPEN|NOT_REGULAR_FILE)"
             ):
                 load_pinned_puf_bytes(tmp_path / "socket", pin=definition.main)
     finally:
@@ -351,7 +350,7 @@ def test_codec_refuses_a_directory_a_fifo_a_socket_and_a_symlink(invented, tmp_p
     # O_NOFOLLOW protects the path this function receives. The executor resolves
     # source paths before codec lookup, so under the executor this refusal does
     # not apply to a user's original symlink; see the executor test below.
-    with pytest.raises(PufRawSourceRefusal, match="CODEC_OPEN"):
+    with pytest.raises(PufRawSourceRefusalError, match="CODEC_OPEN"):
         load_pinned_puf_bytes(link, pin=definition.main)
 
 
@@ -359,7 +358,7 @@ def test_codec_refuses_a_pin_above_its_private_cap(invented, tmp_path):
     main, demographic, _ = invented
     document = fixture_document(main, demographic)
     document["sources"]["main"]["bytes"] = PUF_RAW_SOURCE_MAX_BYTES + 1
-    with pytest.raises(PufRawSourceRefusal, match="DEFINITION_SOURCE_OVER_CAP"):
+    with pytest.raises(PufRawSourceRefusalError, match="DEFINITION_SOURCE_OVER_CAP"):
         fixture_definition(document)
 
 
@@ -410,7 +409,7 @@ def test_absent_zero_and_invalid_are_three_distinct_outcomes(invented):
         DEFAULT_MAIN,
         [demographic_record(recid="11", agedp1="x"), DEFAULT_DEMOGRAPHIC[1]],
     )
-    with pytest.raises(PufRawSourceRefusal, match="TOKEN_GRAMMAR"):
+    with pytest.raises(PufRawSourceRefusalError, match="TOKEN_GRAMMAR"):
         decode_puf_raw_source(main_bad, demographic_bad, definition_bad)
 
 
@@ -423,10 +422,10 @@ def test_a_shuffled_missing_extra_or_duplicate_header_is_refused(invented):
         [MAIN_HEADER[0]] + MAIN_HEADER[1:-1] + [MAIN_HEADER[0]],
     ):
         payload = csv_bytes(header, [])
-        with pytest.raises(PufRawSourceRefusal, match="HEADER_MISMATCH"):
+        with pytest.raises(PufRawSourceRefusalError, match="HEADER_MISMATCH"):
             decode_puf_raw_source(payload, demographic, definition)
     with_bom = b"\xef\xbb\xbf" + main
-    with pytest.raises(PufRawSourceRefusal, match="HEADER_MISMATCH"):
+    with pytest.raises(PufRawSourceRefusalError, match="HEADER_MISMATCH"):
         decode_puf_raw_source(with_bom, demographic, definition)
 
 
@@ -436,7 +435,7 @@ def test_width_covers_every_delivered_field_while_content_of_others_is_ignored(
     main, demographic, definition = invented
     narrow = [record[:-1] for record in DEFAULT_MAIN]
     payload = csv_bytes(MAIN_HEADER, narrow)
-    with pytest.raises(PufRawSourceRefusal, match="RECORD_WIDTH"):
+    with pytest.raises(PufRawSourceRefusalError, match="RECORD_WIDTH"):
         decode_puf_raw_source(payload, demographic, definition)
 
     noisy = [list(record) for record in DEFAULT_MAIN]
@@ -454,19 +453,21 @@ def test_duplicate_and_orphan_keys_are_refused(invented):
     main, demographic, definition = rebuilt(
         DEFAULT_MAIN + [main_record(recid="11")], DEFAULT_DEMOGRAPHIC
     )
-    with pytest.raises(PufRawSourceRefusal, match="MAIN_DUPLICATE_LEXICAL_KEY"):
+    with pytest.raises(PufRawSourceRefusalError, match="MAIN_DUPLICATE_LEXICAL_KEY"):
         decode_puf_raw_source(main, demographic, definition)
 
     main, demographic, definition = rebuilt(
         DEFAULT_MAIN, DEFAULT_DEMOGRAPHIC + [demographic_record(recid="11")]
     )
-    with pytest.raises(PufRawSourceRefusal, match="DEMOGRAPHIC_DUPLICATE_LEXICAL_KEY"):
+    with pytest.raises(
+        PufRawSourceRefusalError, match="DEMOGRAPHIC_DUPLICATE_LEXICAL_KEY"
+    ):
         decode_puf_raw_source(main, demographic, definition)
 
     main, demographic, definition = rebuilt(
         DEFAULT_MAIN, DEFAULT_DEMOGRAPHIC + [demographic_record(recid="77")]
     )
-    with pytest.raises(PufRawSourceRefusal, match="DEMOGRAPHIC_ORPHAN_KEYS"):
+    with pytest.raises(PufRawSourceRefusalError, match="DEMOGRAPHIC_ORPHAN_KEYS"):
         decode_puf_raw_source(main, demographic, definition)
 
 
@@ -475,7 +476,7 @@ def test_a_leading_zero_demographic_key_is_a_lexical_orphan(invented):
         DEFAULT_MAIN,
         [demographic_record(recid="011"), DEFAULT_DEMOGRAPHIC[1]],
     )
-    with pytest.raises(PufRawSourceRefusal, match="DEMOGRAPHIC_ORPHAN_KEYS"):
+    with pytest.raises(PufRawSourceRefusalError, match="DEMOGRAPHIC_ORPHAN_KEYS"):
         decode_puf_raw_source(main, demographic, definition)
 
 
@@ -483,7 +484,7 @@ def test_two_main_keys_differing_only_in_leading_zeros_are_a_numeric_collision()
     main, demographic, definition = rebuilt(
         DEFAULT_MAIN + [main_record(recid="011")], DEFAULT_DEMOGRAPHIC
     )
-    with pytest.raises(PufRawSourceRefusal, match="MAIN_NUMERIC_KEY_COLLISION"):
+    with pytest.raises(PufRawSourceRefusalError, match="MAIN_NUMERIC_KEY_COLLISION"):
         decode_puf_raw_source(main, demographic, definition)
 
 
@@ -520,11 +521,11 @@ def test_aggregate_and_mars_zero_must_agree_in_both_directions():
     main, demographic, definition = rebuilt(
         [main_record(recid=str(PUF_AGGREGATE_RECIDS[1]), mars="1")], []
     )
-    with pytest.raises(PufRawSourceRefusal, match="AGGREGATE_MARS_DISAGREEMENT"):
+    with pytest.raises(PufRawSourceRefusalError, match="AGGREGATE_MARS_DISAGREEMENT"):
         decode_puf_raw_source(main, demographic, definition)
 
     main, demographic, definition = rebuilt([main_record(recid="41", mars="0")], [])
-    with pytest.raises(PufRawSourceRefusal, match="AGGREGATE_MARS_DISAGREEMENT"):
+    with pytest.raises(PufRawSourceRefusalError, match="AGGREGATE_MARS_DISAGREEMENT"):
         decode_puf_raw_source(main, demographic, definition)
 
 
@@ -536,7 +537,7 @@ def test_a_main_code_outside_its_closed_domain_is_refused(field, value):
     main, demographic, definition = rebuilt(
         [main_record(recid="11", **{field.lower(): value})], []
     )
-    with pytest.raises(PufRawSourceRefusal, match="MAIN_DOMAIN"):
+    with pytest.raises(PufRawSourceRefusalError, match="MAIN_DOMAIN"):
         decode_puf_raw_source(main, demographic, definition)
 
 
@@ -547,7 +548,7 @@ def test_a_demographic_code_outside_its_closed_domain_is_refused(field, value):
     main, demographic, definition = rebuilt(
         DEFAULT_MAIN, [demographic_record(recid="11", **{field: value})]
     )
-    with pytest.raises(PufRawSourceRefusal, match="DEMOGRAPHIC_DOMAIN"):
+    with pytest.raises(PufRawSourceRefusalError, match="DEMOGRAPHIC_DOMAIN"):
         decode_puf_raw_source(main, demographic, definition)
 
 
@@ -556,7 +557,7 @@ def test_agerange_is_conditional_on_dsi():
     main, demographic, definition = rebuilt(
         dependent, [demographic_record(recid="13", agerange="5")]
     )
-    with pytest.raises(PufRawSourceRefusal, match="DEMOGRAPHIC_DOMAIN AGERANGE"):
+    with pytest.raises(PufRawSourceRefusalError, match="DEMOGRAPHIC_DOMAIN AGERANGE"):
         decode_puf_raw_source(main, demographic, definition)
 
     main, demographic, definition = rebuilt(
@@ -588,7 +589,7 @@ def test_agerange_is_conditional_on_dsi():
 )
 def test_the_s006_grammar_is_unsigned_decimal_and_bounded(token, reason):
     main, demographic, definition = rebuilt([main_record(recid="11", s006=token)], [])
-    with pytest.raises(PufRawSourceRefusal, match=reason):
+    with pytest.raises(PufRawSourceRefusalError, match=reason):
         decode_puf_raw_source(main, demographic, definition)
 
 
@@ -622,13 +623,13 @@ def test_s006_is_kept_as_exact_integer_hundredths_and_never_divided():
 
 def test_an_int64_overflowing_recid_is_refused():
     main, demographic, definition = rebuilt([main_record(recid="9" * 25)], [])
-    with pytest.raises(PufRawSourceRefusal, match="TOKEN_INT64_OVERFLOW"):
+    with pytest.raises(PufRawSourceRefusalError, match="TOKEN_INT64_OVERFLOW"):
         decode_puf_raw_source(main, demographic, definition)
 
 
 def test_an_embedded_nul_in_a_selected_token_is_refused():
     main, demographic, definition = rebuilt([main_record(recid="1\x001")], [])
-    with pytest.raises(PufRawSourceRefusal, match="TOKEN_EMBEDDED_NUL"):
+    with pytest.raises(PufRawSourceRefusalError, match="TOKEN_EMBEDDED_NUL"):
         decode_puf_raw_source(main, demographic, definition)
 
 
@@ -695,7 +696,7 @@ def test_the_full_slice_body_bound_is_derived_and_stays_under_the_shared_opaque_
     assert total < BODY_MAX_BYTES == 64 * 1024 * 1024
     assert sizes["RECID_lexical"] == PACKAGED.main.data_records * 64
     # An oversized row count is refused before any body is allocated.
-    with pytest.raises(PufRawSourceRefusal, match="BODY_OVER_BOUND"):
+    with pytest.raises(PufRawSourceRefusalError, match="BODY_OVER_BOUND"):
         puf.encode_return_status(
             puf.PufRawReturnStatus(typed={}, lexical={}, facts={"rows": 10**9}),
             PACKAGED,
@@ -707,20 +708,20 @@ def test_a_truncated_tampered_or_mistyped_envelope_is_refused(invented, cut):
     main, demographic, definition = invented
     status = decode_puf_raw_source(main, demographic, definition)
     payload = encode_return_status(status, definition)
-    with pytest.raises(PufRawSourceRefusal):
+    with pytest.raises(PufRawSourceRefusalError):
         decode_return_status(payload[: len(payload) - cut - 1])
-    with pytest.raises(PufRawSourceRefusal, match="ENVELOPE_MAGIC"):
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_MAGIC"):
         decode_return_status(b"not-the-magic" + payload)
     tampered = bytearray(payload)
     tampered[-1] ^= 0x01
-    with pytest.raises(PufRawSourceRefusal, match="ENVELOPE_BODY_DIGEST"):
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_BODY_DIGEST"):
         decode_return_status(bytes(tampered))
-    with pytest.raises(PufRawSourceRefusal, match="ENVELOPE_TRAILING_BYTES"):
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_TRAILING_BYTES"):
         decode_return_status(payload + b"\0")
     start = len(puf.RETURN_STATUS_MAGIC)
-    with pytest.raises(PufRawSourceRefusal, match="ENVELOPE_HEADER_LENGTH"):
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_HEADER_LENGTH"):
         decode_return_status(
-            payload[:start] + (HEADER_OVER := 10**6).to_bytes(4, "big") + payload[start + 4 :]
+            payload[:start] + (10**6).to_bytes(4, "big") + payload[start + 4 :]
         )
 
 
@@ -852,7 +853,6 @@ def graph_fixture(invented, tmp_path):
     return compiled, registry, sources, definition, (main, demographic)
 
 
-
 def composed_codecs(definition):
     """Explicit caller composition: csv-tables plus this slice's two codecs.
 
@@ -941,9 +941,7 @@ def test_warm_require_hits_every_node_and_never_calls_the_kernel(
     assert artifact_bytes(warm, store) == cold_payload
 
 
-def test_a_fresh_store_recomputes_the_identical_artifact_bytes(
-    graph_fixture, tmp_path
-):
+def test_a_fresh_store_recomputes_the_identical_artifact_bytes(graph_fixture, tmp_path):
     compiled, registry, sources, definition, _ = graph_fixture
     store = composed_store(tmp_path / "store", definition)
     cold = run_graph(
@@ -981,9 +979,7 @@ def test_changed_source_bytes_change_the_node_key_and_recompute(
         resume="auto",
     )
     assert not second.nodes[PUF_RAW_SOURCE_NODE].hit
-    assert (
-        second.nodes[PUF_RAW_SOURCE_NODE].key != first.nodes[PUF_RAW_SOURCE_NODE].key
-    )
+    assert second.nodes[PUF_RAW_SOURCE_NODE].key != first.nodes[PUF_RAW_SOURCE_NODE].key
     assert decode_return_status(artifact_bytes(second, store)).rows == 5
 
 
@@ -1006,9 +1002,7 @@ def test_a_changed_definition_parameter_changes_the_node_key(graph_fixture, tmp_
         resume="auto",
     )
     assert not second.nodes[PUF_RAW_SOURCE_NODE].hit
-    assert (
-        second.nodes[PUF_RAW_SOURCE_NODE].key != first.nodes[PUF_RAW_SOURCE_NODE].key
-    )
+    assert second.nodes[PUF_RAW_SOURCE_NODE].key != first.nodes[PUF_RAW_SOURCE_NODE].key
 
 
 def test_a_changed_dependency_version_changes_the_implementation_hash(graph_fixture):
@@ -1031,9 +1025,7 @@ def test_a_changed_dependency_version_changes_the_implementation_hash(graph_fixt
     assert restated.implementation_hash() != baseline
 
 
-def test_an_unregistered_codec_refuses_before_any_kernel_runs(
-    graph_fixture, tmp_path
-):
+def test_an_unregistered_codec_refuses_before_any_kernel_runs(graph_fixture, tmp_path):
     compiled, _, sources, definition, _ = graph_fixture
     registry = KernelRegistry()
     registry.register(FixtureHostKernel())
@@ -1069,11 +1061,14 @@ def test_the_executor_resolves_a_symlinked_source_path_before_the_codec(
         kernels=registry,
         resume="forbid",
     )
-    assert decode_return_status(
-        artifact_bytes(manifest, composed_store(tmp_path / "store", definition))
-    ).rows == 4
+    assert (
+        decode_return_status(
+            artifact_bytes(manifest, composed_store(tmp_path / "store", definition))
+        ).rows
+        == 4
+    )
     # The same symlink handed straight to the codec is refused.
-    with pytest.raises(PufRawSourceRefusal, match="CODEC_OPEN"):
+    with pytest.raises(PufRawSourceRefusalError, match="CODEC_OPEN"):
         load_pinned_puf_bytes(link, pin=definition.main)
 
 
@@ -1095,10 +1090,8 @@ def test_the_kernel_refuses_any_node_shape_but_its_own(
     _, _, sources, definition, _ = graph_fixture
     base = us_puf_raw_source_node(population=HOST_POPULATION, definition=definition)
     producer = replace(base, **override)
-    compiled, registry = build_graph(
-        definition, producer=producer, with_consumer=False
-    )
-    with pytest.raises((PufRawSourceRefusal, NodeRejectedError)):
+    compiled, registry = build_graph(definition, producer=producer, with_consumer=False)
+    with pytest.raises((PufRawSourceRefusalError, NodeRejectedError)):
         run_graph(
             compiled,
             sources=sources,
@@ -1135,13 +1128,11 @@ def test_the_kernel_refuses_a_create_structural_delta(graph_fixture, tmp_path):
         definition=definition,
         source_codecs=puf_raw_source_codecs(definition),
     )
-    with pytest.raises((PufRawSourceRefusal, NodeRejectedError)):
+    with pytest.raises((PufRawSourceRefusalError, NodeRejectedError)):
         run_graph(
             compile_graph(graph),
             sources={
-                name: path
-                for name, path in sources.items()
-                if name != HOST_SOURCE
+                name: path for name, path in sources.items() if name != HOST_SOURCE
             },
             store=composed_store(tmp_path / "store", definition),
             kernels=registry,
@@ -1161,10 +1152,8 @@ def test_the_kernel_refuses_a_definition_parameter_it_does_not_hold(
     producer = replace(
         base, params={"definition": fixture_definition(document).params_text}
     )
-    compiled, registry = build_graph(
-        definition, producer=producer, with_consumer=False
-    )
-    with pytest.raises((PufRawSourceRefusal, NodeRejectedError)):
+    compiled, registry = build_graph(definition, producer=producer, with_consumer=False)
+    with pytest.raises((PufRawSourceRefusalError, NodeRejectedError)):
         run_graph(
             compiled,
             sources=sources,
@@ -1176,19 +1165,16 @@ def test_the_kernel_refuses_a_definition_parameter_it_does_not_hold(
 
 def test_the_producer_node_requires_an_explicit_population(invented):
     _, _, definition = invented
-    with pytest.raises(PufRawSourceRefusal, match="NODE_POPULATION_REQUIRED"):
+    with pytest.raises(PufRawSourceRefusalError, match="NODE_POPULATION_REQUIRED"):
         us_puf_raw_source_node(population="", definition=definition)
     with pytest.raises(TypeError):
         us_puf_raw_source_node(definition=definition)
 
 
-def test_a_malformed_s006_refuses_cleanly_with_no_partial_artifact(
-    invented, tmp_path
-):
-    _, _, _ = invented
-    main, demographic, definition = rebuilt(
-        [main_record(recid="11", s006="")], []
-    )
+def test_a_malformed_s006_refuses_cleanly_with_no_partial_artifact(invented, tmp_path):
+    """A refusal receipt, never a partial artifact — cold and on retry."""
+
+    main, demographic, definition = rebuilt([main_record(recid="11", s006="")], [])
     sources = {
         HOST_SOURCE: write_host_source(tmp_path / "host"),
         definition.main.source_name: write(tmp_path / "main.csv", main),
@@ -1196,20 +1182,27 @@ def test_a_malformed_s006_refuses_cleanly_with_no_partial_artifact(
             tmp_path / "demographic.csv", demographic
         ),
     }
-    compiled, registry = build_graph(definition)
+    compiled, registry = build_graph(definition, with_consumer=False)
     store = composed_store(tmp_path / "store", definition)
-    with pytest.raises((PufRawSourceRefusal, NodeRejectedError)):
+    for resume in ("forbid", "auto"):
+        with pytest.raises((PufRawSourceRefusalError, NodeRejectedError)) as raised:
+            run_graph(
+                compiled,
+                sources=sources,
+                store=store,
+                kernels=registry,
+                resume=resume,
+            )
+        assert "TOKEN_EMPTY" in str(raised.value)
+    # Nothing partial was cached: a warm run still finds no record at all.
+    with pytest.raises(StoreMissError):
         run_graph(
-            compiled, sources=sources, store=store, kernels=registry, resume="forbid"
+            compiled,
+            sources=sources,
+            store=store,
+            kernels=registry,
+            resume="require",
         )
-    # No artifact landed for the refused producer.
-    direct = encode_return_status(
-        decode_puf_raw_source(*rebuilt(DEFAULT_MAIN, DEFAULT_DEMOGRAPHIC)[:2],
-                              rebuilt(DEFAULT_MAIN, DEFAULT_DEMOGRAPHIC)[2]),
-        rebuilt(DEFAULT_MAIN, DEFAULT_DEMOGRAPHIC)[2],
-    )
-    with pytest.raises(Exception):
-        store.load_bytes(hashlib.sha256(direct).hexdigest())
 
 
 # --------------------------------------------------------------------------
@@ -1237,16 +1230,12 @@ def test_the_module_and_definition_carry_no_absolute_or_genuine_source_paths():
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             assert not node.value.startswith("/"), node.value
     raw = (
-        Path(puf.__file__).parents[1]
-        / "us"
-        / "puf_2015_raw_source_definition.json"
+        Path(puf.__file__).parents[1] / "us" / "puf_2015_raw_source_definition.json"
     ).read_text()
     for needle in forbidden:
         assert needle not in raw, needle
 
 
 def test_the_module_is_classified_in_the_us_runtime_blindness_allowlist():
-    blindness = (
-        Path(__file__).with_name("test_us_spine_blindness.py").read_text()
-    )
+    blindness = Path(__file__).with_name("test_us_spine_blindness.py").read_text()
     assert '"puf_raw_source.py"' in blindness
