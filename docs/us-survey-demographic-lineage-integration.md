@@ -12,7 +12,7 @@ and binds each clone to its explicit native parent. Full materialized verificati
 checks actual ContentStore Frames including the complete native parent. A projected
 KernelContext cannot discover an omitted column, so its receipt alone is insufficient.
 
-The factory is tools/us_survey_lineage_graph.py. It derives the carried inventory
+The factory and scoped storage adapter are tools/us_survey_lineage_graph.py. The factory derives the carried inventory
 from the compiled upstream graph's output declarations. The helper is
 tools/us_survey_lineage_cached_prep.py; its only public execution mode generates
 fresh invented sources. No genuine execution command or approval bypass exists.
@@ -57,7 +57,8 @@ and origin bindings. For an otherwise matching original eleven-node clone cache,
 expect six hits and eleven executions in the integrated graph; a fresh REQUIRED
 replay must hit every compiled node with zero kernels and zero raw decoders.
 If root instead starts from an approved demographic-eleven cache, derive its actual
-key delta; eleven hits plus six new executions is the conditional expectation.
+key delta; ten hits plus seven executions is the conditional expectation: the integrated
+nullable-state storage adapter deliberately rekeys the demographic binding.
 Invented keys are not predictions of genuine key values.
 
 Current pair mass is preserved, including zero-weight households. Original design
@@ -66,3 +67,13 @@ Future fitting must choose parent-pair caps or allocate per-clone anchors explic
 this work validates neither choice. Native origin is survey-record lineage, with
 no independent-person linkage or independently linked households across surveys
 or years. Frame metadata, mass ledgers and design anchors have separate proofs.
+
+The integrated adapter delegates to the accepted masked demographic kernel for
+all source, producer and native-roster checks. It owns all rows only for the three
+new nullable state columns, writing canonical hidden zero beneath their ACS nulls.
+The incumbent canonical booleans retain their ASEC-only rewrite masks. This avoids
+the observed cold/warm physical-storage mismatch (pandas hidden null value 1 versus
+ContentStore canonical 0) without weakening cached EXPAND comparison or changing
+shared source/inventories. Its own implementation hash binds the entire adapter
+module and accepted demographic implementation closure. Root must review this
+integration-specific correction; prior source acceptance does not cover it.

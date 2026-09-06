@@ -75,3 +75,19 @@ Zero-graph codec registration:
   test store, matching the accepted native graph fixture pattern.
 - Receipt now includes exact source codecs and per-kernel declared dependencies.
 Next: complete the final serial proof on committed bytes.
+
+REQUIRED replay integration correction:
+- r6 cold passed: 17 nodes, six old hits, eleven calls, all four refusals,
+  and separate seven-node zero-weight clone graph. Fresh REQUIRED then refused
+  cached EXPAND on hidden nullable Int64 storage in new demographic state cells.
+- Reproduced that pandas new masked Int64 nulls carry hidden 1 while ContentStore
+  canonicalizes null storage to 0. Logical values and masks were equal.
+- Added a separately keyed integrated demographic adapter: it delegates the full
+  accepted source/roster validation, retains both canonical ASEC-only rewrite
+  masks, and explicitly emits all rows for only the three NEW state columns,
+  with canonical zero hidden payload under ACS nulls. No shared source or global
+  inventory changes, cache bypass, or comparison weakening.
+- This adapter deliberately rekeys the demographic binding relative to accepted
+  standalone demographic eleven: the conditional extension is now ten hits and
+  seven executions. Original composition six/three and clone two rekeys remain.
+Next: verify complete fresh REQUIRED on this committed integration correction.
