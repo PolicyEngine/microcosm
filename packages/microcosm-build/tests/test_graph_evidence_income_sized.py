@@ -96,9 +96,17 @@ SHARED_BYTES = {
 
 @dataclass(frozen=True)
 class Size:
-    """One invented sample shape, and the producer that recorded it."""
+    """One invented sample shape, and the producer that recorded it.
+
+    ``slug`` is deliberately short. The dashboard's candidate picker draws the
+    candidate id in a label that does not wrap, so a long invented id widens
+    that page's own chrome at a narrow viewport -- a pre-existing limitation of
+    the picker, unrelated to this profile, and not worth tripping over with a
+    fixture name nobody reads.
+    """
 
     name: str
+    slug: str
     households: int
     persons: int
     tax_units: int
@@ -126,6 +134,7 @@ class Size:
 
 SMALL = Size(
     name="small-equal-cohorts",
+    slug="small",
     households=9,
     persons=31,
     tax_units=14,
@@ -140,6 +149,7 @@ SMALL = Size(
 # cannot express at all.
 WIDE = Size(
     name="wide-unequal-cohorts",
+    slug="wide",
     households=41,
     persons=107,
     tax_units=55,
@@ -229,7 +239,14 @@ def invented(tmp_path, size: Size):
     root = tmp_path / f"invented-income-sized-{size.name}"
     root.mkdir()
     outputs = {}
-    eligible = {year: 400 + index for index, year in enumerate(YEARS)}
+    # Invented eligible cohorts chosen so the recorded selection rule is
+    # arithmetically coherent per stratum: the rule the producer records is
+    # ``floor(fraction * eligible)`` *within* a stratum, not over the whole
+    # frame. The profile makes no arithmetic claim from the rule -- it only
+    # reconciles counts -- but a fixture whose own numbers contradict the string
+    # it carries is a fixture nobody can read.
+    SAMPLED_FRACTION = 0.01
+    eligible = {year: households * 100 for year, households in zip(YEARS, size.cohorts, strict=True)}
 
     def write(name, data):
         raw = canonical(data) + b"\n" if isinstance(data, (dict, list)) else data
@@ -368,7 +385,7 @@ def invented(tmp_path, size: Size):
         dict(
             eligible_household_count=sum(eligible.values()),
             exact_count_rule="floor(fraction * eligible)",
-            fraction=0.5,
+            fraction=SAMPLED_FRACTION,
             incoming_household_mass=1234.5,
             realized_household_count=size.households,
             sampled_household_mass=12.5,
@@ -584,8 +601,8 @@ def invented(tmp_path, size: Size):
     declaration = dict(
         schema=sized.DECLARATION_SCHEMA,
         country="us",
-        candidate_release_id=f"us-asec-income-sized-invented-{size.name}-v1",
-        run_id=f"invented-income-sized-{size.name.replace('-', '_')}",
+        candidate_release_id=f"us-income-sized-invented-{size.slug}-v1",
+        run_id=f"invented-income-sized-{size.slug}",
         population={"period": "2024", "entity": "household", "sha256": checkpoint},
         basis="operator_declared_target_period_and_population_entity",
         reason="Invented target 2024 engineering slice. Uncalibrated and excluded from release claims.",
