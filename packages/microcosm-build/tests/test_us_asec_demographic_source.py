@@ -7,6 +7,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.frame_checkpoint import (
+    load_frame_checkpoint,
+    write_frame_checkpoint,
+)
+from microcosm.build.outer_stage_runtime import frame_identity
+from microcosm.build.us_runtime import asec_current_money as money
 from microcosm.build.us_runtime import asec_current_money_source as legacy
 from microcosm.build.us_runtime import asec_demographic_source as demographic
 
@@ -58,12 +64,56 @@ def _read(path):
     return demographic.read_demographic_member(path, rows=2, size=path.stat().st_size)
 
 
-def _sources(tmp_path, monkeypatch, *, reverse=True, relationship=(1, 5)):
+def _repoint_published_households(parent, attachment, monkeypatch, native_ids):
+    """Rewrite the parent roster's published household id, person by person.
+
+    The invented parent publishes native id 7 in every cohort, so this is how
+    a fixture gives one cohort two published households without touching the
+    grouping column, whose distinct values the Frame requires to be exactly
+    the household table's ids. ``source_household_id`` is pooled source
+    provenance and so is inside the checkpoint's own structural identity: the
+    identity is rebound to the rewritten Frame rather than defeated.
+    """
+    parent_identity = None
+    for path in (parent, attachment):
+        loaded = load_frame_checkpoint(path)
+        loaded.frame.person["source_household_id"] = np.array(
+            native_ids, dtype=np.int64
+        )
+        identity = frame_identity(loaded.frame)
+        for key in ("identity", "source_construction_identity"):
+            if key in loaded.metadata:
+                loaded.metadata[key] = identity.to_payload()
+        if path == attachment:
+            digest = money._sha(parent.read_bytes())
+            loaded.metadata["parent_checkpoint_sha256"] = digest
+            receipt = loaded.metadata["household_observations"]
+            receipt["input_checkpoint_sha256"] = digest
+            receipt["input_structural_identity_sha256"] = parent_identity.sha256
+        else:
+            parent_identity = identity
+        write_frame_checkpoint(path, loaded.frame, metadata=loaded.metadata)
+    monkeypatch.setattr(
+        legacy,
+        "_SOURCE_PINS",
+        (
+            money._sha(parent.read_bytes()),
+            money._sha(attachment.read_bytes()),
+            legacy._SOURCE_PINS[2],
+        ),
+    )
+
+
+def _sources(
+    tmp_path, monkeypatch, *, reverse=True, relationship=(1, 5), native_ids=None
+):
     path = Path(__file__).with_name("test_us_asec_person_income_source.py")
     spec = importlib.util.spec_from_file_location("demographic_invented_parent", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     parent, attachment, members = module.invented_sources(tmp_path, monkeypatch)
+    if native_ids is not None:
+        _repoint_published_households(parent, attachment, monkeypatch, native_ids)
     source = legacy.load_authenticated_current_money_source(parent, attachment)
     pins = []
     for year, member, archive, _, _rows, _ in demographic._MEMBER_PINS:
@@ -77,6 +127,8 @@ def _sources(tmp_path, monkeypatch, *, reverse=True, relationship=(1, 5)):
                 "P_SEQ": [1, 2],
             }.items():
                 table.loc[i, name] = str(values[position])
+            if native_ids is not None:
+                table.loc[i, "PH_SEQ"] = str(native_ids[int(row.PERIDNUM) - 1])
         table = table.sort_values("PERIDNUM", ascending=not reverse)
         table.to_csv(members[year], index=False)
         pins.append(
@@ -311,3 +363,222 @@ def test_candidate_bundle_is_reconstructed_and_mutation_is_refused(
         demographic.load_authenticated_asec_demographic_source(
             source, member_paths=members, candidate_path=candidate
         )
+
+
+def _verify(years, natives, groups):
+    return demographic.verify_household_membership(
+        income_year=np.array(years, dtype=np.int64),
+        source_household_id=np.array(natives, dtype=np.int64),
+        household_id=np.array(groups, dtype=np.int64),
+    )
+
+
+#: Three cohorts, each publishing one household, all under the same native id.
+_REUSED_YEARS = [2022, 2022, 2023, 2023, 2024, 2024]
+_REUSED_NATIVE_IDS = [7, 7, 7, 7, 7, 7]
+_REUSED_GROUPS = [1, 1, 2, 2, 3, 3]
+
+
+def test_native_household_id_reuse_across_cohorts_is_admitted_and_counted():
+    result = _verify(_REUSED_YEARS, _REUSED_NATIVE_IDS, _REUSED_GROUPS)
+    assert result["bijective"]
+    assert result["grouping_households"] == result["published_households"] == 3
+    assert result["membership_edges"] == 3
+    assert result["native_household_ids_reused_across_cohorts"] == 1
+    assert result["native_household_id_reuse_across_cohorts_is_admitted"]
+    assert result["published_household_key"] == ["income_year", "source_household_id"]
+    assert result["by_cohort"]["2023"] == {
+        "income_year": 2023,
+        "survey_year": 2024,
+        "rows": 2,
+        "grouping_households": 1,
+        "published_households": 1,
+        "native_household_ids": 1,
+    }
+    assert result["counters_zero_in_every_successful_receipt"] == [
+        "grouping_households_spanning_multiple_cohorts",
+        "grouping_households_spanning_multiple_published_households",
+        "published_households_spanning_multiple_grouping_households",
+    ]
+    assert all(result[name] == 0 for name in demographic.MEMBERSHIP_REFUSAL_COUNTERS)
+
+
+def test_membership_verification_does_not_depend_on_row_order():
+    forward = _verify(_REUSED_YEARS, _REUSED_NATIVE_IDS, _REUSED_GROUPS)
+    order = [5, 0, 3, 2, 4, 1]
+    shuffled = _verify(
+        [_REUSED_YEARS[i] for i in order],
+        [_REUSED_NATIVE_IDS[i] for i in order],
+        [_REUSED_GROUPS[i] for i in order],
+    )
+    assert forward == shuffled
+
+
+@pytest.mark.parametrize(
+    "years,natives,groups,reason",
+    [
+        # Two published households of one cohort collapsed into one grouping
+        # household: its single reference person would otherwise be read as
+        # the head of both, and the other published household would silently
+        # lose its own.
+        ([2022, 2022], [7, 8], [1, 1], "MEMBERSHIP_MERGED_NATIVE_HOUSEHOLDS"),
+        (
+            [2022, 2022, 2022],
+            [7, 7, 8],
+            [1, 1, 1],
+            "MEMBERSHIP_MERGED_NATIVE_HOUSEHOLDS",
+        ),
+        # One published household split across two grouping households: each
+        # part is classified on a subset of the roster the reference-person
+        # cardinality is defined over.
+        ([2022, 2022], [7, 7], [1, 2], "MEMBERSHIP_SPLIT_NATIVE_HOUSEHOLDS"),
+        ([2022] * 3, [7, 7, 7], [1, 1, 2], "MEMBERSHIP_SPLIT_NATIVE_HOUSEHOLDS"),
+        # A grouping household spanning cohorts, with the native id reused and
+        # with two different native ids.
+        ([2022, 2023], [7, 7], [1, 1], "MEMBERSHIP_COHORT_COLLISION"),
+        ([2022, 2023], [7, 8], [1, 1], "MEMBERSHIP_COHORT_COLLISION"),
+    ],
+)
+def test_unequal_household_partitions_refuse_without_naming_a_household(
+    years, natives, groups, reason
+):
+    with pytest.raises(demographic.DemographicSourceRefusalError) as error:
+        _verify(years, natives, groups)
+    assert str(error.value) == f"person_household_id: {reason}"
+
+
+@pytest.mark.parametrize(
+    "years,natives,groups,message",
+    [
+        ([2021, 2021], [7, 7], [1, 1], "income_year: MEMBERSHIP_COHORT"),
+        ([2022, 2022], [0, 7], [1, 1], "source_household_id: MEMBERSHIP_COORDINATE"),
+        (
+            [2022, 2022],
+            [7, 7],
+            [0, 1],
+            "person_household_id: MEMBERSHIP_COORDINATE",
+        ),
+    ],
+)
+def test_membership_coordinates_must_be_declared_and_positive(
+    years, natives, groups, message
+):
+    with pytest.raises(demographic.DemographicSourceRefusalError) as error:
+        _verify(years, natives, groups)
+    assert str(error.value) == message
+
+
+@pytest.mark.parametrize("name", ["income_year", "source_household_id", "household_id"])
+def test_membership_refuses_non_integer_coordinate_arrays(name):
+    arrays = {
+        "income_year": np.array([2022, 2022], dtype=np.int64),
+        "source_household_id": np.array([7, 7], dtype=np.int64),
+        "household_id": np.array([1, 1], dtype=np.int64),
+    }
+    arrays[name] = arrays[name].astype(np.float64)
+    with pytest.raises(
+        demographic.DemographicSourceRefusalError, match="MEMBERSHIP_INPUT"
+    ):
+        demographic.verify_household_membership(**arrays)
+
+
+def test_classifier_refuses_a_grouping_household_spanning_two_cohorts():
+    with pytest.raises(
+        demographic.DemographicSourceRefusalError, match="CLASSIFY_HOUSEHOLD_COHORT"
+    ):
+        _classify(years=[2022, 2023], households=[1, 1])
+
+
+@pytest.mark.parametrize("field", ["PH_SEQ", "A_LINENO", "A_AGE"])
+@pytest.mark.parametrize("token", ["", " ", "  1", "1.0", "-1", "+1", "1 ", "NA"])
+def test_blank_or_noncanonical_coordinate_tokens_refuse(tmp_path, field, token):
+    with pytest.raises(
+        demographic.DemographicSourceRefusalError, match="MEMBER_INTEGER"
+    ):
+        _read(_member(tmp_path, **{field: [token, "1"]}))
+
+
+def test_blank_person_key_token_refuses(tmp_path):
+    with pytest.raises(
+        demographic.DemographicSourceRefusalError, match="MEMBER_PERSON_KEY"
+    ):
+        _read(_member(tmp_path, PERIDNUM=["", "0" * 21 + "2"]))
+
+
+def test_nonpositive_published_household_coordinate_refuses(tmp_path):
+    with pytest.raises(
+        demographic.DemographicSourceRefusalError, match="MEMBER_COORDINATES"
+    ):
+        _read(_member(tmp_path, PH_SEQ=["0", "7"]))
+
+
+def test_restoration_records_the_verified_household_membership(tmp_path, monkeypatch):
+    source, members = _sources(tmp_path, monkeypatch)
+    observations = demographic.load_authenticated_asec_demographic_source(
+        source, member_paths=members
+    )
+    membership = observations.receipt["household_membership"]
+    assert observations.receipt["household_grouping_column"] == "person_household_id"
+    assert membership["grouping_column"] == "person_household_id"
+    assert membership["equivalence"] == "bidirectional_partition_bijection"
+    assert membership["verified_before_classification"]
+    assert membership["bijective"]
+    assert membership["rows"] == 6
+    assert membership["grouping_households"] == membership["published_households"] == 3
+    assert membership["membership_edges"] == 3
+    # The parent publishes the same native household id in all three cohorts.
+    assert membership["native_household_ids_reused_across_cohorts"] == 1
+    assert set(membership["by_cohort"]) == {"2022", "2023", "2024"}
+    assert all(
+        membership[name] == 0 for name in demographic.MEMBERSHIP_REFUSAL_COUNTERS
+    )
+    assert (
+        demographic.contract_document()["household_membership_verification"][
+            "native_household_id_reuse_across_cohorts"
+        ]
+        == "admitted_and_counted"
+    )
+    assert observations.array("asec_household_reference_state").tolist() == [1, 2] * 3
+
+
+def test_merged_published_households_refuse_before_the_demographic_reader(
+    tmp_path, monkeypatch
+):
+    """Pin the layering the demographic fence restates.
+
+    The 2022 cohort now publishes households 7 and 8 while the parent roster
+    still groups both persons together. The parent's own authentication
+    refuses that roster first: ``asec_household_observations._household_keys``
+    requires the same equivalence, and it is reached from ``_scope``, so from
+    every ``AuthenticatedCurrentMoneySource.validate()`` the demographic
+    reader performs. The demographic module refuses the same shape on its own
+    evidence, so relaxing the parent fence would not silently admit a merged
+    household into a headship verdict.
+    """
+    with pytest.raises(money.MoneyRefusalError, match="SOURCE_CONTRACT_REFUSAL"):
+        _sources(tmp_path, monkeypatch, native_ids=[7, 8, 7, 7, 7, 7])
+    with pytest.raises(demographic.DemographicSourceRefusalError) as error:
+        _verify(_REUSED_YEARS, [7, 8, 7, 7, 7, 7], _REUSED_GROUPS)
+    assert str(error.value) == (
+        "person_household_id: MEMBERSHIP_MERGED_NATIVE_HOUSEHOLDS"
+    )
+
+
+def test_restoration_receipt_names_its_structurally_zero_counters(
+    tmp_path, monkeypatch
+):
+    source, members = _sources(tmp_path, monkeypatch)
+    observations = demographic.load_authenticated_asec_demographic_source(
+        source, member_paths=members
+    )
+    for entry in observations.receipt["sources"]:
+        assert entry["counters_zero_in_every_successful_receipt"] == [
+            "accepted_source_missing_tokens",
+            "incumbent_conflicts",
+            "native_key_or_age_conflicts",
+            "unreferenced_source_rows",
+        ]
+        assert entry["zero_counter_semantics"] == demographic.ZERO_COUNTER_SEMANTICS
+        assert entry["unreferenced_source_rows"] == 0
+        assert entry["incumbent_conflicts"] == 0
+        assert entry["native_key_or_age_conflicts"] == 0
