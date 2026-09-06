@@ -78,7 +78,7 @@ IMPLEMENTATION_MODULES = (
 # Byte identity of ``recipe_bytes()``. A recipe change must move this pin in the
 # same commit; a silent drift between the declared contract and the transcribed
 # field table refuses instead of extracting under an unreviewed contract.
-RECIPE_SHA256 = "60ea23566e4b1524935249805bfe83a828fbc8d8b350503c6c99e422df60fdd0"
+RECIPE_SHA256 = "b04ccf7bdae4869d5f17b746351b9bc81431dab78a736a40b2a7de6535c4a37b"
 
 # The official document these contracts were transcribed from. Its digest is not
 # a second authority: ``verify_dictionary()`` requires it to equal the frozen
@@ -401,10 +401,19 @@ def prospective_predictors() -> dict:
             "domain_maximum": 90,
             "domain_maximum_called_a_topcode": False,
             "household_statistic": (
-                "maximum over admissible December person observations only"
+                "maximum over admissible December person observations, "
+                "published only under complete coverage"
             ),
             "coverage_states": list(hpred.AGE_COVERAGE_STATES),
-            "partial_coverage_is_a_lower_bound_not_a_maximum": True,
+            # Partial coverage yields no maximum: an unreadable member could be
+            # older than every member that was read. The maximum is an explicit
+            # unknown and the bound that was observed is a separate measurement,
+            # so a strict adapter cannot receive the bound as the maximum.
+            "partial_coverage_yields_no_maximum": True,
+            "lower_bound_is_a_separate_measurement": (
+                "sipp_december_household_maximum_member_age_lower_bound"
+            ),
+            "a_measurement_with_reasons_carries_no_value": True,
         },
         "fields_deliberately_absent": dict(hpred.PREDICTOR_FIELDS_DELIBERATELY_ABSENT),
         "shared_with_frozen_producer": {

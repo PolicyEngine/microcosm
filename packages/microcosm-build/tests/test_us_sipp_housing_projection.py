@@ -1610,9 +1610,14 @@ def test_partial_age_coverage_yields_a_declared_lower_bound_not_a_maximum():
         == "roster_coverage_incomplete"
     )
     assert household.status == "predictor_age_coverage_incomplete"
-    assert hp.recipe_document()["prospective_predictors"]["age"][
-        "partial_coverage_is_a_lower_bound_not_a_maximum"
-    ]
+    age = hp.recipe_document()["prospective_predictors"]["age"]
+    assert age["partial_coverage_yields_no_maximum"]
+    assert age["a_measurement_with_reasons_carries_no_value"]
+    assert (
+        age["lower_bound_is_a_separate_measurement"]
+        == "sipp_december_household_maximum_member_age_lower_bound"
+    )
+    assert bound.name == age["lower_bound_is_a_separate_measurement"]
 
 
 def test_no_admissible_age_leaves_the_household_maximum_unknown():
