@@ -33,14 +33,28 @@ changelog are the root's.
 - [x] Guarded runner `run_cd_fable_auxiliary.py` written under the review directory.
 - [x] Numeric baseline captured: 217 document numeric values, 94 compiled numeric values,
       document digest equal to `APPROVED_PROTOCOL_SHA256`.
-- [ ] Behavioral regressions written and shown red.
-- [ ] Fixes applied and shown green.
-- [ ] Scoped ruff and diff checks.
-- [ ] Report and receipt written.
+- [x] Behavioral regressions written first and shown red: 25 failures across
+      `test_cd_benchmark_protocol.py` and `test_cd_benchmark_ledger.py` with 72 passing,
+      plus a collection `ImportError` for the new file. No pre-existing test failed.
+- [x] Fixes applied and shown green: 212 passed, 0 failed across the six CD benchmark
+      test files under the guarded runner, exit 0, no forbidden import, every loaded
+      module byte-equal to its committed blob.
+- [x] Document bytes, digest, all 217 document numeric values and all 94 compiled
+      numeric values re-verified identical to the base.
+- [x] `ruff check` and `ruff format --check` clean on the seven owned files.
+- [x] Report `us-cd-fable-auxiliary-fixes-REPORT.md` and
+      `us-cd-fable-auxiliary-fixes-receipt.json` written under the review directory.
+
+Head `3dfeaa49`, two commits on `us-cd-fable-auxiliary-fixes-20260905`.
 
 ## Next
 
-Write the five regressions against the unmodified head, run them red, then implement.
+Nothing is pushed, merged, registered or scored, by instruction. After the root
+cherry-picks this lane, one CI step remains and belongs to the root, not here:
+`tools/ci_test_groups.py --verify` still exits 0 but reports the new
+`test_cd_benchmark_review_auxiliary.py` under `[defaulted] -> shared-spec`, and the repo
+guide asks that a new test file never sit under `[defaulted]`. That file is the
+sibling's and the root's. A changelog fragment is likewise the root's.
 
 ## Non-goals
 
