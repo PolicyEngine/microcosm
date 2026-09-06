@@ -171,6 +171,7 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "capital_gain_details.py",
     "child_support.py",
     "childcare.py",
+    "demographic_calibration_graph.py",
     "disability_benefits.py",
     "domestic_production.py",
     "education_inputs.py",
