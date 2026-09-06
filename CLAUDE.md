@@ -32,6 +32,18 @@ The subsequent masked ASEC sex/reference binding is documented in
 `docs/us-composed-asec-demographic-binding.md`. It reuses the accepted source
 projection and prepared native-roster digest; it preserves the ACS canonical
 incumbents and represents unknown ASEC booleans as declared nulls.
+The bounded whole-household PUF-support clone over that combined population is
+`docs/us-combined-survey-clone-graph.md`. It is a real graph `EXPAND` that
+reuses `clone_us_frame_for_puf_support` as its operator and validator; it reads
+no donor, fits nothing, draws nothing and is labelled development, not release
+eligible. Downstream donor admission, fitting, drawing and placement consume
+its expanded population through their own declared graph nodes.
+
+Original survey-household origin evidence and its exact population/clone grain
+are documented in `docs/us-native-household-origin.md`. The extension has its
+own implementation inventory; do not change the shared v1 inventory to register
+it. Original ASEC household-member pins require a separate source audit; neither
+the derived household HDF nor the original person member substitutes for them.
 
 IRS fiscal targets require explicit supported return universes and actual model
 filer decisions before household aggregation. Target-frame materializer version

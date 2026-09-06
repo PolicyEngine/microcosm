@@ -15,3 +15,11 @@ Next:
 - Add integrated declarations and an invented-only cached execution helper.
 - Prove complete stored-frame lineage, preservation and fresh REQUIRED reuse.
 - Commit every coherent step and publish the requested Markdown/JSON handoff.
+
+Integration step:
+- Merged accepted demographic 7a7acc108 and native/clone 2c092b69c.
+- Kept both instruction paragraphs and both test-classification entries.
+- Inherited production dependency changes are the accepted branch ancestry;
+  this assignment does not alter shared implementation inventories or dependencies.
+- GitNexus tools are unavailable; traced source directly.
+Next: derive integrated declarations, execute bounded invented proof.
