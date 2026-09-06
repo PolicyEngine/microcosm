@@ -172,8 +172,34 @@ before it was fixed.
   refuses nonfinite floats, so the claim that the two routes are equally strict
   is true rather than asserted.
 
-Tests grew 63 → 68 cases in the reader file (focused group 148 → 153), covering
-each of the above. The freeze's cost, which the first attempt recorded as *not
+- **`main` could exit through a traceback.** The freeze walk spends a frame per
+  nesting level, so a document nested past the recursion limit raised
+  `RecursionError` — which is neither `OSError` nor `ValueError` — straight out
+  of `main`, where the pre-freeze reader had refused cleanly. `main` is
+  documented and tested to return an int. `RecursionError` is now caught, and a
+  depth-2000 document refuses with `maximum recursion depth exceeded` on exit 1.
+- **A taken `--output` was judged last, after the whole run.** The docstring
+  claimed every inventory-independent argument is judged before the read; the
+  one that costs the most to learn late was the exception. It is now checked
+  beside the other pre-load checks, with the exclusive create left as the
+  authority because it is the arm that cannot be raced.
+- **The `FileExistsError` handler wrapped open, write and close**, so its
+  comment ("only around the exclusive create") held by accident. The `try` now
+  covers the create alone.
+- **A test's comment described a step it never ran.** It said the same arguments
+  "over a real path" reach the loader, but every call used the absent path. The
+  ordering is now proved both ways: the refusal moves from the selector message
+  to the loader message on the absent path, and a real path projects
+  successfully, so the selector checks are not merely failing everything early.
+- **The module-origin claim was overstated.** The first attempt's collector
+  exec'd one of the four test files and called the resulting 174 modules "exactly
+  what the suite imports". The suite imports **235**. This continuation measures
+  the set the real four-file run actually leaves behind, from a
+  `pytest_sessionfinish` hook: 235 modules, all resolved inside `W`, all
+  byte-identical to their committed blobs, zero foreign, and no foreign shard
+  entry left on `sys.path`.
+
+Tests grew 63 → 70 cases in the reader file, covering each of the above. The freeze's cost, which the first attempt recorded as *not
 measured*, is now measured on a synthetic tree sized to the pinned byte count
 (the real bundle is still never opened): freeze 0.95 s against 0.24 s to parse
 and 0.012 s to digest the same 38.8 MB, ~88 MB peak for the freeze alone, and
