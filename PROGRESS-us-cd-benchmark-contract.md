@@ -36,13 +36,18 @@ dedicated worktree. Nothing pushed. No PR opened.
       document: `canonical`, `reasons`, `protocol`, `metrics`, `reference`,
       `support`, `origin`, `approval`, `ledger`, `binding`, `universe`,
       `evaluation`.
-- [x] 159 invented-fixture tests across five files, all boundaries
+- [x] 166 invented-fixture tests across five files, all boundaries
       hand-calculable.
 - [x] `docs/us-cd-published-benchmark-contract.md` and a towncrier fragment.
 - [x] CI group routing: the five test files are explicit `shared-spec`, never
       `[defaulted]`; `tools/ci_test_groups.py --verify` exits 0.
 - [x] Wheel build carries the packaged document at its approved digest.
 - [x] Unchanged quality/holdout regression re-run green (150 tests).
+- [x] Whole `shared-spec` CI group run: the only failures are five that
+      reproduce identically at the frozen base
+      (`test_release_target_parity.py::TestRegeneration::*` and three
+      `test_spec_engine_country_bundles.py` bundle-digest parametrizations).
+      They are not caused by this branch and were not re-pinned.
 
 ## Not done, deliberately
 

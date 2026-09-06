@@ -153,6 +153,11 @@ resolves one root and one peer APPROVE covering the requested action. A
 registration naming an approval digest the authority does not hold is refused —
 a ledger line cannot authorize itself.
 
+Only `resolve_action` sets `registration_resolved` on a resolution, and
+`evaluate_scope` requires it, so a caller who resolves reviewer verdicts through
+`ApprovalAuthority.resolve` and skips registration cannot pass that off as
+activation.
+
 There is no default and no production `ApprovalAuthority`, and no
 `ProducerAuthenticator` ships at all. A filled binding slot is caller evidence,
 never authentication: with no authenticator injected, every binding resolves to
