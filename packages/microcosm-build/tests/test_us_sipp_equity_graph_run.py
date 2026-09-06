@@ -11,12 +11,11 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import us_sipp_equity_fixture as fx
 
 import microcosm.build.sipp_equity_contract as contract_module
 import microcosm.build.sipp_equity_graph as equity
 import microcosm.graph as mgraph
-import microcosm.graph.codecs as mcodecs
-import us_sipp_equity_fixture as fx
 
 TARGET = contract_module.TARGET_NAME
 PREDICTOR = contract_module.PREDICTOR_NAME
@@ -127,7 +126,9 @@ class _Harness:
         }
 
 
-def test_the_validator_is_a_real_compiler_derived_predecessor_of_draw(tmp_path, monkeypatch):
+def test_the_validator_is_a_real_compiler_derived_predecessor_of_draw(
+    tmp_path, monkeypatch
+):
     compiled = _Harness(monkeypatch, tmp_path).compiled()
     assert equity.VALIDATE_NODE in compiled.predecessors[equity.DRAW_NODE]
     assert compiled.owners[(equity.RECIPIENT_POPULATION, "household", PREDICTOR)] == (
@@ -138,7 +139,9 @@ def test_the_validator_is_a_real_compiler_derived_predecessor_of_draw(tmp_path, 
     )
 
 
-def test_a_cold_run_fits_the_admitted_donors_and_draws_the_recipients(tmp_path, monkeypatch):
+def test_a_cold_run_fits_the_admitted_donors_and_draws_the_recipients(
+    tmp_path, monkeypatch
+):
     harness = _Harness(monkeypatch, tmp_path)
     manifest = harness.run()
     assert harness.calls() == {
@@ -237,7 +240,9 @@ def _model_header(graph_qrf, payload):
     return json.loads(payload[offset + 8 : offset + 8 + size])
 
 
-def test_an_unsupported_recipient_size_refuses_and_leaves_draw_unexecuted(tmp_path, monkeypatch):
+def test_an_unsupported_recipient_size_refuses_and_leaves_draw_unexecuted(
+    tmp_path, monkeypatch
+):
     harness = _Harness(monkeypatch, tmp_path, sizes=(1, 2, 9))
     with pytest.raises(Exception, match="UNSUPPORTED_RECIPIENT_HOUSEHOLD_SIZE"):
         harness.run()
@@ -245,7 +250,9 @@ def test_an_unsupported_recipient_size_refuses_and_leaves_draw_unexecuted(tmp_pa
     assert harness.calls()["support"] == 1
 
 
-def test_the_refused_validator_leaves_draw_unexecuted_on_a_warm_rerun(tmp_path, monkeypatch):
+def test_the_refused_validator_leaves_draw_unexecuted_on_a_warm_rerun(
+    tmp_path, monkeypatch
+):
     harness = _Harness(monkeypatch, tmp_path, sizes=(1, 2, 9))
     for _ in range(2):
         with pytest.raises(Exception, match="UNSUPPORTED_RECIPIENT_HOUSEHOLD_SIZE"):
@@ -254,18 +261,28 @@ def test_the_refused_validator_leaves_draw_unexecuted_on_a_warm_rerun(tmp_path, 
     assert harness.calls()["support"] == 2
 
 
-def test_a_recipient_supplying_a_conflicting_household_size_refuses(tmp_path, monkeypatch):
+def test_a_recipient_supplying_a_conflicting_household_size_refuses(
+    tmp_path, monkeypatch
+):
     directory = tmp_path / "recipient-conflict"
-    with pytest.raises(Exception, match="RECIPIENT_ROSTER_COLUMN_SUPPLIED|SIZE_CONFLICT"):
-        _Harness(monkeypatch, tmp_path,
+    with pytest.raises(
+        Exception, match="RECIPIENT_ROSTER_COLUMN_SUPPLIED|SIZE_CONFLICT"
+    ):
+        _Harness(
+            monkeypatch,
+            tmp_path,
             sizes=(1, 2, 3),
             recipient_dir=directory,
             extra_column=(PREDICTOR, [5, 5, 5]),
         ).run()
 
 
-def test_a_recipient_supplying_an_agreeing_household_size_is_accepted(tmp_path, monkeypatch):
-    harness = _Harness(monkeypatch, tmp_path,
+def test_a_recipient_supplying_an_agreeing_household_size_is_accepted(
+    tmp_path, monkeypatch
+):
+    harness = _Harness(
+        monkeypatch,
+        tmp_path,
         sizes=(1, 2, 3),
         recipient_dir=tmp_path / "recipient-agree",
         extra_column=(PREDICTOR, [1, 2, 3]),
@@ -295,14 +312,16 @@ def test_permuting_recipient_household_ids_invalidates_the_draw_cache(
     assert not second.nodes[equity.DRAW_NODE].hit
 
 
-def test_a_changed_source_store_changes_the_donor_and_descendant_keys(tmp_path, monkeypatch):
+def test_a_changed_source_store_changes_the_donor_and_descendant_keys(
+    tmp_path, monkeypatch
+):
     base = _Harness(monkeypatch, tmp_path / "a")
-    first = base.run()
+    base.run()
     changed = _Harness(monkeypatch, tmp_path / "b")
     projection_key = changed.contract.source["projection_key"]
     obj = mgraph.ContentStore(changed.source_store).object_path(projection_key)
     (obj / "payload.bin").write_bytes(b"different bytes entirely")
-    with pytest.raises(Exception):
+    with pytest.raises(mgraph.NodeRejectedError):
         changed.run()
     assert changed.calls()["fit"] == 0
 

@@ -23,7 +23,9 @@ import microcosm.build.sipp_measurements as m
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.store import ContentStore
 
-INVENTED_PARENT_SHA256 = "f" * 8 + "1" * 8 + "0" * 8 + "a" * 8 + "b" * 8 + "c" * 8 + "d" * 16
+INVENTED_PARENT_SHA256 = (
+    "f" * 8 + "1" * 8 + "0" * 8 + "a" * 8 + "b" * 8 + "c" * 8 + "d" * 16
+)
 INVENTED_PARENT_KEY = "e" * 64
 INVENTED_REGISTRY_SHA256 = "9" * 64
 INVENTED_DICTIONARY_SHA256 = "8" * 64
@@ -128,7 +130,10 @@ def build_receipt(projection, rows=None, *, binding=INVENTED_BINDING, counts=Non
     """Build an invented receipt with the producer's own digests and formulas."""
     rows = invented_rows() if rows is None else rows
     source = m.SippSource(INVENTED_PARENT_SHA256, m.SIPP_2023_MASTER_SHA256, 2023, 2022)
-    supplied = tuple(m.SippRow(dict(zip(s.FIELDS, [r.get(f) for f in s.FIELDS], strict=True))) for r in rows)
+    supplied = tuple(
+        m.SippRow(dict(zip(s.FIELDS, [r.get(f) for f in s.FIELDS], strict=True)))
+        for r in rows
+    )
     households = m.december_households(
         supplied, source=source, complete_membership=True, copied_fields=s._COPIED
     )
@@ -185,10 +190,14 @@ def publish(root: Path, projection: bytes, receipt: bytes, *, binding=INVENTED_B
     return store, receipt_key, projection_key
 
 
-def invented_contract(receipt, projection, receipt_key, projection_key, *, binding=INVENTED_BINDING):
+def invented_contract(
+    receipt, projection, receipt_key, projection_key, *, binding=INVENTED_BINDING
+):
     """The explicit test-only contract construction route."""
     document = json.loads(
-        (Path(contract_module.__file__).parent / contract_module.CONTRACT_RESOURCE).read_bytes()
+        (
+            Path(contract_module.__file__).parent / contract_module.CONTRACT_RESOURCE
+        ).read_bytes()
     )
     parsed = json.loads(receipt)
     document["admission"]["expected_admitted_residences"] = ADMITTED_RESIDENCES

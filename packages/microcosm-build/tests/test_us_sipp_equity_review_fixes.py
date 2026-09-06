@@ -18,12 +18,12 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import us_sipp_equity_fixture as fx
 
 import microcosm.build.sipp_december_readback as readback
 import microcosm.build.sipp_equity_contract as contract_module
 import microcosm.build.sipp_equity_graph as equity
 import microcosm.graph as mgraph
-import us_sipp_equity_fixture as fx
 
 TARGET = contract_module.TARGET_NAME
 PREDICTOR = contract_module.PREDICTOR_NAME
@@ -381,7 +381,10 @@ def test_an_agreeing_supplied_size_is_still_accepted_checked_and_dropped(
 ):
     """A valid agreeing claim stays admissible; the derived roster stays the identity."""
     bench = _Bench(
-        monkeypatch, tmp_path, sizes=(1, 2, 3, 4, 2), extra_column=(PREDICTOR, (1, 2, 3, 4, 2))
+        monkeypatch,
+        tmp_path,
+        sizes=(1, 2, 3, 4, 2),
+        extra_column=(PREDICTOR, (1, 2, 3, 4, 2)),
     )
     manifest = bench.run()
     household = manifest.populations[equity.RECIPIENT_POPULATION].table("household")
@@ -441,7 +444,6 @@ def test_a_symlinked_objects_directory_is_refused(tmp_path, monkeypatch):
     (decoy / "objects").mkdir(parents=True)
     (decoy / "tmp").mkdir()
     for shard in (bench.source_store / "objects").iterdir():
-        os.link if False else None
         target = decoy / "objects" / shard.name
         target.mkdir()
         for obj in shard.iterdir():
@@ -467,9 +469,7 @@ def test_an_object_parked_under_the_wrong_shard_is_refused(tmp_path, monkeypatch
     wrong.mkdir()
     original.rename(wrong / key)
     with pytest.raises(equity.EquityGraphError, match="SOURCE_STORE_SHARD_PLACEMENT"):
-        equity.load_sipp_equity_donor_frame(
-            bench.source_store, contract=bench.contract
-        )
+        equity.load_sipp_equity_donor_frame(bench.source_store, contract=bench.contract)
 
 
 def test_a_duplicated_object_under_a_second_shard_is_refused(tmp_path, monkeypatch):
@@ -482,9 +482,7 @@ def test_a_duplicated_object_under_a_second_shard_is_refused(tmp_path, monkeypat
     for entry in source_dir.iterdir():
         (duplicate / entry.name).write_bytes(entry.read_bytes())
     with pytest.raises(equity.EquityGraphError, match="SOURCE_STORE_SHARD_PLACEMENT"):
-        equity.load_sipp_equity_donor_frame(
-            bench.source_store, contract=bench.contract
-        )
+        equity.load_sipp_equity_donor_frame(bench.source_store, contract=bench.contract)
 
 
 def test_the_prepared_copy_is_bounded_by_the_pinned_object_length(
@@ -517,7 +515,9 @@ def test_the_signed_target_conversion_accepts_zero_and_negative_values():
     from decimal import Decimal
 
     assert equity._checked_target_float(Decimal("0"), "TARGET_CONVERSION") == 0.0
-    assert equity._checked_target_float(Decimal("-12345"), "TARGET_CONVERSION") == -12345.0
+    assert (
+        equity._checked_target_float(Decimal("-12345"), "TARGET_CONVERSION") == -12345.0
+    )
     with pytest.raises(equity.EquityGraphError, match="TARGET_CONVERSION"):
         equity._checked_target_float(Decimal("1e400"), "TARGET_CONVERSION")
     # The weight predicate is unchanged and still refuses a nonpositive weight.

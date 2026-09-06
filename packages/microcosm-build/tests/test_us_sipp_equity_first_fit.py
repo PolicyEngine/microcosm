@@ -7,16 +7,16 @@ Every byte under test is authored in ``us_sipp_equity_fixture``.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import numpy as np
 import pytest
+import us_sipp_equity_fixture as fx
 
 import microcosm.build.sipp_december_readback as readback
+import microcosm.build.sipp_december_source as source_module
 import microcosm.build.sipp_equity_contract as contract_module
 import microcosm.build.sipp_equity_graph as equity
-import microcosm.graph as mgraph
-import us_sipp_equity_fixture as fx
+from microcosm.graph.errors import StoreCorruptError
 from microcosm.graph.store import ContentStore
 
 TARGET = contract_module.TARGET_NAME
@@ -119,11 +119,15 @@ def test_a_changed_same_size_projection_payload_refuses(tmp_path, accepted):
     forged_receipt = fx.build_receipt(changed, fx.invented_rows())
     fx.publish(consistent, changed, forged_receipt)
     republished = equity.prepare_source_store(
-        consistent, tmp_path / "s-consistent", contract=_contract_for(forged_receipt, changed)
+        consistent,
+        tmp_path / "s-consistent",
+        contract=_contract_for(forged_receipt, changed),
     )
     with pytest.raises(readback.ReadbackError, match="RECEIPT_PIN|PROJECTION_PIN"):
         readback.read_sipp_december_projection(
-            ContentStore(republished), _scratch(tmp_path, "scratch1b"), contract=contract
+            ContentStore(republished),
+            _scratch(tmp_path, "scratch1b"),
+            contract=contract,
         )
 
 
@@ -145,7 +149,7 @@ def test_forged_object_metadata_refuses(tmp_path, accepted):
     root, contract, _, _ = accepted
     prepared = _prepared(tmp_path, root, contract)
     fx.forge_metadata(prepared, contract.source["receipt_key"], node_key="a" * 64)
-    with pytest.raises(Exception):
+    with pytest.raises((source_module.SourceError, readback.ReadbackError)):
         readback.read_sipp_december_projection(
             ContentStore(prepared), _scratch(tmp_path, "scratch2"), contract=contract
         )
@@ -158,7 +162,7 @@ def test_a_receipt_stored_under_the_wrong_kind_refuses(tmp_path, accepted):
     meta = json.loads((obj / "meta.json").read_bytes())
     meta["kind"] = "not_the_declared_kind"
     (obj / "meta.json").write_bytes(json.dumps(meta, sort_keys=True).encode())
-    with pytest.raises(Exception):
+    with pytest.raises((StoreCorruptError, readback.ReadbackError)):
         readback.read_sipp_december_projection(
             ContentStore(prepared), _scratch(tmp_path, "scratch3"), contract=contract
         )
@@ -198,7 +202,11 @@ def test_the_prepared_store_has_both_directories_and_only_two_objects(
     prepared = _prepared(tmp_path, root, contract)
     assert sorted(p.name for p in prepared.iterdir()) == ["objects", "tmp"]
     assert not any((prepared / "tmp").iterdir())
-    keys = {obj.name for shard in (prepared / "objects").iterdir() for obj in shard.iterdir()}
+    keys = {
+        obj.name
+        for shard in (prepared / "objects").iterdir()
+        for obj in shard.iterdir()
+    }
     assert keys == {contract.source["receipt_key"], contract.source["projection_key"]}
 
 
@@ -227,9 +235,7 @@ def test_a_nonempty_tmp_refuses(tmp_path, accepted):
 
 
 # --- admission and coverage ------------------------------------------------
-def test_admission_keeps_signed_targets_and_positive_source_weights(
-    tmp_path, accepted
-):
+def test_admission_keeps_signed_targets_and_positive_source_weights(tmp_path, accepted):
     frame = _donor_frame(tmp_path, accepted)
     table = frame.table("household")
     targets = table[TARGET].to_numpy()
@@ -242,9 +248,7 @@ def test_admission_keeps_signed_targets_and_positive_source_weights(
     assert sorted(set(int(v) for v in table[PREDICTOR])) == fx.ADMITTED_SIZES
 
 
-def test_every_excluded_residence_stays_in_the_full_coverage_report(
-    tmp_path, accepted
-):
+def test_every_excluded_residence_stays_in_the_full_coverage_report(tmp_path, accepted):
     frame = _donor_frame(tmp_path, accepted)
     metadata = frame.metadata
     admission = metadata["admission"]
@@ -283,7 +287,9 @@ def test_exact_decimal_evidence_survives_beside_the_checked_float64_weights(
     exact = frame.metadata["exact_source_weights"]
     weights = frame.weights_for("household").values
     assert len(exact) == len(weights)
-    assert all(float(value) == observed for value, observed in zip(exact, weights))
+    assert all(
+        float(value) == observed for value, observed in zip(exact, weights, strict=True)
+    )
     assert frame.metadata["weight_is_calibrated"] is False
 
 

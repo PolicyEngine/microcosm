@@ -12,8 +12,6 @@ import ast
 import hashlib
 from pathlib import Path
 
-import pytest
-
 import microcosm.build.sipp_december_readback as readback
 import microcosm.build.sipp_equity_contract as contract_module
 import microcosm.build.sipp_equity_graph as equity
@@ -123,10 +121,10 @@ def test_the_producer_and_measurement_modules_are_unchanged():
     assert source_module._PINS.sha256 == contract.source["parent_sha256"]
     assert measurements.SIPP_2023_MASTER_SHA256 == contract.source["master_sha256"]
     assert source_module._PINS.registry_sha256 == contract.source["registry_sha256"]
+    assert source_module._PINS.dictionary_sha256 == contract.source["dictionary_sha256"]
     assert (
-        source_module._PINS.dictionary_sha256 == contract.source["dictionary_sha256"]
+        tuple(contract.source["counts"].values()) == source_module._PINS.expected_counts
     )
-    assert tuple(contract.source["counts"].values()) == source_module._PINS.expected_counts
 
 
 def test_the_new_test_files_land_in_a_real_ci_bucket():
@@ -140,6 +138,7 @@ def test_the_new_test_files_land_in_a_real_ci_bucket():
         "test_us_sipp_equity_first_fit.py",
         "test_us_sipp_equity_graph_run.py",
         "test_us_sipp_equity_blindness.py",
+        "test_us_sipp_equity_review_fixes.py",
     ):
         path = f"packages/microcosm-build/tests/{name}"
         assert ci_test_groups.us_bucket(name) == "us-qs"

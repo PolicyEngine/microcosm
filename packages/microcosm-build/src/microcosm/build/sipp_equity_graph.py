@@ -40,8 +40,8 @@ from microcosm.graph import (
     load_source,
     source_hash,
 )
-from microcosm.graph.codecs import SOURCE_CODECS
 from microcosm.graph.canonical import canonical_json, sha256_domain
+from microcosm.graph.codecs import SOURCE_CODECS
 from microcosm.graph.store import ContentStore
 
 from . import sipp_december_readback as readback
@@ -289,9 +289,7 @@ def coverage_report(readback_result, contract) -> dict:
         },
         "bank": s._profile(readback_result.bank),
         "household_weights": s._weights(h.weight for h in households),
-        "person_weights": s._weights(
-            w for h in households for w in h.person_weights
-        ),
+        "person_weights": s._weights(w for h in households for w in h.person_weights),
         "flag_9_policy": contract.admission["flag_9_policy"],
         "vehicle_count_is_not_an_admission_requirement": True,
     }
@@ -519,9 +517,11 @@ class SippDonorCreateKernel(KernelBase):
     def run(self, context: KernelContext) -> KernelResult:
         node = context.node
         contract = self._contract or contract_module.load_contract()
-        if node.artifact_outputs != (
-            ArtifactOutput("donor_support", DONOR_SUPPORT_TYPE),
-        ) or node.artifact_inputs:
+        if (
+            node.artifact_outputs
+            != (ArtifactOutput("donor_support", DONOR_SUPPORT_TYPE),)
+            or node.artifact_inputs
+        ):
             raise EquityGraphError("DONOR_NODE_ARTIFACTS")
         if set(context.params) != {"concept", "period", "contract_identity"}:
             raise EquityGraphError("DONOR_NODE_PARAMS")

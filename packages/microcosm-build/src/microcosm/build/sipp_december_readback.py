@@ -221,7 +221,9 @@ def read_sipp_december_projection(
         copied_fields=s._COPIED,
         target_year=source_pins["reference_year"],
     )
-    bank = m.december_bank_assets(rows, source=source, target_year=source_pins["reference_year"])
+    bank = m.december_bank_assets(
+        rows, source=source, target_year=source_pins["reference_year"]
+    )
 
     counts = s._counts(households)
     _require(counts == dict(source_pins["counts"]), "RECONSTRUCTED_COUNTS_PIN")
