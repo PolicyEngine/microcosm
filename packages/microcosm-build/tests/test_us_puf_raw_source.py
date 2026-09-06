@@ -240,7 +240,7 @@ def test_packaged_definition_is_importable_from_the_installed_package():
     from importlib import resources
 
     raw = (
-        resources.files("microcosm.build.us")
+        resources.files("microcosm.build.us_runtime")
         .joinpath("puf_2015_raw_source_definition.json")
         .read_bytes()
     )
@@ -1818,7 +1818,7 @@ def test_the_module_and_definition_carry_no_absolute_or_genuine_source_paths():
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             assert not node.value.startswith("/"), node.value
     raw = (
-        Path(puf.__file__).parents[1] / "us" / "puf_2015_raw_source_definition.json"
+        Path(puf.__file__).with_name("puf_2015_raw_source_definition.json")
     ).read_text()
     for needle in forbidden:
         assert needle not in raw, needle

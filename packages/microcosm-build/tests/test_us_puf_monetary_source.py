@@ -80,12 +80,12 @@ PROJECTED = list(PACKAGED_PROJECTION.fields)
 HOST_POPULATION = "fixture_host"
 HOST_SOURCE = "fixture_host_tables"
 
-#: The reviewed raw source module's exact bytes at the accepted lineage head
-#: ``2fd9a5cb``. This slice imports that module and must not edit it: an edit
-#: would move ``USPufRawSourceKernel.implementation_hash`` and with it every
-#: node key and artifact already accepted under it.
+#: The raw producer's resource location was corrected after the monetary slice:
+#: runtime source metadata must not enter the country-spec closure. This is a
+#: new implementation identity; accepted artifacts at 2fd9a5cb retain their
+#: old identity. The raw definition bytes and decoder semantics are unchanged.
 REVIEWED_RAW_SOURCE_SHA256 = (
-    "9c7459a3b0f95ddf07eea04025311035fadd82773220b5247697fb93b9f9b09d"
+    "c0e31e335dd38a4c767b5cf83ffb09c05576b038608fdc78213e32ee0a65ecf6"
 )
 
 
@@ -155,7 +155,7 @@ def demographic_record(*, recid, agerange="2", gender="1"):
 
 #: Five invented returns: a matched one, an unmatched one carrying negative
 #: business income and a negative short-term Schedule D result, a matched one
-#: whose amounts are reported zeros, a second unmatched one, and one publisher
+#: whose delivered amounts are zeros, a second unmatched one, and one publisher
 #: disclosure aggregate.
 DEFAULT_MAIN = [
     main_record(
@@ -456,7 +456,7 @@ def test_units_are_whole_dollars_with_no_implied_decimals():
         assert units["field_width_digits"] == 12
         assert "rounding_grid" in units["basis_anchors"]
     grid = PACKAGED_PROJECTION.document["anchors"]["rounding_grid"]["text"]
-    # The rounding grid is what makes a delivered zero a reported zero.
+    # The rounding rule documents a disclosure edit, not taxpayer reporting.
     assert "Nonzero amounts less than $5 are set to $2" in grid
 
 
@@ -483,7 +483,7 @@ def test_missingness_is_declared_and_never_invented():
     for entry in PACKAGED_PROJECTION.document["projection"]["columns"]:
         missing = entry["missingness"]
         assert missing["empty_token"] == "refused"
-        assert missing["zero_meaning"] == "reported_zero_not_a_rounding_artifact"
+        assert missing["zero_meaning"] == "delivered_zero_in_edited_public_file"
         assert missing["zero_basis_anchor"] == "rounding_grid"
 
 
@@ -493,7 +493,10 @@ def test_every_column_declares_the_return_grain_and_the_unresolved_period():
         assert entry["source_period_status"]["status"] == "unresolved_raw_FLPDYR"
         assert entry["target_year_use"] == "refused_pending_independent_growth_decision"
         assert entry["derived_combinations"] == "refused"
-        assert entry["fit_admission"] in ("source_year_only", "unresolved_retained")
+        assert entry["fit_admission"] in (
+            "not_admitted_pending_basis_review",
+            "unresolved_retained",
+        )
 
 
 def test_the_source_pin_identity_is_the_reviewed_definition_not_a_restatement():
@@ -701,7 +704,7 @@ def test_the_production_kernel_refuses_anything_but_the_packaged_bytes(invented)
     assert error.value.reason == "KERNEL_PROJECTION_NOT_PACKAGED"
 
 
-def test_the_reviewed_raw_source_module_bytes_are_unchanged():
+def test_the_raw_source_module_matches_the_reviewed_packaging_identity():
     """This slice imports the reviewed producer; it must not edit it.
 
     An edit would move ``USPufRawSourceKernel.implementation_hash`` and with
@@ -1045,6 +1048,46 @@ def test_the_envelope_round_trips_every_column_exactly(envelope):
     for field in PROJECTED:
         assert back.lexical[field] == projected.lexical[field]
     assert canonical_json(dict(back.facts)) == canonical_json(dict(projected.facts))
+
+
+def test_fitting_refusals_survive_readback_and_cannot_be_promoted(envelope):
+    payload, projection, projected = envelope
+    back = decode_monetary_projection(payload, projection)
+    assert back.column_metadata == projected.column_metadata
+    for column in projection.columns:
+        metadata = back.column_metadata[column.field]
+        assert metadata["fit_admission"] == "not_admitted_pending_basis_review"
+        assert metadata["unresolved"] == column.unresolved
+        assert metadata["period_semantics"] == "unresolved_raw_FLPDYR"
+        with pytest.raises(TypeError):
+            metadata["fit_admission"] = "source_year_only"
+
+    def forge_admission(header):
+        header["facts"]["column_metadata"]["E00200"]["fit_admission"] = (
+            "source_year_only"
+        )
+
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(
+            reheader(payload, projection, forge_admission), projection
+        )
+    assert error.value.reason == "ENVELOPE_FACTS_INCONSISTENT"
+
+
+def test_readback_can_require_the_actual_status_artifact_digest(envelope, invented):
+    payload, projection, _ = envelope
+    main, demographic, definition, _ = invented
+    digest = hashlib.sha256(
+        encode_return_status(decoded_status(main, demographic, definition), definition)
+    ).hexdigest()
+    decode_monetary_projection(
+        payload, projection, expected_status_artifact_sha256=digest
+    )
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(
+            payload, projection, expected_status_artifact_sha256="0" * 64
+        )
+    assert error.value.reason == "ENVELOPE_STATUS_ARTIFACT_MISMATCH"
 
 
 def test_the_envelope_declares_its_type_endianness_and_pins(envelope):
@@ -1404,6 +1447,8 @@ def test_cold_run_stores_an_artifact_byte_identical_to_the_direct_decoder(
     assert producer["target_year_use"] == (
         "refused_pending_independent_growth_decision"
     )
+    assert producer["column_metadata"] == summary["column_metadata"]
+    assert producer["column_metadata"] == back.column_metadata
     # Receipts carry aggregates and digests only, never a key or a token.
     text = json.dumps(
         {
@@ -1728,10 +1773,13 @@ def test_a_column_whose_semantics_are_unresolved_is_retained_not_dropped():
     )
 
 
-def test_an_unknown_fit_admission_or_admission_value_is_refused(invented):
+@pytest.mark.parametrize("fit_admission", ["target_year_ready", "source_year_only"])
+def test_an_unknown_fit_admission_or_admission_value_is_refused(
+    invented, fit_admission
+):
     _, _, definition, _ = invented
     document = fixture_projection_json(definition)
-    document["projection"]["columns"][0]["fit_admission"] = "target_year_ready"
+    document["projection"]["columns"][0]["fit_admission"] = fit_admission
     with pytest.raises(PufMonetaryRefusalError) as error:
         fixture_projection_document(document, definition)
     assert error.value.reason == "PROJECTION_FIT_ADMISSION"

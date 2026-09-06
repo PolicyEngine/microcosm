@@ -976,6 +976,11 @@ class TestUsSources:
         # dependency (the loader imports nothing from it). Nothing else in the
         # live tree may reference the retired data packages.
         allowed_incumbent_references = {
+            # These source adapters name archived source provenance or assert
+            # that importing the retired data package is forbidden. Neither
+            # imports or executes that package.
+            "packages/microcosm-build/src/microcosm/build/us_runtime/asec_housing_status.py",
+            "packages/microcosm-build/tests/test_us_puf_raw_source.py",
             "packages/microcosm-build/src/microcosm/build/us/ecps_parity_reference.json",
             "packages/microcosm-build/src/microcosm/build/us_runtime/parity_reference.py",
             "packages/microcosm-build/tests/test_us_parity_reference.py",

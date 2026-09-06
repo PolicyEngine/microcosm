@@ -1,3 +1,10 @@
+> Historical author journal for e3b1cacb, September 6, 2026. The root child
+> corrects resource packaging and the proposed PUF handoff; see
+> docs/us-puf-monetary-source-projection.md. Claims below that the raw module
+> remains unchanged and integration defects remain open describe the author
+> revision, not the corrected child. No PUF household construction is planned:
+> donor tax detail enriches clones of the combined ASEC+ACS survey pool.
+
 # PUF monetary source projection — lane journal
 
 Branch `microcosm-us-puf-monetary-source-projection-20260906`, worktree

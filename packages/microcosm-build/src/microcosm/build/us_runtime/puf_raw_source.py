@@ -141,7 +141,7 @@ RETURN_STATUS_SUMMARY_NODE = f"{PUF_RAW_SOURCE_STAGE}.return_status_summary"
 PUF_AGGREGATE_RECIDS = (999996, 999997, 999998, 999999)
 
 _DEFINITION_RESOURCE = "puf_2015_raw_source_definition.json"
-_DEFINITION_PACKAGE = "microcosm.build.us"
+_DEFINITION_PACKAGE = "microcosm.build.us_runtime"
 _FIXTURE_AUTHORITY = "invented_fixture_nonauthority"
 
 _MAIN_FIELDS = ("RECID", "FLPDYR", "FLPDMO", "MARS", "DSI", "S006")

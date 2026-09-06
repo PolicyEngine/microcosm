@@ -71,11 +71,16 @@ above $100,000 to four significant digits, $10,000–$100,000 to the nearest
 $100, $5–$10,000 to the nearest $10, and *nonzero amounts under $5 set to $2
 with the sign retained*.
 
-**Missingness.** That last clause is what makes a delivered zero meaningful:
-rounding never maps a nonzero amount to zero, so a zero in the file is a
-reported zero, not a rounding artifact. Neither booklet declares a
+**Missingness.** A delivered zero is a numeric value in the edited public
+file. The rounding rule does not establish that the original return reported
+zero or rule out other disclosure edits. Neither booklet declares a
 missing-value sentinel or a blank convention for an amount field, so an empty
-token is a **refusal** — preserved and reviewed — never a zero.
+token is a **refusal** — preserved and reviewed — never an invented zero.
+Every projected column remains `not_admitted_pending_basis_review` for fitting;
+a source label alone does not settle its period or donor/recipient basis.
+In particular, the nearest-$10 rule does not specify the $5 tie. Absence,
+nonapplicability, reported zero and a publisher edit cannot be distinguished
+from a delivered zero token alone.
 
 **Sign.** The parser accepts a signed token for every projected column and
 records what it observed. Three of the twelve print the `(+/-)` marker on their
@@ -175,15 +180,17 @@ are element-wise identical to that artifact's, and it **carries**
 two artifacts therefore cannot disagree about which returns matched, and the
 join semantics stay owned by the one node that was reviewed for them.
 
-## The reviewed producer's bytes are untouched
+## Raw producer identity
 
 This module imports `puf_raw_source` for its definition, codec and artifact
-decoder and edits none of it, so `USPufRawSourceKernel.implementation_hash` —
-and every node key and artifact already accepted under it — stays exactly where
-it is. The CSV reader helpers here are deliberately this module's own for the
-same reason; the duplication is the price of not moving a reviewed hash.
-`test_the_reviewed_raw_source_module_bytes_are_unchanged` pins that file's
-SHA-256 at the accepted lineage head.
+decoder. The root integration correction moves the raw definition from the
+country package to `us_runtime`, with identical definition bytes and unchanged
+decoding rules. The loader's package name therefore changes, creating a new
+`USPufRawSourceKernel.implementation_hash` and node namespace. Previously
+accepted artifacts remain associated with their original implementation.
+`test_the_raw_source_module_matches_the_reviewed_packaging_identity` pins the
+corrected loader bytes. The monetary reader still has its own CSV helpers;
+sharing those helpers would be a separate implementation change.
 
 ## Where the document lives, and why
 
@@ -211,13 +218,37 @@ thirteen positions whose field code that PDF's text extraction splits with one
 interior space (`P 04470`, `RE CID`, …).
 
 ```bash
-python tools/build_us_puf_source_layout.py --write    # regenerate
-python tools/build_us_puf_source_layout.py --verify   # compare to the packaged bytes
+python tools/build_us_puf_source_layout.py --documents-dir <booklet-texts> --write
+python tools/build_us_puf_source_layout.py --documents-dir <booklet-texts> --verify
 ```
 
 `--verify` needs the pinned booklet texts present locally; the packaged
 document records the generator's own SHA-256, and a test compares it against
-the tool on disk whenever the repo layout is available.
+the tool on disk whenever the repo layout is available. The interpreter
+version is execution provenance, written outside the document identity when
+`--receipt <local-json>` is supplied. Each invocation rehashes all three
+booklet texts, and the supplied directory is not part of the document.
+
+The document records an unresolved record-count wording conflict: the
+technical description says 207,696 CSV records including the field-name row,
+while the accepted delivery audit measured 207,696 data records plus a header.
+The decoder follows the authenticated delivered count and does not rewrite
+the publisher's wording to reconcile it.
+
+## Metadata at the consumer boundary
+
+Artifact schema version 2 carries per-column grain, units, period status,
+fitting refusal, unresolved codes, sign evidence and zero semantics in its
+facts. The decoded object exposes the same metadata as an immutable mapping,
+and both graph receipts retain it. Readback reconstructs these declarations
+from the authenticated projection document and refuses altered metadata.
+No fitting consumer is implemented; metadata preserves the required decision
+boundary but does not prevent callers from copying raw arrays into arbitrary
+code. A future admitted fitting consumer must explicitly check it.
+
+The bounded genuine runner must authenticate the status artifact separately,
+execute the typed producer kernel, and pass its measured digest as
+`expected_status_artifact_sha256` when reading the monetary artifact back.
 
 ## Running it
 
@@ -248,11 +279,14 @@ None of this is done, and none of it is implied by anything above.
    rather than widening the grammar. The twelve-digit bound, the whole-dollar
    grammar and the "no missing sentinel" policy are all propositions a first
    genuine parse can legitimately refuse.
-2. **Return-to-household and person expansion.** The projection is at return
-   grain and owns no population columns. How `MARS`, `XTOT`, `AGERANGE`,
-   `AGEDP1/2/3`, `GENDER` and `EARNSPLIT` become persons, and how a return
-   becomes a household, is undecided. One filer per return is a fixture
-   placeholder, not a modelling claim.
+2. **Donor-to-recipient contract.** Construct the ASEC+ACS survey multispine
+   first, prepare its common predictors and gap fills, then attach
+   PUF-enriched clones of that combined pool. Survey records supply household
+   and person structure. PUF remains a return-grain tax-detail donor; it does
+   not supply new observed households. The fit must define compatible
+   return/tax-unit predictors and explicit allocation of transferred amounts
+   to existing people. Both survey origins must reach the same fit/apply
+   surface. One filer per return in a fixture establishes none of this.
 3. **Period adjudication.** Until the FLPDYR conflict is settled by source
    evidence or an explicit recorded decision, no uniform-source-year
    `GrowthRecipe` can honestly cover these rows.
@@ -261,9 +295,11 @@ None of this is done, and none of it is implied by anything above.
    choice between price restatement and per-return aging still has to be made
    (see [`docs/us-puf-growth-first-slice.md`](us-puf-growth-first-slice.md),
    obligations 2, 3 and 5). Only then may a rule name one of these columns.
-5. **Weight promotion.** `S006` is not in this artifact at all. Promoting the
-   grown design weight into typed frame weights needs its own
-   `WeightTransition` and mass policy.
+5. **Distinct weights.** `S006` is not in this artifact. Its role is a donor
+   return weight, never a household population weight. Clone attachment must
+   preserve the survey pool's total starting household mass, and clone rows
+   must not count as additional independent source households in district
+   support diagnostics.
 6. **Fit and apply.** No donor/recipient basis check, no QRF, no matrix, no
    calibration. The monetary metadata vocabulary exists in
    `puf_growth.puf_growth_monetary_metadata`; wiring these columns into it is a
@@ -275,23 +311,12 @@ None of this is done, and none of it is implied by anything above.
 8. **The other 161 amount fields.** They are declared, cited and source-only.
    Selecting any of them is another increment with the same per-column burden.
 
-## Inherited integration defects, not introduced here
+## Integration corrections
 
-Two failures exist on the merge of the reviewed lineage `2fd9a5cb` into
-`origin/main` `c1b83241` **before** this slice, and are not touched by it:
-
-- `packages/microcosm-build/src/microcosm/build/us/puf_2015_raw_source_definition.json`
-  is not declared in the US `country_package.json`, so
-  `spec_engine.load_bundle` refuses the whole US package
-  (`test_us_spec_bundle.py` errors,
-  `test__given_country_package_manifests__then_resources_are_local_specs`
-  fails). Either declare it or move it to `us_runtime`, as this slice's own
-  document does.
-- That same file's `non_claims.policyengine_import` key trips the country-spec
-  executable-key heuristic (`import` is a forbidden token), and
-  `test_us_puf_raw_source.py` names the retired US data package, which
-  `test_us_plan.py::TestUsSources::test_no_incumbent_data_package_references_in_live_tree`
-  forbids in the live tree.
-
-Both are the reviewed lineage's to settle; they are recorded here so the next
-integrator does not rediscover them.
+The root correction moves the raw definition into `us_runtime`, resolving its
+undeclared membership in the US specification package and keeping runtime
+metadata out of the country-spec executable-key scan. The archived provenance
+strings in `asec_housing_status.py` and the negative import checks in
+`test_us_puf_raw_source.py` receive explicit entries in the existing historical
+reference allowlist. Neither imports or executes the retired data package.
+The country package loader and these launch-contract checks remain enforced.

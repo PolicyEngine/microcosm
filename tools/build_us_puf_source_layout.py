@@ -49,11 +49,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCUMENTS = Path(
-    "/Users/maxghenis/architecture-reviews/microcosm-20260904/us-puf-raw-source-documents"
-)
 PACKAGE = ROOT / "packages/microcosm-build/src/microcosm/build"
-RAW_DEFINITION = PACKAGE / "us/puf_2015_raw_source_definition.json"
+RAW_DEFINITION = PACKAGE / "us_runtime/puf_2015_raw_source_definition.json"
 # The projection is a runtime source-adapter resource, not a country spec: it
 # lives beside ``acs_2024_1yr_sources.json`` in ``us_runtime`` rather than in
 # the ``us`` country package, whose manifest declares every file it ships.
@@ -271,8 +268,8 @@ class Projected:
     #: non-empty list is still decoded and retained; it is refused as an input
     #: to any derived combination.
     unresolved: tuple[tuple[str, str], ...] = ()
-    #: ``source_year_only`` or ``unresolved_retained``. Never a target year.
-    fit_admission: str = "source_year_only"
+    #: ``not_admitted_pending_basis_review`` or ``unresolved_retained``. Never a target year.
+    fit_admission: str = "not_admitted_pending_basis_review"
     #: Set when the layout row prints no ``(+/-)`` marker but the publisher's
     #: own definition text documents a netted quantity that can be negative.
     negative_documented_by_definition: bool = False
@@ -577,10 +574,10 @@ def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-def read_booklets() -> dict[str, Booklet]:
+def read_booklets(documents_dir: Path) -> dict[str, Booklet]:
     booklets: dict[str, Booklet] = {}
     for key, spec in BOOKLETS.items():
-        path = DOCUMENTS / spec["text"]
+        path = documents_dir / spec["text"]
         raw = path.read_bytes()
         digest = hashlib.sha256(raw).hexdigest()
         if digest != spec["text_sha256"]:
@@ -814,7 +811,10 @@ def _projection_index() -> dict[str, Projected]:
             raise GenerationError(f"duplicate projection field {entry.field}")
         if entry.field in REFUSED_FIELDS:
             raise GenerationError(f"projection names a refused field {entry.field}")
-        if entry.fit_admission not in ("source_year_only", "unresolved_retained"):
+        if entry.fit_admission not in (
+            "not_admitted_pending_basis_review",
+            "unresolved_retained",
+        ):
             raise GenerationError(f"{entry.field}: bad fit_admission")
         index[entry.field] = entry
     return index
@@ -1013,11 +1013,11 @@ def build_projection(
                     "basis_anchors": ["amount_field_width", "rounding_grid"],
                     "note": (
                         "Every amount field is rounded by the publisher before "
-                        "release, on a grid that never maps a nonzero amount to "
-                        "zero: nonzero amounts under $5 become $2 with the sign "
-                        "retained. Whole dollars is therefore the delivered "
-                        "scale, and a delivered zero is a reported zero rather "
-                        "than a rounding artifact."
+                        "release; nonzero amounts under $5 become $2 with the "
+                        "sign retained. Whole dollars is the delivered scale. "
+                        "A delivered zero is a value in the edited public file; "
+                        "the rounding rule does not prove the original return "
+                        "reported zero or rule out other disclosure edits."
                     ),
                 },
                 "sign": {
@@ -1042,7 +1042,7 @@ def build_projection(
                         "token is a refusal to be preserved and reviewed, not a "
                         "zero to be invented."
                     ),
-                    "zero_meaning": "reported_zero_not_a_rounding_artifact",
+                    "zero_meaning": "delivered_zero_in_edited_public_file",
                     "zero_basis_anchor": "rounding_grid",
                     "absent_demographic_row": (
                         "irrelevant_to_this_column; the projection is main-file "
@@ -1119,8 +1119,8 @@ def canonical_bytes(document: object) -> bytes:
     ).encode("utf-8")
 
 
-def build_document() -> dict[str, object]:
-    booklets = read_booklets()
+def build_document(documents_dir: Path) -> dict[str, object]:
+    booklets = read_booklets(documents_dir)
     raw_bytes = RAW_DEFINITION.read_bytes()
     raw = json.loads(raw_bytes.decode("utf-8"))
     if raw.get("schema") != "microcosm.us.puf_2015_raw_source_definition":
@@ -1232,6 +1232,28 @@ def build_document() -> dict[str, object]:
         },
         "projection": projection,
         "anchors": anchors,
+        "source_conflicts": {
+            "record_count_includes_header": {
+                "status": "documentary_wording_unresolved",
+                "anchors": ["record_count_intro", "record_count_technical"],
+                "statement": (
+                    "The technical description says 207,696 CSV records with "
+                    "the first record containing field names, implying 207,695 "
+                    "data records. The accepted raw-byte audit observed "
+                    "207,696 data records plus a header. Preserve the measured "
+                    "count without silently reconciling this wording conflict."
+                ),
+            },
+            "rounding_five_dollar_tie": {
+                "status": "documentary_rounding_tie_unresolved",
+                "anchors": ["rounding_grid"],
+                "statement": (
+                    "The nearest-ten-dollar rule does not state how a five-"
+                    "dollar tie is resolved. A delivered zero does not identify "
+                    "reported zero, absence, nonapplicability or another edit."
+                ),
+            },
+        },
         "refused_fields": refused_fields,
         "refused_derivations": REFUSED_DERIVATIONS,
         "non_claims": {
@@ -1249,7 +1271,6 @@ def build_document() -> dict[str, object]:
         "generation": {
             "generator": "tools/build_us_puf_source_layout.py",
             "generator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            "interpreter_version": sys.version.split()[0],
             "reads": [
                 "the three pinned booklet text extractions",
                 "the packaged raw source definition",
@@ -1262,6 +1283,17 @@ def build_document() -> dict[str, object]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--documents-dir",
+        type=Path,
+        required=True,
+        help="directory containing the three content-pinned booklet texts",
+    )
+    parser.add_argument(
+        "--receipt",
+        type=Path,
+        help="optional local execution receipt; interpreter is outside document identity",
+    )
     parser.add_argument("--write", action="store_true", help="write the document")
     parser.add_argument(
         "--verify",
@@ -1269,7 +1301,7 @@ def main(argv: list[str] | None = None) -> int:
         help="regenerate and compare against the packaged bytes",
     )
     args = parser.parse_args(argv)
-    document = build_document()
+    document = build_document(args.documents_dir)
     payload = canonical_bytes(document) + b"\n"
     if args.write:
         OUTPUT.write_bytes(payload)
@@ -1282,6 +1314,25 @@ def main(argv: list[str] | None = None) -> int:
         print(f"verified {OUTPUT} ({len(payload)} bytes)")
     if not args.write and not args.verify:
         print(json.dumps(document, indent=2)[:4000])
+    if args.receipt:
+        args.receipt.write_text(
+            json.dumps(
+                {
+                    "interpreter_version": sys.version.split()[0],
+                    "generator_sha256": document["generation"]["generator_sha256"],
+                    "documents_dir": str(args.documents_dir.resolve()),
+                    "booklet_text_sha256": {
+                        name: spec["text_sha256"] for name, spec in BOOKLETS.items()
+                    },
+                    "document_sha256": hashlib.sha256(payload).hexdigest(),
+                    "document_bytes": len(payload),
+                    "verified_packaged_bytes": args.verify,
+                    "microdata_read": False,
+                },
+                indent=2,
+            )
+            + "\n"
+        )
     print(
         json.dumps(
             {

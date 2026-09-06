@@ -132,9 +132,9 @@ __all__ = [
 ]
 
 MONETARY_PROJECTION_TYPE = ArtifactType(
-    "microcosm.us.puf_2015_monetary_source_projection", 1
+    "microcosm.us.puf_2015_monetary_source_projection", 2
 )
-MONETARY_PROJECTION_MAGIC = b"microcosm.us.puf_2015_monetary_source_projection/1\n"
+MONETARY_PROJECTION_MAGIC = b"microcosm.us.puf_2015_monetary_source_projection/2\n"
 
 MONETARY_PROJECTION_STAGE = "us_puf_monetary_source"
 MONETARY_PROJECTION_NODE = f"{MONETARY_PROJECTION_STAGE}.projection"
@@ -177,7 +177,9 @@ ROW_CLASSES = ("disclosure_aggregate", "demographic_matched", "demographic_unmat
 
 #: The closed vocabulary the packaged document may use.
 _ADMISSIONS = frozenset({"monetary_source_projection", "not_selected"})
-_FIT_ADMISSIONS = frozenset({"source_year_only", "unresolved_retained"})
+_FIT_ADMISSIONS = frozenset(
+    {"not_admitted_pending_basis_review", "unresolved_retained"}
+)
 _NEGATIVE_STATES = frozenset(
     {
         "documented_by_record_layout_marker",
@@ -229,6 +231,7 @@ _ENVELOPE_FACT_KEYS = frozenset(
         "demographic_unmatched_rows",
         "row_class_rows",
         "column_facts",
+        "column_metadata",
         "grain",
         "period_semantics",
         "amounts_decoded",
@@ -441,7 +444,7 @@ def _projected_column(
     missing = entry["missingness"]
     if missing["empty_token"] != "refused":
         raise _refuse("PROJECTION_EMPTY_TOKEN_POLICY", field)
-    if missing["zero_meaning"] != "reported_zero_not_a_rounding_artifact":
+    if missing["zero_meaning"] != "delivered_zero_in_edited_public_file":
         raise _refuse("PROJECTION_ZERO_POLICY", field)
     if entry["return_grain"]["grain"] != _GRAIN:
         raise _refuse("PROJECTION_GRAIN", field)
@@ -640,11 +643,12 @@ def fixture_projection_document(
 
 @dataclass(frozen=True)
 class PufMonetarySourceProjection:
-    """The decoded projection: typed arrays, lexical tokens and facts."""
+    """Decoded source values with explicit, immutable fitting refusals."""
 
     typed: Mapping[str, np.ndarray]
     lexical: Mapping[str, tuple[str, ...]]
     facts: Mapping[str, object]
+    column_metadata: Mapping[str, object]
 
     @property
     def rows(self) -> int:
@@ -882,6 +886,7 @@ def decode_puf_monetary_source(
             {name: tuple(items) for name, items in tokens.items()}
         ),
         facts=MappingProxyType(facts),
+        column_metadata=_frozen(facts["column_metadata"]),
     )
 
 
@@ -972,8 +977,8 @@ def _facts_from_arrays(
 
     The producer builds its facts here and the envelope readback rebuilds them
     here, so a header can never report a count, a sum or a sign census the
-    arrays do not carry. Only the layout counts come from the projection
-    document, because they are properties of the document rather than the rows.
+    arrays do not carry. Layout counts and column semantics come from the
+    authenticated projection document, rather than being inferred from rows.
     """
 
     rows = int(typed["RECID"].shape[0])
@@ -998,6 +1003,21 @@ def _facts_from_arrays(
             column.field: {
                 name: _column_facts(typed[column.field], masks[name])
                 for name in ROW_CLASSES
+            }
+            for column in projection.columns
+        },
+        "column_metadata": {
+            column.field: {
+                "concept": column.concept,
+                "grain": _GRAIN,
+                "amount_units": _AMOUNT_UNITS,
+                "period_semantics": _PERIOD_SEMANTICS,
+                "fit_admission": column.fit_admission,
+                "unresolved": list(column.unresolved),
+                "negative_values": column.negative_values,
+                "zero_meaning": "delivered_zero_in_edited_public_file",
+                "target_year_use": _TARGET_YEAR_USE,
+                "projection_sha256": projection.sha256,
             }
             for column in projection.columns
         },
@@ -1108,7 +1128,7 @@ def encode_monetary_projection(
         entry["sha256"] = hashlib.sha256(body).hexdigest()
         columns.append(entry)
     header = {
-        "schema_version": 1,
+        "schema_version": MONETARY_PROJECTION_TYPE.schema_version,
         "type": [
             MONETARY_PROJECTION_TYPE.name,
             MONETARY_PROJECTION_TYPE.schema_version,
@@ -1293,7 +1313,10 @@ def _verify_readback(
 
 
 def decode_monetary_projection(
-    payload: bytes, projection: PufMonetaryProjection | None = None
+    payload: bytes,
+    projection: PufMonetaryProjection | None = None,
+    *,
+    expected_status_artifact_sha256: str | None = None,
 ) -> PufMonetarySourceProjection:
     """Decode an artifact payload and re-prove it, never trusting its header.
 
@@ -1325,7 +1348,9 @@ def decode_monetary_projection(
     if recanonical != encoded:
         raise _refuse("ENVELOPE_HEADER_NOT_CANONICAL")
     _exact_keys(header, _ENVELOPE_HEADER_KEYS, "header")
-    if header["schema_version"] != 1 or header["type"] != [
+    if header["schema_version"] != MONETARY_PROJECTION_TYPE.schema_version or header[
+        "type"
+    ] != [
         MONETARY_PROJECTION_TYPE.name,
         MONETARY_PROJECTION_TYPE.schema_version,
     ]:
@@ -1337,6 +1362,10 @@ def decode_monetary_projection(
         raise _refuse("ENVELOPE_ENDIANNESS")
     _hex64(header["raw_source_definition_sha256"], "raw_source_definition_sha256")
     _hex64(header["status_artifact_sha256"], "status_artifact_sha256")
+    if expected_status_artifact_sha256 is not None:
+        _hex64(expected_status_artifact_sha256, "expected_status_artifact_sha256")
+        if header["status_artifact_sha256"] != expected_status_artifact_sha256:
+            raise _refuse("ENVELOPE_STATUS_ARTIFACT_MISMATCH")
     rows = _envelope_int(header["rows"], "rows", minimum=1)
     resolved = _resolve_envelope_projection(header, projection)
     if resolved is None:
@@ -1388,6 +1417,7 @@ def decode_monetary_projection(
         typed=MappingProxyType(typed),
         lexical=MappingProxyType(lexical),
         facts=MappingProxyType(recomputed),
+        column_metadata=_frozen(recomputed["column_metadata"]),
     )
 
 
@@ -1579,6 +1609,7 @@ class USPufMonetaryProjectionSummaryKernel(KernelBase):
                     "period_semantics": decoded.facts["period_semantics"],
                     "amount_units": decoded.facts["amount_units"],
                     "target_year_use": decoded.facts["target_year_use"],
+                    "column_metadata": _thawed(decoded.column_metadata),
                 }
             }
         )
