@@ -24,8 +24,12 @@ The December SIPP housing projection is additive and lives beside the frozen
 sixteen-field producer, not inside it: `sipp_december_source.py` and
 `sipp_measurements.py` must keep every byte, because their module hashes are
 inside the producer binding that already-published receipts carry. Housing work
-goes in `sipp_housing_measurements.py` / `sipp_housing_projection.py`, which
-import those internals. See `docs/us-sipp-december-housing-projection.md`.
+goes in `sipp_housing_measurements.py`, `sipp_housing_predictors.py` and
+`sipp_housing_projection.py`, which import those internals. The predictor pass
+runs after admission and takes the classified households as an input, so
+`EXCLUSION_ORDER` cannot be reached from it; keep it that way, and report
+prospective predictor validity on its own status ladder rather than as new
+exclusion rungs. See `docs/us-sipp-december-housing-projection.md`.
 
 IRS fiscal targets require explicit supported return universes and actual model
 filer decisions before household aggregation. Target-frame materializer version
