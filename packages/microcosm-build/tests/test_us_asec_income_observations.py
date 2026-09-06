@@ -128,6 +128,29 @@ def test_full_join_price_bits_zero_classes_and_sealed_parent(tmp_path, monkeypat
     assert "PAW_YN" not in source.frame.person
 
 
+def test_parser_profile_describes_the_effective_default_not_the_named_registry(
+    tmp_path, monkeypatch
+):
+    source, ready, members = invented_income_sources(tmp_path, monkeypatch)
+    before = income.load_authenticated_income_observations(
+        source, ready, member_paths=members
+    )
+    original = csv.get_dialect("excel")
+    try:
+        csv.register_dialect("excel", original, delimiter=";")
+        # The reader actually used by _read_member keeps its default comma.
+        assert next(csv.reader(["a,b"])) == ["a", "b"]
+        assert csv.get_dialect("excel").delimiter == ";"
+        assert income.parser_profile()["delimiter"] == ","
+        before.validate()
+        after = income.load_authenticated_income_observations(
+            source, ready, member_paths=members
+        )
+        assert after.content_sha256 == before.content_sha256
+    finally:
+        csv.register_dialect("excel", original)
+
+
 @pytest.mark.parametrize("incumbent", ["unknown", "missing_column"])
 def test_unknown_incumbent_is_counted_but_missing_column_refuses(
     tmp_path, monkeypatch, incumbent
@@ -330,14 +353,13 @@ def test_live_csv_parser_profile_is_bound_into_the_source_identity(
         "table_engine": "pandas_read_csv",
     }
     try:
-        csv.field_size_limit(limit * 2)
+        csv.field_size_limit(limit - 1 if limit > 1 else 2)
         changed = income.load_authenticated_income_observations(
             source, ready, member_paths=members
         )
-        assert (
-            changed.receipt["implementation"]["parser_profile"]["csv.field_size_limit"]
-            == limit * 2
-        )
+        assert changed.receipt["implementation"]["parser_profile"][
+            "csv.field_size_limit"
+        ] == (limit - 1 if limit > 1 else 2)
         assert changed.content_sha256 != baseline.content_sha256
         assert changed._body == baseline._body
         # The frozen artifact refuses to validate under the changed profile.
@@ -359,7 +381,7 @@ def test_changing_the_parser_limit_mid_reconstruction_refuses(tmp_path, monkeypa
 
     def widened(path, *, rows):
         table = original(path, rows=rows)
-        csv.field_size_limit(limit * 2)
+        csv.field_size_limit(limit - 1 if limit > 1 else 2)
         return table
 
     monkeypatch.setattr(income, "_read_member", widened)

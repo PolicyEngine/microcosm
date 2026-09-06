@@ -442,7 +442,7 @@ def test_live_parser_profile_binds_the_prepared_stage_key_and_warm_reuse(execute
     warm, _ = _run(root, columns, resume="require")
     assert all(r.hit for r in warm.nodes.values())
     try:
-        csv.field_size_limit(limit * 2)
+        csv.field_size_limit(limit - 1 if limit > 1 else 2)
         changed = implementation_hash("asec_prepared_v3")
         assert changed != baseline
         with pytest.raises(StoreMissError):
@@ -465,6 +465,25 @@ def test_prepared_receipt_and_source_header_carry_the_same_parser_profile(execut
     header = json.loads(source.header)
     assert header["implementation"]["parser_profile"] == profile
     assert profile["csv.field_size_limit"] == csv.field_size_limit()
+
+
+def test_unused_named_dialect_change_preserves_effective_profile_and_warm_result(
+    executed,
+):
+    root, direct, columns, contexts, calls, manifest, store = executed
+    original = csv.get_dialect("excel")
+    profile = income_source.parser_profile()
+    try:
+        csv.register_dialect("excel", original, delimiter=";")
+        assert next(csv.reader(["a,b"])) == ["a", "b"]
+        assert income_source.parser_profile() == profile
+        warm, _ = _run(root, columns, resume="require")
+        assert all(node.hit for node in warm.nodes.values())
+        selected, source, kwargs = _inputs(executed)
+        # The same bound evidence remains valid under the unchanged parser.
+        assert json.loads(source.header)["implementation"]["parser_profile"] == profile
+    finally:
+        csv.register_dialect("excel", original)
 
 
 def test_contributing_money_fields_are_person_entity(executed):

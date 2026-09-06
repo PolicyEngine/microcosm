@@ -70,13 +70,15 @@ _PRICE_YEARS = (2022, 2023, 2024)
 
 
 def parser_profile() -> dict:
-    """Read the live CSV parser limits and dialect; never set a process global.
+    """Read the effective CSV parser limits and dialect, without changing them.
 
     ``csv.field_size_limit`` is process state that silently changes which member
     files parse. Binding it into the source identity makes any change to it a
     different artifact identity instead of an invisible reparse.
     """
-    dialect = csv.get_dialect(_CSV_DIALECT)
+    # _read_member uses csv.reader's built-in default, which is independent of
+    # the mutable named-dialect registry. Inspect that same reader's dialect.
+    dialect = csv.reader(()).dialect
     return {
         "header_engine": "stdlib_csv_reader",
         "table_engine": "pandas_read_csv",
@@ -202,7 +204,7 @@ def _capture(path, destination, *, size):
 
 
 def _read_member(path, *, rows):
-    with path.open("r", encoding="utf-8", newline="") as handle:
+    with path.open("r", encoding=_CSV_ENCODING, newline="") as handle:
         header = next(csv.reader(handle), [])
     _require(
         len(header) == len(set(header)) and set(_READ_COLUMNS) <= set(header),
