@@ -14,6 +14,7 @@ import operator
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 from decimal import Decimal, localcontext
 from pathlib import Path
 
@@ -22,6 +23,11 @@ import pytest
 import microcosm.build
 import microcosm.build.cd_benchmark
 import microcosm.frame
+from microcosm.build.cd_benchmark.canonical import (
+    CanonicalJsonError,
+    canonical_bytes,
+    strict_load,
+)
 from microcosm.build.cd_benchmark.evaluation import evaluate_block
 from microcosm.build.cd_benchmark.metrics import ARITHMETIC
 from microcosm.build.cd_benchmark.protocol import (
@@ -1282,6 +1288,37 @@ def test_a_document_carrying_non_json_data_is_refused(protocol, bundle):
     document["acs"]["S0101"][2024] = "not a text key"
     with pytest.raises(ReferenceProjectionError, match="object key that is not text"):
         ReferenceInventory.from_document(document, protocol=protocol)
+
+    # The byte route refuses the NaN/Infinity tokens, so this one must too, or
+    # a document handed straight in would be held to a weaker standard.
+    for nonfinite in (float("nan"), float("inf"), float("-inf")):
+        document = copy.deepcopy(bundle)
+        document["reconciliation"] = {"value": nonfinite}
+        with pytest.raises(ReferenceProjectionError, match="nonfinite number"):
+            ReferenceInventory.from_document(document, protocol=protocol)
+    with pytest.raises(CanonicalJsonError, match="Nonfinite"):
+        strict_load(b'{"nan": NaN}')
+
+
+def test_the_frozen_document_is_read_only_and_says_what_that_costs(inventory):
+    """Freezing removes serializability with mutability; the module says so.
+
+    ``mappingproxy`` is not a ``dict``, so the frozen tree cannot be handed
+    straight back to ``json.dumps``, ``canonical_bytes``, ``deepcopy`` or
+    ``pickle``. It fails loudly rather than computing anything wrong, and a
+    consumer thaws with ``default=dict``.
+    """
+    with pytest.raises(TypeError, match="mappingproxy"):
+        json.dumps(inventory.document)
+    with pytest.raises(CanonicalJsonError, match="mappingproxy"):
+        canonical_bytes(inventory.document)
+    with pytest.raises(TypeError, match="mappingproxy"):
+        copy.deepcopy(inventory)
+
+    thawed = json.loads(json.dumps(inventory.document, default=dict))
+    assert canonical_bytes(thawed)
+    assert isinstance(inventory["acs"]["S0101"]["geography_ids"], Sequence)
+    assert not isinstance(inventory["acs"]["S0101"]["geography_ids"], list)
 
 
 # --------------------------------------------------------------------------

@@ -71,7 +71,9 @@ code substitution rather than a caller mistake, and this module does not
 pretend to catch it. A parsed document is deep-copied into read-only mappings and
 tuples, so neither the caller's original object nor the indexed inventory can be
 changed afterwards: a projection is evidence about the bytes that were verified,
-not about whatever the object happens to hold later.
+not about whatever the object happens to hold later. The price is that the
+exposed document is no longer directly serializable, picklable or
+deep-copyable; :func:`_frozen_json` says what a consumer does instead.
 
 Canonical document, canonical values
 ------------------------------------
@@ -107,6 +109,7 @@ import sys
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
+from math import isfinite
 from pathlib import Path
 from types import MappingProxyType
 
@@ -630,14 +633,25 @@ def _frozen_json(value: object, label: str = "The inventory") -> object:
 
     JSON meaning is preserved exactly. Scalars are left as the parser produced
     them, ``null`` stays ``None``, key order is preserved, objects stay
-    mappings, arrays stay ordered sequences, and both container kinds serialize
-    back to the JSON they came from. Only mutability is removed.
+    mappings and arrays stay ordered sequences, so the tree still *means* the
+    JSON it came from.
 
-    Anything that is not JSON data is refused rather than passed through, which
-    keeps :meth:`ReferenceInventory.from_document` exactly as strict about shape
-    as the byte-verifying loader: a tuple, set or arbitrary object handed in
-    where the protocol requires a JSON array is a refusal, not a quiet
-    acceptance.
+    What is lost with mutability is direct serializability: a
+    :class:`~types.MappingProxyType` is not a ``dict``, so :func:`json.dumps`,
+    :func:`~microcosm.build.cd_benchmark.canonical.canonical_bytes`,
+    :func:`copy.deepcopy` and :mod:`pickle` all refuse the frozen tree rather
+    than round-tripping it. They fail loudly; nothing computes a wrong value. A
+    consumer that needs bytes back must thaw first — ``json.dumps(document,
+    default=dict)`` is enough, because the array arm is already a plain tuple —
+    and one that type-checks arrays needs :class:`~collections.abc.Sequence`
+    rather than ``list``.
+
+    Anything that is not JSON data is refused rather than passed through, and
+    nonfinite floats are refused for the same reason the canonical loader
+    refuses ``NaN`` and ``Infinity`` tokens. Together those keep
+    :meth:`ReferenceInventory.from_document` as strict as the byte-verifying
+    loader: a tuple, set, arbitrary object or nonfinite number handed in where
+    the protocol requires JSON is a refusal, not a quiet acceptance.
     """
     if isinstance(value, Mapping):
         frozen: dict[str, object] = {}
@@ -653,6 +667,10 @@ def _frozen_json(value: object, label: str = "The inventory") -> object:
             _frozen_json(item, f"{label}[{position}]")
             for position, item in enumerate(value)
         )
+    if isinstance(value, float) and not isfinite(value):
+        # The byte route refuses the NaN/Infinity tokens in canonical.py; a
+        # document handed straight in must not be held to a weaker standard.
+        raise ReferenceProjectionError(f"{label} is a nonfinite number: {value!r}.")
     if value is None or isinstance(value, bool | int | float | str):
         return value
     raise ReferenceProjectionError(f"{label} is not JSON data: {type(value).__name__}.")
