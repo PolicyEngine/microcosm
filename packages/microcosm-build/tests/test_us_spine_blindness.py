@@ -354,6 +354,50 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "asec_current_money_units.py",  # Verified current-money tax-only boundary.
         # Source import/assembly/harmonization owner, classified above.
         "graph_sources.py",
+        # ASEC current-money graph slice: full-source preparation, the typed
+        # body/selection artifacts it emits, the corrected CPS leaf derivation
+        # over that subset, and the closure-admitted engine evaluation. Every
+        # stage runs on authenticated ASEC source bytes before pool assembly,
+        # so none is a post-assembly population treatment, and the engine
+        # outputs stay in an evaluation artifact rather than population cells.
+        "asec_prepared_source.py",
+        "asec_current_money_selection.py",
+        "asec_current_money_graph_resources.py",
+        "cps_carried_current.py",
+        "asec_engine_evaluation.py",
+        "graph_asec_prepared.py",
+        "graph_asec_income.py",
+        # Closed ASEC source restorations and their evidence codecs. Each
+        # authenticates pinned Census members by canonical byte replay and
+        # issues typed observations; none applies a population treatment.
+        "asec_income_observations.py",
+        "asec_person_income_source.py",
+        "asec_student_controls.py",
+        # ASEC housing observation and occupied-HU evidence, their source
+        # authentication, and the non-authoritative graph transport. These are
+        # interview-time observations: no participation, eligibility, rent or
+        # subsidy dollars are derived, and parsing mints no Frame authority.
+        "asec_housing_status.py",
+        "asec_housing_status_source.py",
+        "asec_housing_universe.py",
+        "asec_housing_universe_source.py",
+        "graph_housing_universe.py",
+        # Pure ACS housing-unit semantics, the closed two-archive source
+        # reconstruction behind them, and the CREATE/SELECT graph transport.
+        # Only CREATE authenticates bytes; selection emits identities and
+        # positions and asserts no calibrated representation.
+        "acs_housing_universe.py",
+        "acs_housing_universe_source.py",
+        "graph_acs_housing_universe.py",
+        # PUF raw-source aging: a pure per-field growth contract and transform
+        # plus the source-stage graph adapter that runs it, in the same shape
+        # graph_prior_year.py already uses. Source-stage uprating of a raw PUF
+        # successor, not a post-assembly population treatment.
+        "puf_growth.py",
+        "puf_growth_graph.py",
+        # Measures the actual engine filer predicate for IRS return-based
+        # target design rows; reads no source spine and treats no population.
+        "soi_return_universe.py",
     }
 )
 _CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(
