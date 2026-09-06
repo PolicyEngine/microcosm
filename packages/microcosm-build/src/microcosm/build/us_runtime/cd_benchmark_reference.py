@@ -1677,8 +1677,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     Every argument that can be judged without the inventory is judged before it
     is opened: naming both district selectors or neither, repeating a block or a
-    district, and naming a reserved block without ``--include-reserved`` all
-    fail before a 38.7 MB read rather than after it.
+    district, naming a reserved block without ``--include-reserved``, and naming
+    an ``--output`` path that is already taken all fail before a 38.7 MB read
+    rather than after it.
 
     ``--output`` is created exclusively. An existing path is refused with its
     bytes untouched, because the artifact this writes is a dated record and a
@@ -1718,6 +1719,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         if len(set(args.district)) != len(args.district):
             raise ReferenceProjectionError("A district was requested twice.")
+        if args.output and args.output.exists():
+            # Checked here so an operator learns the path is taken before the
+            # read, not after the whole run. The exclusive create below stays
+            # the authority: it is the one that cannot be raced.
+            raise ReferenceProjectionError(
+                f"{args.output} already exists and is not replaced; name a "
+                "fresh --output path."
+            )
         inventory = load_pinned_inventory(
             args.inventory, expected_sha256=args.expect_sha256, protocol=protocol
         )
@@ -1744,18 +1753,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)
             try:
-                with args.output.open("xb") as stream:
-                    stream.write(written)
+                stream = args.output.open("xb")
             except FileExistsError:
-                # Handled explicitly, and only around the exclusive create, so
-                # this message can never describe some other FileExistsError.
-                # Refusing to replace an aggregate record is a deliberate
-                # outcome of this tool, not an incidental filesystem error.
+                # The try covers the exclusive create and nothing else, so this
+                # message can never come to describe a FileExistsError raised by
+                # some statement added later. Refusing to replace an aggregate
+                # record is a deliberate outcome of this tool, not an incidental
+                # filesystem error, which is why it is re-raised as one.
                 raise ReferenceProjectionError(
                     f"{args.output} already exists and is not replaced; name a "
                     "fresh --output path."
                 ) from None
-    except (ReferenceProjectionError, CanonicalJsonError, OSError, ValueError) as error:
+            with stream:
+                stream.write(written)
+    # RecursionError is neither an OSError nor a ValueError, and the deep-freeze
+    # walk spends a frame per nesting level, so a pathologically nested document
+    # would otherwise escape as a traceback instead of a refusal. The two named
+    # ValueError subclasses are redundant by inheritance and kept as a statement
+    # of the failure modes this command expects to convert into exit code 1.
+    except (
+        ReferenceProjectionError,
+        CanonicalJsonError,
+        OSError,
+        RecursionError,
+        ValueError,
+    ) as error:
         print(f"Reference projection failed: {error}", file=sys.stderr)
         return 1
     if args.output:

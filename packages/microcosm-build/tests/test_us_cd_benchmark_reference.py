@@ -1583,6 +1583,54 @@ def test_the_command_line_writes_bytes_it_can_be_held_to(tmp_path, bundle, capsy
     assert second.read_bytes() == written
     assert hashlib.sha256(second.read_bytes()).hexdigest() in capsys.readouterr().out
 
+    # The taken path is judged before the read, not after the whole run: with
+    # the inventory absent the refusal is still the one about --output.
+    absent = tmp_path / "not-here.json"
+    taken = [
+        "--inventory",
+        str(absent),
+        "--expect-sha256",
+        sha256,
+        "--aggregate-only",
+        "--all-roster-districts",
+        "--block",
+        "population_total",
+        "--output",
+        str(output),
+    ]
+    assert main(taken) == 1
+    assert "already exists" in capsys.readouterr().err
+    assert not absent.exists()
+
+
+def test_the_command_line_refuses_a_pathologically_nested_document(tmp_path, capsys):
+    """``main`` returns an int; the deep-freeze walk must not break that.
+
+    The freeze spends a Python frame per nesting level on top of what ``json``
+    already spent, so a document nested deeply enough to exhaust the recursion
+    limit during the freeze but not during the parse would escape ``main`` as a
+    traceback where the pre-freeze reader refused cleanly.
+    """
+    nested = tmp_path / "nested.json"
+    depth = sys.getrecursionlimit() - 1000
+    nested.write_bytes(b"[" * depth + b"]" * depth)
+    assert (
+        main(
+            [
+                "--inventory",
+                str(nested),
+                "--expect-sha256",
+                hashlib.sha256(nested.read_bytes()).hexdigest(),
+                "--aggregate-only",
+                "--all-roster-districts",
+                "--block",
+                "population_total",
+            ]
+        )
+        == 1
+    )
+    assert "Reference projection failed:" in capsys.readouterr().err
+
 
 def test_the_command_line_judges_its_arguments_before_it_opens_the_inventory(
     tmp_path, bundle, capsys
