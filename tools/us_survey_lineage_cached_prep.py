@@ -392,7 +392,7 @@ def phase(root, name, checkout, head):
             },
             "cache_hits": {n: v.hit for n, v in manifest.nodes.items()},
             "kernel_calls": list(calls),
-            "source_decoder_calls": decoder_calls,
+            "source_decoder_calls": decoder_calls if name == "warm" else None,
             "source_keys": source_keys,
             "source_codecs": {s.name: s.codec for s in graph.sources},
             "kernel_dependencies": {
@@ -464,6 +464,22 @@ def phase(root, name, checkout, head):
                 n for n in common if old["node_keys"][n] == result["node_keys"][n]
             )
             rekeyed = sorted(common - set(unchanged))
+            from microcosm.graph.manifest import RunManifest
+
+            old_manifest = RunManifest.from_json(
+                (root / "baseline-manifest.json").read_bytes()
+            )
+            for node in unchanged:
+                require(
+                    manifest.nodes[node].typed_artifacts
+                    == old_manifest.nodes[node].typed_artifacts
+                    and manifest.nodes[node].opaque_artifacts
+                    == old_manifest.nodes[node].opaque_artifacts
+                    and manifest.nodes[node].receipt
+                    == old_manifest.nodes[node].receipt,
+                    "UNCHANGED_SOURCE_RECEIPT_IDENTITY",
+                )
+            result["unchanged_old_typed_artifacts_and_receipts_preserved"] = True
             require(
                 len(unchanged) == 6 and len(rekeyed) == 5,
                 "SIX_OLD_COMPOSITION_KEYS_AND_TWO_CLONE_REKEYS",

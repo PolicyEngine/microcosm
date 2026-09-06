@@ -91,3 +91,14 @@ REQUIRED replay integration correction:
   standalone demographic eleven: the conditional extension is now ten hits and
   seven executions. Original composition six/three and clone two rekeys remain.
 Next: verify complete fresh REQUIRED on this committed integration correction.
+
+Successful integrated replay and final evidence precision:
+- r7 passed all four serial phases: 17 nodes, cold six hits/eleven calls, fresh
+  REQUIRED seventeen hits/zero kernel and raw-decoder calls. All typed artifacts,
+  source keys, lineage payload and checkpoint hashes match cold/warm. Four refusals
+  and the seven-node two-arm zero-weight proof pass. 208 carried columns checked.
+- Corrected the receipt schema to use null for unmeasured cold decoder calls;
+  only warm has fatal decoder instrumentation. Added explicit equality checks
+  for all six unchanged original typed artifacts, opaque edges and receipts.
+- Committed exact prepared commands and required original input/pin metadata.
+Next: final confirmation on these exact helper bytes, then close the report.
