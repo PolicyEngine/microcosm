@@ -13,6 +13,7 @@ runs: the two measurement nodes are pure.
 import importlib.util
 import json
 import os
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -32,7 +33,7 @@ from microcosm.build.us_runtime import asec_person_income_source as restoration
 from microcosm.build.us_runtime import graph_composed_asec_binding as binding
 from microcosm.build.us_runtime import graph_composed_asec_measures as measures
 from microcosm.build.us_runtime import graph_composed_population as composed
-from microcosm.build.us_runtime.asec_current_money import _sha
+from microcosm.build.us_runtime.asec_current_money import _json, _sha
 from microcosm.build.us_runtime.asec_current_money_selection import (
     US_ASEC_SELECTED_MONEY_TYPE,
     US_ASEC_SELECTION_TYPE,
@@ -87,10 +88,13 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
+    ArtifactValue,
     ContentStore,
     Graph,
+    KernelContext,
     Node,
     NodeRejectedError,
+    NumericScope,
     Owned,
     Slice,
     StructuralDelta,
@@ -1031,6 +1035,249 @@ def test_the_bind_node_refuses_evidence_from_another_producer(executed):
             store=store,
             kernels=measures.composed_asec_population_registry(),
             resume="forbid",
+        )
+
+
+def _create_artifacts(manifest, store, *, origin_producer=None):
+    """The bind node's seven typed edges as the executor would hand them over.
+
+    Every payload is the one the graph actually stored, and every producer key
+    is the producing node's own key, so nothing about the identities under test
+    is invented. ``origin_producer`` substitutes the origin's producing
+    execution while leaving its bytes alone — the case the origin's own content
+    recomputation cannot see.
+    """
+    keys = {
+        composed.CREATE_NODE: manifest.nodes[composed.CREATE_NODE].key,
+        GEOGRAPHY_PHASE: manifest.nodes[GEOGRAPHY_PHASE].key,
+    }
+    values = {}
+    for name, kind in binding._ARTIFACT_TYPES:
+        node = GEOGRAPHY_PHASE if name == "frame_context" else composed.CREATE_NODE
+        producer = keys[node]
+        if name == "source_origin" and origin_producer is not None:
+            producer = origin_producer
+        payload = _payload(manifest, store, node, name)
+        values[name] = ArtifactValue(
+            payload=payload,
+            type=kind,
+            key=_sha(payload),
+            producer_key=producer,
+            numerics=NumericScope(),
+        )
+    return values
+
+
+def _bind_context(root, manifest, store, *, node=None, origin_producer=None):
+    """A kernel context over the real bound population and the real payloads."""
+    bind = node
+    if bind is None:
+        bind = next(
+            item for item in _bound_graph(root).nodes if item.id == binding.BIND_NODE
+        )
+    frame = _bound_frame(manifest)
+    return KernelContext(
+        node=bind,
+        tables={entity: frame.table(entity) for entity in US_SCHEMA.entities},
+        weights={},
+        strata=pd.Series(dtype="int64"),
+        params=dict(bind.params),
+        rng=np.random.default_rng(SEED),
+        artifacts=_create_artifacts(
+            manifest, store, origin_producer=origin_producer
+        ),
+    )
+
+
+def test_the_origin_must_come_from_the_same_create_execution(executed):
+    """``source_origin`` is positional over one CREATE execution, like the rest.
+
+    Recomputing the origin's per-entity digests against the actual tables
+    catches a document describing a different frame, but two CREATE executions
+    that describe identical tables recompute identically. The producer identity
+    the binding document records is therefore pinned, not carried unverified.
+    """
+    root, manifest, store, *_rest = executed
+    kernel = binding.USComposedAsecBindKernel()
+
+    # Positive control: with all six CREATE edges on one execution the kernel
+    # reproduces the graph's own binding byte for byte.
+    result = kernel.run(_bind_context(root, manifest, store))
+    assert result.artifacts["asec_binding"] == _payload(
+        manifest, store, binding.BIND_NODE, "asec_binding"
+    )
+
+    # Same origin bytes, a different producing execution.
+    with pytest.raises(PreparedGraphError, match="ARTIFACT_PRODUCER_SPLIT"):
+        kernel.run(
+            _bind_context(root, manifest, store, origin_producer=_ORACLE_DIGEST)
+        )
+
+    # And an origin edge declared from another producer entirely.
+    bind = next(
+        item for item in _bound_graph(root).nodes if item.id == binding.BIND_NODE
+    )
+    rerouted = Node(
+        id=bind.id,
+        kernel=bind.kernel,
+        population=bind.population,
+        inputs=bind.inputs,
+        outputs=bind.outputs,
+        params=dict(bind.params),
+        artifact_inputs=tuple(
+            edge
+            if edge.name != "source_origin"
+            else ArtifactInput(
+                edge.name, GEOGRAPHY_PHASE, edge.artifact, edge.type
+            )
+            for edge in bind.artifact_inputs
+        ),
+        artifact_outputs=bind.artifact_outputs,
+    )
+    with pytest.raises(PreparedGraphError, match="NODE_EVIDENCE_PRODUCER"):
+        kernel.run(_bind_context(root, manifest, store, node=rerouted))
+
+
+def test_a_prepared_arm_carrying_the_demographic_sources_binds_and_records_them(
+    executed,
+):
+    """A prepared roster with ``A_SEX`` and ``P_SEQ`` is recorded, not refused.
+
+    The genuine prepared ASEC person roster carries both columns; this invented
+    parent carries neither. Presence is an observation about the population in
+    hand and binds nothing, so the stage must record it and keep going —
+    refusing on it would stop every genuine run while proving nothing about
+    what this stage writes.
+    """
+    root, manifest, store, *_rest = executed
+    frame = _bound_frame(manifest)
+    prepared = json.loads(
+        _payload(manifest, store, composed.CREATE_NODE, "asec_frame_context")
+    )
+    columns = prepared["entities"]["person"]["columns"]
+    assert "A_SEX" not in columns and "P_SEQ" not in columns
+    prepared["entities"]["person"]["columns"] = [*columns, "A_SEX", "P_SEQ"]
+    bound = binding.resolve_composed_asec_binding(
+        {entity: frame.table(entity) for entity in US_SCHEMA.entities},
+        context_payload=_payload(manifest, store, GEOGRAPHY_PHASE, "frame_context"),
+        origin_payload=_payload(
+            manifest, store, composed.CREATE_NODE, "source_origin"
+        ),
+        prepared_context_payload=canonical_json(prepared),
+        money_payload=_payload(
+            manifest, store, composed.CREATE_NODE, "current_money"
+        ),
+        receipt_payload=_payload(
+            manifest, store, composed.CREATE_NODE, "prepared_receipt"
+        ),
+        housing_payload=_payload(
+            manifest, store, composed.CREATE_NODE, "housing_universe"
+        ),
+        income_payload=_payload(
+            manifest, store, composed.CREATE_NODE, "income_observations"
+        ),
+        producers={
+            "population": _ORACLE_DIGEST,
+            "prepared_source": _ORACLE_DIGEST,
+            "source_origin": _ORACLE_DIGEST,
+        },
+    )
+    # The typed document admits it: the unbound entries are held to being
+    # unbound and complete, not to the source lacking the column.
+    document = binding.bind_composed_asec_document(bound.payload)
+    unbound = {item["column"]: item for item in document["demographics"]["unbound"]}
+    assert set(unbound) == set(binding.UNBOUND_DEMOGRAPHIC_COLUMNS)
+    assert unbound["is_female"]["present_in_prepared_arm"] == ["A_SEX"]
+    assert unbound["is_female"]["absent_from_prepared_arm"] == []
+    assert unbound["is_household_head"]["present_in_prepared_arm"] == ["P_SEQ"]
+    assert unbound["is_household_head"]["absent_from_prepared_arm"] == []
+    assert all(item["bound_by_this_stage"] is False for item in unbound.values())
+    # Nothing was bound from them: the node still owns exactly three booleans
+    # and the only bound demographic is still age.
+    assert [item["column"] for item in document["demographics"]["bound"]] == ["age"]
+    assert {owned.column for owned in binding.arm_row_declarations()} == {
+        binding.arm_row_column(entity) for entity in binding.BOUND_ENTITIES
+    }
+    del root
+
+
+def test_the_unbound_demographics_are_recorded_as_absent_on_this_fixture(executed):
+    """On this invented parent the same fields are recorded absent, not present."""
+    _root, manifest, store, *_rest = executed
+    document = binding.bind_composed_asec_document(
+        _payload(manifest, store, binding.BIND_NODE, "asec_binding")
+    )
+    unbound = {item["column"]: item for item in document["demographics"]["unbound"]}
+    assert unbound["is_female"]["present_in_prepared_arm"] == []
+    assert unbound["is_female"]["absent_from_prepared_arm"] == ["A_SEX"]
+    assert unbound["is_household_head"]["absent_from_prepared_arm"] == ["P_SEQ"]
+    assert all(item["bound_by_this_stage"] is False for item in unbound.values())
+
+
+@pytest.mark.parametrize(
+    ("attribute", "extra", "declarations"),
+    [
+        (
+            "CPS_CARRIED_CURRENT_PERSON_LEAVES",
+            "is_female",
+            "composed_leaf_declarations",
+        ),
+        (
+            "RESULT_COLUMNS",
+            "is_household_head",
+            "composed_reported_income_declarations",
+        ),
+    ],
+)
+def test_a_mapping_that_bound_an_unbound_demographic_refuses(
+    monkeypatch, attribute, extra, declarations
+):
+    """The recorded gap fails closed on a write, which is what could stale it."""
+    monkeypatch.setattr(
+        measures, attribute, (*getattr(measures, attribute), extra)
+    )
+    with pytest.raises(
+        PreparedGraphError, match=f"ASEC_DEMOGRAPHIC_COLUMN_BOUND:{extra}"
+    ):
+        getattr(measures, declarations)()
+
+
+@pytest.mark.parametrize(
+    "roster", ["short", "not_a_list", "mapping"], ids=["short", "string", "mapping"]
+)
+def test_the_arm_rows_header_refuses_a_malformed_buffer_roster(executed, roster):
+    """A header whose ``buffers`` is not the four declared entries is typed.
+
+    Every other malformed shape in this artifact refuses with a reason; a
+    strict zip against a wrong-length or wrong-type roster would raise a bare
+    ValueError or TypeError instead.
+    """
+    _root, manifest, store, *_rest = executed
+    payload = _payload(manifest, store, binding.BIND_NODE, "arm_rows")
+    document = binding.bind_composed_asec_document(
+        _payload(manifest, store, binding.BIND_NODE, "asec_binding")
+    )
+    assert binding.bind_composed_asec_arm_rows(payload, binding_document=document)
+    start = len(binding.ARM_ROWS_MAGIC) + 4
+    size = struct.unpack_from("<I", payload, len(binding.ARM_ROWS_MAGIC))[0]
+    header = json.loads(payload[start : start + size])
+    body = payload[start + size : -32]
+    broken = dict(
+        header,
+        buffers={
+            "short": header["buffers"][:3],
+            "not_a_list": "four buffers",
+            "mapping": {item["name"]: item for item in header["buffers"]},
+        }[roster],
+    )
+    reframed = _json(broken)
+    candidate = (
+        binding.ARM_ROWS_MAGIC + struct.pack("<I", len(reframed)) + reframed + body
+    )
+    with pytest.raises(PreparedGraphError, match="ARM_ROWS_BUFFER_ROSTER"):
+        binding.bind_composed_asec_arm_rows(
+            candidate + bytes.fromhex(_sha(candidate)),
+            binding_document=document,
         )
 
 
