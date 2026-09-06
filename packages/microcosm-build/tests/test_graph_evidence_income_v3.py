@@ -1552,19 +1552,15 @@ def test_profiles_refuse_each_other(tmp_path):
 
 
 def test_four_node_roster_refuses_under_the_income_profile(tmp_path):
-    def mutate(root, run, dec, review):
-        for mode in ("cold", "warm"):
-            mutate_json(
-                root,
-                f"{mode}-manifest.json",
-                lambda v: (
-                    v["nodes"].pop(IDS[4]),
-                    v["content_addressed"]["nodes"].pop(IDS[4]),
-                ),
-            )
+    """A resealed four-node manifest is refused by the roster, not by the key.
 
-    with pytest.raises(EvidenceError):
-        export_fixture(tmp_path, mutate)
+    Dropping the accounting node and resealing leaves an internally consistent
+    four-node manifest, which is what an actual four-node run would present.
+    """
+    with pytest.raises(EvidenceError, match="Exact five-node graph roster mismatch"):
+        export_fixture(
+            tmp_path, _resealed_manifest_mutation(lambda v: v["nodes"].pop(IDS[4]))
+        )
     assert not (tmp_path / "quality").exists()
 
 
