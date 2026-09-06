@@ -697,6 +697,13 @@ def adapt_projection_to_money_view(
             "recid_join": "elementwise_identical_projection_and_status_sequences",
             "recid_unique": True,
             "money_view_fields": sorted(money_view.columns),
+            # A contract over a subset of the projection's money fields is
+            # still this baseline, but which columns it left behind is part of
+            # what the run did and is named rather than inferred from a count.
+            "projected_fields": sorted(decoded.facts["column_facts"]),
+            "projected_fields_not_in_contract": sorted(
+                set(decoded.facts["column_facts"]) - set(money_fields)
+            ),
             "design_weight_field": DESIGN_WEIGHT_FIELD,
             "design_weight_in_money_view": False,
             "design_weight_units": "delivered_integer_hundredths_unaltered",
@@ -837,9 +844,16 @@ def price_baseline_invariants(
         _require(not bool(np.signbit(result[zeros]).any()), "NEGATIVE_ZERO", field)
         _require(bool(np.array_equal(zeros, original == 0)), "ZERO_SET_CHANGED", field)
         exact_sum = int(sum(int(value) for value in original.tolist()))
+        gross_sum = int(sum(abs(int(value)) for value in original.tolist()))
         grown_sum = math.fsum(result.tolist())
         expected = exact_sum * factor
-        scale = max(abs(expected), 1.0)
+        # Scaled by the column's **gross** magnitude, not its net total. The
+        # float error one positive factor can accumulate is bounded by the
+        # magnitude that passed through it; a signed column whose positives
+        # and negatives nearly cancel has a tiny net and the same gross, and
+        # scaling by the net alone would refuse a correct result for it.
+        net_scale = max(abs(expected), 1.0)
+        scale = max(abs(gross_sum * factor), net_scale)
         _require(
             abs(grown_sum - expected) <= relative_tolerance * scale,
             "SCALED_SUM_DISAGREEMENT",
@@ -848,10 +862,15 @@ def price_baseline_invariants(
         columns[field] = {
             "rows": rows,
             "exact_source_sum": exact_sum,
+            "gross_source_sum_absolute": gross_sum,
             "grown_fsum": grown_sum,
             "expected_grown_sum": expected,
+            "scale_basis": "gross_absolute_source_sum_times_factor",
             "relative_difference": (
                 abs(grown_sum - expected) / scale if scale else 0.0
+            ),
+            "relative_difference_net_scaled": (
+                abs(grown_sum - expected) / net_scale if net_scale else 0.0
             ),
             "negative": int((original < 0).sum()),
             "positive": int((original > 0).sum()),
@@ -864,13 +883,27 @@ def price_baseline_invariants(
     for name, greater, lesser in PAIRWISE_OBSERVATIONS:
         before = _violations(source, greater, lesser)
         after = _violations(table, greater, lesser)
-        _require(before == after, "PAIRWISE_VIOLATIONS_MOVED", name)
+        # A contract over a subset of the projection's fields can leave one
+        # side of a relation out of the money view entirely. ``None == None``
+        # would then pass, and the entry would read as an observation that was
+        # never made, so the absence is named instead of being counted.
+        _require((before is None) == (after is None), "PAIRWISE_COLUMN_ASYMMETRY", name)
+        observable = before is not None
+        if observable:
+            _require(before == after, "PAIRWISE_VIOLATIONS_MOVED", name)
         pairwise[name] = {
             "greater": greater,
             "lesser": lesser,
             "violations_before": before,
             "violations_after": after,
-            "status": "observed_not_enforced",
+            "status": (
+                "observed_not_enforced"
+                if observable
+                else "not_observable_column_absent"
+            ),
+            "absent_columns": sorted(
+                column for column in (greater, lesser) if column not in source.columns
+            ),
         }
 
     # The exact row comparison. ``apply_puf_growth`` selects ``values != 0.0``
@@ -999,6 +1032,20 @@ def _design_weight_observation(
             np.ascontiguousarray(before, dtype="<i8").tobytes()
         ).hexdigest(),
     }
+    # One thing that can always be measured here, without a second array and
+    # without running the weight transform: the contract's own declared factor
+    # applied to *this run's* S006 leaves every row bit-identical. That is a
+    # measurement over the delivered weights, not a restatement of the levels.
+    before64 = before.astype("float64")
+    with np.errstate(over="ignore", under="ignore"):
+        identity = before64 * declared.value
+    _require(
+        int(np.count_nonzero(_bits(identity) != _bits(before64))) == 0,
+        "DESIGN_WEIGHT_FACTOR_NOT_IDENTITY",
+        rule.field,
+    )
+    record["declared_factor_applied_to_source_weights_is_identity"] = True
+    record["identity_rows_changed"] = 0
     if design_weight_after is None:
         record["observed"] = False
         record["basis"] = "declared_only_no_post_growth_weight_supplied"
@@ -1020,7 +1067,6 @@ def _design_weight_observation(
     _require(
         bool(np.isfinite(after64).all()), "DESIGN_WEIGHT_AFTER_NONFINITE", rule.field
     )
-    before64 = before.astype("float64")
     changed = int(np.count_nonzero(_bits(after64) != _bits(before64)))
     _require(changed == 0, "DESIGN_WEIGHT_CHANGED", rule.field)
     record["observed"] = True
