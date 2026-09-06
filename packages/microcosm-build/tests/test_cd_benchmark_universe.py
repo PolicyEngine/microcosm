@@ -45,6 +45,15 @@ from microcosm.build.cd_benchmark.reasons import (
     MappingStatus,
     Reason,
 )
+from microcosm.build.cd_benchmark.reference import (
+    reference_cell,
+    relative_moe_precision,
+)
+from microcosm.build.cd_benchmark.support import (
+    SourceRecord,
+    SupportMeasure,
+    denominator_support,
+)
 from microcosm.build.cd_benchmark.universe import (
     GqWeightBridge,
     UniverseError,
@@ -333,14 +342,59 @@ def authority(protocol, scopes):
     return ApprovalAuthority(records=(root, peer)), registration
 
 
+def population_cell():
+    return reference_cell(
+        {
+            "E": "100",
+            "M": "5",
+            "EA": None,
+            "MA": None,
+            "published_GEO_ID": "5001900US0601",
+            "canonical_geography_id": "5001900US0601",
+            "dataset": "acs/acs1/subject",
+            "table": "S0101",
+            "variable": "S0101_C01_001",
+            "year": 2024,
+            "congress": 119,
+            "units": "persons",
+            "universe": "population",
+        }
+    )
+
+
+def complete_axes(protocol):
+    """Precision and support evidence a mandatory block cannot go without."""
+    block = protocol.block("population_total")
+    return {
+        "precision": (
+            relative_moe_precision(
+                population_cell(), ceiling=block.reference_relative_moe_ceiling
+            ),
+        ),
+        "support": (
+            denominator_support(
+                protocol.support,
+                [
+                    SourceRecord(origin_key=f"origin-{index}", weight=1, contribution=1)
+                    for index in range(1000)
+                ],
+                block_id=block.id,
+                geography_id="5001900US0601",
+                measure_kind=SupportMeasure.PERSONS,
+            ),
+        ),
+    }
+
+
 def conforming_block(protocol):
     return evaluate_block(
-        block_id="population_total",
+        protocol.block("population_total"),
         geography_id="5001900US0601",
         metric=point_check(
             protocol.block("population_total"), candidate=100, reference=100
         ),
         exposure=ExposureStatus.NOT_RESERVED_CONFORMITY,
+        **complete_axes(protocol),
     )
 
 
@@ -430,12 +484,13 @@ def test_nonconformity_is_retained_under_an_incomplete_scope(protocol):
         registration=registration,
     )
     failing = evaluate_block(
-        block_id="population_total",
+        protocol.block("population_total"),
         geography_id="5001900US0601",
         metric=point_check(
             protocol.block("population_total"), candidate=110, reference=100
         ),
         exposure=ExposureStatus.NOT_RESERVED_CONFORMITY,
+        **complete_axes(protocol),
     )
     scoped = evaluate_scope(
         protocol,
@@ -527,3 +582,49 @@ def test_the_dc_alias_must_keep_both_identities(protocol):
     )
     assert dropped == (Reason.IDENTITY_MISMATCH,)
     assert notes["dc_published_identity_missing"] is True
+
+
+def test_a_mandatory_block_without_axis_evidence_is_incomplete(protocol):
+    block = protocol.block("population_total")
+    assert block.mandatory is True
+    bare = evaluate_block(
+        block,
+        geography_id="5001900US0601",
+        metric=point_check(block, candidate=100, reference=100),
+        exposure=ExposureStatus.NOT_RESERVED_CONFORMITY,
+    )
+    assert bare.metric_conforming is True
+    assert bare.scope_complete is False
+    assert set(bare.reasons) == {
+        Reason.REFERENCE_PRECISION_INADEQUATE,
+        Reason.UNRESOLVED_SOURCE_LINEAGE,
+    }
+    assert bare.evidence["absent_axis_evidence"] == ("reference_precision", "support")
+    unmeasured = evaluate_block(
+        block,
+        geography_id="5001900US0601",
+        metric=None,
+        exposure=ExposureStatus.NOT_RESERVED_CONFORMITY,
+        **complete_axes(protocol),
+    )
+    assert unmeasured.metric_conforming is None
+    assert unmeasured.reasons == (Reason.REQUIRED_CELL_OR_DISTRICT_MISSING,)
+    complete = conforming_block(protocol)
+    assert complete.scope_complete is True
+    assert complete.reasons == ()
+    assert complete.evidence["absent_axis_evidence"] == ()
+
+
+def test_no_axis_is_allowed_to_rescue_another(protocol):
+    block = protocol.block("population_total")
+    result = evaluate_block(
+        block,
+        geography_id="5001900US0601",
+        metric=point_check(block, candidate=110, reference=100),
+        exposure=ExposureStatus.NOT_RESERVED_CONFORMITY,
+        **complete_axes(protocol),
+    )
+    assert result.evidence["precision_does_not_widen_point_bound"] is True
+    assert result.evidence["support_does_not_rescue_a_metric"] is True
+    assert result.evidence["support_verdicts"] == ("within_bounds",)
+    assert result.reasons == (Reason.PUBLISHED_BENCHMARK_NONCONFORMITY,)

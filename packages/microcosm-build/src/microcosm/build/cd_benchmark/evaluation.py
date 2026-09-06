@@ -34,7 +34,12 @@ from microcosm.build.cd_benchmark.approval import (
 )
 from microcosm.build.cd_benchmark.binding import BindingResult
 from microcosm.build.cd_benchmark.metrics import CategoricalResult, PointResult
-from microcosm.build.cd_benchmark.protocol import CompiledProtocol, ScopeRules
+from microcosm.build.cd_benchmark.protocol import (
+    CompiledProtocol,
+    DistributionBlock,
+    PointBlock,
+    ScopeRules,
+)
 from microcosm.build.cd_benchmark.reasons import (
     AXES,
     BenchmarkVerdict,
@@ -120,8 +125,8 @@ class BlockEvaluation:
 
 
 def evaluate_block(
+    block: PointBlock | DistributionBlock,
     *,
-    block_id: str,
     geography_id: str,
     metric: PointResult | CategoricalResult | None,
     precision: Iterable[PrecisionResult] = (),
@@ -133,6 +138,16 @@ def evaluate_block(
 
     Precision never widens the metric bound and support never rescues it; the
     reasons simply accumulate, deduplicated, from every axis that produced one.
+
+    A mandatory block with an axis carrying *no evidence at all* is incomplete,
+    not conforming: ``/status_contract/scope_incomplete`` covers unavailable
+    precision, lineage and cell evidence, and
+    ``/support/required_for_every_district_and_relevant_denominator`` makes
+    support mandatory per district and denominator. An absent measurement is
+    ``required_cell_or_district_missing``, absent precision evidence is
+    ``reference_precision_inadequate``, and absent support evidence is
+    ``unresolved_source_lineage`` — the code ``/support/unknown_lineage`` names
+    when origin coverage cannot be established.
     """
     precision = tuple(precision)
     support = tuple(support)
@@ -146,8 +161,19 @@ def evaluate_block(
     problems.extend(extra_reasons)
     if exposure is ExposureStatus.EXPOSURE_HISTORY_UNKNOWN:
         problems.append(Reason.EXPOSURE_HISTORY_UNKNOWN)
+    absent: list[str] = []
+    if block.mandatory:
+        if metric is None:
+            absent.append("metric")
+            problems.append(Reason.REQUIRED_CELL_OR_DISTRICT_MISSING)
+        if not precision:
+            absent.append("reference_precision")
+            problems.append(Reason.REFERENCE_PRECISION_INADEQUATE)
+        if not support:
+            absent.append("support")
+            problems.append(Reason.UNRESOLVED_SOURCE_LINEAGE)
     return BlockEvaluation(
-        block_id=block_id,
+        block_id=block.id,
         geography_id=geography_id,
         metric=metric,
         precision=precision,
@@ -156,6 +182,8 @@ def evaluate_block(
         reasons=dedupe(problems),
         evidence=MappingProxyType(
             {
+                "mandatory": block.mandatory,
+                "absent_axis_evidence": tuple(absent),
                 "precision_statuses": tuple(str(item.status) for item in precision),
                 "support_verdicts": tuple(str(item.verdict) for item in support),
                 "precision_does_not_widen_point_bound": True,
