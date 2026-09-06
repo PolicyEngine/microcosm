@@ -26,6 +26,13 @@ STAGE_DEPENDENCIES = MappingProxyType(
     {
         "asec_codec_v4": ("numpy", "pandas", "h5py"),
         "acs_codec_2024": ("numpy", "pandas", "microunit", "PyYAML", "pyarrow"),
+        "acs_housing_universe_2024": (
+            "numpy",
+            "pandas",
+            "microunit",
+            "PyYAML",
+            "pyarrow",
+        ),
         "assembly_prepare": (
             "numpy",
             "pandas",
@@ -68,6 +75,10 @@ _CODECS = MappingProxyType(
             "microcosm.build.us_runtime.asec_prepared_source:load_graph_asec_prepared",
         ),
         "raw-bytes-v1": ("geography", "microcosm.graph.codecs:load_raw_bytes"),
+        "us-acs-housing-universe-2024-v1": (
+            "acs_housing_universe_2024",
+            "microcosm.build.us_runtime.acs_housing_universe_source:load_graph_acs_housing_universe",
+        ),
     }
 )
 _RESOURCE_CALLS = frozenset(
@@ -319,6 +330,7 @@ def validate_source_codecs(codecs) -> None:
             codecs.get("us-acs-native-2024-v1"),
             codecs.get("us-asec-prepared-current-money-v2"),
             codecs.get("raw-bytes-v1"),
+            codecs.get("us-acs-housing-universe-2024-v1"),
         )
     except Exception as error:
         raise ValueError("US source codec loader missing.") from error
@@ -370,7 +382,8 @@ def implementation_manifest(stage: str) -> dict:
                 "pandas.future.infer_string": pd.get_option("future.infer_string"),
                 "acs_reader_resolved_string_storage": pd.StringDtype().storage,
             }
-            if stage in {"acs_codec_2024", "assembly_prepare"}
+            if stage
+            in {"acs_codec_2024", "assembly_prepare", "acs_housing_universe_2024"}
             else {}
         ),
         "codecs": {},
@@ -387,6 +400,7 @@ def implementation_manifest(stage: str) -> dict:
         "acs_codec_2024",
         "geography",
         "asec_prepared_v2",
+        "acs_housing_universe_2024",
     ):
         manifest["codecs"] = {
             name: {"loader": loader}
