@@ -24,6 +24,16 @@ not a hypothesis test of truth error, and is not independent-source evidence.
 `BenchmarkEvaluation.claims_not_established` carries that list at runtime, and
 the class has no field that reads as a release verdict.
 
+## Import cost
+
+The package's own modules depend only on the standard library and each other.
+Importing all twelve loads neither `policyengine_*` nor
+`microcosm.build.us_runtime`: measured, that is 1,746 modules against a 1,734
+baseline for `microcosm.build` alone, where importing
+`microcosm.build.us_runtime.cd_reference` costs 2,652. It does *not* avoid
+numpy, pandas or torch — `microcosm.build.__init__` is eager and loads those
+before this package is reached.
+
 ## The document is the source of truth
 
 Thresholds, vocabularies, payload rosters and pinned digests are compiled out of
