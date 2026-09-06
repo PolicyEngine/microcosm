@@ -72,10 +72,35 @@ frozen constants, so editing the housing modules re-derives every downstream
 receipt rather than invalidating a pinned one. That is verified by running the
 downstream prepared/universe/graph suites, not assumed.
 
+## Retry continuation (2026-09-06T07:20Z)
+
+The first attempt of this assignment was cut off at 03:20 UTC when its Subfleet
+lane hit a hard account limit (`us-housing-status-restoration-capture.lane.log`).
+Its worktree, branch and five commits were preserved and are continued here, not
+re-authored. Prior evidence in the shared review directory is left untouched.
+
+Preserved state inherited from that attempt: the gap audit above, the packaged
+authority resource closing G1, and the tests closing G2-G9. The attempt died
+holding one uncommitted edit — the graph implementation inventory entry for the
+new resource — which is why its affected-test capture recorded 42 setup errors
+in `test_us_graph_asec_prepared`, all reading
+`Unclassified US dependency/resource contract: .../asec_housing_status.py`.
+
+That edit was verified against the actual module bytes before being committed:
+`_dependency_contract` recomputed from the file now equals the declared contract,
+and `implementation_manifest("asec_prepared_v3")` binds both housing modules and
+the new resource. Committed as `Classify the housing status authority resource
+access`.
+
+## Done (this continuation)
+
+- [x] Inspected the preserved worktree, branch, five commits and dirty file.
+- [x] Re-derived and committed the inventory classification; 42 errors resolved.
+- [x] Verified G1-G9 closure by reading every new test, not by trusting the journal.
+
 ## Next
 
-- [ ] Close G1 with a hash-pinned packaged authority resource.
-- [ ] Close G2-G9 with distinct-failure-mode tests, no permutation padding.
-- [ ] Update the doc for the resource and the existing seam.
+- [ ] Adversarial audit of the integrated implementation against the contract.
+- [ ] Update the doc for the authority resource and the existing downstream seam.
 - [ ] Run affected + new tests, ruff, CI group inventory; durable JUnit/logs.
 - [ ] Write `us-housing-status-restoration-REPORT.md` / `.json` and the receipt.
