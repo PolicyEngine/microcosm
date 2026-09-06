@@ -1831,6 +1831,65 @@ def _resolved_value_carries_guarded_fragments(
     return _structure_carries_guarded_fragments(node, constants)
 
 
+_NON_LABEL_COMPARISON_OPERATORS = (
+    ast.Eq,
+    ast.NotEq,
+    ast.Lt,
+    ast.LtE,
+    ast.Gt,
+    ast.GtE,
+    ast.Is,
+    ast.IsNot,
+    ast.In,
+    ast.NotIn,
+)
+
+
+def _proven_non_label_selector(
+    node: ast.AST,
+    constants: list[dict[str, object]],
+    *,
+    label_axis: bool,
+) -> bool:
+    """Prove a selector cannot name a column from the selector alone.
+
+    The fail-closed container rule exists because an unresolved selector may be
+    a dynamic *column name*. Three selector shapes carry that proof in their own
+    syntax, so no receiver type, origin, alias or binding has to be trusted:
+
+    * a slice outside a label axis. ``DataFrame.__getitem__`` and
+      ``Series.__getitem__`` route a slice to a row/entry selection on axis 0,
+      ``numpy`` slices entries, ``bytes``/``str``/``list``/``tuple`` slice
+      content, and ``microcosm.frame`` ``Frame.__getitem__`` accepts ``str``
+      keys only, so no ``receiver[a:b]`` read reaches a column. ``.loc`` *does*
+      range over column labels in its second tuple position, so that label axis
+      stays fail-closed;
+    * a comparison. Every Python comparison operator yields a bool, or an
+      element-wise bool array/Series, never a label or a list of labels, so
+      ``array[mask]`` and ``frame[frame.x > 0]`` select entries and rows;
+    * a statically proven integer. Source-spine columns are string-named, so an
+      integer label can never be one of them.
+
+    Bounds, operands and the integer expression itself are still visited, so a
+    contraband name written inside one is still recorded. Everything else --
+    every unresolved name, computed string, inherited variable, aliased or
+    mutated value -- keeps the fail-closed path.
+    """
+
+    if isinstance(node, ast.Slice):
+        return not label_axis
+    if isinstance(node, ast.Compare):
+        return bool(node.ops) and all(
+            isinstance(operator, _NON_LABEL_COMPARISON_OPERATORS)
+            for operator in node.ops
+        )
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
+        # ``values[-1]``: a signed integer literal is still an integer label.
+        # Only the integer branch recurses, so no other shape borrows the sign.
+        return _static_integer(node.operand, constants) is not None
+    return _static_integer(node, constants) is not None
+
+
 class _SourceReadVisitor(ast.NodeVisitor):
     def __init__(
         self,
@@ -1892,6 +1951,15 @@ class _SourceReadVisitor(ast.NodeVisitor):
             and node.func.attr == "copy"
         ):
             return self._column_container(node.func.value)
+        if isinstance(node, ast.Subscript) and _proven_non_label_selector(
+            node.slice,
+            self.constants,
+            label_axis=False,
+        ):
+            # A proven row/entry selection hands back the receiver's own
+            # columns, so a name bound to it stays a candidate container and a
+            # later dynamic read through the alias is still fail-closed.
+            return self._column_container(node.value)
         return False
 
     def _attribute_container(self, node: ast.AST) -> bool:
@@ -1905,6 +1973,12 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 return True
             if isinstance(node.func, ast.Attribute) and node.func.attr == "copy":
                 return self._attribute_container(node.func.value)
+        if isinstance(node, ast.Subscript) and _proven_non_label_selector(
+            node.slice,
+            self.constants,
+            label_axis=False,
+        ):
+            return self._attribute_container(node.value)
         return False
 
     def _method_alias(
@@ -2911,17 +2985,33 @@ class _SourceReadVisitor(ast.NodeVisitor):
                 )
             return
         attribute = _static_string_shape(arguments[1], self.constants)
-        if attribute is None or _OPAQUE_STRING_PART in attribute:
+        if attribute is not None and _OPAQUE_STRING_PART not in attribute:
+            if _is_source_column_shape(attribute):
+                self._record(
+                    node,
+                    f"getattr using source column {attribute!r}",
+                )
+            return
+        # A single shape did not resolve. The name may still be closed over a
+        # literal set -- ``getattr(value, key) for key in ("st_dev", ...)``
+        # names exactly the members of that tuple and nothing else. Reuse the
+        # resolver the subscript and ``.get`` surfaces already use, so the same
+        # mutation, alias, reassignment and comprehension rules decide the
+        # question; anything it cannot close stays fail-closed below.
+        resolved = _static_string_values(arguments[1], self.constants)
+        if resolved is None or any(_OPAQUE_STRING_PART in item for item in resolved):
             if self._attribute_container(arguments[0]):
                 self._record(
                     node,
                     "getattr with an unresolvable dynamic attribute (fail-closed)",
                 )
-        elif _is_source_column_shape(attribute):
-            self._record(
-                node,
-                f"getattr using source column {attribute!r}",
-            )
+            return
+        for item in resolved:
+            if _is_source_column_shape(item):
+                self._record(
+                    node,
+                    f"getattr using source column {item!r}",
+                )
 
     def _visit_get_call(
         self,
@@ -3057,10 +3147,21 @@ class _SourceReadVisitor(ast.NodeVisitor):
         *,
         receiver: ast.AST,
         selector: ast.AST,
+        label_axis: bool = False,
     ) -> None:
         """Apply identical selector checks to [] and direct __getitem__."""
 
-        column_container = self._column_container(receiver)
+        # The container flag only drives the fail-closed opacity branch. A
+        # selector that provably cannot name a column retires that branch and
+        # nothing else: named contraband columns, resolved source columns and
+        # source-spine provenance expressions are still recorded below.
+        column_container = self._column_container(receiver) and not (
+            _proven_non_label_selector(
+                selector,
+                self.constants,
+                label_axis=label_axis,
+            )
+        )
         resolved = _static_string_values(selector, self.constants)
         column = _subscript_source_expression(
             selector,
@@ -3151,6 +3252,7 @@ class _SourceReadVisitor(ast.NodeVisitor):
     def visit_Subscript(self, node: ast.Subscript) -> None:
         selector = node.slice
         receiver = node.value
+        label_axis = False
         if (
             isinstance(node.value, ast.Attribute)
             and node.value.attr == "loc"
@@ -3159,10 +3261,14 @@ class _SourceReadVisitor(ast.NodeVisitor):
         ):
             selector = node.slice.elts[-1]
             receiver = node.value.value
+            # ``.loc[rows, "a":"b"]`` ranges over column labels, unlike every
+            # plain ``[]`` slice, so this axis keeps the fail-closed rule.
+            label_axis = True
         self._visit_column_selector(
             node,
             receiver=receiver,
             selector=selector,
+            label_axis=label_axis,
         )
         self.generic_visit(node)
 
@@ -3727,6 +3833,211 @@ def f(df: pd.DataFrame):
 
     for source in sources:
         assert _source_spine_accesses(source) == (), source
+
+
+def test_proven_row_and_entry_slices_are_not_column_reads() -> None:
+    """Slices read content; a label axis and every other selector still refuse.
+
+    ``DataFrame``/``Series`` ``[]`` route a slice to axis 0, ``numpy`` and
+    ``bytes`` slice entries, and ``Frame.__getitem__`` takes ``str`` keys only,
+    so ``receiver[a:b]`` never reaches a column. ``.loc[rows, a:b]`` does range
+    over column labels, so that position keeps the fail-closed rule.
+    """
+
+    benign_bytes = """
+def parse(payload, cursor, size):
+    header = payload[cursor : cursor + size]
+    return payload[:-32], payload[-32:], header
+"""
+    benign_array = """
+def monotonic(values):
+    return (values[:-1] < values[1:]).all()
+"""
+    guarded_label_axis = """
+def read(frame, lower, upper):
+    return frame.loc[:, lower:upper]
+"""
+    guarded_dynamic_name = """
+def read(frame, column):
+    return frame[column]
+"""
+    guarded_label_axis_spine_range = """
+def read(frame):
+    return frame.loc[:, "person_support_channel":"person_support_channel"]
+"""
+
+    assert _source_spine_accesses(benign_bytes) == ()
+    assert _source_spine_accesses(benign_array) == ()
+    for guarded in (guarded_label_axis, guarded_dynamic_name):
+        assert any(
+            "unresolvable dynamic selector (fail-closed)" in access
+            for access in _source_spine_accesses(guarded)
+        ), guarded
+    assert any(
+        "person_support_channel" in access
+        for access in _source_spine_accesses(guarded_label_axis_spine_range)
+    )
+
+
+def test_proven_row_selections_do_not_launder_a_source_spine_read() -> None:
+    """A row selection keeps its receiver's columns, so aliases stay closed."""
+
+    guarded_named_read = """
+def read(frame):
+    return frame[0:5]["person_support_channel"]
+"""
+    guarded_slice_alias = """
+def read(frame, column):
+    rows = frame[0:5]
+    return rows[column]
+"""
+    guarded_mask_alias = """
+def read(frame, column, left, right):
+    rows = frame[left > right]
+    return rows[column]
+"""
+    guarded_copied_alias = """
+def read(frame, column):
+    rows = frame[0:5].copy()
+    return rows[column]
+"""
+    guarded_attribute_alias = """
+def read(frame, name):
+    rows = frame[0:5]
+    return getattr(rows, name)
+"""
+    benign_bytes_alias = """
+def parse(payload, cursor, size):
+    header = payload[cursor : cursor + size]
+    return header[:4]
+"""
+
+    assert any(
+        "subscript using source column 'person_support_channel'" in access
+        for access in _source_spine_accesses(guarded_named_read)
+    )
+    for guarded in (
+        guarded_slice_alias,
+        guarded_mask_alias,
+        guarded_copied_alias,
+    ):
+        assert any(
+            "unresolvable dynamic selector (fail-closed)" in access
+            for access in _source_spine_accesses(guarded)
+        ), guarded
+    assert any(
+        "unresolvable dynamic attribute (fail-closed)" in access
+        for access in _source_spine_accesses(guarded_attribute_alias)
+    )
+    assert _source_spine_accesses(benign_bytes_alias) == ()
+
+
+def test_comparison_selectors_are_masks_rather_than_labels() -> None:
+    """Every comparison yields bools; an opaque mask name still refuses."""
+
+    benign = """
+def universe(receipt_code, nominal, age):
+    return (receipt_code[nominal != 0] == 1).all() and (nominal[age < 15] == 0).all()
+"""
+    guarded_opaque_mask = """
+def universe(frame, mask):
+    return frame[mask]
+"""
+    guarded_spine_mask = """
+def universe(frame):
+    return frame[frame["person_support_channel"] > 0]
+"""
+
+    assert _source_spine_accesses(benign) == ()
+    assert any(
+        "unresolvable dynamic selector (fail-closed)" in access
+        for access in _source_spine_accesses(guarded_opaque_mask)
+    )
+    assert any(
+        "subscript using source column 'person_support_channel'" in access
+        for access in _source_spine_accesses(guarded_spine_mask)
+    )
+
+
+def test_integer_selectors_cannot_name_a_string_source_column() -> None:
+    """Static integers are proven labels; reassignment reopens the refusal."""
+
+    benign_literals = """
+def bounds(values, rows):
+    return int(values[0]) >= 0 and int(values[-1]) < rows
+"""
+    benign_bound_integer = """
+def bounds(values):
+    index = 0
+    return values[index]
+"""
+    guarded_dynamic_index = """
+def bounds(values, index):
+    return values[index]
+"""
+    guarded_reassigned_index = """
+def bounds(values, other):
+    index = 0
+    index = other
+    return values[index]
+"""
+
+    assert _source_spine_accesses(benign_literals) == ()
+    assert _source_spine_accesses(benign_bound_integer) == ()
+    for guarded in (guarded_dynamic_index, guarded_reassigned_index):
+        assert any(
+            "unresolvable dynamic selector (fail-closed)" in access
+            for access in _source_spine_accesses(guarded)
+        ), guarded
+
+
+def test_getattr_resolves_a_closed_literal_name_set() -> None:
+    """Stat-field names close over a literal tuple; nothing else is exempt."""
+
+    benign_stat_fields = """
+def identity(value):
+    return tuple(getattr(value, key) for key in ("st_dev", "st_ino", "st_size"))
+"""
+    guarded_contraband_member = """
+def identity(value):
+    return tuple(getattr(value, key) for key in ("st_dev", "person_support_channel"))
+"""
+    guarded_nonliteral_names = """
+def identity(value, names):
+    return tuple(getattr(value, key) for key in names)
+"""
+    guarded_mutated_names = """
+def identity(value, extra):
+    names = ["st_dev"]
+    names.append(extra)
+    return tuple(getattr(value, key) for key in names)
+"""
+    guarded_computed_name = """
+def identity(value, suffix):
+    return getattr(value, "st_" + suffix)
+"""
+    guarded_inherited_name = """
+def outer(value, chosen):
+    def inner():
+        return getattr(value, chosen)
+    return inner
+"""
+
+    assert _source_spine_accesses(benign_stat_fields) == ()
+    assert any(
+        "getattr using source column 'person_support_channel'" in access
+        for access in _source_spine_accesses(guarded_contraband_member)
+    )
+    for guarded in (
+        guarded_nonliteral_names,
+        guarded_mutated_names,
+        guarded_computed_name,
+        guarded_inherited_name,
+    ):
+        assert any(
+            "unresolvable dynamic attribute (fail-closed)" in access
+            for access in _source_spine_accesses(guarded)
+        ), guarded
 
 
 def test_function_definition_expressions_use_definition_time_constants() -> None:
