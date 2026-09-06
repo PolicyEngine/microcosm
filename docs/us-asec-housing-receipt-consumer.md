@@ -80,7 +80,14 @@ built by `housing_unit_evidence_from_universe` or
 `housing_unit_evidence_from_attached_universe`. There is no default and no
 opt-out: missing evidence can never become a `True` or a `False`. The evidence
 must cover the same households, in the same order, for the same income-year
-cohort, at the same authentication as the status.
+cohort, at the same authentication as the status. Authenticated artifacts must
+also carry the same source identity: household identifiers are source-local
+ordinals and can collide across unrelated checkpoints. The consumer compares
+digests of the authenticated source identities, without publishing their contents.
+When both inputs are attachments, the universe attachment must name the status
+attachment's receipt as its parent. Matching rows alone cannot establish that
+attachment chain. Synthetic evidence keeps its unauthenticated status and carries
+no authenticated source identity.
 
 | Occupied-HU evidence | Assignment |
 | --- | --- |
@@ -92,6 +99,9 @@ cohort, at the same authentication as the status.
 The raw observation survives all four: a group-quarters household still counts as
 `observed_receipt` in `household_view_counts` and in the diagnostics. Only the
 assignment is withheld.
+
+The projection receipt labels the count grains explicitly: household views and
+occupied-HU counts describe households, while assignment counts describe SPM units.
 
 ## Household status to SPM assignment
 

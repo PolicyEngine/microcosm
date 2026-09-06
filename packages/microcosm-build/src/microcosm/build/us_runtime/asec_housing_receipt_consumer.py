@@ -259,6 +259,15 @@ def _sha(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def _source_identity_sha256(header: dict[str, Any]) -> str | None:
+    """Retain the authenticated source identity without exposing its contents."""
+    if header["source_authentication"] == "synthetic_unverified":
+        return None
+    identity = header["source"].get("identity")
+    _require(type(identity) is str and bool(identity), "SOURCE_IDENTITY")
+    return _sha(identity.encode())
+
+
 def _by_code(entry: tuple[str, int]) -> int:
     """Sort key for one carried ``name -> code`` codebook entry.
 
@@ -338,6 +347,7 @@ def receipt_columns_from_status(status: _HousingStatus) -> dict[str, Any]:
         "income_year": status.array("income_year"),
         "source_period_kind": header["source_period_kind"],
         "source_authentication": header["source_authentication"],
+        "source_identity_sha256": _source_identity_sha256(header),
         "zero_origin_policy": header["zero_origin_policy"],
         "non_housing_unit_scope": header["non_housing_unit_scope"],
         "codebook": header["codebook"],
@@ -382,6 +392,7 @@ def receipt_columns_from_attached_household(
         "income_year": status.array("income_year"),
         "source_period_kind": header["source_period_kind"],
         "source_authentication": header["source_authentication"],
+        "source_identity_sha256": _source_identity_sha256(header),
         "zero_origin_policy": header["zero_origin_policy"],
         "non_housing_unit_scope": header["non_housing_unit_scope"],
         "codebook": header["codebook"],
@@ -404,6 +415,7 @@ class HouseholdReceiptInterpretation:
     codebook: dict[str, Any]
     source_period_kind: str
     source_authentication: str
+    source_identity_sha256: str | None
     non_housing_unit_scope: str
     zero_origin_policy: Any
     status_content_sha256: str | None
@@ -483,6 +495,15 @@ def interpret_household_receipt(
     _require(period_kind == SUPPORTED_PERIOD_KIND, "UNSUPPORTED_PERIOD_KIND")
     authentication = projection.get("source_authentication")
     _require(type(authentication) is str and authentication, "SOURCE_AUTHENTICATION")
+    source_identity = projection.get("source_identity_sha256")
+    _require(
+        source_identity is None
+        if authentication == "synthetic_unverified"
+        else type(source_identity) is str
+        and len(source_identity) == 64
+        and set(source_identity) <= set("0123456789abcdef"),
+        "SOURCE_IDENTITY",
+    )
     scope_declaration = projection.get("non_housing_unit_scope")
     _require(type(scope_declaration) is str and scope_declaration, "SCOPE_DECLARATION")
     codebook = projection.get("codebook")
@@ -560,6 +581,7 @@ def interpret_household_receipt(
         codebook=codebook,
         source_period_kind=period_kind,
         source_authentication=authentication,
+        source_identity_sha256=source_identity,
         non_housing_unit_scope=scope_declaration,
         zero_origin_policy=projection.get("zero_origin_policy"),
         status_content_sha256=projection.get("status_content_sha256"),
@@ -577,8 +599,10 @@ class HousingUnitEvidence:
     household_kind: np.ndarray
     codebook: dict[str, Any]
     source_authentication: str
+    source_identity_sha256: str | None
     universe_content_sha256: str | None
     attachment_receipt_sha256: str | None
+    parent_receipt_sha256: str | None
 
     @property
     def rows(self) -> int:
@@ -600,6 +624,7 @@ def _housing_unit_evidence(
     header: dict[str, Any],
     universe_content_sha256: str,
     attachment_receipt_sha256: str | None,
+    parent_receipt_sha256: str | None,
 ) -> HousingUnitEvidence:
     """Recheck the carried occupied-HU domains without rederiving any of them."""
     _require(
@@ -639,8 +664,10 @@ def _housing_unit_evidence(
         household_kind=_sealed(household_kind),
         codebook=codebook,
         source_authentication=authentication,
+        source_identity_sha256=_source_identity_sha256(header),
         universe_content_sha256=universe_content_sha256,
         attachment_receipt_sha256=attachment_receipt_sha256,
+        parent_receipt_sha256=parent_receipt_sha256,
     )
 
 
@@ -663,6 +690,7 @@ def housing_unit_evidence_from_universe(
         header=universe.header_data,
         universe_content_sha256=digest,
         attachment_receipt_sha256=None,
+        parent_receipt_sha256=None,
     )
 
 
@@ -711,6 +739,7 @@ def housing_unit_evidence_from_attached_universe(
         header=universe.header_data,
         universe_content_sha256=digest,
         attachment_receipt_sha256=_sha(_json(attached.receipt)),
+        parent_receipt_sha256=attached.receipt["parent_receipt_sha256"],
     )
 
 
@@ -812,6 +841,19 @@ def _bind_housing_unit(
         housing_unit.source_authentication == interpretation.source_authentication,
         "HOUSING_UNIT_AUTHENTICATION",
     )
+    _require(
+        housing_unit.source_identity_sha256 == interpretation.source_identity_sha256,
+        "HOUSING_UNIT_SOURCE_IDENTITY",
+    )
+    if (
+        interpretation.attachment_receipt_sha256 is not None
+        and housing_unit.attachment_receipt_sha256 is not None
+    ):
+        _require(
+            housing_unit.parent_receipt_sha256
+            == interpretation.attachment_receipt_sha256,
+            "HOUSING_UNIT_ATTACHMENT_PARENT",
+        )
     implied = np.asarray(_KIND_FOR_GROUP_QUARTERS, dtype="uint8")[
         interpretation.group_quarters
     ]
@@ -985,6 +1027,7 @@ def project_engine_receipt_inputs(
         "artifact_kind": CONSUMER_KIND,
         "release_eligible": False,
         "source_authentication": interpretation.source_authentication,
+        "source_identity_sha256": interpretation.source_identity_sha256,
         "source_period_kind": interpretation.source_period_kind,
         "status_content_sha256": interpretation.status_content_sha256,
         "status_attachment_receipt_sha256": interpretation.attachment_receipt_sha256,
@@ -992,6 +1035,7 @@ def project_engine_receipt_inputs(
         "housing_unit_authentication": housing_unit.source_authentication,
         "universe_content_sha256": housing_unit.universe_content_sha256,
         "universe_attachment_receipt_sha256": housing_unit.attachment_receipt_sha256,
+        "universe_parent_receipt_sha256": housing_unit.parent_receipt_sha256,
         "annual_income_year_participation": "not_established",
         "multi_unit_negative": multi_unit_negative,
         "engine_input": "receives_housing_assistance",
@@ -1000,6 +1044,11 @@ def project_engine_receipt_inputs(
         "household_view_counts": interpretation.view_counts(),
         "occupied_hu_counts": housing_unit.occupied_hu_counts(),
         "assignment_counts": _counts(assignment, ASSIGNMENTS),
+        "count_grains": {
+            "household_view_counts": "household",
+            "occupied_hu_counts": "household",
+            "assignment_counts": "spm_unit",
+        },
         "spm_unit_rows": int(assignment.shape[0]),
         "withheld_rows": int((code == RECEIPT_INPUT_CODES["withheld"]).sum()),
     }

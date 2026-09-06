@@ -258,7 +258,7 @@ class TestHouseholdInterpretation:
         ):
             consumer.interpret_household_receipt(projection)
 
-    def test_a_permuted_household_axis_inside_the_projection_is_refused(self):
+    def test_a_duplicate_household_axis_inside_the_projection_is_refused(self):
         projection = consumer.receipt_columns_from_status(
             status_for([RECEIPT_PUBLIC, NONRECEIPT])
         )
@@ -363,6 +363,11 @@ class TestAuthenticatedAttachment:
             attached_universe
         )
         assert evidence.source_authentication == "checkpoint_bytes_verified"
+        assert evidence.source_identity_sha256 == interpretation.source_identity_sha256
+        assert evidence.source_identity_sha256 is not None
+        assert (
+            evidence.parent_receipt_sha256 == interpretation.attachment_receipt_sha256
+        )
         assert evidence.universe_content_sha256 == universe.content_sha256
         assert evidence.occupied_hu.tolist() == [1, 1, 1]
 
@@ -388,6 +393,76 @@ class TestAuthenticatedAttachment:
         assert receipt["status_content_sha256"] == status.content_sha256
         assert receipt["universe_content_sha256"] == universe.content_sha256
         assert receipt["release_eligible"] is False
+        assert receipt["source_identity_sha256"] == evidence.source_identity_sha256
+        assert receipt["count_grains"]["occupied_hu_counts"] == "household"
+        assert receipt["count_grains"]["assignment_counts"] == "spm_unit"
+
+        # The same source and household axes do not establish the attachment
+        # chain: this valid universe attachment bypasses the status attachment.
+        bypass = asec_housing_universe_source.attach_housing_universe(
+            tax_result, universe
+        )
+        bypass_evidence = consumer.housing_unit_evidence_from_attached_universe(bypass)
+        assert (
+            bypass_evidence.source_identity_sha256
+            == interpretation.source_identity_sha256
+        )
+        with pytest.raises(
+            consumer.HousingReceiptRefusalError,
+            match="HOUSING_UNIT_ATTACHMENT_PARENT",
+        ):
+            consumer.resolve_spm_receipt_scope(
+                interpretation,
+                housing_unit=bypass_evidence,
+                household_id=interpretation.household_id,
+                spm_unit_id=scope.spm_unit_id,
+                person_household_id=person["person_household_id"].to_numpy(),
+                person_spm_unit_id=person["person_spm_unit_id"].to_numpy(),
+            )
+
+    def test_authenticated_sources_with_colliding_ordinals_cannot_be_combined(
+        self, tmp_path, monkeypatch
+    ):
+        specification = importlib.util.spec_from_file_location(
+            "housing_receipt_distinct_sources_fixture",
+            Path(__file__).with_name("test_us_asec_housing_status_source.py"),
+        )
+        fixture = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(fixture)
+        from microcosm.build.us_runtime import (
+            asec_housing_status_source,
+            asec_housing_universe_source,
+        )
+
+        first = tmp_path / "first"
+        second = tmp_path / "second"
+        first.mkdir()
+        second.mkdir()
+        with monkeypatch.context() as patch:
+            loaded, cohorts, *_ = fixture.invented_source(first, patch)
+            status = asec_housing_status_source.load_authenticated_housing_status(
+                loaded, cohort_paths=cohorts
+            )
+            interpretation = consumer.interpret_household_receipt(
+                consumer.receipt_columns_from_status(status)
+            )
+        with monkeypatch.context() as patch:
+            loaded, *_ = fixture.invented_source(second, patch, history=True)
+            universe = asec_housing_universe_source.load_authenticated_housing_universe(
+                loaded
+            )
+            evidence = consumer.housing_unit_evidence_from_universe(universe)
+
+        assert np.array_equal(evidence.household_id, interpretation.household_id)
+        assert np.array_equal(evidence.income_year, interpretation.income_year)
+        assert evidence.source_authentication == interpretation.source_authentication
+        assert evidence.source_identity_sha256 != interpretation.source_identity_sha256
+        with pytest.raises(
+            consumer.HousingReceiptRefusalError, match="HOUSING_UNIT_SOURCE_IDENTITY"
+        ):
+            consumer.resolve_spm_receipt_scope(
+                interpretation, housing_unit=evidence, **memberships([1, 1, 1])
+            )
 
     def test_a_synthetic_universe_cannot_certify_an_authenticated_status(
         self, tmp_path, monkeypatch
