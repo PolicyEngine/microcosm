@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -36,9 +37,16 @@ from microcosm.build.us_runtime.national_age_activation import (
 )
 from microcosm.calibrate.registry import TargetRegistry
 
+#: The accepted capture is a local review artifact, not repository content.
+#: Point ``MICROCOSM_US_NATIONAL_ACS_BUNDLE`` at it to run the pinned tests;
+#: everywhere else, including CI, they skip and the invented bundle carries the
+#: behavioural coverage.
 BUNDLE = Path(
-    "/Users/maxghenis/architecture-reviews/microcosm-20260904/"
-    "national-acs-2024-reference-bundle-v1"
+    os.environ.get(
+        "MICROCOSM_US_NATIONAL_ACS_BUNDLE",
+        "/Users/maxghenis/architecture-reviews/microcosm-20260904/"
+        "national-acs-2024-reference-bundle-v1",
+    )
 )
 INVENTORY = "national-derived-inventory.json"
 ACCEPTED_INVENTORY_SHA256 = (
