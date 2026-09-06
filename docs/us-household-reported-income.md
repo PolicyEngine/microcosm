@@ -29,6 +29,9 @@ signature. Each digest below has a stated provenance:
   `asec_current_money_domains_v1.json` and `asec_housing_status.py`. The 2023
   and 2024 dictionary digests in `ASEC_HTOTVAL_VINTAGES` are copied from that
   same existing authenticated metadata and were not re-retrieved.
+- **CPS March 2025 technical documentation** — retrieved from the publisher on
+  2026-09-06. The retrieved bytes equal the digest already carried as
+  `temporal_authority` in `asec_current_money_domains_v1.json`.
 - **B19001 group metadata** — retrieved from the Census API on 2026-09-06. The
   retrieved bytes equal the content-addressed capture already held by the
   congressional-district reference evidence bundle.
@@ -39,6 +42,7 @@ signature. Each digest below has a stated provenance:
 | 2024 ACS PUMS User Guide | `https://www2.census.gov/programs-surveys/acs/tech_docs/pums/2024ACS_PUMS_User_Guide.pdf` | `70d485604dfd89534eef7d491a219ab7d336f98e724732985a0a859eac5d9787` |
 | 2024 ACS Subject Definitions | `https://www2.census.gov/programs-surveys/acs/tech_docs/subject_definitions/2024_ACSSubjectDefinitions.pdf` | `6e0c5b1a5d3ebf7e300e583ac6424cbd5f09de50d69e7ef03aa6d070d9c4a7a8` |
 | CPS ASEC 2025 public-use data dictionary | `https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf` | `5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f` |
+| CPS March 2025 technical documentation | `https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf` | `7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4` |
 | Census API group metadata, 2024 ACS 1-year `B19001` | `https://api.census.gov/data/2024/acs/acs1/groups/B19001.json` | `d73a050438fb75f43c1b7738d0aa42c3c7ad17e4fb62b2661294652fbd05aafa` |
 
 ### ACS `HINCP`, PUMS dictionary PDF page 15
@@ -56,10 +60,10 @@ signature. Each digest below has a stated provenance:
 The applicable universe is therefore occupied housing units, read off the
 printed not-applicable statement: the publisher declares the field N/A for
 group-quarters and vacant records, so a blank there is an out-of-universe state
-and never a zero. `0` is a distinct declared value
-meaning no household income. `-59999` is a declared open-ended loss floor;
-`-59998..-1` are ordinary signed losses. Values outside `[-59999, 9999999]`
-are outside the published range.
+and never a zero. `0` is a distinct declared value meaning no household
+income. `-59999` is a declared open-ended loss floor; `-59998..-1` are ordinary
+signed losses. Values outside `[-59999, 9999999]` are outside the published
+range.
 
 ### ACS `ADJINC`, PUMS dictionary PDF page 2 (housing record)
 
@@ -115,10 +119,45 @@ capital gains.
 members are that 15-and-over universe; this module never sums `PTOTVAL` into
 `HTOTVAL`, and the household field carries no declared open-ended bound.
 
-`CAP_VAL` at PDF page 44 is `capital gains value` with `Universe: CAP_YN = 1`.
-Capital gains are outside the money-income concept on both arms. `CAP_VAL` is
-therefore neither part of either household total nor the ACS all-other-income
-component `OIP`, and no unallocated residual may be labelled "other income".
+### ASEC money income, CPS technical documentation PDF page 112
+
+> Income
+> For each person in the sample who is 15 years old and over, questions are
+> asked on the amount of money income received in the preceding calendar year
+> from each of the following sources: (1) money wages or salary; (2) net income
+> from nonfarm self-employment; (3) net income from farm self-employment; (4)
+> Social Security or railroad retirement; (5) Supplemental Security Income; (6)
+> public assistance or welfare payments; (7) interest (on savings or bonds); (8)
+> dividends, income from estates or trusts, or net rental income; (9) veterans'
+> payment or unemployment and workmen's compensation; (10) private pensions or
+> government employee pensions; (11) alimony or child support, regular
+> contributions from persons not living in the household, and other periodic
+> income.
+
+> Data on consumer income collected in the CPS by the Census Bureau cover money
+> income received (exclusive of certain money receipts such as capital gains)
+> before payments for personal income taxes, Social Security, union dues,
+> Medicare deductions, etc.
+
+> A household consists of all the persons who occupy a house, an apartment, or
+> other group of rooms, or a room, which constitutes a housing unit. … The
+> count of households excludes persons living in group quarters, such as
+> military barracks and institutions.
+
+> Although income statistics refer to receipts during the preceding year, the
+> characteristics of the person such as age, labor force status, etc., and the
+> composition of households refer to the time of the survey.
+
+Three things follow. The CPS partitions money income into **eleven** listed
+sources where the ACS uses **eight**, so the two totals are built from
+differently partitioned question sets even though both are money income. CPS
+money income is published *exclusive of capital gains*, so the separate ASEC
+`CAP_VAL` field (PDF page 44 of the ASEC dictionary, `capital gains value`,
+`Universe: CAP_YN = 1`) is outside `HTOTVAL`; it is neither the ACS
+all-other-income component `OIP` nor an unallocated residual, and no residual
+may be labelled "other income". And the ASEC household composition is fixed at
+the survey date exactly as the ACS composition is fixed at the interview date,
+so that axis does not distinguish the arms — the reference *window* does.
 
 ### What the executed ACS person roster does and does not carry
 
@@ -196,10 +235,10 @@ identifier keeps its spelling; integer keys refuse before a zero can be lost.
 
 `two_arm_comparability(acs, asec)` is the whole consumer API. It returns both
 origins and an explicit list of source-dependent differences — reference
-period, price restatement, household universe, declared bounds — and produces
-no pooled total, ratio or reconciliation. A consumer that wants a comparison
-must state which difference it is willing to ignore; nothing here does that
-for it.
+period, price restatement, household universe, reported income sources,
+declared bounds — and produces no pooled total, ratio or reconciliation. A
+consumer that wants a comparison must state which difference it is willing to
+ignore; nothing here does that for it.
 
 ## B19001
 

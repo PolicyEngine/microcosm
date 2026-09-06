@@ -375,8 +375,17 @@ def test_two_arm_comparability_keeps_period_and_universe_differences_visible():
         "reference period",
         "price restatement",
         "household universe",
+        "reported income sources",
         "declared bounds",
     }
+    sources = next(
+        item
+        for item in report["differences"]
+        if item["axis"] == "reported income sources"
+    )
+    assert sources["acs"] == "eight published income types"
+    assert sources["asec"] == "eleven listed CPS money-income sources"
+    assert "both exclude capital gains" in sources["consequence"]
     assert report["shared"]["component_sum"] == (
         "never; both arms use the publisher aggregate"
     )
@@ -399,7 +408,19 @@ def test_no_component_or_split_claim_is_made_by_either_arm():
         assert "railroad" not in text
         assert "eight components" not in text
     assert "six of the eight" in acs.evidence["component_reconstruction"]
-    assert "CAP_VAL" in asec.evidence["component_reconstruction"]
+    # The capital-gains exclusion is quoted authority, not an assumption.
+    asec_note = asec.evidence["component_reconstruction"]
+    assert "CAP_VAL" in asec_note
+    assert "exclusive of certain receipts such as capital gains" in asec_note
+    exclusions = [
+        item["establishes"]
+        for item in asec.evidence["origin"]["authority"]
+        if "capital gains" in item["establishes"]
+    ]
+    assert len(exclusions) == 1
+    assert "CPS March 2025 technical documentation, glossary" in {
+        item["document"] for item in asec.evidence["origin"]["authority"]
+    }
 
 
 def test_asec_vintage_pins_match_the_packaged_current_money_authority():

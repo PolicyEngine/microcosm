@@ -98,6 +98,11 @@ ACS_HINCP_MAXIMUM = 9_999_999
 ACS_HOUSING_UNIT_KIND = 1
 ACS_GROUP_QUARTERS_KINDS = (2, 3)
 
+_ASEC_TECHDOC_URL = "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+_ASEC_TECHDOC_SHA256 = (
+    "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4"
+)
+
 _ASEC_PRICE_BASIS_RESOURCE = "asec_current_money_price_basis_v1.json"
 _ASEC_PRICE_BASIS_SHA256 = (
     "88cec207a3c73e5de93d677acf16e8db9ddae9761c644c06da92cacf0feb3f63"
@@ -298,6 +303,33 @@ ASEC_HTOTVAL_ORIGIN = ReportedIncomeOrigin(
                     "PTOTVAL total persons income, universe All Persons aged "
                     "15+; the household total's members are the 15+ universe, "
                     "and this module never sums PTOTVAL into HTOTVAL"
+                ),
+            }
+        ),
+        MappingProxyType(
+            {
+                "document": "CPS March 2025 technical documentation, glossary",
+                "url": _ASEC_TECHDOC_URL,
+                "sha256": _ASEC_TECHDOC_SHA256,
+                "pdf_page_1based": 112,
+                "establishes": (
+                    "CPS income is asked of each person 15 years old and over "
+                    "for money income received in the preceding calendar year "
+                    "from eleven listed sources; the ACS asks eight"
+                ),
+            }
+        ),
+        MappingProxyType(
+            {
+                "document": "CPS March 2025 technical documentation, glossary",
+                "url": _ASEC_TECHDOC_URL,
+                "sha256": _ASEC_TECHDOC_SHA256,
+                "pdf_page_1based": 112,
+                "establishes": (
+                    "CPS data cover money income received exclusive of certain "
+                    "money receipts such as capital gains, so the household "
+                    "total excludes them, and the count of households excludes "
+                    "persons living in group quarters"
                 ),
             }
         ),
@@ -644,10 +676,12 @@ def measure_asec_household_reported_income(
         "quality_counts": _counts(quality, QUALITY),
         "negative_value_rows": int((values[observed] < 0).sum()),
         "component_reconstruction": (
-            "none; HTOTVAL is the publisher's own household total and is never "
-            "rebuilt from admitted engine roots. Capital gains (ASEC CAP_VAL) "
-            "are outside the money-income concept on both arms and are not the "
-            "ACS all-other-income component"
+            "none; HTOTVAL is the publisher's own household total and is "
+            "never rebuilt from admitted engine roots. CPS money income is "
+            "published exclusive of certain receipts such as capital gains, so "
+            "the separate ASEC CAP_VAL field is outside this total; it is "
+            "neither the ACS all-other-income component OIP nor an unallocated "
+            "residual"
         ),
     }
     return HouseholdReportedIncome(
@@ -750,6 +784,16 @@ def two_arm_comparability(
                 "consequence": (
                     "the ACS arm carries an explicit out-of-universe "
                     "availability code the ASEC arm has no publisher basis for"
+                ),
+            },
+            {
+                "axis": "reported income sources",
+                "acs": "eight published income types",
+                "asec": "eleven listed CPS money-income sources",
+                "consequence": (
+                    "the two totals are built from differently partitioned "
+                    "question sets; both exclude capital gains, and neither "
+                    "total is reconstructed from components here"
                 ),
             },
             {
