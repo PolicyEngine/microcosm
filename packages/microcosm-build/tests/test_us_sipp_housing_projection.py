@@ -1,0 +1,660 @@
+"""Behavioral contracts for the December SIPP housing projection recipe.
+
+Every row here is invented. No SIPP byte is opened, no parent is authenticated,
+nothing is fitted and no amount below came from the real file. The tests assert
+what the recipe must refuse and how it must classify evidence it is given.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from decimal import Decimal
+
+import pytest
+
+from microcosm.build import sipp_december_source as source
+from microcosm.build import sipp_housing_measurements as hm
+from microcosm.build import sipp_housing_projection as hp
+from microcosm.build import sipp_measurements as m
+
+SOURCE = m.SippSource(source._PINS.sha256, source._PINS.metadata_sha256, 2023, 2022)
+
+# One invented renter household that satisfies every admission condition. Each
+# test starts from this and changes exactly the evidence it is about.
+RENTER = {
+    "ETENURE": "2",
+    "ATENURE": "1",
+    "TRENTMORT": "900",
+    "ARENTMORT": "1",
+    "TUTILS": "150",
+    "AUTILS": "1",
+    "ERENTSUB": "2",
+    "ARENTSUB": "1",
+    "EVOUCHER": "",
+    "AVOUCHER": "0",
+    "EPRDEBT": "",
+    "APRDEBT": "0",
+    "EMHDEBT": "",
+    "AMHDEBT": "0",
+    "EEHC_TEN": "2",
+    "AEHC_TEN": "1",
+    "EEHC_RENTSUB": "2",
+    "AEHC_RENTSUB": "1",
+    "EEHC_VOUCHER": "",
+    "AEHC_VOUCHER": "0",
+}
+OWNER = {
+    **RENTER,
+    "ETENURE": "1",
+    "TRENTMORT": "1800",
+    "ERENTSUB": "",
+    "ARENTSUB": "0",
+    "EEHC_TEN": "1",
+    "EEHC_RENTSUB": "",
+    "AEHC_RENTSUB": "0",
+    "EPRDEBT": "1",
+    "APRDEBT": "1",
+}
+
+
+def _row(ssuid="0001", pnum=101, residence="100001", weight="1000", **overrides):
+    values = dict.fromkeys(hp.PROJECTION_FIELDS, "")
+    values.update(
+        SSUID=ssuid,
+        PNUM=str(pnum),
+        MONTHCODE="12",
+        ERESIDENCEID=residence,
+        WPFINWGT=weight,
+        **RENTER,
+    )
+    values.update(overrides)
+    return m.SippRow(values)
+
+
+def _household(*rows):
+    return hm.december_housing(list(rows), source=SOURCE, complete_membership=True)[0]
+
+
+def _project(*rows, selection="first_32_ssuids"):
+    return hp.project(list(rows), source=SOURCE, selection=selection)
+
+
+# --- recipe identity and refusals ------------------------------------------
+
+
+def test_recipe_bytes_match_the_committed_pin():
+    payload = hp.recipe_bytes()
+    assert hashlib.sha256(payload).hexdigest() == hp.RECIPE_SHA256
+    assert hp.verify_recipe() == hp.recipe_digest()
+
+
+def test_recipe_document_is_a_fresh_value_a_caller_cannot_poison():
+    document = hp.recipe_document()
+    document["fields"] = ["TAMPERED"]
+    document["parent"]["sha256"] = "0" * 64
+    assert hp.recipe_document()["fields"] == list(hp.PROJECTION_FIELDS)
+    assert hashlib.sha256(hp.recipe_bytes()).hexdigest() == hp.RECIPE_SHA256
+
+
+def test_a_tampered_recipe_pin_refuses_before_any_measurement(monkeypatch):
+    monkeypatch.setattr(hp, "RECIPE_SHA256", "0" * 64)
+    with pytest.raises(hp.HousingProjectionError, match="HOUSING_RECIPE_TAMPERED"):
+        hp.verify_recipe()
+    with pytest.raises(hp.HousingProjectionError, match="HOUSING_RECIPE_TAMPERED"):
+        _project(_row())
+
+
+def test_a_second_dictionary_authority_refuses(monkeypatch):
+    monkeypatch.setitem(hp.DICTIONARY, "sha256", "1" * 64)
+    with pytest.raises(hp.HousingProjectionError, match="DICTIONARY_MISMATCH"):
+        hp.verify_dictionary()
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        m.SippSource("0" * 64, source._PINS.metadata_sha256, 2023, 2022),
+        m.SippSource(source._PINS.sha256, "0" * 64, 2023, 2022),
+        m.SippSource(source._PINS.sha256, source._PINS.metadata_sha256, 2022, 2022),
+        m.SippSource(source._PINS.sha256, source._PINS.metadata_sha256, 2023, 2023),
+    ],
+)
+def test_a_tampered_source_identity_refuses(replacement):
+    with pytest.raises(hp.HousingProjectionError, match="HOUSING_SOURCE"):
+        hp.verify_source(replacement)
+    with pytest.raises(hp.HousingProjectionError, match="HOUSING_SOURCE"):
+        hp.project([_row()], source=replacement, selection="first_32_ssuids")
+
+
+def test_a_header_missing_a_declared_column_refuses():
+    header = [f for f in hp.PROJECTION_FIELDS if f != "ARENTMORT"]
+    with pytest.raises(hp.HousingProjectionError, match="HEADER"):
+        hp.header_positions(header)
+    with pytest.raises(hp.HousingProjectionError, match="HEADER"):
+        hp.header_positions([*hp.PROJECTION_FIELDS, "ETENURE"])
+    positions = hp.header_positions(["FILLER", *hp.PROJECTION_FIELDS])
+    assert positions == tuple(range(1, len(hp.PROJECTION_FIELDS) + 1))
+
+
+def test_an_unsupported_selection_refuses():
+    with pytest.raises(hp.HousingProjectionError, match="UNSUPPORTED_SELECTION"):
+        _project(_row(), selection="first_64_ssuids")
+
+
+def test_the_recipe_does_not_introduce_a_second_household_identity():
+    assert "SHHADID" not in hp.PROJECTION_FIELDS
+    assert hp.recipe_document()["residence_key"]["field"] == "ERESIDENCEID"
+
+
+def test_the_frozen_sixteen_field_producer_contract_is_untouched():
+    assert source.FIELDS == (
+        "SSUID",
+        "PNUM",
+        "MONTHCODE",
+        "ERESIDENCEID",
+        "WPFINWGT",
+        "THEQ_VEH",
+        "AHEQ_VEH",
+        "THVAL_VEH",
+        "AHVAL_VEH",
+        "THDEBT_VEH",
+        "AHDEBT_VEH",
+        "TVEH_NUM",
+        "AVEH_NUM",
+        "TVAL_BANK",
+        "AVAL_BANK",
+        "TAGE_EHC",
+    )
+    assert source._COPIED == ("THEQ_VEH", "THVAL_VEH", "THDEBT_VEH", "TVEH_NUM")
+    assert source._PINS.expected_counts == (39513, 17646, 17314, 318, 29)
+    assert not set(source.FIELDS) & set(hp.PROJECTION_FIELDS[5:])
+    assert tuple(m._HOUSEHOLD) == (
+        "TVEH_NUM",
+        "THVAL_VEH",
+        "THEQ_VEH",
+        "THDEBT_VEH",
+    )
+
+
+# --- transcription fidelity -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("field", "flag", "page", "grain"),
+    [
+        ("TRENTMORT", "ARENTMORT", 379, "household"),
+        ("TUTILS", "AUTILS", 380, "household"),
+        ("ETENURE", "ATENURE", 784, "household"),
+        ("ERENTSUB", "ARENTSUB", 788, "household"),
+        ("EVOUCHER", "AVOUCHER", 789, "household"),
+        ("EEHC_RENTSUB", "AEHC_RENTSUB", 790, "person_month"),
+        ("EEHC_VOUCHER", "AEHC_VOUCHER", 791, "person_month"),
+    ],
+)
+def test_each_mandated_field_carries_its_transcribed_flag_page_and_grain(
+    field, flag, page, grain
+):
+    entry = next(e for e in hp.field_contracts() if e["name"] == field)
+    assert entry["status_flag"] == flag
+    assert entry["dictionary_zero_based_page"] == page
+    assert entry["dictionary_printed_page"] == page + 1
+    assert entry["grain"] == grain
+    assert entry["documented_numeric_missing_sentinel"] is None
+    assert flag in hp.PROJECTION_FIELDS
+
+
+def test_the_amount_domains_and_category_domains_are_the_published_ones():
+    contracts = {e["name"]: e for e in hp.field_contracts()}
+    for name in ("TRENTMORT", "TUTILS"):
+        assert (contracts[name]["minimum"], contracts[name]["maximum"]) == (
+            0,
+            9_999_999,
+        )
+        assert contracts[name]["unit"] == "USD_nominal_2022_monthly"
+    assert contracts["ETENURE"]["codes"] == [1, 2, 3]
+    assert contracts["ERENTSUB"]["codes"] == [1, 2]
+    assert contracts["EVOUCHER"]["universe"] == "ETENURE in (2,3) and ERENTSUB = 1"
+    assert contracts["ERENTSUB"]["universe"] == "ETENURE in (2,3)"
+    assert (
+        contracts["TRENTMORT"]["universe"]
+        == "ETENURE = 2 or (ETENURE = 1 and (EPRDEBT = 1 or EMHDEBT = 1))"
+    )
+    assert contracts["EEHC_VOUCHER"]["universe"] == "EEHC_RENTSUB = 1"
+    assert contracts["TUTILS"]["universe"] == "ETENURE in (1,2,3)"
+
+
+def test_utilities_stay_a_separate_measurement_from_rent():
+    household = _household(_row())
+    assert household.rent.value == Decimal(900)
+    assert household.utilities.value == Decimal(150)
+    assert household.rent.concept == "TRENTMORT_on_renter_tenure"
+    assert household.utilities.concept == "TUTILS"
+    assert hp.NON_CLAIMS["utilities_added_into_any_rent_quantity"] is False
+
+
+def test_the_declared_period_and_price_basis_are_never_applied_here():
+    declarations = hp.recipe_document()["period_and_basis_declarations"]
+    assert declarations["amount_period"] == "December_2022_monthly"
+    assert declarations["annualization"] == "not_applied"
+    assert declarations["price_basis"] == "USD_nominal_2022_original"
+    assert hp.NON_CLAIMS["observes_landlord_subsidy_amount"] is False
+    assert hp.NON_CLAIMS["unassisted_counterfactual_asserted"] is False
+
+
+# --- copy grain -------------------------------------------------------------
+
+
+def test_a_household_copy_disagreement_makes_the_measurement_unknown():
+    household = _household(
+        _row(pnum=101),
+        _row(pnum=102, TRENTMORT="1200"),
+    )
+    rent_amount = household.household("TRENTMORT")
+    assert rent_amount.value is None
+    assert "household_copy_conflict" in rent_amount.reasons
+    assert hm.measurement_class(rent_amount) == "copy_conflict"
+    assert household.rent.value is None
+    assert household.exclusion == "rent_copy_conflict"
+
+
+def test_a_tenure_copy_disagreement_excludes_before_any_rent_reading():
+    household = _household(_row(pnum=101), _row(pnum=102, ETENURE="1"))
+    assert household.tenure == "tenure_copy_conflict"
+    assert household.exclusion == "tenure_copy_conflict"
+    assert household.rent.value is None
+
+
+def test_a_disagreeing_allocation_flag_alone_is_a_copy_conflict():
+    household = _household(_row(pnum=101), _row(pnum=102, ARENTMORT="2"))
+    assert "household_copy_conflict" in household.household("TRENTMORT").reasons
+
+
+def test_person_month_indicators_are_not_copied_across_members():
+    household = _household(
+        _row(pnum=101),
+        _row(pnum=102, EEHC_RENTSUB="1", EEHC_VOUCHER="2", AEHC_VOUCHER="1"),
+    )
+    receipts = household.person_month("EEHC_RENTSUB")
+    assert [v.value for v in receipts] == [Decimal(2), Decimal(1)]
+    assert all("household_copy_conflict" not in v.reasons for v in receipts)
+    assert household.diagnostics["eehc_rentsub_member_disagreement"] is True
+    # The household stays classified by its household indicators.
+    assert household.assistance == "explicit_unassisted"
+    assert household.exclusion is None
+    diagnostics = _project(
+        _row(pnum=101),
+        _row(pnum=102, EEHC_RENTSUB="1", EEHC_VOUCHER="2", AEHC_VOUCHER="1"),
+    ).diagnostics
+    assert diagnostics["person_month_receipt_in_explicit_unassisted_households"] == 1
+    assert diagnostics["person_month_receipt_in_admitted_households"] == 1
+
+
+def test_the_housing_roster_must_agree_with_the_frozen_grouping(monkeypatch):
+    def wrong(rows, **kwargs):
+        households = original(rows, **kwargs)
+        return households[:0]
+
+    original = m.december_households
+    monkeypatch.setattr(m, "december_households", wrong)
+    with pytest.raises(hm.HousingMeasurementError, match="HOUSING_ROSTER_DISAGREEMENT"):
+        _household(_row())
+
+
+# --- missing, NIU, zero and negative ---------------------------------------
+
+
+def test_a_blank_amount_is_not_a_zero_amount():
+    blank = _household(_row(TRENTMORT="", ARENTMORT="0"))
+    assert blank.household("TRENTMORT").value is None
+    assert "TRENTMORT:blank" in blank.household("TRENTMORT").reasons
+    assert blank.rent.value is None
+    assert blank.exclusion == "rent_unknown"
+    zero = _household(_row(TRENTMORT="0"))
+    assert zero.household("TRENTMORT").value == 0
+    assert zero.rent.value == 0
+    assert zero.exclusion is None
+    assert zero.diagnostics["rent_zero"] is True
+
+
+def test_a_negative_amount_is_an_invalid_domain_not_a_documented_sentinel():
+    household = _household(_row(TRENTMORT="-999"))
+    observation = household.household("TRENTMORT").observations[0]
+    assert observation.lexical_class == "invalid_domain"
+    assert observation.value is None
+    contract = next(e for e in hp.field_contracts() if e["name"] == "TRENTMORT")
+    assert contract["documented_numeric_missing_sentinel"] is None
+
+
+def test_an_out_of_universe_flag_never_yields_an_observed_value():
+    household = _household(_row(TRENTMORT="900", ARENTMORT="0"))
+    amount = household.household("TRENTMORT")
+    assert amount.value is None
+    assert "ARENTMORT:not_in_universe" in amount.reasons
+    assert hm.measurement_class(amount) == "not_in_universe"
+
+
+def test_an_absent_column_is_distinct_from_a_blank_one():
+    values = dict.fromkeys(hp.PROJECTION_FIELDS, "")
+    values.update(
+        SSUID="0001",
+        PNUM="101",
+        MONTHCODE="12",
+        ERESIDENCEID="100001",
+        WPFINWGT="1000",
+        **RENTER,
+    )
+    del values["TUTILS"]
+    household = _household(m.SippRow(values))
+    utilities = household.household("TUTILS")
+    assert "TUTILS:absent" in utilities.reasons
+    raw = {r.name: r for r in utilities.observations[0].raw_fields}
+    assert raw["TUTILS"].present is False
+    assert raw["AUTILS"].present is True
+
+
+def test_an_out_of_domain_category_code_refuses_the_value():
+    household = _household(_row(ETENURE="4"))
+    tenure = household.household("ETENURE")
+    assert tenure.value is None
+    assert tenure.observations[0].lexical_class == "invalid_domain"
+    assert household.tenure == "tenure_unknown"
+    assert household.exclusion == "tenure_unknown"
+
+
+def test_the_domain_check_is_set_membership_not_only_a_range(monkeypatch):
+    gapped = hm._Category(
+        "ATENURE",
+        (1, 3),
+        ("Owned", "No payment"),
+        "household",
+        "invented_gapped_domain",
+        "invented",
+        "invented",
+        784,
+    )
+    monkeypatch.setitem(hm._HOUSEHOLD_CATEGORIES, "ETENURE", gapped)
+    household = _household(_row(ETENURE="2"))
+    assert household.household("ETENURE").value is None
+
+
+# --- owner versus renter ----------------------------------------------------
+
+
+def test_an_owner_amount_is_a_mortgage_and_never_a_zero_rent():
+    household = _household(_row(**OWNER))
+    assert household.tenure == "owner"
+    assert household.household("TRENTMORT").value == Decimal(1800)
+    assert household.rent.value is None
+    assert "mortgage_excluded" in household.rent.reasons
+    assert "tenure_not_renter:owner" in household.rent.reasons
+    assert household.exclusion == "tenure_owner"
+    assert household.diagnostics["owner_debt"] == "owner_debt_reported"
+
+
+def test_an_owner_without_reported_debt_is_reported_as_unresolved():
+    household = _household(
+        _row(**{**OWNER, "EPRDEBT": "", "APRDEBT": "0", "TRENTMORT": ""})
+    )
+    assert household.diagnostics["owner_debt"] == "owner_debt_unresolved"
+    assert household.rent.value is None
+
+
+def test_occupied_without_payment_of_rent_is_outside_the_rent_universe():
+    household = _household(_row(ETENURE="3", EEHC_TEN="3"))
+    assert household.tenure == "no_payment"
+    assert household.rent.value is None
+    assert "tenure_not_renter:no_payment" in household.rent.reasons
+    assert household.exclusion == "tenure_no_payment"
+
+
+def test_utilities_are_measured_for_owners_too_without_entering_rent():
+    household = _household(_row(**OWNER))
+    assert household.utilities.value == Decimal(150)
+    assert household.rent.value is None
+
+
+# --- assistance -------------------------------------------------------------
+
+
+def test_a_reported_explicit_negative_is_the_only_unassisted_route():
+    assert _household(_row()).assistance == "explicit_unassisted"
+
+
+def test_an_imputed_negative_is_not_an_explicit_negative():
+    household = _household(_row(ARENTSUB="2"))
+    assert household.assistance == "unassisted_allocated"
+    assert household.exclusion == "assistance_unassisted_allocated"
+    assert hm.measurement_quality(household.household("ERENTSUB")) == (
+        "hot_deck_imputed"
+    )
+
+
+def test_an_unknown_assistance_status_is_never_recoded_as_unassisted():
+    household = _household(_row(ERENTSUB="", ARENTSUB=""))
+    assert household.assistance == "assistance_unknown"
+    assert household.exclusion == "assistance_unknown"
+
+
+def test_a_not_in_universe_assistance_status_keeps_its_own_class():
+    household = _household(_row(ERENTSUB="", ARENTSUB="0"))
+    assert household.assistance == "assistance_not_in_universe"
+    assert household.exclusion == "assistance_unknown"
+
+
+def test_an_assistance_copy_conflict_is_its_own_exclusion():
+    household = _household(_row(pnum=101), _row(pnum=102, ERENTSUB="1"))
+    assert household.assistance == "assistance_copy_conflict"
+    assert household.exclusion == "assistance_copy_conflict"
+
+
+def test_a_voucher_answer_outside_its_published_universe_is_a_conflict():
+    household = _household(_row(EVOUCHER="1", AVOUCHER="1"))
+    assert household.assistance == "assistance_universe_conflict"
+    assert household.exclusion == "assistance_universe_conflict"
+
+
+def test_an_owner_answering_the_assistance_item_is_a_conflict():
+    household = _household(_row(**{**OWNER, "ERENTSUB": "2", "ARENTSUB": "1"}))
+    assert household.assistance == "assistance_universe_conflict"
+
+
+def test_an_owner_outside_the_assistance_universe_is_not_a_conflict():
+    assert _household(_row(**OWNER)).assistance == "not_in_assistance_universe"
+
+
+@pytest.mark.parametrize(
+    ("voucher", "voucher_flag", "expected"),
+    [
+        ("1", "1", "assisted_with_voucher"),
+        ("2", "1", "assisted_without_voucher"),
+        ("", "0", "assisted_voucher_unknown"),
+    ],
+)
+def test_an_assisted_household_keeps_its_voucher_detail(
+    voucher, voucher_flag, expected
+):
+    household = _household(_row(ERENTSUB="1", EVOUCHER=voucher, AVOUCHER=voucher_flag))
+    assert household.assistance == expected
+    assert household.exclusion == "assistance_assisted"
+    # An assisted household's TRENTMORT is its post-assistance tenant payment.
+    assert household.household("TRENTMORT").value == Decimal(900)
+    assert household.rent.value == Decimal(900)
+
+
+def test_an_assisted_households_rent_is_not_a_full_contract_charge():
+    document = hp.recipe_document()
+    assert (
+        document["non_claims"]["observes_full_contract_charge_for_assisted_households"]
+        is False
+    )
+
+
+# --- allocation quality -----------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("flag", "quality"),
+    [
+        ("1", "reported"),
+        ("2", "hot_deck_imputed"),
+        ("3", "logically_imputed"),
+        ("4", "model_imputed"),
+        ("5", "cold_deck_imputed"),
+        ("6", "range_imputed"),
+        ("7", "reported_and_imputed_components"),
+        ("8", "imputed_components"),
+        ("9", "component_derived_allocation_unresolved"),
+    ],
+)
+def test_every_allocation_class_stays_distinct_from_reported(flag, quality):
+    household = _household(_row(ARENTMORT=flag))
+    amount = household.household("TRENTMORT")
+    assert hm.measurement_quality(amount) == quality
+    assert hm.measurement_class(amount) == ("observed" if flag == "1" else "allocated")
+    assert amount.value == Decimal(900)
+    diagnostics = _project(_row(ARENTMORT=flag)).diagnostics
+    assert diagnostics["rent_quality_admitted"] == {quality: 1}
+
+
+def test_a_suppressed_flag_is_neither_observed_nor_a_value():
+    household = _household(_row(ARENTMORT="-99"))
+    amount = household.household("TRENTMORT")
+    assert amount.value is None
+    assert hm.measurement_class(amount) == "suppressed"
+
+
+def test_an_invalid_flag_refuses_the_value():
+    household = _household(_row(ARENTMORT="17"))
+    amount = household.household("TRENTMORT")
+    assert amount.value is None
+    assert "ARENTMORT:invalid_status" in amount.reasons
+
+
+# --- topcodes, boundaries and weights ---------------------------------------
+
+
+def test_a_topcode_marker_is_recorded_without_inferring_a_threshold():
+    household = _household(_row(TRNTMT_MED="3000", TRNTMT_STD="250"))
+    markers = household.person_topcode("TRNTMT_MED")
+    assert markers[0].value == Decimal(3000)
+    assert markers[0].status == "topcode_group_marker"
+    assert hm.measurement_class(markers[0]) == "observed_without_status_flag"
+    assert household.diagnostics["rent_topcode_marked_records"] == 2
+    assert household.diagnostics["rent_topcode_partial_marking"] is False
+    assert (
+        _project(_row(TRNTMT_MED="3000", TRNTMT_STD="250")).diagnostics["boundaries"][
+            "rent_topcode_marked_households"
+        ]
+        == 1
+    )
+
+
+def test_a_partly_marked_topcode_group_is_reported_as_partial():
+    household = _household(_row(TRNTMT_MED="3000"))
+    assert household.diagnostics["rent_topcode_partial_marking"] is True
+
+
+def test_a_domain_maximum_amount_is_counted_separately_from_a_topcode_marker():
+    household = _household(_row(TRENTMORT="9999999"))
+    assert household.diagnostics["rent_at_domain_maximum"] is True
+    assert household.diagnostics["rent_topcode_marked_records"] == 0
+
+
+def test_zero_and_unknown_weights_stay_explicit():
+    zero = _household(_row(weight="0"))
+    assert zero.weight.value == 0
+    assert zero.exclusion == "weight_not_positive"
+    unknown = _household(_row(weight=""))
+    assert unknown.weight.value is None
+    assert unknown.exclusion == "weight_unknown"
+    diagnostics = _project(_row(weight="0")).diagnostics
+    assert diagnostics["household_weights"]["zero_count"] == 1
+    assert diagnostics["person_weights"]["unknown_count"] == 0
+
+
+def test_the_household_weight_is_named_as_a_mean_member_weight():
+    household = _household(_row(pnum=101, weight="100"), _row(pnum=102, weight="200"))
+    assert household.weight.value == Decimal(150)
+    assert household.weight.name == "sipp_december_mean_member_weight"
+    weights = hp.recipe_document()["weight"]
+    assert weights["household_statistic"] == "mean_member_WPFINWGT"
+    assert weights["is_publisher_household_sampling_weight"] is False
+    assert weights["is_a_rent_model_sampling_weight"] is False
+    totals = _project(
+        _row(pnum=101, weight="100"), _row(pnum=102, weight="200")
+    ).diagnostics["source_weight_totals"]
+    assert totals["statistic"] == "sum_of_household_mean_member_WPFINWGT"
+    assert totals["not_a_publisher_household_sampling_weight"] is True
+    assert totals["by_tenure_class"] == {"renter": "150"}
+
+
+def test_an_unknown_weight_is_bucketed_rather_than_dropped_from_the_totals():
+    totals = _project(_row(weight="")).diagnostics["source_weight_totals"]
+    assert totals["by_tenure_class"] == {"unknown_household_weight": "0"}
+
+
+# --- aggregate diagnostics --------------------------------------------------
+
+
+def test_every_exclusion_reason_is_declared_in_the_recipe_order():
+    rows = [
+        _row(ssuid="0001", residence="100001"),
+        _row(ssuid="0002", residence="100002", **OWNER),
+        _row(ssuid="0003", residence="100003", ETENURE="3", EEHC_TEN="3"),
+        _row(ssuid="0004", residence="100004", ERENTSUB="1"),
+        _row(ssuid="0005", residence="100005", ARENTSUB="2"),
+        _row(ssuid="0006", residence="100006", ERENTSUB="", ARENTSUB=""),
+        _row(ssuid="0007", residence="100007", TRENTMORT=""),
+        _row(ssuid="0008", residence="100008", weight="0"),
+        _row(ssuid="0009", residence="100009", EVOUCHER="1", AVOUCHER="1"),
+        _row(ssuid="0010", residence="100010", ETENURE="9"),
+    ]
+    result = hp.project(rows, source=SOURCE, selection="all_ssuids")
+    exclusions = result.diagnostics["exclusions_exclusive"]
+    assert set(exclusions) - {"admitted"} <= set(hm.EXCLUSION_ORDER)
+    assert exclusions == {
+        "admitted": 1,
+        "assistance_assisted": 1,
+        "assistance_unassisted_allocated": 1,
+        "assistance_universe_conflict": 1,
+        "assistance_unknown": 1,
+        "rent_unknown": 1,
+        "tenure_no_payment": 1,
+        "tenure_owner": 1,
+        "tenure_unknown": 1,
+        "weight_not_positive": 1,
+    }
+    assert result.diagnostics["households"] == 10
+    assert result.diagnostics["admitted_unassisted_renter_households"] == 1
+    assert result.diagnostics["tenure_classes"]["renter"] == 7
+    assert result.diagnostics["household_codes"]["ETENURE"] == {
+        "1": 1,
+        "2": 7,
+        "3": 1,
+        "unknown": 1,
+    }
+
+
+def test_the_receipt_carries_the_recipe_and_no_individual_amount():
+    result = _project(_row(pnum=101), _row(pnum=102))
+    receipt = result.receipt_json.decode()
+    assert result.receipt_sha256 == hashlib.sha256(result.receipt_json).hexdigest()
+    assert hp.RECIPE_SHA256 in receipt
+    assert result.recipe_digest in receipt
+    assert '"900"' not in receipt
+    assert '"0001"' not in receipt
+    assert '"101"' not in receipt
+    assert len(result.diagnostics["exclusions_exclusive"]) == 1
+
+
+def test_the_receipt_is_stable_for_identical_supplied_rows():
+    first = _project(_row(pnum=101), _row(pnum=102))
+    second = _project(_row(pnum=101), _row(pnum=102))
+    assert first.receipt_json == second.receipt_json
+
+
+def test_copy_conflicts_and_unknowns_are_counted_per_household_field():
+    result = _project(_row(pnum=101), _row(pnum=102, TUTILS="9"))
+    assert result.diagnostics["household_copy_conflicts"]["TUTILS"] == 1
+    assert result.diagnostics["household_copy_conflicts"]["TRENTMORT"] == 0
+    assert result.diagnostics["household_unknown_measurements"]["TUTILS"] == 1
