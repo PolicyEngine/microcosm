@@ -822,3 +822,166 @@ def test_missing_schema_field_is_path_free_evidence_error(tmp_path):
 
     with pytest.raises(m.EvidenceError, match="Malformed aggregate schema"):
         export(tmp_path, mutate=mutate)
+
+
+@pytest.mark.parametrize(
+    "identity", ["initial_weights", "calibrated_weights", "composition"]
+)
+def test_rejects_coherently_rebound_noncheckpoint_identity(tmp_path, identity):
+    """Every materialization pin agrees: the remaining contradiction is its kind."""
+
+    def mutate(docs):
+        accepted = docs["calibration_acceptance"]
+        forbidden = {
+            "initial_weights": accepted["importance_weights"]["bytes_sha256"],
+            "calibrated_weights": accepted["calibrated_weights"]["bytes_sha256"],
+            "composition": docs["composition_acceptance"]["final_frame"][
+                "checkpoint_sha256"
+            ],
+        }[identity]
+        docs["aggregate_verification"]["population_sha256"] = forbidden
+        docs["materialization_receipt"]["result"]["population_sha256"] = forbidden
+        # fixture() also puts this digest into the checkpoint output entry and
+        # reseals all aggregate, receipt and root-binding byte identities.
+
+    with pytest.raises(m.EvidenceError, match="Checkpoint identity must be distinct"):
+        export(tmp_path, mutate=mutate)
+    assert not (tmp_path / "candidate").exists()
+
+
+@pytest.mark.parametrize("invalid", ["candidate_id", "created_at", "nul_input_path"])
+def test_writer_and_path_value_errors_refuse_before_output_without_cli_path_leak(
+    tmp_path, invalid
+):
+    path, _ = fixture(tmp_path / "input")
+    binding = json.loads(path.read_text())
+    if invalid == "candidate_id":
+        binding["candidate_release_id"] = "invented:invalid-writer-id"
+    elif invalid == "created_at":
+        binding["created_at"] = "not-an-iso-timestamp"
+    else:
+        binding["files"]["diagnostics"]["path"] = (
+            "/private/sensitive\0/diagnostics.json"
+        )
+    digest = write(path, binding)
+    output = tmp_path / "candidate"
+    with pytest.raises(m.EvidenceError, match="Malformed aggregate schema") as error:
+        m.export_combined_age_evidence(
+            binding_path=path, binding_sha256=digest, output_root=output
+        )
+    assert str(error.value) == "Malformed aggregate schema."
+    assert not output.exists()
+    process = subprocess.run(
+        [
+            sys.executable,
+            str(MODULE),
+            "--binding",
+            str(path),
+            "--binding-sha256",
+            digest,
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert process.returncode != 0
+    assert process.stdout == ""
+    assert process.stderr.strip() == (
+        "Combined age evidence refused: Malformed aggregate schema."
+    )
+    for forbidden in (str(path), str(MODULE), str(output), "/private/", "Traceback"):
+        assert forbidden not in process.stderr
+    assert not output.exists()
+
+
+def test_nul_root_binding_path_is_path_free_evidence_error(tmp_path):
+    with pytest.raises(m.EvidenceError, match="Malformed aggregate schema") as error:
+        m.export_combined_age_evidence(
+            binding_path=Path("/private/sensitive\0/root-binding.json"),
+            binding_sha256="0" * 64,
+            output_root=tmp_path / "candidate",
+        )
+    assert str(error.value) == "Malformed aggregate schema."
+    assert not (tmp_path / "candidate").exists()
+
+
+def test_existing_evidence_error_is_preserved_without_generic_replacement(tmp_path):
+    path, _ = fixture(tmp_path / "input")
+    with pytest.raises(m.EvidenceError, match="Root binding digest"):
+        m.export_combined_age_evidence(
+            binding_path=path,
+            binding_sha256="0" * 64,
+            output_root=tmp_path / "candidate",
+        )
+    assert not (tmp_path / "candidate").exists()
+
+
+def test_complete_trajectory_matches_independent_recorded_summary(tmp_path):
+    # Hand-checked aggregate summary, independent of the exporter helper. The
+    # root confirmed this is the historical runner's exact summary key roster.
+    # Values [4, 2, 2, 1] have three nonincreasing steps and a 75% drop.
+    values = [4.0, 2.0, 2.0, 1.0]
+    expected = {
+        "epochs_recorded": 4,
+        "first": 4.0,
+        "last": 1.0,
+        "minimum": 1.0,
+        "argmin_epoch": 3,
+        "monotone_nonincreasing_steps": 3,
+        "total_steps": 3,
+        "monotone_nonincreasing": True,
+        "last10_relative_change": -0.75,
+    }
+
+    def mutate(docs):
+        docs["diagnostics"]["loss_trajectory"] = values
+        docs["diagnostics"]["options"]["epochs"] = 4
+        docs["calibration_acceptance"]["solver"].update(
+            epochs=4, loss_trajectory=expected
+        )
+
+    _, _, graph = export(tmp_path, mutate=mutate)
+    assert graph["age_calibration"]["trajectory"] == {
+        "kind": "complete_recorded",
+        "summary": expected,
+        "values": values,
+    }
+
+
+@pytest.mark.parametrize("epochs", [1, 4096])
+def test_complete_trajectory_inclusive_epoch_bounds(tmp_path, epochs):
+    # A constant list has this exact summary without calling trajectory_summary.
+    expected = {
+        "epochs_recorded": epochs,
+        "first": 1.0,
+        "last": 1.0,
+        "minimum": 1.0,
+        "argmin_epoch": 0,
+        "monotone_nonincreasing_steps": epochs - 1,
+        "total_steps": epochs - 1,
+        "monotone_nonincreasing": True,
+        "last10_relative_change": 0.0,
+    }
+
+    def mutate(docs):
+        docs["diagnostics"]["loss_trajectory"] = [1.0] * epochs
+        docs["diagnostics"]["options"]["epochs"] = epochs
+        docs["calibration_acceptance"]["solver"].update(
+            epochs=epochs, loss_trajectory=expected
+        )
+
+    _, _, graph = export(tmp_path, mutate=mutate)
+    assert graph["age_calibration"]["trajectory"]["summary"] == expected
+
+
+@pytest.mark.parametrize("values", [None, [], [1.0] * 4097])
+def test_summary_only_or_out_of_bounds_trajectory_refuses_before_output(
+    tmp_path, values
+):
+    def mutate(docs):
+        docs["diagnostics"]["loss_trajectory"] = values
+
+    with pytest.raises(m.EvidenceError, match="Recorded trajectory required"):
+        export(tmp_path, mutate=mutate)
+    assert not (tmp_path / "candidate").exists()

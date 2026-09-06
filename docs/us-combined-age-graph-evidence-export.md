@@ -3,7 +3,9 @@
 Public profile: `us_combined_asec_acs_national_age_v1`. This new profile preserves
 the existing F001 and ASEC income profiles. It uses the unchanged candidate
 writer, with no index update. Its population identity is the materialized
-calibrated checkpoint file SHA-256, never a weight-vector digest.
+calibrated checkpoint file SHA-256. The exporter requires it to differ from
+both the initial and calibrated weight-vector digests and the original
+composition checkpoint digest.
 
 ## Stable public attachment contract
 
@@ -15,7 +17,9 @@ run-scoped `build_manifest` attachment keeps
 `candidate_release_id`, `run_id`, and flat string-valued provenance fields.
 Only the graph attachment carries top-level `population_sha256`. Both carry
 complementary `genuine` and `invented_sources` booleans verified against the root
-binding and recorded executions; candidate renaming cannot hide fixture origin.
+binding and recorded executions; candidate renaming cannot hide fixture origin
+in either attachment. Candidate metadata itself does not carry a separate
+source-kind marker; readers must inspect the verified attachment flags.
 
 The new profile uses these public fields:
 
@@ -58,13 +62,25 @@ The new profile uses these public fields:
 - `age_calibration.solver` contains recorded `method`, `epochs`,
   `learning_rate`, `seed`, `mass`, `initial_loss`, `final_loss`,
   `convergence_status: "unavailable"`, and `diagnostic_warnings`.
-- `age_calibration.trajectory` contains `kind` (`complete_recorded` or
-  `recorded_summary`), `summary`, and `values` (the verified recorded list, or
-  null). Never interpolate epochs or infer convergence. The API's final loss
-  is distinct from the last recorded trajectory item.
+- `age_calibration.trajectory` always contains `kind: complete_recorded`,
+  `summary`, and the complete verified recorded list in `values`. This exporter
+  requires 1 through 4096 recorded epochs, inclusive, with the list length equal
+  to the recorded solver epoch count. It refuses missing, summary-only, empty
+  or longer trajectories; it does not emit `recorded_summary` or null `values`.
+  It never interpolates epochs or infers convergence. The API's final loss
+  remains distinct from the last recorded trajectory item.
 - `age_calibration.column_provenance` groups column names with `{columns,
   source_role, source_sha256}` attribution to the pinned phase, diagnostics,
-  and independently recomputed support evidence.
+  and independently recomputed support evidence. The first group includes
+  `published_value`, `published_se` and `compiled_target`. The published
+  initial/final estimates retain the calibration replay receipt cell values;
+  the diagnostics group identifies the independently recorded values used for
+  their numerical agreement check, rather than claiming byte-identical copying
+  from diagnostics. Deviation and relative-deviation fields also retain the
+  replay receipt cell values and must agree with `(estimate - compiled_target)`
+  and that difference divided by the target. The existing column groups do
+  not separately enumerate these deviation fields; their recorded source is
+  the pinned `calibration_replay_receipt_sha256` in provenance.
 
 `executions` contains exactly four public entries: `composition_cold`,
 `composition_warm`, `calibration_extension`, `calibration_replay`. Each keeps

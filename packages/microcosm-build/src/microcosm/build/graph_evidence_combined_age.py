@@ -998,6 +998,15 @@ def _export_combined_age_evidence(
     checkpoint = digest(aggregate["population_sha256"])
     require(
         checkpoint
+        not in {
+            digest(result["importance_weights"]["bytes_sha256"]),
+            digest(result["calibrated_weights"]["bytes_sha256"]),
+            composition["checkpoint_sha256"],
+        },
+        "Checkpoint identity must be distinct from weight and composition identities.",
+    )
+    require(
+        checkpoint
         == mr["population_sha256"]
         == material["outputs"]["calibrated-frame.checkpoint.h5"]["sha256"],
         "Checkpoint file identity mismatch.",
@@ -1356,8 +1365,11 @@ def export_combined_age_evidence(
             binding_sha256=binding_sha256,
             output_root=output_root,
         )
+    except EvidenceError:
+        raise
     except (
         KeyError,
+        ValueError,
         TypeError,
         IndexError,
         AttributeError,
