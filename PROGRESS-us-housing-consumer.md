@@ -33,16 +33,24 @@ Other lanes own CD references, housing source authority, dynamics, and the dashb
       `R/us-housing-receipt-restoration-source-contract.md`, `docs/us-asec-housing-status.md`,
       and the frozen `asec_housing_status{,_source}.py` implementations.
 - [x] Recorded K/origin relation; created dependent branch + worktree; synced pinned venv.
-- [x] First exploratory engine probe against installed policyengine-us 1.819.0 confirms:
-      HAP can exceed the SPM unit's own pre-subsidy charge (utility allowance in gross rent),
-      `rent` floors at zero, each SPM unit in one household independently draws the
-      household's full payment standard, and the capped SPM valuation differs from HAP.
-- [ ] Consumer module + interpretation contract.
-- [ ] Engine probes on invented households (committed tests + preserved R driver).
-- [ ] Consumer tests.
-- [ ] SIPP December unassisted-comparable-rent source projection requirements.
-- [ ] `R/us-housing-consumer-REPORT.md` / `.json` with tests, JUnit, logs.
+- [x] Consumer module `asec_housing_receipt_consumer.py`: household receipt view,
+      SPM scope resolution with preserved ambiguity, three-state engine projection,
+      blanket-Boolean refusal, capped-valuation corroboration, refused fusions,
+      diagnostics, declared integration seam.
+- [x] Engine probes `housing_charge_probes.py` on five invented households through the
+      real export gate and `default_simulate_factory`, baseline vs `gov.hud.abolition`.
+- [x] Tests: `test_us_asec_housing_receipt_consumer.py` (48) and
+      `test_us_housing_receipt_engine_probes.py` (19). Both bite: deliberate mutations
+      of the conservation and zero-floor assertions fail.
+- [x] `docs/us-asec-housing-receipt-consumer.md` + changelog entry.
+- [x] `R/us-housing-consumer-sipp-december-projection-requirements.md`.
+- [x] `R/us-housing-consumer-REPORT.md` / `.json` with tests, JUnit, logs.
+
+Nothing was pushed, merged or published. `asec_housing_status.py` and its source
+loader are untouched; K is untouched.
 
 ## Next
 
-Implement the consumer interpretation kernel.
+Root review. The counterfactual full contract charge stays unavailable until the
+SIPP December projection in the requirements file is implemented and its support
+diagnostics are read.
