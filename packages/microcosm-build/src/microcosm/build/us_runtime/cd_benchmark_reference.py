@@ -53,12 +53,50 @@ precision readers, the district-scope check, the strict canonical JSON loader
 and the reserved-family set are the shipped ones. Block and metric rosters are
 derived from the compiled protocol rather than retyped, and no numeric bound
 appears in this file.
+
+What a caller cannot state
+--------------------------
+
+Only :func:`load_pinned_inventory` can record an inventory's identity, because
+only it verifies bytes: it enforces the stated digest and the pinned byte count
+against the file before anything is parsed.
+:meth:`ReferenceInventory.from_document` is handed an already-parsed document,
+so it records no digest and no byte count at all and refuses a caller who tries
+to supply either. A parsed document is deep-copied into read-only mappings and
+tuples, so neither the caller's original object nor the indexed inventory can be
+changed afterwards: a projection is evidence about the bytes that were verified,
+not about whatever the object happens to hold later.
+
+Canonical document, canonical values
+------------------------------------
+
+The audited top-level key list, the audited ``candidate_evaluation`` scalar and
+the pinned inventory byte count are read from the **packaged canonical protocol
+document** and from nowhere else. A ``protocol`` argument selects blocks, scope
+and bounds; it does not redirect those three. Rather than quietly attributing
+canonical facts to some other contract, the two entry points that mix them —
+:func:`load_pinned_inventory` and :meth:`ReferenceInventory.from_document` —
+refuse a non-canonical :class:`CompiledProtocol`. Reading them out of an
+arbitrary document instead would widen what this module treats as authority, and
+that is a protocol-scope change, deliberately not made here.
+
+Reserved tables are indexed, not read
+-------------------------------------
+
+``/scope/required_district_set`` requires an identical district set across the
+reserved tables, so indexing validates the structure of ``B19001`` and
+``B25003`` — reservation status, district records, published aliases, cell keys
+and cell shape — even when the caller projects only ``S0101``. That is
+structural validation of the bundle: no reserved estimate or margin is
+classified, built into a :class:`ReferenceCell` or turned into a precision
+reading unless a reserved block is explicitly named. The aggregate payload says
+so in as many words, so a reader cannot infer from a non-reserved run that the
+reserved bytes were never looked at.
 """
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -190,6 +228,14 @@ def _document() -> Mapping[str, object]:
 
 
 def _authority(*path: str) -> object:
+    """Read a value out of the **packaged canonical** protocol document.
+
+    This deliberately ignores any ``protocol`` argument in the caller's scope:
+    the audit list, the audited scalar and the pinned byte count below are facts
+    about the approved canonical contract, and re-reading them from some other
+    document would make this module an authority on that document instead.
+    :func:`_canonical_only` is what keeps the two from being mixed.
+    """
     value: object = _document()["reference_authority"]
     for key in path:
         if not isinstance(value, Mapping) or key not in value:
@@ -200,13 +246,43 @@ def _authority(*path: str) -> object:
     return value
 
 
+def _canonical_only(protocol: CompiledProtocol) -> CompiledProtocol:
+    """Refuse to mix canonical-document authority with a different contract.
+
+    :func:`inventory_top_level_keys`, :func:`inventory_candidate_evaluation` and
+    :func:`pinned_inventory_size_bytes` always read the packaged canonical
+    document. Enforcing those against a bundle while a different compiled
+    protocol supplies the blocks and scope would attribute canonical facts to a
+    contract that never stated them, so it is refused instead of documented away.
+    """
+    if not isinstance(protocol, CompiledProtocol):
+        raise ReferenceProjectionError("A compiled protocol is required.")
+    if not protocol.canonical:
+        raise ReferenceProjectionError(
+            "The audited key list, the audited candidate_evaluation scalar and "
+            "the pinned inventory byte count are read from the packaged "
+            "canonical protocol document, so a non-canonical protocol "
+            f"({protocol.sha256}) cannot be used to index an inventory."
+        )
+    return protocol
+
+
 def pinned_inventory_sha256(protocol: CompiledProtocol | None = None) -> str:
-    """The inventory digest the approved document pins, never retyped here."""
+    """The inventory digest the approved document pins, never retyped here.
+
+    Unlike the three canonical-only readers below, this one *does* read the
+    protocol it is given, because the digest is a compiled field of that
+    document rather than a value taken from the packaged bytes.
+    """
     return (protocol or canonical_protocol()).reference_inventory_sha256
 
 
 def pinned_inventory_size_bytes() -> int:
-    """The inventory byte count the approved document pins."""
+    """The inventory byte count the approved **canonical** document pins.
+
+    Canonical-only: there is no ``protocol`` argument because there is no other
+    document this module will read a pinned size out of.
+    """
     value = _authority("inventory", "bytes")
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ReferenceProjectionError("The pinned inventory size is not a count.")
@@ -214,7 +290,10 @@ def pinned_inventory_size_bytes() -> int:
 
 
 def inventory_top_level_keys() -> frozenset[str]:
-    """The inventory's top-level key set, as the document's own audit records it."""
+    """The inventory's top-level key set, as the document's own audit records it.
+
+    Canonical-only, for the reason :func:`_authority` gives.
+    """
     value = _authority("candidate_evaluation_scalar_audit", "top_level_keys")
     if not isinstance(value, list) or not all(isinstance(key, str) for key in value):
         raise ReferenceProjectionError("The audited top-level key list is not text.")
@@ -224,7 +303,10 @@ def inventory_top_level_keys() -> frozenset[str]:
 
 
 def inventory_candidate_evaluation() -> str:
-    """The audited ``candidate_evaluation`` scalar the inventory must carry."""
+    """The audited ``candidate_evaluation`` scalar the inventory must carry.
+
+    Canonical-only, for the reason :func:`_authority` gives.
+    """
     value = _authority("candidate_evaluation_scalar_audit", "candidate_evaluation")
     if not isinstance(value, str) or not value:
         raise ReferenceProjectionError("The audited candidate_evaluation is not text.")
@@ -430,6 +512,18 @@ class ReferenceInventory(Mapping):
     sha256: str | None = None
     size_bytes: int | None = None
 
+    @property
+    def identity_verified(self) -> bool:
+        """Whether this inventory's identity was checked, not merely asserted.
+
+        True only when :func:`load_pinned_inventory` read the file, matched its
+        size against the pinned byte count and its SHA-256 against the digest
+        the caller stated, before parsing a byte. There is no other way to make
+        it true, so a false value is an honest "these bytes were never checked",
+        never a missing label on verified bytes.
+        """
+        return self.sha256 is not None
+
     def __getitem__(self, key: str) -> object:
         return self.document[key]
 
@@ -445,17 +539,37 @@ class ReferenceInventory(Mapping):
         document: Mapping[str, object],
         *,
         protocol: CompiledProtocol | None = None,
-        sha256: str | None = None,
-        size_bytes: int | None = None,
+        **unverifiable: object,
     ) -> ReferenceInventory:
         """Validate and index an already-parsed inventory document.
 
+        The result carries **no** digest and **no** byte count, because this
+        constructor never saw a file and so can verify neither:
+        :attr:`identity_verified` is false and the aggregate payload reports a
+        null ``inventory_sha256``. Passing ``sha256=`` or ``size_bytes=`` is
+        refused rather than believed — an identity nothing checked is worse in
+        an evidence artifact than no identity at all. Use
+        :func:`load_pinned_inventory` when the identity has to be established.
+
+        The document is deep-copied into read-only containers, so a caller that
+        keeps its own reference to the object passed in cannot change what this
+        inventory was validated as afterwards.
+
         Raises:
-            ReferenceProjectionError: On any shape, identity, duplicate or
-                protocol-disagreement defect. Nothing is repaired or defaulted.
+            ReferenceProjectionError: On an attempt to state an unverified
+                identity, on a non-canonical protocol, or on any shape,
+                identity, duplicate or protocol-disagreement defect. Nothing is
+                repaired or defaulted.
         """
-        protocol = protocol or canonical_protocol()
-        return _index_inventory(document, protocol, sha256, size_bytes)
+        if unverifiable:
+            raise ReferenceProjectionError(
+                "from_document cannot label an inventory's identity: "
+                f"{sorted(unverifiable)} would be recorded without ever being "
+                "checked against a file. Only load_pinned_inventory, which "
+                "verifies the bytes it reads, may state them."
+            )
+        protocol = _canonical_only(protocol or canonical_protocol())
+        return _index_inventory(document, protocol, None, None)
 
 
 def _require(condition: object, message: str) -> None:
@@ -470,9 +584,51 @@ def _mapping(value: object, label: str) -> Mapping[str, object]:
 
 
 def _sequence(value: object, label: str) -> Sequence[object]:
-    if not isinstance(value, list):
+    """A JSON array, in the immutable form :func:`_frozen_json` leaves it in."""
+    if not isinstance(value, tuple):
         raise ReferenceProjectionError(f"{label} must be a JSON array.")
     return value
+
+
+def _frozen_json(value: object, label: str = "The inventory") -> object:
+    """Deep-copy parsed JSON into containers nothing can change afterwards.
+
+    Every object becomes a fresh :class:`~types.MappingProxyType` over a fresh
+    dict, and every array becomes a tuple. The copy matters as much as the
+    freeze: wrapping the caller's own dicts would leave them writable *behind*
+    the proxy, so a fixture that kept a reference could still change an
+    estimate's raw text after the digest was verified — the projected value
+    would move while the file, its digest and the recorded identity all stood
+    still. Copying severs that.
+
+    JSON meaning is preserved exactly. Scalars are left as the parser produced
+    them, ``null`` stays ``None``, key order is preserved, objects stay
+    mappings, arrays stay ordered sequences, and both container kinds serialize
+    back to the JSON they came from. Only mutability is removed.
+
+    Anything that is not JSON data is refused rather than passed through, which
+    keeps :meth:`ReferenceInventory.from_document` exactly as strict about shape
+    as the byte-verifying loader: a tuple, set or arbitrary object handed in
+    where the protocol requires a JSON array is a refusal, not a quiet
+    acceptance.
+    """
+    if isinstance(value, Mapping):
+        frozen: dict[str, object] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ReferenceProjectionError(
+                    f"{label} has a JSON object key that is not text: {key!r}."
+                )
+            frozen[key] = _frozen_json(item, f"{label}.{key}")
+        return MappingProxyType(frozen)
+    if isinstance(value, list):
+        return tuple(
+            _frozen_json(item, f"{label}[{position}]")
+            for position, item in enumerate(value)
+        )
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    raise ReferenceProjectionError(f"{label} is not JSON data: {type(value).__name__}.")
 
 
 def _text(value: object, label: str) -> str:
@@ -588,7 +744,22 @@ def _index_inventory(
     sha256: str | None,
     size_bytes: int | None,
 ) -> ReferenceInventory:
-    document = _mapping(document, "The inventory")
+    """Validate a parsed inventory against the protocol and index it.
+
+    The document is deep-frozen first, so every mapping the returned inventory
+    exposes — the document itself, each table, each geography record, each cell
+    and each cell's ``estimate``/``moe`` — is read-only and is this module's own
+    copy. ``sha256`` and ``size_bytes`` are recorded only when the caller
+    verified them against a file's bytes; :func:`load_pinned_inventory` is the
+    one caller that can.
+
+    Every required table is validated structurally, reserved families included,
+    because ``/scope/required_district_set`` requires an identical district set
+    across them. No reserved value is classified or read here; that happens only
+    where a caller names a reserved block.
+    """
+    _canonical_only(protocol)
+    document = _mapping(_frozen_json(document), "The inventory")
     expected_keys = inventory_top_level_keys()
     actual_keys = frozenset(document)
     if actual_keys != expected_keys:
@@ -689,7 +860,7 @@ def _index_inventory(
 
     assert geographies is not None and published is not None
     return ReferenceInventory(
-        document=MappingProxyType(dict(document)),
+        document=document,
         tables=tables,
         datasets=datasets,
         geographies=MappingProxyType(geographies),
@@ -720,14 +891,23 @@ def load_pinned_inventory(
         expected_sha256: Lowercase hex SHA-256 the file must have.
         expected_size_bytes: Byte count the file must have; defaults to the
             protocol's pinned count when ``expected_sha256`` is the pinned digest.
-        protocol: Compiled protocol; the canonical one by default.
+        protocol: Compiled protocol; the canonical one by default. It must be
+            the canonical document, because the audited key list and the pinned
+            byte count are read from the packaged canonical bytes regardless of
+            what is passed here.
+
+    Returns:
+        A :class:`ReferenceInventory` whose ``sha256`` and ``size_bytes`` are
+        the values actually observed on the file, so its ``identity_verified``
+        is true. This is the only constructor that can say that.
 
     Raises:
-        ReferenceProjectionError: On a bad digest argument, a missing file, a
-            size or digest mismatch, malformed canonical JSON, or any shape or
-            protocol disagreement. The bytes are never parsed on a mismatch.
+        ReferenceProjectionError: On a non-canonical protocol, a bad digest
+            argument, a missing file, a size or digest mismatch, malformed
+            canonical JSON, or any shape or protocol disagreement. The bytes are
+            never parsed on a mismatch.
     """
-    protocol = protocol or canonical_protocol()
+    protocol = _canonical_only(protocol or canonical_protocol())
     require_pinned_adapters(protocol)
     if not is_sha256_hex(expected_sha256):
         raise ReferenceProjectionError(
@@ -1170,9 +1350,11 @@ class ProjectionCompleteness:
     protocol_sha256: str
     inventory_sha256: str | None
     inventory_size_bytes: int | None
+    inventory_identity_verified: bool
     roster_district_count: int
     districts_requested: tuple[str, ...]
     blocks: tuple[Mapping[str, object], ...]
+    reserved_families_indexed: tuple[str, ...]
     roster_reasons: tuple[str, ...]
     roster_notes: Mapping[str, object]
     claims_not_established: tuple[str, ...] = PROJECTION_CLAIMS_NOT_ESTABLISHED
@@ -1184,6 +1366,7 @@ class ProjectionCompleteness:
             "protocol_sha256": self.protocol_sha256,
             "inventory_sha256": self.inventory_sha256,
             "inventory_size_bytes": self.inventory_size_bytes,
+            "inventory_identity_verified": self.inventory_identity_verified,
             "roster_district_count": self.roster_district_count,
             "districts_requested": list(self.districts_requested),
             "blocks": [dict(block) for block in self.blocks],
@@ -1197,6 +1380,24 @@ class ProjectionCompleteness:
             "national_reference_cells": (
                 "not_available; district sums are not published national rows and "
                 "require separately acquired direct national references"
+            ),
+            "reserved_families_indexed_for_structure": list(
+                self.reserved_families_indexed
+            ),
+            "reserved_families_projected_into_values": sorted(
+                {
+                    str(family)
+                    for block in self.blocks
+                    for family in block.get("exposure_families", ())
+                    if str(family) in RESERVED_FAMILY_TABLES
+                }
+            ),
+            "reserved_table_indexing": (
+                "indexing validated the structure of every required table, the "
+                "reserved families included, because the protocol's required "
+                "district set must be identical across them; no reserved "
+                "estimate or margin was classified or read into a value unless "
+                "its block is listed above"
             ),
             "pinned_adapters": list(PINNED_ADAPTER_MODULES),
         }
@@ -1225,11 +1426,33 @@ def projection_completeness(
     This is explicitly not a score, a verdict or a readiness claim: it counts
     districts, cells, validity classes, precision statuses and reasons. It never
     adds an estimate to another estimate.
+
+    The same block at the same district may be supplied only once. Counting one
+    district twice would report more districts projected than were ever
+    requested, which is the one thing a completeness statement must not do.
+
+    Raises:
+        ReferenceProjectionError: If a projection is repeated for the same block
+            and district, or is not a :class:`BlockProjection`.
     """
     protocol = protocol or canonical_protocol()
     grouped: dict[str, list[BlockProjection]] = {}
     districts: list[str] = []
+    seen: set[tuple[str, str]] = set()
     for projection in projections:
+        if not isinstance(projection, BlockProjection):
+            raise ReferenceProjectionError(
+                "Completeness counts BlockProjection values, not "
+                f"{type(projection).__name__}."
+            )
+        key = (projection.block_id, projection.geography_id)
+        if key in seen:
+            raise ReferenceProjectionError(
+                f"Block {projection.block_id!r} at {projection.geography_id!r} "
+                "was supplied twice; a district counted twice is not a "
+                "completeness statement."
+            )
+        seen.add(key)
         grouped.setdefault(projection.block_id, []).append(projection)
         if projection.geography_id not in districts:
             districts.append(projection.geography_id)
@@ -1286,17 +1509,26 @@ def projection_completeness(
         notes: Mapping[str, object] = MappingProxyType({})
         roster_count = 0
     else:
+        # ``districts`` unconditionally, never ``districts or None``: an empty
+        # projection is an empty projection. Defaulting it to the whole roster
+        # would report a run that projected nothing as roster-complete.
         reasons_tuple, notes = roster_scope_reasons(
-            roster, protocol=protocol, present_geography_ids=districts or None
+            roster, protocol=protocol, present_geography_ids=districts
         )
         roster_count = len(roster)
     return ProjectionCompleteness(
         protocol_sha256=protocol.sha256,
         inventory_sha256=None if inventory is None else inventory.sha256,
         inventory_size_bytes=None if inventory is None else inventory.size_bytes,
+        inventory_identity_verified=(
+            False if inventory is None else inventory.identity_verified
+        ),
         roster_district_count=roster_count,
         districts_requested=tuple(districts),
         blocks=tuple(blocks),
+        reserved_families_indexed=tuple(
+            sorted(set(required_tables(protocol)) & set(RESERVED_FAMILY_TABLES))
+        ),
         roster_reasons=tuple(str(reason) for reason in reasons_tuple),
         roster_notes=notes,
     )
@@ -1341,12 +1573,32 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         help="affirm aggregate-only output; this tool has no other mode",
     )
-    parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help=(
+            "write the aggregate payload here; the file is created exclusively "
+            "and an existing path is refused, never replaced"
+        ),
+    )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run one bounded, aggregate-only reference projection."""
+    """Run one bounded, aggregate-only reference projection.
+
+    Every argument that can be judged without the inventory is judged before it
+    is opened: naming both district selectors or neither, repeating a block or a
+    district, and naming a reserved block without ``--include-reserved`` all
+    fail before a 38.7 MB read rather than after it.
+
+    ``--output`` is created exclusively. An existing path is refused with its
+    bytes untouched, because the artifact this writes is a dated record and a
+    rerun that silently replaced one would destroy the evidence it claims to be.
+    On success the exact bytes written — canonical JSON and its terminating
+    newline — are hashed and that digest is printed, so hashing the file
+    reproduces the printed line.
+    """
     args = _parser().parse_args(argv)
     try:
         protocol = canonical_protocol()
@@ -1368,22 +1620,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{sorted(RESERVED_FAMILY_TABLES)}; pass --include-reserved to "
                 "state that deliberately."
             )
-        inventory = load_pinned_inventory(
-            args.inventory, expected_sha256=args.expect_sha256, protocol=protocol
-        )
-        roster = district_roster(inventory, protocol=protocol)
         if args.all_roster_districts and args.district:
             raise ReferenceProjectionError(
                 "Choose --all-roster-districts or explicit --district, not both."
             )
-        if args.all_roster_districts:
-            districts = list(roster.geography_ids)
-        elif args.district:
-            districts = list(dict.fromkeys(args.district))
-        else:
+        if not args.all_roster_districts and not args.district:
             raise ReferenceProjectionError(
                 "Name --district or --all-roster-districts; there is no default."
             )
+        if len(set(args.district)) != len(args.district):
+            raise ReferenceProjectionError("A district was requested twice.")
+        inventory = load_pinned_inventory(
+            args.inventory, expected_sha256=args.expect_sha256, protocol=protocol
+        )
+        roster = district_roster(inventory, protocol=protocol)
+        districts = (
+            list(roster.geography_ids)
+            if args.all_roster_districts
+            else list(args.district)
+        )
         projections = [
             project_block(
                 inventory,
@@ -1397,20 +1652,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         summary = projection_completeness(
             projections, protocol=protocol, roster=roster, inventory=inventory
         )
-    except (ReferenceProjectionError, OSError, ValueError) as error:
+        written = canonical_bytes(summary.payload()) + b"\n"
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            with args.output.open("xb") as stream:
+                stream.write(written)
+    except FileExistsError:
+        # Explicitly, and before the broader OSError arm: refusing to replace an
+        # aggregate record is a deliberate outcome of this tool, not an
+        # incidental filesystem error.
+        print(
+            f"Reference projection failed: {args.output} already exists and is "
+            "not replaced; name a fresh --output path.",
+            file=sys.stderr,
+        )
+        return 1
+    except (ReferenceProjectionError, CanonicalJsonError, OSError, ValueError) as error:
         print(f"Reference projection failed: {error}", file=sys.stderr)
         return 1
-    payload = summary.payload()
-    text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(text)
         print(
             f"Aggregate completeness written to {args.output}; "
-            f"payload sha256 {digest(canonical_bytes(payload))}"
+            f"sha256 of the {len(written)} bytes written {digest(written)}"
         )
     else:
-        sys.stdout.write(text)
+        sys.stdout.write(written.decode("utf-8"))
     return 0
 
 

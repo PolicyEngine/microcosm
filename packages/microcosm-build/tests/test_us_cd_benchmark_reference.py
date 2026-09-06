@@ -7,8 +7,10 @@ target, writes a ledger or claims statistical readiness.
 """
 
 import copy
+import dataclasses
 import hashlib
 import json
+import operator
 import os
 import subprocess
 import sys
@@ -78,6 +80,9 @@ DISTRICTS = (("01", "01"), ("06", "12"), ("11", "98"))
 DC_CANONICAL = "5001900US1100"
 DC_PUBLISHED = "5001900US1198"
 
+#: The invented point cell root's counterexample mutated after a verified load.
+POPULATION_CELL = ("S0101", "5001900US0101", "S0101_C01_001")
+
 
 @pytest.fixture(scope="module")
 def protocol():
@@ -113,7 +118,7 @@ def _default_value(table, stem):
     }[stem]
 
 
-def _acs_table(protocol, table, overrides):
+def _acs_table(protocol, table, overrides, *, include_geo_id=True):
     stems = _stems(protocol, table)
     metadata = {"variables": {}}
     for stem in stems:
@@ -123,17 +128,20 @@ def _acs_table(protocol, table, overrides):
                 "concept": f"INVENTED {table}",
                 "predicateType": "string" if suffix.endswith("A") else "int",
             }
-    header = ["NAME", "GEO_ID", "state", "congressional district"]
+    header = ["NAME", "state", "congressional district"]
+    if include_geo_id:
+        header.insert(1, "GEO_ID")
     for stem in stems:
         header.extend(stem + suffix for suffix in ("E", "M", "EA", "MA"))
     rows = [header]
     for state, district in DISTRICTS:
         values = [
             f"Invented District {district} (119th Congress), {state}",
-            f"5001900US{state}{district}",
             state,
             district,
         ]
+        if include_geo_id:
+            values.insert(1, f"5001900US{state}{district}")
         for stem in stems:
             values.extend(
                 overrides.get((table, state, district, stem))
@@ -143,7 +151,7 @@ def _acs_table(protocol, table, overrides):
     return cd_reference.acs_table_inventory(table, metadata, rows)
 
 
-def _bundle(protocol, overrides=None):
+def _bundle(protocol, overrides=None, *, include_geo_id=True):
     """A public-shaped bundle built through the shipped producer function."""
     overrides = overrides or {}
     captures = []
@@ -159,7 +167,7 @@ def _bundle(protocol, overrides=None):
             }
         )
     acs = {
-        table: _acs_table(protocol, table, overrides)
+        table: _acs_table(protocol, table, overrides, include_geo_id=include_geo_id)
         for table in sorted(RESERVED_FAMILY_TABLES | {"S0101"})
     }
     return {
@@ -633,9 +641,10 @@ def test_dc_projects_under_its_canonical_identity_and_published_alias(
     }
 
 
+@pytest.mark.parametrize("geography_id", ("5001900US0612", DC_CANONICAL))
 @pytest.mark.parametrize("block_id", BLOCK_IDS)
 def test_projected_values_are_accepted_by_the_shipped_evaluator(
-    protocol, inventory, block_id
+    protocol, inventory, block_id, geography_id
 ):
     """The evaluator's own composition check is the pin on our labels.
 
@@ -643,17 +652,24 @@ def test_projected_values_are_accepted_by_the_shipped_evaluator(
     correctly incomplete, and it is incomplete for the *stated* reasons rather
     than because a label was wrong. Exposure is supplied as unknown because a
     projection determines no freshness.
+
+    DC is included because its canonical identity and its published ``…1198``
+    alias differ, and the shipped evaluator checks that pair itself: an
+    ordinary district would never exercise that arm.
     """
     projection = project_block(
         inventory,
         block_id=block_id,
-        geography_id="5001900US0612",
+        geography_id=geography_id,
         protocol=protocol,
     )
     assert projection.complete is True
+    assert projection.published_geo_id == (
+        DC_PUBLISHED if geography_id == DC_CANONICAL else geography_id
+    )
     evaluation = evaluate_block(
         protocol.block(block_id),
-        geography_id="5001900US0612",
+        geography_id=geography_id,
         metric=None,
         precision=projection.precision_results,
         support=(),
@@ -986,6 +1002,7 @@ def test_the_command_line_is_aggregate_only_and_gated(tmp_path, bundle, capsys):
 
     assert main([*base, "--block", "population_total", "--output", str(output)]) == 0
     payload = json.loads(output.read_text())
+    assert payload["inventory_identity_verified"] is True
     assert payload["kind"] == "us_cd_reference_projection_completeness"
     assert payload["inventory_sha256"] == sha256
     assert payload["roster_district_count"] == 3
@@ -993,6 +1010,8 @@ def test_the_command_line_is_aggregate_only_and_gated(tmp_path, bundle, capsys):
     assert payload["blocks"][0]["cells_projected"] == 3
     assert payload["candidate_scoring"] is False
 
+    # A separate success needs a separate path: this tool replaces no record.
+    reserved_output = tmp_path / "completeness-reserved.json"
     assert (
         main(
             [
@@ -1001,13 +1020,14 @@ def test_the_command_line_is_aggregate_only_and_gated(tmp_path, bundle, capsys):
                 "tenure_distribution",
                 "--include-reserved",
                 "--output",
-                str(output),
+                str(reserved_output),
             ]
         )
         == 0
     )
-    payload = json.loads(output.read_text())
+    payload = json.loads(reserved_output.read_text())
     assert payload["blocks"][0]["reserved_family"] is True
+    assert output.exists()
 
 
 def test_the_command_line_refuses_a_digest_mismatch(tmp_path, bundle, capsys):
@@ -1026,6 +1046,417 @@ def test_the_command_line_refuses_a_digest_mismatch(tmp_path, bundle, capsys):
     )
     assert code == 1
     assert "refusing before parsing" in capsys.readouterr().err
+
+
+# --------------------------------------------------------------------------
+# Identity: only bytes that were checked may be labelled.
+# --------------------------------------------------------------------------
+
+
+def test_from_document_refuses_to_state_an_unverified_identity(protocol, bundle):
+    """A digest nothing checked is worse in an artifact than no digest at all.
+
+    ``from_document`` never saw a file, so it can verify neither the digest nor
+    the byte count. It used to accept both as keyword arguments and store them
+    unchecked, and ``projection_completeness`` then reported them as
+    ``inventory_sha256`` with nothing in the payload to say they were merely
+    claimed.
+    """
+    document = copy.deepcopy(bundle)
+    for forged in ({"sha256": "0" * 64}, {"size_bytes": 38686741}):
+        with pytest.raises(
+            ReferenceProjectionError, match="cannot label an inventory's identity"
+        ):
+            ReferenceInventory.from_document(document, protocol=protocol, **forged)
+
+    inventory = ReferenceInventory.from_document(document, protocol=protocol)
+    assert inventory.sha256 is None
+    assert inventory.size_bytes is None
+    assert inventory.identity_verified is False
+    payload = projection_completeness(
+        [], protocol=protocol, inventory=inventory
+    ).payload()
+    assert payload["inventory_sha256"] is None
+    assert payload["inventory_size_bytes"] is None
+    assert payload["inventory_identity_verified"] is False
+
+
+def test_only_a_byte_verifying_load_reports_a_verified_identity(
+    tmp_path, protocol, bundle
+):
+    path, sha256 = _write(tmp_path, bundle)
+    loaded = load_pinned_inventory(path, expected_sha256=sha256)
+    assert loaded.identity_verified is True
+    assert loaded.sha256 == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert loaded.size_bytes == path.stat().st_size
+    payload = projection_completeness(
+        [
+            project_block(
+                loaded,
+                block_id="population_total",
+                geography_id="5001900US0101",
+                protocol=protocol,
+            )
+        ],
+        protocol=protocol,
+        inventory=loaded,
+    ).payload()
+    assert payload["inventory_identity_verified"] is True
+    assert payload["inventory_sha256"] == sha256
+    assert payload["inventory_size_bytes"] == path.stat().st_size
+
+
+def test_indexing_refuses_a_protocol_that_is_not_the_canonical_document(
+    protocol, bundle
+):
+    """Canonical facts are never attributed to a contract that never stated them.
+
+    The audited key list, the audited ``candidate_evaluation`` scalar and the
+    pinned byte count are read from the packaged canonical document whatever
+    ``protocol`` says, so mixing them with another compiled protocol is refused
+    rather than documented away.
+    """
+    other = dataclasses.replace(protocol, sha256="0" * 64)
+    assert other.canonical is False
+    with pytest.raises(ReferenceProjectionError, match="non-canonical protocol"):
+        ReferenceInventory.from_document(copy.deepcopy(bundle), protocol=other)
+    with pytest.raises(ReferenceProjectionError, match="compiled protocol is required"):
+        ReferenceInventory.from_document(copy.deepcopy(bundle), protocol="canonical")
+
+
+# --------------------------------------------------------------------------
+# A validated inventory cannot move under the evidence it produced.
+# --------------------------------------------------------------------------
+
+
+def _relative_moe(inventory, protocol):
+    return (
+        project_block(
+            inventory,
+            block_id="population_total",
+            geography_id="5001900US0101",
+            protocol=protocol,
+        )
+        .precision_results[0]
+        .measured
+    )
+
+
+@pytest.mark.parametrize("route", ("from_document", "load_pinned_inventory"))
+def test_a_validated_inventory_cannot_be_changed_after_the_fact(
+    tmp_path, protocol, bundle, route
+):
+    """Root's counterexample: halve a relative MOE while the file stands still.
+
+    ``inv.cells[...]["estimate"]["raw"] = "2000"`` after a byte-verified load
+    doubled the denominator and halved the reading, while the digest, the
+    recorded identity and the file on disk were all unchanged. Both
+    construction routes are pinned, because the fixture route is the one a
+    caller holds its own reference through.
+    """
+    document = copy.deepcopy(bundle)
+    if route == "from_document":
+        inventory = ReferenceInventory.from_document(document, protocol=protocol)
+    else:
+        path, sha256 = _write(tmp_path, document)
+        inventory = load_pinned_inventory(path, expected_sha256=sha256)
+    before = _relative_moe(inventory, protocol)
+    assert before == Decimal("50") / Decimal("1000")
+
+    record = inventory.cells[POPULATION_CELL]
+    # Real subscript assignment, which is what root's counterexample performed.
+    assignments = (
+        lambda: operator.setitem(record, "estimate", {"raw": "2000"}),
+        lambda: operator.setitem(record["estimate"], "raw", "2000"),
+        lambda: operator.setitem(inventory.cells, POPULATION_CELL, {}),
+        lambda: operator.setitem(inventory.document, "kind", "something_else"),
+        lambda: operator.setitem(
+            inventory.geographies["5001900US0101"], "published_geo_id", DC_PUBLISHED
+        ),
+        lambda: operator.setitem(inventory["acs"], "S0101", {}),
+        lambda: operator.setitem(inventory["acs"]["S0101"]["cells"], 0, {}),
+        lambda: operator.setitem(
+            inventory["acs"]["S0101"]["geographies"][0],
+            "published_geo_id",
+            DC_PUBLISHED,
+        ),
+        lambda: operator.setitem(inventory["acs"]["S0101"]["geography_ids"], 0, "x"),
+    )
+    for attempt in assignments:
+        with pytest.raises(TypeError):
+            attempt()
+    # And the mutating methods are not merely guarded, they are absent.
+    for attempt in (
+        lambda: record["estimate"].update(raw="2000"),
+        lambda: record["estimate"].pop("raw"),
+        lambda: inventory["acs"]["S0101"]["cells"].append({}),
+    ):
+        with pytest.raises(AttributeError):
+            attempt()
+    assert _relative_moe(inventory, protocol) == before
+
+    # The caller's own object is severed too, not merely wrapped: mutating the
+    # document that was handed in changes nothing that was already validated.
+    for cell in document["acs"]["S0101"]["cells"]:
+        if cell["variable"] == "S0101_C01_001":
+            cell["estimate"]["raw"] = "2000"
+            cell["estimate"]["numeric_value"] = 2000.0
+    assert inventory.cells[POPULATION_CELL]["estimate"]["raw"] == "1000"
+    assert _relative_moe(inventory, protocol) == before
+
+
+def test_the_frozen_document_keeps_the_json_it_was_parsed_from(
+    protocol, bundle, inventory
+):
+    """Freezing removes mutability and nothing else."""
+    assert inventory["kind"] == bundle["kind"]
+    assert inventory["target_activation"] is False
+    assert inventory["scope"]["acs_year"] == bundle["scope"]["acs_year"]
+    assert inventory["irs"]["rows"] == ()
+    assert inventory["acs"]["S0101"]["geographies"][0]["published_geo_id"] == (
+        "5001900US0101"
+    )
+    round_tripped = json.loads(
+        json.dumps(inventory.document, default=dict, sort_keys=True)
+    )
+    assert round_tripped == json.loads(json.dumps(bundle, sort_keys=True))
+
+
+def test_a_document_carrying_non_json_data_is_refused(protocol, bundle):
+    """``from_document`` stays exactly as strict about shape as the loader."""
+    document = copy.deepcopy(bundle)
+    document["acs"]["S0101"]["geography_ids"] = tuple(
+        document["acs"]["S0101"]["geography_ids"]
+    )
+    with pytest.raises(ReferenceProjectionError, match="not JSON data: tuple"):
+        ReferenceInventory.from_document(document, protocol=protocol)
+
+    document = copy.deepcopy(bundle)
+    document["scope"]["acs_year"] = Decimal("2024")
+    with pytest.raises(ReferenceProjectionError, match="not JSON data: Decimal"):
+        ReferenceInventory.from_document(document, protocol=protocol)
+
+    document = copy.deepcopy(bundle)
+    document["acs"]["S0101"][2024] = "not a text key"
+    with pytest.raises(ReferenceProjectionError, match="object key that is not text"):
+        ReferenceInventory.from_document(document, protocol=protocol)
+
+
+# --------------------------------------------------------------------------
+# Refusals the producer's own fixtures never exercised.
+# --------------------------------------------------------------------------
+
+
+def test_a_capture_without_a_published_geo_id_is_refused(protocol):
+    """The producer writes ``row.get("GEO_ID")``; absent, that is ``None``.
+
+    ``published_GEO_ID`` is a required raw field and the contract requires both
+    identities retained, so an inventory built from captures without the column
+    is refused rather than projected under the canonical identity alone.
+    """
+    document = _bundle(protocol, include_geo_id=False)
+    assert document["acs"]["S0101"]["geographies"][0]["published_geo_id"] is None
+    with pytest.raises(ReferenceProjectionError, match="published GEO_ID"):
+        ReferenceInventory.from_document(document, protocol=protocol)
+
+
+def test_a_capture_dataset_that_disagrees_with_the_block_is_refused(protocol, bundle):
+    """The block declares a dataset; the bundle records what was captured."""
+    document = copy.deepcopy(bundle)
+    for capture in document["sources"]["census"]:
+        if capture["table"] == "S0101":
+            capture["dataset"] = "acs/acs1"
+    assert protocol.block("population_total").dataset == "acs/acs1/subject"
+    inventory = ReferenceInventory.from_document(document, protocol=protocol)
+    with pytest.raises(ReferenceProjectionError, match="was captured from dataset"):
+        project_block(
+            inventory,
+            block_id="population_total",
+            geography_id="5001900US0101",
+            protocol=protocol,
+        )
+
+
+def test_one_table_captured_under_two_datasets_is_refused(protocol, bundle):
+    document = copy.deepcopy(bundle)
+    for capture in document["sources"]["census"]:
+        if capture["table"] == "S0101" and capture["kind"] == "data":
+            capture["dataset"] = "acs/acs1"
+    with pytest.raises(ReferenceProjectionError, match="two datasets"):
+        ReferenceInventory.from_document(document, protocol=protocol)
+
+
+# --------------------------------------------------------------------------
+# Completeness counts what was actually requested.
+# --------------------------------------------------------------------------
+
+
+def test_the_same_block_and_district_cannot_be_counted_twice(protocol, inventory):
+    """Root's counterexample: two districts projected, one district requested."""
+    projection = project_block(
+        inventory,
+        block_id="population_total",
+        geography_id="5001900US0101",
+        protocol=protocol,
+    )
+    with pytest.raises(ReferenceProjectionError, match="supplied twice"):
+        projection_completeness(
+            [projection, projection], protocol=protocol, inventory=inventory
+        )
+    single = projection_completeness(
+        [projection], protocol=protocol, inventory=inventory
+    ).payload()
+    assert single["blocks"][0]["districts_projected"] == 1
+    assert single["districts_requested"] == ["5001900US0101"]
+
+    # The same district under a different block is not a duplicate.
+    other = project_block(
+        inventory,
+        block_id="age_distribution",
+        geography_id="5001900US0101",
+        protocol=protocol,
+    )
+    both = projection_completeness(
+        [projection, other], protocol=protocol, inventory=inventory
+    ).payload()
+    assert [item["districts_projected"] for item in both["blocks"]] == [1, 1]
+    assert both["districts_requested"] == ["5001900US0101"]
+
+    with pytest.raises(ReferenceProjectionError, match="BlockProjection"):
+        projection_completeness(["population_total"], protocol=protocol)
+
+
+def test_an_empty_projection_stays_empty_and_is_never_roster_complete(
+    protocol, inventory
+):
+    """Zero projections used to default to the whole roster as present."""
+    payload = projection_completeness(
+        [], protocol=protocol, inventory=inventory
+    ).payload()
+    assert payload["districts_requested"] == []
+    assert payload["blocks"] == []
+    assert payload["roster_district_count"] == 3
+    assert (
+        Reason.REQUIRED_CELL_OR_DISTRICT_MISSING.value
+        in payload["roster_scope_reasons"]
+    )
+    assert payload["roster_scope_notes"]["missing_districts"] == [
+        "5001900US0101",
+        "5001900US0612",
+        DC_CANONICAL,
+    ]
+
+
+def test_the_payload_states_that_reserved_tables_were_indexed(protocol, inventory):
+    """A non-reserved run still validated the reserved tables' structure."""
+    projection = project_block(
+        inventory,
+        block_id="population_total",
+        geography_id="5001900US0101",
+        protocol=protocol,
+    )
+    payload = projection_completeness(
+        [projection], protocol=protocol, inventory=inventory
+    ).payload()
+    assert payload["reserved_families_indexed_for_structure"] == ["B19001", "B25003"]
+    assert payload["reserved_families_projected_into_values"] == []
+    assert "no reserved" in payload["reserved_table_indexing"]
+
+    reserved = project_block(
+        inventory,
+        block_id="tenure_distribution",
+        geography_id="5001900US0101",
+        protocol=protocol,
+    )
+    named = projection_completeness(
+        [reserved], protocol=protocol, inventory=inventory
+    ).payload()
+    assert named["reserved_families_projected_into_values"] == ["B25003"]
+
+
+# --------------------------------------------------------------------------
+# The command line: bytes it can be held to.
+# --------------------------------------------------------------------------
+
+
+def test_the_command_line_writes_bytes_it_can_be_held_to(tmp_path, bundle, capsys):
+    """The printed digest is the digest of the file, and no record is replaced.
+
+    The printed line used to hash the canonical form of the payload while the
+    file held an indented form, so hashing the artifact gave a different value
+    from the one printed; and the output path was created with ``write_text``,
+    which silently erased any prior record at that path.
+    """
+    path, sha256 = _write(tmp_path, bundle)
+    output = tmp_path / "fresh" / "completeness.json"
+    argv = [
+        "--inventory",
+        str(path),
+        "--expect-sha256",
+        sha256,
+        "--aggregate-only",
+        "--all-roster-districts",
+        "--block",
+        "population_total",
+        "--output",
+        str(output),
+    ]
+
+    assert main(argv) == 0
+    written = output.read_bytes()
+    printed = capsys.readouterr().out
+    assert written.endswith(b"\n")
+    assert hashlib.sha256(written).hexdigest() in printed
+    assert f"{len(written)} bytes" in printed
+    assert json.loads(written.decode("utf-8"))["kind"] == (
+        "us_cd_reference_projection_completeness"
+    )
+
+    # A rerun refuses, and the record it refused to replace is byte-identical.
+    assert main(argv) == 1
+    assert "already exists" in capsys.readouterr().err
+    assert output.read_bytes() == written
+
+    # A second success takes a second path, deliberately.
+    second = tmp_path / "fresh" / "completeness-second.json"
+    assert main([*argv[:-1], str(second)]) == 0
+    assert second.read_bytes() == written
+    assert hashlib.sha256(second.read_bytes()).hexdigest() in capsys.readouterr().out
+
+
+def test_the_command_line_judges_its_arguments_before_it_opens_the_inventory(
+    tmp_path, bundle, capsys
+):
+    """A 38.7 MB read is not where a contradictory argument should surface."""
+    _, sha256 = _write(tmp_path, bundle)
+    absent = tmp_path / "not-here.json"
+    base = [
+        "--inventory",
+        str(absent),
+        "--expect-sha256",
+        sha256,
+        "--aggregate-only",
+        "--block",
+        "population_total",
+    ]
+
+    assert main([*base, "--all-roster-districts", "--district", "5001900US0101"]) == 1
+    assert "not both" in capsys.readouterr().err
+
+    assert main(base) == 1
+    assert "there is no default" in capsys.readouterr().err
+
+    assert (
+        main([*base, "--district", "5001900US0101", "--district", "5001900US0101"]) == 1
+    )
+    assert "district was requested twice" in capsys.readouterr().err
+
+    assert not absent.exists()
+
+    # The same arguments over a real path get past the selector checks and are
+    # refused by the loader instead, which is what proves the ordering.
+    assert main([*base, "--district", "5001900US0101"]) == 1
+    assert "No inventory file" in capsys.readouterr().err
 
 
 def test_the_module_exposes_no_national_or_scoring_entry_point():
