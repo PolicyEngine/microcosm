@@ -25,9 +25,9 @@ mistake an omission for an oversight:
   diagnosed against the reference code, and it is never a fallback: a
   household whose reference code is absent, duplicated or indeterminate stays
   unbound even when exactly one of its members has ``P_SEQ == 1``.
-* ``A_FAMREL`` is a **family** relationship and ``A_LINENO`` is a Basic-CPS
-  roster line number. Neither is read here, and neither substitutes for the
-  household reference code.
+* ``A_FAMREL`` is a **family** relationship and is not read here. ``A_LINENO``
+  is a Basic-CPS roster line number read only as a join crosscheck. Neither
+  substitutes for the household reference code.
 
 Every printed fact below was read this session from the three pinned public
 dictionaries named in :data:`ASEC_DICTIONARY_AUTHORITY`, at the PDF pages
