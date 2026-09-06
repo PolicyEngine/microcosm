@@ -45,7 +45,7 @@ import hashlib
 import json
 import re
 import sys
-from dataclasses import dataclass, field as dataclass_field
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -133,8 +133,7 @@ ANCHORS = {
     "national_estimates_only": (
         "main_2022",
         3,
-        "2015 Public Use Tax File is only appropriate for national level "
-        "estima tes.",
+        "2015 Public Use Tax File is only appropriate for national level estima tes.",
         0,
     ),
     "fiscal_year_conversion": (
@@ -182,15 +181,13 @@ ANCHORS = {
     "rounding_grid": (
         "main_2022",
         5,
-        "Ninth, for all records on the file, all amount fields have been "
-        "rounded.",
+        "Ninth, for all records on the file, all amount fields have been rounded.",
         420,
     ),
     "rebalancing": (
         "main_2022",
         5,
-        "Finally, all records in the file are rebalanced to ensure accounting "
-        "accuracy",
+        "Finally, all records in the file are rebalanced to ensure accounting accuracy",
         90,
     ),
     "not_one_taxpayer": (
@@ -248,8 +245,7 @@ ANCHORS = {
     "demographic_strata_restriction": (
         "demographic_2022",
         10,
-        "found on the 2015 PUF for records in strata 7 through 13, or those "
-        "returns",
+        "found on the 2015 PUF for records in strata 7 through 13, or those returns",
         0,
     ),
 }
@@ -285,8 +281,11 @@ PROJECTION: tuple[Projected, ...] = (
         "E00200",
         "salaries_and_wages",
         "wages",
-        edit_anchors=("multivariate_blurring", "itemized_blurring_007",
-                      "nonitemized_wage_noise"),
+        edit_anchors=(
+            "multivariate_blurring",
+            "itemized_blurring_007",
+            "nonitemized_wage_noise",
+        ),
         notes=(
             "Wages carry two documented edits beyond the universal ones: "
             "multivariate blurring wherever at least two of wages, state and "
@@ -401,9 +400,7 @@ PROJECTION: tuple[Projected, ...] = (
                 "independently and never reconciled here.",
             ),
         ),
-        notes=(
-            "Marker-signed on the record layout row.",
-        ),
+        notes=("Marker-signed on the record layout row.",),
     ),
     Projected(
         "P22250",
@@ -439,9 +436,7 @@ PROJECTION: tuple[Projected, ...] = (
                 "See E01000.",
             ),
         ),
-        notes=(
-            "As P22250: netted by definition, unmarked on the layout row.",
-        ),
+        notes=("As P22250: netted by definition, unmarked on the layout row.",),
     ),
 )
 
@@ -508,9 +503,7 @@ NOTABLE_SOURCE_ONLY = {
         "Taxable IRA distribution. Retirement-adjacent but a distinct "
         "publisher concept from pensions and annuities; not projected here."
     ),
-    "E02400": (
-        "Gross Social Security benefits. Not projected in this increment."
-    ),
+    "E02400": ("Gross Social Security benefits. Not projected in this increment."),
     "E00100": (
         "Adjusted gross income (deficit). The reviewed growth slice already "
         "retains source-year AGI as provenance; projecting it here would "
@@ -592,8 +585,9 @@ def read_booklets() -> dict[str, Booklet]:
         text = raw.decode("utf-8")
         pages = tuple(text.split("\f"))
         if len(pages) != spec["pdf_pages"]:
-            raise GenerationError(f"{key}: {len(pages)} pages, pinned "
-                                  f"{spec['pdf_pages']}")
+            raise GenerationError(
+                f"{key}: {len(pages)} pages, pinned {spec['pdf_pages']}"
+            )
         offsets: list[int] = []
         cursor = 0
         for page in pages:
@@ -729,7 +723,10 @@ def amount_field_entry(
     used_exact = True
     try:
         pdf_page, match = _locate(
-            booklet, layout_pages, exact, label=f"{booklet_key} amount {position} {name}"
+            booklet,
+            layout_pages,
+            exact,
+            label=f"{booklet_key} amount {position} {name}",
         )
     except GenerationError:
         if not tolerant:
@@ -862,11 +859,19 @@ def build_main_layout(
     for position, name in enumerate(amounts, 1):
         delivered_index = 43 + position - 1
         entry, label, _ = amount_field_entry(
-            booklets, "main_2022", MAIN_AMOUNT_LAYOUT_PAGES, position, name,
+            booklets,
+            "main_2022",
+            MAIN_AMOUNT_LAYOUT_PAGES,
+            position,
+            name,
             tolerant=False,
         )
         corroboration, _, exact = amount_field_entry(
-            booklets, "main_2023", MAIN_AMOUNT_LAYOUT_PAGES, position, name,
+            booklets,
+            "main_2023",
+            MAIN_AMOUNT_LAYOUT_PAGES,
+            position,
+            name,
             tolerant=True,
         )
         corroboration["code_token_spacing"] = (
@@ -966,7 +971,13 @@ def build_projection(
     if missing:
         raise GenerationError(f"projection names undelivered columns: {missing}")
     entries: list[dict[str, object]] = []
-    for spec in PROJECTION:
+    # One order everywhere: the delivered file's, which is the publisher's
+    # printed record-layout order. The concept grouping stays visible in
+    # ``concept_group`` rather than in the column sequence.
+    ordered = sorted(
+        PROJECTION, key=lambda spec: by_name[spec.field]["delivered_index"]
+    )
+    for spec in ordered:
         column = by_name[spec.field]
         marker = bool(column["publisher_signed_marker"])
         if marker and spec.negative_documented_by_definition:
@@ -1234,9 +1245,7 @@ def build_document() -> dict[str, object]:
         },
         "generation": {
             "generator": "tools/build_us_puf_source_layout.py",
-            "generator_sha256": hashlib.sha256(
-                Path(__file__).read_bytes()
-            ).hexdigest(),
+            "generator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "python": sys.version.split()[0],
             "reads": [
                 "the three pinned booklet text extractions",
