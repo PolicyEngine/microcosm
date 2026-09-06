@@ -9,6 +9,7 @@ to an unbound helper. Updating that inventory requires a scope review.
 from __future__ import annotations
 
 import ast
+import csv
 import hashlib
 import importlib.metadata as importlib_metadata
 import importlib.util
@@ -388,6 +389,8 @@ def implementation_manifest(stage: str) -> dict:
         ),
         "codecs": {},
     }
+    if stage == "acs_housing_universe_2024":
+        manifest["runtime_options"]["csv.field_size_limit"] = csv.field_size_limit()
     if stage == "assembly_prepare":
         for name, (codec_stage, loader) in _CODECS.items():
             if codec_stage in ("asec_codec_v4", "acs_codec_2024"):

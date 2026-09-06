@@ -35,7 +35,13 @@ Ordinary non-data members are inventoried but never projected.
 
 Every physical data record must be strict UTF8, have the complete header width,
 and fit the record and field caps. Full ordered headers must agree within a
-role. Projected input fields stay strings, with no trimming or NA inference:
+role. The source receipt records the CSV parser profile, including the live
+process-wide `csv.field_size_limit()`. The new stage binds that value in its
+runtime identity: a changed limit invalidates required graph replay, even when
+the same input bytes remain available. Source preparation checks its identity
+before and after reading. The implementation never changes this global setting;
+a smaller caller limit can refuse before the separate 64 KiB byte cap is reached.
+Projected input fields stay strings, with no trimming or NA inference:
 
 | Role | Source fields |
 |---|---|
@@ -149,6 +155,8 @@ header/receipt/projection sections, eight ordered native uint8 code arrays and a
 checksum. Decoding checks exact section lengths before parsing and recomputes
 all native codes from the lexical projection. `BoundACSHousingEvidence` is graph
 transport, not a newly authenticated source object.
+Excessively nested JSON in bounded headers, receipts or projections refuses with
+the sanitized `JSON_DEPTH` domain error, including canonicalization recursion.
 
 SELECT consumes the same producer's original artifacts and all declared Frame
 cells. Type, artifact key, producer, original context, source receipt and complete

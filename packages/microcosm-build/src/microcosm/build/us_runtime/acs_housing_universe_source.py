@@ -79,8 +79,11 @@ def _json(value) -> bytes:
 
 def _parse_json(payload: bytes, cap: int) -> dict:
     _require(type(payload) is bytes and len(payload) <= cap, "JSON_SIZE")
-    value = json.loads(payload)
-    _require(type(value) is dict and _json(value) == payload, "CANONICAL_JSON")
+    try:
+        value = json.loads(payload)
+        _require(type(value) is dict and _json(value) == payload, "CANONICAL_JSON")
+    except RecursionError:
+        raise ACSHousingSourceError("JSON_DEPTH") from None
     return value
 
 
@@ -576,6 +579,15 @@ def _reconstruct(private, paths, pins, serialnos, implementation):
             definition["gq_definition"],
         ],
         "implementation_sha256": implementation,
+        "parser_profile": {
+            "engine": "stdlib_csv_reader",
+            "encoding": "utf-8",
+            "quoting": "QUOTE_MINIMAL",
+            "strict": True,
+            "csv.field_size_limit": csv.field_size_limit(),
+            "field_max_bytes": _FIELD_MAX,
+            "record_max_bytes": _RECORD_MAX,
+        },
         "archives": [
             {"role": r, "filename": n, "sha256": d, "bytes": s} for r, n, d, s in pins
         ],

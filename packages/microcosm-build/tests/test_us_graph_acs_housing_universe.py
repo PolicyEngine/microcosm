@@ -22,6 +22,7 @@ from microcosm.build.us_runtime.graph_sources import (
 )
 from microcosm.graph import ArtifactType, ContentStore, compile_graph, run_graph
 from microcosm.graph.canonical import canonical_json
+from microcosm.graph.errors import StoreMissError
 from microcosm.graph.keys import opaque_artifact_key
 
 
@@ -362,3 +363,77 @@ def test_disk_refusal_precedes_source_capture(tmp_path, monkeypatch):
             source_dir, snapshot_root=snapshots, output_dir=tmp_path / "out"
         )
     assert list(snapshots.iterdir()) == []
+
+
+def test_csv_parser_profile_binds_source_receipt_and_required_replay(
+    tmp_path, monkeypatch
+):
+    from microcosm.build.us_runtime import graph_implementation as impl
+
+    previous = csv.field_size_limit()
+    try:
+        csv.field_size_limit(131072)
+        source_dir, snapshots = _fixture(tmp_path, monkeypatch)
+        prepared = source.prepare_acs_housing_population(
+            source_dir, snapshot_root=snapshots
+        )
+        before = source._implementation()
+        graph = compile_graph(
+            bridge.acs_housing_graph(frame_column_declarations(prepared.frame))
+        )
+        store = ContentStore(tmp_path / "store", codecs=us_source_codecs())
+        registry = bridge.acs_housing_registry(snapshot_root=snapshots)
+        run_graph(
+            graph,
+            store=store,
+            kernels=registry,
+            sources={bridge.SOURCE_NAME: source_dir},
+        )
+        unrelated = impl.implementation_hash("geography")
+        csv.field_size_limit(3)
+        assert source._implementation() != before
+        assert impl.implementation_hash("geography") == unrelated
+        with pytest.raises(source.ACSHousingSourceError):
+            source.prepare_acs_housing_population(source_dir, snapshot_root=snapshots)
+        with pytest.raises(StoreMissError):
+            run_graph(
+                graph,
+                store=store,
+                kernels=registry,
+                sources={bridge.SOURCE_NAME: source_dir},
+                resume="require",
+            )
+        csv.field_size_limit(131072)
+        assert source._implementation() == before
+        assert (
+            json.loads(prepared.source.receipt_json)["parser_profile"][
+                "csv.field_size_limit"
+            ]
+            == 131072
+        )
+        warm = run_graph(
+            graph,
+            store=store,
+            kernels=registry,
+            sources={bridge.SOURCE_NAME: source_dir},
+            resume="require",
+        )
+        assert all(node.hit for node in warm.nodes.values())
+    finally:
+        csv.field_size_limit(previous)
+
+
+def test_nested_transport_json_refuses_with_sanitized_domain_error():
+    raw = b'{"deep":' + b"[" * 1200 + b"0" + b"]" * 1200 + b"}"
+    payload = bridge.MAGIC + struct.pack("<I", len(raw)) + raw + b"x"
+    payload += hashlib.sha256(payload).digest()
+    with pytest.raises(source.ACSHousingSourceError, match="JSON_DEPTH"):
+        bridge.bind_acs_housing_evidence(
+            payload, prepared_receipt=b"{}", frame_context=b"{}"
+        )
+
+
+def test_nested_source_json_refuses_with_sanitized_domain_error():
+    raw = b'{"deep":' + b"[" * 1200 + b"0" + b"]" * 1200 + b"}"
+    with pytest.raises(source.ACSHousingSourceError, match="JSON_DEPTH"):
+        source._parse_json(raw, source.ACS_HU_RECEIPT_MAX_BYTES)
