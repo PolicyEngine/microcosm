@@ -25,20 +25,32 @@ import argparse
 import importlib.util
 import json
 import re
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+BASE_MODULE = "_graph_evidence_reviewed_base"
 
 
 def _load_base():
     # Deliberately avoids microcosm.build.__init__ and us_runtime, exactly as the
     # reviewed exporter avoids them when it loads the candidate-quality writer.
+    existing = sys.modules.get(BASE_MODULE)
+    if existing is not None:
+        return existing
     path = Path(__file__).with_name("graph_evidence.py")
-    spec = importlib.util.spec_from_file_location("_graph_evidence_base", path)
+    spec = importlib.util.spec_from_file_location(BASE_MODULE, path)
     if spec is None or spec.loader is None:  # pragma: no cover - packaging fault
         raise RuntimeError("Reviewed base exporter unavailable.")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Registered before execution so its frozen dataclass resolves its own module.
+    sys.modules[BASE_MODULE] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(BASE_MODULE, None)
+        raise
     return module
 
 
@@ -106,7 +118,13 @@ ARTIFACT_NAMES = (
 )
 KERNEL_REFS = tuple(f"us.{node_id}@3" for node_id in IDS)
 STRUCTURAL = ("create", "filter", "none", "none", "none")
-DETERMINISM = ("deterministic", "seeded", "deterministic", "deterministic", "deterministic")
+DETERMINISM = (
+    "deterministic",
+    "seeded",
+    "deterministic",
+    "deterministic",
+    "deterministic",
+)
 SEED_SOURCE = ("none", "param", "none", "none", "none")
 
 SOURCES = _base.SOURCES
@@ -278,9 +296,7 @@ def freeze_income_v3_pins(root_output_review: Path | str) -> IncomeV3Pins:
         roster_sha256=digest(review["roster_sha256"]),
         approval_sha256=digest(review["approval_sha256"]),
         implementation_hashes=tuple((n, hashes[n]) for n in IDS),
-        node_receipt_metadata=tuple(
-            (n, tuple(sorted(metadata[n]))) for n in IDS
-        ),
+        node_receipt_metadata=tuple((n, tuple(sorted(metadata[n]))) for n in IDS),
         loaded_module_count=count(review["loaded_module_count"]),
         reported_income_lineage_fields=tuple(sorted(lineage)),
         root_review_sha256=sha256(_file_bytes(path)),
@@ -581,8 +597,11 @@ REQUIRED_OUTPUTS = (
         "direct-selection-context.bin",
     }
     | {f"{mode}-receipt.json" for mode in ("direct", "cold", "warm")}
-    | {f"{mode}-{part}" for mode in ("cold", "warm")
-       for part in ("manifest.json", "frame.h5", "aggregate-quality.json")}
+    | {
+        f"{mode}-{part}"
+        for mode in ("cold", "warm")
+        for part in ("manifest.json", "frame.h5", "aggregate-quality.json")
+    }
     | {
         f"{mode}-{node_id}-{name}.bin"
         for mode in ("cold", "warm")
@@ -975,7 +994,8 @@ def _export(
         require(
             isinstance(loaded, dict)
             and 1 <= len(loaded) <= 1024
-            and count(receipt["loaded_module_count"]) == len(loaded)
+            and count(receipt["loaded_module_count"])
+            == len(loaded)
             == pins.loaded_module_count,
             "Loaded module roster missing or differs from the approved total.",
         )

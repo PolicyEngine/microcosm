@@ -45,6 +45,7 @@ EXPLICIT_SHARED_SPEC = (
     "packages/microcosm-build/tests/test_cd_benchmark_universe.py",
     "packages/microcosm-build/tests/test_cross_grain.py",
     "packages/microcosm-build/tests/test_graph_evidence.py",
+    "packages/microcosm-build/tests/test_graph_evidence_income_v3.py",
     "packages/microcosm-build/tests/test_quality_aggregates.py",
     "packages/microcosm-build/tests/test_transfer_graph_example.py",
 )
