@@ -171,6 +171,12 @@ _TYPED_DTYPES = {
     "disclosure_aggregate": "<u1",
     "demographic_status": "<i1",
 }
+#: The definition names dtypes logically; the envelope writes numpy typestrings.
+#: This is the only bridge between the two, and a test walks every declared
+#: field through it, so the definition can never drift from what is stored.
+_DECLARED_DTYPE = MappingProxyType(
+    {"int64": "<i8", "int16": "<i2", "int8": "<i1", "uint8": "<u1"}
+)
 _TYPED_COLUMNS = tuple(_TYPED_DTYPES)
 _LEXICAL_COLUMNS = _MAIN_FIELDS + _DEMOGRAPHIC_FIELDS
 _ABSENT_SENTINEL = -1
@@ -827,6 +833,7 @@ def decode_puf_raw_source(
         join_method=_join_method(definition),
         untyped_main_columns=_untyped_main_columns(definition),
     )
+    _check_declared_expectations(facts, definition)
     return PufRawReturnStatus(
         typed=MappingProxyType({name: array for name, array in typed.items()}),
         lexical=MappingProxyType(
@@ -834,6 +841,49 @@ def decode_puf_raw_source(
         ),
         facts=MappingProxyType(facts),
     )
+
+
+def _check_declared_expectations(
+    facts: Mapping[str, object], definition: PufRawSourceDefinition
+) -> None:
+    """Cross-check the derived counts against the definition's declared ones.
+
+    The packaged definition states how many records each delivery holds, how
+    many keys should match, how many main records should stay unmatched and
+    how many aggregate records to expect. Nothing compared them, so they were
+    documentation. The byte pins make them implied, but implied is not
+    checked: a delivery that hashed correctly and parsed to a different shape
+    would have gone unnoticed.
+
+    This runs on the packaged route only. A fixture definition carries its own
+    invented counts over its own invented bytes, and inventing a fixture that
+    restates the genuine expectations would be the wrong kind of fidelity.
+    """
+
+    if definition.route != "packaged":
+        return
+    join = definition.document["join"]
+    for label, derived, declared in (
+        ("rows", facts["rows"], definition.main.data_records),
+        (
+            "demographic_records",
+            facts["demographic_records"],
+            definition.demographic.data_records,
+        ),
+        ("matched_keys", facts["matched_keys"], join["expected_matched_keys"]),
+        (
+            "main_unmatched_records",
+            facts["main_unmatched_records"],
+            join["expected_main_unmatched_records"],
+        ),
+        (
+            "aggregate_records",
+            facts["aggregate_records"],
+            definition.document["aggregates"]["expected_records"],
+        ),
+    ):
+        if derived != declared:
+            raise _refuse("DECLARED_EXPECTATION", label)
 
 
 def _join_method(definition: PufRawSourceDefinition) -> str:

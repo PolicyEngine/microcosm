@@ -176,12 +176,16 @@ def fixture_document(main_payload: bytes, demographic_payload: bytes) -> dict:
     return document
 
 
-@pytest.fixture
-def invented():
+def invented_slice():
     main = csv_bytes(MAIN_HEADER, DEFAULT_MAIN)
     demographic = csv_bytes(DEMOGRAPHIC_HEADER, DEFAULT_DEMOGRAPHIC)
     definition = fixture_definition(fixture_document(main, demographic))
     return main, demographic, definition
+
+
+@pytest.fixture
+def invented():
+    return invented_slice()
 
 
 def rebuilt(main_records, demographic_records):
@@ -254,6 +258,62 @@ def test_fixture_route_refuses_production_authority_or_a_packaged_pin(invented):
     document["sources"]["main"]["sha256"] = PACKAGED.main.sha256
     with pytest.raises(PufRawSourceRefusalError, match="FIXTURE_RESTATES_PACKAGED_PIN"):
         fixture_definition(document)
+
+
+def test_every_declared_dtype_matches_the_dtype_the_envelope_writes():
+    """The definition names dtypes logically; nothing may drift from storage."""
+
+    declared = {
+        field["name"]: field["dtype"]
+        for field in (
+            *PACKAGED.document["fields"],
+            *PACKAGED.document["derived_fields"],
+        )
+    }
+    assert set(declared) == set(puf._TYPED_DTYPES)
+    for name, token in declared.items():
+        assert token in puf._DECLARED_DTYPE, name
+        assert puf._DECLARED_DTYPE[token] == puf._TYPED_DTYPES[name], name
+    # disclosure_aggregate is written as an unsigned byte and now says so.
+    assert declared["disclosure_aggregate"] == "uint8"
+    assert puf._TYPED_DTYPES["disclosure_aggregate"] == "<u1"
+    assert all(np.dtype(value).kind in "iu" for value in puf._TYPED_DTYPES.values())
+
+
+def test_the_packaged_route_cross_checks_its_declared_record_expectations():
+    """Declared counts were documentation; the packaged route now checks them."""
+
+    main, demographic, definition = invented_slice()
+    # A fixture states its own invented counts, so the check stays off for it.
+    assert definition.route == "test_fixture"
+    facts = dict(decode_puf_raw_source(main, demographic, definition).facts)
+    assert facts["rows"] == 4 != PACKAGED.main.data_records
+    puf._check_declared_expectations(facts, definition)
+
+    # Drive the packaged branch directly: the declared counts are the pinned
+    # genuine ones, and this lane opens no genuine delivery to satisfy them.
+    packaged_shaped = dict(facts)
+    packaged_shaped.update(
+        rows=PACKAGED.main.data_records,
+        demographic_records=PACKAGED.demographic.data_records,
+        matched_keys=PACKAGED.document["join"]["expected_matched_keys"],
+        main_unmatched_records=(
+            PACKAGED.document["join"]["expected_main_unmatched_records"]
+        ),
+        aggregate_records=PACKAGED.document["aggregates"]["expected_records"],
+    )
+    puf._check_declared_expectations(packaged_shaped, PACKAGED)
+    for label, value in (
+        ("rows", 207_695),
+        ("demographic_records", 0),
+        ("matched_keys", 1),
+        ("main_unmatched_records", 2),
+        ("aggregate_records", 3),
+    ):
+        wrong = dict(packaged_shaped)
+        wrong[label] = value
+        with pytest.raises(PufRawSourceRefusalError, match="DECLARED_EXPECTATION"):
+            puf._check_declared_expectations(wrong, PACKAGED)
 
 
 def test_the_definition_document_is_immutable_all_the_way_down(invented):
