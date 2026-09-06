@@ -178,6 +178,16 @@ only the remaining reserved first-attempt case may be fresh, and even then it is
 same-source, never independent-source, evidence. The occupied-household total
 carries both `B19001` and `B25003`, so exposure of either marks it.
 
+## Absent evidence is not conformity
+
+A mandatory block whose measurement, precision evidence or support evidence is
+simply *missing* is scope-incomplete, not conforming. `evaluate_block` records
+an absent measurement as `required_cell_or_district_missing`, absent precision
+evidence as `reference_precision_inadequate`, and absent support evidence as
+`unresolved_source_lineage` — the code `/support/unknown_lineage` names when
+origin coverage cannot be established. So a caller cannot reach
+`benchmark_conforming` by supplying only the axis that happens to pass.
+
 ## Where this package's reading fills a gap
 
 Four things the document leaves open are decided here and named as
@@ -197,6 +207,11 @@ implementation choices rather than contract text.
    district and relevant denominator", and only the carrier count and maximum
    share are named for bins, so the floor is not applied per bin. The per-bin
    value is still computed and returned as a diagnostic.
+
+5. **Reason codes for absent axis evidence.** The document names codes for
+   values that are known and wrong, and for evidence that is unavailable, but
+   does not assign one to "no support reading was produced at all". The three
+   choices above are this package's reading.
 
 Two smaller readings: the adapter's `moe_open_interval` and `open_interval`
 classes both map to the document's single `open_interval`, with the adapter's own
