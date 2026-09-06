@@ -50,6 +50,22 @@ disjoint row classes — aggregate, demographic-matched and
 demographic-unmatched — so an aggregate can never be averaged into a
 per-return statistic and an unmatched row is never a zero.
 
+*The individual-return amount universe is explicit.* A row is inside it if and
+only if its authenticated disclosure-aggregate flag is 0, and the decoded
+object exposes that rule as a read-only ``amount_known`` mask derived from the
+flag on every access. Individual returns keep the unchanged integer,
+whole-dollar, twelve-digit grammar, and a fractional token on one of them
+still refuses. The four disclosure aggregates are outside that universe: their
+typed slots hold the minimum-int64 out-of-universe sentinel — never a zero,
+which is a delivered value in these columns — and their delivered tokens are
+retained exactly under a separate, explicitly bounded lexical grammar that is
+an operational input bound for this pinned file rather than a publisher
+specification. Nothing converts an aggregate token to a number, rounds it,
+grows it or drops its row. The aggregate row class carries only token-class
+counts and a token width, so no header, receipt or summary can state an
+aggregate amount, and the exact row/token pairs are available only through a
+local accessor on the decoded object.
+
 *The projection is bound to the reviewed status artifact.* The node takes
 ``microcosm.us.puf_2015_raw_return_status`` as an artifact input and refuses
 unless its own ``RECID`` sequence and aggregate flags are element-wise
@@ -108,6 +124,9 @@ from .puf_raw_source import (
 from .puf_raw_source import packaged_definition as packaged_raw_definition
 
 __all__ = [
+    "AGGREGATE_ROW_CLASS",
+    "AGGREGATE_SENTINEL",
+    "AMOUNT_KNOWN_RULE",
     "BODY_MAX_BYTES",
     "HEADER_MAX_BYTES",
     "LEXICAL_WIDTH_MAX",
@@ -119,6 +138,8 @@ __all__ = [
     "PufMonetaryRefusalError",
     "PufMonetarySourceDocument",
     "ProjectedColumn",
+    "RETURN_ROW_CLASSES",
+    "SUPERSEDED_MAGIC",
     "USPufMonetaryProjectionSummaryKernel",
     "USPufMonetarySourceKernel",
     "decode_monetary_projection",
@@ -133,9 +154,20 @@ __all__ = [
 ]
 
 MONETARY_PROJECTION_TYPE = ArtifactType(
-    "microcosm.us.puf_2015_monetary_source_projection", 2
+    "microcosm.us.puf_2015_monetary_source_projection", 3
 )
-MONETARY_PROJECTION_MAGIC = b"microcosm.us.puf_2015_monetary_source_projection/2\n"
+MONETARY_PROJECTION_MAGIC = b"microcosm.us.puf_2015_monetary_source_projection/3\n"
+
+#: Magic lines this reader refuses by name instead of reinterpreting. No
+#: genuine schema-1 or schema-2 monetary artifact was ever completed — the
+#: first genuine run refused before writing one — but invented artifacts of
+#: both do exist in test evidence, and the amount universe differs, so an old
+#: payload gets its own refusal rather than falling through the generic magic
+#: check as an unrecognised blob.
+SUPERSEDED_MAGIC = (
+    b"microcosm.us.puf_2015_monetary_source_projection/1\n",
+    b"microcosm.us.puf_2015_monetary_source_projection/2\n",
+)
 
 MONETARY_PROJECTION_STAGE = "us_puf_monetary_source"
 MONETARY_PROJECTION_NODE = f"{MONETARY_PROJECTION_STAGE}.projection"
@@ -176,6 +208,11 @@ _LEXICAL_KIND = "lexical_fixed_ascii_nul_padded"
 #: keyed to it, so the classes partition the rows exactly once.
 ROW_CLASSES = ("disclosure_aggregate", "demographic_matched", "demographic_unmatched")
 
+#: The aggregate class, and the two classes numeric per-return statistics are
+#: reported for. Nothing numeric is ever reported for the aggregate class.
+AGGREGATE_ROW_CLASS = "disclosure_aggregate"
+RETURN_ROW_CLASSES = ("demographic_matched", "demographic_unmatched")
+
 #: The closed vocabulary the packaged document may use.
 _ADMISSIONS = frozenset({"monetary_source_projection", "not_selected"})
 _FIT_ADMISSIONS = frozenset(
@@ -193,6 +230,31 @@ _PERIOD_SEMANTICS = "unresolved_raw_FLPDYR"
 _GRAIN = "source_return"
 _AMOUNT_UNITS = "whole_usd_source_year"
 _GRAMMAR = "ascii_decimal_signed_integer"
+
+#: The individual-return amount universe rule, carried in the header facts as
+#: a declared string rather than left as a code habit.
+AMOUNT_KNOWN_RULE = "amount_known == (disclosure_aggregate == 0)"
+
+#: The out-of-universe storage sentinel for a typed amount slot on a
+#: disclosure-aggregate row. It is storage, not a value: minimum int64 is
+#: unreachable for a token of at most twelve digits, so no individual return
+#: can legitimately hold it and readback can assert it exactly. A physical
+#: zero is refused here, because zero is a delivered amount in these columns
+#: and would invent a known value with semantics.
+AGGREGATE_SENTINEL = -(2**63)
+
+#: The whole-dollar integer semantics the packaged booklet-derived projection
+#: document states apply to individual returns. The document's bytes are
+#: unchanged; this encoded metadata scopes them.
+_AMOUNT_UNITS_SCOPE = "individual_return_rows_only"
+_AGGREGATE_UNIVERSE = "outside_individual_return_amount_universe"
+_AGGREGATE_TREATMENT = "retained_lexical_only_never_parsed_to_a_number"
+_AGGREGATE_AUTHORITY = "delivered_token_exact_for_every_row"
+_AGGREGATE_INTERPRETATION = "refused"
+
+#: The aggregate lexical grammar is an explicit operational input bound for
+#: this pinned delivered file, not a newly discovered IRS specification.
+_AGGREGATE_GRAMMAR = "ascii_decimal_optional_single_fraction_bounded"
 
 #: Keys a projection column may never carry: this increment computes no
 #: derived quantity at all, so a document that declares one is a refusal
@@ -237,11 +299,33 @@ _ENVELOPE_FACT_KEYS = frozenset(
         "period_semantics",
         "amounts_decoded",
         "amount_units",
+        "amount_units_scope",
+        "amount_known_rule",
+        "amount_known_rows",
+        "aggregate_amount_universe",
+        "aggregate_row_treatment",
+        "aggregate_typed_sentinel",
+        "aggregate_token_grammar",
+        "aggregate_lexical_authority",
+        "aggregate_numeric_interpretation",
         "target_year_use",
     }
 )
-_COLUMN_FACT_KEYS = frozenset(
+#: The per-return classes keep the existing numeric census.
+_RETURN_COLUMN_FACT_KEYS = frozenset(
     {"rows", "zero", "negative", "positive", "minimum", "maximum", "sum"}
+)
+#: The aggregate class has its own closed key set with no zero, sign, extremum
+#: or sum key, so a header cannot spell a number for the aggregate rows at
+#: all: only token classes and a token width.
+_AGGREGATE_COLUMN_FACT_KEYS = frozenset(
+    {
+        "rows",
+        "integer_tokens",
+        "fractional_tokens",
+        "negative_tokens",
+        "max_token_width",
+    }
 )
 
 _INT64_MAX = 2**63 - 1
@@ -655,6 +739,48 @@ class PufMonetarySourceProjection:
     def rows(self) -> int:
         return int(self.facts["rows"])
 
+    @property
+    def amount_known(self) -> np.ndarray:
+        """Whether a row is inside the individual-return amount universe.
+
+        Derived from the authenticated disclosure flag on every access and
+        handed back read-only, so there is no stored mask to tamper with and
+        nothing a caller holds can contradict the flags. A false entry means
+        *outside the universe*: the typed slot holds the sentinel and the
+        delivered token is the authority.
+        """
+
+        return _amount_known(self.typed["disclosure_aggregate"])
+
+    def aggregate_lexical_rows(
+        self, field: str | None = None
+    ) -> Mapping[str, tuple[tuple[int, str], ...]]:
+        """Exact ``(RECID, token)`` pairs for the disclosure-aggregate rows.
+
+        A local accessor, for diagnosis at the console or in a test. Public
+        summaries, receipts and reports stay aggregate-only: nothing in the
+        kernels calls this. No token is parsed, totalled, ordered by value or
+        compared with another token.
+        """
+
+        if field is None:
+            fields = tuple(self.lexical)
+        elif field in self.lexical:
+            fields = (field,)
+        else:
+            raise _refuse("AGGREGATE_LEXICAL_FIELD", field)
+        aggregate = np.flatnonzero(~self.amount_known).tolist()
+        recids = self.typed["RECID"]
+        return MappingProxyType(
+            {
+                name: tuple(
+                    (int(recids[position]), self.lexical[name][position])
+                    for position in aggregate
+                )
+                for name in fields
+            }
+        )
+
 
 def _check_csv_profile(profile: Mapping[str, object]) -> None:
     """Refuse when the effective acceptance state is not the pinned one."""
@@ -757,6 +883,80 @@ def _amount(value: str, column: ProjectedColumn) -> int:
     return number
 
 
+def _aggregate_token(value: str, column: ProjectedColumn) -> str:
+    """Validate one disclosure-aggregate token, and return it unchanged.
+
+    This is a **separate, explicitly bounded operational grammar** for the
+    delivered aggregate rows of this pinned file. It is not a newly discovered
+    publisher specification, and it is never applied to an individual return.
+    Optional leading minus, one or more digits, at most one point followed by
+    one or more digits: no plus sign, exponent, whitespace, embedded NUL,
+    empty token or negative zero in either spelling, at most the column's
+    declared digit bound and at most its declared width.
+
+    The token is returned exactly as delivered. Nothing here converts it to a
+    number, rounds it, or compares it against another token.
+    """
+
+    label = column.field
+    if not isinstance(value, str):
+        raise _refuse("AGGREGATE_TOKEN_TYPE", label)
+    if not value.isascii():
+        raise _refuse("AGGREGATE_TOKEN_NON_ASCII", label)
+    if "\x00" in value:
+        raise _refuse("AGGREGATE_TOKEN_EMBEDDED_NUL", label)
+    if not value:
+        raise _refuse("AGGREGATE_TOKEN_EMPTY", label)
+    if len(value) > column.lexical_width:
+        raise _refuse("AGGREGATE_TOKEN_OVER_WIDTH", label)
+    negative = value.startswith("-")
+    body = value[1:] if negative else value
+    if not body:
+        raise _refuse("AGGREGATE_TOKEN_GRAMMAR", label)
+    if body.count(".") > 1:
+        raise _refuse("AGGREGATE_TOKEN_GRAMMAR", label)
+    whole, point, fraction = body.partition(".")
+    if point and (not whole or not fraction):
+        raise _refuse("AGGREGATE_TOKEN_GRAMMAR", label)
+    digits = whole + fraction
+    if not digits or any(character not in _DIGITS for character in digits):
+        raise _refuse("AGGREGATE_TOKEN_GRAMMAR", label)
+    if len(digits) > column.max_digits:
+        raise _refuse("AGGREGATE_TOKEN_OVER_DIGITS", label)
+    if negative and set(digits) == {"0"}:
+        raise _refuse("AGGREGATE_TOKEN_NEGATIVE_ZERO", label)
+    return value
+
+
+def _amount_known(flags: np.ndarray) -> np.ndarray:
+    """The individual-return amount universe, derived from the flag alone.
+
+    Returned read-only and recomputed at every call, so no caller can hold a
+    mask that contradicts the disclosure flags it came from.
+    """
+
+    known = np.asarray(flags, dtype=_STRUCTURAL_DTYPES["disclosure_aggregate"]) == 0
+    known.setflags(write=False)
+    return known
+
+
+def _typed_column(
+    tokens: Sequence[str], known: np.ndarray, column: ProjectedColumn
+) -> np.ndarray:
+    """Parse by universe: an amount where known, the sentinel where not."""
+
+    if len(tokens) != int(known.shape[0]):
+        raise _refuse("COLUMN_LEXICAL_ROWS", column.field)
+    values: list[int] = []
+    for position, token in enumerate(tokens):
+        if bool(known[position]):
+            values.append(_amount(token, column))
+        else:
+            _aggregate_token(token, column)
+            values.append(AGGREGATE_SENTINEL)
+    return np.asarray(values, dtype=column.numpy_dtype)
+
+
 def _check_header(
     reader, projection: PufMonetaryProjection, definition: PufRawSourceDefinition
 ) -> list[str]:
@@ -819,6 +1019,12 @@ def decode_puf_monetary_source(
     re-joined, so the two artifacts cannot disagree about which returns
     matched. Every delivered main record is projected: nothing is filtered,
     and the four disclosure aggregates stay tagged rather than dropped.
+
+    Amount tokens are collected before that alignment runs and parsed after
+    it, by universe: the unchanged integer grammar on individual returns, the
+    bounded aggregate lexical grammar plus the out-of-universe sentinel on
+    disclosure aggregates. A parse therefore cannot decide which grammar a row
+    answers to before the status artifact has proved which row it is.
     """
 
     if not isinstance(projection, PufMonetaryProjection):
@@ -847,9 +1053,13 @@ def decode_puf_monetary_source(
     seen: set[str] = set()
     aggregates = frozenset(PUF_AGGREGATE_RECIDS)
     flags: list[int] = []
-    values: dict[str, list[int]] = {column.field: [] for column in projection.columns}
     tokens: dict[str, list[str]] = {column.field: [] for column in projection.columns}
 
+    # Tokens are collected first and parsed afterwards. Which grammar a row's
+    # amount answers to is decided only once the status artifact has proved
+    # the RECID sequence and the aggregate flags, so "authenticate the
+    # alignment before interpreting a row's amount universe" is the literal
+    # order of operations rather than a claim about one.
     for record in _records(reader, definition):
         key = _key_token(record[recid_position], width=key_width)
         if key in seen:
@@ -859,9 +1069,7 @@ def decode_puf_monetary_source(
         keys.append(recid)
         flags.append(1 if recid in aggregates else 0)
         for column in projection.columns:
-            token = record[positions[column.field]]
-            values[column.field].append(_amount(token, column))
-            tokens[column.field].append(token)
+            tokens[column.field].append(record[positions[column.field]])
     rows = len(keys)
     if rows == 0:
         raise _refuse("MAIN_NO_RECORDS")
@@ -877,15 +1085,15 @@ def decode_puf_monetary_source(
     if len(np.unique(typed["RECID"])) != rows:
         raise _refuse("MAIN_NUMERIC_KEY_COLLISION")
     typed["demographic_status"] = _status_alignment(status, typed, rows)
+    known = _amount_known(typed["disclosure_aggregate"])
     for column in projection.columns:
-        typed[column.field] = np.asarray(values[column.field], dtype=column.numpy_dtype)
+        typed[column.field] = _typed_column(tokens[column.field], known, column)
 
-    facts = _facts_from_arrays(typed, projection)
+    lexical = {name: tuple(items) for name, items in tokens.items()}
+    facts = _facts_from_arrays(typed, lexical, projection)
     return PufMonetarySourceProjection(
         typed=MappingProxyType(typed),
-        lexical=MappingProxyType(
-            {name: tuple(items) for name, items in tokens.items()}
-        ),
+        lexical=MappingProxyType(lexical),
         facts=MappingProxyType(facts),
         column_metadata=_frozen(facts["column_metadata"]),
     )
@@ -971,8 +1179,41 @@ def _column_facts(values: np.ndarray, mask: np.ndarray) -> dict[str, object]:
     }
 
 
+def _aggregate_column_facts(
+    tokens: Sequence[str], mask: np.ndarray
+) -> dict[str, object]:
+    """Token classes for the aggregate rows, and nothing that reads as money.
+
+    Counts of token shapes and one token width. There is no zero, sign census,
+    minimum, maximum or sum key here, because the delivered token is the
+    authority for these rows and this module never interprets it. A diagnostic
+    may count token classes; it may not state an aggregate amount.
+    """
+
+    selected = [
+        token for token, taken in zip(tokens, mask.tolist(), strict=True) if taken
+    ]
+    if not selected:
+        return {
+            "rows": 0,
+            "integer_tokens": 0,
+            "fractional_tokens": 0,
+            "negative_tokens": 0,
+            "max_token_width": None,
+        }
+    return {
+        "rows": len(selected),
+        "integer_tokens": sum(1 for token in selected if "." not in token),
+        "fractional_tokens": sum(1 for token in selected if "." in token),
+        "negative_tokens": sum(1 for token in selected if token.startswith("-")),
+        "max_token_width": max(len(token) for token in selected),
+    }
+
+
 def _facts_from_arrays(
-    typed: Mapping[str, np.ndarray], projection: PufMonetaryProjection
+    typed: Mapping[str, np.ndarray],
+    lexical: Mapping[str, Sequence[str]],
+    projection: PufMonetaryProjection,
 ) -> dict[str, object]:
     """Derive every reported fact from the arrays themselves.
 
@@ -980,10 +1221,16 @@ def _facts_from_arrays(
     here, so a header can never report a count, a sum or a sign census the
     arrays do not carry. Layout counts and column semantics come from the
     authenticated projection document, rather than being inferred from rows.
+    The lexical arrays are an input because the aggregate class is described
+    from its delivered tokens and from nothing else.
     """
 
     rows = int(typed["RECID"].shape[0])
     masks = _row_masks(typed)
+    known = _amount_known(typed["disclosure_aggregate"])
+    for column in projection.columns:
+        if len(lexical[column.field]) != rows:
+            raise _refuse("FACTS_LEXICAL_ROWS", column.field)
     return {
         "rows": rows,
         "main_records": rows,
@@ -1002,8 +1249,13 @@ def _facts_from_arrays(
         },
         "column_facts": {
             column.field: {
-                name: _column_facts(typed[column.field], masks[name])
-                for name in ROW_CLASSES
+                AGGREGATE_ROW_CLASS: _aggregate_column_facts(
+                    lexical[column.field], masks[AGGREGATE_ROW_CLASS]
+                ),
+                **{
+                    name: _column_facts(typed[column.field], masks[name])
+                    for name in RETURN_ROW_CLASSES
+                },
             }
             for column in projection.columns
         },
@@ -1011,7 +1263,20 @@ def _facts_from_arrays(
             column.field: {
                 "concept": column.concept,
                 "grain": _GRAIN,
+                # The packaged projection document's integer, whole-dollar,
+                # twelve-digit semantics describe individual returns. That
+                # document's bytes are unchanged; this metadata says who they
+                # apply to, and what happens to the rows they do not.
                 "amount_units": _AMOUNT_UNITS,
+                "amount_units_scope": _AMOUNT_UNITS_SCOPE,
+                "amount_universe": _AMOUNT_UNITS_SCOPE,
+                "amount_known_rule": AMOUNT_KNOWN_RULE,
+                "aggregate_amount_universe": _AGGREGATE_UNIVERSE,
+                "aggregate_row_treatment": _AGGREGATE_TREATMENT,
+                "aggregate_typed_sentinel": AGGREGATE_SENTINEL,
+                "aggregate_token_grammar": _AGGREGATE_GRAMMAR,
+                "aggregate_lexical_authority": _AGGREGATE_AUTHORITY,
+                "aggregate_numeric_interpretation": _AGGREGATE_INTERPRETATION,
                 "period_semantics": _PERIOD_SEMANTICS,
                 "fit_admission": column.fit_admission,
                 "unresolved": list(column.unresolved),
@@ -1026,6 +1291,15 @@ def _facts_from_arrays(
         "period_semantics": _PERIOD_SEMANTICS,
         "amounts_decoded": True,
         "amount_units": _AMOUNT_UNITS,
+        "amount_units_scope": _AMOUNT_UNITS_SCOPE,
+        "amount_known_rule": AMOUNT_KNOWN_RULE,
+        "amount_known_rows": int(np.count_nonzero(known)),
+        "aggregate_amount_universe": _AGGREGATE_UNIVERSE,
+        "aggregate_row_treatment": _AGGREGATE_TREATMENT,
+        "aggregate_typed_sentinel": AGGREGATE_SENTINEL,
+        "aggregate_token_grammar": _AGGREGATE_GRAMMAR,
+        "aggregate_lexical_authority": _AGGREGATE_AUTHORITY,
+        "aggregate_numeric_interpretation": _AGGREGATE_INTERPRETATION,
         "target_year_use": _TARGET_YEAR_USE,
     }
 
@@ -1303,14 +1577,27 @@ def _verify_readback(
     expected = np.isin(recids, np.asarray(PUF_AGGREGATE_RECIDS, dtype="<i8"))
     if not np.array_equal(aggregate == 1, expected):
         raise _refuse("READBACK_AGGREGATE_RECID")
+    known = _amount_known(aggregate)
     for column in projection.columns:
         tokens = lexical[column.field]
         if len(tokens) != rows:
             raise _refuse("READBACK_LEXICAL_ROWS", column.field)
         values = typed[column.field]
         for position, token in enumerate(tokens):
-            if _amount(token, column) != int(values[position]):
-                raise _refuse("READBACK_LEXICAL_DISAGREEMENT", column.field)
+            if bool(known[position]):
+                # An individual return re-parses under the unchanged integer
+                # grammar and must equal its typed value. The sentinel is
+                # unreachable for that grammar, so a sentinel parked on an
+                # ordinary row is caught here as a lexical disagreement.
+                if _amount(token, column) != int(values[position]):
+                    raise _refuse("READBACK_LEXICAL_DISAGREEMENT", column.field)
+            else:
+                # An aggregate row validates under the aggregate grammar and
+                # must hold the sentinel exactly. A zero, or any other stored
+                # number, would be a value this artifact never observed.
+                _aggregate_token(token, column)
+                if int(values[position]) != AGGREGATE_SENTINEL:
+                    raise _refuse("READBACK_AGGREGATE_SLOT", column.field)
 
 
 def decode_monetary_projection(
@@ -1327,9 +1614,14 @@ def decode_monetary_projection(
     it does not carry.
     """
 
-    if not isinstance(payload, bytes) or not payload.startswith(
-        MONETARY_PROJECTION_MAGIC
-    ):
+    if not isinstance(payload, bytes):
+        raise _refuse("ENVELOPE_MAGIC")
+    if not payload.startswith(MONETARY_PROJECTION_MAGIC):
+        # A superseded magic is named, not reinterpreted: those payloads
+        # declare a different amount universe, and silently reading one under
+        # this contract would report aggregates as individual amounts.
+        if any(payload.startswith(magic) for magic in SUPERSEDED_MAGIC):
+            raise _refuse("ENVELOPE_SUPERSEDED_MAGIC")
         raise _refuse("ENVELOPE_MAGIC")
     start = len(MONETARY_PROJECTION_MAGIC)
     if len(payload) < start + 4:
@@ -1408,8 +1700,13 @@ def decode_monetary_projection(
             raise _refuse("ENVELOPE_FACTS", "column_facts")
         _exact_keys(classes, frozenset(ROW_CLASSES), f"column_facts.{field}")
         for name, entry in classes.items():
-            _exact_keys(entry, _COLUMN_FACT_KEYS, f"column_facts.{field}.{name}")
-    recomputed = _facts_from_arrays(typed, resolved)
+            keys = (
+                _AGGREGATE_COLUMN_FACT_KEYS
+                if name == AGGREGATE_ROW_CLASS
+                else _RETURN_COLUMN_FACT_KEYS
+            )
+            _exact_keys(entry, keys, f"column_facts.{field}.{name}")
+    recomputed = _facts_from_arrays(typed, lexical, resolved)
     if canonical_json(recomputed) != canonical_json(dict(facts)):
         raise _refuse("ENVELOPE_FACTS_INCONSISTENT")
     if recomputed["rows"] != rows:
@@ -1430,7 +1727,9 @@ _IMPLEMENTATION_MODULES = (
     "microcosm.build.us_runtime.puf_raw_source",
     "microcosm.build.us_runtime.puf_monetary_source",
 )
-_IMPLEMENTATION_IDENTITY_MAGIC = b"us.puf.monetary_source/implementation/1\n"
+#: The implementation identity moves with the contract: a node written
+#: against the version-2 amount universe must not bind to this kernel.
+_IMPLEMENTATION_IDENTITY_MAGIC = b"us.puf.monetary_source/implementation/3\n"
 
 _STATUS_ALIAS = "return_status"
 _PROJECTION_ALIAS = "monetary_projection"
@@ -1439,7 +1738,7 @@ _PROJECTION_ALIAS = "monetary_projection"
 class USPufMonetarySourceKernel(KernelBase):
     """Read the pinned main delivery and produce the monetary projection."""
 
-    ref = "us.puf.monetary_source.projection@1"
+    ref = "us.puf.monetary_source.projection@3"
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
         numeric=Numeric.BITWISE,
@@ -1559,7 +1858,7 @@ class USPufMonetarySourceKernel(KernelBase):
 class USPufMonetaryProjectionSummaryKernel(KernelBase):
     """A downstream consumer: decode the projection and report its census."""
 
-    ref = "us.puf.monetary_source.projection_summary@1"
+    ref = "us.puf.monetary_source.projection_summary@3"
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
         numeric=Numeric.BITWISE,
@@ -1595,21 +1894,43 @@ class USPufMonetaryProjectionSummaryKernel(KernelBase):
         if value.type != MONETARY_PROJECTION_TYPE:
             raise _refuse("SUMMARY_ARTIFACT_TYPE")
         decoded = decode_monetary_projection(value.payload, self.projection)
-        negatives = {
-            field: sum(int(classes[name]["negative"]) for name in ROW_CLASSES)
-            for field, classes in decoded.facts["column_facts"].items()
+        facts = decoded.facts
+        # The per-return negative census covers the two return classes only.
+        # Summing it across all three would have counted a token class as a
+        # monetary sign, which is exactly the conflation this contract ends.
+        per_return_negatives = {
+            field: sum(int(classes[name]["negative"]) for name in RETURN_ROW_CLASSES)
+            for field, classes in facts["column_facts"].items()
+        }
+        # Aggregate-only: token-class counts and a width, never a token, a
+        # RECID or anything that could be read as an aggregate amount. The
+        # exact row/token pairs stay behind the local decoded accessor.
+        aggregate_token_classes = {
+            field: dict(classes[AGGREGATE_ROW_CLASS])
+            for field, classes in facts["column_facts"].items()
         }
         return KernelResult(
             receipt={
                 "puf_monetary_projection_summary": {
                     "producer_key": value.producer_key,
                     "rows": decoded.rows,
-                    "projected_columns": decoded.facts["projected_columns"],
-                    "row_class_rows": dict(decoded.facts["row_class_rows"]),
-                    "negative_values_by_field": negatives,
-                    "period_semantics": decoded.facts["period_semantics"],
-                    "amount_units": decoded.facts["amount_units"],
-                    "target_year_use": decoded.facts["target_year_use"],
+                    "projected_columns": facts["projected_columns"],
+                    "row_class_rows": dict(facts["row_class_rows"]),
+                    "amount_known_rows": facts["amount_known_rows"],
+                    "amount_known_rule": facts["amount_known_rule"],
+                    "per_return_negative_values_by_field": per_return_negatives,
+                    "aggregate_rows_are_lexical_only": True,
+                    "aggregate_typed_sentinel": facts["aggregate_typed_sentinel"],
+                    "aggregate_token_grammar": facts["aggregate_token_grammar"],
+                    "aggregate_lexical_authority": facts["aggregate_lexical_authority"],
+                    "aggregate_numeric_interpretation": facts[
+                        "aggregate_numeric_interpretation"
+                    ],
+                    "aggregate_lexical_token_classes": aggregate_token_classes,
+                    "period_semantics": facts["period_semantics"],
+                    "amount_units": facts["amount_units"],
+                    "amount_units_scope": facts["amount_units_scope"],
+                    "target_year_use": facts["target_year_use"],
                     "column_metadata": _thawed(decoded.column_metadata),
                 }
             }
