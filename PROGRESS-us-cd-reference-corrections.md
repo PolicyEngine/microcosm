@@ -71,3 +71,49 @@ inventory; that waits on root review and the independent review.
   exposure write, threshold or bound edit.
 - The frozen lane's files, reports, scripts and counterexamples are preserved
   byte-for-byte; every artifact this lane wrote is a new file.
+
+## Retry continuation, 2026-09-06 (independent re-verification)
+
+The lane was re-entered after the first attempt was cut off immediately after it
+wrote its report (tests 07:15:59Z, report 07:18Z, this continuation opened
+07:19Z). Nothing from that attempt was destroyed or overwritten: its worktree,
+branch, commits, report, evidence, logs and counterexample refutation are all
+preserved byte-for-byte, and every artifact this continuation writes carries a
+`-verify`/`-continuation` name of its own.
+
+### Re-verified in this continuation, from scratch, not read back from the report
+
+- `W` clean at `c1266cf39272da5e501ffc33d74d1ebb54a2fc9c`, descended from the
+  frozen head `9eed2e31…`; `origin/main` `c1b83241…` is an ancestor; 133 ahead,
+  0 behind. `F` still clean at `9eed2e31…`, 129 ahead, 0 behind.
+- `git diff --name-status` from the frozen head is three files and nothing else.
+- Working-tree digests equal the committed blobs at this head for all three.
+- **All six** protocol-pinned modules recomputed from disk against the compiled
+  protocol's own `pinned_code_sha256`: six of six match, and `git diff` shows
+  all six unchanged since the frozen head. The shipped `verify_pinned_adapters`
+  returns true for its three adapters.
+- Packaged protocol document `us-cd-published-benchmark-v4.json`: 86,626 bytes,
+  `f7574a2a…c568ea`, equal to `APPROVED_PROTOCOL_SHA256` and to the compiled
+  protocol's own `sha256`; `protocol.canonical` is true. The pure
+  `cd_benchmark` package has an empty diff against the frozen head.
+- Focused four-file group re-run in this continuation: **148 passed, exit 0**,
+  20.38 s, on CPython 3.14.4. Per-suite counts from the JUnit XML — 59 + 22 + 4
+  + 63 — add to 148, matching the first attempt's XML exactly.
+- Module origin re-walked: **174** imported `microcosm` modules, 0 outside `W`,
+  0 differing from their committed blobs, 0 foreign shard entries left on
+  `sys.path` after the purge.
+- ruff 0.15.16: `check` and `format --check` clean on both changed files
+  (exit 0); workspace `check .` exit 0; workspace `format --check .` exit 1 on
+  98 pre-existing files, none of them this lane's.
+- `tools/ci_test_groups.py --verify` → `verification=ok`, exit 0; the reader
+  test file appears in two groups and never under `[defaulted]`.
+- The origin-note correction checked against the code: `graph.py`'s
+  `_ROOT_CELLS`, which supplies the outputs of the `us.post_transfer.create@1`
+  legacy post-transfer static CREATE, contains no `SERIALNO` and no
+  `asec_H_SEQ`. The narrower gap is real and correctly scoped; this lane did
+  not modify it.
+
+### Next
+
+Adversarial review of the corrections across six dimensions, then any confirmed
+fixes, then the continuation report. Still **no genuine projection**.
