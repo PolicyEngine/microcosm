@@ -184,8 +184,11 @@ state arm, now observed" below.
 `TAGE_EHC` is the one column shared with the frozen sixteen-field producer,
 which reads it as `_number(..., 0, 90, -999)` to gate its retirement-income and
 bank-asset universes. The domain and the out-of-domain token are identical here,
-so the shared column has one contract and not two. The projection is otherwise
-disjoint from that producer's field list.
+so the shared column has one contract and not two — though not an identical
+lexical label: the frozen producer reports the out-of-domain reading under
+`sipp_measurements`'s own lexical class, `missing_item`, while this housing
+kernel relabels the identical reading `invalid_domain` for its own reporting.
+The projection is otherwise disjoint from that producer's field list.
 
 ## Grain
 
@@ -404,7 +407,14 @@ retained, and `household_size_agreement` reports `agree`, `disagree`,
 `publisher_conflict`, `publisher_unknown` or `roster_coverage_incomplete` with a
 signed `household_size_difference`. Neither is adjusted toward the other, and a
 publisher measurement that did not resolve is separated from one whose members
-disagreed.
+disagreed. Precedence between the two is exclusive and roster-coverage-first:
+`roster_coverage_incomplete` is reported before a publisher `copy_conflict` is
+even checked, so a conflicted publisher value under incomplete roster coverage
+(for example a conflicted `RHNUMU18` alongside partial age coverage) is
+reported only as `roster_coverage_incomplete` by this one counter. The conflict
+itself is not hidden — the per-field class counters still carry it under
+`copy_conflict` — only this agreement counter's precedence hides it from this
+one view.
 
 A disagreement is expected rather than defective, and the reason is a dictionary
 fact: the pinned dictionary publishes `RHNUMPERWT2` (printed page 899), whose
@@ -437,8 +447,10 @@ The published minimum also breaks the kernel's single out-of-domain sentinel:
 inside a published domain silently convert a real observation into a missing
 code. `THTOTINC` uses `−10,000,000,001`.
 
-The period-consistent alternative `THCYINCPOV` (printed page 2880, status flag
-`AHCYINCPOV`) is **not** carried.
+The period-consistent income-to-poverty ratio `THCYINCPOV` (printed page 2880,
+status flag `AHCYINCPOV`) is **not** carried. `THCYINCPOV` is a ratio of income
+to a poverty threshold, not a dollar income figure, so it could not substitute
+for `THTOTINC`'s dollar amount even if it were carried.
 
 ### Age has no allocation quality, and a maximum needs coverage
 
@@ -583,12 +595,17 @@ measurement pass — the per-field `sentinel`, `kind`, `unflagged_origin` and th
 domain containing the token that marks a value missing. On identical rows the
 measurement and membership digests therefore reproduce version 2 exactly.
 
-That is a continuity check, not a caveat: a version 3 extraction must reproduce
-the version 2 measurement and membership digests **beside** the 17,646 / 4,348 /
-4,057 ladder counts, and a difference in either would mean the measurement
-contract moved rather than that more columns were read. The digests for the
-fixture set are pinned in the tests from the accepted base implementation, so
-the head cannot move them silently.
+That is a continuity check, not a caveat, and it has two separate gates that
+must not be conflated. A **first-32** extraction under recipe version 3 must
+reproduce the **first-32** recipe-version-2 receipt's measurement digest and
+membership digest, beside that receipt's own counts — 33 households and 15
+admitted unassisted renters over the 32 selected SSUIDs — and a difference in
+either digest would mean the measurement contract moved rather than that more
+columns were read. The 17,646 / 4,348 / 4,057 figures are the separately
+approved **all-SSUID** run's counts, not the first-32 gate's: a first-32 run is
+not compared against them, and clearing the first-32 gate implies no
+all-SSUID approval. The digests for the fixture set are pinned in the tests
+from the accepted base implementation, so the head cannot move them silently.
 
 Version 1 admitted an explicit `ERENTSUB = 2` whatever `EVOUCHER` carried,
 folded `assistance_not_in_universe` into the unknown rung, bound no
@@ -665,20 +682,33 @@ the rows came from — never that they did.
 ## Extraction proposal
 
 The runnable extraction proposal lives outside this repository, with the review
-artifacts. Its current version is `us-sipp-housing-projection-extract-v2.py`
-(`sipp-december-housing-extraction-proposal/2`), with
-`us-sipp-housing-projection-extract-v2-selfcheck.py` beside it. Version 1,
-`us-sipp-housing-projection-extract.py`, is kept unmodified as history and must
+artifacts. Its current version is `us-sipp-housing-projection-extract-v3.py`
+(`sipp-december-housing-extraction-proposal/3`), which supersedes version 2 and
+additionally removes the private snapshot when authentication fails, before
+returning ownership to main, and refuses a symlinked output directory; it makes
+no change to the frozen version-2 projection or its recipe.
+`us-sipp-housing-projection-extract-v3-selfcheck.py` sits beside it. Version 2,
+`us-sipp-housing-projection-extract-v2.py`, and version 1,
+`us-sipp-housing-projection-extract.py`, are kept unmodified as history and must
 not be run.
 
-**A version 2 extraction has been run and reviewed**, under recipe
-`sipp-december-housing-projection/2`. Version 3 has not: no extraction proposal
-has been written for the 38-column list, no SIPP byte has been read under it,
-and every count in this document's tests comes from invented fixtures. The
-counts the version 2 run produced — 17,646 December households, 4,348 admitted
-and 4,057 of those with reported rent — are that run's real evidence and are
-**not** predictions about a version 3 run's predictor diagnostics, which no
-fixture in this repository can establish.
+**The executed extraction was proposal version 3's script**
+(`us-sipp-housing-projection-extract-v3.py`), run and reviewed under recipe
+`sipp-december-housing-projection/2` — the recipe version current at the time
+of that run, distinct from the proposal script's own version number 3. The
+recipe version current in this repository today,
+`sipp-december-housing-projection/3` (this document's 38-column list, adding
+the nine predictor columns), has not itself been extracted under: no extraction
+proposal has pinned its hash, no SIPP byte has been read under it, and every
+predictor count in this document's tests comes from invented fixtures. The
+counts the executed run produced — 17,646 December households, 4,348 admitted
+and 4,057 of those with reported rent — are that run's real evidence under
+recipe version 2 and are **not** predictions about a recipe-version-3 run's
+predictor diagnostics, which no fixture in this repository can establish. A
+**proposal version 4** is required before any recipe-version-3 extraction: it
+must pin the new recipe hash (`sipp-december-housing-projection/3`, the
+`RECIPE_SHA256` above), confirm the 38-column header against the parent, and
+keep the first-32 gate unchanged.
 
 The proposal authenticates the parent through the frozen producer's own bounded,
 no-follow, hash-checked snapshot helpers, parses the snapshot once with the
@@ -686,8 +716,8 @@ frozen record grammar, keeps every December row of the first 32 December SSUIDs,
 and calls `project()`. It writes a receipt, a diagnostics JSON and a run record
 to explicitly named paths under the review root and prints no source row.
 `all_ssuids` remains a closed option that needs its own approval after the
-first-32 result is reviewed; version 2 keeps that gate exactly and adds no new
-approval flow.
+first-32 result is reviewed; version 3 keeps that gate exactly, unchanged since
+version 1, and adds no new approval flow.
 
 Version 2 fixes what the review found in version 1:
 

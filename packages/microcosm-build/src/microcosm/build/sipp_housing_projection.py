@@ -78,7 +78,7 @@ IMPLEMENTATION_MODULES = (
 # Byte identity of ``recipe_bytes()``. A recipe change must move this pin in the
 # same commit; a silent drift between the declared contract and the transcribed
 # field table refuses instead of extracting under an unreviewed contract.
-RECIPE_SHA256 = "66ed8871ed1a1dbb73b8407c08c3e66dc8f4162ca91170c163ae8654cda4505e"
+RECIPE_SHA256 = "e8c809b2a1788d3b2016d03f6ac4b9f37b955bd7a7b855cd94372d7ab4ea1bc4"
 
 # The official document these contracts were transcribed from. Its digest is not
 # a second authority: ``verify_dictionary()`` requires it to equal the frozen
@@ -407,7 +407,7 @@ def prospective_predictors() -> dict:
             "annualization": "not_applied",
             "price_rebasing": "not_applied",
             "log_or_floor_transform": "not_applied",
-            "period_consistent_alternative_not_carried": "THCYINCPOV",
+            "period_consistent_income_to_poverty_ratio_not_carried": "THCYINCPOV",
         },
         "age": {
             "field": "TAGE_EHC",

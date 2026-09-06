@@ -299,14 +299,22 @@ PREDICTOR_LIMITATIONS = {
         "HTOTVAL equivalent.",
         "The published minimum is negative, so a negative value is an in-domain "
         "observation and is preserved signed.",
-        "The period-consistent alternative THCYINCPOV (printed page 2880, "
-        "status flag AHCYINCPOV) is not carried by this projection.",
+        "The period-consistent income-to-poverty ratio THCYINCPOV (printed "
+        "page 2880, status flag AHCYINCPOV) is not carried by this projection.",
+        "THCYINCPOV is a ratio of income to a poverty threshold, not a dollar "
+        "income figure, so it could not substitute for THTOTINC's dollar amount "
+        "even if it were carried.",
     ),
     "TAGE_EHC": (
         "This is the only column the projection shares with the frozen "
         "sixteen-field producer. Its domain 0-90 and out-of-domain token -999 "
         "are read exactly as that producer reads them, so the shared column has "
         "one contract and not two.",
+        "The frozen producer reports this column's out-of-domain reading under "
+        "sipp_measurements._number's own lexical class, missing_item; this "
+        "housing kernel relabels the identical reading invalid_domain for its "
+        "own reporting. The two producers agree on domain and value and differ "
+        "only in that lexical label.",
         "The dictionary prints 'Status Flag: NA', so no allocation quality "
         "exists for this column: reported and imputed ages cannot be "
         "distinguished, unlike every flagged field in this projection.",
@@ -326,8 +334,8 @@ PREDICTOR_FIELDS_DELIBERATELY_ABSENT = {
     "RHNUMPERWT2": "type_2_inclusive_variant_not_carried",
     "RHNUMU18WT2": "type_2_inclusive_variant_not_carried",
     "THTOTINCT2": "type_2_inclusive_variant_not_carried",
-    "THCYINCPOV": "period_consistent_income_alternative_not_carried",
-    "AHCYINCPOV": "period_consistent_income_alternative_not_carried",
+    "THCYINCPOV": "period_consistent_income_to_poverty_ratio_not_carried",
+    "AHCYINCPOV": "period_consistent_income_to_poverty_ratio_not_carried",
     "THHLDSTATUS": "published_universe_gate_of_all_nine_columns_not_carried",
     "ERELRPE": "reference_person_relationship_not_carried",
     "ARELRP": "reference_person_relationship_not_carried",
@@ -536,6 +544,15 @@ def _agreement(publisher: m.Measurement, roster: int | None) -> str:
     A roster counterpart that could not be established is reported as such
     rather than as agreement, and a publisher measurement that did not resolve
     is separated into a copy conflict and every other non-resolving state.
+
+    Precedence is exclusive and roster-coverage-first: ``roster_coverage_incomplete``
+    is returned before a publisher ``copy_conflict`` is even checked, so a
+    conflicted publisher value under incomplete roster coverage (for example a
+    conflicted RHNUMU18 alongside partial age coverage) is reported only as
+    ``roster_coverage_incomplete`` by this one counter. The conflict itself is
+    not hidden: ``predictor_field_classes``/``household_field_classes`` still
+    carry it under ``copy_conflict`` for the field, independently of this
+    counter's precedence.
     """
     if roster is None:
         return "roster_coverage_incomplete"
