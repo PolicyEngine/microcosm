@@ -362,7 +362,12 @@ def invented(tmp_path, size: Size):
         "tier": None,
     }
     key = digest(b"manifest\0" + canonical(body))
-    checkpoint = write("direct-frame.h5", b"opaque invented checkpoint")
+    # One invented checkpoint per shape, not one shared by both. A single
+    # checkpoint across two differently sized fixtures would have exercised the
+    # manifest population binding at exactly one value, which is the same
+    # blind spot a profile with its size baked in has.
+    checkpoint_bytes = b"opaque invented checkpoint for " + size.name.encode()
+    checkpoint = write("direct-frame.h5", checkpoint_bytes)
     for name in (
         "columns.json",
         "preflight.json",
@@ -434,7 +439,7 @@ def invented(tmp_path, size: Size):
     )
     accounting = write("direct-reported-income.bin", b"opaque invented accounting")
     for mode in ("cold", "warm"):
-        write(f"{mode}-frame.h5", b"opaque invented checkpoint")
+        write(f"{mode}-frame.h5", checkpoint_bytes)
         write(f"{mode}-aggregate-quality.json", {"release_eligible": False})
         for i, node_id in enumerate(IDS):
             for name in ARTIFACT_NAMES[i]:
@@ -750,6 +755,18 @@ def test_publishes_no_identifier_or_host_or_path(tmp_path, size):
         b"sampled_household_mass",
     ):
         assert forbidden not in raw
+
+
+def test_each_shape_carries_its_own_checkpoint_identity(tmp_path):
+    """Two shapes, two population digests, so the binding is exercised twice."""
+    (tmp_path / "small").mkdir()
+    (tmp_path / "wide").mkdir()
+    small = published(tmp_path / "small", SMALL)[1]
+    wide = published(tmp_path / "wide", WIDE)[1]
+    assert small["population_sha256"] != wide["population_sha256"]
+    for graph in (small, wide):
+        for execution in graph["executions"]:
+            assert execution["computation_content_key"] != graph["population_sha256"]
 
 
 def test_unequal_cohorts_are_published_as_recorded(tmp_path):
