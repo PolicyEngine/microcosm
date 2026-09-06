@@ -420,8 +420,9 @@ def test_a_negative_ordinary_numeric_estimate_is_refused(protocol, bundle):
     document = copy.deepcopy(bundle)
     for cell in document["acs"]["B25003"]["cells"]:
         if cell["variable"] == "B25003_002":
-            cell["estimate"].update(raw="-4", numeric_value=-4.0, class_="numeric")
-            cell["estimate"]["class"] = "numeric"
+            cell["estimate"].update(
+                raw="-4", numeric_value=-4.0, **{"class": "numeric"}
+            )
             break
     inventory = ReferenceInventory.from_document(document, protocol=protocol)
     with pytest.raises(ReferenceProjectionError, match="Negative ordinary numeric"):
