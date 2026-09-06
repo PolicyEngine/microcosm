@@ -1,0 +1,71 @@
+{
+  "contract_id": "sipp-nominal-equity-consumer/1",
+  "target": {
+    "name": "sipp_all_vehicle_equity_dec2022",
+    "concept": "sipp_theq_veh",
+    "source_field": "THEQ_VEH",
+    "period": 2022,
+    "month": 12,
+    "unit": "USD_nominal_2022",
+    "grain": "residence_household_december_2022",
+    "signed": true
+  },
+  "predictor": {
+    "name": "household_size",
+    "roster_column": "roster_household_size",
+    "basis": "complete_linked_december_membership"
+  },
+  "admission": {
+    "rule_id": "sipp-december-equity-admission/1",
+    "requires": [
+      "known_household_copy_agreement_target",
+      "known_complete_member_mean_weight",
+      "strictly_positive_mean_weight"
+    ],
+    "flag_9_policy": "retained_component_derived_allocation_unresolved",
+    "reweighting": "none",
+    "expected_admitted_residences": 17588,
+    "expected_excluded_zero_weight": 20,
+    "expected_excluded_unknown_target": 38
+  },
+  "model": {
+    "kernel": "fit.qrf.train@1",
+    "apply_kernel": "fit.qrf.apply@1",
+    "n_estimators": 2,
+    "seed": 0,
+    "zero_atol": 0.0,
+    "max_samples_leaf": null
+  },
+  "source": {
+    "selection": "all_ssuids",
+    "format": "sipp_december_source_v1",
+    "producer_binding": "3905d7a931d61c971143f676b9961c288f2cbf81c67fa381e9888aac9834a574",
+    "projection_key": "c02e1f727b28166563c91c3f9a6c0e6879418b320d0abb1dbce362655724b264",
+    "projection_sha256": "b369883446db2f052f8996cbec3ef2ad7798a13e76a771ba2a36a34a4ca53906",
+    "projection_bytes": 4287344,
+    "receipt_key": "4535fbd11ad266833ed3fa0089ff28ae347a249ae1912b0e51205b6fe4fa7e25",
+    "receipt_sha256": "ce89d7712f61907754896a41d38bff58c3aaa647e886d2a7a91ac70b3bdad7bf",
+    "receipt_bytes": 6183,
+    "full_membership_digest": "e040e25bfc9201ffe87e3eabc6fe85bff39ef39a46d5088bd7be633ab16f7779",
+    "selected_membership_digest": "e040e25bfc9201ffe87e3eabc6fe85bff39ef39a46d5088bd7be633ab16f7779",
+    "measurement_digest": "4ae1203d880b560234e2088bca3bcf7db317681cbc3282c4a0123c16d45bd131",
+    "selected_ssuid_digest": "9ba6d3978010a1555b9e700adb52c2a942f0cd83fc749f388c1fb016700f94c4",
+    "parent_sha256": "5c30439e365fc26483318ef61d1d8f4bb2f0e9d6bb47c22c06756a7698733ee2",
+    "parent_content_key": "12c38ccebcc1c57fa83798eaeb4bafdfff714a90311b54751256a3a64a8ea46f",
+    "parent_bytes": 3726010471,
+    "parent_name": "sipp_2023_pu2023",
+    "parent_revision": "21280dca5995e978d706740a8a4b9b7860cfd7b6",
+    "master_sha256": "b62876a0763a0b45f2c4873b055b35c264d3a67640b8a8b3590b650aa1db679e",
+    "registry_sha256": "085658b4a9c8cba0e59624a64ae998c3e07d63ceba2243ab92904a0bef5f8402",
+    "dictionary_sha256": "0f1c5fbd29b24d3f1c18e7168a0f6d9fdfa7578b58d247fa9f475093a6db894f",
+    "survey_year": 2023,
+    "reference_year": 2022,
+    "counts": {
+      "december_people": 39513,
+      "december_residences": 17646,
+      "december_ssuids": 17314,
+      "multi_residence_ssuids": 318,
+      "zero_weight_december_people": 29
+    }
+  }
+}
