@@ -2,52 +2,54 @@
 
 Lane branch `microcosm-us-composed-population-20260906`, based on
 `us-launch-integration-20260906` at `ab10f77854b7b9e8057a07dbec40d15c10b96297`.
-`origin/main` (`c1b83241`) is an ancestor of that base; the base is 124 commits
+`origin/main` (`c1b83241`) is that base's merge base; the base is 124 commits
 ahead and 0 behind. Review root for receipts:
 `~/architecture-reviews/microcosm-20260904`, files prefixed
-`us-composed-population-`.
+`us-composed-population-`. Nothing pushed, merged or published.
 
 ## State
 
-The composed seam and its reviewed implementation scope exist and hash. Tests
-are not written yet, so nothing here is evidence of execution parity.
+Complete for this lane. The composed graph exists, runs, and is covered by 25
+passing tests over invented sources through the real codecs and kernels. No
+genuine source has been read and no genuine run has been performed; the
+genuine-small run is proposed in `docs/us-composed-population-graph.md` only.
 
 ## Done
 
-- Worktree/branch from the frozen base; base relation recorded.
-- Probe 1 (`us-composed-population-probe1-prepared-frame.*`): the real prepared
-  ASEC Frame satisfies `spine_assembly._validate_source_frame` unchanged —
-  US schema, household-only DESIGN weights, no links, integral nonnegative IDs,
-  no preassembled support provenance.
-- Probe 2 (`us-composed-population-probe2-compose.*`): composing it with a real
-  native ACS Frame built from invented PUMS archives has exactly **one** schema
-  difference — `tax_unit_role_input` / `filing_status_input` / `PERIDNUM` are
-  `string[python, pd.NA]` on the prepared arm and `string[python, nan]` on the
-  ACS arm, which `_stack_spine_tables` refuses. With that one storage bridge,
-  `prepare_stacked_spine` passes untouched.
-- Probe 3 (`us-composed-population-probe3-two-parent.*`): the executor cannot
-  structurally combine two parent populations. A tuple `base` is "not a
-  structural node"; a `CREATE` node "has no base or population"; a structural
-  node "declares base, not population". A single `CREATE` over two declared
-  sources compiles — the shape production assembly already uses.
-- `graph_composed_population.py`: two-source CREATE + the **reused**
-  `USSpineHarmonizeKernel` + the **reused** `us_geography_nodes`. The narrow
-  bridge, a typed source-origin artifact, and pass-through of the prepared
-  arm's four typed evidence artifacts so later nodes can be appended.
-- Reviewed implementation scope `composed_population_v1`: STAGE_DEPENDENCIES
-  entry, inventory stage as the union of `assembly_prepare`, `asec_prepared_v3`
-  and `geography` plus the new module, both bound codecs, both runtime-option
-  families. All eight stages hash.
+- Probes (preserved in the review root, not committed):
+  - The real prepared ASEC Frame satisfies `spine_assembly._validate_source_frame`
+    unchanged.
+  - Composing it with a real native ACS Frame has exactly **one** schema
+    difference — physical string storage on three columns — after which
+    `prepare_stacked_spine` passes untouched.
+  - The executor cannot structurally combine two parent populations: tuple
+    `base`, `CREATE`-with-base and structural-node-with-population all refuse.
+    A single `CREATE` over two sources compiles.
+- `graph_composed_population.py`: one new CREATE kernel, the **reused**
+  `USSpineHarmonizeKernel`, the **reused** geography nodes, the narrow storage
+  bridge, a typed `source_origin` artifact and pass-through of the prepared
+  arm's four typed evidence artifacts.
+- Reviewed implementation scope `composed_population_v1`: the union of
+  `assembly_prepare`, `asec_prepared_v3` and `geography` plus the new module,
+  both bound codecs, both runtime-option families.
+- `test_us_graph_composed_population.py`: 25 tests — direct, cold graph, and
+  fresh-process warm replay with zero kernels; native identity, absence,
+  membership, lineage, mass, importance anchor, evidence, geography, checkpoint;
+  eleven refusal cases; and a structural case with a reordered multi-SPM
+  household.
+- `docs/us-composed-population-graph.md`, including the genuine-small
+  preparation/runner proposal and its memory measurement plan.
 
-## Known consequence
+## Not done, deliberately
 
-Adding any stage edits `graph_implementation.py`, which is a bound module of
-every stage, so **every** existing US stage implementation identity moves and
-every existing US graph cache is invalidated. Baseline and post-edit digests
-are preserved in `us-composed-population-stage-hashes-{base,after}.json`.
+No engine, PUF cloning, transfer, calibration, dashboard, CD reference, housing
+authority or dynamics work, and no new income-source mapping. The CREATE node
+exposes the artifacts those nodes need so they can be appended.
 
-## Next
+## Known consequences and limits
 
-- The direct / cold-graph / fresh-process-warm test file.
-- Refusal coverage: bad source, context, producer identity, missing evidence.
-- Genuine-small preparation/runner proposal (authored, not executed).
+See `us-composed-population-REPORT.md` for the full list. The load-bearing ones:
+adding any stage moves **every** existing US stage implementation identity and
+invalidates every existing US graph cache; `person.age` is observed on the ACS
+arm only; the 50/50 household mass shares are the inherited #578 pilot default,
+not a decision this lane makes.
