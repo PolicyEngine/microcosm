@@ -3,6 +3,7 @@
 import hashlib
 import struct
 from dataclasses import replace
+from importlib import resources
 
 import numpy as np
 import pandas as pd
@@ -214,3 +215,85 @@ def test_file_roundtrip_and_transport_corruption_refusal(tmp_path):
     path.write_bytes(changed)
     with pytest.raises(housing.HousingStatusRefusalError, match="PAYLOAD_CHECKSUM"):
         housing.read_housing_status(path, expected=value)
+
+
+def test_unknown_reasons_distinguish_each_contract_gap():
+    """The three unknown routes must stay separable, not collapse to one bit."""
+    bits = housing._codebook()["unknown_reason_bits"]
+    for change, expected in (
+        ({"HPUBLIC": 0, "HLORENT": 0}, bits["parent_answer"]),
+        ({"HPUBLIC": 2, "HLORENT": 0}, bits["lower_answer"]),
+        ({"H_TENURE": 0}, bits["scope"]),
+    ):
+        result = housing.classify_synthetic_housing_status(observations(**change))
+        assert result.array("status").tolist() == [0]
+        assert result.array("unknown_reasons").tolist() == [expected]
+        assert result.array("receipt_valid").tolist() == [0]
+
+
+def test_raw_codes_survive_conflict_and_unknown_classification():
+    """The publisher's answers are retained whatever interpretation they receive."""
+    for change in (
+        {"HPUBLIC": 1, "HLORENT": 1},
+        {"H_TENURE": 1, "HPUBLIC": 2, "HLORENT": 2},
+        {"HPUBLIC": 0, "HLORENT": 0},
+        {"H_TENURE": 0, "HPUBLIC": 2, "HLORENT": 1},
+    ):
+        table = observations(**change)
+        result = housing.classify_synthetic_housing_status(table)
+        assert result.array("status").tolist() != [1]
+        for name in housing.RAW_COLUMNS:
+            assert result.array(name).tolist() == table[name].tolist()
+
+
+def test_authority_binds_both_named_publisher_documents():
+    """Dictionary and questionnaire hashes and locators both reach the artifact."""
+    document = housing.classify_synthetic_housing_status(observations()).header_data[
+        "authority"
+    ]
+    assert [entry["survey_year"] for entry in document["surveys"]] == [2023, 2024, 2025]
+    for entry in document["surveys"]:
+        assert entry["income_year"] == entry["survey_year"] - 1
+        for role in ("dictionary", "questionnaire"):
+            assert len(entry[role]["sha256"]) == 64
+            assert entry[role]["url"].startswith("https://www2.census.gov/")
+            assert entry[role]["pages"], "every locator needs at least one page"
+            for page in entry[role]["pages"]:
+                assert type(page["page_index_zero_based"]) is int
+                assert len(page["page_text_sha256"]) == 64
+    # The 2023/24 facsimile prints 3/4 where the named dictionary encodes 1/2.
+    printed = {
+        entry["survey_year"]: entry["questionnaire"]["printed_answer_numbers_q85"]
+        for entry in document["surveys"]
+    }
+    assert printed == {2023: "3/4", 2024: "3/4", 2025: "1/2"}
+    assert document["facsimile_discrepancy"]["recode_inferred"] is False
+    assert document["facsimile_discrepancy"]["cause"] == "unresolved"
+    assert document["field_access"]["positional_parser"] == "not_used"
+
+
+def test_authority_resource_is_pinned_and_tampering_refuses(monkeypatch):
+    """The declared pin matches the shipped bytes and is actually enforced."""
+    payload = (
+        resources.files("microcosm.build.us_runtime")
+        .joinpath(housing.AUTHORITY_RESOURCE)
+        .read_bytes()
+    )
+    assert hashlib.sha256(payload).hexdigest() == housing.AUTHORITY_SHA256
+    monkeypatch.setattr(housing, "AUTHORITY_SHA256", "0" * 64)
+    with pytest.raises(
+        housing.HousingStatusRefusalError, match="AUTHORITY_FINGERPRINT"
+    ):
+        housing.classify_synthetic_housing_status(observations())
+
+
+def test_authority_dictionary_pins_cannot_drift_from_the_module(monkeypatch):
+    """A dictionary pin changed in code without the resource refuses production."""
+    year, _, pages = housing.DICTIONARIES[0]
+    monkeypatch.setattr(
+        housing, "DICTIONARIES", ((year, "0" * 64, pages),) + housing.DICTIONARIES[1:]
+    )
+    with pytest.raises(
+        housing.HousingStatusRefusalError, match="AUTHORITY_DICTIONARY_PINS"
+    ):
+        housing.classify_synthetic_housing_status(observations())
