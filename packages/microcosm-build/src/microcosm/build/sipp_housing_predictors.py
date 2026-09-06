@@ -112,6 +112,12 @@ _STATE_LABELS = (
     "Foreign Country",
 )
 NON_STATE_AREA_CODES = (60, 61)
+# Derived, never counted by hand: the published set less the codes that are
+# not a state or the District of Columbia. A dictionary that adds a code must
+# move this number by editing ``_STATE_CODES`` alone.
+STATE_AND_DC_CODES = tuple(
+    code for code in _STATE_CODES if code not in NON_STATE_AREA_CODES
+)
 
 # The household predictors that publish an allocation flag. ``TAGE_EHC``
 # prints "Status Flag: NA" and so cannot be graded against one.

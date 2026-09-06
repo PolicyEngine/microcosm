@@ -351,7 +351,7 @@ def prospective_predictors() -> dict:
             "field": "TEHC_ST",
             "published_code_count": 53,
             "codes_that_are_not_a_state_or_dc": list(hpred.NON_STATE_AREA_CODES),
-            "state_and_dc_code_count": 51,
+            "state_and_dc_code_count": len(hpred.STATE_AND_DC_CODES),
             "domain_is_a_published_code_set_not_the_range_01_56": True,
             "sub_state_geography_published_on_this_column": False,
             "sub_state_values_derived": False,

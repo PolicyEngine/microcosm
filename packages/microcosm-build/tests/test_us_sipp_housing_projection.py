@@ -2108,3 +2108,17 @@ def test_a_copy_conflict_reports_the_members_outside_the_universe_behind_it():
     ).diagnostics["prospective_predictors"]
     assert other["predictor_copy_conflicts"]["THTOTINC"] == 1
     assert other["predictor_copy_conflict_members_not_in_universe"]["THTOTINC"] == 0
+
+
+def test_the_state_and_dc_count_is_derived_from_the_published_code_set():
+    """Not a hand-counted 51: the published set less the non-state area codes."""
+    assert predictors.STATE_AND_DC_CODES == tuple(
+        code
+        for code in predictors._STATE_CODES
+        if code not in predictors.NON_STATE_AREA_CODES
+    )
+    assert len(predictors.STATE_AND_DC_CODES) == 51
+    assert len(predictors._STATE_CODES) == 53
+    geography = hp.recipe_document()["prospective_predictors"]["state_geography"]
+    assert geography["state_and_dc_code_count"] == len(predictors.STATE_AND_DC_CODES)
+    assert geography["published_code_count"] == len(predictors._STATE_CODES)
