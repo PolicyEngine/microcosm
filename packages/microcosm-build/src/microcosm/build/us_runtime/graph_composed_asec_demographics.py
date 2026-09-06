@@ -179,6 +179,11 @@ from .graph_composed_asec_binding import (
     bind_composed_asec_arm_rows,
     bind_composed_asec_document,
 )
+from .graph_composed_asec_demographic_implementation import (
+    DEPENDENCIES,
+    implementation_hash,
+    implementation_manifest,
+)
 from .graph_composed_asec_measures import (
     REPORTED_INCOME_NODE,
     composed_asec_measure_nodes,
@@ -193,11 +198,6 @@ from .graph_composed_population import (
 )
 from .graph_context import US_FRAME_CONTEXT_TYPE, _decode, _mass_records, _row_identity
 from .graph_geography import LOOKUP_SOURCES, us_geography_nodes
-from .graph_implementation import (
-    STAGE_DEPENDENCIES,
-    implementation_hash,
-    implementation_manifest,
-)
 
 DEMOGRAPHIC_STAGE = "composed_asec_demographic_binding_v1"
 DEMOGRAPHIC_PHASE = "bind_composed_asec_demographics"
@@ -1557,7 +1557,7 @@ class USAsecDemographicSourceKernel(KernelBase):
     capabilities = Capabilities(
         determinism=Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=STAGE_DEPENDENCIES[DEMOGRAPHIC_STAGE],
+        dependencies=DEPENDENCIES,
     )
 
     def implementation_hash(self) -> str:
@@ -1645,7 +1645,7 @@ class USComposedAsecDemographicBindKernel(KernelBase):
     capabilities = Capabilities(
         determinism=Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
-        dependencies=STAGE_DEPENDENCIES[DEMOGRAPHIC_STAGE],
+        dependencies=DEPENDENCIES,
     )
 
     def implementation_hash(self) -> str:

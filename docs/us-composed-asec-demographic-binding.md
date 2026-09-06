@@ -64,3 +64,35 @@ sampling, nullable states, exact ACS/other-column/weight preservation, native
 roster mismatch, cohort and coordinate refusals, source transport tampering,
 and relevant cache-key invalidation. A separate root review must approve this
 prepared stage before genuine source artifacts enter it.
+
+## Scoped implementation identity
+
+`graph_composed_asec_demographic_implementation.py` validates the existing
+`composed_asec_binding_v1` implementation manifest and adds the three modules in
+`asec_demographic_graph_inventory.json`. The original implementation service and
+global inventory retain their accepted bytes. The separate inventory binds its
+own bytes, exact dependency and module rosters, classified imports, and the
+existing AST checks for unbound imports and resource access. Its manifest also
+includes the live demographic source contract, member pins, transitive source
+verifier identity, and dependency versions. Only the two new kernels consume
+this extension manifest.
+
+Adding this inventory does not change upstream keys. There is one independent
+upstream change relative to the accepted composition: `e959b3503` corrected and
+sealed the composed arm's unbound-demographic metadata. That actual receipt
+change deliberately invalidates the arm binding and its two measurement nodes.
+The preparation, harmonization, and four geography nodes retain their accepted
+identities. Their cached source outputs can supply the three corrected receipt
+nodes and the two new demographic nodes without rerunning source preparation.
+The older receipts remain historical artifacts; this extension does not relabel
+them or overwrite their recorded implementation hashes.
+
+The local comparison uses accepted receipt/manifest metadata and invented
+source bytes. A prepared-directory content key hashes raw packed file contents,
+so individual file SHA pins alone cannot reconstruct that aggregate key.
+Full genuine replay therefore remains a separate root-reviewed step. This
+implementation does not read genuine source tables to perform the comparison.
+When an authenticated run receipt supplies those aggregate source-content
+keys, all nine node keys can be recomputed from metadata alone. The local
+comparison uses the accepted clone extension's receipt to do this and confirms
+the six unchanged keys and three deliberate changes described above.

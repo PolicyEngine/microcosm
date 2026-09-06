@@ -26,3 +26,16 @@ The root review artifacts are
 `/Users/maxghenis/architecture-reviews/microcosm-20260904/us-combined-demographic-binding-REPORT.md`
 and its JSON companion. The detailed stage contract is in
 `docs/us-composed-asec-demographic-binding.md`.
+
+Scoped identity follow-up continues on a fresh branch from the frozen behavior
+baseline `67e867a664f23fbc8796872a9d65c30a75ee744f`. The shared implementation
+service and inventory are restored exactly to accepted source-base bytes; a
+separate demographic implementation manifest reuses the existing closed import
+and resource validators. The new helper does not register a global stage.
+
+Metadata comparison also identified the substantive `e959b3503` correction to
+the existing arm's demographic receipt semantics. Root explicitly chose to
+preserve it. Six unchanged upstream nodes therefore retain their identities;
+three corrected arm/measurement nodes deliberately change. This supersedes the
+initial all-nine preservation requirement for this branch. Frozen composition
+and clone branches remain untouched.

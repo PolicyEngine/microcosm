@@ -352,6 +352,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Typed metadata codec and source-blind geography graph adapter.
         "graph_context.py",
         "graph_implementation.py",
+        # Separate downstream identity inventory; validates source/code bytes,
+        # imports and resources without reading or treating population rows.
+        "graph_composed_asec_demographic_implementation.py",
         "graph_geography.py",
         # Measured-hours adapter; still subject to the all-runtime AST scan.
         "graph_early_preparation.py",
