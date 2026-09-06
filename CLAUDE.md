@@ -20,6 +20,14 @@ US source/geography graph implementation scopes and their reviewed dependency
 inventory are documented in `docs/us-production-graph-development.md`. New
 dependency/resource failures require a scope review, not an automatic pin refresh.
 
+The development age-only calibration connection — the immutable activation
+declaration over the pinned direct-national ACS 2024 reference bundle, the
+source-blind household age-count operator, and their composition with the
+unchanged `demographic_calibration_node` — is documented in
+`docs/us-national-age-activation.md`. A captured reference bundle is evidence,
+not permission: only that reviewed declaration activates targets, and B19001
+and B25003 stay reserved same-source holdouts.
+
 The composed prepared-ASEC/native-ACS population seam is documented in
 `docs/us-composed-population-graph.md`; the stage that binds its carried ASEC
 evidence to the composed ASEC rows and derives the reviewed corrected leaves and

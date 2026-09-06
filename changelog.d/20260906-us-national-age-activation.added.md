@@ -1,0 +1,1 @@
+Activate the direct-national ACS 2024 published age distribution as a development calibration connection: an immutable activation declaration over the pinned reference bundle mints a new target registry for the eighteen disjoint S0101 age cells, and a source-blind population operator produces the matching household count columns for the existing demographic calibration node.
