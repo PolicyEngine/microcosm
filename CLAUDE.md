@@ -20,6 +20,14 @@ US source/geography graph implementation scopes and their reviewed dependency
 inventory are documented in `docs/us-production-graph-development.md`. New
 dependency/resource failures require a scope review, not an automatic pin refresh.
 
+The composed prepared-ASEC/native-ACS population seam is documented in
+`docs/us-composed-population-graph.md`; the stage that binds its carried ASEC
+evidence to the composed ASEC rows and derives the reviewed corrected leaves and
+reported observations over them is `docs/us-composed-asec-binding.md`. That
+binding module reads source provenance by charter and is classified as a
+source-spine provenance owner; its measurement module stays source-blind. Do not
+add a provenance-owner exemption to an ordinary population operator.
+
 IRS fiscal targets require explicit supported return universes and actual model
 filer decisions before household aggregation. Target-frame materializer version
 13 invalidates older SOI measurements; its compilation receipt records filing
