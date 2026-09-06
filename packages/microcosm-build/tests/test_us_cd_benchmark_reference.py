@@ -1661,10 +1661,31 @@ def test_the_command_line_judges_its_arguments_before_it_opens_the_inventory(
 
     assert not absent.exists()
 
-    # The same arguments over a real path get past the selector checks and are
-    # refused by the loader instead, which is what proves the ordering.
+    # With a valid selector the same absent path gets past the selector checks
+    # and is refused by the loader instead: the refusal moves, which is what
+    # proves the ordering.
     assert main([*base, "--district", "5001900US0101"]) == 1
     assert "No inventory file" in capsys.readouterr().err
+
+    # And over a real path the loader is reached and the projection succeeds,
+    # so the selector checks are not merely failing everything early.
+    real, real_sha = _write(tmp_path, bundle)
+    assert (
+        main(
+            [
+                "--inventory",
+                str(real),
+                "--expect-sha256",
+                real_sha,
+                "--aggregate-only",
+                "--block",
+                "population_total",
+                "--district",
+                "5001900US0101",
+            ]
+        )
+        == 0
+    )
 
 
 def test_the_module_exposes_no_national_or_scoring_entry_point():
