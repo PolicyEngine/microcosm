@@ -2,6 +2,17 @@
 
 Session-handoff journal. Accurate when written; check git for current truth.
 
+> **Historicized 2026-09-06.** Everything below describes the lane as it stood at
+> `ffbef26eaba498028b64d646e369651999c71900`. That head was reviewed (root + peer)
+> and the review requested changes; the fixes live on
+> `us-housing-consumer-fixes-20260906` and are journalled in
+> [`PROGRESS-us-housing-consumer-fixes.md`](PROGRESS-us-housing-consumer-fixes.md).
+> Two statements below are no longer current: the `R/`-prefixed paths are session
+> abbreviations that do not resolve after checkout (the consumer now names
+> `docs/us-housing-counterfactual-charge-requirements.md` instead), and the test
+> counts predate the fix lane. "Nothing was pushed" and "Next: root review"
+> describe that moment, not now.
+
 ## Relation
 
 - Parent worktree K: `/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-integration-20260906`,

@@ -48,8 +48,9 @@ The candidate source is the authenticated December SIPP producer
 [`us-sipp-december-source.md`](us-sipp-december-source.md)), whose current
 household-copied field registry holds vehicle count, value, equity and debt
 only — **no** rent, mortgage, utility, tenure or assistance field. Adding them
-is a separate source lane with its own review; it is neither started nor
-implied by this consumer.
+is a separate source lane, reviewed on its own terms. This consumer implements
+no part of it and asserts nothing about its progress; only a shipped, reviewed
+charge source can change the verdict below.
 
 That lane must, at minimum:
 
