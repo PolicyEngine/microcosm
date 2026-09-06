@@ -22,7 +22,7 @@ from microcosm.build.us_runtime.graph_sources import (
 )
 from microcosm.graph import ArtifactType, ContentStore, compile_graph, run_graph
 from microcosm.graph.canonical import canonical_json
-from microcosm.graph.errors import StoreMissError
+from microcosm.graph.errors import NodeRejectedError, StoreMissError
 from microcosm.graph.keys import opaque_artifact_key
 
 
@@ -437,3 +437,150 @@ def test_nested_source_json_refuses_with_sanitized_domain_error():
     raw = b'{"deep":' + b"[" * 1200 + b"0" + b"]" * 1200 + b"}"
     with pytest.raises(source.ACSHousingSourceError, match="JSON_DEPTH"):
         source._parse_json(raw, source.ACS_HU_RECEIPT_MAX_BYTES)
+
+
+def _seeded_positions(frame, serialnos):
+    household = frame.table("household")
+    ids = household.loc[household.SERIALNO.isin(serialnos), "household_id"]
+    return frame.person.person_household_id.isin(ids)
+
+
+def test_create_seed_subset_then_select_subset_cold_and_warm(tmp_path, monkeypatch):
+    """A seeded CREATE stores a gapped person index; SELECT must hash it as stored."""
+    source_dir, snapshots = _fixture(tmp_path, monkeypatch)
+    seed = ("2024HU0000002", "2024GQ0000002")
+    further = ("2024GQ0000002",)
+    full = source.prepare_acs_housing_population(source_dir, snapshot_root=snapshots)
+    seeded = source.prepare_acs_housing_population(
+        source_dir, snapshot_root=snapshots, serialnos=seed
+    )
+    keep_full = _seeded_positions(full.frame, seed)
+    retained = full.frame.person.index.to_numpy()[keep_full.to_numpy()].tolist()
+    labels = seeded.frame.person.index.to_numpy().tolist()
+    assert labels == retained
+    # The point of the case: the retained labels are not 0..n-1.
+    assert labels != list(range(len(labels)))
+    assert seeded.receipt["full_source_frame_before_selection"] is True
+
+    expected = seeded.frame.select(_seeded_positions(seeded.frame, further))
+    registry = bridge.acs_housing_registry(snapshot_root=snapshots)
+    graph = bridge.acs_housing_graph(
+        frame_column_declarations(seeded.frame),
+        serialnos=seed,
+        selected_serialnos=further,
+    )
+    compiled = compile_graph(graph)
+    store = ContentStore(tmp_path / "seeded-store", codecs=us_source_codecs())
+    result = run_graph(
+        compiled,
+        store=store,
+        kernels=registry,
+        sources={bridge.SOURCE_NAME: source_dir},
+    )
+    assert source.frame_content_sha256(
+        result.population(bridge.CREATE_NODE)
+    ) == source.frame_content_sha256(seeded.frame)
+    assert source.frame_content_sha256(
+        result.population(bridge.SELECT_NODE)
+    ) == source.frame_content_sha256(expected)
+
+    calls = []
+
+    def no_run(self, context):
+        calls.append(self.ref)
+        raise AssertionError("warm replay executed a kernel")
+
+    monkeypatch.setattr(bridge.ACSHousingCreateKernel, "run", no_run)
+    monkeypatch.setattr(bridge.ACSHousingSelectKernel, "run", no_run)
+    warm = run_graph(
+        compiled,
+        store=store,
+        kernels=registry,
+        sources={bridge.SOURCE_NAME: source_dir},
+        resume="require",
+    )
+    assert source.frame_content_sha256(
+        warm.population(bridge.SELECT_NODE)
+    ) == source.frame_content_sha256(expected)
+    assert (
+        warm.population(bridge.CREATE_NODE).person.index.to_numpy().tolist() == retained
+    )
+    assert calls == []
+
+
+def test_vacancy_only_seed_and_selection_refuse(tmp_path, monkeypatch):
+    """A vacancy carries source evidence but no person; neither route may pass."""
+    source_dir, snapshots = _fixture(tmp_path, monkeypatch)
+    vacancy = ("2024HU0000003",)
+    with pytest.raises(source.ACSHousingSourceError, match="EMPTY_GRAPH_POPULATION"):
+        source.prepare_acs_housing_population(
+            source_dir, snapshot_root=snapshots, serialnos=vacancy
+        )
+    prepared = source.prepare_acs_housing_population(
+        source_dir, snapshot_root=snapshots
+    )
+    # The vacancy is present in the source projection and absent from the Frame.
+    assert vacancy[0] in set(prepared.source.households.iloc[:, 0])
+    assert vacancy[0] not in set(prepared.frame.table("household").SERIALNO)
+    registry = bridge.acs_housing_registry(snapshot_root=snapshots)
+    graph = bridge.acs_housing_graph(
+        frame_column_declarations(prepared.frame), selected_serialnos=vacancy
+    )
+    store = ContentStore(tmp_path / "vacancy-store", codecs=us_source_codecs())
+    # The executor reports a refused kernel as NodeRejected; the refusal itself
+    # must still be the module's own typed error, not a substituted one.
+    with pytest.raises(NodeRejectedError, match="GRAPH_ACS_EMPTY_SELECTION") as caught:
+        run_graph(
+            compile_graph(graph),
+            store=store,
+            kernels=registry,
+            sources={bridge.SOURCE_NAME: source_dir},
+        )
+    assert type(caught.value.__cause__) is source.ACSHousingSourceError
+    assert str(caught.value.__cause__) == "GRAPH_ACS_EMPTY_SELECTION"
+
+
+def test_registered_codec_loader_prepares_through_a_real_store(tmp_path, monkeypatch):
+    """The registered codec's success path, its store child and its preparation."""
+    source_dir, snapshots = _fixture(tmp_path, monkeypatch)
+    direct = source.prepare_acs_housing_population(source_dir, snapshot_root=snapshots)
+    codecs = us_source_codecs()
+    assert codecs.get(source.ACS_HU_CODEC) is source.load_graph_acs_housing_universe
+    store = ContentStore(tmp_path / "codec-store", codecs=codecs)
+    frame = codecs.load(source.ACS_HU_CODEC, source_dir, store=store)
+    assert source.frame_content_sha256(frame) == source.frame_content_sha256(
+        direct.frame
+    )
+    child = Path(store.root) / "acs-hu-source-captures-v1"
+    assert child.is_dir()
+    captures = [p for p in child.iterdir() if p.name.startswith("acs-hu-capture-")]
+    assert len(captures) == 1
+    assert {p.name for p in captures[0].iterdir()} >= {
+        "csv_hus.zip",
+        "csv_pus.zip",
+        "full-projection.json",
+    }
+    # The loader owns its child; it never writes into the caller's source.
+    assert {p.name for p in source_dir.iterdir()} == {"csv_hus.zip", "csv_pus.zip"}
+
+
+def test_bound_evidence_binds_source_receipt_pins_format_and_vintage(
+    tmp_path, monkeypatch
+):
+    """Evidence self-verifies its archive pins instead of relying on transitivity."""
+    source_dir, snapshots = _fixture(tmp_path, monkeypatch)
+    prepared = source.prepare_acs_housing_population(
+        source_dir, snapshot_root=snapshots
+    )
+    context = encode_us_frame_context(prepared.frame)
+    payload = bridge.encode_acs_housing_evidence(prepared)
+    bound = bridge.bind_acs_housing_evidence(
+        payload, prepared_receipt=prepared.receipt_json, frame_context=context
+    )
+    assert type(bound) is bridge.BoundACSHousingEvidence
+    rotated = tuple((r, n, d, s + 1) for r, n, d, s in source._pins())
+    monkeypatch.setattr(source, "_ARCHIVE_PINS", rotated)
+    with pytest.raises(source.ACSHousingSourceError, match="SOURCE_PINS"):
+        bridge.bind_acs_housing_evidence(
+            payload, prepared_receipt=prepared.receipt_json, frame_context=context
+        )

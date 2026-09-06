@@ -2583,3 +2583,52 @@ def test_readback_with_a_missing_snapshot_root_refuses(acs):
         output_dir,
         snapshot_root=acs.tmp_path / "absent-root",
     )
+
+
+def test_wrong_size_candidate_refuses_as_a_candidate_not_as_a_parent(acs):
+    """Readback size failures must name the candidate, not the pinned archives."""
+    for filename, mutate in (
+        (NAMES["projection_filename"], lambda raw: raw + b" "),
+        (NAMES["projection_filename"], lambda raw: raw[:20]),
+        (NAMES["receipt_filename"], lambda raw: raw + b" "),
+        (NAMES["receipt_filename"], lambda raw: raw[:20]),
+    ):
+        output_dir = acs.output_dir()
+        acs.produce(output_dir=output_dir)
+        path = output_dir / filename
+        make_writable(path).write_bytes(mutate(path.read_bytes()))
+        assert refuses(acs, acs.load, output_dir) == "RECONSTRUCTION_SIZE"
+
+
+def test_parent_archive_size_failures_keep_their_own_reason_codes(acs):
+    """The candidate code must not be borrowed by, or borrow from, the parents."""
+    output_dir = acs.output_dir()
+    acs.produce(output_dir=output_dir)
+    intact = acs.household_zip.read_bytes()
+    acs.household_zip.write_bytes(intact[:-1])
+    assert refuses(acs, acs.load, output_dir) == "SOURCE_SIZE"
+    acs.household_zip.write_bytes(intact + b"\x00")
+    assert refuses(acs, acs.load, output_dir) == "FILE_TOO_LARGE"
+    acs.household_zip.write_bytes(intact)
+    assert acs.load(output_dir) is not None
+
+
+def test_failure_record_write_failure_does_not_mask_the_original_refusal(
+    acs, monkeypatch
+):
+    """A failed failure record must never replace the refusal it was recording."""
+    actual_write = source._write
+    attempted = []
+
+    def refuse_the_failure_record(path, data, cap):
+        if Path(path).name == "failure.json":
+            attempted.append(Path(path).name)
+            raise OSError(28, "No space left on device")
+        return actual_write(path, data, cap)
+
+    monkeypatch.setattr(source, "_write", refuse_the_failure_record)
+    corrupted = bytearray(acs.household_zip.read_bytes())
+    corrupted[-1] ^= 0xFF
+    acs.household_zip.write_bytes(bytes(corrupted))
+    assert refuses(acs, acs.produce) == "SOURCE_SHA256"
+    assert attempted == ["failure.json"]
