@@ -1,5 +1,6 @@
 """Source-blind real preparation/graph accounting; this file never calls PE."""
 
+import csv
 import importlib.util
 import json
 import os
@@ -9,6 +10,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime import asec_current_money as money
@@ -23,12 +26,14 @@ from microcosm.build.us_runtime.asec_current_money_selection import (
     decode_selected_current_money,
     parse_current_money_body,
 )
+from microcosm.build.us_runtime.graph_implementation import implementation_hash
 from microcosm.build.us_runtime.graph_sources import (
     frame_column_declarations,
     us_source_codecs,
 )
 from microcosm.graph import ContentStore, Owned, compile_graph, run_graph
 from microcosm.graph.canonical import canonical_json
+from microcosm.graph.errors import StoreMissError
 
 KERNELS = (
     bridge.USAsecPreparedCreateKernel,
@@ -320,7 +325,15 @@ def test_real_kernel_refuses_changed_lineage_and_inputs(executed, mutation):
         else:
             data["person_positions_sha256"] = "f" * 64
         artifacts[name] = replace(artifacts[name], payload=canonical_json(data))
-    with pytest.raises(ValueError):
+    reasons = {
+        "source_producer": "ACCOUNTING_PRODUCER|BOUND_INCOME",
+        "selected_producer": "ACCOUNTING_PRODUCER|SELECTED_",
+        "source_type": "ACCOUNTING_SOURCE_TYPE|INCOME_ARTIFACT_TYPE",
+        "source_year": "ACCOUNTING_SOURCE_COHORTS",
+        "selection_positions": "ACCOUNTING_SOURCE_POSITIONS|SELECTED_",
+        "incumbent": "REPORTED_INCOME_COLUMN|FRAME_CONTEXT",
+    }
+    with pytest.raises(ValueError, match=reasons[mutation]):
         income.USAsecReportedIncomeKernel().run(
             replace(context, artifacts=artifacts, tables=tables)
         )
@@ -386,7 +399,15 @@ def test_fully_rechecksummed_source_transport_still_requires_its_definition(
         content_sha256=money._sha(head + body),
         payload_sha256=money._sha(payload),
     )
-    with pytest.raises(money.MoneyRefusalError):
+    reasons = {
+        "price": "BOUND_INCOME_DEFINITION",
+        "nominal": "BOUND_INCOME_CONTENT",
+        "source_frame": "BOUND_INCOME_CONTENT",
+        "scope": "BOUND_INCOME_CONTENT",
+        "zero_class": "BOUND_INCOME_CONTENT",
+        "join": "BOUND_INCOME_CONTENT",
+    }
+    with pytest.raises(money.MoneyRefusalError, match=reasons[mutation]):
         income.bind_income_observations(payload, prepared_receipt=receipt)
 
 
@@ -411,3 +432,92 @@ def test_graph_declares_exact_artifacts_generation_and_six_owned_outputs(execute
             bridge.us_asec_prepared_graph(
                 (*executed[2], Owned("person", name, "float64")), fraction=1.0, seed=578
             )
+
+
+def test_live_parser_profile_binds_the_prepared_stage_key_and_warm_reuse(executed):
+    """Full graph: a changed csv limit changes the stage key and refuses warm reuse."""
+    root, direct, columns, contexts, calls, manifest, store = executed
+    limit = csv.field_size_limit()
+    baseline = implementation_hash("asec_prepared_v3")
+    warm, _ = _run(root, columns, resume="require")
+    assert all(r.hit for r in warm.nodes.values())
+    try:
+        csv.field_size_limit(limit * 2)
+        changed = implementation_hash("asec_prepared_v3")
+        assert changed != baseline
+        with pytest.raises(StoreMissError):
+            _run(root, columns, resume="require")
+    finally:
+        csv.field_size_limit(limit)
+    assert implementation_hash("asec_prepared_v3") == baseline
+    restored, _ = _run(root, columns, resume="require")
+    assert all(r.hit for r in restored.nodes.values())
+    assert {n: dict(r.opaque_artifacts) for n, r in restored.nodes.items()} == {
+        n: dict(r.opaque_artifacts) for n, r in warm.nodes.items()
+    }
+
+
+def test_prepared_receipt_and_source_header_carry_the_same_parser_profile(executed):
+    root, direct, columns, contexts, calls, manifest, store = executed
+    profile = income_source.parser_profile()
+    assert direct.receipt["income_observations"]["parser_profile"] == profile
+    selected, source, kwargs = _inputs(executed)
+    header = json.loads(source.header)
+    assert header["implementation"]["parser_profile"] == profile
+    assert profile["csv.field_size_limit"] == csv.field_size_limit()
+
+
+def test_contributing_money_fields_are_person_entity(executed):
+    selected, source, kwargs = _inputs(executed)
+    assert [selected.entity_of(name) for name in income.CONTRIBUTING_FIELDS] == [
+        "person"
+    ] * 5
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(
+            type(selected), "entity_of", lambda self, name: "household", raising=True
+        )
+        with pytest.raises(money.MoneyRefusalError, match="ACCOUNTING_FIELD_ENTITY"):
+            income.derive_reported_income(selected, source, **kwargs)
+
+
+def test_hand_computed_paw_and_unallocated_rows_match_bitwise(executed):
+    """Independent scalar arithmetic, in the declared W/E/S/P/T/U order."""
+    root, direct, columns, contexts, calls, manifest, store = executed
+    selected, source, kwargs = _inputs(executed)
+    value = income.read_reported_income(
+        _payload(manifest, store, income.REPORTED_INCOME_NODE, "reported_income"),
+        selected,
+        source,
+        **kwargs,
+    )
+    contract = income_source._contract()
+    factors = {y: bits for y, _ratio, bits in income_source.price_factors(contract)}
+    positions = (
+        pd.Index(source.array("person_id"))
+        .get_indexer(kwargs["person_ids"])
+        .astype("int64")
+    )
+    nominal = source.array("PAW_VAL")[positions]
+    years = source.array("income_year")[positions]
+    hand_p, hand_u = [], []
+    for row in range(len(nominal)):
+        amount = float(nominal[row])
+        if int(years[row]) != 2024 and amount != 0.0:
+            amount = (
+                amount * struct.unpack("<d", bytes.fromhex(factors[int(years[row])]))[0]
+            )
+        hand_p.append(amount)
+        w = float(selected.field("WSAL_VAL").amounts[row])
+        e = float(selected.field("SEMP_VAL").amounts[row]) + float(
+            selected.field("FRSE_VAL").amounts[row]
+        )
+        s = float(selected.field("SSI_VAL").amounts[row])
+        t = float(selected.field("PTOTVAL").amounts[row])
+        hand_u.append(t - (((w + e) + s) + amount))
+    expected_p = np.asarray(hand_p, dtype="<f8")
+    expected_u = np.asarray(hand_u, dtype="<f8")
+    assert value.array(income.RESULT_COLUMNS[3]).tobytes() == expected_p.tobytes()
+    assert value.array(income.RESULT_COLUMNS[-1]).tobytes() == expected_u.tobytes()
+    assert (expected_u < 0).any()
+    assert (value.array(income.RESULT_COLUMNS[1]) < 0).any()
+    assert (expected_p > 0).any()

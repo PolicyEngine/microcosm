@@ -92,6 +92,7 @@ _TOKEN = object()
 _ACCOUNTING_TOKEN = object()
 _BINDING_KEYS = frozenset(
     {
+        "parser_profile",
         "header_sha256",
         "content_sha256",
         "payload_sha256",
@@ -179,16 +180,7 @@ def bind_income_observations(
             "BOUND_INCOME_ROWS",
         )
         contract = source._contract()
-        factors = tuple(
-            (
-                y,
-                f"174.4/{contract['price']['cells'][str(y)]}",
-                struct.pack(
-                    "<d", float("174.4") / float(contract["price"]["cells"][str(y)])
-                ).hex(),
-            )
-            for y in (2022, 2023, 2024)
-        )
+        factors = source.price_factors(contract)
         _require(
             type(data["schema_version"]) is int
             and data["schema_version"] == 1
@@ -206,7 +198,8 @@ def bind_income_observations(
             == "interview_household_one_year_after_income_year"
             and data["encoding_contract"]
             == "independently_reconstructed_canonical_numeric_bytes_v1"
-            and _json(data["implementation"]) == _json(source._implementation()),
+            and _json(data["implementation"]) == _json(source._implementation())
+            and binding["parser_profile"] == data["implementation"]["parser_profile"],
             "BOUND_INCOME_DEFINITION",
         )
         _require(
@@ -402,6 +395,10 @@ def derive_reported_income(
     _require(
         np.array_equal(income_years, income.array("income_year")[positions]),
         "ACCOUNTING_SOURCE_COHORTS",
+    )
+    _require(
+        all(selected.entity_of(name) == "person" for name in CONTRIBUTING_FIELDS),
+        "ACCOUNTING_FIELD_ENTITY",
     )
     w = selected.field("WSAL_VAL").amounts
     e = selected.field("SEMP_VAL").amounts + selected.field("FRSE_VAL").amounts

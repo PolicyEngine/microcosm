@@ -483,6 +483,7 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
         "source_evidence_sha256": _sha(source.source.identity),
         "t1_sha256": evidence["person_income_attachment_sha256"],
         "income_observations": {
+            "parser_profile": income_source.parser_profile(),
             "header_sha256": _sha(income._header),
             "content_sha256": income.content_sha256,
             "payload_sha256": _sha(income_payload),

@@ -398,7 +398,9 @@ def test_real_direct_cold_and_fresh_cache_only_parity(executed):
     expected = load_frame_checkpoint(root / "direct-frame.h5").frame
     actual = manifest.population(bridge.SELECT_NODE)
     for entity in expected.entities:
-        pd.testing.assert_frame_equal(actual.table(entity), expected.table(entity))
+        pd.testing.assert_frame_equal(
+            actual.table(entity), expected.table(entity), check_exact=True
+        )
         assert (
             actual.resolve_weights(entity).values.tobytes()
             == expected.resolve_weights(entity).values.tobytes()

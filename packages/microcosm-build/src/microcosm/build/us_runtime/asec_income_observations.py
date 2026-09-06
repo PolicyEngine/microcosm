@@ -23,6 +23,7 @@ from . import asec_current_money_source as legacy
 from . import asec_person_income_source as restoration
 from ._asec_current_money_codec import current_money_content_sha256
 from .asec_current_money import (
+    RESOURCE_PINS,
     RESTORED_SOURCE_KIND,
     MoneyRefusalError,
     ReadyCurrentMoney,
@@ -62,6 +63,51 @@ ZERO_CLASSES = (
     "niu_in_age_universe",
 )
 _TOKEN = object()
+_CSV_DIALECT = "excel"
+_CSV_ENCODING = "utf-8"
+_PRICE_TARGET = "174.4"
+_PRICE_YEARS = (2022, 2023, 2024)
+
+
+def parser_profile() -> dict:
+    """Read the live CSV parser limits and dialect; never set a process global.
+
+    ``csv.field_size_limit`` is process state that silently changes which member
+    files parse. Binding it into the source identity makes any change to it a
+    different artifact identity instead of an invisible reparse.
+    """
+    dialect = csv.get_dialect(_CSV_DIALECT)
+    return {
+        "header_engine": "stdlib_csv_reader",
+        "table_engine": "pandas_read_csv",
+        "dialect": _CSV_DIALECT,
+        "encoding": _CSV_ENCODING,
+        "newline": "",
+        "delimiter": dialect.delimiter,
+        "quotechar": dialect.quotechar,
+        "doublequote": bool(dialect.doublequote),
+        "skipinitialspace": bool(dialect.skipinitialspace),
+        "strict": bool(dialect.strict),
+        "quoting": int(dialect.quoting),
+        "csv.field_size_limit": csv.field_size_limit(),
+    }
+
+
+def price_factors(contract) -> tuple[tuple[int, str, str], ...]:
+    """The single restatement-factor derivation, shared with graph transport."""
+    return tuple(
+        (
+            year,
+            f"{_PRICE_TARGET}/{contract['price']['cells'][str(year)]}",
+            struct.pack(
+                "<d",
+                float(_PRICE_TARGET) / float(contract["price"]["cells"][str(year)]),
+            ).hex(),
+        )
+        for year in _PRICE_YEARS
+    )
+
+
 _HEADER_KEYS = frozenset(
     {
         "schema_version",
@@ -115,6 +161,7 @@ def _implementation():
         "dependencies": {n: metadata.version(n) for n in ("numpy", "pandas")},
         "member_pins": _MEMBER_PINS,
         "resource_sha256": RESOURCE_SHA256,
+        "parser_profile": parser_profile(),
     }
 
 
@@ -313,6 +360,13 @@ def _reconstruct(source, ready, member_paths):
     _parent(source, ready, reconstruct_money=True)
     before = _implementation()
     contract = _contract()
+    _require(
+        contract["price"]["resource_sha256"] == RESOURCE_PINS[1]
+        and contract["price"]["target_year"] == 2024
+        and price_factors(contract)
+        == tuple(tuple(f) for f in ready.bindings.spec.factors),
+        "INCOME_PRICE_BASIS",
+    )
     person = source.frame.person
     n = len(person)
     _require(0 < n <= _MAX_PERSONS, "INCOME_ROWS")
@@ -436,6 +490,8 @@ def _reconstruct(source, ready, member_paths):
             k: contract["price"][k] for k in ("algorithm", "target_year", "cells")
         }
         | {"factors": ready.bindings.spec.factors},
+        # factors are the money spec's own, crosschecked above against
+        # price_factors(contract); the resource never restates them itself.
         "monetary_basis": contract["monetary_basis"],
         "zero_origin_derivation": {
             "rule": "PAW_VAL_A_AGE_PAW_YN_source_encoding_v1",

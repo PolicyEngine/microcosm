@@ -1,5 +1,6 @@
 """Actual T1 plus invented PERSON members; no Census data or model execution."""
 
+import csv
 import importlib.util
 import json
 import os
@@ -36,7 +37,13 @@ def invented_income_sources(tmp_path, monkeypatch, *, incumbent="known"):
         loaded = load_frame_checkpoint(path)
         loaded.frame.person["A_AGE"] = np.asarray(ages, dtype="int64")
         loaded.frame.person["WSAL_VAL"] = np.asarray(paw, dtype="float64")
-        if incumbent != "missing_column":
+        if incumbent == "bool":
+            loaded.frame.person["PAW_VAL"] = np.asarray(
+                [bool(v) for v in paw], dtype="bool"
+            )
+        elif incumbent == "nullable_integer":
+            loaded.frame.person["PAW_VAL"] = pd.array(paw, dtype="Int64")
+        elif incumbent != "missing_column":
             loaded.frame.person["PAW_VAL"] = np.asarray(
                 [np.nan] * 6 if incumbent == "unknown" else paw, dtype="float64"
             )
@@ -297,3 +304,127 @@ def test_member_change_during_capture_refuses(tmp_path, monkeypatch):
         income.load_authenticated_income_observations(
             source, ready, member_paths=members
         )
+
+
+def test_live_csv_parser_profile_is_bound_into_the_source_identity(
+    tmp_path, monkeypatch
+):
+    """Raw PAW API: a changed csv limit is a different identity, not a silent reparse."""
+    source, ready, members = invented_income_sources(tmp_path, monkeypatch)
+    limit = csv.field_size_limit()
+    baseline = income.load_authenticated_income_observations(
+        source, ready, member_paths=members
+    )
+    assert baseline.receipt["implementation"]["parser_profile"] == {
+        "csv.field_size_limit": limit,
+        "delimiter": ",",
+        "dialect": "excel",
+        "doublequote": True,
+        "encoding": "utf-8",
+        "header_engine": "stdlib_csv_reader",
+        "newline": "",
+        "quotechar": '"',
+        "quoting": 0,
+        "skipinitialspace": False,
+        "strict": False,
+        "table_engine": "pandas_read_csv",
+    }
+    try:
+        csv.field_size_limit(limit * 2)
+        changed = income.load_authenticated_income_observations(
+            source, ready, member_paths=members
+        )
+        assert (
+            changed.receipt["implementation"]["parser_profile"]["csv.field_size_limit"]
+            == limit * 2
+        )
+        assert changed.content_sha256 != baseline.content_sha256
+        assert changed._body == baseline._body
+        # The frozen artifact refuses to validate under the changed profile.
+        with pytest.raises(money.MoneyRefusalError, match="INCOME_CONTENT_CHANGED"):
+            baseline.validate()
+    finally:
+        csv.field_size_limit(limit)
+    restored = income.load_authenticated_income_observations(
+        source, ready, member_paths=members
+    )
+    assert restored.content_sha256 == baseline.content_sha256
+    baseline.validate()
+
+
+def test_changing_the_parser_limit_mid_reconstruction_refuses(tmp_path, monkeypatch):
+    source, ready, members = invented_income_sources(tmp_path, monkeypatch)
+    limit = csv.field_size_limit()
+    original = income._read_member
+
+    def widened(path, *, rows):
+        table = original(path, rows=rows)
+        csv.field_size_limit(limit * 2)
+        return table
+
+    monkeypatch.setattr(income, "_read_member", widened)
+    try:
+        with pytest.raises(
+            money.MoneyRefusalError, match="INCOME_IMPLEMENTATION_CHANGED"
+        ):
+            income.load_authenticated_income_observations(
+                source, ready, member_paths=members
+            )
+    finally:
+        csv.field_size_limit(limit)
+
+
+def test_unparsable_member_under_a_narrow_limit_refuses_the_source_contract(
+    tmp_path, monkeypatch
+):
+    source, ready, members = invented_income_sources(tmp_path, monkeypatch)
+    limit = csv.field_size_limit()
+    try:
+        csv.field_size_limit(3)
+        with pytest.raises(money.MoneyRefusalError, match="INCOME_SOURCE_CONTRACT"):
+            income.load_authenticated_income_observations(
+                source, ready, member_paths=members
+            )
+    finally:
+        csv.field_size_limit(limit)
+
+
+def test_create_time_price_basis_crosscheck(tmp_path, monkeypatch):
+    """The resource price cells and pin are checked at CREATE, not only at bind."""
+    source, ready, members = invented_income_sources(tmp_path, monkeypatch)
+    contract = income._contract()
+    assert contract["price"]["resource_sha256"] == money.RESOURCE_PINS[1]
+    assert income.price_factors(contract) == tuple(
+        tuple(f) for f in ready.bindings.spec.factors
+    )
+    changed = json.loads(json.dumps(contract))
+    changed["price"]["cells"]["2022"] = "163.7"
+    monkeypatch.setattr(income, "_contract", lambda: changed)
+    with pytest.raises(money.MoneyRefusalError, match="INCOME_PRICE_BASIS"):
+        income.load_authenticated_income_observations(
+            source, ready, member_paths=members
+        )
+    unpinned = json.loads(json.dumps(contract))
+    unpinned["price"]["resource_sha256"] = "f" * 64
+    monkeypatch.setattr(income, "_contract", lambda: unpinned)
+    with pytest.raises(money.MoneyRefusalError, match="INCOME_PRICE_BASIS"):
+        income.load_authenticated_income_observations(
+            source, ready, member_paths=members
+        )
+
+
+@pytest.mark.parametrize("incumbent", ["bool", "nullable_integer"])
+def test_bool_and_nullable_integer_incumbent_dtypes(tmp_path, monkeypatch, incumbent):
+    source, ready, members = invented_income_sources(
+        tmp_path, monkeypatch, incumbent=incumbent
+    )
+    if incumbent == "bool":
+        with pytest.raises(money.MoneyRefusalError, match="INCOME_INCUMBENT_DTYPE"):
+            income.load_authenticated_income_observations(
+                source, ready, member_paths=members
+            )
+        return
+    value = income.load_authenticated_income_observations(
+        source, ready, member_paths=members
+    )
+    assert value.array("PAW_VAL").tolist() == [60000, 0, 0, 0, 0, 0]
