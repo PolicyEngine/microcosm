@@ -24,15 +24,27 @@ fits, scoring, national or CD validation, releases, pushes.
 
 ## State
 
-- [x] Verified worktree head `84e7a011`, clean, correct branch.
+Implementation, tests, docs, changelog and CI classification are complete and
+committed. The lane is ready for root/Fable review; nothing is pushed.
+
+- [x] Verified worktree head, clean tree, correct branch, `84e7a011` ancestry.
 - [x] Verified reference-bundle digest `750b624e…0baf7` matches root acceptance.
-- [x] Child-only pytest runner written; foreign editable shards purged;
-      baseline `test_us_demographic_calibration_graph.py` 20 passed.
-- [x] Activation declaration module + tests (78 passed).
-- [x] Household age-count operator, composition, graph and warm-replay tests
-      (43 passed).
-- [ ] Docs, changelog, CI classification guards.
-- [ ] Full focused suite + report.
+- [x] Child-only pytest runner; foreign editable shards purged; every loaded
+      `microcosm.*` module re-verified as resolving inside this worktree.
+- [x] `national_age_activation.py` — declaration + activation (committed
+      `02cee568`, hardened `ed85aeef`, `8222c9a8`).
+- [x] `graph_national_age_counts.py` — operator + composition (`3d862703`,
+      `a950843c`).
+- [x] Tests: `test_us_national_age_activation.py` (26 cases),
+      `test_us_national_age_counts.py` (45 cases), including the real graph
+      run and the fresh-process warm replay.
+- [x] Spine-blindness classification for both new modules, with no
+      provenance-owner exemption (`319ede54`).
+- [x] `docs/us-national-age-activation.md`, `CLAUDE.md` pointer and the
+      towncrier fragment (`d8c8dd3e`).
+- [x] Focused suite green; `tools/ci_test_groups.py --verify` ok; ruff
+      check/format clean.
+- [x] Report written to the review directory.
 
 ## Done
 
@@ -53,12 +65,14 @@ fits, scoring, national or CD validation, releases, pushes.
   and travels in a `Slice`; entity ids and memberships are structural and no
   node owns them, so they are declared in the node's normative parameters and
   the kernel refuses a household view beyond its declared id column.
+- The published total `S0101_C01_001` is re-derived and required to be
+  partitioned by the 18 activated bands, then discarded — it is deliberately
+  not a nineteenth loss term.
 
 ## Next
 
-Classify the two new runtime modules in the spine-blindness guard, verify
-`tools/ci_test_groups.py --verify`, write the methods doc and changelog
-fragment, then run the focused suite and write the report.
+Root/Fable review of the exact implemented activation and its evidence.
+Genuine calibration is a separate, later, explicitly authorized step.
 
 ## Limits carried from the brief
 
@@ -69,3 +83,5 @@ fragment, then run the focused suite and write the report.
 - B19001 and B25003 stay reserved holdouts and never enter this lane.
 - Published standard errors travel with the rows; the current solver does not
   consume them. Controlled-estimate uncertainty is null, never zero.
+- No genuine population was read, parsed, fit, scored or calibrated here. The
+  only real data touched is the public national ACS aggregate bundle.
