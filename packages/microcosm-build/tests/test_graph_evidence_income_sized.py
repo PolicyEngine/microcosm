@@ -978,13 +978,15 @@ def test_caller_prose_is_never_published_as_a_validated_sampling_rule(tmp_path, 
 
 
 @pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
-def test_the_producers_own_per_stratum_arithmetic_is_accepted(tmp_path, size):
+def test_a_stratum_that_added_units_beyond_its_draw_refuses_by_name(tmp_path, size):
     """``realized = requested + added_beyond_draw`` is the sampler's equality.
 
     The check used to point the other way -- ``requested >= realized`` -- so a
     stratum written exactly as ``frame_sampling`` writes it, with units added
     beyond the draw, was refused as self-contradictory. It is still refused, but
     now for the real reason: this profile does not support forced inclusions.
+    The old name said the stratum was accepted, which is the opposite of what
+    the case asserts.
     """
 
     def mutate(root, run, declaration, binding):

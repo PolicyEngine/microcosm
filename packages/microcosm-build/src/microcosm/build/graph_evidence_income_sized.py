@@ -15,8 +15,8 @@ field axes, the same six reported quantities with their status, validity, zero
 and allocation axes, the same price basis bound to the same contract digest, the
 same excluded scope. Only the **sample size is variable**, and it is not taken on
 trust: every count is measured from the run's own verified outputs, cross-checked
-against several independent recordings of the same fact, and required to equal
-what an accepted root output review independently declares.
+against every other location inside the run that records the same fact, and
+required to equal what an accepted root output review independently declares.
 
 The original profile is imported, not edited, and not relaxed. It never accepts a
 sized binding and this profile never accepts its. Both remain strict and separate.
@@ -206,7 +206,7 @@ class ProducerSchema:
     graph_result_optional: frozenset[str]
     extra_outputs: frozenset[str]
     # A recorded entity-structure output, when this producer writes one. It is
-    # a further independent recording of the same entity row counts, so it is
+    # a further location recording the same entity row counts, so it is
     # reconciled rather than merely present.
     entity_structure_output: str | None
 
@@ -1025,8 +1025,8 @@ def _entity_structure(
 
     Adapter-gated on purpose. The first producer does not write this file, and
     demanding it would refuse a run that is simply older rather than wrong; the
-    second producer does, and it is another independent recording of every
-    entity row count, so it is reconciled rather than accepted.
+    second producer does, and it is another location recording every entity row
+    count, so it is reconciled rather than accepted.
     """
     name = producer.entity_structure_output
     if name is None:
