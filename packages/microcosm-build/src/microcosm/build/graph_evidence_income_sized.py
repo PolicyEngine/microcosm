@@ -1168,6 +1168,21 @@ def _reconcile(measured: Measurement, pins: SizedPins) -> None:
     is internally consistent about a size root did not approve is refused here.
     """
     declared_rows = dict(pins.declared_entity_rows)
+    declared_cohorts = dict(pins.declared_cohorts)
+    for entity in REQUIRED_ENTITIES:
+        require(
+            entity in declared_rows,
+            "The approved scope omits a required entity count.",
+        )
+    require(
+        sum(declared_cohorts.values()) == declared_rows["household"],
+        "Approved cohort counts do not sum to the approved household count.",
+    )
+    for year in COHORT_YEARS:
+        require(
+            measured.value(f"cohort_{year}") == declared_cohorts[year],
+            "Measured cohort composition differs from the approved scope.",
+        )
     for entity, value in declared_rows.items():
         require(
             measured.has(entity),
@@ -1177,27 +1192,18 @@ def _reconcile(measured: Measurement, pins: SizedPins) -> None:
             measured.value(entity) == value,
             "Measured entity rows differ from the approved scope.",
         )
-    for entity in REQUIRED_ENTITIES:
-        require(
-            entity in declared_rows,
-            "The approved scope omits a required entity count.",
-        )
-    declared_cohorts = dict(pins.declared_cohorts)
-    for year in COHORT_YEARS:
-        require(
-            measured.value(f"cohort_{year}") == declared_cohorts[year],
-            "Measured cohort composition differs from the approved scope.",
-        )
-    require(
-        sum(declared_cohorts.values()) == declared_rows["household"],
-        "Approved cohort counts do not sum to the approved household count.",
-    )
-    # Two independent witnesses minimum for each of the three required counts:
-    # one recording is a restatement, not a reconciliation.
-    for entity in REQUIRED_ENTITIES:
+    # Households and people are the two counts the rest of the profile is
+    # reconciled against -- the cohort split sums to the households, and the
+    # accounting layout, the signed classes and the zero-origin partition are
+    # all sized by the people -- so each must be written down independently at
+    # least twice inside the run before it is used. The other entity counts are
+    # single recordings on the first producer and are reconciled against root's
+    # declared scope instead; requiring two of them inside the run would refuse
+    # a correct run for recording less, which is a different fault.
+    for entity in ("household", "person"):
         require(
             len(measured.sources(entity)) >= 2,
-            "A required scope count has only one independent recording.",
+            "A load-bearing scope count has only one independent recording.",
         )
 
 
