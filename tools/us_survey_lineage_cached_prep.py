@@ -101,8 +101,13 @@ def loaded_proof(checkout, head):
         location = getattr(module, "__file__", None)
         if location and (
             name.startswith("microcosm.")
-            or name.startswith("test_us_")
-            or name.startswith(("survey_lineage_prep", "us_survey_lineage_graph"))
+            or (
+                str(location).endswith(".py")
+                and (
+                    Path(location).is_relative_to(checkout)
+                    or Path(location).is_relative_to(HERE)
+                )
+            )
         ):
             path = Path(location).resolve()
             owner, revision = (
@@ -192,7 +197,7 @@ def instrument(registry, *, warm=False):
     return calls
 
 
-def verify_demographics(before, after, root):
+def verify_demographics(before, after, root, manifest, store):
     import numpy as np
     import pandas as pd
 
@@ -218,6 +223,44 @@ def verify_demographics(before, after, root):
             projection = demographic.admit_asec_demographic_projection(
                 (root / "demographic.bin").read_bytes()
             )
+            arm_document = arm.bind_composed_asec_document(
+                store.load_bytes(
+                    manifest.nodes[arm.BIND_NODE].opaque_artifacts["asec_binding"]
+                )
+            )
+            arm_rows = arm.bind_composed_asec_arm_rows(
+                store.load_bytes(
+                    manifest.nodes[arm.BIND_NODE].opaque_artifacts["arm_rows"]
+                ),
+                binding_document=arm_document,
+            )
+            positions = pd.Index(projection.array("person_id")).get_indexer(
+                arm_rows.array("person", "original_ids")
+            )
+            require(bool((positions >= 0).all()), "DEMOGRAPHIC_NATIVE_PERSON_MAPPING")
+            for column, source_column, mapping in (
+                ("is_female", "asec_sex_binding_state", {1: False, 2: True}),
+                (
+                    "is_household_head",
+                    "asec_household_reference_state",
+                    {1: True, 2: False},
+                ),
+            ):
+                expected_values = pd.array(
+                    [
+                        mapping.get(int(v), pd.NA)
+                        for v in projection.array(source_column)[positions]
+                    ],
+                    dtype="boolean",
+                )
+                pd.testing.assert_extension_array_equal(
+                    actual.loc[mask, column].array, expected_values
+                )
+            for column, source_column in demographic._RETAINED_STATES:
+                np.testing.assert_array_equal(
+                    actual.loc[mask, column].to_numpy("int64"),
+                    projection.array(source_column)[positions],
+                )
             # Real graph binding already authenticates the native-person mapping;
             # fixture source order is deliberately reversed and includes unknowns.
             require(
@@ -295,6 +338,16 @@ def phase(root, name, checkout, head):
         graph, registry = graph_for(root, baseline=baseline)
         compiled = compile_graph(graph)
         calls = instrument(registry, warm=name == "warm")
+        decoder_calls = []
+        if name == "warm":
+            from microcosm.graph.codecs import SourceCodecRegistry
+
+            def no_decode(*args, **kwargs):
+                decoder_calls.append("source_decoder")
+                raise RuntimeError("REQUIRED_SOURCE_DECODER_FORBIDDEN")
+
+            SourceCodecRegistry.load = no_decode
+            SourceCodecRegistry.load_bytes = no_decode
         source_paths = invented.sources(root, baseline=baseline)
         source_keys = {
             key: source_content_key(key, path) for key, path in source_paths.items()
@@ -339,6 +392,7 @@ def phase(root, name, checkout, head):
             },
             "cache_hits": {n: v.hit for n, v in manifest.nodes.items()},
             "kernel_calls": list(calls),
+            "source_decoder_calls": decoder_calls,
             "source_keys": source_keys,
             "manifest_key": manifest.key,
             "clone_verification": clone_proof,
@@ -393,7 +447,11 @@ def phase(root, name, checkout, head):
             result["full_materialized_verification"] = bound.summary
             result["binding_sha256"] = hashlib.sha256(bound.payload).hexdigest()
             result["demographic_preservation"] = verify_demographics(
-                load_frame_checkpoint(root / "baseline-native.h5").frame, before, root
+                load_frame_checkpoint(root / "baseline-native.h5").frame,
+                before,
+                root,
+                manifest,
+                store,
             )
             old = read(root / "baseline-receipt.json")
             common = set(old["node_keys"]) & set(result["node_keys"])
@@ -456,6 +514,8 @@ def phase(root, name, checkout, head):
                     "jsonschema",
                     "policyengine-us",
                     "policyengine-core",
+                    "PyYAML",
+                    "pyarrow",
                 )
             },
         }

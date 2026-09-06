@@ -40,3 +40,11 @@ Harness correction:
 - Replaced process-table polling with a worker-local RSS watchdog; supervisor
   retains wall timeout and worker retains CPU limit. Added explicit anchor names.
 Next: rerun from a new invented directory on committed corrected helper bytes.
+
+Fixture correction and stronger proof:
+- r2 baseline succeeded; real native ACS codec refused invented pandas TEN=1.0.
+  Corrected only fixture CSV integer lexemes, preserving strict production codec.
+- Added a zero-weight ASEC household as well as the ACS group-quarters household.
+- Expanded actual loaded Git-file proof to nested fixture imports and the runner;
+  added exact demographic state comparisons and raising raw source-codec stubs.
+Next: rerun all phases from new invented source bytes on this committed revision.

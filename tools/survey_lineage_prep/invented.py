@@ -1,7 +1,9 @@
 """Small invented archives through the existing registered source codecs."""
 
+import csv
 import hashlib
 import importlib.util
+import io
 import json
 import sys
 from dataclasses import asdict
@@ -25,7 +27,25 @@ def make(root, checkout):
     from microcosm.build.us_runtime.graph_sources import frame_column_declarations
 
     with pytest.MonkeyPatch.context() as patch:
-        peer(checkout, "test_us_asec_prepared_source").invented_prepared_directory(
+        preparation = peer(checkout, "test_us_asec_prepared_source")
+        fixture = preparation._money_fixture()
+        original_frame = fixture.Frame
+        from microcosm.frame import Weights
+
+        def zero_weight_frame(tables, schema, weights, strata, **kwargs):
+            values = weights["household"].values.copy()
+            values[0] = 0
+            return original_frame(
+                tables,
+                schema,
+                {"household": Weights(values, weights["household"].kind)},
+                strata,
+                **kwargs,
+            )
+
+        fixture.Frame = zero_weight_frame
+        preparation._money_fixture = lambda: fixture
+        preparation.invented_prepared_directory(
             root,
             patch,
             households_per_cohort=1,
@@ -40,6 +60,22 @@ def make(root, checkout):
                 members = {name: archive.read(name) for name in archive.namelist()}
             with ZipFile(path, "w", compression=ZIP_DEFLATED) as archive:
                 for name, payload in members.items():
+                    rows = list(csv.reader(io.StringIO(payload.decode())))
+                    integer_columns = {
+                        "TEN",
+                        "NP",
+                        "WGTP",
+                        "TYPEHUGQ",
+                        "SPORDER",
+                        "PWGTP",
+                    }
+                    for row in rows[1:]:
+                        for i, column in enumerate(rows[0]):
+                            if column in integer_columns and row[i].endswith(".0"):
+                                row[i] = row[i][:-2]
+                    stream = io.StringIO()
+                    csv.writer(stream, lineterminator="\n").writerows(rows)
+                    payload = stream.getvalue().encode()
                     archive.writestr(
                         name,
                         payload.replace(b"0000000000123", b"2024HU0000123").replace(
