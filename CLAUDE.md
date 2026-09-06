@@ -28,6 +28,13 @@ binding module reads source provenance by charter and is classified as a
 source-spine provenance owner; its measurement module stays source-blind. Do not
 add a provenance-owner exemption to an ordinary population operator.
 
+The bounded whole-household PUF-support clone over that combined population is
+`docs/us-combined-survey-clone-graph.md`. It is a real graph `EXPAND` that
+reuses `clone_us_frame_for_puf_support` as its operator and validator; it reads
+no donor, fits nothing, draws nothing and is labelled development, not release
+eligible. Do not extend it with donor, fit, draw or placement work — those are
+separate reviewed scopes.
+
 IRS fiscal targets require explicit supported return universes and actual model
 filer decisions before household aggregation. Target-frame materializer version
 13 invalidates older SOI measurements; its compilation receipt records filing
