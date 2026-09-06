@@ -30,6 +30,8 @@ from microcosm.build.quality_aggregates import DistributionBin, DistributionSpec
 
 __all__ = [
     "ACS_2024_HINCP_ORIGIN",
+    "ACS_CARRIED_REPORTED_INCOME",
+    "ACS_UNCARRIED_INCOME_TYPES",
     "ASEC_HTOTVAL_ORIGIN",
     "AVAILABILITY",
     "B19001_2024_BIN_DEFINITION_ID",
@@ -87,6 +89,23 @@ _ACS_SUBJECT_DEFINITIONS_URL = (
 _ACS_SUBJECT_DEFINITIONS_SHA256 = (
     "6e0c5b1a5d3ebf7e300e583ac6424cbd5f09de50d69e7ef03aa6d070d9c4a7a8"
 )
+
+#: The published ACS person income types the executed spine already carries,
+#: mapped to the reported quantity each one is adjusted into. This is six of
+#: the publisher's eight types: ``PAP`` and ``OIP`` are not read, which is why
+#: no component sum can stand in for ``HINCP``.
+ACS_CARRIED_REPORTED_INCOME: Mapping[str, str] = MappingProxyType(
+    {
+        "WAGP": "employment_income_before_lsr",
+        "SEMP": "self_employment_income_before_lsr",
+        "SSIP": "ssi_reported",
+        "SSP": "acs_social_security_income",
+        "RETP": "acs_retirement_income",
+        "INTP": "acs_interest_dividend_rental_income",
+    }
+)
+#: The two published types the executed spine does not read.
+ACS_UNCARRIED_INCOME_TYPES = ("PAP", "OIP")
 
 #: The single ADJINC code the pinned 2024 1-year dictionary enumerates.
 ACS_2024_DECLARED_ADJINC = 1_015_250
@@ -575,8 +594,12 @@ def measure_acs_household_reported_income(
         "negative_value_rows": int((values[observed] < 0).sum()),
         "component_reconstruction": (
             "none; the executed ACS person roster holds six of the eight "
-            "published income types (WAGP, SEMP, SSP, SSIP, RETP, INTP), so no "
-            "component sum is claimed and no residual is labelled other income"
+            "published income types "
+            + ", ".join(ACS_CARRIED_REPORTED_INCOME)
+            + ", leaving "
+            + " and ".join(ACS_UNCARRIED_INCOME_TYPES)
+            + " unread, so no component sum is claimed and no residual is "
+            "labelled other income"
         ),
     }
     return HouseholdReportedIncome(

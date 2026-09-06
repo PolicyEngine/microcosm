@@ -487,6 +487,37 @@ def test_acs_dictionary_pin_matches_the_existing_repository_authority():
     assert universe["B19001_B25003_activation"] is False
 
 
+def test_the_six_existing_reported_quantities_are_preserved_unchanged():
+    """The six adjusted ACS person income mappings stay exactly as executed."""
+
+    source = Path(acs_pums.__file__).parent / "acs_inputs.py"
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    mapped = {}
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_map_adjusted_person_amount"
+        ):
+            keywords = {
+                keyword.arg: keyword.value.value
+                for keyword in node.keywords
+                if isinstance(keyword.value, ast.Constant)
+            }
+            mapped[keywords["source"]] = keywords["output"]
+    assert mapped == dict(reported.ACS_CARRIED_REPORTED_INCOME)
+    assert len(mapped) == 6
+    # Every carried source is a column the executed person roster reads, and
+    # the two uncarried published types are not read at all.
+    assert set(mapped) <= set(acs_pums._PERSON_REQUIRED)
+    assert not set(reported.ACS_UNCARRIED_INCOME_TYPES) & set(acs_pums._PERSON_REQUIRED)
+    assert reported.ACS_UNCARRIED_INCOME_TYPES == ("PAP", "OIP")
+    # This lane adds household columns only; it changes no person quantity.
+    assert not set(reported.ACS_CARRIED_REPORTED_INCOME) & set(
+        ACS_HOUSEHOLD_SOURCE_COLUMNS_V2.added_since_previous
+    )
+
+
 def test_version_one_roster_matches_the_executed_loader_exactly():
     assert ACS_HOUSEHOLD_SOURCE_COLUMNS_V1.required == acs_pums._HOUSEHOLD_REQUIRED
     assert ACS_HOUSEHOLD_SOURCE_COLUMNS_V1.optional == (

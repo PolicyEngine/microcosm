@@ -165,10 +165,24 @@ publisher basis for an out-of-universe availability code.
 
 ### What the executed ACS person roster does and does not carry
 
-`acs_pums._PERSON_REQUIRED` carries six of the eight published income types:
-`WAGP`, `SEMP`, `SSP`, `SSIP`, `RETP`, `INTP`. `PAP` and `OIP` are absent. A
-household total assembled from those six would be an incomplete total wearing
-a complete total's name, which is why both arms use the publisher aggregate.
+`acs_pums._PERSON_REQUIRED` carries six of the eight published income types,
+and `acs_inputs` maps each into one existing reported quantity:
+
+| Published type | ACS column | Reported quantity |
+|---|---|---|
+| Wage or salary | `WAGP` | `employment_income_before_lsr` |
+| Self-employment | `SEMP` | `self_employment_income_before_lsr` |
+| Supplemental Security Income | `SSIP` | `ssi_reported` |
+| Social Security or Railroad Retirement | `SSP` | `acs_social_security_income` |
+| Retirement, survivor or disability | `RETP` | `acs_retirement_income` |
+| Interest, dividends, net rental, royalty, estates and trusts | `INTP` | `acs_interest_dividend_rental_income` |
+
+`PAP` (public assistance) and `OIP` (all other income) are absent. This lane
+adds household columns only and changes none of those six mappings;
+`ACS_CARRIED_REPORTED_INCOME` and `ACS_UNCARRIED_INCOME_TYPES` state the split,
+and a test asserts the mapping against `acs_inputs.py` itself. A household
+total assembled from six of eight would be an incomplete total wearing a
+complete total's name, which is why both arms use the publisher aggregate.
 The publisher also gives no basis in these documents for splitting `SSP` into
 Social Security and Railroad Retirement, or `RETP` into private and public
 pensions: the dictionary and subject definitions describe each as one combined
