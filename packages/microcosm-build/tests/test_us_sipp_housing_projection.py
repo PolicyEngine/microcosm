@@ -1564,25 +1564,43 @@ def test_the_maximum_age_uses_only_admissible_person_observations():
     assert household.maximum_member_age.status == "household_maximum_member_age"
     assert household.diagnostics["age_coverage"] == "complete"
     assert household.diagnostics["age_covered_members"] == 3
-    assert household.diagnostics["maximum_age_is_lower_bound"] is False
+    assert household.diagnostics["maximum_age_known"] is True
+    assert household.diagnostics["maximum_age_is_lower_bound_only"] is False
+    # Under complete coverage the bound is attained, so it equals the maximum.
+    assert household.maximum_member_age_lower_bound.value == 71
+    assert household.maximum_member_age_lower_bound.reasons == ()
     assert household.diagnostics["roster_december_members_under_18"] == 1
     assert household.diagnostics["children_under_18_agreement"] == "agree"
 
 
 def test_partial_age_coverage_yields_a_declared_lower_bound_not_a_maximum():
+    """The maximum is withheld and the bound is carried under its own name.
+
+    A member whose age could not be read may be older than every member that
+    was, so no maximum is available. Handing the bound out as the maximum would
+    let a strict adapter - ``require_value`` tests only for ``None`` - use it as
+    the household's oldest member, so the maximum is an explicit unknown and the
+    bound is its own measurement.
+    """
     result = _project(
         _row(pnum=101, TAGE_EHC="44", RHNUMPER="2"),
         _row(pnum=102, TAGE_EHC="", RHNUMPER="2"),
     )
     household = result.predictors[0]
-    assert household.maximum_member_age.value == 44
-    assert (
-        household.maximum_member_age.status
-        == "household_maximum_member_age_lower_bound"
-    )
+    assert household.maximum_member_age.value is None
+    assert household.maximum_member_age.status == "unknown_household_maximum_member_age"
     assert "age_coverage:partial" in household.maximum_member_age.reasons
+    with pytest.raises(m.MeasurementError):
+        household.maximum_member_age.require_value()
+    # The observation is not discarded: it is carried as a declared bound.
+    bound = household.maximum_member_age_lower_bound
+    assert bound.value == 44
+    assert bound.status == "household_maximum_member_age_lower_bound"
+    assert bound.reasons == ()
     assert household.diagnostics["age_coverage"] == "partial"
-    assert household.diagnostics["maximum_age_is_lower_bound"] is True
+    assert household.diagnostics["maximum_age_known"] is False
+    assert household.diagnostics["maximum_age_lower_bound_known"] is True
+    assert household.diagnostics["maximum_age_is_lower_bound_only"] is True
     # The child roster counterpart is withheld, not guessed, and the household
     # cannot be prospectively complete.
     assert household.diagnostics["roster_december_members_under_18"] is None
@@ -2006,11 +2024,19 @@ def test_no_predictor_amount_identifier_or_age_reaches_the_receipt():
     assert diagnostics["income_at_domain_maximum_households"] == 0
     assert diagnostics["age_coverage"] == {"complete": 1}
     assert diagnostics["maximum_age_at_domain_maximum_households"] == 0
-    assert "maximum_age" not in json.dumps(diagnostics).replace(
-        "maximum_age_lower_bound_households", ""
-    ).replace("maximum_age_at_domain_maximum_households", "").replace(
-        "maximum_age_unknown_households", ""
-    )
+    leakage = json.dumps(diagnostics)
+    for counter in (
+        "maximum_age_known_households",
+        "maximum_age_lower_bound_only_households",
+        "maximum_age_lower_bound_known_households",
+        "maximum_age_at_domain_maximum_households",
+        "maximum_age_lower_bound_at_domain_maximum_households",
+        "maximum_age_unknown_households",
+        "maximum_age_lower_bound_unknown_households",
+    ):
+        assert counter in leakage, counter
+        leakage = leakage.replace(counter, "")
+    assert "maximum_age" not in leakage
     # The state code is an aggregate that a lone household still discloses, so
     # it is asserted present rather than pretended away.
     assert diagnostics["state_of_residence_codes"] == {"24": 1}

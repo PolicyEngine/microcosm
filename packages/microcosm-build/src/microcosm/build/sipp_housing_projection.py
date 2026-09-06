@@ -934,6 +934,9 @@ def _predictor_digest(
                 "household": [s._measurement(v) for v in p.household_measurements],
                 "person_age": [s._measurement(v) for v in p.person_age_measurements],
                 "maximum_member_age": s._measurement(p.maximum_member_age),
+                "maximum_member_age_lower_bound": s._measurement(
+                    p.maximum_member_age_lower_bound
+                ),
                 "status": p.status,
             }
             for p in predictors

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 
 from . import sipp_housing_measurements as hm
 from . import sipp_measurements as m
@@ -352,6 +353,7 @@ class HouseholdPredictors:
     household_measurements: tuple[m.Measurement, ...]
     person_age_measurements: tuple[m.Measurement, ...]
     maximum_member_age: m.Measurement
+    maximum_member_age_lower_bound: m.Measurement
     status: str
     diagnostics: Mapping[str, object]
 
@@ -398,53 +400,72 @@ def _age_admissible(measure: m.Measurement) -> bool:
 
 def _maximum_member_age(
     source: m.SippSource, ages: Sequence[m.Measurement]
-) -> tuple[m.Measurement, str, int]:
-    """Maximum over admissible member ages only, with its coverage stated.
+) -> tuple[m.Measurement, m.Measurement, str, int]:
+    """The maximum over admissible member ages, and its lower bound, separately.
 
-    A partial coverage produces a **lower bound**, never a maximum: an
-    inadmissible member could be older than every member that was read. The
-    measurement still carries the derived value, because discarding a real
-    observation would lose evidence, and the reason and the coverage state say
-    what it is.
+    A partial coverage cannot produce a maximum: an inadmissible member could be
+    older than every member that was read. The maximum is then an explicit
+    unknown, so that a strict downstream adapter calling ``require_value`` -
+    which tests only for ``None`` - cannot receive a bound as if it were the
+    household's oldest member.
+
+    The bound is still real evidence and discarding it would lose an
+    observation, so it is carried as its **own** measurement, whose name and
+    status say what it is. Both measurements hold the invariant the rest of this
+    module and the frozen kernel hold: a measurement carrying reasons carries no
+    value.
     """
     spec = _PREDICTOR_AMOUNTS["TAGE_EHC"]
     admissible = [a for a in ages if _age_admissible(a)]
     covered = len(admissible)
-    if not ages:
-        coverage = "none"
-    elif covered == 0:
+    if covered == 0:
         coverage = "none"
     elif covered == len(ages):
         coverage = "complete"
     else:
         coverage = "partial"
-    reasons: list[str] = []
-    if coverage != "complete":
-        reasons.append("age_coverage:" + coverage)
-    value = max((a.value for a in admissible), default=None)
-    if value is None:
-        reasons.append("TAGE_EHC:no_admissible_member_observation")
+    bound = max((a.value for a in admissible), default=None)
     observations = tuple(o for a in ages for o in a.observations)
-    return (
-        hm._build(
-            "sipp_december_household_maximum_member_age",
-            "TAGE_EHC_maximum_over_admissible_december_members",
+
+    def _age_measurement(
+        name: str, concept: str, value: Decimal | None, status: str, reasons
+    ) -> m.Measurement:
+        return hm._build(
+            name,
+            concept,
             source,
             "December_2022_household_maximum_member_age",
             spec.unit,
             observations,
             value,
-            "household_maximum_member_age"
-            if value is not None and coverage == "complete"
-            else "household_maximum_member_age_lower_bound"
-            if value is not None
-            else "unknown_household_maximum_member_age",
+            status,
             reasons,
             rule_id=PREDICTOR_RULE_ID,
-        ),
-        coverage,
-        covered,
+        )
+
+    unobserved = (
+        () if bound is not None else ("TAGE_EHC:no_admissible_member_observation",)
     )
+    lower_bound = _age_measurement(
+        "sipp_december_household_maximum_member_age_lower_bound",
+        "TAGE_EHC_lower_bound_on_the_maximum_over_december_members",
+        bound,
+        "household_maximum_member_age_lower_bound"
+        if bound is not None
+        else "unknown_household_maximum_member_age_lower_bound",
+        unobserved,
+    )
+    incomplete = () if coverage == "complete" else ("age_coverage:" + coverage,)
+    maximum = _age_measurement(
+        "sipp_december_household_maximum_member_age",
+        "TAGE_EHC_maximum_over_admissible_december_members",
+        bound if coverage == "complete" else None,
+        "household_maximum_member_age"
+        if coverage == "complete"
+        else "unknown_household_maximum_member_age",
+        (*incomplete, *unobserved),
+    )
+    return maximum, lower_bound, coverage, covered
 
 
 def _status(
@@ -531,7 +552,9 @@ def _household_predictors(
                 rule_id=PREDICTOR_RULE_ID,
             )
         )
-    maximum_age, coverage, covered = _maximum_member_age(source, ages)
+    maximum_age, maximum_age_bound, coverage, covered = _maximum_member_age(
+        source, ages
+    )
     lookup = {v.concept: v for v in household_measures}
     status = _status(lookup, maximum_age, coverage)
     roster_size = len(members)
@@ -567,10 +590,17 @@ def _household_predictors(
         "children_under_18_agreement": _agreement(lookup["RHNUMU18"], roster_children),
         "age_coverage": coverage,
         "age_covered_members": covered,
-        "maximum_age_is_lower_bound": maximum_age.value is not None
-        and coverage != "complete",
+        # The maximum is unknown unless every member's age was admissible. When
+        # it is unknown a bound may still be known, and that is reported here
+        # rather than by handing the bound out under the maximum's name.
+        "maximum_age_known": maximum_age.value is not None,
+        "maximum_age_lower_bound_known": maximum_age_bound.value is not None,
+        "maximum_age_is_lower_bound_only": maximum_age.value is None
+        and maximum_age_bound.value is not None,
         "maximum_age_at_domain_maximum": maximum_age.value is not None
         and maximum_age.value == _PREDICTOR_AMOUNTS["TAGE_EHC"].high,
+        "maximum_age_lower_bound_at_domain_maximum": maximum_age_bound.value is not None
+        and maximum_age_bound.value == _PREDICTOR_AMOUNTS["TAGE_EHC"].high,
         "income_sign": _income_sign(lookup["THTOTINC"]),
         "income_at_domain_minimum": lookup["THTOTINC"].value is not None
         and lookup["THTOTINC"].value == _PREDICTOR_AMOUNTS["THTOTINC"].low,
@@ -593,6 +623,7 @@ def _household_predictors(
         tuple(household_measures),
         tuple(ages),
         maximum_age,
+        maximum_age_bound,
         status,
         diagnostics,
     )
@@ -722,14 +753,30 @@ def predictor_diagnostics(
         "age_coverage": _counter(
             str(p.diagnostics["age_coverage"]) for p in predictors
         ),
-        "maximum_age_lower_bound_households": sum(
-            bool(p.diagnostics["maximum_age_is_lower_bound"]) for p in predictors
+        # A household whose age coverage is partial has an unknown maximum and,
+        # separately, a known lower bound. Both counts are reported so the first
+        # real reading can size the gap instead of inferring it.
+        "maximum_age_known_households": sum(
+            bool(p.diagnostics["maximum_age_known"]) for p in predictors
+        ),
+        "maximum_age_lower_bound_only_households": sum(
+            bool(p.diagnostics["maximum_age_is_lower_bound_only"]) for p in predictors
+        ),
+        "maximum_age_lower_bound_known_households": sum(
+            bool(p.diagnostics["maximum_age_lower_bound_known"]) for p in predictors
         ),
         "maximum_age_at_domain_maximum_households": sum(
             bool(p.diagnostics["maximum_age_at_domain_maximum"]) for p in predictors
         ),
+        "maximum_age_lower_bound_at_domain_maximum_households": sum(
+            bool(p.diagnostics["maximum_age_lower_bound_at_domain_maximum"])
+            for p in predictors
+        ),
         "maximum_age_unknown_households": sum(
             p.maximum_member_age.value is None for p in predictors
+        ),
+        "maximum_age_lower_bound_unknown_households": sum(
+            p.maximum_member_age_lower_bound.value is None for p in predictors
         ),
         "income_sign": _counter(str(p.diagnostics["income_sign"]) for p in predictors),
         "income_at_domain_minimum_households": sum(
