@@ -32,8 +32,42 @@ never enters host weights. Development profile; not release eligible.
   branch), which is a clean fast-forward descendant of `origin/main`
   `c1b8324183819cf91511c002bf724a2676524e87`. No conflicts; nothing merged by
   hand.
-- Reading the EXPAND executor contract, the direct clone operator and the
-  existing composed-population graph stage.
+- Runtime: no venv in this worktree and the shared
+  `/Users/maxghenis/PolicyEngine/microcosm/.venv` has neither `microcosm-graph`
+  nor `jsonschema`. Reads run under the existing
+  `/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-preclone-composition-20260905/.venv`
+  interpreter with `PYTHONPATH` pinned to this worktree's six `packages/*/src`
+  trees and `PYTHONDONTWRITEBYTECODE=1 -B`. Verified: every imported
+  `microcosm.*` module resolves inside this worktree. No installs.
+- Executor contract, direct clone operator, provenance owner, spine assembly
+  and the one existing production EXPAND family (UK) all read.
+
+## Design (settled, from the read sources)
+
+`_patch_expand` (microcosm-graph/population.py) takes per-entity lineage
+(new id -> copied base id), the declared `expand_cells` overlays, and explicit
+weights for `expand_weight_entity`; it carries every other column itself and
+remaps copied persons' memberships onto the copied groups by clone ordinal.
+The stage therefore:
+
+1. Rebuilds a minimal US Frame from its declared slices, household weights and
+   strata, plus a derived spine-assembly manifest keyed to a declared
+   `source_channels` param.
+2. Calls `clone_us_frame_for_puf_support(..., clone_attachment_fraction=1.0,
+   clone_attachment_seed=0)`, which internally runs
+   `validate_puf_clone_attachment` full-clone identity. Oracle and validator
+   are the same call the direct path makes.
+3. Derives the lineage from the operator's own output by the
+   `(entity_source_id, clone_index)` bijection and cross-checks it positionally;
+   it never assumes an ID offset rule.
+4. Returns the six `*_support_clone_index` overlays and the halved IMPORTANCE
+   household weights. A follow-on claim node owns those six cells as full-cell
+   rewrites, which is also what makes the executor accept a copied row whose
+   clone index differs from its source.
+
+Mass: `conserve`. Halving household weights while doubling rows leaves the
+executor's weighted person mass per stratum unchanged, so the ledger is a real
+check rather than a declared one.
 
 ## Done
 
@@ -43,11 +77,16 @@ never enters host weights. Development profile; not release eligible.
 - Read the inventory report
   `us-puf-combined-clone-integration-next-REPORT.json` (an inventory, not a
   scientific approval).
+- Pinned the runtime and proved the worktree source is what loads.
+- Probed an invented mixed ASEC/ACS pool through `assemble_spines` and through
+  the direct clone operator: IMPORTANCE weights halve, ids remap by decimal
+  multiplier on the detail role only, native ids and both source channels
+  survive.
 
 ## Next
 
-- Pin the runtime venv and confirm the worktree source actually loads.
-- Design and implement the EXPAND kernel plus its clone-metadata outputs.
-- Invented mixed-source fixture tests, cold/warm replay, graph-vs-direct
-  bijection comparison.
+- Implement `graph_combined_clone.py` (EXPAND kernel + claim kernel + nodes).
+- Invented mixed-source fixture tests: exact-field preservation, per-pair
+  weight sums, refusals, cold/warm replay, graph-vs-direct bijection over every
+  column of every entity.
 - Write the review report to the review directory.
