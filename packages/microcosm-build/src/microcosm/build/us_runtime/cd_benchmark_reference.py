@@ -624,7 +624,7 @@ def _sequence(value: object, label: str) -> Sequence[object]:
 
 
 def _frozen_json(value: object, label: str = "The inventory") -> object:
-    """Deep-copy parsed JSON into containers nothing can change afterwards.
+    """Deep-copy parsed JSON into containers no ordinary caller can change.
 
     Every object becomes a fresh :class:`~types.MappingProxyType` over a fresh
     dict, and every array becomes a tuple. The copy matters as much as the
@@ -633,6 +633,14 @@ def _frozen_json(value: object, label: str = "The inventory") -> object:
     estimate's raw text after the digest was verified — the projected value
     would move while the file, its digest and the recorded identity all stood
     still. Copying severs that.
+
+    A :class:`~types.MappingProxyType` is a read-only view, not a deep-immutable
+    object, so ``gc.get_referents`` still reaches the backing dict and
+    ``object.__setattr__`` still reaches a frozen dataclass. Those are code
+    substitution, not a caller mistake, and this module does not pretend to
+    catch them; what it does remove is every ordinary route — subscript
+    assignment, ``update``, ``pop``, ``append`` — on the caller's object and on
+    the indexed one alike.
 
     JSON meaning is preserved exactly. Scalars are left as the parser produced
     them, ``null`` stays ``None``, key order is preserved, objects stay

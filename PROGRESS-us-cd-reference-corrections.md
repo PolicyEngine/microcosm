@@ -235,6 +235,18 @@ than kept because they looked safer:
   parametrized test now pins the disclosure for both the DC alias and an
   invented id.
 
+- **"containers nothing can change afterwards" was literally false.** A
+  `MappingProxyType` is a read-only view, not a deep-immutable object, so
+  `gc.get_referents(proxy)[0]` reaches the backing dict — executed here, and the
+  reading moved `0.05` → `0.025` with the digest and the file unchanged, exactly
+  as root's original counterexample did. A reviewer found this and judged it
+  below the bar for a finding because no reasonable caller writes it. The escape
+  is indeed not worth engineering against, but the sentence claiming it was
+  impossible is worth fixing: the docstring now says a proxy is a view, names
+  `gc.get_referents` and `object.__setattr__` as code substitution this module
+  does not pretend to catch, and claims only what it delivers — that every
+  ordinary route is gone from the caller's object and the indexed one alike.
+
 ### Final state of this continuation
 
 Head `afa7524e20403324b6dcf506ed8d7a7efc2dbab1`, clean, 143 ahead of and 0 behind

@@ -8,6 +8,7 @@ target, writes a ledger or claims statistical readiness.
 
 import copy
 import dataclasses
+import gc
 import hashlib
 import json
 import operator
@@ -1314,6 +1315,12 @@ def test_the_frozen_document_is_read_only_and_says_what_that_costs(inventory):
         canonical_bytes(inventory.document)
     with pytest.raises(TypeError, match="mappingproxy"):
         copy.deepcopy(inventory)
+
+    # A mappingproxy is a read-only view, not a deep-immutable object: the gc
+    # module still reaches the backing dict. The docstring says so rather than
+    # claiming otherwise, and this pins the claim it does make — that every
+    # ordinary route is gone.
+    assert gc.get_referents(inventory.document)[0]["kind"] == inventory["kind"]
 
     thawed = json.loads(json.dumps(inventory.document, default=dict))
     assert canonical_bytes(thawed)
