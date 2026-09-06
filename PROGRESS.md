@@ -18,3 +18,18 @@ A live GitHub fetch failed: DNS resolution unavailable. This is not a current-ma
 - Integrate only necessary accepted source helpers; implement two-pass first32 panel extraction.
 - Test invented cases, enforce resource/bytecode/no-overwrite boundaries, commit each coherent step.
 - Report precommit and final Git-loaded verification separately; prepare an unbound root command.
+
+### Public contract and prerequisite step
+- Full saved v2 Markdown/JSON and quote verifier read. Re-ran public verification:
+  91/91 v1 quotations and 85/85 v2 quotations; pinned PDF/text hashes match.
+- Self is present in RREL (guide printed37, tables3-6/3-7, including singleton).
+  Suppression tail remains uncertain; ACS child-SSI scope unknown; T2 conditional
+  diagnostic deferred; six status groups retain all ten codes; Type2 counts only.
+- Added authenticated 67-field metadata contract and read-only public verifier.
+- Integrated only two byte-identical accepted prerequisite modules from 61f2f499:
+  sipp_december_source (bounded physical reader/selector) and sipp_measurements
+  (native row representation and December all-member mean weights).
+  No housing fitting or predictor stack imported. Source master hash inside the
+  preserved module is a declaration; no source payload was authenticated here.
+- Archived the base PROGRESS journal under docs/us-sipp-annual-panel.
+- Next: implement panel extraction and targeted invented tests.

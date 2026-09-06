@@ -1,0 +1,80 @@
+{
+  "decisions": {
+    "T2": "Deferred. Any future gross-lump-sum discrepancy is conditional on nonnegative suppressed components plus recode and rounding assumptions; diagnostic only, no unconditional falsification.",
+    "acs_child_ssi": "Unknown scope match: absence of the token behalf does not resolve interpretation. HTOTVAL and HINCP recipient totals unchanged.",
+    "missing_tokens": "Only blank is an absent token in this prototype. Public NIU lexical convention remains unbound; numeric sentinels and unrecognized tokens refuse. Flag0 remains structural absence, never monetary zero.",
+    "self_membership": "RREL includes current person; require exactly one paired PNUM=self/RREL=99. Never insert a missing self.",
+    "status_partition": "Six groups: 0/1/2-6/7/8/9. Retain codes0..9 for each associated field. Code9 leaves component allocation quality unknown; finite published recodes may be measured without asserting reported/component-complete quality.",
+    "suppressed_slots": "Slots17..30 suppressed; the generic higher-numbered example does not bind each slot to an empty universe. Occupied slot16 means uncertain tail; do not test identity for that group. Unsaturated live-vector agreement is a published-file diagnostic only, never proof of physical household completeness.",
+    "type2": "Coverage counts of references only. No TT2INC amounts read, summed, multiplied by months or deduplicated across informants as persons."
+  },
+  "new_contract_sha256": "e7e1175ede334339578ae1095ab178a33159e7eb7110dfc2dcdb16f694c3a3dc",
+  "protected_sha256": {
+    "us-housing-income-crosssurvey-scope-REPORT.json": "436e48f97cef3d8967484790b03f01e32db8ee207a1c08205900f804f7574ba9",
+    "us-housing-income-crosssurvey-scope-REPORT.md": "a73e749b8ac26c0ebac105156035ff3500b64671efacf8fe3be66be616679e36",
+    "us-housing-income-crosssurvey-scope-quotes.py": "fb2aba11ba2110da3795581fa094ea19c6549704eac3400b1ec39c01560296c0",
+    "us-housing-income-crosssurvey-v2/PROGRESS.md": "1b35bf4df703622cbaff3cb777cdf4aea1c529266c8e4bcb1e54f4c451874b2b",
+    "us-housing-income-crosssurvey-v2/REPORT.json": "70fa6f84ed4a46064e55b8f8a1503ac460df56c48e5aa3155bd109e510ceb014",
+    "us-housing-income-crosssurvey-v2/REPORT.md": "c16e939ec76a383b82d26441f40d5e614bfd0f928c375f1c7c56b0821f042a21",
+    "us-housing-income-crosssurvey-v2/build.py": "a06b405ae99ee453c843e45caff9706817b4a68b9e984ad588c6175cfe133b7a",
+    "us-housing-income-crosssurvey-v2/make.py": "ce68727ebdc3be56256d4e41af861e29804c940ea71dc438cffbf44fc795b650",
+    "us-housing-income-crosssurvey-v2/page.py": "25859c71a5c0bc643a2e5729371cea507d85417080095d6ebe3e2b27623b6fdd",
+    "us-housing-income-crosssurvey-v2/quote-verification.json": "3d881168bfd3fd607e6334837920767ef8218faae4371885620670091d958a32",
+    "us-housing-income-crosssurvey-v2/quotes.py": "504ea905f8c17283a2a774518ccabd1f675f53f2f6dd4f5ac93fe7ebfc428879",
+    "us-housing-income-crosssurvey-v2/scans.py": "54a9f153f7394e75bf1fbc1465229bc80b8f0c2a2c8f3419fb1d406845b82388",
+    "us-housing-income-crosssurvey-v2/selfcheck.json": "685c4106c7e8324de558689b79bdb92c2bf66b5f7dfa5bc1bd7209c49f75c00c",
+    "us-housing-income-crosssurvey-v2/selfcheck.py": "94e924aa44f35009e0412fc8d11b8c72a4c85a65bc79eddfac051f11cbe1bff0"
+  },
+  "public_documents": {
+    "acs_quest": {
+      "page_locator_kind": "pdf_page_1based",
+      "pdf": "../acs-rent-source-authority/quest24.pdf",
+      "pdf_sha256": "de57122d329683e66d4cc03bc6daa8504e039ed27fd22d9ea0ac7e17bd17e45b",
+      "physical_pdf_page_of_cited_page": "cited_page + -1 + 1",
+      "text_index_offset": -1
+    },
+    "asec2023": {
+      "layout_text_sha256": "e71b181d8165f80af6c555cad1df40d2292b45a86e831bd293abfcf49e3bb124",
+      "page_locator_kind": "pdf_page_1based",
+      "pdf": "asec2023_ddl_pub_full.pdf",
+      "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+      "physical_pdf_page_of_cited_page": "cited_page + -1 + 1",
+      "reading_order_text": "asec2023_ddl_pub_full.raw.txt",
+      "reading_order_text_sha256": "320d12d4b71862d92d1a0e99b6ad11859794c74ea0b38e2cd096a117e9892c2a",
+      "text_index_offset": -1
+    },
+    "cpsmar23": {
+      "layout_text_sha256": "3abf2d8b22d31ec37abefaaf256c6a513af21b0796c7a6420bb4c318be10c34b",
+      "page_locator_kind": "pdf_page_1based",
+      "pdf": "cpsmar23.pdf",
+      "pdf_sha256": "54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d",
+      "physical_pdf_page_of_cited_page": "cited_page + -1 + 1",
+      "reading_order_text": "cpsmar23.raw.txt",
+      "reading_order_text_sha256": "9118c7f453361a4f45d7c2b53fc9ca32c28b8980c3c46bd635323e7d4cca4e02",
+      "text_index_offset": -1
+    },
+    "sipp_dict": {
+      "layout_text_sha256": "80277dd9b1d37ef49d37a7e7a404331d86d147e0543ec127068ac7dd3ee9c8cc",
+      "page_locator_kind": "printed",
+      "pdf": "2023_SIPP_Data_Dictionary.pdf",
+      "pdf_sha256": "0f1c5fbd29b24d3f1c18e7168a0f6d9fdfa7578b58d247fa9f475093a6db894f",
+      "physical_pdf_page_of_cited_page": "cited_page + -1 + 1",
+      "reading_order_text": "2023_SIPP_Data_Dictionary.raw.txt",
+      "reading_order_text_sha256": "1fc7dc07fd5994d02d0f2be8e09dd0efa04fe0babccdc090477ed2fb4cf258d3",
+      "text_index_offset": -1
+    },
+    "sipp_guide": {
+      "layout_text_sha256": "b831e142a5c32809f53a41f6c84dd576db2d278653d7dc4659752f3cd06299a4",
+      "page_locator_kind": "printed",
+      "pdf": "2023_SIPP_Users_Guide_OCT24.pdf",
+      "pdf_sha256": "37a20da6ac81d5dea28f744f02b96975f846f44b53c23588abd88bea7d985d86",
+      "physical_pdf_page_of_cited_page": "cited_page + 0 + 1",
+      "reading_order_text": "2023_SIPP_Users_Guide_OCT24.raw.txt",
+      "reading_order_text_sha256": "1152f48b6fb9f6ea1d2038561f0b2c8bf80ac23c899b33a27628773b5282bba6",
+      "text_index_offset": 0
+    }
+  },
+  "quote_verifier_limitation": "Quotation verification establishes text and page placement, not the logical validity of every inference in the saved report.",
+  "v1_verified": 91,
+  "v2_verified": 85
+}
