@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import json
 import struct
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import InitVar, dataclass
 
 import numpy as np
@@ -163,11 +163,20 @@ US_COMPOSED_ASEC_BINDING_TYPE = ArtifactType("microcosm.us.composed_asec_binding
 PERSON_COORDINATE_CROSSCHECKS = ("source_household_id", "A_LINENO", "A_AGE")
 COHORT_COLUMN = "source_year"
 
-#: Demographic columns a later calibration wants on both arms but which this
-#: population cannot bind: each names the exact source column the reviewed ASEC
-#: mapping needs and the prepared arm does not carry. Nothing is imputed, aged
-#: or defaulted; the node refuses outright if such a column ever appears, so the
-#: recorded gap cannot go stale behind a claim written today.
+#: Demographic columns a later calibration wants on both arms and which this
+#: stage deliberately does not bind: each names the exact source column the
+#: reviewed ASEC mapping needs, the mapping itself, and what the native ACS arm
+#: uses instead. Nothing is imputed, aged or defaulted.
+#:
+#: Whether the prepared arm carries the source column is an **observed property
+#: of the population in hand**, recorded per run rather than asserted: the
+#: invented fixture parent has neither column, and the genuine prepared arm has
+#: both. Presence is not a licence — binding either column still needs a
+#: reviewed cross-arm mapping decision that this stage may not make — so what
+#: fails closed here is an attempted **write** of one of these columns
+#: (``ASEC_DEMOGRAPHIC_COLUMN_BOUND``), not the source column's presence. Keying
+#: the refusal on presence would have refused every genuine run while proving
+#: nothing about what this stage binds.
 _UNBOUND_DEMOGRAPHICS = (
     (
         "is_female",
@@ -182,6 +191,10 @@ _UNBOUND_DEMOGRAPHICS = (
         "RELSHIPP == 20 on the native ACS arm",
     ),
 )
+#: The population columns this stage records as unbound, and therefore may not
+#: own on any node. Public because the measurement module's own declarations are
+#: checked against it.
+UNBOUND_DEMOGRAPHIC_COLUMNS = tuple(column for column, *_rest in _UNBOUND_DEMOGRAPHICS)
 
 _ARTIFACT_TYPES = (
     ("frame_context", US_FRAME_CONTEXT_TYPE),
@@ -201,6 +214,14 @@ _SOURCE_EDGES = (
     "income_observations",
     "prepared_receipt",
 )
+#: Every edge the composed CREATE produces, the origin document included. The
+#: origin is positional over that same CREATE execution, so it is held to the
+#: same producer identity as the evidence. Its content is independently
+#: recomputed against the actual tables (``ORIGIN_DOES_NOT_DESCRIBE_THIS_FRAME``)
+#: and that check is unchanged — but recomputation cannot tell two CREATE
+#: executions describing identical tables apart, so the producer key the
+#: document records would otherwise be carried unverified.
+_CREATE_EDGES = (*_SOURCE_EDGES, "source_origin")
 
 _BINDING_KEYS = frozenset(
     {
@@ -232,6 +253,23 @@ _ARM_ID_KEYS = _ARM_KEYS | {
 def _require(condition: bool, reason: str) -> None:
     if not condition:
         raise PreparedGraphError(reason)
+
+
+def refuse_unbound_demographic_writes(columns: Iterable[str]) -> None:
+    """Refuse if this stage would own a demographic its binding records as open.
+
+    This is the fail-closed half of the recorded gap. The binding document says
+    ``is_female`` and ``is_household_head`` are not bound on this population;
+    that statement is only honest while no node of the stage writes them, so
+    every owned-column roster of the stage passes through here. A reviewed
+    mapping that started producing one of them would refuse at declaration time
+    rather than silently turning a recorded gap into an unreviewed binding.
+    """
+    for column in columns:
+        _require(
+            column not in UNBOUND_DEMOGRAPHIC_COLUMNS,
+            f"ASEC_DEMOGRAPHIC_COLUMN_BOUND:{column}",
+        )
 
 
 def _is_digest(value: object) -> bool:
@@ -463,47 +501,57 @@ def _demographics(prepared_columns: Sequence[str], cohorts: Mapping[str, int]) -
     arm's ``age`` is observed in its own vintage. The two are **not** harmonized
     here and no person is aged from any date; the periods are recorded per cohort
     so a calibration decides rather than inherits an assumption.
+
+    ``is_female`` and ``is_household_head`` stay unbound. What their entries say
+    about the source is **observed on the prepared arm actually in hand**, and
+    is stated both ways: which required source columns this population carries
+    and which it does not. That observation is evidence, not authority —
+    ``bound_by_this_stage`` is ``False`` either way, and
+    :func:`refuse_unbound_demographic_writes` is what keeps it true.
     """
     present = set(prepared_columns)
     unbound = []
     for column, sources, mapping, acs_mapping in _UNBOUND_DEMOGRAPHICS:
         found = sorted(name for name in sources if name in present)
-        _require(not found, f"ASEC_DEMOGRAPHIC_SOURCE_APPEARED:{column}")
+        absent = sorted(name for name in sources if name not in present)
         unbound.append(
             {
                 "column": column,
                 "required_asec_source_columns": list(sources),
                 "present_in_prepared_arm": found,
+                "absent_from_prepared_arm": absent,
+                "bound_by_this_stage": False,
                 "reviewed_asec_mapping": mapping,
                 "acs_arm_mapping": acs_mapping,
-                "reason": "no_asec_source_column_in_the_prepared_population",
+                "reason": (
+                    "required_asec_source_column_absent_from_this_prepared_population"
+                    if absent
+                    else "no_reviewed_cross_arm_mapping_decision_for_this_column"
+                ),
                 "resolution": "independent_source_decision_required",
             }
         )
-    return {
-        "bound": [
-            {
-                "column": "age",
-                "dtype": "float64",
-                "asec_source_column": "A_AGE",
-                "mapping": "derive_cps_carried_current_leaves",
-                "observed_period_kind": (
-                    "interview_household_one_year_after_income_year"
-                ),
-                "observed_period_by_cohort": {
-                    year: {"income_year": int(year), "asec_survey_year": int(year) + 1}
-                    for year in sorted(cohorts)
-                },
-                "aged_from_a_date": False,
-                "cross_arm_period_harmonized": False,
-                "acs_arm_note": (
-                    "the native ACS arm's age is carried unchanged in its own "
-                    "vintage and is never rewritten by this binding"
-                ),
-            }
-        ],
-        "unbound": unbound,
-    }
+    bound = [
+        {
+            "column": "age",
+            "dtype": "float64",
+            "asec_source_column": "A_AGE",
+            "mapping": "derive_cps_carried_current_leaves",
+            "observed_period_kind": "interview_household_one_year_after_income_year",
+            "observed_period_by_cohort": {
+                year: {"income_year": int(year), "asec_survey_year": int(year) + 1}
+                for year in sorted(cohorts)
+            },
+            "aged_from_a_date": False,
+            "cross_arm_period_harmonized": False,
+            "acs_arm_note": (
+                "the native ACS arm's age is carried unchanged in its own "
+                "vintage and is never rewritten by this binding"
+            ),
+        }
+    ]
+    refuse_unbound_demographic_writes(item["column"] for item in bound)
+    return {"bound": bound, "unbound": unbound}
 
 
 def resolve_composed_asec_binding(
@@ -800,11 +848,31 @@ def bind_composed_asec_document(payload: bytes) -> dict:
     _require(
         set(demographics) == {"bound", "unbound"}
         and bool(demographics["bound"])
-        and all(item["aged_from_a_date"] is False for item in demographics["bound"])
-        and all(
-            item["present_in_prepared_arm"] == [] for item in demographics["unbound"]
-        ),
+        and all(item["aged_from_a_date"] is False for item in demographics["bound"]),
         "BINDING_DEMOGRAPHICS",
+    )
+    # What the unbound entries must satisfy is that they are unbound and that
+    # they say the whole truth about the source, not that the source lacked the
+    # column: a genuine prepared arm does carry A_SEX and P_SEQ, and a document
+    # recording that is correct. Every required column is accounted for exactly
+    # once, on one side or the other.
+    _require(
+        [item["column"] for item in demographics["unbound"]]
+        == list(UNBOUND_DEMOGRAPHIC_COLUMNS)
+        and all(
+            item["bound_by_this_stage"] is False
+            and sorted(
+                [*item["present_in_prepared_arm"], *item["absent_from_prepared_arm"]]
+            )
+            == sorted(item["required_asec_source_columns"])
+            and not set(item["present_in_prepared_arm"])
+            & set(item["absent_from_prepared_arm"])
+            for item in demographics["unbound"]
+        ),
+        "BINDING_UNBOUND_DEMOGRAPHICS",
+    )
+    refuse_unbound_demographic_writes(
+        item["column"] for item in demographics["bound"]
     )
     _require(
         all(
@@ -979,9 +1047,18 @@ def bind_composed_asec_arm_rows(
         entity: int(binding_document["arm"][entity]["rows"]) for entity in _ID_ENTITIES
     }
     _require(data["rows"] == rows, "ARM_ROWS_COUNTS")
+    # Every other malformed shape refuses with a typed reason, so the buffer
+    # roster does too: a strict zip against a header whose ``buffers`` is not a
+    # four-item list would otherwise raise a bare ValueError or TypeError.
+    declared_buffers = data["buffers"]
+    _require(
+        type(declared_buffers) is list
+        and len(declared_buffers) == len(_ARM_ROWS_BUFFERS),
+        "ARM_ROWS_BUFFER_ROSTER",
+    )
     cursor, buffers = start + size, []
     for (entity, name), declared in zip(
-        _ARM_ROWS_BUFFERS, data["buffers"], strict=True
+        _ARM_ROWS_BUFFERS, declared_buffers, strict=True
     ):
         width = rows[entity] * 8
         _require(
@@ -1118,7 +1195,7 @@ class USComposedAsecBindKernel(KernelBase):
             {
                 edge.producer
                 for edge in node.artifact_inputs
-                if edge.name in _SOURCE_EDGES
+                if edge.name in _CREATE_EDGES
             }
             == {CREATE_NODE},
             "NODE_EVIDENCE_PRODUCER",
@@ -1126,6 +1203,7 @@ class USComposedAsecBindKernel(KernelBase):
         values = {
             name: _artifact(context, name, kind) for name, kind in _ARTIFACT_TYPES
         }
+        create_producer = _same_producer(context, _CREATE_EDGES)
         binding = resolve_composed_asec_binding(
             {entity: context.tables[entity] for entity in US_SCHEMA.entities},
             context_payload=values["frame_context"].payload,
@@ -1137,7 +1215,7 @@ class USComposedAsecBindKernel(KernelBase):
             income_payload=values["income_observations"].payload,
             producers={
                 "population": values["frame_context"].producer_key,
-                "prepared_source": _same_producer(context, _SOURCE_EDGES),
+                "prepared_source": create_producer,
                 "source_origin": values["source_origin"].producer_key,
             },
         )
@@ -1192,6 +1270,7 @@ __all__ = [
     "COMPOSED_ASEC_PHASE",
     "COMPOSED_ASEC_STAGE",
     "PERSON_COORDINATE_CROSSCHECKS",
+    "UNBOUND_DEMOGRAPHIC_COLUMNS",
     "US_COMPOSED_ASEC_ARM_ROWS_TYPE",
     "US_COMPOSED_ASEC_BINDING_TYPE",
     "BoundComposedAsecArmRows",
@@ -1206,5 +1285,6 @@ __all__ = [
     "bind_node_inputs",
     "composed_asec_bind_node",
     "encode_composed_asec_arm_rows",
+    "refuse_unbound_demographic_writes",
     "resolve_composed_asec_binding",
 ]

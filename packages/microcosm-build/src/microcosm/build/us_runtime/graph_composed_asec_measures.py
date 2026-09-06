@@ -81,6 +81,7 @@ from .graph_composed_asec_binding import (
     bind_composed_asec_arm_rows,
     bind_composed_asec_document,
     composed_asec_bind_node,
+    refuse_unbound_demographic_writes,
 )
 from .graph_composed_population import (
     COMPOSED_SOURCES,
@@ -122,15 +123,25 @@ def _leaf_coordinates() -> tuple[tuple[str, str], ...]:
 
 
 def composed_leaf_declarations() -> tuple[Owned, ...]:
-    """The corrected-leaf cells, owned only at the bound arm's rows."""
+    """The corrected-leaf cells, owned only at the bound arm's rows.
+
+    The binding document records ``is_female`` and ``is_household_head`` as
+    unbound on this population. That record stays honest only while no node of
+    the stage writes them, so the declaration itself refuses a leaf roster that
+    would (``ASEC_DEMOGRAPHIC_COLUMN_BOUND``) rather than letting a reviewed
+    mapping quietly turn a recorded gap into an unreviewed binding.
+    """
+    coordinates = _leaf_coordinates()
+    refuse_unbound_demographic_writes(column for _entity, column in coordinates)
     return tuple(
         Owned(entity, column, LEAF_DTYPE, rows=arm_row_column(entity))
-        for entity, column in _leaf_coordinates()
+        for entity, column in coordinates
     )
 
 
 def composed_reported_income_declarations() -> tuple[Owned, ...]:
     """The six reported-income cells, owned only at the bound arm's rows."""
+    refuse_unbound_demographic_writes(RESULT_COLUMNS)
     return tuple(
         Owned("person", name, LEAF_DTYPE, rows=arm_row_column("person"))
         for name in RESULT_COLUMNS
