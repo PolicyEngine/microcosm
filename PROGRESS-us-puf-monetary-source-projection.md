@@ -28,23 +28,53 @@ pushed, merged or deployed from this lane.
 - A selected field with no primary semantics is retained and marked unresolved,
   never invented and never a reason to halt the whole projection.
 
-## State
+## State — complete and reviewable
 
 - [x] Read the four required review documents and the source-document receipt.
 - [x] Fetched the maintained base; frozen and sibling worktrees untouched.
 - [x] Fresh worktree created from `origin/main` with `2fd9a5cb` merged.
-- [ ] Booklet evidence extraction for the enumerated monetary fields.
-- [ ] Full 222 + 7 layout authentication in the packaged definition.
-- [ ] Monetary source projection module.
-- [ ] Focused tests.
-- [ ] Documentation and the review report.
-
-## Next
-
-Extract per-field publisher semantics for the enumerated monetary candidates
-from the pinned booklet text, recording exact byte spans and hashes, and
-classify each as resolved or unresolved before any code is written.
+- [x] Booklet evidence extraction: all three retained texts re-hashed against the
+      receipt before use; 25 prose anchors located page-uniquely.
+- [x] Full 222 + 7 layout authenticated in a new packaged document, with each
+      column's verbatim record-layout row, exact character span and span digest,
+      a February 2023 corroboration, and the 13 split-code positions listed.
+- [x] The enumerated monetary projection: 12 columns, delivered order, per-column
+      units / sign / missingness / grain / period / pins / edit status.
+- [x] `puf_monetary_source.py`: closed document validation, pinned codec reuse,
+      CSV decoder, three-class facts, self-proving envelope, producer and
+      consumer kernels, node factories, registry helpers.
+- [x] 96 focused tests, all invented fixtures, all passing.
+- [x] `docs/us-puf-monetary-source-projection.md` plus a changelog entry.
+- [x] `ruff check .` clean; `tools/ci_test_groups.py --verify` ok; the new test
+      file lands in `rest` and `us-p`, never `[defaulted]`.
 
 ## Done
 
-Nothing beyond the lane setup yet.
+| Commit | What |
+| --- | --- |
+| `cf86618e` | Lane journal |
+| `dd1efef3` | Authenticated layout + enumerated projection document, and its generator |
+| `cf32465a` | The codec, decoder, envelope and graph nodes |
+| `f4a1fd5d` | Layout / projection / refusal / grammar / structure / graph tests |
+| `1826525a` | Moved the packaged document out of the country-package closure |
+| `b86382b6` | Documentation and changelog |
+
+## Inherited, not introduced
+
+Two integration failures exist on the merge of `2fd9a5cb` into `origin/main`
+**before** this slice and are untouched by it: the reviewed raw source
+definition is undeclared in the US `country_package.json` (so
+`spec_engine.load_bundle` refuses the whole US package), and the reviewed
+lineage's test file names the retired US data package, which the launch
+contract forbids in the live tree. Both are recorded in the documentation and
+the report with their exact remedies.
+
+## Next
+
+Root review of this increment, then the next fit boundary: the contract in
+`us-puf-monetary-source-projection-REPORT.md` §"Next fit boundary".
+
+## Not done, by instruction
+
+No push, no merge, no deploy, no nested agents, no real PUF read, no fit, no
+calibration, no factor generation, no target-year use.
