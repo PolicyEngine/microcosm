@@ -1,0 +1,11 @@
+{
+  "schema": "sipp-annual-panel-binding/1",
+  "source_kind": null,
+  "source_path": null,
+  "source_sha256": null,
+  "source_size": null,
+  "survey_year": 2023,
+  "income_year": 2022,
+  "selection": "first32_by_canonical_14_digit_lexical_SSUID_from_eligible_December_ID_index",
+  "contract_sha256": "e7e1175ede334339578ae1095ab178a33159e7eb7110dfc2dcdb16f694c3a3dc"
+}

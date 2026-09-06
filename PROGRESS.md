@@ -33,3 +33,16 @@ A live GitHub fetch failed: DNS resolution unavailable. This is not a current-ma
   preserved module is a declaration; no source payload was authenticated here.
 - Archived the base PROGRESS journal under docs/us-sipp-annual-panel.
 - Next: implement panel extraction and targeted invented tests.
+
+### Panel implementation and invented verification
+- Implemented two authenticated streaming passes, fixed first32 identity-only
+  selection, full selected SSUID panels, native masks, lexical person-grain
+  constancy and row uniqueness. Monthly identities and annual December-adult
+  contributor sums have separate coverage rules; incomplete totals are null.
+- Added invented fixture generator, focused behavioral tests, bounded runner and
+  unbound root command. All genuine paths/pins remain unbound.
+- Precommit tests: first51/51 passed; expanded60/60 passed. Evidence is outside
+  this checkout and explicitly predates the implementation commit.
+- Initial wrapper refused because sandbox blocks ps. Preserved failed output;
+  replaced external RSS probing with worker getrusage watchdog. Invented wrapper
+  then completed. Final tests/committed-byte verification follow this step.
