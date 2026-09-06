@@ -80,6 +80,13 @@ LINEAGE = [
 ]
 MODULE_COUNT = 254
 CARRIED_CELLS = {f"asec_invented_cell_{j}": "9" * 64 for j in range(12)}
+# The second producer records the interpreter paths it purged. They are private
+# filesystem paths, so the fixture writes path-shaped values here on purpose:
+# a no-leak assertion over placeholder text would prove nothing.
+PRIVATE_PATHS = (
+    "/Users/invented-operator/PolicyEngine/_worktrees/invented-lane/packages",
+    "/private/tmp/invented-lane/site-packages",
+)
 SHARED_BYTES = {
     (IDS[0], "housing_universe"): b"opaque invented housing universe",
     (IDS[0], "income_observations"): b"opaque invented income observations",
@@ -538,7 +545,7 @@ def invented(tmp_path, size: Size):
             seconds=0,
         )
         for extra in sorted(size.schema.worker_optional):
-            receipt[extra] = ["invented"]
+            receipt[extra] = list(PRIVATE_PATHS)
         write(f"{mode}-receipt.json", receipt)
     run = dict(
         schema=size.schema.run_schema,
@@ -573,7 +580,7 @@ def invented(tmp_path, size: Size):
         **{field: False for field in sized.FALSE_RUN_FIELDS},
     )
     for extra in sorted(size.schema.run_optional):
-        run[extra] = "0" * 64 if extra.endswith("_sha256") else ["invented"]
+        run[extra] = "0" * 64 if extra.endswith("_sha256") else list(PRIVATE_PATHS)
     declaration = dict(
         schema=sized.DECLARATION_SCHEMA,
         country="us",
@@ -1048,3 +1055,433 @@ def test_unsafe_recorded_entity_counts_refuse(tmp_path, value):
 
     with pytest.raises(EvidenceError):
         export_fixture(tmp_path, SMALL, mutate)
+
+
+def test_recorded_private_paths_never_reach_the_attachment(tmp_path):
+    """The second producer records purged interpreter paths; none is published.
+
+    The adapter admits those keys so a correct run is not refused for recording
+    more, and nothing reads them. This proves the admission is not a leak: the
+    fixture puts real path-shaped strings there and none appears in any byte the
+    export writes.
+    """
+    reference = export_fixture(tmp_path, WIDE)
+    written = b"".join(
+        path.read_bytes() for path in sorted((tmp_path / "quality").rglob("*")) if path.is_file()
+    )
+    for private in PRIVATE_PATHS:
+        assert private.encode() not in written
+    assert b"/Users/" not in written
+    assert b"/private/tmp" not in written
+    assert reference["producer_schema"] == WIDE.schema.name
+
+
+# ------------------------------------------------------ producer schema gates
+
+
+def test_renamed_run_schema_refuses(tmp_path):
+    """A receipt relabelled as the other producer is refused, not adapted."""
+
+    def mutate(root, run, declaration, binding):
+        run["schema"] = sized.MEASURED_SCHEMA.run_schema
+
+    with pytest.raises(
+        EvidenceError, match="Run schema is not the producer the approved binding names."
+    ):
+        export_fixture(tmp_path, SMALL, mutate)
+
+
+def test_renamed_worker_schema_refuses(tmp_path):
+    def mutate(root, run, declaration, binding):
+        mutate_json(
+            root,
+            "cold-receipt.json",
+            lambda v: v.__setitem__("schema", sized.FIRST_GENUINE_SCHEMA.worker_schema),
+        )
+
+    with pytest.raises(EvidenceError, match="Phase receipt identity or success mismatch."):
+        export_fixture(tmp_path, WIDE, mutate)
+
+
+def test_unsupported_declared_producer_schema_refuses(tmp_path):
+    def mutate(root, run, declaration, binding):
+        binding["producer_schema"] = "income_v3_some_future_producer"
+
+    with pytest.raises(
+        EvidenceError, match="Root export binding names an unsupported producer schema."
+    ):
+        export_fixture(tmp_path, SMALL, mutate)
+
+
+def test_second_producers_run_declared_as_the_first_refuses(tmp_path):
+    """The whole point of an explicit adapter: no relabelling of a real shape.
+
+    The wide fixture's receipts carry the second producer's additional fields.
+    Declaring them under the first producer's adapter is refused on the closed
+    field roster, which is the honest failure -- these are structurally
+    different receipts, not the same receipt under another name.
+    """
+
+    def mutate(root, run, declaration, binding):
+        binding["producer_schema"] = sized.FIRST_GENUINE_SCHEMA.name
+        run["schema"] = sized.FIRST_GENUINE_SCHEMA.run_schema
+
+    with pytest.raises(EvidenceError, match="Missing or unknown receipt fields."):
+        export_fixture(tmp_path, WIDE, mutate)
+
+
+def test_first_producers_run_may_not_carry_the_seconds_extra_outputs(tmp_path):
+    """An output roster is closed per producer, in both directions.
+
+    The file is really written and really recorded, so the refusal is the
+    adapter's own roster and not a missing file.
+    """
+
+    def mutate(root, run, declaration, binding):
+        name = "direct-entity-structure.json"
+        (root / name).write_bytes(b"{}\n")
+        run["outputs"][name] = {"bytes": 3, "sha256": digest(b"{}\n")}
+
+    with pytest.raises(EvidenceError, match="Missing or unknown receipt fields."):
+        export_fixture(tmp_path, SMALL, mutate)
+
+
+@pytest.mark.parametrize("missing", sorted(sized.MEASURED_SCHEMA.extra_outputs))
+def test_second_producer_must_record_every_output_its_adapter_names(tmp_path, missing):
+    def mutate(root, run, declaration, binding):
+        run["outputs"].pop(missing, None)
+
+    with pytest.raises(EvidenceError, match="Missing or unknown receipt fields."):
+        export_fixture(tmp_path, WIDE, mutate)
+
+
+# ------------------------------------------------------------- producer edges
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_resealed_engine_input_into_accounting_refuses(tmp_path, size):
+    """The one edge that would change what the drawn surface means.
+
+    Accounting consumes the prepared frame and the selection and never the
+    engine. Resealed so the node validator is actually reached; without the
+    reseal the content-body check would refuse first and prove nothing.
+    """
+
+    def add_engine_input(manifest):
+        engine = manifest["nodes"][IDS[3]]["typed_artifacts"]["outputs"]["engine_evaluation"]
+        manifest["nodes"][IDS[4]]["typed_artifacts"]["inputs"]["engine_evaluation"] = copy.deepcopy(
+            engine
+        )
+
+    with pytest.raises(
+        EvidenceError,
+        match="Typed input names a producer outside this node's reviewed roster.",
+    ):
+        export_fixture(tmp_path, size, resealed_manifest_mutation(add_engine_input))
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_resealed_input_from_an_unrelated_node_refuses(tmp_path, size):
+    def add_carried_input(manifest):
+        carried = manifest["nodes"][IDS[2]]["typed_artifacts"]["outputs"]["frame_context"]
+        manifest["nodes"][IDS[1]]["typed_artifacts"]["inputs"]["frame_context"] = copy.deepcopy(
+            carried
+        )
+
+    with pytest.raises(
+        EvidenceError,
+        match="Typed input names a producer outside this node's reviewed roster.",
+    ):
+        export_fixture(tmp_path, size, resealed_manifest_mutation(add_carried_input))
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_published_edges_never_run_engine_into_accounting(tmp_path, size):
+    _, graph, _ = published(tmp_path, size)
+    for execution in graph["executions"]:
+        for node in execution["nodes"]:
+            producers = {a["producer"] for a in node["typed_inputs"]}
+            assert producers <= set(sized.INPUT_PRODUCERS[IDS.index(node["id"])])
+            if node["id"] == IDS[4]:
+                assert IDS[3] not in producers
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_six_recorded_cold_calls_are_five_kernels_and_one_preparation(tmp_path, size):
+    _, graph, _ = published(tmp_path, size)
+    cold = next(e for e in graph["executions"] if e["mode"] == "cold")
+    assert len(cold["nodes"]) == 5
+    assert cold["kernel_calls"] == 5
+    assert cold["source_preparation_calls"] == 1
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_a_sixth_recorded_graph_node_refuses(tmp_path, size):
+    def add_node(manifest):
+        extra = copy.deepcopy(manifest["nodes"][IDS[0]])
+        manifest["nodes"]["asec_prepared.invented_sixth"] = extra
+
+    with pytest.raises(EvidenceError, match="Exact five-node graph roster mismatch."):
+        export_fixture(tmp_path, size, resealed_manifest_mutation(add_node))
+
+
+# ------------------------------------------------- the two profiles stay apart
+
+
+REVIEWED_INCOME_V3_SHA256 = (
+    "0259cbc64af1c860beeab5f73f4ccb10618854133a6d78df0a1aa511241f7a71"
+)
+REVIEWED_BASE_SHA256 = (
+    "970d95541f9f6d66f4d7adea3f7583d373bcc9b24c51fcc4324c2bf003cb055d"
+)
+
+
+def test_the_reviewed_profile_is_imported_not_edited():
+    """The strongest back-compat proof available: the accepted bytes are intact.
+
+    The reviewed fifteen-household profile and the base exporter beneath it are
+    byte-identical to the accepted heads this lane started from, so nothing the
+    successor does can have changed what the original profile accepts, refuses
+    or publishes -- including the ``exporter_sha256`` its already-published
+    identities depend on.
+    """
+    assert hashlib.sha256((SOURCE / "graph_evidence_income_v3.py").read_bytes()).hexdigest() == (
+        REVIEWED_INCOME_V3_SHA256
+    )
+    assert hashlib.sha256((SOURCE / "graph_evidence.py").read_bytes()).hexdigest() == (
+        REVIEWED_BASE_SHA256
+    )
+    assert income.PROFILE == "us_asec_income_v3_five_node_15hh"
+    assert income.HOUSEHOLDS == 15 and income.PERSONS == 52 and income.TAX_UNITS == 25
+    assert income.COHORTS == {"2022": 5, "2023": 5, "2024": 5}
+
+
+def test_the_successor_is_a_separate_named_versioned_profile():
+    assert sized.PROFILE == "us_asec_income_v3_five_node_sized_v1"
+    assert sized.PROFILE != income.PROFILE
+    assert sized.ROOT_BINDING_SCHEMA != income.ROOT_REVIEW_SCHEMA
+    # No household count is baked into the successor's own name or tables.
+    assert "15hh" not in sized.PROFILE and "505" not in sized.PROFILE
+    assert not hasattr(sized, "HOUSEHOLDS")
+    assert not hasattr(sized, "PERSONS")
+    assert not hasattr(sized, "TAX_UNITS")
+    assert not hasattr(sized, "COHORTS")
+
+
+def test_the_sized_binding_is_not_a_reviewed_root_review(tmp_path):
+    root, run, declaration, binding, seal = invented(tmp_path, SMALL)
+    seal()
+    with pytest.raises(EvidenceError, match="Missing or unknown receipt fields."):
+        income.freeze_income_v3_pins(root / "root-export-binding.json")
+
+
+def test_a_reviewed_root_review_is_not_a_sized_binding(tmp_path):
+    root, run, declaration, binding, seal = invented(tmp_path, SMALL)
+    reviewed = dict(binding)
+    reviewed["schema"] = income.ROOT_REVIEW_SCHEMA
+    reviewed["profile"] = income.PROFILE
+    for key in ("producer_schema", "selected_entity_rows", "realized_households_by_cohort"):
+        reviewed.pop(key)
+    (root / "reviewed-review.json").write_bytes(canonical(reviewed) + b"\n")
+    with pytest.raises(EvidenceError, match="Missing or unknown receipt fields."):
+        sized.freeze_sized_pins(root / "reviewed-review.json")
+
+
+def test_the_sized_profile_refuses_the_reviewed_profile_name(tmp_path):
+    def mutate(root, run, declaration, binding):
+        binding["profile"] = income.PROFILE
+
+    with pytest.raises(
+        EvidenceError, match="Root export binding does not approve this profile."
+    ):
+        export_fixture(tmp_path, SMALL, mutate)
+
+
+def test_the_reviewed_profile_still_exports_its_own_fixture_unchanged(tmp_path):
+    """Both profiles alive in one process, neither disturbing the other.
+
+    The reviewed profile's own suite proves it in isolation. This proves the
+    successor's presence in the same interpreter does not change it: the module
+    objects are distinct, the tables are distinct and the reviewed exporter is
+    not the one the successor loaded.
+    """
+    assert sized._income is income or sized._income.PROFILE == income.PROFILE
+    assert sized._base is income._base
+    assert sized.IDS == income.IDS
+    assert sized.ACCOUNTING_ROW_BYTES == income.ACCOUNTING_ROW_BYTES == 91
+    assert sized.ACCOUNTING_COLUMNS == income.ACCOUNTING_COLUMNS == 28
+    assert sized.MONEY_FIELDS == income.MONEY_FIELDS == 33
+    assert sized.RESULT_COLUMNS == income.RESULT_COLUMNS
+    assert sized.ZERO_CLASSES == income.ZERO_CLASSES
+    assert sized.NOT_CLAIMED == income.NOT_CLAIMED
+    assert sized.ARITHMETIC_ORDER == income.ARITHMETIC_ORDER
+    assert sized.PRICE_BASIS == income.PRICE_BASIS == "census_ccpiu_annual_2024"
+    assert sized.PRICE_BASIS_RESOURCE_SHA256 == income.PRICE_BASIS_RESOURCE_SHA256
+    assert sized.INPUT_PRODUCERS == income.INPUT_PRODUCERS
+    assert tuple(sized.COHORT_YEARS) == tuple(sorted(income.COHORTS))
+    assert sized.UNMEASURED == [
+        "calibration",
+        "fit",
+        "holdouts",
+        "national_totals",
+        "congressional_district_pass",
+        "completed_eight_component_acs_bridge",
+        "distributions",
+        "support",
+        "model_validation",
+    ]
+
+
+# ------------------------------------------------------- root binding defects
+
+
+@pytest.mark.parametrize(
+    "case,reason",
+    [
+        ({"verdict": "ACCEPT_LOCAL_ENGINEERING_RUNG"}, "does not approve this profile"),
+        ({"verdict": "REJECT"}, "does not approve this profile"),
+        ({"schema": "microcosm.income_v3_505hh_root_acceptance.v1"}, "does not approve"),
+        ({"head": "not-a-head"}, "Invalid approved head."),
+        ({"loaded_module_count": -1}, "Invalid aggregate count."),
+    ],
+)
+def test_root_binding_defects_refuse_before_any_output(tmp_path, case, reason):
+    def mutate(root, run, declaration, binding):
+        binding.update(case)
+
+    with pytest.raises(EvidenceError, match=reason):
+        export_fixture(tmp_path, SMALL, mutate)
+    assert not (tmp_path / "quality").exists()
+
+
+def test_missing_root_binding_refuses(tmp_path):
+    with pytest.raises(EvidenceError, match="Root export binding is required."):
+        sized.freeze_sized_pins(tmp_path / "absent.json")
+
+
+def test_caller_receipt_is_never_pin_authority(tmp_path):
+    """The run cannot vouch for itself: the binding's digest wins."""
+    root, run, declaration, binding, seal = invented(tmp_path, WIDE)
+    pins = seal()
+    mutate_json(root, "run-receipt.json", lambda v: v.__setitem__("head", "e" * 40))
+    with pytest.raises(EvidenceError, match="Pinned receipt digest mismatch."):
+        sized.export_sized_graph_evidence(
+            run_root=root,
+            declaration_path=root / "declaration.json",
+            output_root=tmp_path / "quality",
+            pins=pins,
+        )
+    assert not (tmp_path / "quality").exists()
+
+
+def test_pins_must_be_sized_pins(tmp_path):
+    root, _, _, _, _ = invented(tmp_path, SMALL)
+    with pytest.raises(EvidenceError, match="Sized export pins are required."):
+        sized.export_sized_graph_evidence(
+            run_root=root,
+            declaration_path=root / "declaration.json",
+            output_root=tmp_path / "quality",
+            pins={"not": "pins"},
+        )
+
+
+def test_existing_output_root_is_never_modified(tmp_path):
+    (tmp_path / "quality").mkdir()
+    (tmp_path / "quality" / "keep.txt").write_text("untouched")
+    with pytest.raises(EvidenceError, match="Output root must be newly created."):
+        export_fixture(tmp_path, SMALL)
+    assert (tmp_path / "quality" / "keep.txt").read_text() == "untouched"
+
+
+# ------------------------------------------------ semantics stay size-invariant
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_semantics_do_not_move_with_the_size(tmp_path, size):
+    _, graph, _ = published(tmp_path, size)
+    reported = graph["reported_income"]
+    assert reported["accounting_row_bytes"] == 91
+    assert reported["accounting_column_count"] == 28
+    assert len(reported["result_column_sha256"]) == 6
+    assert [r["column"] for r in reported["result_column_sha256"]] == list(sized.RESULT_COLUMNS)
+    assert [r["column"] for r in reported["signed_value_counts"]] == list(sized.RESULT_COLUMNS)
+    assert [z["income_year"] for z in reported["zero_origin_class_counts"]] == YEARS
+    for entry in reported["zero_origin_class_counts"]:
+        assert set(entry) == {"income_year", *sized.ZERO_CLASSES}
+    assert sum(
+        entry[cls] for entry in reported["zero_origin_class_counts"] for cls in sized.ZERO_CLASSES
+    ) == size.persons
+    for row in reported["signed_value_counts"]:
+        assert row["negative"] + row["zero"] + row["positive"] == size.persons
+    assert graph["scope"]["money_field_axes"] == 33
+    assert graph["scope"]["housing_universe_evidence_fields"] == 7
+    assert graph["scope"]["housing_universe_carried_cells"] == 12
+    assert graph["lineage_divergence"]["fields"] == LINEAGE
+    assert graph["coverage"]["complete"] is True
+    assert graph["quality"]["status"] == "incomplete"
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_price_basis_must_stay_bound_to_the_recorded_contract(tmp_path, size):
+    def drop(manifest):
+        manifest["nodes"][IDS[4]]["receipt"]["implementation"]["resources"] = {}
+
+    with pytest.raises(
+        EvidenceError, match="Accounting node does not record the published price basis contract."
+    ):
+        export_fixture(tmp_path, size, resealed_manifest_mutation(drop))
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_a_different_price_contract_digest_refuses(tmp_path, size):
+    def swap(manifest):
+        manifest["nodes"][IDS[4]]["receipt"]["implementation"]["resources"][
+            sized.PRICE_BASIS_RESOURCE
+        ] = "0" * 64
+
+    with pytest.raises(
+        EvidenceError, match="Accounting node does not record the published price basis contract."
+    ):
+        export_fixture(tmp_path, size, resealed_manifest_mutation(swap))
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_an_unknown_cohort_year_refuses(tmp_path, size):
+    def mutate(root, run, declaration, binding):
+        mutate_json(
+            root,
+            "direct-receipt.json",
+            lambda v: v["result"]["realized_households_by_cohort"].__setitem__("2025", 1),
+        )
+
+    with pytest.raises(EvidenceError, match="Missing or unknown receipt fields."):
+        export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_cohorts_must_sum_to_the_recorded_households(tmp_path, size):
+    def mutate(root, run, declaration, binding):
+        def shift(value):
+            value["result"]["realized_households_by_cohort"][YEARS[0]] += 1
+            value["result"]["realized_households_by_cohort"][YEARS[1]] += 1
+
+        mutate_json(root, "direct-receipt.json", shift)
+
+    with pytest.raises(
+        EvidenceError,
+        match="Recorded cohort composition does not sum to the recorded household rows.",
+    ):
+        export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_realized_above_eligible_refuses(tmp_path, size):
+    def mutate(root, run, declaration, binding):
+        mutate_json(
+            root,
+            "direct-receipt.json",
+            lambda v: v["result"]["eligible_households_by_cohort"].__setitem__(YEARS[0], 1),
+        )
+
+    with pytest.raises(EvidenceError):
+        export_fixture(tmp_path, size, mutate)
