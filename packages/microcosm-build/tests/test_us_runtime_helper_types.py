@@ -33,6 +33,7 @@ from microcosm.build.us_runtime import asec_person_income_source as person_sourc
 from microcosm.build.us_runtime import asec_student_controls as student_controls
 from microcosm.build.us_runtime import graph_acs_housing_universe as acs_graph
 from microcosm.build.us_runtime.asec_current_money import MoneyRefusalError
+from microcosm.build.us_runtime.asec_housing_status import HousingStatusRefusalError
 
 _MODULES = (
     acs_source,
@@ -200,3 +201,18 @@ def test_entity_count_maps_are_row_counts_rather_than_column_names() -> None:
     # A roster/entity length mismatch is refused by zip(strict=True), unchanged.
     with pytest.raises(ValueError):
         selection._field_shapes((), ("person",), counts)
+
+
+def test_housing_status_load_still_refuses_an_unauthenticated_source() -> None:
+    """``_load``'s first refusal is unchanged; the ``source`` beside the annotated
+    ``cohort_paths`` is Frame-bearing and was deliberately left unannotated."""
+
+    paths = {2022: "a", 2023: Path("b"), 2024: "c"}
+    for wrong_source in (object(), None, "source"):
+        with pytest.raises(HousingStatusRefusalError) as raised:
+            housing_source._load(wrong_source, paths)
+        assert "AUTHENTICATED_SOURCE" in str(raised.value)
+
+    signature = inspect.signature(housing_source._load)
+    assert signature.parameters["source"].annotation is inspect.Parameter.empty
+    assert signature.parameters["cohort_paths"].annotation == "Mapping[int, str | Path]"
