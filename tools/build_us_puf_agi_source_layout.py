@@ -37,6 +37,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import importlib.util
 import json
@@ -120,6 +121,44 @@ def agi_entry(parent):
     )
 
 
+@contextlib.contextmanager
+def extended_parent(parent, entry):
+    """Add one column to the frozen module's declarations, then put them back.
+
+    ``load_parent`` hands back a **cached** module, so an assignment to
+    ``parent.PROJECTION`` outlives the call that made it. Without this restore
+    a second :func:`build_document` in the same process starts from thirteen
+    declarations: the twelve-field regeneration then produces thirteen
+    columns, and the mismatch is reported as "the parent generator no longer
+    reproduces the packaged twelve-field document" — a serious claim about the
+    accepted artifact, raised by this file's own leftover state rather than by
+    anything wrong with the parent.
+
+    The restore is in a ``finally``, so a refusal raised inside the block
+    leaves the module unedited too. That matters more than the success path: a
+    caller that catches one :class:`GenerationError` and retries would
+    otherwise get a second, different and untrue one.
+
+    Args:
+        parent: The imported frozen generator module.
+        entry: The ``Projected`` entry to append, in the parent's vocabulary.
+
+    Yields:
+        ``None``, with the parent's declarations extended for the block.
+    """
+    projection = parent.PROJECTION
+    notable = parent.NOTABLE_SOURCE_ONLY
+    parent.PROJECTION = (*projection, entry)
+    parent.NOTABLE_SOURCE_ONLY = {
+        name: text for name, text in notable.items() if name != AGI_FIELD
+    }
+    try:
+        yield
+    finally:
+        parent.PROJECTION = projection
+        parent.NOTABLE_SOURCE_ONLY = notable
+
+
 def build_document(documents_dir: Path) -> dict[str, object]:
     parent, packaged, parent_generator_sha256 = load_parent()
 
@@ -140,14 +179,10 @@ def build_document(documents_dir: Path) -> dict[str, object]:
     if superseded is None:
         raise GenerationError(f"{AGI_FIELD} is not annotated source-only upstream")
 
-    # Extend the frozen module's own declarations rather than restating them.
-    parent.PROJECTION = (*parent.PROJECTION, agi_entry(parent))
-    parent.NOTABLE_SOURCE_ONLY = {
-        name: text
-        for name, text in parent.NOTABLE_SOURCE_ONLY.items()
-        if name != AGI_FIELD
-    }
-    document = parent.build_document(documents_dir)
+    # Extend the frozen module's own declarations rather than restating them,
+    # for exactly the one call that needs them extended.
+    with extended_parent(parent, agi_entry(parent)):
+        document = parent.build_document(documents_dir)
 
     fields = [column["field"] for column in document["projection"]["columns"]]
     if fields != sorted(
