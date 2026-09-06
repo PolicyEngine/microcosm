@@ -182,6 +182,9 @@ class NationalAgeActivation:
         universe: The population universe the cells count, stated in full.
         entity: The entity whose weights the targets constrain.
         period: The target period tag.
+        age_convention_id: The closed token naming the convention. The
+            population operator implements exactly this one and refuses any
+            other, so the declaration and the operator cannot drift apart.
         age_convention: How model ages are read against the published bands.
         allowed_reservation_status: The only inventory reservation status this
             activation may act on. The same-source holdouts carry a different
@@ -202,6 +205,7 @@ class NationalAgeActivation:
     universe: str
     entity: str
     period: str
+    age_convention_id: str
     age_convention: str
     allowed_reservation_status: str
     bands: tuple[AgeBand, ...]
@@ -217,6 +221,10 @@ class NationalAgeActivation:
         _require(self.universe.startswith("population"), "UNSUPPORTED_UNIVERSE")
         _require(self.entity == "household", f"UNSUPPORTED_ENTITY:{self.entity}")
         _require(self.period == "2024", f"UNSUPPORTED_PERIOD:{self.period}")
+        _require(
+            self.age_convention_id == "observed_interview_age_completed_years",
+            f"UNSUPPORTED_AGE_CONVENTION:{self.age_convention_id}",
+        )
         _require(self.acs_year == 2024, "UNSUPPORTED_ACS_YEAR")
         _require(self.geography == "0100000US", "UNSUPPORTED_GEOGRAPHY")
         _require(
@@ -280,6 +288,7 @@ NATIONAL_AGE_ACTIVATION = NationalAgeActivation(
     ),
     entity="household",
     period="2024",
+    age_convention_id="observed_interview_age_completed_years",
     age_convention=(
         "age in completed years as observed at each person's own source "
         "interview, used verbatim; source cohorts are pooled and their "
