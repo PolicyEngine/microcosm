@@ -290,6 +290,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "puf_interest_components.py",
         "puf_qrf_chain.py",
         "puf_qrf_worker.py",
+        # Pinned raw-byte source codec and structural decoder; owns no
+        # population columns and treats no recipient.
+        "puf_raw_source.py",
         "puf_source_agi.py",
         "puf_support.py",
         "puma_ladder.py",
