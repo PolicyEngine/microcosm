@@ -454,6 +454,8 @@ def _integer_column(values: object, rows: int, label: str) -> pd.Series:
     _require(len(series) == rows, f"{label}_LENGTH")
     if series.dtype == np.dtype("int64"):
         series = series.astype("Int64")
+    # Integer dollars only. A float column is refused here rather than
+    # rounded, which is what stops an already-adjusted amount being re-adjusted.
     _require(series.dtype == pd.Int64Dtype(), f"{label}_DTYPE")
     return series
 
@@ -499,7 +501,6 @@ def measure_acs_household_reported_income(
         bool(((present >= ACS_HINCP_MINIMUM) & (present <= ACS_HINCP_MAXIMUM)).all()),
         "HINCP_RANGE",
     )
-    _require(bool((present % 1 == 0).all()), "HINCP_NOT_INTEGRAL")
 
     availability = np.where(
         observed,
@@ -588,7 +589,6 @@ def measure_asec_household_reported_income(
         ),
         "HTOTVAL_RANGE",
     )
-    _require(bool((present % 1 == 0).all()), "HTOTVAL_NOT_INTEGRAL")
 
     basis = _asec_price_basis()
     target_year = int(basis["target_year"])

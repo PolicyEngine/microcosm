@@ -494,6 +494,68 @@ def test_version_two_read_keeps_blanks_missing_and_never_adjusts(tmp_path):
     ]
 
 
+def test_origin_as_json_is_an_independent_copy():
+    origin = reported.ACS_2024_HINCP_ORIGIN.as_json()
+    origin["universe_as_printed"] = "rewritten"
+    assert reported.ACS_2024_HINCP_ORIGIN.as_json()["universe_as_printed"] == (
+        "Occupied housing units; N/A (GQ/vacant)"
+    )
+    pages = {
+        item.get("pdf_page_1based") or item.get("printed_page")
+        for item in reported.ACS_2024_HINCP_ORIGIN.as_json()["authority"]
+    }
+    assert pages == {15, 2, 16, 96, 98}
+    assert json.loads(json.dumps(origin)) == origin
+
+
+def test_version_one_frame_ignores_the_version_two_columns(tmp_path):
+    """A v2-wide archive still produces exactly the executed v1 household table."""
+
+    household_zip = tmp_path / "csv_hus.zip"
+    person_zip = tmp_path / "csv_pus.zip"
+    with ZipFile(household_zip, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "psam_husa.csv",
+            pd.DataFrame(
+                [_household_row("2024HU0000001"), _household_row("2024HU0000002")]
+            ).to_csv(index=False),
+        )
+    person = {
+        "SERIALNO": "2024HU0000001",
+        "SPORDER": 1,
+        "RELSHIPP": 20,
+        "AGEP": 40,
+        "SEX": 1,
+        "MAR": 5,
+        "ADJINC": DECLARED_ADJINC,
+        "WAGP": 50_000,
+        "SEMP": 0,
+        "SSP": 0,
+        "SSIP": 0,
+        "RETP": 0,
+        "INTP": 0,
+        "PWGTP": 10,
+    }
+    with ZipFile(person_zip, "w", compression=ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "psam_pusa.csv",
+            pd.DataFrame([person, {**person, "SERIALNO": "2024HU0000002"}]).to_csv(
+                index=False
+            ),
+        )
+    frame, _receipt = acs_pums.build_acs_pums_unit_frame(
+        acs_pums.AcsPumsSource(household_zip, person_zip)
+    )
+    columns = set(frame.table("household").columns)
+    assert not columns & set(ACS_HOUSEHOLD_SOURCE_COLUMNS_V2.added_since_previous)
+    assert set(ACS_HOUSEHOLD_SOURCE_COLUMNS_V1.frame_columns) <= columns
+
+    table, _read = read_acs_household_income_columns(
+        acs_pums.AcsPumsSource(household_zip, person_zip)
+    )
+    assert table["HINCP"].tolist() == [50_000, 50_000]
+
+
 def test_version_two_read_refuses_a_vintage_it_is_not_pinned_to(tmp_path):
     with pytest.raises(ValueError, match="ACS multispine v1 is pinned"):
         acs_pums.AcsPumsSource(

@@ -13,12 +13,25 @@ available, and reads it additively.
 
 ## Primary source authority
 
-Every digest below was verified against the publisher's current bytes while
-this contract was written. The ACS PUMS dictionary digest also equals the pin
-already carried by `acs_2024_housing_donor.json`, and the three ASEC dictionary
-digests equal the pins already carried by `asec_current_money_domains_v1.json`
-and `asec_housing_status.py`. A SHA-256 authenticates retrieved bytes; it is
-not a publisher signature.
+A SHA-256 authenticates locally retrieved bytes; it is not a publisher
+signature. Each digest below has a stated provenance:
+
+- **ACS PUMS Data Dictionary** — retrieved from the publisher on 2026-09-06.
+  The retrieved bytes equal the pin already carried by
+  `acs_2024_housing_donor.json` and `acs_2024_housing_universe.json`.
+- **ACS PUMS User Guide** — retrieved from the publisher on 2026-09-06. No
+  prior repository pin existed; this contract introduces it.
+- **ACS Subject Definitions** — not retrieved here. The copy already retrieved
+  for the ACS rent source authority was checked, and its digest equals the pin
+  already carried by `acs_2024_housing_donor.json`.
+- **CPS ASEC 2025 dictionary** — retrieved from the publisher on 2026-09-06.
+  The retrieved bytes equal the pin already carried by
+  `asec_current_money_domains_v1.json` and `asec_housing_status.py`. The 2023
+  and 2024 dictionary digests in `ASEC_HTOTVAL_VINTAGES` are copied from that
+  same existing authenticated metadata and were not re-retrieved.
+- **B19001 group metadata** — retrieved from the Census API on 2026-09-06. The
+  retrieved bytes equal the content-addressed capture already held by the
+  congressional-district reference evidence bundle.
 
 | Document | URL | SHA-256 |
 |---|---|---|
@@ -40,9 +53,10 @@ not a publisher signature.
 >                1..9999999       .Total household income in dollars (Components
 >                                 .are rounded)
 
-The universe is therefore occupied housing units: the publisher declares the
-field not applicable for group quarters and vacant records, so a blank is an
-out-of-universe state and never a zero. `0` is a distinct declared value
+The applicable universe is therefore occupied housing units, read off the
+printed not-applicable statement: the publisher declares the field N/A for
+group-quarters and vacant records, so a blank there is an out-of-universe state
+and never a zero. `0` is a distinct declared value
 meaning no household income. `-59999` is a declared open-ended loss floor;
 `-59998..-1` are ordinary signed losses. Values outside `[-59999, 9999999]`
 are outside the published range.
