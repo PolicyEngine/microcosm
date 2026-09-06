@@ -32,6 +32,17 @@ ENGINE_ONLY = (
 # shared-lane placement reviewed rather than a silent classifier default.
 EXPLICIT_SHARED_SPEC = (
     "packages/microcosm-build/tests/test_candidate_quality.py",
+    # The CD published-benchmark contract suite touches US source adapters but
+    # needs no engine: it is pure protocol/metric/ledger logic over invented
+    # fixtures. The package-only import test loads neither policyengine_*
+    # nor us_runtime; adapter tests do import us_runtime without an engine.
+    "packages/microcosm-build/tests/test_cd_benchmark_axis_identity.py",
+    "packages/microcosm-build/tests/test_cd_benchmark_ledger.py",
+    "packages/microcosm-build/tests/test_cd_benchmark_metrics.py",
+    "packages/microcosm-build/tests/test_cd_benchmark_protocol.py",
+    "packages/microcosm-build/tests/test_cd_benchmark_review_auxiliary.py",
+    "packages/microcosm-build/tests/test_cd_benchmark_support.py",
+    "packages/microcosm-build/tests/test_cd_benchmark_universe.py",
     "packages/microcosm-build/tests/test_cross_grain.py",
     "packages/microcosm-build/tests/test_graph_evidence.py",
     "packages/microcosm-build/tests/test_quality_aggregates.py",
