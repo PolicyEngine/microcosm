@@ -1750,6 +1750,76 @@ def test_the_predictor_status_ladder_is_exclusive_and_declared():
     assert result.diagnostics["exclusions_exclusive"] == {"admitted": 6}
 
 
+def test_every_emitted_predictor_vocabulary_is_declared_by_the_recipe():
+    """A counter's key set must be declared, not inferred from one run's values.
+
+    The rungs of ``PREDICTOR_STATUS_ORDER`` are the states that mean something is
+    wrong. A household clearing all of them is emitted under a residual, and the
+    agreement, income-sign and coverage counters have vocabularies of their own.
+    Version 3 published the rungs and the coverage states only, so a fit lane
+    reading the receipt alone would have had to guess the rest. Everything the
+    diagnostics can emit is declared in both places here.
+    """
+    rows = [
+        _row(ssuid="0001", residence="100001"),
+        _row(ssuid="0002", residence="100002", pnum=101, THTOTINC="4200"),
+        _row(ssuid="0002", residence="100002", pnum=102, THTOTINC="9900"),
+        _row(ssuid="0003", residence="100003", RHNUMPER="", AHNUMPER="0"),
+        _row(ssuid="0004", residence="100004", TEHC_ST=""),
+        _row(ssuid="0005", residence="100005", TAGE_EHC=""),
+        _row(ssuid="0006", residence="100006", AHTOTINC="-99"),
+        _row(ssuid="0007", residence="100007", THTOTINC="-250"),
+        _row(ssuid="0008", residence="100008", THTOTINC="0"),
+    ]
+    diagnostics = hp.project(rows, source=SOURCE, selection="all_ssuids").diagnostics[
+        "prospective_predictors"
+    ]
+    declared = hp.recipe_document()["prospective_predictors"]
+
+    # The residual is a real emitted state and is now named in both surfaces.
+    assert predictors.PREDICTOR_COMPLETE_STATUS == "predictor_complete"
+    assert predictors.PREDICTOR_STATUS_STATES == (
+        *predictors.PREDICTOR_STATUS_ORDER,
+        predictors.PREDICTOR_COMPLETE_STATUS,
+    )
+    assert predictors.PREDICTOR_COMPLETE_STATUS not in predictors.PREDICTOR_STATUS_ORDER
+    assert diagnostics["predictor_status_residual"] == "predictor_complete"
+    assert declared["status_residual"] == "predictor_complete"
+    assert declared["status_states"] == list(predictors.PREDICTOR_STATUS_STATES)
+
+    # Nothing this run emitted falls outside a declared vocabulary.
+    emitted = {
+        "predictor_status_exclusive": "predictor_status_states",
+        "predictor_status_exclusive_admitted": "predictor_status_states",
+        "household_size_agreement": "household_size_agreement_states",
+        "children_under_18_agreement": "children_under_18_agreement_states",
+        "income_sign": "income_sign_states",
+        "age_coverage": "age_coverage_states",
+    }
+    for counter, vocabulary in emitted.items():
+        assert set(diagnostics[counter]) <= set(diagnostics[vocabulary]), counter
+        assert diagnostics[counter], counter
+
+    # The counters exercised here reach past a single value, so the check is not
+    # vacuous: an unfixed vocabulary would have been caught by any of them.
+    assert set(diagnostics["income_sign"]) == set(predictors.INCOME_SIGN_STATES)
+    assert set(diagnostics["predictor_status_exclusive"]) == set(
+        predictors.PREDICTOR_STATUS_STATES
+    )
+
+    # The recipe declares the same vocabularies the diagnostics use.
+    assert declared["agreement_states"] == list(predictors.DISAGREEMENT_STATES)
+    assert declared["income_sign_states"] == list(predictors.INCOME_SIGN_STATES)
+    assert declared["age_coverage_states"] == list(predictors.AGE_COVERAGE_STATES)
+    assert declared["household_size"]["disagreement_states"] == list(
+        predictors.DISAGREEMENT_STATES
+    )
+    assert declared["children_under_18"]["disagreement_states"] == list(
+        predictors.DISAGREEMENT_STATES
+    )
+    assert declared["income"]["sign_states"] == list(predictors.INCOME_SIGN_STATES)
+
+
 def test_predictor_validity_is_reported_separately_for_admitted_households():
     rows = [
         _row(ssuid="0001", residence="100001"),

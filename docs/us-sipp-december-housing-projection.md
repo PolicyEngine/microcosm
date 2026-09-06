@@ -340,6 +340,21 @@ diagnostics report the counter over all households and, separately,
 admitted. Neither is a fit admission: which predictor states a fit may accept is
 that lane's decision, not this one's.
 
+**The residual is declared, not inferred.** The measurement ladder's residual is
+`exclusion is None` and needs no name. This one is a string emitted in the same
+counter as the rungs, so a consumer validating the emitted states against
+`predictor_status_order_exclusive` alone would reject it. The diagnostics
+therefore publish `predictor_status_residual` and `predictor_status_states`, and
+the recipe publishes `status_residual` and `status_states` beside
+`status_order_exclusive`. The same rule applies to every other counter the
+predictor diagnostics emit: the agreement, income-sign and age-coverage
+vocabularies are published as `household_size_agreement_states`,
+`children_under_18_agreement_states`, `income_sign_states` and
+`age_coverage_states` in the diagnostics, and as `agreement_states`,
+`income_sign_states` and `age_coverage_states` in the recipe, so a later lane
+reads a counter's domain instead of inferring it from whichever values one run
+happened to produce.
+
 **Allocation is not a rung.** An allocated value is a published value, not a
 missing answer, so a household whose state, size, children and income are all
 hot-deck imputed clears the ladder and is `predictor_complete`. Folding

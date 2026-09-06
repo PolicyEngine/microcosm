@@ -343,6 +343,14 @@ PREDICTOR_STATUS_ORDER = (
     "predictor_unknown",
     "predictor_age_coverage_incomplete",
 )
+# The state a household reaches by clearing every rung above. The measurement
+# ladder's residual is ``exclusion is None`` and needs no name; this one is a
+# string emitted in ``predictor_status_exclusive`` beside the rungs, so a reader
+# checking the emitted states against the declared order would reject it unless
+# it is declared too. It is named here and published in both the diagnostics and
+# the recipe.
+PREDICTOR_COMPLETE_STATUS = "predictor_complete"
+PREDICTOR_STATUS_STATES = (*PREDICTOR_STATUS_ORDER, PREDICTOR_COMPLETE_STATUS)
 AGE_COVERAGE_STATES = ("complete", "partial", "none")
 DISAGREEMENT_STATES = (
     "agree",
@@ -511,7 +519,7 @@ def _status(
         return "predictor_unknown"
     if maximum_age.value is None or coverage != "complete":
         return "predictor_age_coverage_incomplete"
-    return "predictor_complete"
+    return PREDICTOR_COMPLETE_STATUS
 
 
 def _income_sign(measure: m.Measurement) -> str:
@@ -735,6 +743,15 @@ def predictor_diagnostics(
         "households": len(predictors),
         "admitted_households": len(admitted),
         "predictor_status_order_exclusive": list(PREDICTOR_STATUS_ORDER),
+        # The rungs alone are not the emitted vocabulary: a household clearing
+        # every rung is emitted under the residual, which is declared here so a
+        # consumer never has to guess which state means "no rung applied".
+        "predictor_status_residual": PREDICTOR_COMPLETE_STATUS,
+        "predictor_status_states": list(PREDICTOR_STATUS_STATES),
+        "household_size_agreement_states": list(DISAGREEMENT_STATES),
+        "children_under_18_agreement_states": list(DISAGREEMENT_STATES),
+        "income_sign_states": list(INCOME_SIGN_STATES),
+        "age_coverage_states": list(AGE_COVERAGE_STATES),
         "predictor_status_exclusive": _counter(p.status for p in predictors),
         "predictor_status_exclusive_admitted": _counter(p.status for p in admitted),
         "predictor_field_classes": {
@@ -791,12 +808,12 @@ def predictor_diagnostics(
         "predictor_complete_allocation_exclusive": _counter(
             str(p.diagnostics["predictor_allocation"])
             for p in predictors
-            if p.status == "predictor_complete"
+            if p.status == PREDICTOR_COMPLETE_STATUS
         ),
         "predictor_complete_allocation_exclusive_admitted": _counter(
             str(p.diagnostics["predictor_allocation"])
             for p in admitted
-            if p.status == "predictor_complete"
+            if p.status == PREDICTOR_COMPLETE_STATUS
         ),
         "predictor_unknown_measurements": {
             name: sum(p.household(name).value is None for p in predictors)

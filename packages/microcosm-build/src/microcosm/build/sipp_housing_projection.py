@@ -78,7 +78,7 @@ IMPLEMENTATION_MODULES = (
 # Byte identity of ``recipe_bytes()``. A recipe change must move this pin in the
 # same commit; a silent drift between the declared contract and the transcribed
 # field table refuses instead of extracting under an unreviewed contract.
-RECIPE_SHA256 = "b04ccf7bdae4869d5f17b746351b9bc81431dab78a736a40b2a7de6535c4a37b"
+RECIPE_SHA256 = "66ed8871ed1a1dbb73b8407c08c3e66dc8f4162ca91170c163ae8654cda4505e"
 
 # The official document these contracts were transcribed from. Its digest is not
 # a second authority: ``verify_dictionary()`` requires it to equal the frozen
@@ -353,7 +353,19 @@ def prospective_predictors() -> dict:
         "exclusion_order_exclusive": list(hm.EXCLUSION_ORDER),
         "predictor_states_added_to_the_exclusion_order": [],
         "status_order_exclusive": list(hpred.PREDICTOR_STATUS_ORDER),
+        # The rungs and the state a household reaches by clearing all of them.
+        # Declared separately so a fit lane reading this recipe knows the whole
+        # emitted vocabulary, not only the states that mean something is wrong.
+        "status_residual": hpred.PREDICTOR_COMPLETE_STATUS,
+        "status_states": list(hpred.PREDICTOR_STATUS_STATES),
         "status_is_prospective_validity_not_admission": True,
+        # Every other vocabulary the predictor diagnostics emit. Publishing the
+        # counter keys beside the counters keeps a later reader from inferring
+        # the domain of a diagnostic from whichever values one run happened to
+        # produce.
+        "agreement_states": list(hpred.DISAGREEMENT_STATES),
+        "income_sign_states": list(hpred.INCOME_SIGN_STATES),
+        "age_coverage_states": list(hpred.AGE_COVERAGE_STATES),
         "state_geography": {
             "field": "TEHC_ST",
             "published_code_count": 53,
@@ -372,6 +384,7 @@ def prospective_predictors() -> dict:
             "roster_corrected_against_publisher": False,
             "type_2_person_treatment_adjudicated": False,
             "disagreement_reported_as": "household_size_agreement",
+            "disagreement_states": list(hpred.DISAGREEMENT_STATES),
         },
         "children_under_18": {
             "publisher_field": "RHNUMU18",
@@ -381,6 +394,7 @@ def prospective_predictors() -> dict:
             "roster_statistic_requires_complete_age_coverage": True,
             "child_age_boundary": hpred.CHILD_AGE_BOUNDARY,
             "disagreement_reported_as": "children_under_18_agreement",
+            "disagreement_states": list(hpred.DISAGREEMENT_STATES),
         },
         "income": {
             "field": "THTOTINC",
@@ -389,6 +403,7 @@ def prospective_predictors() -> dict:
             "minimum": -10_000_000_000,
             "maximum": 10_000_000_000,
             "negative_values_preserved": True,
+            "sign_states": list(hpred.INCOME_SIGN_STATES),
             "annualization": "not_applied",
             "price_rebasing": "not_applied",
             "log_or_floor_transform": "not_applied",
