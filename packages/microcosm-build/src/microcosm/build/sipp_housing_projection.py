@@ -18,10 +18,12 @@ See docs/us-sipp-december-housing-projection.md.
 
 from __future__ import annotations
 
+import importlib
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, localcontext
+from pathlib import Path
 
 from microcosm.graph.canonical import canonical_json
 
@@ -29,13 +31,31 @@ from . import sipp_december_source as s
 from . import sipp_housing_measurements as hm
 from . import sipp_measurements as m
 
-RECIPE_VERSION = "sipp-december-housing-projection/1"
-RECEIPT_FORMAT = "sipp_december_housing_projection_v1"
+RECIPE_VERSION = "sipp-december-housing-projection/2"
+RECEIPT_FORMAT = "sipp_december_housing_projection_v2"
+
+# Version 2 is the reviewed contract. Version 1 declared that an explicit
+# ``ERENTSUB = 2`` admitted a household whatever EVOUCHER carried, folded
+# ``assistance_not_in_universe`` into the unknown rung, bound no implementation
+# identity and copied the caller's ``selection`` label into the receipt without
+# counting the SSUIDs behind it. No version 1 receipt was ever produced: the
+# extraction has not been run, so nothing published moves with this bump.
+SUPERSEDED_RECIPE_VERSIONS = ("sipp-december-housing-projection/1",)
+
+# Modules whose bytes decide what a housing receipt means. Their digests are
+# recorded in the receipt, never inside ``recipe_bytes()``: this module's own
+# hash cannot live in the bytes it hashes.
+IMPLEMENTATION_MODULES = (
+    "microcosm.build.sipp_december_source",
+    "microcosm.build.sipp_housing_measurements",
+    "microcosm.build.sipp_housing_projection",
+    "microcosm.build.sipp_measurements",
+)
 
 # Byte identity of ``recipe_bytes()``. A recipe change must move this pin in the
 # same commit; a silent drift between the declared contract and the transcribed
 # field table refuses instead of extracting under an unreviewed contract.
-RECIPE_SHA256 = "19d3df41f9d40cbd57826ce73c8f95658a0c2241832ddc0a1e0d71553465c295"
+RECIPE_SHA256 = "e878b88f28590b89a8d00333a0b6db742f690df116688dcc5dad3934c7e81c80"
 
 # The official document these contracts were transcribed from. Its digest is not
 # a second authority: ``verify_dictionary()`` requires it to equal the frozen
@@ -296,10 +316,58 @@ def recipe_document() -> dict:
             "evoucher_applies_only_when": "ERENTSUB = 1",
             "explicit_unassisted_requires": (
                 "ERENTSUB = 2 with allocation flag 1 (reported) and no household "
-                "copy conflict"
+                "copy conflict, and EVOUCHER evidence that is blank under "
+                "allocation flag 0 - the only state its published universe "
+                "predicts for an unassisted household"
             ),
+            "voucher_evidence_states": list(hm.VOUCHER_EVIDENCE_STATES),
+            "voucher_evidence_admitted_with_explicit_negative": (
+                "expected_blank_not_in_universe"
+            ),
+            "voucher_blank_under_flag_0_is_expected_not_missing": True,
+            "voucher_value_under_flag_0_distinguished_from_blank": True,
             "niu_missing_allocated_or_conflicting_recoded_as_unassisted": False,
             "person_month_indicators_determine_household_class": False,
+        },
+        "topcode_markers": {
+            "fields": list(hm.PERSON_TOPCODE_AMOUNTS),
+            "threshold_inferred": False,
+            "trntmt_minimum": 1,
+            "tutils_minimum": 0,
+            "zero_marker_is_not_a_cleared_non_topcode": (
+                "TUTILS_MED/TUTILS_STD have a published minimum of $0, so a "
+                "lexical 0 is an in-domain marker value for them while the same "
+                "token is invalid_domain for the $1-minimum TRNTMT_* pair. The "
+                "dictionary does not say what the public file writes for a "
+                "person outside a topcoded group, and no data row has been read, "
+                "so the zero, invalid-domain, blank and absent marker states are "
+                "counted separately and a marker total must not be interpreted "
+                "before those counts are read."
+            ),
+        },
+        "selection_authentication": {
+            "modes": list(s._MODES),
+            "first_32_ssuids_maximum": 32,
+            "established_by": "authenticated_runner_over_the_full_december_roster",
+            "recorded_in_receipt_as": "caller_asserted",
+            "count_is_not_proof_of_a_relative_selection": (
+                "project() sees only the rows it is handed. A selected SSUID "
+                "count of 32 or fewer is consistent with, but is not proof of, "
+                "those SSUIDs being the first 32 of the whole source: only a "
+                "runner that enumerated the full authenticated December roster "
+                "establishes that relative claim."
+            ),
+        },
+        "implementation_binding": {
+            "modules": list(IMPLEMENTATION_MODULES),
+            "recorded_in": "receipt",
+            "inside_recipe_bytes": False,
+            "reason": (
+                "A module hash placed inside the bytes it hashes cannot be "
+                "computed. The receipt therefore carries the digests, so a "
+                "change to a classification rule moves the receipt even when the "
+                "recipe pin does not."
+            ),
         },
         "exclusion_order_exclusive": list(hm.EXCLUSION_ORDER),
         "weight": {
@@ -333,6 +401,96 @@ def verify_recipe() -> str:
         raise HousingProjectionError("HOUSING_RECIPE_TAMPERED")
     verify_dictionary()
     return recipe_digest()
+
+
+def module_digests(names: Sequence[str] = IMPLEMENTATION_MODULES) -> dict[str, str]:
+    """SHA-256 of each named module's source file, read at call time.
+
+    Nothing here is circular: the digests are computed when a receipt is written
+    and stored in that receipt, so this module's own bytes can be bound without
+    a constant inside them ever having to equal their own hash.
+    """
+    if isinstance(names, str) or not all(type(n) is str and n for n in names):
+        raise HousingProjectionError("HOUSING_IMPLEMENTATION_MODULES")
+    return {
+        name: s._sha(Path(importlib.import_module(name).__file__).read_bytes())
+        for name in sorted(names)
+    }
+
+
+def implementation_binding() -> dict:
+    """Bind the two housing modules and the two frozen modules they reuse.
+
+    ``RECIPE_SHA256`` pins the declared contract only. A change to
+    ``_assistance_class``, ``_exclusion`` or ``measurement_class`` can leave the
+    recipe bytes untouched while changing what a receipt means, so the module
+    digests are recorded here as well. The frozen modules are read, never
+    written: their bytes and the producer binding that already-published
+    vehicle-equity receipts carry are unchanged by this lane.
+    """
+    digests = module_digests()
+    return {
+        "modules": list(IMPLEMENTATION_MODULES),
+        "module_sha256": digests,
+        "binding": s._key("sipp-december-housing-implementation-binding/1", digests),
+        "frozen_modules_mutated": False,
+        "inside_recipe_bytes": False,
+        "dependency_versions_bound": False,
+        "dependency_note": (
+            "The measurement path is standard-library Decimal arithmetic under a "
+            "fixed context; no third-party numeric library participates, so no "
+            "dependency version is bound here. The frozen producer's own "
+            "``_contract()`` binding, which does record dependency versions, is "
+            "unchanged."
+        ),
+    }
+
+
+def source_identity(source: m.SippSource) -> dict:
+    """The source the caller asserts these rows came from, checked against pins.
+
+    Separate from the caller's selection assertion, and never a byte proof: no
+    parent byte is opened here and the supplied rows are not hashed.
+    """
+    verify_source(source)
+    return {
+        "name": s._SOURCE_NAME,
+        "data_sha256": source.data_sha256,
+        "metadata_sha256": source.metadata_sha256,
+        "survey_year": source.survey_year,
+        "reference_year": source.reference_year,
+        "matches_frozen_producer_pins": True,
+        "supplied_rows_verified_against_these_bytes": False,
+        "new_source_byte_proof_claimed": False,
+    }
+
+
+def selection_evidence(
+    households: Sequence[hm.HousingHousehold], selection: str
+) -> dict:
+    """Count the SSUIDs actually supplied and label the mode as caller-asserted.
+
+    ``first_32_ssuids`` refuses more than 32. Thirty-two or fewer is *not* proof
+    that these are the first 32 SSUIDs of the whole source, and this block says
+    so: only a runner that enumerated the full authenticated December roster
+    establishes a relative selection.
+    """
+    ssuids = tuple(sorted({h.key[0] for h in households}))
+    if selection == "first_32_ssuids" and len(ssuids) > 32:
+        raise HousingProjectionError("SELECTION_EXCEEDS_FIRST_32")
+    return {
+        "mode": selection,
+        "selected_ssuid_count": len(ssuids),
+        "selected_ssuid_digest": s._key(
+            "sipp-december-housing-selected-ssuids/1", list(ssuids)
+        ),
+        "source_authentication": "caller_asserted",
+        "relative_selection_established_by": (
+            "authenticated_runner_over_the_full_december_roster"
+        ),
+        "count_is_not_proof_of_a_relative_selection": True,
+        "first_32_ssuids_maximum": 32,
+    }
 
 
 def verify_dictionary() -> None:
@@ -407,6 +565,32 @@ def _weighted_by(
         return {k: s._decimal(v) for k, v in sorted(totals.items())}
 
 
+def _marker_state_totals(
+    prefix: str, households: Sequence[hm.HousingHousehold]
+) -> dict[str, int]:
+    """Aggregate the raw topcode-marker states, so a total is never read blind.
+
+    A ``TUTILS_*`` marker of 0 is inside its published domain and a ``TRNTMT_*``
+    marker of 0 is not. Whether the public file writes 0, a blank or nothing for
+    a person outside a topcoded group is undocumented and unread, so the states
+    stay separate here and no zero is scored as a cleared non-topcode.
+    """
+    states = ("zero", "invalid_domain", "blank", "absent")
+    return {
+        f"{prefix}_topcode_marker_{state}_records": sum(
+            int(h.diagnostics[f"{prefix}_topcode_marker_{state}_records"])
+            for h in households
+        )
+        for state in states
+    } | {
+        f"{prefix}_topcode_marker_{state}_households": sum(
+            int(h.diagnostics[f"{prefix}_topcode_marker_{state}_records"]) > 0
+            for h in households
+        )
+        for state in states
+    }
+
+
 def housing_diagnostics(
     households: Sequence[hm.HousingHousehold],
 ) -> dict:
@@ -432,6 +616,15 @@ def housing_diagnostics(
         "assistance_classes": _counter(h.assistance for h in households),
         "assistance_universe_conflicts_nonexclusive": sum(
             h.assistance == "assistance_universe_conflict" for h in households
+        ),
+        # How each household's EVOUCHER evidence was graded against its published
+        # universe. Only ``expected_blank_not_in_universe`` is compatible with an
+        # explicit ERENTSUB = 2, so this is the audit surface for the admission.
+        "voucher_evidence_states": _counter(
+            str(h.diagnostics["voucher_evidence"]) for h in households
+        ),
+        "voucher_evidence_states_admitted": _counter(
+            str(h.diagnostics["voucher_evidence"]) for h in admitted
         ),
         "household_codes": {
             field: _code_counter(h.household(field) for h in households)
@@ -502,6 +695,17 @@ def housing_diagnostics(
         "owner_debt_resolution": _counter(
             str(h.diagnostics["owner_debt"]) for h in households if h.tenure == "owner"
         ),
+        # ``owner_debt`` admits an allocated debt indicator, so the contributing
+        # evidence classes are reported beside it rather than described as
+        # "reported", which in this vocabulary means allocation flag 1.
+        "owner_debt_evidence_classes": {
+            field: _counter(
+                str(h.diagnostics["owner_debt_evidence"][field])
+                for h in households
+                if h.tenure == "owner"
+            )
+            for field in ("EPRDEBT", "EMHDEBT")
+        },
         "boundaries": {
             "rent_zero_admitted": sum(
                 bool(h.diagnostics["rent_zero"]) for h in admitted
@@ -516,6 +720,7 @@ def housing_diagnostics(
             "rent_topcode_partial_marking_households": sum(
                 bool(h.diagnostics["rent_topcode_partial_marking"]) for h in households
             ),
+            **_marker_state_totals("rent", households),
             "utilities_zero_households": sum(
                 bool(h.diagnostics["utilities_zero"]) for h in households
             ),
@@ -526,6 +731,11 @@ def housing_diagnostics(
                 int(h.diagnostics["utilities_topcode_marked_records"]) > 0
                 for h in households
             ),
+            "utilities_topcode_partial_marking_households": sum(
+                bool(h.diagnostics["utilities_topcode_partial_marking"])
+                for h in households
+            ),
+            **_marker_state_totals("utilities", households),
         },
         "person_weights": s._weights(w for h in households for w in h.person_weights),
         "household_weights": s._weights(h.weight for h in households),
@@ -599,6 +809,7 @@ def project(
         complete_membership=complete_membership,
         target_year=target_year,
     )
+    evidence = selection_evidence(households, selection)
     diagnostics = housing_diagnostics(households)
     receipt = {
         "format": RECEIPT_FORMAT,
@@ -606,7 +817,10 @@ def project(
         "recipe_sha256": RECIPE_SHA256,
         "recipe_digest": digest,
         "recipe": recipe_document(),
+        "implementation": implementation_binding(),
+        "source_identity": source_identity(source),
         "selection": selection,
+        "selection_evidence": evidence,
         "membership_digest": s._membership(households),
         "measurement_digest": _measurement_digest(households),
         "diagnostics": diagnostics,

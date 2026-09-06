@@ -278,6 +278,8 @@ EXCLUSION_ORDER = (
     "tenure_no_payment",
     "assistance_universe_conflict",
     "assistance_copy_conflict",
+    "assistance_not_in_universe",
+    "assistance_voucher_unresolved",
     "assistance_assisted",
     "assistance_unassisted_allocated",
     "assistance_unknown",
@@ -487,16 +489,74 @@ def _applicable(measure: m.Measurement) -> bool:
     return measurement_class(measure) in ("observed", "allocated")
 
 
+VOUCHER_EVIDENCE_STATES = (
+    "expected_blank_not_in_universe",
+    "copy_conflict",
+    "suppressed",
+    "answer_present",
+    "applicable_without_answer",
+    "unresolved",
+)
+
+
+def _voucher_evidence(measure: m.Measurement) -> str:
+    """Grade EVOUCHER's raw evidence against its published universe, ERENTSUB = 1.
+
+    ``measurement_class`` cannot decide this on its own. It reports the flag's
+    class once a value has been discarded, so a *populated* EVOUCHER under
+    allocation flag 0 and an *empty* one under the same flag both read as
+    ``not_in_universe`` there even though only the second is the expected
+    unassisted case. The preserved observations are inspected instead, so a
+    published answer that contradicts an explicit ``ERENTSUB = 2`` stays visible
+    and a blank under a not-in-universe flag stays the expected, non-missing
+    case the published universe predicts.
+    """
+    if "household_copy_conflict" in measure.reasons:
+        return "copy_conflict"
+    observations = measure.observations
+    if any(o.flag == -99 for o in observations):
+        return "suppressed"
+    if any(o.value is not None for o in observations):
+        return "answer_present"
+    if any(o.flag is not None and o.flag > 0 for o in observations):
+        return "applicable_without_answer"
+    if observations and all(
+        o.lexical_class == "blank" and o.flag == 0 for o in observations
+    ):
+        return "expected_blank_not_in_universe"
+    return "unresolved"
+
+
+# Voucher evidence that is neither the expected blank nor a copy conflict, and
+# that contradicts the published universe rather than merely failing to resolve.
+_VOUCHER_UNIVERSE_CONFLICTS = (
+    "suppressed",
+    "answer_present",
+    "applicable_without_answer",
+)
+
+
 def _assistance_class(
     tenure: str, rentsub: m.Measurement, voucher: m.Measurement
 ) -> str:
     """Classify household assistance strictly; never recode unknown as unassisted."""
     rentsub_state = measurement_class(rentsub)
     voucher_applicable = _applicable(voucher)
+    voucher_state = _voucher_evidence(voucher)
     if tenure == "owner":
         # ERENTSUB's published universe is ETENURE in (2,3).
-        if rentsub_state in ("observed", "allocated") or voucher_applicable:
+        if rentsub_state in ("observed", "allocated") or voucher_state == (
+            "answer_present"
+        ):
             return "assistance_universe_conflict"
+        if rentsub_state in ("copy_conflict", "suppressed") or voucher_state in (
+            "copy_conflict",
+            "suppressed",
+            "applicable_without_answer",
+        ):
+            # Conflicting or withheld evidence on an out-of-universe household is
+            # not the same as having no evidence to give, and stays visible.
+            return "owner_assistance_evidence_unresolved"
         return "not_in_assistance_universe"
     if tenure not in ("renter", "no_payment"):
         return "assistance_unknown"
@@ -521,10 +581,17 @@ def _assistance_class(
                     else "assisted_without_voucher"
                 )
             return "assisted_voucher_unknown"
-        # EVOUCHER's published universe requires ERENTSUB = 1; an applicable
-        # answer alongside an explicit "No" contradicts the published universe.
-        if voucher_applicable:
+        # EVOUCHER's published universe requires ERENTSUB = 1, so the only
+        # voucher evidence compatible with an explicit "No" is a blank answer
+        # under a not-in-universe flag. A copy conflict, a suppressed flag, a
+        # populated answer under any flag and a missing answer under an
+        # applicable flag are each retained rather than absorbed.
+        if voucher_state == "copy_conflict":
+            return "assistance_copy_conflict"
+        if voucher_state in _VOUCHER_UNIVERSE_CONFLICTS:
             return "assistance_universe_conflict"
+        if voucher_state != "expected_blank_not_in_universe":
+            return "assistance_voucher_unresolved"
         # An imputed "No" is not an explicit negative answer.
         return (
             "explicit_unassisted"
@@ -573,9 +640,27 @@ def _rent_measurement(
     )
 
 
-def _topcode_marked(measures: Sequence[m.Measurement]) -> tuple[int, int]:
-    marked = sum(v.value is not None for v in measures)
-    return marked, len(measures)
+def _topcode_marker_counts(measures: Sequence[m.Measurement]) -> dict[str, int]:
+    """Count marker records by their raw lexical state, keeping zero from blank.
+
+    ``TUTILS_MED``/``TUTILS_STD`` carry a published minimum of $0, so a lexical
+    ``0`` is an in-domain marker value for them while the same token is
+    ``invalid_domain`` for the $1-minimum ``TRNTMT_*`` pair. Whether the public
+    file writes ``0``, a blank or nothing at all for a person who is not in a
+    topcoded group is not documented on those pages and no data row has been
+    read, so each state is counted separately here. A zero marker is **not**
+    reported as a cleared non-topcode; the counts exist so the first-32 output
+    can settle the question before any marker total is interpreted.
+    """
+    lexical = [o.lexical_class for v in measures for o in v.observations]
+    return {
+        "marked": sum(v.value is not None for v in measures),
+        "records": len(measures),
+        "zero": sum(v.value is not None and v.value == 0 for v in measures),
+        "invalid_domain": lexical.count("invalid_domain"),
+        "blank": lexical.count("blank"),
+        "absent": lexical.count("absent"),
+    }
 
 
 def _exclusion(
@@ -593,6 +678,10 @@ def _exclusion(
         return "assistance_universe_conflict"
     if assistance == "assistance_copy_conflict":
         return "assistance_copy_conflict"
+    if assistance == "assistance_not_in_universe":
+        return "assistance_not_in_universe"
+    if assistance == "assistance_voucher_unresolved":
+        return "assistance_voucher_unresolved"
     if assistance.startswith("assisted"):
         return "assistance_assisted"
     if assistance == "unassisted_allocated":
@@ -627,7 +716,10 @@ def december_housing(
     """
     m._check_source(source, target_year)
     roster = m.december_households(
-        rows, source=source, complete_membership=complete_membership
+        rows,
+        source=source,
+        complete_membership=complete_membership,
+        target_year=target_year,
     )
     fields = (
         *_HOUSEHOLD_AMOUNTS,
@@ -782,13 +874,19 @@ def _diagnostics(
     utilities: m.Measurement,
 ) -> Mapping[str, object]:
     rent_amount = lookup["TRENTMORT"]
-    rent_marked, rent_total = _topcode_marked(
+    rent_markers = _topcode_marker_counts(
         [v for v in topcodes if v.concept in ("TRNTMT_MED", "TRNTMT_STD")]
     )
-    util_marked, util_total = _topcode_marked(
+    util_markers = _topcode_marker_counts(
         [v for v in topcodes if v.concept in ("TUTILS_MED", "TUTILS_STD")]
     )
     owner_debt = "not_applicable"
+    # ``_applicable`` admits an allocated answer, so the resolution below is an
+    # indication, not a report: the contributing evidence classes are carried
+    # beside it rather than folded into a word that means allocation flag 1.
+    owner_debt_evidence = {
+        name: measurement_class(lookup[name]) for name in ("EPRDEBT", "EMHDEBT")
+    }
     if tenure == "owner":
         debts = [_applicable(lookup["EPRDEBT"]), _applicable(lookup["EMHDEBT"])]
         values = [
@@ -799,7 +897,7 @@ def _diagnostics(
         if not any(debts):
             owner_debt = "owner_debt_unresolved"
         elif YES in values:
-            owner_debt = "owner_debt_reported"
+            owner_debt = "owner_debt_indicated"
         else:
             owner_debt = "owner_debt_absent"
     eehc_rentsub_codes, eehc_rentsub_disagreement = _person_month_codes(
@@ -822,11 +920,13 @@ def _diagnostics(
         "rentsub_quality": measurement_quality(lookup["ERENTSUB"]),
         "voucher_class": measurement_class(lookup["EVOUCHER"]),
         "voucher_quality": measurement_quality(lookup["EVOUCHER"]),
+        "voucher_evidence": _voucher_evidence(lookup["EVOUCHER"]),
         "rent_amount_class": measurement_class(rent_amount),
         "rent_amount_quality": measurement_quality(rent_amount),
         "utilities_class": measurement_class(utilities),
         "utilities_quality": measurement_quality(utilities),
         "owner_debt": owner_debt,
+        "owner_debt_evidence": owner_debt_evidence,
         "rent_admitted": rent.value is not None,
         "rent_zero": rent.value is not None and rent.value == 0,
         "rent_at_domain_maximum": rent.value is not None
@@ -834,12 +934,26 @@ def _diagnostics(
         "utilities_zero": utilities.value is not None and utilities.value == 0,
         "utilities_at_domain_maximum": utilities.value is not None
         and utilities.value == _HOUSEHOLD_AMOUNTS["TUTILS"].high,
-        "rent_topcode_marked_records": rent_marked,
-        "rent_topcode_marker_records": rent_total,
-        "rent_topcode_partial_marking": 0 < rent_marked < rent_total,
-        "utilities_topcode_marked_records": util_marked,
-        "utilities_topcode_marker_records": util_total,
-        "utilities_topcode_partial_marking": 0 < util_marked < util_total,
+        "rent_topcode_marked_records": rent_markers["marked"],
+        "rent_topcode_marker_records": rent_markers["records"],
+        "rent_topcode_partial_marking": (
+            0 < rent_markers["marked"] < rent_markers["records"]
+        ),
+        "rent_topcode_marker_zero_records": rent_markers["zero"],
+        "rent_topcode_marker_invalid_domain_records": rent_markers["invalid_domain"],
+        "rent_topcode_marker_blank_records": rent_markers["blank"],
+        "rent_topcode_marker_absent_records": rent_markers["absent"],
+        "utilities_topcode_marked_records": util_markers["marked"],
+        "utilities_topcode_marker_records": util_markers["records"],
+        "utilities_topcode_partial_marking": (
+            0 < util_markers["marked"] < util_markers["records"]
+        ),
+        "utilities_topcode_marker_zero_records": util_markers["zero"],
+        "utilities_topcode_marker_invalid_domain_records": util_markers[
+            "invalid_domain"
+        ],
+        "utilities_topcode_marker_blank_records": util_markers["blank"],
+        "utilities_topcode_marker_absent_records": util_markers["absent"],
         "eehc_rentsub_receipt_members": rentsub_receipt_members,
         "eehc_rentsub_member_codes": eehc_rentsub_codes,
         "eehc_rentsub_member_disagreement": eehc_rentsub_disagreement,

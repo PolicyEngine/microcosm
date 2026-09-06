@@ -8,6 +8,10 @@ what the recipe must refuse and how it must classify evidence it is given.
 from __future__ import annotations
 
 import hashlib
+import json
+import pathlib
+import sys
+import types
 from decimal import Decimal
 
 import pytest
@@ -388,7 +392,11 @@ def test_an_owner_amount_is_a_mortgage_and_never_a_zero_rent():
     assert "mortgage_excluded" in household.rent.reasons
     assert "tenure_not_renter:owner" in household.rent.reasons
     assert household.exclusion == "tenure_owner"
-    assert household.diagnostics["owner_debt"] == "owner_debt_reported"
+    assert household.diagnostics["owner_debt"] == "owner_debt_indicated"
+    assert household.diagnostics["owner_debt_evidence"] == {
+        "EPRDEBT": "observed",
+        "EMHDEBT": "not_in_universe",
+    }
 
 
 def test_an_owner_without_reported_debt_is_reported_as_unresolved():
@@ -438,7 +446,10 @@ def test_an_unknown_assistance_status_is_never_recoded_as_unassisted():
 def test_a_not_in_universe_assistance_status_keeps_its_own_class():
     household = _household(_row(ERENTSUB="", ARENTSUB="0"))
     assert household.assistance == "assistance_not_in_universe"
-    assert household.exclusion == "assistance_unknown"
+    # Its own rung, not the shared unknown one: the doc says the class stays
+    # distinct, and the exclusive ladder now says the same thing.
+    assert household.exclusion == "assistance_not_in_universe"
+    assert "assistance_not_in_universe" in hm.EXCLUSION_ORDER
 
 
 def test_an_assistance_copy_conflict_is_its_own_exclusion():
@@ -479,6 +490,163 @@ def test_an_assisted_household_keeps_its_voucher_detail(
     # An assisted household's TRENTMORT is its post-assistance tenant payment.
     assert household.household("TRENTMORT").value == Decimal(900)
     assert household.rent.value == Decimal(900)
+
+
+# --- the strict explicit-negative rule (review S1) ---------------------------
+
+
+@pytest.mark.parametrize(
+    ("label", "rows", "assistance", "exclusion"),
+    [
+        (
+            "copy_conflict",
+            lambda: (_row(pnum=101), _row(pnum=102, EVOUCHER="1", AVOUCHER="1")),
+            "assistance_copy_conflict",
+            "assistance_copy_conflict",
+        ),
+        (
+            "suppressed",
+            lambda: (_row(AVOUCHER="-99"),),
+            "assistance_universe_conflict",
+            "assistance_universe_conflict",
+        ),
+        (
+            "value_under_not_in_universe_flag",
+            lambda: (_row(EVOUCHER="1", AVOUCHER="0"),),
+            "assistance_universe_conflict",
+            "assistance_universe_conflict",
+        ),
+        (
+            "blank_under_observed_flag",
+            lambda: (_row(EVOUCHER="", AVOUCHER="1"),),
+            "assistance_universe_conflict",
+            "assistance_universe_conflict",
+        ),
+    ],
+)
+def test_an_explicit_negative_admits_only_a_blank_out_of_universe_voucher(
+    label, rows, assistance, exclusion
+):
+    household = _household(*rows())
+    assert household.household("ERENTSUB").value == Decimal(2)
+    assert hm.measurement_class(household.household("ERENTSUB")) == "observed"
+    assert household.assistance == assistance
+    assert household.exclusion == exclusion
+    assert household.assistance != "explicit_unassisted"
+
+
+def test_the_expected_blank_voucher_under_flag_zero_is_not_turned_into_missing():
+    household = _household(_row())
+    voucher = household.household("EVOUCHER")
+    assert household.diagnostics["voucher_evidence"] == (
+        "expected_blank_not_in_universe"
+    )
+    # The published universe predicts exactly this state for an unassisted
+    # household, so it stays not-in-universe rather than becoming unknown.
+    assert hm.measurement_class(voucher) == "not_in_universe"
+    assert household.diagnostics["voucher_class"] == "not_in_universe"
+    assert voucher.value is None
+    assert "EVOUCHER:blank" in voucher.reasons
+    assert household.assistance == "explicit_unassisted"
+    assert household.exclusion is None
+
+
+def test_a_discarded_voucher_value_is_distinguished_from_a_blank_one():
+    blank = _household(_row())
+    populated = _household(_row(EVOUCHER="1", AVOUCHER="0"))
+    # measurement_class alone cannot separate them: the value was discarded, so
+    # both read as the flag's class. The preserved observations can.
+    assert hm.measurement_class(blank.household("EVOUCHER")) == "not_in_universe"
+    assert hm.measurement_class(populated.household("EVOUCHER")) == "not_in_universe"
+    assert blank.household("EVOUCHER").observations[0].lexical_class == "blank"
+    assert populated.household("EVOUCHER").observations[0].lexical_class == "numeric"
+    raw = {
+        r.name: r for r in populated.household("EVOUCHER").observations[0].raw_fields
+    }
+    assert raw["EVOUCHER"].value == "1"
+    assert raw["AVOUCHER"].value == "0"
+    assert blank.diagnostics["voucher_evidence"] == "expected_blank_not_in_universe"
+    assert populated.diagnostics["voucher_evidence"] == "answer_present"
+    assert blank.exclusion is None
+    assert populated.exclusion == "assistance_universe_conflict"
+
+
+def test_an_unreadable_voucher_answer_is_unresolved_not_a_universe_conflict():
+    household = _household(_row(EVOUCHER="9", AVOUCHER="0"))
+    assert household.diagnostics["voucher_evidence"] == "unresolved"
+    assert household.assistance == "assistance_voucher_unresolved"
+    assert household.exclusion == "assistance_voucher_unresolved"
+
+
+def test_an_absent_voucher_column_is_unresolved_rather_than_admitted():
+    values = dict.fromkeys(hp.PROJECTION_FIELDS, "")
+    values.update(
+        SSUID="0001",
+        PNUM="101",
+        MONTHCODE="12",
+        ERESIDENCEID="100001",
+        WPFINWGT="1000",
+        **RENTER,
+    )
+    del values["EVOUCHER"]
+    household = _household(m.SippRow(values))
+    assert household.household("EVOUCHER").observations[0].lexical_class == "absent"
+    assert household.diagnostics["voucher_evidence"] == "unresolved"
+    assert household.assistance == "assistance_voucher_unresolved"
+
+
+def test_an_imputed_negative_with_conflicting_voucher_evidence_stays_excluded():
+    household = _household(_row(ARENTSUB="2", EVOUCHER="1", AVOUCHER="1"))
+    assert household.assistance == "assistance_universe_conflict"
+    assert household.assistance != "explicit_unassisted"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "extra"),
+    [
+        ({"AVOUCHER": "-99"}, None),
+        ({"EVOUCHER": "", "AVOUCHER": "1"}, None),
+        ({}, {"ERENTSUB": "1"}),
+    ],
+)
+def test_an_owner_with_conflicting_evidence_is_unresolved_not_out_of_universe(
+    overrides, extra
+):
+    rows = [_row(**{**OWNER, **overrides})]
+    if extra is not None:
+        rows.append(_row(pnum=102, **{**OWNER, **overrides, **extra}))
+    household = _household(*rows)
+    assert household.tenure == "owner"
+    assert household.assistance == "owner_assistance_evidence_unresolved"
+    assert household.assistance != "not_in_assistance_universe"
+    # The ladder still reports the owner reason; the class keeps the evidence.
+    assert household.exclusion == "tenure_owner"
+
+
+def test_the_recipe_states_the_only_voucher_evidence_it_admits():
+    universe = hp.recipe_document()["assistance_universe"]
+    assert universe["voucher_evidence_admitted_with_explicit_negative"] == (
+        "expected_blank_not_in_universe"
+    )
+    assert universe["voucher_blank_under_flag_0_is_expected_not_missing"] is True
+    assert universe["voucher_value_under_flag_0_distinguished_from_blank"] is True
+    assert set(universe["voucher_evidence_states"]) == set(hm.VOUCHER_EVIDENCE_STATES)
+
+
+def test_the_projection_counts_how_every_voucher_answer_was_graded():
+    diagnostics = _project(
+        _row(ssuid="0001", residence="100001"),
+        _row(ssuid="0002", residence="100002", EVOUCHER="1", AVOUCHER="0"),
+        _row(ssuid="0003", residence="100003", AVOUCHER="-99"),
+    ).diagnostics
+    assert diagnostics["voucher_evidence_states"] == {
+        "answer_present": 1,
+        "expected_blank_not_in_universe": 1,
+        "suppressed": 1,
+    }
+    assert diagnostics["voucher_evidence_states_admitted"] == {
+        "expected_blank_not_in_universe": 1
+    }
 
 
 def test_an_assisted_households_rent_is_not_a_full_contract_charge():
@@ -608,29 +776,52 @@ def test_every_exclusion_reason_is_declared_in_the_recipe_order():
         _row(ssuid="0008", residence="100008", weight="0"),
         _row(ssuid="0009", residence="100009", EVOUCHER="1", AVOUCHER="1"),
         _row(ssuid="0010", residence="100010", ETENURE="9"),
+        _row(ssuid="0011", residence="100011", ERENTSUB="", ARENTSUB="0"),
+        _row(ssuid="0012", residence="100012", EVOUCHER="9", AVOUCHER="0"),
+        _row(ssuid="0013", residence="100013", pnum=101),
+        _row(ssuid="0013", residence="100013", pnum=102, ETENURE="1"),
+        _row(ssuid="0014", residence="100014", pnum=101),
+        _row(ssuid="0014", residence="100014", pnum=102, ERENTSUB="1"),
+        _row(ssuid="0015", residence="100015", pnum=101),
+        _row(ssuid="0015", residence="100015", pnum=102, TRENTMORT="1200"),
+        _row(ssuid="0016", residence="100016", weight=""),
     ]
     result = hp.project(rows, source=SOURCE, selection="all_ssuids")
     exclusions = result.diagnostics["exclusions_exclusive"]
-    assert set(exclusions) - {"admitted"} <= set(hm.EXCLUSION_ORDER)
+    # Every declared rung is reachable, and nothing is reported outside them.
+    assert set(exclusions) - {"admitted"} == set(hm.EXCLUSION_ORDER)
     assert exclusions == {
         "admitted": 1,
         "assistance_assisted": 1,
+        "assistance_copy_conflict": 1,
+        "assistance_not_in_universe": 1,
         "assistance_unassisted_allocated": 1,
         "assistance_universe_conflict": 1,
         "assistance_unknown": 1,
+        "assistance_voucher_unresolved": 1,
+        "rent_copy_conflict": 1,
         "rent_unknown": 1,
+        "tenure_copy_conflict": 1,
         "tenure_no_payment": 1,
         "tenure_owner": 1,
         "tenure_unknown": 1,
         "weight_not_positive": 1,
+        "weight_unknown": 1,
     }
-    assert result.diagnostics["households"] == 10
+    assert result.diagnostics["households"] == 16
     assert result.diagnostics["admitted_unassisted_renter_households"] == 1
-    assert result.diagnostics["tenure_classes"]["renter"] == 7
+    assert result.diagnostics["tenure_classes"] == {
+        "no_payment": 1,
+        "owner": 1,
+        "renter": 12,
+        "tenure_copy_conflict": 1,
+        "tenure_unknown": 1,
+    }
     assert result.diagnostics["household_codes"]["ETENURE"] == {
         "1": 1,
-        "2": 7,
+        "2": 12,
         "3": 1,
+        "copy_conflict": 1,
         "unknown": 1,
     }
 
@@ -658,3 +849,327 @@ def test_copy_conflicts_and_unknowns_are_counted_per_household_field():
     assert result.diagnostics["household_copy_conflicts"]["TUTILS"] == 1
     assert result.diagnostics["household_copy_conflicts"]["TRENTMORT"] == 0
     assert result.diagnostics["household_unknown_measurements"]["TUTILS"] == 1
+
+
+# --- selection evidence and caller assertion (review S3) ---------------------
+
+
+def test_first_32_selection_refuses_more_than_thirty_two_ssuids():
+    rows = [_row(ssuid=f"{i:04d}", residence=str(100001 + i)) for i in range(40)]
+    with pytest.raises(hp.HousingProjectionError, match="SELECTION_EXCEEDS_FIRST_32"):
+        hp.project(rows, source=SOURCE, selection="first_32_ssuids")
+    # The label was the only thing wrong: the same rows measure under all_ssuids.
+    every = hp.project(rows, source=SOURCE, selection="all_ssuids")
+    assert every.diagnostics["households"] == 40
+    assert (
+        json.loads(every.receipt_json)["selection_evidence"]["selected_ssuid_count"]
+        == 40
+    )
+    exact = rows[:32]
+    bounded = hp.project(exact, source=SOURCE, selection="first_32_ssuids")
+    assert (
+        json.loads(bounded.receipt_json)["selection_evidence"]["selected_ssuid_count"]
+        == 32
+    )
+
+
+def test_the_receipt_records_the_selected_ssuid_count_and_digest():
+    result = _project(
+        _row(ssuid="0001", residence="100001"),
+        _row(ssuid="0002", residence="100002"),
+    )
+    evidence = json.loads(result.receipt_json)["selection_evidence"]
+    assert evidence["mode"] == "first_32_ssuids"
+    assert evidence["selected_ssuid_count"] == 2
+    assert evidence["first_32_ssuids_maximum"] == 32
+    # The digest covers the sorted SSUID set, so row order cannot move it while
+    # a different set must.
+    reordered = _project(
+        _row(ssuid="0002", residence="100002"),
+        _row(ssuid="0001", residence="100001"),
+    )
+    other = _project(
+        _row(ssuid="0003", residence="100003"),
+        _row(ssuid="0004", residence="100004"),
+    )
+    assert (
+        json.loads(reordered.receipt_json)["selection_evidence"][
+            "selected_ssuid_digest"
+        ]
+        == evidence["selected_ssuid_digest"]
+    )
+    assert (
+        json.loads(other.receipt_json)["selection_evidence"]["selected_ssuid_digest"]
+        != evidence["selected_ssuid_digest"]
+    )
+
+
+def test_the_receipt_calls_the_selection_a_caller_assertion_not_a_proof():
+    receipt = json.loads(_project(_row()).receipt_json)
+    evidence = receipt["selection_evidence"]
+    assert evidence["source_authentication"] == "caller_asserted"
+    assert evidence["count_is_not_proof_of_a_relative_selection"] is True
+    assert evidence["relative_selection_established_by"] == (
+        "authenticated_runner_over_the_full_december_roster"
+    )
+    declared = hp.recipe_document()["selection_authentication"]
+    assert declared["first_32_ssuids_maximum"] == 32
+    assert declared["recorded_in_receipt_as"] == "caller_asserted"
+    assert "not proof of" in declared["count_is_not_proof_of_a_relative_selection"]
+
+
+def test_the_receipt_keeps_source_identity_apart_from_the_caller_assertion():
+    receipt = json.loads(_project(_row()).receipt_json)
+    identity = receipt["source_identity"]
+    assert identity["data_sha256"] == source._PINS.sha256
+    assert identity["metadata_sha256"] == source._PINS.metadata_sha256
+    assert identity["survey_year"] == 2023
+    assert identity["reference_year"] == 2022
+    assert identity["matches_frozen_producer_pins"] is True
+    # Rows are supplied, never hashed here; no byte proof is claimed from them.
+    assert identity["supplied_rows_verified_against_these_bytes"] is False
+    assert identity["new_source_byte_proof_claimed"] is False
+    assert hp.NON_CLAIMS["new_source_byte_proof_claimed"] is False
+    with pytest.raises(hp.HousingProjectionError, match="HOUSING_SOURCE"):
+        hp.source_identity(
+            m.SippSource("0" * 64, source._PINS.metadata_sha256, 2023, 2022)
+        )
+
+
+# --- implementation binding (review S4) -------------------------------------
+
+
+def test_the_receipt_binds_both_housing_modules_and_both_frozen_modules():
+    binding = json.loads(_project(_row()).receipt_json)["implementation"]
+    assert tuple(binding["modules"]) == hp.IMPLEMENTATION_MODULES
+    assert set(binding["module_sha256"]) == set(hp.IMPLEMENTATION_MODULES)
+    assert set(hp.IMPLEMENTATION_MODULES) == {
+        "microcosm.build.sipp_december_source",
+        "microcosm.build.sipp_housing_measurements",
+        "microcosm.build.sipp_housing_projection",
+        "microcosm.build.sipp_measurements",
+    }
+    for name, digest in binding["module_sha256"].items():
+        path = pathlib.Path(sys.modules[name].__file__)
+        assert digest == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert binding["frozen_modules_mutated"] is False
+    assert binding["inside_recipe_bytes"] is False
+    assert binding["dependency_versions_bound"] is False
+
+
+def test_the_implementation_binding_is_never_inside_the_bytes_it_hashes():
+    recipe = hp.recipe_bytes().decode()
+    binding = hp.implementation_binding()
+    assert binding["binding"] not in recipe
+    for digest in binding["module_sha256"].values():
+        assert digest not in recipe
+    # The recipe still names what is bound, so the omission is declared, and the
+    # pin over those bytes is unaffected by any module edit.
+    declared = hp.recipe_document()["implementation_binding"]
+    assert list(declared["modules"]) == list(hp.IMPLEMENTATION_MODULES)
+    assert declared["inside_recipe_bytes"] is False
+    assert hashlib.sha256(hp.recipe_bytes()).hexdigest() == hp.RECIPE_SHA256
+
+
+def test_a_module_digest_follows_that_module_s_bytes(tmp_path, monkeypatch):
+    path = tmp_path / "invented_implementation.py"
+    path.write_text("RULE = 'admit'\n")
+    module = types.ModuleType("invented_implementation")
+    module.__file__ = str(path)
+    monkeypatch.setitem(sys.modules, "invented_implementation", module)
+    first = hp.module_digests(("invented_implementation",))
+    assert first == {
+        "invented_implementation": hashlib.sha256(path.read_bytes()).hexdigest()
+    }
+    path.write_text("RULE = 'refuse'\n")
+    assert hp.module_digests(("invented_implementation",)) != first
+    with pytest.raises(hp.HousingProjectionError, match="IMPLEMENTATION_MODULES"):
+        hp.module_digests("microcosm.build.sipp_housing_projection")
+
+
+def test_a_changed_classification_module_moves_the_receipt(monkeypatch):
+    baseline = _project(_row()).receipt_sha256
+    real = hp.module_digests()
+    changed = {**real, "microcosm.build.sipp_housing_measurements": "0" * 64}
+    monkeypatch.setattr(
+        hp, "module_digests", lambda names=hp.IMPLEMENTATION_MODULES: changed
+    )
+    moved = _project(_row())
+    assert moved.receipt_sha256 != baseline
+    binding = json.loads(moved.receipt_json)["implementation"]
+    assert binding["module_sha256"]["microcosm.build.sipp_housing_measurements"] == (
+        "0" * 64
+    )
+    # The recipe pin is untouched: a rule change moves the receipt, not the pin.
+    assert hashlib.sha256(hp.recipe_bytes()).hexdigest() == hp.RECIPE_SHA256
+
+
+# --- topcode marker states (review S5) --------------------------------------
+
+
+def test_a_zero_utilities_marker_is_in_domain_and_counted_as_a_zero():
+    household = _household(_row(TUTILS_MED="0", TUTILS_STD="0"))
+    marker = household.person_topcode("TUTILS_MED")[0]
+    assert marker.value == 0
+    assert marker.status == "topcode_group_marker"
+    assert household.diagnostics["utilities_topcode_marked_records"] == 2
+    assert household.diagnostics["utilities_topcode_marker_zero_records"] == 2
+    assert household.diagnostics["utilities_topcode_marker_blank_records"] == 0
+    assert household.diagnostics["utilities_topcode_marker_invalid_domain_records"] == 0
+
+
+def test_a_zero_rent_marker_is_outside_its_published_minimum_of_one():
+    household = _household(_row(TRNTMT_MED="0", TRNTMT_STD="0"))
+    assert household.diagnostics["rent_topcode_marked_records"] == 0
+    assert household.diagnostics["rent_topcode_marker_invalid_domain_records"] == 2
+    assert household.diagnostics["rent_topcode_marker_zero_records"] == 0
+    contracts = {e["name"]: e for e in hp.field_contracts()}
+    assert contracts["TRNTMT_MED"]["minimum"] == 1
+    assert contracts["TUTILS_MED"]["minimum"] == 0
+
+
+def test_marker_states_aggregate_without_scoring_a_zero_as_a_cleared_topcode():
+    diagnostics = _project(
+        _row(ssuid="0001", residence="100001", TUTILS_MED="0", TUTILS_STD="0"),
+        _row(ssuid="0002", residence="100002"),
+        _row(ssuid="0003", residence="100003", TRNTMT_MED="0"),
+    ).diagnostics
+    boundaries = diagnostics["boundaries"]
+    assert boundaries["utilities_topcode_marker_zero_records"] == 2
+    assert boundaries["utilities_topcode_marker_zero_households"] == 1
+    assert boundaries["utilities_topcode_marker_blank_records"] == 4
+    assert boundaries["utilities_topcode_marked_households"] == 1
+    assert boundaries["utilities_topcode_partial_marking_households"] == 0
+    assert boundaries["rent_topcode_marker_invalid_domain_records"] == 1
+    assert boundaries["rent_topcode_marker_blank_records"] == 5
+    assert boundaries["rent_topcode_marked_households"] == 0
+    markers = hp.recipe_document()["topcode_markers"]
+    assert markers["threshold_inferred"] is False
+    assert markers["trntmt_minimum"] == 1 and markers["tutils_minimum"] == 0
+    assert (
+        "no data row has been read"
+        in (markers["zero_marker_is_not_a_cleared_non_topcode"])
+    )
+
+
+# --- month, residence, tenure and universe cases (review S6) ----------------
+
+
+def test_a_november_row_cannot_contradict_the_december_measurement():
+    households = hm.december_housing(
+        [
+            _row(pnum=101),
+            _row(
+                pnum=101,
+                MONTHCODE="11",
+                ETENURE="1",
+                TRENTMORT="5",
+                TUTILS="7",
+                ERENTSUB="1",
+                EVOUCHER="1",
+                AVOUCHER="1",
+            ),
+        ],
+        source=SOURCE,
+        complete_membership=True,
+    )
+    assert len(households) == 1
+    household = households[0]
+    assert len(household.members) == 1
+    assert household.tenure == "renter"
+    assert household.household("TRENTMORT").value == Decimal(900)
+    assert household.household("TUTILS").value == Decimal(150)
+    assert household.assistance == "explicit_unassisted"
+    assert household.exclusion is None
+
+
+def test_one_ssuid_with_two_residences_becomes_two_classified_households():
+    households = hm.december_housing(
+        [
+            _row(pnum=101, residence="100001"),
+            _row(pnum=102, residence="100002", **OWNER),
+        ],
+        source=SOURCE,
+        complete_membership=True,
+    )
+    assert [h.key for h in households] == [("0001", 100001), ("0001", 100002)]
+    assert [h.tenure for h in households] == ["renter", "owner"]
+    assert [h.exclusion for h in households] == [None, "tenure_owner"]
+    assert [len(h.members) for h in households] == [1, 1]
+    diagnostics = hp.project(
+        [
+            _row(pnum=101, residence="100001"),
+            _row(pnum=102, residence="100002", **OWNER),
+        ],
+        source=SOURCE,
+        selection="first_32_ssuids",
+    ).diagnostics
+    assert diagnostics["households"] == 2
+    assert diagnostics["people"] == 2
+
+
+def test_an_owner_reporting_no_debt_is_recorded_as_owner_debt_absent():
+    overrides = {**OWNER, "EPRDEBT": "2", "APRDEBT": "1", "TRENTMORT": ""}
+    household = _household(_row(**overrides))
+    assert household.diagnostics["owner_debt"] == "owner_debt_absent"
+    assert household.diagnostics["owner_debt_evidence"] == {
+        "EPRDEBT": "observed",
+        "EMHDEBT": "not_in_universe",
+    }
+    assert household.rent.value is None
+    diagnostics = _project(_row(**overrides)).diagnostics
+    assert diagnostics["owner_debt_resolution"] == {"owner_debt_absent": 1}
+    assert diagnostics["owner_debt_evidence_classes"]["EPRDEBT"] == {"observed": 1}
+    assert diagnostics["owner_debt_evidence_classes"]["EMHDEBT"] == {
+        "not_in_universe": 1
+    }
+
+
+def test_an_assisted_household_with_no_member_receipt_is_counted():
+    diagnostics = _project(
+        _row(ERENTSUB="1", EVOUCHER="1", AVOUCHER="1", EEHC_RENTSUB="2")
+    ).diagnostics
+    assert diagnostics["no_person_month_receipt_in_assisted_households"] == 1
+    assert diagnostics["person_month_receipt_in_explicit_unassisted_households"] == 0
+    assert diagnostics["exclusions_exclusive"] == {"assistance_assisted": 1}
+
+
+def test_no_payment_tenure_keeps_its_assistance_class_but_excludes_on_tenure():
+    household = _household(_row(ETENURE="3", EEHC_TEN="3", ERENTSUB="2", ARENTSUB="1"))
+    assert household.tenure == "no_payment"
+    assert household.assistance == "explicit_unassisted"
+    assert household.exclusion == "tenure_no_payment"
+    assert household.rent.value is None
+    assert "no_payment_tenure_outside_trentmort_universe" in household.rent.reasons
+
+
+def test_a_renter_amount_outside_its_flag_universe_reaches_rent_unknown():
+    household = _household(_row(ARENTMORT="0"))
+    assert household.tenure == "renter"
+    assert household.assistance == "explicit_unassisted"
+    assert household.household("TRENTMORT").value is None
+    assert household.rent.value is None
+    assert "ARENTMORT:not_in_universe" in household.rent.reasons
+    assert household.exclusion == "rent_unknown"
+    assert household.diagnostics["rent_amount_class"] == "not_in_universe"
+
+
+def test_person_month_evidence_never_reaches_the_household_measurements():
+    household = _household(
+        _row(EEHC_RENTSUB="1", AEHC_RENTSUB="1", EEHC_VOUCHER="1", AEHC_VOUCHER="1")
+    )
+    assert {v.concept for v in household.household_measurements} == set(
+        hm.HOUSEHOLD_CATEGORIES
+    ) | set(hm.HOUSEHOLD_AMOUNTS)
+    for name in hm.PERSON_MONTH_CATEGORIES:
+        with pytest.raises(hm.HousingMeasurementError, match="UNKNOWN_HOUSEHOLD_FIELD"):
+            household.household(name)
+    assert household.diagnostics["eehc_rentsub_receipt_members"] == 1
+    assert household.assistance == "explicit_unassisted"
+    assert household.exclusion is None
+    assert (
+        hp.recipe_document()["assistance_universe"][
+            "person_month_indicators_determine_household_class"
+        ]
+        is False
+    )
