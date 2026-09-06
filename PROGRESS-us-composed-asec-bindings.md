@@ -11,10 +11,17 @@ ACS+ASEC population and expose the already-reviewed corrected monetary and
 demographic measurements over those rows only, leaving the native ACS arm
 byte-for-byte unchanged. No source read, no engine, no calibration, no release.
 
-## State
+## State at the frozen commit `24f32366` (2026-09-06)
 
-Reading and reproduction phase. Baseline `test_us_graph_composed_population.py`
-is green in this child (30 passed).
+Implementation, tests and docs are **in the commit**, not still ahead of it:
+`graph_composed_asec_binding.py` and `graph_composed_asec_measures.py` declare
+the three nodes, `graph_implementation.py` and its inventory declare the
+`composed_asec_binding_v1` stage, `test_us_spine_blindness.py` classifies both
+modules, `test_us_graph_composed_asec_binding.py` covers the stage on invented
+sources, and `docs/us-composed-asec-binding.md` documents it. The earlier
+"reading and reproduction phase" wording below was true when written and was
+left stale by the commits that followed it; it is corrected here rather than
+deleted. Nothing genuine had been run at that commit.
 
 ## Established by reading (not assumed)
 
@@ -26,7 +33,14 @@ is green in this child (30 passed).
   (`acs_pums.py::_with_structural_columns` maps `AGEP` into `A_AGE`), while
   `age` is ACS-only. `derive_cps_carried_current_leaves` already declares
   `age` as a reviewed ASEC leaf derived from `A_AGE`.
-- `A_SEX` is absent from the composed person table; `is_female` is ACS-only.
+- `A_SEX` is absent from the **invented fixture's** parent frame, so
+  `is_female` is ACS-only *on that fixture*. **Corrected 2026-09-06:** this was
+  a property of the invented parent, not of source, and the original line here
+  stated it without that qualifier. Genuine prepared ASEC bytes carry both
+  `A_SEX` and `P_SEQ` — observed as metadata in the frozen raw-stage parent
+  checkpoint (176 person columns) and in the CREATE `frame_context` of the
+  genuine 505-household run (179 person columns). See
+  `PROGRESS-us-composed-asec-review-fixes.md` and review finding code-1.
 - ASEC-only integer columns arrive as nullable `Int64` on the composed frame
   (missing on ACS rows), while the reviewed verifiers require `int64`.
 - `income_observations` carries the prepared arm's ordered original
@@ -39,9 +53,12 @@ is green in this child (30 passed).
 - [x] read AGENTS/CLAUDE, docs/us-composed-population-graph.md, the composed
       graph, the two ASEC kernels and every helper they use
 - [x] probed the real invented composed fixture for arm shapes and dtypes
+- [x] reproduced the accepted kernels' refusals on the composed fixture
+- [x] implemented the typed binding node + the two measurement nodes
+- [x] classification, inventory, docs, tests
 
 ## Next
 
-- [ ] reproduce the accepted kernels' refusals on the composed fixture
-- [ ] implement the typed binding node + the two measurement nodes
-- [ ] classification, inventory, docs, tests
+Superseded. The Fable 5.1 review of `24f32366` and its four findings are
+implemented on `us-composed-asec-review-fixes-20260906`; that branch's journal
+is `PROGRESS-us-composed-asec-review-fixes.md`.

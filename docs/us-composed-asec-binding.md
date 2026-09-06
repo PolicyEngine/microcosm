@@ -72,15 +72,21 @@ records `composed_is_whole_arm: false`.
 ## What binds each artifact to its producer
 
 The bind node takes seven typed edges. The population's `frame_context` comes
-from the population's own context producer; the origin document and the five
-positional evidence artifacts must all come from the composed CREATE
-(`NODE_EVIDENCE_PRODUCER`), and the five evidence edges must share one producing
-node execution (`ARTIFACT_PRODUCER_SPLIT`), because they are positional over one
-prepared population. The composed context's row identities are checked against
-the actual tables, and `source_origin`'s per-entity provenance digests are
-**recomputed** against those tables: `bind_composed_source_origin` deliberately
-verifies no digest against any population, so a document describing a different
-frame is caught here (`ORIGIN_DOES_NOT_DESCRIBE_THIS_FRAME`).
+from the population's own context producer. The other six — the origin document
+and the five positional evidence artifacts — must all come from the composed
+CREATE (`NODE_EVIDENCE_PRODUCER`) **and** must share one producing node
+execution (`ARTIFACT_PRODUCER_SPLIT`), because all six are positional over one
+prepared population and one composition of it.
+
+The origin is held to that producer identity as well as to its content. The
+composed context's row identities are checked against the actual tables, and
+`source_origin`'s per-entity provenance digests are **recomputed** against those
+tables: `bind_composed_source_origin` deliberately verifies no digest against
+any population, so a document describing a different frame is caught here
+(`ORIGIN_DOES_NOT_DESCRIBE_THIS_FRAME`). That recomputation is what catches a
+wrong frame; it cannot tell two CREATE executions that describe identical tables
+apart, which is why the producer key the binding document records is pinned by
+the equality rather than carried unverified.
 
 The bind node emits three artifacts:
 
@@ -136,19 +142,40 @@ are observed in ASEC survey years 2023, 2024 and 2025 while the native ACS arm's
 survey date**, and reconciling the two periods is a calibration decision this
 stage deliberately leaves open.
 
-Two demographic fields a calibration will also want cannot be bound on this
-population, and the binding says exactly why rather than guessing:
+Two demographic fields a calibration will also want are **not** bound by this
+stage, and the binding records exactly what it observed rather than guessing:
 
-| Column | Reviewed ASEC mapping | Missing source column |
+| Column | Reviewed ASEC mapping | Required source column |
 | --- | --- | --- |
 | `is_female` | `cps_carried` (`is_female = A_SEX == 2`) | `A_SEX` |
 | `is_household_head` | `relationship_inputs` (`is_household_head = P_SEQ == 1`) | `P_SEQ` |
 
-Neither column is present in the prepared ASEC population, so binding either one
-needs an independent source decision — a change to the prepared arm, not a
-choice this stage may make. The stage **refuses** (`ASEC_DEMOGRAPHIC_SOURCE_APPEARED`)
-if such a column ever appears, so the recorded gap cannot go stale behind a claim
-written today.
+Binding either column needs a reviewed cross-arm mapping decision — a decision
+about the prepared arm and its ACS counterpart, not a choice this stage may
+make. Whether the prepared arm *carries* the source column is a separate
+question, and the two must not be confused:
+
+- **Observed on genuine source.** The frozen raw-stage parent
+  (`asec_raw_stage.checkpoint.h5`, the prepared arm's parent) declares a
+  176-column person table containing both `A_SEX` and `P_SEQ`, and the CREATE
+  `frame_context` of the genuine 505-household run — the very payload this node
+  reads as `asec_frame_context` — declares a 179-column person roster
+  containing both. Read as metadata only, from the existing prepared-source
+  directory and run artifacts.
+- **Observed on the invented fixture.** The invented parent frame the test
+  module builds carries neither column.
+
+The binding document therefore records what it saw rather than generalising
+either observation into a source contract: each unbound entry carries
+`present_in_prepared_arm` and `absent_from_prepared_arm` for the population in
+hand, plus `bound_by_this_stage: false`.
+
+The gap fails closed on the thing that would actually make it stale — a write.
+`refuse_unbound_demographic_writes` screens the corrected-leaf and
+reported-income owned-column rosters and the document's own `bound` entries, so
+a reviewed mapping that started producing `is_female` or `is_household_head`
+refuses at declaration time (`ASEC_DEMOGRAPHIC_COLUMN_BOUND`). Presence of
+`A_SEX` in the source is not a refusal and never was a licence.
 
 ## Source-blindness
 
