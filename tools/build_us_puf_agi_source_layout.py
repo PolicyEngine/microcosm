@@ -161,12 +161,20 @@ def build_document(documents_dir: Path) -> dict[str, object]:
         raise GenerationError("the thirteen-field column order is not delivered order")
     if document["projection"]["column_count"] != 13:
         raise GenerationError("the extension did not produce thirteen columns")
-    if document["layout"]["not_selected_reasons"] != twelve["layout"][
-        "not_selected_reasons"
-    ]:
+    if (
+        document["layout"]["not_selected_reasons"]
+        != twelve["layout"]["not_selected_reasons"]
+    ):
         raise GenerationError("the not-selected vocabulary moved")
-    for key in ("anchors", "booklets", "refused_fields", "refused_derivations",
-                "source_conflicts", "sources", "raw_source_definition"):
+    for key in (
+        "anchors",
+        "booklets",
+        "refused_fields",
+        "refused_derivations",
+        "source_conflicts",
+        "sources",
+        "raw_source_definition",
+    ):
         if document[key] != twelve[key]:
             raise GenerationError(f"the extension changed {key}")
 
