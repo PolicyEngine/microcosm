@@ -1,0 +1,1 @@
+Publish the income-v3 accounting price basis the kernel contract actually names, bind the engine and accounting node receipt digests, require each graph phase to record the direct path's reported-income summary, and enforce the reviewed typed-input producer roster.
