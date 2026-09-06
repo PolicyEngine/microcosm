@@ -110,6 +110,14 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # need, and reads the assembled provenance columns to receipt the exact
         # source-to-output mapping. It applies no population treatment.
         "graph_composed_population.py",
+        # Composed-arm binding owner: resolving which arm a composed row came
+        # from, and which source row it is, is this module's whole operation, so
+        # it reads the support-channel and raw spine-source-ID columns by
+        # charter. It writes one boolean arm-membership cell per bound entity
+        # and no measurement; the measurements live in
+        # graph_composed_asec_measures.py, which consumes this module's typed
+        # artifact and declared row mask and stays under the guard below.
+        "graph_composed_asec_binding.py",
         # Production pre-operator graph owner: declares source-channel views
         # for actual source DESIGN preparation and importance harmonization.
         # It applies no post-assembly population treatment; those graph
@@ -378,6 +386,16 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "asec_engine_evaluation.py",
         "graph_asec_prepared.py",
         "graph_asec_income.py",
+        # Composed-arm binding seam, classified as a provenance owner above:
+        # it resolves arms and source rows and writes only the boolean
+        # arm-membership cell, never a measurement.
+        "graph_composed_asec_binding.py",
+        # Corrected ASEC leaves and reported observations over the composed
+        # ASEC rows. Source-blind: the arm arrives as a declared boolean row
+        # mask and its source coordinates as a typed artifact, both already
+        # resolved by the reviewed binding owner, so no source-channel or
+        # spine-source-ID column is read here.
+        "graph_composed_asec_measures.py",
         # Closed ASEC source restorations and their evidence codecs. Each
         # authenticates pinned Census members by canonical byte replay and
         # issues typed observations; none applies a population treatment.

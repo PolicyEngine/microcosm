@@ -1,0 +1,1 @@
+Record the composed ASEC binding's unbound demographics from what the prepared arm actually carries instead of refusing when `A_SEX` or `P_SEQ` appears, and fail closed on an attempted write of one of those columns instead; hold `source_origin` to the same CREATE producer identity as the five evidence artifacts; refuse a malformed arm-rows buffer roster with a typed reason.

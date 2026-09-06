@@ -102,6 +102,10 @@ A **binding node is still required** before the prepared-slice consumers
 context metadata and prepared rows equal to context rows, neither of which holds
 for a harmonized composed population. What this graph provides is the evidence
 bytes and the identity needed to write that binding, not the binding itself.
+That binding is now declared separately in
+[us-composed-asec-binding.md](us-composed-asec-binding.md) as the
+`composed_asec_binding_v1` stage; it consumes these artifacts unchanged and adds
+no source route.
 
 ## Known asymmetries, not repaired here
 
@@ -110,7 +114,11 @@ raw `A_AGE`. The composed person table therefore has `age` observed on ACS rows
 and missing on ASEC rows. Geography tolerates this (its boundary node keeps every
 row and never reads age values), but a national or CD release needs a cross-arm
 age. Producing one is an income/leaf-mapping decision owned by the corrected-leaf
-and transfer nodes, not by this composition, so nothing here fills it.
+and transfer nodes, not by this composition, so nothing here fills it. The
+corrected-leaf node of `composed_asec_binding_v1` now fills the ASEC side from
+`A_AGE` through the reviewed `derive_cps_carried_current_leaves` mapping and
+records each cohort's observed period; the two arms' age reference periods are
+recorded rather than harmonized, and no person is aged from a survey date.
 
 The prepared arm is also drawn here with the stacked spine's unstratified
 household floor, while the prepared slice's own selection node draws by
