@@ -23,3 +23,13 @@ Integration step:
   this assignment does not alter shared implementation inventories or dependencies.
 - GitNexus tools are unavailable; traced source directly.
 Next: derive integrated declarations, execute bounded invented proof.
+
+Prepared helper step:
+- Added declaration-only integrated graph factory under tools; accepted kernels
+  and both scoped/shared implementation inventories remain unchanged.
+- Added a serial invented-only supervisor, real source fixture codecs, full
+  materialized verification, keyed column/membership/current-mass proof and
+  separate unchanged design-anchor proof from frozen helper 8f02ad5.
+- Prepared four targeted counterprobes and fresh REQUIRED with raising kernels.
+- Baseline source worktree is frozen 1f6ffa7b, sharing only invented inputs/store.
+Next: run the committed bounded proof and correct any integration issues.
