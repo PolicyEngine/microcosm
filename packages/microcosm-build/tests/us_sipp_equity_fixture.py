@@ -107,11 +107,47 @@ def invented_rows():
     return rows
 
 
+#: A second, equally valid invented residence set: the same eleven admitted
+#: donors plus one more two-person residence. It keeps every admitted household
+#: size, so the same recipient population stays inside the support, and it
+#: changes the projection bytes, so it is a *different valid source*, not a
+#: corrupted one.
+_VARIANT_EXTRA = ("00000012", 100013, ("1425.25", "1385.75"), "13300", "9")
+
 ADMITTED_RESIDENCES = len(_ADMITTED)
 EXCLUDED_ZERO_WEIGHT = 1
 EXCLUDED_UNKNOWN_TARGET = 2  # conflicting household copies, missing sentinel
 EXCLUDED_UNKNOWN_WEIGHT = 1
 ADMITTED_SIZES = sorted({len(spec[2]) for spec in _ADMITTED})
+DENOMINATOR_RESIDENCES = (
+    ADMITTED_RESIDENCES
+    + EXCLUDED_ZERO_WEIGHT
+    + EXCLUDED_UNKNOWN_TARGET
+    + EXCLUDED_UNKNOWN_WEIGHT
+)
+VARIANT_ADMITTED_RESIDENCES = ADMITTED_RESIDENCES + 1
+
+#: Hand-authored expectations, read off the invented specs above rather than
+#: computed by the code under test. The genuine contract's own 17,588 / 20 / 38
+#: are untouched; these are the fixture's own counts for the same three pins.
+EXPECTED = {
+    "expected_admitted_residences": ADMITTED_RESIDENCES,
+    "expected_excluded_zero_weight": EXCLUDED_ZERO_WEIGHT,
+    "expected_excluded_unknown_target": EXCLUDED_UNKNOWN_TARGET,
+}
+VARIANT_EXPECTED = dict(
+    EXPECTED, expected_admitted_residences=VARIANT_ADMITTED_RESIDENCES
+)
+
+
+def variant_rows():
+    """A second valid invented source: one more admitted two-person residence."""
+    ssuid, residence, weights, equity, flag = _VARIANT_EXTRA
+    extra = [
+        _row(ssuid, 101 + offset, residence, weight, equity, flag)
+        for offset, weight in enumerate(weights)
+    ]
+    return invented_rows() + extra
 
 
 def build_projection(rows=None):
@@ -126,8 +162,21 @@ def build_projection(rows=None):
     )
 
 
-def build_receipt(projection, rows=None, *, binding=INVENTED_BINDING, counts=None):
-    """Build an invented receipt with the producer's own digests and formulas."""
+def build_receipt(
+    projection,
+    rows=None,
+    *,
+    binding=INVENTED_BINDING,
+    counts=None,
+    ssuid_digest=None,
+    genuine_shaped=False,
+):
+    """Build an invented receipt with the producer's own digests and formulas.
+
+    ``genuine_shaped`` adds the fields the accepted producer also writes —
+    ``parser`` and ``aggregates`` — so a receipt shaped like the genuine one,
+    with its extra fields, is exercised rather than only the minimal shape.
+    """
     rows = invented_rows() if rows is None else rows
     source = m.SippSource(INVENTED_PARENT_SHA256, m.SIPP_2023_MASTER_SHA256, 2023, 2022)
     supplied = tuple(
@@ -139,6 +188,13 @@ def build_receipt(projection, rows=None, *, binding=INVENTED_BINDING, counts=Non
     )
     bank = m.december_bank_assets(supplied, source=source)
     observed = s._counts(households) if counts is None else counts
+    # The producer's own selector and key formula over the same roster.
+    selected = s._selected_ssuids(tuple(h.key for h in households), "all_ssuids")
+    digest = (
+        s._key("sipp-december-ssuid-selection/1", selected)
+        if ssuid_digest is None
+        else ssuid_digest
+    )
     receipt = {
         "format": "sipp_december_source_v1",
         "producer_binding": binding,
@@ -156,6 +212,7 @@ def build_receipt(projection, rows=None, *, binding=INVENTED_BINDING, counts=Non
             "source_years": {"survey": 2023, "reference": 2022},
         },
         "selection": "all_ssuids",
+        "selected_ssuid_digest": digest,
         "full_counts": observed,
         "selected_counts": observed,
         "full_membership_digest": s._membership(households),
@@ -170,6 +227,23 @@ def build_receipt(projection, rows=None, *, binding=INVENTED_BINDING, counts=Non
         },
         "measurement_digest": s._measurement_digest(households, bank),
     }
+    if genuine_shaped:
+        receipt["parser"] = {
+            "header_columns": len(s.FIELDS),
+            "physical_records": len(rows),
+            "month_records": {"12": len(rows)},
+        }
+        receipt["aggregates"] = {
+            "bank": s._profile(bank),
+            "vehicles": {
+                f: s._profile(h.measurements[i] for h in households)
+                for i, f in enumerate(s._COPIED)
+            },
+            "person_weights": s._weights(
+                w for h in households for w in h.person_weights
+            ),
+            "household_weights": s._weights(h.weight for h in households),
+        }
     return canonical_json(receipt)
 
 
@@ -191,7 +265,13 @@ def publish(root: Path, projection: bytes, receipt: bytes, *, binding=INVENTED_B
 
 
 def invented_contract(
-    receipt, projection, receipt_key, projection_key, *, binding=INVENTED_BINDING
+    receipt,
+    projection,
+    receipt_key,
+    projection_key,
+    *,
+    binding=INVENTED_BINDING,
+    expected=None,
 ):
     """The explicit test-only contract construction route."""
     document = json.loads(
@@ -200,9 +280,7 @@ def invented_contract(
         ).read_bytes()
     )
     parsed = json.loads(receipt)
-    document["admission"]["expected_admitted_residences"] = ADMITTED_RESIDENCES
-    document["admission"]["expected_excluded_zero_weight"] = EXCLUDED_ZERO_WEIGHT
-    document["admission"]["expected_excluded_unknown_target"] = EXCLUDED_UNKNOWN_TARGET
+    document["admission"].update(EXPECTED if expected is None else expected)
     document["source"].update(
         {
             "producer_binding": binding,
@@ -215,7 +293,7 @@ def invented_contract(
             "full_membership_digest": parsed["full_membership_digest"],
             "selected_membership_digest": parsed["selected_membership_digest"],
             "measurement_digest": parsed["measurement_digest"],
-            "selected_ssuid_digest": "0" * 64,
+            "selected_ssuid_digest": parsed["selected_ssuid_digest"],
             "parent_sha256": INVENTED_PARENT_SHA256,
             "parent_content_key": INVENTED_PARENT_KEY,
             "parent_bytes": 1234,
@@ -228,14 +306,35 @@ def invented_contract(
     return contract_module._contract_from_document(document)
 
 
-def accepted_store(tmp_path: Path, *, rows=None, counts=None, binding=INVENTED_BINDING):
+def accepted_store(
+    tmp_path: Path,
+    *,
+    rows=None,
+    counts=None,
+    binding=INVENTED_BINDING,
+    expected=None,
+    ssuid_digest=None,
+    genuine_shaped=False,
+):
     """One invented accepted store plus its matching test-only contract."""
     projection = build_projection(rows)
-    receipt = build_receipt(projection, rows, binding=binding, counts=counts)
+    receipt = build_receipt(
+        projection,
+        rows,
+        binding=binding,
+        counts=counts,
+        ssuid_digest=ssuid_digest,
+        genuine_shaped=genuine_shaped,
+    )
     root = tmp_path / "accepted-store"
     _, receipt_key, projection_key = publish(root, projection, receipt, binding=binding)
     contract = invented_contract(
-        receipt, projection, receipt_key, projection_key, binding=binding
+        receipt,
+        projection,
+        receipt_key,
+        projection_key,
+        binding=binding,
+        expected=expected,
     )
     return root, contract, projection, receipt
 

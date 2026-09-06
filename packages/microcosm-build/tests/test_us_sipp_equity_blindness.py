@@ -72,6 +72,7 @@ def test_the_readback_reuses_only_the_reviewed_private_producer_helpers():
         "_counts",
         "_measurement_digest",
         "_membership",
+        "_selected_ssuids",
         "_sha",
         "_key",
         "_COPIED",

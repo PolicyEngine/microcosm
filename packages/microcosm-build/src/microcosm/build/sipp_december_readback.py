@@ -34,10 +34,20 @@ __all__ = [
 
 PROJECTION_FORMAT = "sipp-december-lexical/1"
 _RECEIPT_KIND = "sipp_december_source_v1"
+_ALL_SSUIDS = "all_ssuids"
+_SSUID_SELECTION_DOMAIN = "sipp-december-ssuid-selection/1"
 
 
 class ReadbackError(ValueError):
-    """Sanitized refusal at the accepted-artifact readback boundary."""
+    """This wrapper's own refusal at the accepted-artifact readback boundary.
+
+    Only refusals raised *here* carry this type, and their messages are closed
+    codes rather than paths or payload bytes. Errors raised beneath this
+    boundary are **not** wrapped: a ``ContentStore`` integrity failure or a
+    producer-helper refusal propagates as its own ``StoreCorrupt``,
+    ``StoreMiss`` or ``SourceError``, and its message is whatever that layer
+    wrote. Callers that need one exception type must catch those too.
+    """
 
 
 @dataclass(frozen=True)
@@ -57,6 +67,7 @@ class SippDecemberReadback:
     producer_binding: str
     projection_key: str
     receipt_key: str
+    selected_ssuid_digest: str
 
 
 def _require(condition: object, code: str) -> None:
@@ -101,6 +112,12 @@ def read_sipp_december_projection(
             own contract, or the reconstruction of the roster and measurements.
     """
     source_pins = contract.source
+    # The SSUID-selection digest below is recomputed from the reconstructed
+    # roster, which equals the producer's full roster only under the all-SSUID
+    # selection. Under any narrower selection the producer's digest covers a
+    # different set, so refuse rather than compare an incomparable value. The
+    # accepted artifact this consumer exists for is the all-SSUID one.
+    _require(source_pins["selection"] == _ALL_SSUIDS, "SELECTION_NOT_ALL_SSUIDS")
     scratch = Path(scratch)
     _require(scratch.is_dir(), "SCRATCH_NOT_A_DIRECTORY")
     root = Path(store.root).resolve()
@@ -241,6 +258,24 @@ def read_sipp_december_projection(
     _require(digest == source_pins["measurement_digest"], "MEASUREMENT_DIGEST_PIN")
     _require(digest == receipt.get("measurement_digest"), "RECEIPT_MEASUREMENT_DIGEST")
 
+    # The producer's own selector and key formula, not a restatement of them:
+    # ``_selected_ssuids`` is the function that produced the pinned digest, and
+    # it validates the identity tuples it is given. Under ``all_ssuids`` the
+    # reconstructed roster is the producer's full roster, which the counts and
+    # membership assertions above have already established.
+    ssuid_digest = s._key(
+        _SSUID_SELECTION_DOMAIN,
+        s._selected_ssuids(tuple(h.key for h in households), source_pins["selection"]),
+    )
+    _require(
+        ssuid_digest == source_pins["selected_ssuid_digest"],
+        "SELECTED_SSUID_DIGEST_PIN",
+    )
+    _require(
+        ssuid_digest == receipt.get("selected_ssuid_digest"),
+        "RECEIPT_SELECTED_SSUID_DIGEST",
+    )
+
     return SippDecemberReadback(
         households=households,
         bank=bank,
@@ -251,4 +286,5 @@ def read_sipp_december_projection(
         producer_binding=binding,
         projection_key=source_pins["projection_key"],
         receipt_key=source_pins["receipt_key"],
+        selected_ssuid_digest=ssuid_digest,
     )

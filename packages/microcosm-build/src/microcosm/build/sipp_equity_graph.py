@@ -8,9 +8,11 @@ a year transfer, a PolicyEngine input or an adequacy claim.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
+import tempfile
 from collections import Counter
 from dataclasses import dataclass
 from decimal import Decimal
@@ -51,9 +53,11 @@ from . import sipp_measurements as m
 
 __all__ = [
     "DONOR_CODEC",
+    "DONOR_EVIDENCE_TYPE",
     "DONOR_POPULATION",
     "DONOR_SUPPORT_TYPE",
     "DRAW_NODE",
+    "EVIDENCE_FORMAT",
     "EquityGraphError",
     "FIT_NODE",
     "RECIPIENT_CODEC",
@@ -63,9 +67,12 @@ __all__ = [
     "SippDonorCreateKernel",
     "SippRecipientRosterKernel",
     "SippSupportValidationKernel",
+    "admission_summary",
     "build_sipp_equity_graph",
+    "evidence_document",
     "load_sipp_equity_donor_frame",
     "prepare_source_store",
+    "reconcile_admission",
     "register_codecs",
 ]
 
@@ -78,7 +85,14 @@ VALIDATE_NODE = "sipp.equity.support"
 FIT_NODE = "sipp.equity.fit"
 DRAW_NODE = "sipp.equity.draw"
 DONOR_SUPPORT_TYPE = ArtifactType("microcosm.build.sipp_equity_support", 1)
+DONOR_EVIDENCE_TYPE = ArtifactType("microcosm.build.sipp_equity_evidence", 1)
+EVIDENCE_FORMAT = "sipp-december-equity-evidence/1"
+LINEAGE_DOMAIN = "sipp-december-equity-lineage/1"
 _SUPPORT_MAX_BYTES = 64 * 1024
+#: The evidence artifact carries one record per admitted residence and one per
+#: linked person, so it is sized for the accepted roster (17,646 residences,
+#: 39,513 people), not for the small support list.
+_EVIDENCE_MAX_BYTES = 32 * 1024 * 1024
 _META_MAX_BYTES = 64 * 1024
 _COPY_CHUNK_BYTES = 1024 * 1024
 _SCRATCH_DIRNAME = "readback-scratch"
@@ -87,7 +101,15 @@ _STORE_MEMBERS = ("objects", "tmp")
 
 
 class EquityGraphError(ValueError):
-    """Sanitized refusal at this consumer's source or predictor boundary."""
+    """This consumer's own refusal at its source or predictor boundary.
+
+    The message is a closed code, never a path or a payload byte, and every
+    refusal raised in this module carries this type. Errors raised *beneath*
+    it are deliberately not wrapped: a ``ContentStore`` integrity failure, a
+    producer-helper ``SourceError`` or a ``ReadbackError`` propagates as
+    itself, with that layer's own message. A caller that wants a single
+    exception type must catch those as well.
+    """
 
 
 # --------------------------------------------------------------------------
@@ -269,6 +291,118 @@ def admit_households(households, contract) -> tuple[tuple[_Admitted, ...], dict]
     }
 
 
+#: The admission fields that carry no source identifier, and are therefore the
+#: only ones that may reach a node receipt. Receipts are rendered verbatim into
+#: the explain report (``explain.py`` ``_receipt_payload``), so an SSUID placed
+#: in one would leave this consumer's private evidence namespace. The excluded
+#: residences keep their keys, in the private typed artifact instead.
+_ADMISSION_SUMMARY_FIELDS = (
+    "rule_id",
+    "denominator_residences",
+    "admitted_residences",
+    "excluded_residences",
+    "excluded_reasons_exclusive",
+    "reconciliation",
+)
+
+
+def admission_summary(admission) -> dict:
+    """The identifier-free projection of admission, safe for a public receipt."""
+    return {
+        name: admission[name] for name in _ADMISSION_SUMMARY_FIELDS if name in admission
+    }
+
+
+def reconcile_admission(admission, contract) -> dict:
+    """Compare observed admission against the contract's expected counts.
+
+    The contract pins what this artifact is expected to admit and exclude. The
+    root plan's own three counts — 17,588 admitted, 20 known-equity zero-weight
+    and 38 conflicting-equity — sum exactly to the pinned roster of 17,646, and
+    the readback has already refused any roster of another size, so agreeing on
+    these four numbers leaves no room for an unpinned exclusion reason. A
+    disagreement refuses here rather than being noticed by hand afterwards.
+    """
+    reasons = admission["excluded_reasons_exclusive"]
+    expected = {
+        "denominator_residences": int(contract.source["counts"]["december_residences"]),
+        "admitted_residences": int(contract.admission["expected_admitted_residences"]),
+        "excluded_zero_weight": int(
+            contract.admission["expected_excluded_zero_weight"]
+        ),
+        "excluded_unknown_target": int(
+            contract.admission["expected_excluded_unknown_target"]
+        ),
+    }
+    observed = {
+        "denominator_residences": int(admission["denominator_residences"]),
+        "admitted_residences": int(admission["admitted_residences"]),
+        "excluded_zero_weight": int(reasons.get("weight_not_positive", 0)),
+        "excluded_unknown_target": int(reasons.get("target_unknown", 0)),
+    }
+    disagreeing = sorted(name for name in expected if expected[name] != observed[name])
+    if disagreeing:
+        raise EquityGraphError("ADMISSION_RECONCILIATION:" + ",".join(disagreeing))
+    return {
+        "expected": expected,
+        "observed": observed,
+        "observed_excluded_reasons_exclusive": dict(sorted(reasons.items())),
+        "agrees": True,
+    }
+
+
+def evidence_document(metadata, contract) -> dict:
+    """Assemble the private donor evidence from the Frame metadata.
+
+    ``ContentStore`` replay reconstructs a Frame from its tables and weights
+    and drops ``Frame.metadata`` entirely, so a warm-hit donor population would
+    otherwise have no coverage report, no exact ``Decimal`` evidence and no
+    lineage. This document is what the donor CREATE writes as a typed byte
+    artifact, which the store does persist and replay.
+
+    It carries source identifiers, so it is private: it never enters a receipt.
+    """
+    lineage = metadata["lineage"]
+    weights = metadata["exact_source_weights"]
+    targets = metadata["exact_source_targets"]
+    sizes = metadata["household_sizes"]
+    households = lineage["households"]
+    donors = [
+        {
+            "household_id": entry["household_id"],
+            "ssuid": entry["ssuid"],
+            "residence": entry["residence"],
+            "household_size": size,
+            "exact_source_weight": weight,
+            "exact_source_target": target,
+        }
+        for entry, size, weight, target in zip(
+            households, sizes, weights, targets, strict=True
+        )
+    ]
+    return {
+        "format": EVIDENCE_FORMAT,
+        "consumer_contract_identity": contract.identity,
+        "producer_binding": metadata["producer_binding"],
+        "projection_key": metadata["projection_key"],
+        "receipt_key": metadata["receipt_key"],
+        "selected_ssuid_digest": metadata["selected_ssuid_digest"],
+        "target": contract.target["name"],
+        "target_period": contract.target["period"],
+        "target_unit": contract.target["unit"],
+        "predictor": contract.predictor["name"],
+        "grain": lineage["grain"],
+        "weight_kind": metadata["weight_kind"],
+        "weight_basis": metadata["weight_basis"],
+        "weight_is_calibrated": metadata["weight_is_calibrated"],
+        "admission": metadata["admission"],
+        "coverage": metadata["coverage"],
+        "lineage_digest": metadata["lineage_digest"],
+        "donors": donors,
+        "people": list(lineage["people"]),
+    }
+
+
 def coverage_report(readback_result, contract) -> dict:
     """Full source coverage over the complete roster, before any admission.
 
@@ -372,18 +506,18 @@ def _donor_frame(admitted, coverage, admission, contract, readback_result) -> Fr
         "producer_binding": readback_result.producer_binding,
         "projection_key": readback_result.projection_key,
         "receipt_key": readback_result.receipt_key,
+        "selected_ssuid_digest": readback_result.selected_ssuid_digest,
         "target": target_name,
         "target_period": contract.target["period"],
         "weight_kind": "design",
         "weight_basis": "sipp_mean_member_wpfinwgt_december_2022",
         "weight_is_calibrated": False,
+        "household_sizes": [a.size for a in admitted],
         "exact_source_weights": [str(a.weight) for a in admitted],
         "exact_source_targets": [str(a.target) for a in admitted],
         "admission": admission,
         "coverage": coverage,
-        "lineage_digest": sha256_domain(
-            "sipp-december-equity-lineage/1", canonical_json(lineage)
-        ),
+        "lineage_digest": sha256_domain(LINEAGE_DOMAIN, canonical_json(lineage)),
         "lineage": lineage,
     }
     return Frame(
@@ -401,18 +535,23 @@ def load_sipp_equity_donor_frame(
 
     ``contract`` is the explicit test-only construction route for invented pins;
     the production registration binds the packaged contract.
+
+    The bounded-object scratch namespace is a private temporary directory that
+    is removed when this returns. It is deliberately outside ``path`` — the
+    readback refuses a scratch equal to or beneath the source store root — and
+    it writes nothing into any caller-owned directory.
     """
     del store
     contract = contract or contract_module.load_contract()
     root = Path(path)
     _check_closed_roster(root, contract)
-    scratch = root.parent / _SCRATCH_DIRNAME
-    scratch.mkdir(exist_ok=True)
-    result = readback.read_sipp_december_projection(
-        ContentStore(root), scratch, contract=contract
-    )
+    with tempfile.TemporaryDirectory(prefix=_SCRATCH_DIRNAME + "-") as scratch:
+        result = readback.read_sipp_december_projection(
+            ContentStore(root), Path(scratch), contract=contract
+        )
     coverage = coverage_report(result, contract)
     admitted, admission = admit_households(result.households, contract)
+    admission["reconciliation"] = reconcile_admission(admission, contract)
     return _donor_frame(admitted, coverage, admission, contract, result)
 
 
@@ -488,6 +627,19 @@ def _encode_support(payload: dict) -> bytes:
     return encoded
 
 
+def _encode_evidence(payload: dict) -> bytes:
+    encoded = canonical_json(payload)
+    if len(encoded) > _EVIDENCE_MAX_BYTES:
+        raise EquityGraphError("EVIDENCE_ARTIFACT_TOO_LARGE")
+    return encoded
+
+
+DONOR_ARTIFACT_OUTPUTS = (
+    ArtifactOutput("donor_support", DONOR_SUPPORT_TYPE),
+    ArtifactOutput("donor_evidence", DONOR_EVIDENCE_TYPE),
+)
+
+
 class SippDonorCreateKernel(KernelBase):
     """CREATE the admitted donor population and its typed support artifact."""
 
@@ -517,11 +669,7 @@ class SippDonorCreateKernel(KernelBase):
     def run(self, context: KernelContext) -> KernelResult:
         node = context.node
         contract = self._contract or contract_module.load_contract()
-        if (
-            node.artifact_outputs
-            != (ArtifactOutput("donor_support", DONOR_SUPPORT_TYPE),)
-            or node.artifact_inputs
-        ):
+        if node.artifact_outputs != DONOR_ARTIFACT_OUTPUTS or node.artifact_inputs:
             raise EquityGraphError("DONOR_NODE_ARTIFACTS")
         if set(context.params) != {"concept", "period", "contract_identity"}:
             raise EquityGraphError("DONOR_NODE_PARAMS")
@@ -540,6 +688,10 @@ class SippDonorCreateKernel(KernelBase):
         table = frame.table("household")
         sizes = sorted({int(v) for v in table[contract.predictor["name"]]})
         metadata = frame.metadata
+        # The private evidence artifact is written first: the support artifact
+        # the validator reads carries its digest, so the two cannot drift.
+        evidence = _encode_evidence(evidence_document(metadata, contract))
+        evidence_digest = hashlib.sha256(evidence).hexdigest()
         support = {
             "supported_household_sizes": sizes,
             "consumer_contract_identity": contract.identity,
@@ -551,10 +703,15 @@ class SippDonorCreateKernel(KernelBase):
             "target": contract.target["name"],
             "target_period": contract.target["period"],
             "predictor": contract.predictor["name"],
+            "evidence_format": EVIDENCE_FORMAT,
+            "evidence_sha256": evidence_digest,
         }
         return KernelResult(
             frame=frame,
-            artifacts={"donor_support": _encode_support(support)},
+            artifacts={
+                "donor_support": _encode_support(support),
+                "donor_evidence": evidence,
+            },
             receipt={
                 "admitted_residences": int(len(table)),
                 "excluded_residences": int(
@@ -567,8 +724,25 @@ class SippDonorCreateKernel(KernelBase):
                 "lineage_digest": metadata["lineage_digest"],
                 "consumer_contract_identity": contract.identity,
                 "producer_binding": metadata["producer_binding"],
+                "selected_ssuid_digest": metadata["selected_ssuid_digest"],
                 "weight_kind": "design",
                 "weight_is_calibrated": False,
+                # Coverage and admission are persisted here because the store
+                # replays a Frame without its metadata. Both projections are
+                # identifier-free; the excluded residences' own keys, the exact
+                # Decimal evidence and the lineage live in the private evidence
+                # artifact, whose digest binds them to this receipt.
+                "coverage": metadata["coverage"],
+                "admission": admission_summary(metadata["admission"]),
+                "evidence": {
+                    "format": EVIDENCE_FORMAT,
+                    "type": DONOR_EVIDENCE_TYPE.name,
+                    "schema_version": DONOR_EVIDENCE_TYPE.schema_version,
+                    "sha256": evidence_digest,
+                    "bytes": len(evidence),
+                    "donor_records": int(len(table)),
+                    "person_records": int(len(frame.table("person"))),
+                },
             },
         )
 
@@ -692,6 +866,17 @@ class SippSupportValidationKernel(KernelBase):
             or support.get("predictor") != predictor
         ):
             raise EquityGraphError("SUPPORT_ARTIFACT_IDENTITY")
+        # The evidence artifact is private and not read here; carrying its
+        # declared digest through this node keeps the two donor outputs bound
+        # to one another and puts the digest on a second receipt.
+        evidence_digest = support.get("evidence_sha256")
+        if (
+            support.get("evidence_format") != EVIDENCE_FORMAT
+            or not isinstance(evidence_digest, str)
+            or len(evidence_digest) != 64
+            or any(c not in "0123456789abcdef" for c in evidence_digest)
+        ):
+            raise EquityGraphError("SUPPORT_ARTIFACT_EVIDENCE_BINDING")
         supported = support.get("supported_household_sizes")
         if not isinstance(supported, list) or not supported:
             raise EquityGraphError("SUPPORT_ARTIFACT_SIZES")
@@ -723,6 +908,7 @@ class SippSupportValidationKernel(KernelBase):
                 "supported_household_sizes": sorted(allowed),
                 "unsupported_sizes": [],
                 "donor_admission_rule_id": support.get("admission_rule_id"),
+                "donor_evidence_sha256": evidence_digest,
             },
         )
 
@@ -754,7 +940,7 @@ def build_sipp_equity_graph(
             Owned("household", predictor, "int64"),
             Owned("household", target, "float64"),
         ),
-        artifact_outputs=(ArtifactOutput("donor_support", DONOR_SUPPORT_TYPE),),
+        artifact_outputs=DONOR_ARTIFACT_OUTPUTS,
         params={
             "concept": concept,
             "period": period,
