@@ -11,7 +11,9 @@ Branch `microcosm-us-cd-reference-projection-20260906`, cut from `origin/main`
 
 ## State
 
-Baseline established. Implementation in progress.
+Module and tests landed and green. Aggregate-only projection command
+implemented but **not run against the real inventory** — that is a separate,
+reviewed step.
 
 ## Done
 
@@ -31,13 +33,23 @@ Baseline established. Implementation in progress.
 
 ## Next
 
-1. Add `microcosm.build.us_runtime.cd_benchmark_reference` — outside the pure
-   `cd_benchmark` package, so that package keeps its documented "reads no
-   candidate, population, HDF5, ACS or Census artifact" property.
-2. Add `packages/microcosm-build/tests/test_us_cd_benchmark_reference.py` with
-   tiny invented public-shaped fixtures only.
-3. Run the focused suites, `ruff check`, `ruff format --check` and
-   `tools/ci_test_groups.py --verify`.
+1. Root review, then an independent review, before any genuine projection.
+2. Only then, the bounded aggregate-only command in `REPORT.md`.
+
+## Done (implementation)
+
+- `microcosm.build.us_runtime.cd_benchmark_reference` (1,418 lines): digest
+  before parse, roster, per-block/per-district projection into the shipped
+  `ReferenceCell`/`PrecisionResult` types, typed provenance envelopes, an
+  aggregate-only completeness reducer and a gated command line.
+- `packages/microcosm-build/tests/test_us_cd_benchmark_reference.py` (43 tests,
+  all green) on tiny invented public-shaped fixtures only.
+- Focused suites green together: 128 passed
+  (`test_cd_benchmark_protocol.py`, `test_us_cd_reference.py`,
+  `test_us_cd_reference_sources.py`, `test_us_cd_benchmark_reference.py`).
+- `ruff check` clean, `ruff format --check` clean,
+  `tools/ci_test_groups.py --verify` → `verification=ok`; the new file lands in
+  `fast/rest` and `engine/us-am`, never `[defaulted]`.
 
 ## Limits held throughout
 
