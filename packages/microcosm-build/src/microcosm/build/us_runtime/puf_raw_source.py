@@ -197,9 +197,7 @@ _ENVELOPE_HEADER_KEYS = frozenset(
     }
 )
 _ENVELOPE_TYPED_COLUMN_KEYS = frozenset({"name", "kind", "dtype", "bytes", "sha256"})
-_ENVELOPE_LEXICAL_COLUMN_KEYS = frozenset(
-    {"name", "kind", "width", "bytes", "sha256"}
-)
+_ENVELOPE_LEXICAL_COLUMN_KEYS = frozenset({"name", "kind", "width", "bytes", "sha256"})
 _ENVELOPE_SOURCE_KEYS = frozenset(
     {"sha256", "git_blob_sha1", "bytes", "header_record_canonical_sha256"}
 )
@@ -1065,7 +1063,9 @@ def encode_return_status(
     )
 
 
-def _exact_keys(value: object, keys: frozenset[str], label: str) -> Mapping[str, object]:
+def _exact_keys(
+    value: object, keys: frozenset[str], label: str
+) -> Mapping[str, object]:
     """A mapping whose key set is exactly ``keys``. Nothing extra, nothing missing."""
 
     if not isinstance(value, dict) or set(value) != set(keys):
@@ -1112,14 +1112,14 @@ def _resolve_envelope_definition(
 def _check_envelope_sources(
     header: Mapping[str, object], definition: PufRawSourceDefinition | None
 ) -> None:
-    sources = _exact_keys(header["sources"], frozenset({"main", "demographic"}), "sources")
+    sources = _exact_keys(
+        header["sources"], frozenset({"main", "demographic"}), "sources"
+    )
     for name in ("main", "demographic"):
         entry = _exact_keys(sources[name], _ENVELOPE_SOURCE_KEYS, f"sources.{name}")
         _hex64(entry["sha256"], f"sources.{name}.sha256")
         _hex40(entry["git_blob_sha1"], f"sources.{name}.git_blob_sha1")
-        _hex64(
-            entry["header_record_canonical_sha256"], f"sources.{name}.header"
-        )
+        _hex64(entry["header_record_canonical_sha256"], f"sources.{name}.header")
         size = _envelope_int(entry["bytes"], f"sources.{name}.bytes", minimum=1)
         if size > PUF_RAW_SOURCE_MAX_BYTES:
             raise _refuse("ENVELOPE_SOURCE_OVER_CAP", name)
@@ -1267,9 +1267,7 @@ def _verify_readback(
                 selected = values[typed["DSI"][present] == condition]
                 if selected.size and not np.isin(selected, sorted(allowed)).all():
                     raise _refuse("READBACK_DEMOGRAPHIC_DOMAIN", name)
-            if not np.isin(
-                typed["DSI"][present], sorted(agerange)
-            ).all():
+            if not np.isin(typed["DSI"][present], sorted(agerange)).all():
                 raise _refuse("READBACK_AGERANGE_CONDITION_UNKNOWN")
             continue
         if values.size and not np.isin(values, sorted(domains[name])).all():

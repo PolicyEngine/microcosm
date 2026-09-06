@@ -902,12 +902,17 @@ def test_cold_run_stores_an_artifact_byte_identical_to_the_direct_decoder(
     assert producer["definition_sha256"] == definition.sha256
     assert producer["artifact_sha256"] == hashlib.sha256(payload).hexdigest()
     # Receipts carry aggregates and digests only, never a key or a token.
-    text = str(
+    # Canonical JSON, not ``str``: repr quotes single, so double-quoted
+    # needles could never match and the check was vacuous.
+    text = json.dumps(
         {
-            node: dict(manifest.nodes[node].receipt)
+            node: manifest.nodes[node].receipt
             for node in (PUF_RAW_SOURCE_NODE, RETURN_STATUS_SUMMARY_NODE)
-        }
+        },
+        sort_keys=True,
+        default=dict,
     )
+    assert '"' in text
     for token in ("999996", '"11"', '"12"', '"13"'):
         assert token not in text
 
@@ -1208,6 +1213,457 @@ def test_a_malformed_s006_refuses_cleanly_with_no_partial_artifact(invented, tmp
 # --------------------------------------------------------------------------
 # Source blindness
 # --------------------------------------------------------------------------
+
+
+# --------------------------------------------------------------------------
+# The closed envelope header: root's first counterexample, inverted
+# --------------------------------------------------------------------------
+
+
+def reheader(payload: bytes, mutate) -> bytes:
+    """Rebuild a payload with a mutated canonical header over the same bodies.
+
+    The bodies and their digests are untouched, which is exactly the shape of
+    root's counterexample: only the header's self-report changes.
+    """
+
+    start = len(puf.RETURN_STATUS_MAGIC)
+    length = int.from_bytes(payload[start : start + 4], "big")
+    header = json.loads(payload[start + 4 : start + 4 + length].decode("ascii"))
+    body = payload[start + 4 + length :]
+    mutate(header)
+    encoded = canonical(header)
+    return payload[:start] + len(encoded).to_bytes(4, "big") + encoded + body
+
+
+@pytest.fixture
+def envelope(invented):
+    main, demographic, definition = invented
+    status = decode_puf_raw_source(main, demographic, definition)
+    return encode_return_status(status, definition), status, definition
+
+
+def test_a_header_reporting_rows_the_arrays_do_not_carry_is_refused(envelope):
+    payload, status, _ = envelope
+    assert status.rows == 4
+
+    def forge(header):
+        header["facts"]["rows"] = 987654321
+        header["facts"]["matched_keys"] = 777
+
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_FACTS_INCONSISTENT"):
+        decode_return_status(reheader(payload, forge))
+
+
+@pytest.mark.parametrize(
+    ("column", "dtype"),
+    (
+        ("S006", "<f8"),
+        ("S006", ">i8"),
+        ("RECID", "<i4"),
+        ("demographic_status", "<u1"),
+    ),
+)
+def test_a_restated_typed_dtype_is_refused(envelope, column, dtype):
+    """An exact dtype string closes float, endianness and width together."""
+
+    payload, _, _ = envelope
+
+    def restate(header):
+        next(c for c in header["columns"] if c["name"] == column)["dtype"] = dtype
+
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_COLUMN_DTYPE"):
+        decode_return_status(reheader(payload, restate))
+
+
+def test_no_typed_column_can_be_read_back_as_a_float(envelope):
+    payload, status, _ = envelope
+    decoded = decode_return_status(payload)
+    for name, array in decoded.typed.items():
+        assert array.dtype.kind in "iu", name
+        assert array.dtype == status.typed[name].dtype, name
+    assert decoded.typed["S006"].dtype == np.dtype("<i8")
+
+
+def test_a_restated_column_kind_or_width_is_refused(envelope):
+    payload, _, definition = envelope
+
+    def kind(header):
+        next(c for c in header["columns"] if c["name"] == "RECID_lexical")["kind"] = (
+            "typed"
+        )
+
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_COLUMN_KIND"):
+        decode_return_status(reheader(payload, kind))
+
+    def width(header):
+        column = next(c for c in header["columns"] if c["name"] == "RECID_lexical")
+        column["width"] = 32
+        column["bytes"] = 32 * header["rows"]
+
+    # Without a definition the shrunken allocation is caught structurally: the
+    # body it now claims is not the body whose digest the header carries.
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_BODY_DIGEST"):
+        decode_return_status(reheader(payload, width))
+    # With one, the declared width itself is wrong before any body is read.
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_COLUMN_WIDTH"):
+        decode_return_status(reheader(payload, width), definition)
+
+    def over(header):
+        column = next(c for c in header["columns"] if c["name"] == "RECID_lexical")
+        column["width"] = 65
+        column["bytes"] = 65 * header["rows"]
+
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_COLUMN_WIDTH"):
+        decode_return_status(reheader(payload, over))
+
+
+def test_a_restated_body_size_is_refused(envelope):
+    payload, _, _ = envelope
+
+    def grow(header):
+        next(c for c in header["columns"] if c["name"] == "S006")["bytes"] = 8 * 10**7
+
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_COLUMN_SIZE"):
+        decode_return_status(reheader(payload, grow))
+
+    def enormous(header):
+        header["rows"] = 10**9
+        for column in header["columns"]:
+            item = column.get("width") or np.dtype(column["dtype"]).itemsize
+            column["bytes"] = item * 10**9
+
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_BODY_OVER_BOUND"):
+        decode_return_status(reheader(payload, enormous))
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    (
+        lambda header: header.__setitem__("unexpected", 1),
+        lambda header: header.pop("body_endianness"),
+        lambda header: header["columns"][0].__setitem__("unexpected", 1),
+        lambda header: header["columns"][0].pop("sha256"),
+        lambda header: header["sources"]["main"].__setitem__("unexpected", 1),
+        lambda header: header["facts"].__setitem__("unexpected", 1),
+        lambda header: header["facts"].pop("weight_units"),
+    ),
+    ids=(
+        "extra-header-key",
+        "missing-header-key",
+        "extra-column-key",
+        "missing-column-key",
+        "extra-source-key",
+        "extra-fact-key",
+        "missing-fact-key",
+    ),
+)
+def test_the_envelope_header_is_a_closed_schema(envelope, mutate):
+    payload, _, _ = envelope
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_SCHEMA"):
+        decode_return_status(reheader(payload, mutate))
+
+
+def test_a_restated_endianness_declaration_is_refused(envelope):
+    payload, _, _ = envelope
+    for key in ("header_length_endianness", "body_endianness"):
+        with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_ENDIANNESS"):
+            decode_return_status(
+                reheader(payload, lambda header, key=key: header.__setitem__(key, "x"))
+            )
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    (
+        lambda header: header["facts"]["code_frequencies"]["MARS"].__setitem__(
+            "1", 4242
+        ),
+        lambda header: header["facts"].__setitem__("amounts_decoded", True),
+        lambda header: header["facts"].__setitem__("period_semantics", "calendar_2015"),
+        lambda header: header["facts"].__setitem__("weight_units", "S006_dollars"),
+        lambda header: header["facts"].__setitem__("aggregate_records", 0),
+        lambda header: header["facts"].__setitem__("demographic_orphan_records", 3),
+        lambda header: header["facts"].__setitem__("main_unmatched_records", 0),
+        lambda header: header["facts"].__setitem__("aggregate_demographic_records", 9),
+        lambda header: header["facts"].__setitem__("join_status", "one_to_one"),
+    ),
+    ids=(
+        "code-frequency",
+        "amounts-decoded",
+        "period-semantics",
+        "weight-units",
+        "aggregate-records",
+        "orphan-records",
+        "unmatched-records",
+        "aggregate-demographic-records",
+        "join-status",
+    ),
+)
+def test_every_reported_fact_is_recomputed_from_the_arrays(envelope, mutate):
+    payload, _, _ = envelope
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_FACTS_INCONSISTENT"):
+        decode_return_status(reheader(payload, mutate))
+
+
+def test_a_malformed_or_deeply_nested_header_is_a_typed_refusal(envelope):
+    payload, _, _ = envelope
+    start = len(puf.RETURN_STATUS_MAGIC)
+    length = int.from_bytes(payload[start : start + 4], "big")
+    body = payload[start + 4 + length :]
+    for encoded in (
+        b'{"schema_version": 1',
+        b"[" * 20000 + b"]" * 20000,
+        b"null",
+        '{"caf\u00e9": 1}'.encode(),
+    ):
+        with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_"):
+            decode_return_status(
+                payload[:start] + len(encoded).to_bytes(4, "big") + encoded + body
+            )
+
+
+def test_a_readback_cannot_spell_absence_as_a_zero_code(envelope):
+    """Absence stays the sentinel and an empty token; a zero is a real code."""
+
+    payload, status, definition = envelope
+    absent = int(np.flatnonzero(status.typed["demographic_status"] == 0)[0])
+    forged = dict(status.typed)
+    array = np.array(status.typed["AGERANGE"])
+    array[absent] = 0
+    forged["AGERANGE"] = array
+    tampered = encode_return_status(
+        puf.PufRawReturnStatus(
+            typed=forged, lexical=status.lexical, facts=status.facts
+        ),
+        definition,
+    )
+    with pytest.raises(PufRawSourceRefusalError, match="READBACK_ABSENCE_NOT_EMPTY"):
+        decode_return_status(tampered)
+
+
+def test_a_readback_requires_the_lexical_and_numeric_spellings_to_agree(envelope):
+    payload, status, definition = envelope
+    forged = dict(status.typed)
+    array = np.array(status.typed["S006"])
+    array[0] += 1
+    forged["S006"] = array
+    tampered = encode_return_status(
+        puf.PufRawReturnStatus(
+            typed=forged, lexical=status.lexical, facts=status.facts
+        ),
+        definition,
+    )
+    with pytest.raises(PufRawSourceRefusalError, match="READBACK_LEXICAL_DISAGREEMENT"):
+        decode_return_status(tampered)
+
+
+def test_a_readback_requires_the_aggregate_flag_to_follow_from_recid(envelope):
+    payload, status, definition = envelope
+    forged = dict(status.typed)
+    aggregate = np.array(status.typed["disclosure_aggregate"])
+    aggregate[0] = 1
+    forged["disclosure_aggregate"] = aggregate
+    tampered = encode_return_status(
+        puf.PufRawReturnStatus(
+            typed=forged, lexical=status.lexical, facts=status.facts
+        ),
+        definition,
+    )
+    with pytest.raises(PufRawSourceRefusalError, match="READBACK_AGGREGATE"):
+        decode_return_status(tampered)
+
+
+def test_a_valid_payload_round_trips_with_and_without_its_definition(envelope):
+    payload, status, definition = envelope
+    bare = decode_return_status(payload)
+    bound = decode_return_status(payload, definition)
+    assert dict(bare.facts) == dict(bound.facts) == dict(status.facts)
+    assert dict(bare.lexical) == dict(status.lexical)
+    for name, array in status.typed.items():
+        assert bound.typed[name].tobytes() == array.tobytes(), name
+    assert encode_return_status(bound, definition) == payload
+
+
+def test_a_payload_is_refused_against_the_wrong_definition(envelope):
+    payload, _, _ = envelope
+    other_main, other_demographic, other = rebuilt(
+        DEFAULT_MAIN[:3], DEFAULT_DEMOGRAPHIC
+    )
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_DEFINITION_MISMATCH"):
+        decode_return_status(payload, other)
+
+
+def test_a_packaged_route_payload_is_checked_against_the_packaged_definition(
+    envelope,
+):
+    """A fixture may not borrow the packaged route to skip the packaged pins."""
+
+    payload, _, _ = envelope
+    with pytest.raises(
+        PufRawSourceRefusalError, match="ENVELOPE_DEFINITION_NOT_PACKAGED"
+    ):
+        decode_return_status(
+            reheader(
+                payload,
+                lambda header: header.__setitem__("definition_route", "packaged"),
+            )
+        )
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_DEFINITION_ROUTE"):
+        decode_return_status(
+            reheader(
+                payload,
+                lambda header: header.__setitem__("definition_route", "trusted"),
+            )
+        )
+
+
+def test_a_restated_source_pin_is_refused_against_its_definition(envelope):
+    payload, _, definition = envelope
+
+    def restate(header):
+        header["sources"]["main"]["bytes"] = header["sources"]["main"]["bytes"] + 1
+
+    with pytest.raises(PufRawSourceRefusalError, match="ENVELOPE_SOURCE_PIN"):
+        decode_return_status(reheader(payload, restate), definition)
+
+
+def test_a_fresh_consumer_reads_a_valid_artifact_after_the_closure(
+    graph_fixture, tmp_path
+):
+    """The closure did not cost the real downstream path: it still runs."""
+
+    compiled, registry, sources, definition, _ = graph_fixture
+    store = composed_store(tmp_path / "store", definition)
+    manifest = run_graph(
+        compiled, sources=sources, store=store, kernels=registry, resume="forbid"
+    )
+    summary = manifest.nodes[RETURN_STATUS_SUMMARY_NODE].receipt[
+        "puf_raw_return_status_summary"
+    ]
+    decoded = decode_return_status(artifact_bytes(manifest, store))
+    assert summary["rows"] == decoded.rows == 4
+    assert summary["matched_keys"] == decoded.facts["matched_keys"] == 2
+    assert summary["period_semantics"] == "unresolved_raw_FLPDYR"
+    assert summary["amounts_decoded"] is False
+
+
+# --------------------------------------------------------------------------
+# The CSV acceptance profile: root's second counterexample, inverted
+# --------------------------------------------------------------------------
+
+
+def test_the_effective_csv_acceptance_profile_is_read_never_set():
+    before = puf.csv.field_size_limit()
+    profile = puf.csv_acceptance_profile()
+    assert profile["csv.field_size_limit"] == before
+    assert profile["engine"] == "stdlib_csv_reader"
+    assert profile["encoding"] == "utf-8-strict"
+    assert profile["strict"] is True
+    assert puf.csv.field_size_limit() == before
+
+
+def test_the_packaged_csv_profile_states_the_limit_the_parse_runs_under():
+    assert PACKAGED.document["csv_profile"]["field_size_limit"] == (
+        puf.csv.field_size_limit()
+    )
+
+
+def test_a_changed_csv_field_size_limit_refuses_the_cold_decode(invented):
+    main, demographic, definition = invented
+    original = puf.csv.field_size_limit()
+    try:
+        puf.csv.field_size_limit(1)
+        with pytest.raises(PufRawSourceRefusalError, match="CSV_FIELD_SIZE_LIMIT"):
+            decode_puf_raw_source(main, demographic, definition)
+        puf.csv.field_size_limit(original * 2)
+        with pytest.raises(PufRawSourceRefusalError, match="CSV_FIELD_SIZE_LIMIT"):
+            decode_puf_raw_source(main, demographic, definition)
+    finally:
+        puf.csv.field_size_limit(original)
+    assert decode_puf_raw_source(main, demographic, definition).rows == 4
+
+
+def test_the_csv_acceptance_profile_moves_the_producer_implementation_hash(
+    invented,
+):
+    _, _, definition = invented
+    kernel = USPufRawSourceKernel(definition=definition)
+    original = puf.csv.field_size_limit()
+    before = kernel.implementation_hash()
+    try:
+        puf.csv.field_size_limit(1)
+        under_change = kernel.implementation_hash()
+    finally:
+        puf.csv.field_size_limit(original)
+    assert under_change != before
+    assert kernel.implementation_hash() == before
+
+
+def test_a_changed_csv_acceptance_profile_misses_the_warm_run(graph_fixture, tmp_path):
+    """The real negative control: no warm hit reuses an old admission."""
+
+    compiled, registry, sources, definition, _ = graph_fixture
+    store = composed_store(tmp_path / "store", definition)
+    cold = run_graph(
+        compiled, sources=sources, store=store, kernels=registry, resume="forbid"
+    )
+    warm = run_graph(
+        compiled, sources=sources, store=store, kernels=registry, resume="require"
+    )
+    assert all(node.hit for node in warm.nodes.values())
+    producer_key = cold.nodes[PUF_RAW_SOURCE_NODE].key
+
+    original = puf.csv.field_size_limit()
+    try:
+        puf.csv.field_size_limit(1)
+        with pytest.raises(StoreMissError):
+            run_graph(
+                compiled,
+                sources=sources,
+                store=store,
+                kernels=registry,
+                resume="require",
+            )
+        # ``auto`` may not fall back to the stored artifact either: it must
+        # recompute, and the recompute refuses under the changed acceptance.
+        with pytest.raises(NodeRejectedError):
+            run_graph(
+                compiled,
+                sources=sources,
+                store=store,
+                kernels=registry,
+                resume="auto",
+            )
+    finally:
+        puf.csv.field_size_limit(original)
+
+    restored = run_graph(
+        compiled, sources=sources, store=store, kernels=registry, resume="require"
+    )
+    assert restored.nodes[PUF_RAW_SOURCE_NODE].key == producer_key
+    assert all(node.hit for node in restored.nodes.values())
+
+
+def test_the_producer_receipt_records_the_acceptance_it_parsed_under(
+    graph_fixture, tmp_path
+):
+    compiled, registry, sources, definition, _ = graph_fixture
+    store = composed_store(tmp_path / "store", definition)
+    manifest = run_graph(
+        compiled, sources=sources, store=store, kernels=registry, resume="forbid"
+    )
+    receipt = manifest.nodes[PUF_RAW_SOURCE_NODE].receipt["puf_raw_return_status"]
+    profile = receipt["csv_acceptance_profile"]
+    assert profile == puf.csv_acceptance_profile()
+    assert (
+        profile["csv.field_size_limit"]
+        == (definition.document["csv_profile"]["field_size_limit"])
+    )
+    # Still aggregates and digests only: no record identifier, no token.
+    rendered = json.dumps(receipt, sort_keys=True, default=dict)
+    assert "999996" not in rendered
+    assert "12345" not in rendered
 
 
 def test_the_module_and_definition_carry_no_absolute_or_genuine_source_paths():
