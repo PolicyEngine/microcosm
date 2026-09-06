@@ -163,25 +163,35 @@ US_COMPOSED_ASEC_BINDING_TYPE = ArtifactType("microcosm.us.composed_asec_binding
 PERSON_COORDINATE_CROSSCHECKS = ("source_household_id", "A_LINENO", "A_AGE")
 COHORT_COLUMN = "source_year"
 
-#: Demographic columns a later calibration wants on both arms but which this
-#: population cannot bind: each names the exact source column the reviewed ASEC
-#: mapping needs and the prepared arm does not carry. Nothing is imputed, aged
-#: or defaulted; the node refuses outright if such a column ever appears, so the
-#: recorded gap cannot go stale behind a claim written today.
+#: Demographic columns a later calibration wants on both arms and this stage
+#: does not bind. Each names the source column its reviewed ASEC mapping needs,
+#: and the binding records whether the prepared arm actually carries it — an
+#: observation about the population in hand, never a claim written in advance.
+#: Presence does **not** make the column bindable here: a node's outputs are a
+#: static declaration and cannot depend on a roster only known at run time, and
+#: reconciling a raw ASEC code with the native ACS arm's already-mapped cell is
+#: an independent source decision this stage deliberately does not make.
+#: Nothing is imputed, aged or defaulted either way.
 _UNBOUND_DEMOGRAPHICS = (
     (
         "is_female",
         ("A_SEX",),
-        "cps_carried.derive_us_cps_carried_inputs (is_female = A_SEX == 2)",
+        "cps_carried.derive_us_cps_carried_tables (is_female = A_SEX == 2)",
         "SEX == 2 on the native ACS arm",
     ),
     (
         "is_household_head",
         ("P_SEQ",),
-        "relationship_inputs (is_household_head = P_SEQ == 1)",
+        (
+            "relationship_inputs.derive_us_relationship_inputs_from_manifest "
+            "(is_household_head = P_SEQ == 1)"
+        ),
         "RELSHIPP == 20 on the native ACS arm",
     ),
 )
+#: The two reasons an unbound column can carry, both meaning "not bound here".
+UNBOUND_ABSENT = "no_asec_source_column_in_the_prepared_population"
+UNBOUND_UNDECIDED = "asec_source_column_present_but_no_reviewed_cross_arm_binding"
 
 _ARTIFACT_TYPES = (
     ("frame_context", US_FRAME_CONTEXT_TYPE),
@@ -193,13 +203,17 @@ _ARTIFACT_TYPES = (
     ("income_observations", US_ASEC_INCOME_OBSERVATIONS_TYPE),
 )
 #: The prepared context and the four evidence artifacts are positional over one
-#: prepared population, so they must come from one producing node execution.
+#: prepared population, so they must come from one producing node execution. The
+#: origin document is emitted by that same execution and describes the rows this
+#: binding resolves, so it is held to the same producer rather than being
+#: admitted on content alone.
 _SOURCE_EDGES = (
     "asec_frame_context",
     "current_money",
     "housing_universe",
     "income_observations",
     "prepared_receipt",
+    "source_origin",
 )
 
 _BINDING_KEYS = frozenset(
@@ -463,12 +477,21 @@ def _demographics(prepared_columns: Sequence[str], cohorts: Mapping[str, int]) -
     arm's ``age`` is observed in its own vintage. The two are **not** harmonized
     here and no person is aged from any date; the periods are recorded per cohort
     so a calibration decides rather than inherits an assumption.
+
+    Every other field stays unbound, and the record says which of the two things
+    is true of the population in hand: the source column its reviewed mapping
+    needs is absent, or it is present and no reviewed cross-arm binding decision
+    exists yet. Presence is reported, not acted on. A node's outputs are a static
+    declaration and cannot depend on a roster known only at run time, and mapping
+    a raw ASEC code onto the native arm's already-mapped cell is an independent
+    source decision. Nothing here refuses on the roster: doing so would make a
+    prepared arm that carries ``A_SEX`` — which the legacy stacked graph's root
+    cells declare it does — unable to bind its money at all.
     """
     present = set(prepared_columns)
     unbound = []
     for column, sources, mapping, acs_mapping in _UNBOUND_DEMOGRAPHICS:
         found = sorted(name for name in sources if name in present)
-        _require(not found, f"ASEC_DEMOGRAPHIC_SOURCE_APPEARED:{column}")
         unbound.append(
             {
                 "column": column,
@@ -476,8 +499,9 @@ def _demographics(prepared_columns: Sequence[str], cohorts: Mapping[str, int]) -
                 "present_in_prepared_arm": found,
                 "reviewed_asec_mapping": mapping,
                 "acs_arm_mapping": acs_mapping,
-                "reason": "no_asec_source_column_in_the_prepared_population",
+                "reason": UNBOUND_UNDECIDED if found else UNBOUND_ABSENT,
                 "resolution": "independent_source_decision_required",
+                "bound_here": False,
             }
         )
     return {
@@ -802,7 +826,14 @@ def bind_composed_asec_document(payload: bytes) -> dict:
         and bool(demographics["bound"])
         and all(item["aged_from_a_date"] is False for item in demographics["bound"])
         and all(
-            item["present_in_prepared_arm"] == [] for item in demographics["unbound"]
+            item["bound_here"] is False
+            and item["reason"] in {UNBOUND_ABSENT, UNBOUND_UNDECIDED}
+            and (
+                item["reason"] == UNBOUND_UNDECIDED
+                if item["present_in_prepared_arm"]
+                else item["reason"] == UNBOUND_ABSENT
+            )
+            for item in demographics["unbound"]
         ),
         "BINDING_DEMOGRAPHICS",
     )
@@ -979,6 +1010,12 @@ def bind_composed_asec_arm_rows(
         entity: int(binding_document["arm"][entity]["rows"]) for entity in _ID_ENTITIES
     }
     _require(data["rows"] == rows, "ARM_ROWS_COUNTS")
+    _require(
+        type(data["buffers"]) is list
+        and len(data["buffers"]) == len(_ARM_ROWS_BUFFERS)
+        and all(type(item) is dict for item in data["buffers"]),
+        "ARM_ROWS_BUFFER_ROSTER",
+    )
     cursor, buffers = start + size, []
     for (entity, name), declared in zip(
         _ARM_ROWS_BUFFERS, data["buffers"], strict=True
@@ -1192,6 +1229,8 @@ __all__ = [
     "COMPOSED_ASEC_PHASE",
     "COMPOSED_ASEC_STAGE",
     "PERSON_COORDINATE_CROSSCHECKS",
+    "UNBOUND_ABSENT",
+    "UNBOUND_UNDECIDED",
     "US_COMPOSED_ASEC_ARM_ROWS_TYPE",
     "US_COMPOSED_ASEC_BINDING_TYPE",
     "BoundComposedAsecArmRows",

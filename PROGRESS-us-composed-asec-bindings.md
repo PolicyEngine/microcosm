@@ -43,3 +43,24 @@ See `us-composed-asec-bindings-REPORT.md` for the full report.
   out of this lane's scope, deselected in the recorded run.
 - No genuine run performed. The proposed genuine-small runner command is in the
   report and in `docs/us-composed-asec-binding.md`, not executed.
+
+## Peer review answered (root's Fable review of 24f32366)
+
+- **code-1 (material) fixed.** The `ASEC_DEMOGRAPHIC_SOURCE_APPEARED` refusal is
+  removed. It was keyed on a fixture-only fact, and `graph.py`'s `_ROOT_CELLS`
+  declares `A_SEX` as an int64 person cell on the legacy stacked path, so on
+  genuine data the whole stage — and therefore the corrected money — would have
+  refused at bind time. The binding now records the observed roster truthfully
+  with two reasons (`UNBOUND_ABSENT` / `UNBOUND_UNDECIDED`) and `bound_here:
+  false`; a new test drives the present-`A_SEX` path.
+- **code-2 fixed.** `source_origin` joined `_SOURCE_EDGES`, so
+  `NODE_EVIDENCE_PRODUCER` and `ARTIFACT_PRODUCER_SPLIT` now really do cover it,
+  matching what the doc claimed.
+- **code-3 fixed.** The journal no longer claims a stale phase or head.
+- **code-4 fixed.** A malformed `arm_rows` buffer roster refuses with the typed
+  `ARM_ROWS_BUFFER_ROSTER` instead of a bare `ValueError`.
+- Two recorded mapping names were wrong and are corrected:
+  `cps_carried.derive_us_cps_carried_tables` and
+  `relationship_inputs.derive_us_relationship_inputs_from_manifest`.
+- The review's evidence gaps are closed by execution: the new module runs 33
+  tests green, and the affected set runs green end to end.

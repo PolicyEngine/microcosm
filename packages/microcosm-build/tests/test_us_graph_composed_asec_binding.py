@@ -835,11 +835,61 @@ def test_three_income_cohorts_bind_with_their_observed_periods(executed):
     assert set(unbound) == {"is_female", "is_household_head"}
     assert unbound["is_female"]["required_asec_source_columns"] == ["A_SEX"]
     assert unbound["is_female"]["present_in_prepared_arm"] == []
+    assert unbound["is_female"]["reason"] == binding.UNBOUND_ABSENT
+    assert all(item["bound_here"] is False for item in unbound.values())
     frame = _bound_frame(manifest)
     # The gap is a fact about this population, not a claim: the arm really has
     # no sex or head cell, and the binding filled neither.
     assert _arm(frame, "person")["is_female"].isna().all()
     assert _arm(frame, "person")["is_household_head"].isna().all()
+
+
+def test_a_prepared_arm_carrying_a_sex_still_binds_and_records_it(executed):
+    """Presence of an unbound field's source column is recorded, never refused.
+
+    The genuine ASEC person table is expected to carry ``A_SEX`` — the legacy
+    stacked graph declares it among its root person cells — so refusing on the
+    roster would make the whole binding, and therefore the money, unavailable on
+    real data. The record says the column is there and still unbound; nothing is
+    derived from it.
+    """
+    root, manifest, store, *_rest = executed
+    _restore_test_pins(root)
+    frame = _bound_frame(manifest)
+    prepared_context = json.loads(
+        _payload(manifest, store, composed.CREATE_NODE, "asec_frame_context")
+    )
+    assert "A_SEX" not in prepared_context["entities"]["person"]["columns"]
+    prepared_context["entities"]["person"]["columns"].append("A_SEX")
+    bound = binding.resolve_composed_asec_binding(
+        {entity: frame.table(entity) for entity in US_SCHEMA.entities},
+        context_payload=_payload(manifest, store, GEOGRAPHY_PHASE, "frame_context"),
+        origin_payload=_payload(manifest, store, composed.CREATE_NODE, "source_origin"),
+        prepared_context_payload=canonical_json(prepared_context),
+        money_payload=_payload(manifest, store, composed.CREATE_NODE, "current_money"),
+        receipt_payload=_payload(
+            manifest, store, composed.CREATE_NODE, "prepared_receipt"
+        ),
+        housing_payload=_payload(
+            manifest, store, composed.CREATE_NODE, "housing_universe"
+        ),
+        income_payload=_payload(
+            manifest, store, composed.CREATE_NODE, "income_observations"
+        ),
+        producers={
+            "population": _ORACLE_DIGEST,
+            "prepared_source": _ORACLE_DIGEST,
+            "source_origin": _ORACLE_DIGEST,
+        },
+    )
+    document = binding.bind_composed_asec_document(bound.payload)
+    unbound = {item["column"]: item for item in document["demographics"]["unbound"]}
+    assert unbound["is_female"]["present_in_prepared_arm"] == ["A_SEX"]
+    assert unbound["is_female"]["reason"] == binding.UNBOUND_UNDECIDED
+    assert unbound["is_female"]["bound_here"] is False
+    # The absent one is still reported as absent, and the money still binds.
+    assert unbound["is_household_head"]["reason"] == binding.UNBOUND_ABSENT
+    assert document["arm"]["person"]["rows"] == len(bound.original_ids["person"])
 
 
 def test_bound_age_equals_the_source_observation_and_leaves_acs_age_alone(executed):

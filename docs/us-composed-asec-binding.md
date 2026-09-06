@@ -72,15 +72,16 @@ records `composed_is_whole_arm: false`.
 ## What binds each artifact to its producer
 
 The bind node takes seven typed edges. The population's `frame_context` comes
-from the population's own context producer; the origin document and the five
-positional evidence artifacts must all come from the composed CREATE
-(`NODE_EVIDENCE_PRODUCER`), and the five evidence edges must share one producing
-node execution (`ARTIFACT_PRODUCER_SPLIT`), because they are positional over one
-prepared population. The composed context's row identities are checked against
-the actual tables, and `source_origin`'s per-entity provenance digests are
-**recomputed** against those tables: `bind_composed_source_origin` deliberately
-verifies no digest against any population, so a document describing a different
-frame is caught here (`ORIGIN_DOES_NOT_DESCRIBE_THIS_FRAME`).
+from the population's own context producer. The other six — the origin document
+and the five positional evidence artifacts — must all come from the composed
+CREATE (`NODE_EVIDENCE_PRODUCER`) **and** share one producing node execution
+(`ARTIFACT_PRODUCER_SPLIT`): the evidence is positional over one prepared
+population, and the origin describes the rows this binding resolves. The
+composed context's row identities are checked against the actual tables, and
+`source_origin`'s per-entity provenance digests are **recomputed** against those
+tables: `bind_composed_source_origin` deliberately verifies no digest against any
+population, so a document describing a different frame is caught here by content
+as well (`ORIGIN_DOES_NOT_DESCRIBE_THIS_FRAME`).
 
 The bind node emits three artifacts:
 
@@ -136,19 +137,31 @@ are observed in ASEC survey years 2023, 2024 and 2025 while the native ACS arm's
 survey date**, and reconciling the two periods is a calibration decision this
 stage deliberately leaves open.
 
-Two demographic fields a calibration will also want cannot be bound on this
-population, and the binding says exactly why rather than guessing:
+Two demographic fields a calibration will also want are **not** bound here, and
+the binding records why rather than guessing:
 
-| Column | Reviewed ASEC mapping | Missing source column |
+| Column | Reviewed ASEC mapping | Source column it needs |
 | --- | --- | --- |
-| `is_female` | `cps_carried` (`is_female = A_SEX == 2`) | `A_SEX` |
-| `is_household_head` | `relationship_inputs` (`is_household_head = P_SEQ == 1`) | `P_SEQ` |
+| `is_female` | `cps_carried.derive_us_cps_carried_tables` (`is_female = A_SEX == 2`) | `A_SEX` |
+| `is_household_head` | `relationship_inputs.derive_us_relationship_inputs_from_manifest` (`is_household_head = P_SEQ == 1`) | `P_SEQ` |
 
-Neither column is present in the prepared ASEC population, so binding either one
-needs an independent source decision — a change to the prepared arm, not a
-choice this stage may make. The stage **refuses** (`ASEC_DEMOGRAPHIC_SOURCE_APPEARED`)
-if such a column ever appears, so the recorded gap cannot go stale behind a claim
-written today.
+For each, the artifact records whether the prepared arm actually carries that
+column — an observation about the population in hand, not a claim written in
+advance — and the reason accordingly: `no_asec_source_column_in_the_prepared_population`
+when it is absent, `asec_source_column_present_but_no_reviewed_cross_arm_binding`
+when it is there. `bound_here` is `false` either way.
+
+Presence does not make the column bindable here, for two reasons. A node's
+outputs are a static declaration and cannot depend on a roster known only at run
+time. And mapping a raw ASEC code onto the native ACS arm's already-mapped cell
+(`is_female` is a nullable boolean produced by `SEX == 2`) is an independent
+source decision about the prepared arm, not a choice this stage may make.
+
+The stage deliberately does **not** refuse on the roster. The genuine ASEC person
+table is expected to carry `A_SEX` — `graph.py`'s `_ROOT_CELLS` declares it as an
+int64 person cell on the legacy stacked path — so a roster refusal would make the
+whole binding, and therefore the corrected money, unavailable on real data. What
+travels instead is a truthful record a reviewer can read off the receipt.
 
 ## Source-blindness
 
