@@ -1,7 +1,7 @@
 # Annual panel preparation — 2026-09-06
 
 ## State
-Invented-only, source-only implementation in progress. No genuine inputs bound.
+Source/helper preparation complete for root review. No genuine inputs bound.
 Fresh isolated sibling checkout inside the writable review root; existing worktrees preserved.
 Base c1b8324183819cf91511c002bf724a2676524e87 fetched from the local repository's
 previously fetched origin/main (upstream fetch 2026-09-05 08:16:49 -0400).
@@ -46,3 +46,23 @@ A live GitHub fetch failed: DNS resolution unavailable. This is not a current-ma
 - Initial wrapper refused because sandbox blocks ps. Preserved failed output;
   replaced external RSS probing with worker getrusage watchdog. Invented wrapper
   then completed. Final tests/committed-byte verification follow this step.
+
+### Final verified state
+- Implementation commit: 7cc5786aa893e96f168af759f2936286037bc2a7.
+- Final committed-byte tests: 60 passed, zero skipped/failures/errors; 2.8726945s,
+  peak RSS326746112 bytes. All55 loaded local test/code files match Git bytes.
+- Invented production-wrapper run: first32 of40 SSUIDs,384 retained rows;
+  both scans consumed480 rows; 3.0626074s wall, peak RSS316932096 bytes.
+  All52 loaded worker code/metadata files match the implementation commit.
+- Actual replay refused without changing any output. Public v1/v2 reports and
+  verifier preservation hashes rechecked unchanged. Ruff and CI inventory passed.
+- Original ps-based refusal and all precommit receipts remain separately labelled.
+- Source prerequisites rechecked byte-identical to accepted61f2f499. No fits,
+  policy-engine execution, target/checkpoint reads, genuine source execution,
+  agents, runtime changes, pushes, messages or PRs occurred.
+
+## Next for root
+Review the prepared contract/command, recheck current upstream main when network
+is available, and independently bind/authorize a genuine first32 pilot if desired.
+The report is written separately at the requested review-root Markdown/JSON paths.
+No larger selection or genuine source read is authorized by this preparation.
