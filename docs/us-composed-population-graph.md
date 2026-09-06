@@ -89,8 +89,13 @@ CREATE therefore also emits `asec_frame_context`, the prepared arm's own typed
 context encoded before stacking, and refuses if the prepared receipt's
 `entity_rows` disagree with the arm it just read. The origin document records
 `asec_evidence_alignment` with the evidence rows, the arm rows, the composed
-ASEC rows and a `composed_is_whole_arm` flag, so a consumer never has to assume
-alignment. At `sample_fraction < 1.0` the flag is false and the counts differ.
+ASEC rows and a `composed_is_whole_arm` flag. This flag compares counts only;
+it does not establish row order or positional alignment. Even when all rows
+are retained, stacking can reorder the group tables. A consumer must reconstruct
+the original source coordinates and verify their order against
+`asec_frame_context` before indexing the carried evidence. The context contains
+identity digests, not the full coordinate vectors. Below `sample_fraction = 1.0`,
+the realized selection must also be bound explicitly.
 
 A **binding node is still required** before the prepared-slice consumers
 (corrected leaves, reported income) can attach: their kernels require an empty
