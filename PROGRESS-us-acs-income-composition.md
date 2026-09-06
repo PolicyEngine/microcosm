@@ -27,12 +27,22 @@ Inputs, both frozen and left untouched:
 - Read AGENTS.md/CLAUDE.md, fetched `origin/main`, compared both lanes to it.
 - Established that the integration head's own 20 commits since `a276a3c9`
   touch none of the three shared files, so the ACS delta is portable forward.
+- Took 22 disjoint files by exact blob and hand-composed the three shared ones
+  (`graph_sources.py`, `graph_implementation.py`, the inventory), keeping both
+  stage registrations and both stage-specific CSV identity profiles.
+- Recomputed the `graph_sources.py` dependency contract against the composed
+  bytes with the repository's own `_dependency_contract`: unchanged.
+- 384 pure cases green, zero failures/errors/skips; 274 loaded modules match
+  the head's git blobs; 18 sealed income files byte-identical;
+  `ci_test_groups.py --verify` ok; ruff check/format and `git diff --check`
+  clean. Composed at **6b26cbbc**, tree clean.
 
 ## Next
 
-- Take the disjoint deltas from both frozen heads by exact blob.
-- Hand-compose the three shared files.
-- Recompute the inventory, run the affected suites, commit.
+- Root: run the installed-engine `test_us_graph_asec_prepared.py` under a
+  separate assignment; it was deliberately not run here.
+- Root: decide whether the successor review's six residual non-blocking items
+  are addressed before or after this candidate moves.
 
 ## Scope fences
 
