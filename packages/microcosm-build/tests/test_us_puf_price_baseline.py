@@ -493,6 +493,19 @@ def test_a_status_artifact_that_is_not_this_projection_is_refused(fixture, contr
         adapt_projection_to_money_view(decoded, _Missing(), contract)
     assert error.value.reason == "STATUS_ARTIFACT_COLUMN"
 
+    # A side column of the wrong length would misalign FLPDYR or S006 against
+    # the money view without touching either join key.
+    short = _Status()
+    short.typed["FLPDYR"] = short.typed["FLPDYR"][:-1].copy()
+    with pytest.raises(PufGrowthRefusalError) as error:
+        adapt_projection_to_money_view(decoded, short, contract)
+    assert error.value.reason == "STATUS_COLUMN_ROWS"
+    assert error.value.field == "FLPDYR"
+
+    with pytest.raises(PufGrowthRefusalError) as error:
+        adapt_projection_to_money_view(decoded, object(), contract)
+    assert error.value.reason == "STATUS_ARTIFACT_TYPE"
+
 
 # --------------------------------------------------------------------------
 # Growth, through the existing transform

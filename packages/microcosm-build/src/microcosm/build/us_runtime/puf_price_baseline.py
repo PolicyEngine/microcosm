@@ -340,13 +340,28 @@ class PufMoneyViewAdaptation:
     receipt: Mapping[str, object]
 
 
-def _status_arrays(status: object) -> Mapping[str, np.ndarray]:
+def _status_arrays(status: object, rows: int | None = None) -> Mapping[str, np.ndarray]:
+    """Every status column this adapter reads, present and the same length.
+
+    The length check covers ``FLPDYR``, ``S006`` and the demographic status as
+    well as the two join keys, so a short or long side column is a refusal
+    rather than a silently misaligned slice later.
+    """
     try:
         typed = status.typed
     except AttributeError as error:
         raise PufGrowthRefusalError("STATUS_ARTIFACT_TYPE") from error
+    # Presence first for every column, then length for every column, so a
+    # missing column is reported as missing rather than as a length mismatch.
     for name in _STATUS_COLUMNS:
         _require(name in typed, "STATUS_ARTIFACT_COLUMN", name)
+    if rows is not None:
+        for name in _STATUS_COLUMNS:
+            _require(
+                int(np.asarray(typed[name]).shape[0]) == rows,
+                "STATUS_COLUMN_ROWS",
+                name,
+            )
     return typed
 
 
@@ -382,12 +397,11 @@ def adapt_projection_to_money_view(
     _require(
         isinstance(decoded, PufMonetarySourceProjection), "PROJECTION_ARTIFACT_TYPE"
     )
-    typed = _status_arrays(status)
     projection_recid = np.asarray(decoded.typed[SOURCE_RECID_FIELD], dtype="<i8")
-    status_recid = np.asarray(typed[SOURCE_RECID_FIELD], dtype="<i8")
     rows = int(projection_recid.shape[0])
     _require(rows > 0, "PROJECTION_NO_ROWS")
-    _require(int(status_recid.shape[0]) == rows, "STATUS_ROW_COUNT")
+    typed = _status_arrays(status, rows)
+    status_recid = np.asarray(typed[SOURCE_RECID_FIELD], dtype="<i8")
     _require(bool(np.array_equal(projection_recid, status_recid)), "STATUS_RECID_JOIN")
     _require(len(np.unique(projection_recid)) == rows, "DUPLICATE_RECID")
     projection_flags = np.asarray(decoded.typed["disclosure_aggregate"], dtype="<u1")
