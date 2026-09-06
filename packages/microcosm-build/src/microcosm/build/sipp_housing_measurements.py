@@ -568,7 +568,7 @@ def _assistance_class(
         # into plain missingness, and never read as a negative answer.
         return (
             "assistance_universe_conflict"
-            if voucher_applicable
+            if voucher_state == "answer_present"
             else "assistance_not_in_universe"
         )
     if rentsub_state in ("observed", "allocated"):
@@ -598,7 +598,9 @@ def _assistance_class(
             if rentsub_state == "observed"
             else "unassisted_allocated"
         )
-    if voucher_applicable:
+    # A published voucher answer needs ERENTSUB = 1 behind it, so one standing
+    # beside a suppressed or unreadable ERENTSUB is a universe conflict too.
+    if voucher_state == "answer_present":
         return "assistance_universe_conflict"
     return "assistance_unknown"
 

@@ -1173,3 +1173,22 @@ def test_person_month_evidence_never_reaches_the_household_measurements():
         ]
         is False
     )
+
+
+@pytest.mark.parametrize(
+    "rentsub",
+    [
+        {"ERENTSUB": "", "ARENTSUB": "0"},
+        {"ERENTSUB": "", "ARENTSUB": "-99"},
+        {"ERENTSUB": "", "ARENTSUB": ""},
+    ],
+)
+def test_a_published_voucher_answer_conflicts_whatever_erentsub_carries(rentsub):
+    # EVOUCHER needs ERENTSUB = 1 behind it. A discarded value under flag 0 is
+    # still a published answer, so the conflict does not depend on the flag.
+    household = _household(_row(**rentsub, EVOUCHER="1", AVOUCHER="0"))
+    assert household.diagnostics["voucher_evidence"] == "answer_present"
+    assert household.assistance == "assistance_universe_conflict"
+    assert household.exclusion == "assistance_universe_conflict"
+    without = _household(_row(**rentsub))
+    assert without.assistance != "assistance_universe_conflict"
