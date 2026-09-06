@@ -18,6 +18,7 @@ import pytest
 
 from microcosm.build import sipp_december_source as source
 from microcosm.build import sipp_housing_measurements as hm
+from microcosm.build import sipp_housing_predictors as predictors
 from microcosm.build import sipp_housing_projection as hp
 from microcosm.build import sipp_measurements as m
 
@@ -171,13 +172,59 @@ def test_the_frozen_sixteen_field_producer_contract_is_untouched():
     )
     assert source._COPIED == ("THEQ_VEH", "THVAL_VEH", "THDEBT_VEH", "TVEH_NUM")
     assert source._PINS.expected_counts == (39513, 17646, 17314, 318, 29)
-    assert not set(source.FIELDS) & set(hp.PROJECTION_FIELDS[5:])
     assert tuple(m._HOUSEHOLD) == (
         "TVEH_NUM",
         "THVAL_VEH",
         "THEQ_VEH",
         "THDEBT_VEH",
     )
+
+
+def test_the_one_column_shared_with_the_frozen_producer_has_a_single_contract():
+    # Version 3 carries TAGE_EHC, which the frozen sixteen-field producer also
+    # reads to gate its retirement-income and bank-asset universes. Sharing a
+    # column is allowed; reading it two different ways is not.
+    shared = set(source.FIELDS) & set(hp.PROJECTION_FIELDS[5:])
+    assert shared == {predictors.SHARED_WITH_FROZEN_PRODUCER} == {"TAGE_EHC"}
+    spec = predictors._PREDICTOR_AMOUNTS["TAGE_EHC"]
+    assert {
+        "low": spec.low,
+        "high": spec.high,
+        "sentinel": spec.sentinel,
+    } == predictors.FROZEN_PRODUCER_AGE_READING
+    # The frozen producer's own reading, asserted against its source rather than
+    # against a copy of the numbers.
+    frozen = pathlib.Path(m.__file__).read_text()
+    assert '_number(row.values, "TAGE_EHC", 0, 90, -999)' in frozen
+    assert hp.recipe_document()["prospective_predictors"][
+        "shared_with_frozen_producer"
+    ] == {
+        "field": "TAGE_EHC",
+        "frozen_producer_reading": {"low": 0, "high": 90, "sentinel": -999},
+        "read_identically_here": True,
+        "frozen_producer_fields_mutated": False,
+        "second_contract_for_the_shared_column_introduced": False,
+    }
+
+
+def test_the_frozen_producer_modules_are_byte_identical():
+    # These two modules are declared frozen: their digests sit inside the
+    # producer binding that already-published receipts carry. A change to either
+    # is a review, not a refactor, so the bytes are pinned here.
+    digests = {
+        pathlib.Path(module.__file__).name: hashlib.sha256(
+            pathlib.Path(module.__file__).read_bytes()
+        ).hexdigest()
+        for module in (source, m)
+    }
+    assert digests == {
+        "sipp_december_source.py": (
+            "faa97d8699028111de48c7b065e0463def3007e985f1ae5cca35cf13ff129d4c"
+        ),
+        "sipp_measurements.py": (
+            "81fac9866b72cf42dbd98a2eb24a9c1087893ede3fa57c8ccdbd411812510b2c"
+        ),
+    }
 
 
 # --- transcription fidelity -------------------------------------------------
@@ -946,6 +993,7 @@ def test_the_receipt_binds_both_housing_modules_and_both_frozen_modules():
     assert set(hp.IMPLEMENTATION_MODULES) == {
         "microcosm.build.sipp_december_source",
         "microcosm.build.sipp_housing_measurements",
+        "microcosm.build.sipp_housing_predictors",
         "microcosm.build.sipp_housing_projection",
         "microcosm.build.sipp_measurements",
     }

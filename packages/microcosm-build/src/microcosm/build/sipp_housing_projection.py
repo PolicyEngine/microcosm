@@ -29,18 +29,33 @@ from microcosm.graph.canonical import canonical_json
 
 from . import sipp_december_source as s
 from . import sipp_housing_measurements as hm
+from . import sipp_housing_predictors as hpred
 from . import sipp_measurements as m
 
-RECIPE_VERSION = "sipp-december-housing-projection/2"
-RECEIPT_FORMAT = "sipp_december_housing_projection_v2"
+RECIPE_VERSION = "sipp-december-housing-projection/3"
+RECEIPT_FORMAT = "sipp_december_housing_projection_v3"
 
-# Version 2 is the reviewed contract. Version 1 declared that an explicit
-# ``ERENTSUB = 2`` admitted a household whatever EVOUCHER carried, folded
-# ``assistance_not_in_universe`` into the unknown rung, bound no implementation
-# identity and copied the caller's ``selection`` label into the receipt without
-# counting the SSUIDs behind it. No version 1 receipt was ever produced: the
-# extraction has not been run, so nothing published moves with this bump.
-SUPERSEDED_RECIPE_VERSIONS = ("sipp-december-housing-projection/1",)
+# Version 3 adds the nine transcribed predictor columns as a separate,
+# after-the-fact evidence surface. It changes no measurement class, no
+# assistance rule and no rung of ``EXCLUSION_ORDER``.
+#
+# Version 2 is the reviewed measurement contract and, unlike version 1, it did
+# produce receipts: a December extraction was run under it and reviewed. Those
+# receipts are not invalidated by this bump and are not reproduced by it - a
+# version 3 run reads more columns and therefore writes a different measurement
+# digest and a different receipt. Version 2 remains the identity under which the
+# accepted measurement evidence was recorded, and this list says that it is
+# superseded as a *recipe for new extractions*, not that its outputs are void.
+#
+# Version 1 declared that an explicit ``ERENTSUB = 2`` admitted a household
+# whatever EVOUCHER carried, folded ``assistance_not_in_universe`` into the
+# unknown rung, bound no implementation identity and copied the caller's
+# ``selection`` label into the receipt without counting the SSUIDs behind it. No
+# version 1 receipt was ever produced.
+SUPERSEDED_RECIPE_VERSIONS = (
+    "sipp-december-housing-projection/1",
+    "sipp-december-housing-projection/2",
+)
 
 # Modules whose bytes decide what a housing receipt means. Their digests are
 # recorded in the receipt, never inside ``recipe_bytes()``: this module's own
@@ -48,6 +63,7 @@ SUPERSEDED_RECIPE_VERSIONS = ("sipp-december-housing-projection/1",)
 IMPLEMENTATION_MODULES = (
     "microcosm.build.sipp_december_source",
     "microcosm.build.sipp_housing_measurements",
+    "microcosm.build.sipp_housing_predictors",
     "microcosm.build.sipp_housing_projection",
     "microcosm.build.sipp_measurements",
 )
@@ -55,7 +71,7 @@ IMPLEMENTATION_MODULES = (
 # Byte identity of ``recipe_bytes()``. A recipe change must move this pin in the
 # same commit; a silent drift between the declared contract and the transcribed
 # field table refuses instead of extracting under an unreviewed contract.
-RECIPE_SHA256 = "e878b88f28590b89a8d00333a0b6db742f690df116688dcc5dad3934c7e81c80"
+RECIPE_SHA256 = "29a686a37713954952fe2b5c2a3b91fa84e9746d052056db6479b3656831dca3"
 
 # The official document these contracts were transcribed from. Its digest is not
 # a second authority: ``verify_dictionary()`` requires it to equal the frozen
@@ -110,6 +126,9 @@ PROJECTION_FIELDS = (
     "TRNTMT_STD",
     "TUTILS_MED",
     "TUTILS_STD",
+    # Version 3: prospective predictor columns, observed after admission and
+    # never an input to it.
+    *hpred.PREDICTOR_FIELDS,
 )
 
 # Why each column beyond the seven mandated fields is carried, so the projection
@@ -144,6 +163,7 @@ FIELD_PURPOSE = {
     "TRNTMT_STD": "topcode_group_marker_required_for_the_TRENTMORT_topcode_count",
     "TUTILS_MED": "topcode_group_marker_required_for_the_TUTILS_topcode_count",
     "TUTILS_STD": "topcode_group_marker_required_for_the_TUTILS_topcode_count",
+    **hpred.PREDICTOR_PURPOSE,
 }
 
 # Declarations that must be explicit before any charge leaves this lane. None of
@@ -184,6 +204,12 @@ NON_CLAIMS = {
     "fit_transfer_calibration_or_acceptance_performed": False,
     "unassisted_counterfactual_asserted": False,
     "new_source_byte_proof_claimed": False,
+    "predictor_columns_participate_in_admission": False,
+    "predictor_validity_is_a_fit_admission": False,
+    "sub_state_geography_derived": False,
+    "monthly_income_annualized_or_rebased": False,
+    "age_domain_maximum_called_a_topcode": False,
+    "launch_readiness_declared": False,
 }
 
 
@@ -191,12 +217,36 @@ class HousingProjectionError(ValueError):
     """Sanitized refusal at the housing projection recipe boundary."""
 
 
+# The dictionary's own "File:" line for each declared grain. A predictor whose
+# description names a household quantity is still printed Person-month, and the
+# entry reports what the page says rather than what the concept implies.
+_FILE_CLASS = {
+    "household": "Household",
+    "person": "Person",
+    "person_month": "Person-month",
+    "household_concept_person_month": "Person-month",
+}
+
+
+def _predictor_extra(name: str) -> dict:
+    """Declarations a version 3 predictor column carries beyond a v2 contract."""
+    if name not in hpred.PREDICTOR_VALUE_FIELDS:
+        return {}
+    return {
+        "dictionary_length": hpred.PREDICTOR_LENGTHS[name],
+        "prospective_predictor": True,
+        "household_resolution": hpred.PREDICTOR_RESOLUTION[name],
+        "limitations": list(hpred.PREDICTOR_LIMITATIONS[name]),
+        "participates_in_exclusion_order": False,
+    }
+
+
 def _amount_entry(name: str, spec: hm._Amount) -> dict:
     return {
         "name": name,
-        "kind": "amount",
+        "kind": spec.kind,
         "grain": spec.grain,
-        "file_class": {"household": "Household", "person": "Person"}[spec.grain],
+        "file_class": _FILE_CLASS[spec.grain],
         "status_flag": spec.flag,
         "concept": spec.concept,
         "basis": spec.basis,
@@ -204,11 +254,13 @@ def _amount_entry(name: str, spec: hm._Amount) -> dict:
         "minimum": spec.low,
         "maximum": spec.high,
         "documented_numeric_missing_sentinel": None,
+        "out_of_domain_sentinel": spec.sentinel,
         "universe": spec.universe,
         "universe_description": spec.universe_description,
         "dictionary_zero_based_page": spec.page,
         "dictionary_printed_page": spec.page + 1,
         "purpose": FIELD_PURPOSE[name],
+        **_predictor_extra(name),
     }
 
 
@@ -217,10 +269,7 @@ def _category_entry(name: str, spec: hm._Category) -> dict:
         "name": name,
         "kind": "category",
         "grain": spec.grain,
-        "file_class": {
-            "household": "Household",
-            "person_month": "Person-month",
-        }[spec.grain],
+        "file_class": _FILE_CLASS[spec.grain],
         "status_flag": spec.flag,
         "concept": spec.concept,
         "codes": list(spec.codes),
@@ -231,6 +280,7 @@ def _category_entry(name: str, spec: hm._Category) -> dict:
         "dictionary_zero_based_page": spec.page,
         "dictionary_printed_page": spec.page + 1,
         "purpose": FIELD_PURPOSE[name],
+        **_predictor_extra(name),
     }
 
 
@@ -244,6 +294,10 @@ def field_contracts() -> tuple[dict, ...]:
     for name, spec in hm._HOUSEHOLD_AMOUNTS.items():
         entries[name] = _amount_entry(name, spec)
     for name, spec in hm._PERSON_TOPCODE_AMOUNTS.items():
+        entries[name] = _amount_entry(name, spec)
+    for name, spec in hpred._PREDICTOR_CATEGORIES.items():
+        entries[name] = _category_entry(name, spec)
+    for name, spec in hpred._PREDICTOR_AMOUNTS.items():
         entries[name] = _amount_entry(name, spec)
     ordered = []
     for name in PROJECTION_FIELDS:
@@ -269,6 +323,101 @@ def field_contracts() -> tuple[dict, ...]:
     if declared != set(PROJECTION_FIELDS):
         raise HousingProjectionError("HOUSING_RECIPE_FIELD_SET")
     return tuple(ordered)
+
+
+def prospective_predictors() -> dict:
+    """What the nine version 3 columns are, and everything they are not yet.
+
+    The block exists so a later fit lane inherits the published semantics rather
+    than a summary of them. Every conflict between a column's actual dictionary
+    contract and a use proposed for it elsewhere is recorded here as a
+    limitation on the column; none of them is resolved by choosing a value.
+    """
+    return {
+        "purpose": (
+            "Carry the source observations a later unassisted contract-rent fit "
+            "would condition on, at the grain and in the period the dictionary "
+            "publishes them."
+        ),
+        "fields": list(hpred.PREDICTOR_FIELDS),
+        "rule_id": hpred.PREDICTOR_RULE_ID,
+        "computed_after_admission": True,
+        "exclusion_order_unchanged": True,
+        "exclusion_order_exclusive": list(hm.EXCLUSION_ORDER),
+        "predictor_states_added_to_the_exclusion_order": [],
+        "status_order_exclusive": list(hpred.PREDICTOR_STATUS_ORDER),
+        "status_is_prospective_validity_not_admission": True,
+        "state_geography": {
+            "field": "TEHC_ST",
+            "published_code_count": 53,
+            "codes_that_are_not_a_state_or_dc": list(hpred.NON_STATE_AREA_CODES),
+            "state_and_dc_code_count": 51,
+            "domain_is_a_published_code_set_not_the_range_01_56": True,
+            "sub_state_geography_published_on_this_column": False,
+            "sub_state_values_derived": False,
+            "geography_is_source_geography": True,
+        },
+        "household_size": {
+            "publisher_field": "RHNUMPER",
+            "roster_statistic": "december_member_count_of_the_supplied_residence",
+            "both_retained": True,
+            "publisher_corrected_against_roster": False,
+            "roster_corrected_against_publisher": False,
+            "type_2_person_treatment_adjudicated": False,
+            "disagreement_reported_as": "household_size_agreement",
+        },
+        "children_under_18": {
+            "publisher_field": "RHNUMU18",
+            "roster_statistic": (
+                "count of December members whose admissible TAGE_EHC is under 18"
+            ),
+            "roster_statistic_requires_complete_age_coverage": True,
+            "child_age_boundary": hpred.CHILD_AGE_BOUNDARY,
+            "disagreement_reported_as": "children_under_18_agreement",
+        },
+        "income": {
+            "field": "THTOTINC",
+            "period": "December_2022_monthly",
+            "signed": True,
+            "minimum": -10_000_000_000,
+            "maximum": 10_000_000_000,
+            "negative_values_preserved": True,
+            "annualization": "not_applied",
+            "price_rebasing": "not_applied",
+            "log_or_floor_transform": "not_applied",
+            "period_consistent_alternative_not_carried": "THCYINCPOV",
+        },
+        "age": {
+            "field": "TAGE_EHC",
+            "status_flag": None,
+            "allocation_quality_available": False,
+            "domain_maximum": 90,
+            "domain_maximum_called_a_topcode": False,
+            "household_statistic": (
+                "maximum over admissible December person observations only"
+            ),
+            "coverage_states": list(hpred.AGE_COVERAGE_STATES),
+            "partial_coverage_is_a_lower_bound_not_a_maximum": True,
+        },
+        "fields_deliberately_absent": dict(hpred.PREDICTOR_FIELDS_DELIBERATELY_ABSENT),
+        "shared_with_frozen_producer": {
+            "field": hpred.SHARED_WITH_FROZEN_PRODUCER,
+            "frozen_producer_reading": dict(hpred.FROZEN_PRODUCER_AGE_READING),
+            "read_identically_here": True,
+            "frozen_producer_fields_mutated": False,
+            "second_contract_for_the_shared_column_introduced": False,
+        },
+        "not_performed": [
+            "price_bridge",
+            "annualization",
+            "fit",
+            "draw",
+            "donor_mask_selection",
+            "model_input_binding",
+            "recipient_mapping",
+            "policyengine_calculation",
+        ],
+    }
 
 
 def recipe_document() -> dict:
@@ -302,7 +451,11 @@ def recipe_document() -> dict:
             + list(hm.HOUSEHOLD_AMOUNTS),
             "person_month": list(hm.PERSON_MONTH_CATEGORIES),
             "person": list(hm.PERSON_TOPCODE_AMOUNTS),
+            "predictor_household_resolved": list(hpred.HOUSEHOLD_RESOLVED_FIELDS),
+            "predictor_person_resolved": list(hpred.PERSON_RESOLVED_FIELDS),
         },
+        "superseded_versions": list(SUPERSEDED_RECIPE_VERSIONS),
+        "prospective_predictors": prospective_predictors(),
         "quality_vocabulary": {str(k): v for k, v in m._QUALITY.items()},
         "rent_universe": {
             "field": "TRENTMORT",
@@ -419,7 +572,7 @@ def module_digests(names: Sequence[str] = IMPLEMENTATION_MODULES) -> dict[str, s
 
 
 def implementation_binding() -> dict:
-    """Bind the two housing modules and the two frozen modules they reuse.
+    """Bind the three housing modules and the two frozen modules they reuse.
 
     ``RECIPE_SHA256`` pins the declared contract only. A change to
     ``_assistance_class``, ``_exclusion`` or ``measurement_class`` can leave the
@@ -535,6 +688,7 @@ class HousingProjectionResult:
     receipt_json: bytes
     receipt_sha256: str
     recipe_digest: str
+    predictors: tuple[hpred.HouseholdPredictors, ...] = ()
 
 
 def _counter(values: Iterable[str]) -> dict[str, int]:
@@ -759,6 +913,31 @@ def housing_diagnostics(
     }
 
 
+def _predictor_digest(
+    predictors: Sequence[hpred.HouseholdPredictors],
+) -> str:
+    """Bind the predictor observations separately from the measurement digest.
+
+    A separate key keeps the two surfaces legible: a predictor value that moves
+    must move this digest and the receipt, and must not be able to look like a
+    change in the measurement evidence the admission ladder read.
+    """
+    return s._key(
+        "sipp-december-housing-predictors/1",
+        [
+            {
+                "key": p.key,
+                "members": p.members,
+                "household": [s._measurement(v) for v in p.household_measurements],
+                "person_age": [s._measurement(v) for v in p.person_age_measurements],
+                "maximum_member_age": s._measurement(p.maximum_member_age),
+                "status": p.status,
+            }
+            for p in predictors
+        ],
+    )
+
+
 def _measurement_digest(households: Sequence[hm.HousingHousehold]) -> str:
     return s._key(
         "sipp-december-housing-measurements/1",
@@ -809,8 +988,20 @@ def project(
         complete_membership=complete_membership,
         target_year=target_year,
     )
+    # The predictor pass runs strictly after admission and takes the decided
+    # households as an input, so nothing it observes can reach ``_exclusion``.
+    predictors = hpred.december_predictors(
+        rows,
+        households,
+        source=source,
+        complete_membership=complete_membership,
+        target_year=target_year,
+    )
     evidence = selection_evidence(households, selection)
-    diagnostics = housing_diagnostics(households)
+    diagnostics = dict(housing_diagnostics(households))
+    diagnostics["prospective_predictors"] = hpred.predictor_diagnostics(
+        predictors, households
+    )
     receipt = {
         "format": RECEIPT_FORMAT,
         "recipe_version": RECIPE_VERSION,
@@ -823,9 +1014,10 @@ def project(
         "selection_evidence": evidence,
         "membership_digest": s._membership(households),
         "measurement_digest": _measurement_digest(households),
+        "predictor_digest": _predictor_digest(predictors),
         "diagnostics": diagnostics,
     }
     payload = canonical_json(receipt)
     return HousingProjectionResult(
-        households, diagnostics, payload, s._sha(payload), digest
+        households, diagnostics, payload, s._sha(payload), digest, predictors
     )

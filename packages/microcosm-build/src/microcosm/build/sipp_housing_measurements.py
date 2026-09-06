@@ -48,7 +48,17 @@ class HousingMeasurementError(m.MeasurementError):
 
 @dataclass(frozen=True)
 class _Amount:
-    """A transcribed December housing amount, with its dictionary locator."""
+    """A transcribed December housing amount, with its dictionary locator.
+
+    ``sentinel`` is the out-of-domain token ``_number`` compares against. It
+    must lie outside ``low..high``: the default sits below every amount domain
+    the housing fields declare, but a field whose published minimum is itself
+    below it - ``THTOTINC`` starts at -$10,000,000,000 - has to name its own,
+    or a legitimate value would be read as a missing code. ``kind`` and
+    ``unflagged_origin`` exist because the same numeric contract now carries
+    counts and ages beside dollar amounts, and because a field printing
+    "Status Flag: NA" is not necessarily a topcode marker.
+    """
 
     flag: str | None
     low: int
@@ -60,6 +70,9 @@ class _Amount:
     universe_description: str
     page: int
     unit: str = "USD_nominal_2022_monthly"
+    sentinel: int = _UNDOCUMENTED_SENTINEL
+    kind: str = "amount"
+    unflagged_origin: str = "published_topcode_marker"
 
 
 @dataclass(frozen=True)
@@ -293,9 +306,11 @@ EXCLUSION_ORDER = (
 def _amount_lexical(
     values: Mapping, name: str, spec: _Amount
 ) -> tuple[str, Decimal | None]:
-    lexical, value = m._number(
-        values, name, spec.low, spec.high, _UNDOCUMENTED_SENTINEL
-    )
+    if spec.low <= spec.sentinel <= spec.high:
+        # A sentinel inside the published domain would silently convert a real
+        # observation into a missing code, so this refuses instead.
+        raise HousingMeasurementError("SENTINEL_INSIDE_DOMAIN:" + name)
+    lexical, value = m._number(values, name, spec.low, spec.high, spec.sentinel)
     return ("invalid_domain" if lexical == "missing_item" else lexical), value
 
 
@@ -308,7 +323,7 @@ def _observe_amount(
         reasons.append(f"{name}:{lexical}")
     if spec.flag is None:
         flag, quality = None, "no_published_status_flag"
-        origin = "published_topcode_marker"
+        origin = spec.unflagged_origin
     else:
         flag, quality = m._flag(row.values, spec.flag)
         origin = "published_source_value"
@@ -370,6 +385,7 @@ def _build(
     value: Decimal | None,
     status: str,
     reasons: Iterable[str] = (),
+    rule_id: str = HOUSING_RULE_ID,
 ) -> m.Measurement:
     return m.Measurement(
         name,
@@ -381,7 +397,7 @@ def _build(
         status,
         observations,
         tuple(dict.fromkeys(reasons)),
-        HOUSING_RULE_ID,
+        rule_id,
     )
 
 
@@ -392,6 +408,7 @@ def _copied(
     basis: str,
     unit: str,
     observations: tuple[m.Observation, ...],
+    rule_id: str = HOUSING_RULE_ID,
 ) -> m.Measurement:
     """Apply the frozen kernel's copy-agreement rule to a household-copied field."""
     signatures = {(o.value, o.lexical_class, o.flag, o.quality) for o in observations}
@@ -409,6 +426,7 @@ def _copied(
         value,
         "household_copy_agreement" if value is not None else "unknown_household_copy",
         reasons,
+        rule_id=rule_id,
     )
 
 
