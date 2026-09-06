@@ -154,7 +154,7 @@ HEADER_MAX_BYTES = 64 * 1024
 LEXICAL_WIDTH_MAX = 64
 
 _PROJECTION_RESOURCE = "puf_2015_monetary_source_projection.json"
-_PROJECTION_PACKAGE = "microcosm.build.us"
+_PROJECTION_PACKAGE = "microcosm.build.us_runtime"
 _PROJECTION_SCHEMA = "microcosm.us.puf_2015_monetary_source_projection"
 _FIXTURE_AUTHORITY = "invented_fixture_nonauthority"
 

@@ -1650,7 +1650,7 @@ def test_the_packaged_projection_is_importable_from_the_installed_package():
     from importlib import resources
 
     payload = (
-        resources.files("microcosm.build.us")
+        resources.files("microcosm.build.us_runtime")
         .joinpath("puf_2015_monetary_source_projection.json")
         .read_bytes()
     )
@@ -1750,3 +1750,28 @@ def test_a_non_claim_flipped_to_true_is_refused(invented):
     with pytest.raises(PufMonetaryRefusalError) as error:
         fixture_projection_document(document, definition)
     assert error.value.reason == "PROJECTION_NON_CLAIMS"
+
+
+def test_the_packaged_document_is_a_runtime_resource_not_a_country_spec():
+    """Placement is load-bearing, so assert it rather than assume it.
+
+    ``microcosm/build/us`` is the US **country package**: its
+    ``country_package.json`` declares every file it ships, and
+    ``spec_engine.load_bundle`` refuses the whole package when an undeclared
+    file appears beside the manifest. This document is a runtime source
+    adapter's resource, exactly like ``acs_2024_1yr_sources.json``, so it
+    lives in ``us_runtime`` and never enters that closure.
+    """
+
+    build_root = Path(money.__file__).resolve().parents[1]
+    country_package = build_root / "us"
+    assert (country_package / "country_package.json").exists()
+    assert not (country_package / "puf_2015_monetary_source_projection.json").exists()
+    resource = build_root / "us_runtime" / "puf_2015_monetary_source_projection.json"
+    assert resource.exists()
+    assert (build_root / "us_runtime" / "acs_2024_1yr_sources.json").exists()
+    declared = json.loads(
+        (country_package / "country_package.json").read_text(encoding="utf-8")
+    )["resources"]
+    listed = {row["path"] if isinstance(row, dict) else row for row in declared}
+    assert "puf_2015_monetary_source_projection.json" not in listed

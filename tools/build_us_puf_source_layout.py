@@ -52,9 +52,12 @@ ROOT = Path(__file__).resolve().parents[1]
 DOCUMENTS = Path(
     "/Users/maxghenis/architecture-reviews/microcosm-20260904/us-puf-raw-source-documents"
 )
-PACKAGE = ROOT / "packages/microcosm-build/src/microcosm/build/us"
-RAW_DEFINITION = PACKAGE / "puf_2015_raw_source_definition.json"
-OUTPUT = PACKAGE / "puf_2015_monetary_source_projection.json"
+PACKAGE = ROOT / "packages/microcosm-build/src/microcosm/build"
+RAW_DEFINITION = PACKAGE / "us/puf_2015_raw_source_definition.json"
+# The projection is a runtime source-adapter resource, not a country spec: it
+# lives beside ``acs_2024_1yr_sources.json`` in ``us_runtime`` rather than in
+# the ``us`` country package, whose manifest declares every file it ships.
+OUTPUT = PACKAGE / "us_runtime/puf_2015_monetary_source_projection.json"
 
 SCHEMA = "microcosm.us.puf_2015_monetary_source_projection"
 SCHEMA_VERSION = 1
@@ -1246,7 +1249,7 @@ def build_document() -> dict[str, object]:
         "generation": {
             "generator": "tools/build_us_puf_source_layout.py",
             "generator_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            "python": sys.version.split()[0],
+            "interpreter_version": sys.version.split()[0],
             "reads": [
                 "the three pinned booklet text extractions",
                 "the packaged raw source definition",
