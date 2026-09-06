@@ -54,10 +54,36 @@ LINEAGE = [
     "source_producer_key",
 ]
 MODULE_COUNT = 254
+CARRIED_CELLS = {f"asec_invented_cell_{j}": "9" * 64 for j in range(12)}
+
+
+def _accounting_columns():
+    # Three int64 coordinates, six float64 results, nineteen uint8 evidence
+    # columns: the recorded 91-byte row over 52 persons.
+    names = ["person_id", "income_year", "A_AGE", *income.RESULT_COLUMNS]
+    names += [f"EVIDENCE_{j}" for j in range(19)]
+    dtypes = ["<i8"] * 3 + ["<f8"] * 6 + ["u1"] * 19
+    columns, offset = [], 0
+    for name, dtype in zip(names, dtypes, strict=True):
+        size = (8 if dtype != "u1" else 1) * income.PERSONS
+        columns.append(
+            {
+                "bytes": size,
+                "dtype": dtype,
+                "name": name,
+                "offset": offset,
+                "sha256": "b" * 64,
+            }
+        )
+        offset += size
+    return columns
+
+
+ACCOUNTING_COLUMNS = _accounting_columns()
 SHARED_BYTES = {
     (IDS[0], "housing_universe"): b"opaque invented housing universe",
     (IDS[0], "income_observations"): b"opaque invented income observations",
-    (IDS[3], "engine_evaluation"): b"opaque invented evaluation",
+    (IDS[3], "engine_evaluation"): b"opaque invented graph evaluation",
 }
 
 
@@ -282,16 +308,14 @@ def invented(tmp_path):
                 income_observations_sha256=observations,
                 hu_native_boundary_sha256=hu_boundary,
                 income_native_boundary_sha256=income_boundary,
-                selected_hu_carried_cells_sha256="9" * 64,
+                selected_hu_carried_cells_sha256=CARRIED_CELLS,
                 person_positions_sha256="8" * 64,
                 prepared_receipt_sha256=prepared,
                 evaluation_sha256=evaluation,
                 reported_income=copy.deepcopy(reported),
                 reported_income_payload_sha256=accounting,
                 reported_income_body_sha256="7" * 64,
-                reported_income_columns=[
-                    f"column{j}" for j in range(income.ACCOUNTING_COLUMNS)
-                ],
+                reported_income_columns=ACCOUNTING_COLUMNS,
                 reported_income_producer_keys="direct_path_has_no_graph_producer_keys",
                 roots=list(income.ROOTS),
                 selected_field_axes_sha256={
@@ -314,14 +338,14 @@ def invented(tmp_path):
                 direct_checkpoint_table_weight_parity=True,
                 direct_real_engine_array_parity=True,
                 money_33_fields_all_axes_parity=True,
-                evaluation_sha256=evaluation,
+                evaluation_sha256=digest(b"opaque invented graph evaluation"),
                 housing_universe_sha256=universe,
                 income_observations_sha256=observations,
                 hu_typed_descriptor={"name": "microcosm.invented.housing_universe"},
                 income_typed_descriptors=[
                     {"name": "microcosm.invented.income_observations"}
                 ],
-                selected_hu_carried_cells_sha256="9" * 64,
+                selected_hu_carried_cells_sha256=CARRIED_CELLS,
                 key=key,
                 nodes={k: v["key"] for k, v in nodes.items()},
                 source_preparations=int(not warm),

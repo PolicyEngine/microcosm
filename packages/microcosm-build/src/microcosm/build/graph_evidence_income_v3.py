@@ -139,6 +139,8 @@ MONEY_FIELDS = 33
 HOUSING_UNIVERSE_EVIDENCE_FIELDS = 7
 ACCOUNTING_COLUMNS = 28
 ACCOUNTING_ROW_BYTES = 91
+ACCOUNTING_DTYPES = ("<f8", "<i8", "u1")
+ACCOUNTING_DTYPE_BYTES = {"<f8": 8, "<i8": 8, "u1": 1}
 ARITHMETIC_ORDER = (
     "W=WSAL_VAL;E=SEMP_VAL+FRSE_VAL;S=SSI_VAL;P=PAW_VAL_2024_price;"
     "T=PTOTVAL;U=T-(((W+E)+S)+P)"
@@ -497,6 +499,58 @@ def _cohorts(value) -> dict:
     return {year: value[year] for year in sorted(COHORTS)}
 
 
+def _accounting_columns(columns) -> list[dict]:
+    """The recorded 28-column accounting layout: names, dtypes and digests only."""
+    require(
+        isinstance(columns, list) and len(columns) == ACCOUNTING_COLUMNS,
+        "Reported income accounting column roster mismatch.",
+    )
+    names, offset = set(), 0
+    published = []
+    for column in columns:
+        obj(column, {"bytes", "dtype", "name", "offset", "sha256"})
+        name = identifier(column["name"])
+        require(name not in names, "Duplicate accounting column.")
+        names.add(name)
+        require(column["dtype"] in ACCOUNTING_DTYPES, "Unsupported accounting dtype.")
+        require(
+            count(column["offset"]) == offset
+            and count(column["bytes"])
+            == ACCOUNTING_DTYPE_BYTES[column["dtype"]] * PERSONS,
+            "Accounting column layout is not the recorded contiguous row layout.",
+        )
+        offset += column["bytes"]
+        published.append(
+            {
+                "name": name,
+                "dtype": column["dtype"],
+                "sha256": digest(column["sha256"]),
+            }
+        )
+    require(
+        offset == ACCOUNTING_ROW_BYTES * PERSONS,
+        "Accounting body size differs from the recorded row contract.",
+    )
+    require(
+        {c["name"] for c in published} >= set(RESULT_COLUMNS),
+        "Accounting columns omit a declared result column.",
+    )
+    return published
+
+
+def _carried_cells(value) -> dict:
+    """Per-field digests of the housing-universe cells carried into the frame."""
+    require(
+        isinstance(value, dict)
+        and HOUSING_UNIVERSE_EVIDENCE_FIELDS <= len(value) <= 64,
+        "Invalid carried housing universe cell roster.",
+    )
+    for name, entry in value.items():
+        identifier(name)
+        digest(entry)
+    return value
+
+
 def _reported_summary(reported: dict) -> dict:
     """Bounded accounting evidence only; no amounts and no decoded arrays."""
     obj(reported, REPORTED_SUMMARY_FIELDS)
@@ -725,17 +779,9 @@ def _direct_result(receipt: dict, output_records: dict, checkpoint: str) -> dict
         "Direct path must not claim graph producer keys.",
     )
     digest(direct["person_positions_sha256"])
-    digest(direct["selected_hu_carried_cells_sha256"])
     digest(direct["reported_income_body_sha256"])
-    columns = direct["reported_income_columns"]
-    require(
-        isinstance(columns, list)
-        and len(columns) == ACCOUNTING_COLUMNS
-        and len(set(columns)) == ACCOUNTING_COLUMNS,
-        "Reported income accounting column roster mismatch.",
-    )
-    for name in columns:
-        identifier(name)
+    _carried_cells(direct["selected_hu_carried_cells_sha256"])
+    _accounting_columns(direct["reported_income_columns"])
     require(
         output_records["direct-frame.h5"]["sha256"] == checkpoint,
         "Direct checkpoint differs from the declared population.",
@@ -790,10 +836,12 @@ def _graph_result(
             "Graph typed source artifact differs from the direct path.",
         )
     mode = "warm" if warm else "cold"
+    # The graph and direct engine evaluations are separately encoded and carry
+    # different lineage; the recorded array parity is the producer's attestation.
+    # Only each path's own output identity is checked here.
     require(
         digest(recorded["evaluation_sha256"])
-        == output_records[f"{mode}-{IDS[3]}-engine_evaluation.bin"]["sha256"]
-        == direct["evaluation_sha256"],
+        == output_records[f"{mode}-{IDS[3]}-engine_evaluation.bin"]["sha256"],
         "Graph engine evaluation output identity mismatch.",
     )
     require(
@@ -803,7 +851,7 @@ def _graph_result(
     )
     require(
         recorded["reported_income_body_sha256"] == direct["reported_income_body_sha256"]
-        and recorded["selected_hu_carried_cells_sha256"]
+        and _carried_cells(recorded["selected_hu_carried_cells_sha256"])
         == direct["selected_hu_carried_cells_sha256"],
         "Graph accounting body or housing cells differ from the direct path.",
     )
@@ -978,7 +1026,13 @@ def _export(
                 "loaded_module_count",
                 "seconds",
             },
-            {"final_resources", "initial_resources", "hdf5_version", "library_output"},
+            {
+                "final_resources",
+                "initial_resources",
+                "hdf5_version",
+                "library_output",
+                "verified_runtime",
+            },
         )
         require(
             receipt["schema"] == WORKER_SCHEMA
@@ -1018,7 +1072,11 @@ def _export(
     )
     direct = _direct_result(receipts["direct"], output_records, checkpoint)
     reported = _reported_summary(direct["reported_income"])
+    reported["accounting_columns"] = _accounting_columns(
+        direct["reported_income_columns"]
+    )
     executions, checks, content_keys, manifest_digests = [], {}, set(), set()
+    evaluation_digests, accounting_digests = set(), set()
     checks["direct"] = dict(
         population_sha256=checkpoint,
         receipt_sha256=output_records["direct-receipt.json"]["sha256"],
@@ -1145,9 +1203,15 @@ def _export(
         )
         content_keys.add(content_key)
         manifest_digests.add(manifest_digest)
+        evaluation_digests.add(recorded["evaluation_sha256"])
+        accounting_digests.add(recorded["reported_income_payload_sha256"])
     require(
         len(content_keys) == 1 and len(manifest_digests) == 2,
         "Warm computation identity or execution distinction failed.",
+    )
+    require(
+        len(evaluation_digests) == 1 and len(accounting_digests) == 1,
+        "Cold and warm recorded output identities differ.",
     )
     implementation_set = {
         "sha256": implementation_set_digest(by_node),
@@ -1185,6 +1249,7 @@ def _export(
         ],
         money_field_axes=MONEY_FIELDS,
         housing_universe_evidence_fields=HOUSING_UNIVERSE_EVIDENCE_FIELDS,
+        housing_universe_carried_cells=len(direct["selected_hu_carried_cells_sha256"]),
         loaded_module_count=pins.loaded_module_count,
         note="Fifteen recorded households from three source cohorts. An engineering slice, not a sample of any population.",
     )
@@ -1228,6 +1293,21 @@ def _export(
         scope=scope,
         quality=quality,
         reported_income=reported,
+        path_output_identities=dict(
+            engine_evaluation={
+                "direct_sha256": direct["evaluation_sha256"],
+                "graph_sha256": next(iter(evaluation_digests)),
+                "differs": direct["evaluation_sha256"] not in evaluation_digests,
+            },
+            reported_income={
+                "direct_sha256": direct["reported_income_payload_sha256"],
+                "graph_sha256": next(iter(accounting_digests)),
+                "differs": direct["reported_income_payload_sha256"]
+                not in accounting_digests,
+                "body_sha256": direct["reported_income_body_sha256"],
+            },
+            note="The direct and graph paths encode these two artifacts separately, so their byte digests are kept apart. Recorded array and body parity is the producer's attestation; this exporter recomputes no array.",
+        ),
         lineage_divergence=dict(
             fields=list(pins.reported_income_lineage_fields),
             count=len(pins.reported_income_lineage_fields),
