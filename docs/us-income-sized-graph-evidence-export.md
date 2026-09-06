@@ -58,16 +58,28 @@ entity row counts, and the per-cohort household counts.
 No count in this profile is taken from a single field. Each is read from the
 run's own recorded outputs, required to agree everywhere the run writes it down,
 and required to equal what an accepted root output review independently
-declares. A recording that disagrees with another recording of the same fact
-refuses immediately and names both sites.
+declares. A reading that disagrees with another reading of the same fact refuses
+immediately and names both locations.
 
-| fact | where the run records it |
+| fact | recorded locations |
 |---|---|
 | households | `direct-receipt` `entity_rows.household`; `direct-sampler` `realized_household_count` and `sampling_unit.realized_unit_count`; the entity-structure output's `entity_rows` and `expected_households`, when the producer writes one |
-| persons | `direct-receipt` `entity_rows.person`; the same receipt's `reported_income.rows`; each execution manifest's `cps_carried_current` and `reported_income` node receipts' `person_rows`, in both the cold and the warm phase |
+| persons | `direct-receipt` `entity_rows.person`; the same receipt's `reported_income.rows`; the execution manifest's `cps_carried_current` and `reported_income` node receipts' `person_rows` |
 | tax units | `direct-receipt` `entity_rows.tax_unit`; the entity-structure output's `entity_rows` and `nesting.tax_unit.rows`, when the producer writes one |
-| spm units | `direct-receipt` `entity_rows.spm_unit`; each manifest's `cps_carried_current` node receipt `spm_unit_rows`, both phases |
+| spm units | `direct-receipt` `entity_rows.spm_unit`; the manifest's `cps_carried_current` node receipt `spm_unit_rows` |
 | each cohort | `direct-receipt` `realized_households_by_cohort`; `direct-sampler` `strata.<year>.realized_units` |
+
+### Locations, not independent measurements
+
+The word this profile publishes is **location**, and it is the honest one. The
+two execution manifests share one computation content key, computed over node
+bodies with only `hit` and `wall_time` removed, so the warm manifest's copy of a
+node header counter is the cold manifest's bytes read a second time. It cannot
+disagree, and it is no evidence that anything was counted twice. Such a repeat is
+still checked for agreement and is then counted apart, as `phase_restatements`,
+rather than being published as another place that counted the sample. Nothing
+here asserts that two locations are statistically independent of each other; the
+published claim is only that more than one exists and that they agree.
 
 The node row counters are checkpoint header counts the producer already wrote
 down as integers; reading them costs no array decode. The cohort selection
@@ -75,13 +87,30 @@ receipt is read as bounded JSON for counts and the selection rule only — the
 selected household id digests stay digests, and no identifier is ever decoded.
 
 The recorded rule `floor(fraction * eligible)` is applied **per source cohort**,
-not over the frame as a whole, and the surface says so. That qualification is
-checked rather than assumed: in both genuine runs the rule reproduces each
-cohort exactly per stratum, and in both it fails over the whole frame — the
-larger run realises 505 households where `floor(0.003 * 168852)` is 506, and the
-smaller realises 15 where `floor(0.0001 * 168852)` is 16. This profile derives no
-count from the rule; it republishes the producer's own string with the scope in
-which that string is true.
+not over the frame as a whole. Both halves of that sentence are now published and
+both are checked. The rule string must equal `SAMPLER_EXACT_COUNT_RULE`, the one
+sampler contract this profile supports and a restatement of
+`frame_sampling.EXACT_COUNT_RULE`, so caller prose cannot ride out onto the
+surface as a validated sampling rule; the scope is published as
+`selection_rule_scope = per_source_cohort`, which follows from this profile
+already refusing any sampler receipt whose strata are not exactly the closed
+cohort-year roster. The consumer reads the scope rather than appending its own.
+
+The per-stratum totals are held to the producer's own arithmetic. `frame_sampling`
+writes each stratum as `realized_units = requested_units + added_beyond_draw`, so
+that is the equality checked here — the earlier `requested >= realized` pointed
+the other way and would have refused a correct run. `added_beyond_draw` must be
+zero: forced unit inclusions are outside this profile, the closed sampler roster
+already refuses the `forced_unit_inclusions` block that records them, and a
+stratum claiming units beyond its draw is refused by name rather than read as an
+ordinary draw. Globally, `requested_unit_count` must equal the sum of the strata's
+requests and `realized_unit_count` that sum plus the additions.
+
+The operands are published beside the rule — `sampling_fraction` and
+`eligible_households`, and each cohort's `eligible_households` beside its realised
+count — so the surface can show what the rule was applied to instead of a rule
+with nothing to check it against. This profile still derives no count from the
+rule.
 
 On top of agreement, the size has to be arithmetically coherent with the rest of
 the evidence:
@@ -100,15 +129,42 @@ the evidence:
   them as a partition of the accounted rows by income year and class.
 
 Finally, households and persons — the two counts everything else is sized by —
-must each have at least two independent recordings inside the run before the
-export proceeds. The other entity counts deliberately do not carry that
-requirement: the first producer records the tax-unit count exactly once, and
-demanding a second would refuse a correct run for recording less. They are
-reconciled against root's declared scope instead.
+must each be recorded in at least two **distinct locations** inside the run before
+the export proceeds; a warm restatement of a cold location does not count towards
+it. The other entity counts deliberately do not carry that requirement: the first
+producer records the tax-unit count exactly once, and demanding a second would
+refuse a correct run for recording less. They are reconciled against root's
+declared scope instead.
 
-Each fact, its count, how many places recorded it and which places those were
-are published under `scope.measurement`, so a reader can assess the size rather
-than take it.
+Recorded and declared must also be the same **set** of facts, not merely agree
+where they overlap. A count the run recorded and root never declared used to be
+dropped from `scope.entity_rows` while still appearing in the measurement
+listing, so the two published tables disagreed about which entities the run
+counted. The reconciliation now requires exactly the approved entities plus the
+closed cohort roster, and refuses anything else.
+
+Each fact, its count, how many locations recorded it, how many of those were
+cold/warm restatements, and which locations they were are published under
+`scope.measurement.recorded_count_locations`, so a reader can assess the size
+rather than take it.
+
+## Exporter identities
+
+Three source digests are published, and each names exactly one file:
+
+| key | file |
+|---|---|
+| `exporter_sha256` | `graph_evidence_income_sized.py`, this module |
+| `reviewed_exporter_sha256` | `graph_evidence_income_v3.py`, the reviewed profile this successor imports its closed semantics from |
+| `base_exporter_sha256` | `graph_evidence.py`, the base helpers both profiles rest on |
+
+`base_exporter_sha256` means the same file here that it means in the reviewed
+profile. It previously named `graph_evidence_income_v3.py` in this profile alone,
+so a consumer comparing the two profiles' identity blocks was comparing digests
+of different sources under one name, and `graph_evidence.py` — whose `safe_text`,
+`bounded_tree`, `_file_bytes` and writer loading are load-bearing here — was not
+published at all. The consumer requires all three to agree across the graph
+attachment, the build summary and the candidate manifest's provenance.
 
 ## Producer schemas are explicit adapters
 

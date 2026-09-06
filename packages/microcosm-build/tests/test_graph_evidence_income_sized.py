@@ -761,32 +761,66 @@ def test_unequal_cohorts_are_published_as_recorded(tmp_path):
     assert sum(cohorts) == graph["scope"]["households"] == 41
 
 
+# The distinct places each fact is written down, cold/warm restatements folded.
+# Counted by hand from the fixture: the direct receipt's entity rows, its
+# accounting row count, the sampler's two household totals, the two node
+# receipts that carry header counters, and — on the second producer only — the
+# entity-structure output's rows, expected households and nesting rows.
+LOCATIONS = {
+    "income_v3_first_genuine": {
+        "household": 3,
+        "person": 4,
+        "tax_unit": 1,
+        "spm_unit": 2,
+        "family": 1,
+        "marital_unit": 1,
+    },
+    "income_v3_measured_505hh": {
+        "household": 5,
+        "person": 5,
+        "tax_unit": 3,
+        "spm_unit": 4,
+        "family": 3,
+        "marital_unit": 3,
+    },
+}
+# Where a cold and a warm execution restate the same recorded location. Only the
+# two node header counters are recorded twice: ``person_rows`` on two nodes and
+# ``spm_unit_rows`` on one.
+RESTATEMENTS = {"person": 2, "spm_unit": 1}
+
+
 @pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
-def test_load_bearing_counts_have_several_independent_recordings(tmp_path, size):
+def test_load_bearing_counts_are_recorded_in_several_distinct_locations(tmp_path, size):
     """Households and people, the two counts everything else is sized by.
 
-    Both are written down more than once inside the run on either producer.
-    ``tax_unit`` deliberately is not: the first producer records it exactly
-    once, so demanding a second recording there would refuse a correct run for
-    recording less. It is reconciled against root's declared scope instead,
-    which the profile checks separately.
+    Both are written down in more than one distinct place inside the run on
+    either producer. ``tax_unit`` deliberately is not: the first producer records
+    it exactly once, so demanding a second location there would refuse a correct
+    run for recording less. It is reconciled against root's declared scope
+    instead, which the profile checks separately.
+
+    The counts asserted here are *locations*, not measurements. A warm execution
+    restating a cold execution's recorded node counter is the same bytes read
+    again — the two manifests share one content key — so it is counted apart as a
+    restatement and never as another place that counted the sample.
     """
     _, graph, _ = published(tmp_path, size)
-    recordings = {r["fact"]: r for r in graph["scope"]["measurement"]["independent_recordings"]}
+    listed = {
+        r["fact"]: r for r in graph["scope"]["measurement"]["recorded_count_locations"]
+    }
+    expected = LOCATIONS[size.schema.name]
     for fact in ("household", "person"):
-        assert recordings[fact]["recordings"] >= 2, fact
+        assert listed[fact]["locations"] >= 2, fact
     for fact, rows in size.entity_rows.items():
-        assert recordings[fact]["count"] == rows, fact
-        assert len(recordings[fact]["sources"]) == recordings[fact]["recordings"]
+        assert listed[fact]["count"] == rows, fact
+        assert len(listed[fact]["sources"]) == listed[fact]["locations"], fact
+        assert listed[fact]["locations"] == expected[fact], fact
+        assert listed[fact]["phase_restatements"] == RESTATEMENTS.get(fact, 0), fact
     for year, households in size.cohort_map.items():
-        assert recordings[f"cohort_{year}"]["recordings"] >= 2
-        assert recordings[f"cohort_{year}"]["count"] == households
-    # The person count is witnessed by the entity rows, the accounted row count
-    # and both execution phases' node header counters.
-    assert recordings["person"]["recordings"] >= 6
-    assert recordings["household"]["recordings"] >= 3
-    expected_tax_unit = 3 if size.schema.entity_structure_output else 1
-    assert recordings["tax_unit"]["recordings"] == expected_tax_unit
+        assert listed[f"cohort_{year}"]["locations"] == 2
+        assert listed[f"cohort_{year}"]["phase_restatements"] == 0
+        assert listed[f"cohort_{year}"]["count"] == households
     assert graph["scope"]["measurement"]["basis"] == "measured_from_recorded_outputs_and_reconciled"
     assert graph["scope"]["measurement"]["entity_structure_recorded"] is (
         size.schema.entity_structure_output is not None
@@ -794,8 +828,35 @@ def test_load_bearing_counts_have_several_independent_recordings(tmp_path, size)
 
 
 @pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
-def test_a_single_recording_of_a_load_bearing_count_refuses(tmp_path, size):
-    """Strip the second witness and the profile refuses rather than trusting one."""
+def test_no_recorded_location_carries_an_execution_phase(tmp_path, size):
+    """A cold and a warm restatement of one location are one location.
+
+    Before this, the same node header counter was published twice under
+    ``cold-manifest`` and ``warm-manifest`` names, which made a byte-identical
+    restatement read as a second place the run counted the sample.
+    """
+    _, graph, _ = published(tmp_path, size)
+    for entry in graph["scope"]["measurement"]["recorded_count_locations"]:
+        for source in entry["sources"]:
+            assert not source.startswith("cold-manifest")
+            assert not source.startswith("warm-manifest")
+        assert len(set(entry["sources"])) == len(entry["sources"])
+    person = next(
+        e for e in graph["scope"]["measurement"]["recorded_count_locations"]
+        if e["fact"] == "person"
+    )
+    assert sum(s.startswith("execution-manifest ") for s in person["sources"]) == 2
+    assert person["phase_restatements"] == 2
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_dropping_a_sampler_household_total_refuses_on_the_closed_roster(tmp_path, size):
+    """Removing a required sampler field is a roster fault, not a gate fault.
+
+    Named for what it actually proves. The receipt roster is closed, so the field
+    is missing before any reconciliation runs; the two-location gate is exercised
+    directly in the test below instead of being credited to this refusal.
+    """
 
     def mutate(root, run, declaration, binding):
         def drop(value):
@@ -805,6 +866,234 @@ def test_a_single_recording_of_a_load_bearing_count_refuses(tmp_path, size):
 
     with pytest.raises(EvidenceError, match="Missing or unknown receipt fields."):
         export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("fact", ["household", "person"])
+def test_one_recorded_location_for_a_load_bearing_count_refuses(tmp_path, fact):
+    """The gate itself, reached directly rather than through a shape error.
+
+    ``_reconcile`` is called with a measurement that agrees with the approved
+    scope in every value and records one of the two load-bearing counts in a
+    single place. Nothing else is wrong with it, so the only check that can
+    refuse is the one this case is aimed at.
+    """
+    _, _, _, binding, seal = invented(tmp_path, SMALL)
+    pins = seal()
+    measured = sized.Measurement()
+    for entity, rows in SMALL.entity_rows.items():
+        measured.record(entity, f"invented-first {entity}", rows)
+        if entity != fact:
+            measured.record(entity, f"invented-second {entity}", rows)
+    for year, households in SMALL.cohort_map.items():
+        measured.record(f"cohort_{year}", f"invented-cohort {year}", households)
+    with pytest.raises(
+        EvidenceError, match="A load-bearing scope count is recorded in only one place."
+    ):
+        sized._reconcile(measured, pins)
+
+
+def test_a_restatement_is_not_a_second_recorded_location(tmp_path):
+    """The gate counts places, not writes, so a repeat cannot satisfy it."""
+    _, _, _, binding, seal = invented(tmp_path, SMALL)
+    pins = seal()
+    measured = sized.Measurement()
+    for entity, rows in SMALL.entity_rows.items():
+        measured.record(entity, f"invented-first {entity}", rows)
+        # The household count is written twice -- in the same place both times.
+        measured.record(
+            entity if entity != "household" else "household",
+            f"invented-second {entity}" if entity != "household" else "invented-first household",
+            rows,
+        )
+    for year, households in SMALL.cohort_map.items():
+        measured.record(f"cohort_{year}", f"invented-cohort {year}", households)
+    assert measured.locations("household") == ["invented-first household"]
+    with pytest.raises(
+        EvidenceError, match="A load-bearing scope count is recorded in only one place."
+    ):
+        sized._reconcile(measured, pins)
+
+
+# ------------------------------------------------------- the sampler contract
+
+
+def producer_exact_count_rule():
+    """The producer's own constant, read from source without importing it.
+
+    ``frame_sampling`` pulls numpy, pandas and the frame package in behind it,
+    and nothing else in this file imports the build package. Parsing the literal
+    is enough to prove the two strings have not drifted apart, which is the whole
+    point of restating it in a module that is run by file path.
+    """
+    import ast
+
+    tree = ast.parse((SOURCE / "frame_sampling.py").read_text())
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", None) == (
+            "EXACT_COUNT_RULE"
+        ):
+            return ast.literal_eval(node.value)
+    raise AssertionError("frame_sampling.EXACT_COUNT_RULE not found")
+
+
+def test_the_supported_rule_is_the_producers_own_constant():
+    assert sized.SAMPLER_EXACT_COUNT_RULE == producer_exact_count_rule()
+    assert sized.SAMPLER_EXACT_COUNT_RULE == "floor(fraction * eligible)"
+    assert sized.SELECTION_RULE_SCOPE == "per_source_cohort"
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_caller_prose_is_never_published_as_a_validated_sampling_rule(tmp_path, size):
+    """Any string used to reach the surface. Now only the supported one does."""
+
+    def mutate(root, run, declaration, binding):
+        mutate_json(
+            root,
+            "direct-sampler.json",
+            lambda v: v.__setitem__("exact_count_rule", "we kept the ones we liked"),
+        )
+
+    with pytest.raises(
+        EvidenceError, match="Recorded selection rule is not the supported sampler contract."
+    ):
+        export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_the_producers_own_per_stratum_arithmetic_is_accepted(tmp_path, size):
+    """``realized = requested + added_beyond_draw`` is the sampler's equality.
+
+    The check used to point the other way -- ``requested >= realized`` -- so a
+    stratum written exactly as ``frame_sampling`` writes it, with units added
+    beyond the draw, was refused as self-contradictory. It is still refused, but
+    now for the real reason: this profile does not support forced inclusions.
+    """
+
+    def mutate(root, run, declaration, binding):
+        def force(value):
+            year = YEARS[0]
+            realized = value["strata"][year]["realized_units"]
+            value["strata"][year]["requested_units"] = realized - 1
+            value["strata"][year]["added_beyond_draw"] = 1
+
+        mutate_json(root, "direct-sampler.json", force)
+
+    with pytest.raises(
+        EvidenceError,
+        match="Forced unit inclusions are outside this profile's sampler contract.",
+    ):
+        export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_a_stratum_requesting_more_than_it_realized_refuses(tmp_path, size):
+    """The inequality the old check waved through, in the direction it allowed."""
+
+    def mutate(root, run, declaration, binding):
+        mutate_json(
+            root,
+            "direct-sampler.json",
+            lambda v: v["strata"][YEARS[1]].__setitem__(
+                "requested_units", v["strata"][YEARS[1]]["realized_units"] + 1
+            ),
+        )
+
+    with pytest.raises(
+        EvidenceError, match="Recorded cohort selection contradicts the recorded sampler arithmetic."
+    ):
+        export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_a_stratum_realizing_more_than_it_requested_refuses(tmp_path, size):
+    def mutate(root, run, declaration, binding):
+        def widen(value):
+            year = YEARS[2]
+            value["strata"][year]["requested_units"] = (
+                value["strata"][year]["realized_units"] - 1
+            )
+
+        mutate_json(root, "direct-sampler.json", widen)
+
+    with pytest.raises(
+        EvidenceError, match="Recorded cohort selection contradicts the recorded sampler arithmetic."
+    ):
+        export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_a_stratum_realizing_more_than_its_eligible_units_refuses(tmp_path, size):
+    def mutate(root, run, declaration, binding):
+        def shrink(value):
+            year = YEARS[0]
+            realized = value["strata"][year]["realized_units"]
+            value["strata"][year]["eligible_units"] = realized - 1
+
+        mutate_json(root, "direct-sampler.json", shrink)
+
+    with pytest.raises(
+        EvidenceError, match="Recorded cohort selection contradicts the recorded sampler arithmetic."
+    ):
+        export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_the_global_unit_totals_must_equal_the_per_cohort_arithmetic(tmp_path, size):
+    def mutate(root, run, declaration, binding):
+        mutate_json(
+            root,
+            "direct-sampler.json",
+            lambda v: v["sampling_unit"].__setitem__(
+                "requested_unit_count", v["sampling_unit"]["requested_unit_count"] + 1
+            ),
+        )
+
+    with pytest.raises(
+        EvidenceError,
+        match="Recorded selection unit totals contradict the recorded per-cohort arithmetic.",
+    ):
+        export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_the_unit_eligible_total_must_equal_the_household_eligible_total(tmp_path, size):
+    def mutate(root, run, declaration, binding):
+        mutate_json(
+            root,
+            "direct-sampler.json",
+            lambda v: v["sampling_unit"].__setitem__(
+                "eligible_unit_count", v["sampling_unit"]["eligible_unit_count"] + 1
+            ),
+        )
+
+    with pytest.raises(
+        EvidenceError,
+        match="Recorded selection unit totals contradict the recorded household totals.",
+    ):
+        export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_the_rule_is_published_with_the_operands_it_ranges_over(tmp_path, size):
+    """A rule with nothing to check it against is not auditable evidence."""
+    _, graph, _ = published(tmp_path, size)
+    measurement = graph["scope"]["measurement"]
+    assert measurement["selection_rule"] == sized.SAMPLER_EXACT_COUNT_RULE
+    assert measurement["selection_rule_scope"] == "per_source_cohort"
+    assert measurement["sampling_fraction"] == 0.01
+    eligible = [
+        c["eligible_households"] for c in graph["scope"]["households_by_source_cohort"]
+    ]
+    assert eligible == [households * 100 for households in size.cohorts]
+    assert measurement["eligible_households"] == sum(eligible)
+    # The published operands reproduce the published counts under the published
+    # rule, per cohort -- which is what the scope says the rule ranges over.
+    for cohort, eligible_households in zip(
+        graph["scope"]["households_by_source_cohort"], eligible, strict=True
+    ):
+        assert cohort["households"] == int(
+            measurement["sampling_fraction"] * eligible_households
+        )
 
 
 # ------------------------------------------------------- scope disagreements
@@ -1010,6 +1299,69 @@ def test_entity_structure_disagreeing_with_the_worker_refuses(tmp_path):
 
     with pytest.raises(EvidenceError, match="Recorded tax_unit differs between"):
         export_fixture(tmp_path, WIDE, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_a_recorded_entity_root_never_declared_refuses(tmp_path, size):
+    """The run counts an entity the approved scope omits.
+
+    It used to be dropped from the published ``scope.entity_rows`` and kept in
+    the measurement listing, so the two published tables disagreed about which
+    entities the run counted. Recorded and declared are now the same set.
+    """
+
+    def mutate(root, run, declaration, binding):
+        binding["selected_entity_rows"] = {
+            entity: rows
+            for entity, rows in binding["selected_entity_rows"].items()
+            if entity != "family"
+        }
+
+    with pytest.raises(
+        EvidenceError, match="The run records a scope count root did not declare."
+    ):
+        export_fixture(tmp_path, size, mutate)
+    assert not (tmp_path / "quality").exists()
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_a_declared_entity_the_run_never_counts_refuses(tmp_path, size):
+    """The other direction of the same set equality."""
+
+    def mutate(root, run, declaration, binding):
+        mutate_json(
+            root,
+            "direct-receipt.json",
+            lambda v: v["result"]["entity_rows"].pop("family"),
+        )
+        if size.schema.entity_structure_output is not None:
+
+            def strip(value):
+                value["entity_rows"].pop("family")
+                value["nesting"].pop("family")
+
+            mutate_json(root, size.schema.entity_structure_output, strip)
+
+    with pytest.raises(
+        EvidenceError, match="Root declared an entity the run records no count for."
+    ):
+        export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_every_recorded_entity_reaches_the_published_entity_table(tmp_path, size):
+    """The two published tables describe the same set of entities."""
+    _, graph, _ = published(tmp_path, size)
+    rows = {row["entity"] for row in graph["scope"]["entity_rows"]}
+    listed = {
+        entry["fact"]
+        for entry in graph["scope"]["measurement"]["recorded_count_locations"]
+        if not entry["fact"].startswith("cohort_")
+    }
+    assert rows == listed == set(size.entity_rows)
+    nesting = {entry["entity"] for entry in graph["scope"]["measurement"]["nesting"]}
+    assert nesting <= rows
+    assert not nesting & {"household", "person"}
 
 
 def test_person_count_below_household_count_refuses(tmp_path):
@@ -1271,6 +1623,47 @@ def test_the_reviewed_profile_is_imported_not_edited():
     assert income.PROFILE == "us_asec_income_v3_five_node_15hh"
     assert income.HOUSEHOLDS == 15 and income.PERSONS == 52 and income.TAX_UNITS == 25
     assert income.COHORTS == {"2022": 5, "2023": 5, "2024": 5}
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_three_exporter_digests_each_name_exactly_one_file(tmp_path, size):
+    """``base_exporter_sha256`` means the same file in both profiles.
+
+    It named ``graph_evidence_income_v3.py`` here and ``graph_evidence.py`` in
+    the reviewed profile, so a consumer comparing the two identity blocks was
+    comparing digests of different sources under one name -- and the base
+    helpers this profile actually rests on were not published at all. The
+    reviewed profile now has its own key.
+    """
+    reference, graph, build = published(tmp_path, size)
+    expected = {
+        "exporter_sha256": hashlib.sha256(
+            (SOURCE / "graph_evidence_income_sized.py").read_bytes()
+        ).hexdigest(),
+        "reviewed_exporter_sha256": REVIEWED_INCOME_V3_SHA256,
+        "base_exporter_sha256": REVIEWED_BASE_SHA256,
+    }
+    assert len(set(expected.values())) == 3
+    for key, value in expected.items():
+        assert graph[key] == value, key
+        assert build[key] == value, key
+    assert reference["base_exporter_sha256"] == REVIEWED_BASE_SHA256
+    assert reference["reviewed_exporter_sha256"] == REVIEWED_INCOME_V3_SHA256
+    # The reviewed profile publishes ``graph_evidence.py`` under this key too, so
+    # the name now carries one meaning across both profiles.
+    assert income.__file__ != income._base.__file__
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_the_three_digests_are_bound_to_the_candidate_manifest(tmp_path, size):
+    """Provenance, so the consumer can check them across all three artifacts."""
+    reference = export_fixture(tmp_path, size)
+    candidate = read_candidate_quality(tmp_path / "quality", reference["sha256"])
+    provenance = candidate["provenance"]
+    for key in ("exporter_sha256", "reviewed_exporter_sha256", "base_exporter_sha256"):
+        assert provenance[key] == reference.get(key, provenance[key])
+    assert provenance["base_exporter_sha256"] == REVIEWED_BASE_SHA256
+    assert provenance["reviewed_exporter_sha256"] == REVIEWED_INCOME_V3_SHA256
 
 
 def test_the_successor_is_a_separate_named_versioned_profile():

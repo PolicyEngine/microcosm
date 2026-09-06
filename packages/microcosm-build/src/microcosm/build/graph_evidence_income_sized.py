@@ -150,6 +150,20 @@ PROFILE = "us_asec_income_v3_five_node_sized_v1"
 ROOT_BINDING_SCHEMA = "microcosm.income_v3_sized_root_export_binding.v1"
 DECLARATION_SCHEMA = _income.DECLARATION_SCHEMA
 
+# The one sampler contract this profile reads, named exactly as the producer
+# records it. ``frame_sampling.EXACT_COUNT_RULE`` is the authority; it is
+# restated here rather than imported because this module is run by file path and
+# must not pull the build package's eager imports in behind it. The test suite
+# reads the producer's own constant and compares, so a drift there fails rather
+# than passing silently. Publishing the rule without checking it would let any
+# caller prose ride out onto the surface as if a sampler had been validated.
+SAMPLER_EXACT_COUNT_RULE = "floor(fraction * eligible)"
+# What that rule ranges over. The producer stratifies whole households by source
+# year, and this profile already refuses a sampler receipt whose strata are
+# anything other than the closed cohort-year roster, so the scope is published as
+# a consequence of a check rather than as the caller's description of itself.
+SELECTION_RULE_SCOPE = "per_source_cohort"
+
 # Entities this profile is willing to carry a row count for, and the three it
 # always requires. Unchanged from the reviewed profile.
 ENTITIES = ("household", "person", "family", "spm_unit", "tax_unit", "marital_unit")
@@ -444,48 +458,66 @@ def freeze_sized_pins(root_export_binding: Path | str) -> SizedPins:
 
 
 class Measurement:
-    """Every independent recording of a scope count, and their reconciliation.
+    """Every recorded location of a scope count, and their reconciliation.
 
-    A measured size is only as good as the number of places it is separately
-    written down. This collects each one as it is read, keyed by the fact it
-    constrains, and refuses the moment two recordings of the same fact disagree
-    — so a size is never carried forward on the strength of a single field.
+    A measured size is only as good as the number of distinct places the run
+    writes it down. This collects each one as it is read, keyed by the fact it
+    constrains and then by the location that recorded it, and refuses the moment
+    two readings of the same fact disagree — so a size is never carried forward
+    on the strength of a single field.
+
+    Locations, not measurements. Two of these places are the same field read
+    twice: the warm execution manifest is required to carry a node body
+    byte-identical to the cold one, so its copy of a recorded header counter
+    cannot disagree with the cold copy and is no evidence that anything was
+    counted a second time. A repeat of a location this class has already seen is
+    still checked for agreement and is then counted apart, as a restatement,
+    rather than being published as another place the run counted.
     """
 
     def __init__(self) -> None:
-        self._facts: dict[str, list[tuple[str, int]]] = {}
+        self._facts: dict[str, dict[str, int]] = {}
+        self._restatements: dict[str, int] = {}
 
-    def record(self, fact: str, source: str, value: int) -> int:
+    def record(self, fact: str, location: str, value: int) -> int:
         positive_count(value)
-        seen = self._facts.setdefault(fact, [])
-        for other, previous in seen:
+        seen = self._facts.setdefault(fact, {})
+        for other, previous in seen.items():
             require(
                 previous == value,
-                f"Recorded {fact} differs between {other} and {source}.",
+                f"Recorded {fact} differs between {other} and {location}.",
             )
-        seen.append((source, value))
+        if location in seen:
+            self._restatements[fact] = self._restatements.get(fact, 0) + 1
+        else:
+            seen[location] = value
         return value
 
     def value(self, fact: str) -> int:
         require(fact in self._facts, f"No recorded evidence for {fact}.")
-        return self._facts[fact][0][1]
+        return next(iter(self._facts[fact].values()))
 
     def has(self, fact: str) -> bool:
         return fact in self._facts
 
-    def sources(self, fact: str) -> list[str]:
-        return [source for source, _ in self._facts.get(fact, [])]
+    def facts(self) -> set[str]:
+        return set(self._facts)
+
+    def locations(self, fact: str) -> list[str]:
+        """The distinct places that recorded this fact, cold/warm copies folded."""
+        return sorted(self._facts.get(fact, {}))
 
     def published(self) -> list[dict]:
-        """Aggregate-only: which fact, how many independent recordings, and where."""
+        """Aggregate-only: which fact, how many recorded locations, and where."""
         return [
             {
                 "fact": fact,
-                "count": recordings[0][1],
-                "recordings": len(recordings),
-                "sources": sorted(source for source, _ in recordings),
+                "count": next(iter(locations.values())),
+                "locations": len(locations),
+                "phase_restatements": self._restatements.get(fact, 0),
+                "sources": sorted(locations),
             }
-            for fact, recordings in sorted(self._facts.items())
+            for fact, locations in sorted(self._facts.items())
         ]
 
 
@@ -499,15 +531,20 @@ def _nodes(manifest: dict, pins: SizedPins, measured: Measurement, *, warm: bool
     which records ``person_rows`` or ``spm_unit_rows`` has those counts folded
     into the measurement instead of being carried as opaque metadata. Those are
     checkpoint header counts the producer already wrote down; reading them costs
-    no array decode and gives the sample size two more independent witnesses per
-    execution phase.
+    no array decode.
+
+    The location a counter is recorded under carries no phase. The two execution
+    manifests are required to share one computation content key, which is
+    computed over node bodies with only ``hit`` and ``wall_time`` removed, so the
+    warm manifest's copy of a header counter is the cold manifest's bytes read
+    again. It is checked for agreement and counted as a restatement of the same
+    place, never as a second place that counted the sample.
     """
     raw_nodes = manifest["nodes"]
     require(
         isinstance(raw_nodes, dict) and set(raw_nodes) == set(IDS),
         "Exact five-node graph roster mismatch.",
     )
-    mode = "warm" if warm else "cold"
     result = []
     output_keys = set()
     for i, node_id in enumerate(IDS):
@@ -586,7 +623,7 @@ def _nodes(manifest: dict, pins: SizedPins, measured: Measurement, *, warm: bool
         for key, fact in (("person_rows", "person"), ("spm_unit_rows", "spm_unit")):
             if key in n["receipt"]:
                 measured.record(
-                    fact, f"{mode}-manifest {node_id} receipt.{key}", n["receipt"][key]
+                    fact, f"execution-manifest {node_id} receipt.{key}", n["receipt"][key]
                 )
         typed = obj(n["typed_artifacts"], {"inputs", "outputs"})
         require(
@@ -850,6 +887,20 @@ def _cohort_selection_receipt(run_root: Path, output_records: dict, measured: Me
     the one place the cohort split is recorded independently of the frame that
     resulted from it. Only counts and the selection rule are read; the selected
     household id digests stay digests and no id is ever decoded.
+
+    Two things this reads that it did not before. The recorded rule string is
+    checked against the one sampler contract this profile supports instead of
+    being carried as free prose, and the per-stratum totals are held to the
+    producer's own arithmetic — ``realized = requested + added_beyond_draw``,
+    the equality ``frame_sampling`` writes the receipt from — rather than to an
+    inequality pointing the other way. Forced unit inclusions are outside this
+    profile: the closed receipt roster above refuses the block that records
+    them, and a stratum that says it added units beyond its draw is refused here
+    by name rather than being read as an ordinary draw.
+
+    The fraction, the eligible total and the scope the rule ranges over are
+    returned so the published surface can show the operands the rule was applied
+    to, instead of a rule with nothing to check it against.
     """
     sampler = _pinned_json(
         run_root / "direct-sampler.json", output_records["direct-sampler.json"]["sha256"]
@@ -870,6 +921,10 @@ def _cohort_selection_receipt(run_root: Path, output_records: dict, measured: Me
         },
     )
     safe_text(sampler["exact_count_rule"], 128)
+    require(
+        sampler["exact_count_rule"] == SAMPLER_EXACT_COUNT_RULE,
+        "Recorded selection rule is not the supported sampler contract.",
+    )
     fraction = duration(sampler["fraction"])
     require(
         fraction is not None and 0 < fraction <= 1,
@@ -895,12 +950,12 @@ def _cohort_selection_receipt(run_root: Path, output_records: dict, measured: Me
     measured.record("household", "direct-sampler sampling_unit.realized_unit_count", unit["realized_unit_count"])
     eligible_total = count(sampler["eligible_household_count"])
     require(
-        count(unit["eligible_unit_count"]) == eligible_total
-        and count(unit["requested_unit_count"]) >= unit["realized_unit_count"],
+        count(unit["eligible_unit_count"]) == eligible_total,
         "Recorded selection unit totals contradict the recorded household totals.",
     )
     strata = obj(sampler["strata"], set(COHORT_YEARS))
     realized, eligible = {}, {}
+    requested_total, added_total = 0, 0
     for year in COHORT_YEARS:
         s = obj(
             strata[year],
@@ -910,18 +965,36 @@ def _cohort_selection_receipt(run_root: Path, output_records: dict, measured: Me
             f"cohort_{year}", f"direct-sampler strata.{year}.realized_units", s["realized_units"]
         )
         eligible[year] = count(s["eligible_units"])
+        requested = count(s["requested_units"])
+        added = count(s["added_beyond_draw"])
         require(
-            count(s["requested_units"]) >= realized[year]
-            and count(s["added_beyond_draw"]) >= 0
-            and eligible[year] >= realized[year],
-            "Recorded cohort selection totals contradict each other.",
+            added == 0,
+            "Forced unit inclusions are outside this profile's sampler contract.",
         )
+        require(
+            realized[year] == requested + added and eligible[year] >= realized[year],
+            "Recorded cohort selection contradicts the recorded sampler arithmetic.",
+        )
+        requested_total += requested
+        added_total += added
+    require(
+        count(unit["requested_unit_count"]) == requested_total
+        and unit["realized_unit_count"] == requested_total + added_total,
+        "Recorded selection unit totals contradict the recorded per-cohort arithmetic.",
+    )
     require(
         sum(realized.values()) == sampler["realized_household_count"]
         and sum(eligible.values()) == eligible_total,
         "Recorded cohort selection does not sum to the recorded selection totals.",
     )
-    return dict(rule=sampler["exact_count_rule"], eligible=eligible, realized=realized)
+    return dict(
+        rule=sampler["exact_count_rule"],
+        scope=SELECTION_RULE_SCOPE,
+        fraction=fraction,
+        eligible_total=eligible_total,
+        eligible=eligible,
+        realized=realized,
+    )
 
 
 def _entity_structure(
@@ -1192,18 +1265,33 @@ def _reconcile(measured: Measurement, pins: SizedPins) -> None:
             measured.value(entity) == value,
             "Measured entity rows differ from the approved scope.",
         )
+    # The set, not only the values. A count the run recorded and root never
+    # declared used to be dropped from the published ``scope.entity_rows`` while
+    # still appearing in the measurement listing, so the two published tables
+    # disagreed with each other about which entities the run counted. Recorded
+    # and declared must be the same set of facts: exactly the approved entities,
+    # exactly the closed cohort roster, and nothing else.
+    require(
+        measured.facts()
+        == set(declared_rows) | {f"cohort_{year}" for year in COHORT_YEARS},
+        "The run records a scope count root did not declare.",
+    )
     # Households and people are the two counts the rest of the profile is
     # reconciled against -- the cohort split sums to the households, and the
     # accounting layout, the signed classes and the zero-origin partition are
-    # all sized by the people -- so each must be written down independently at
-    # least twice inside the run before it is used. The other entity counts are
-    # single recordings on the first producer and are reconciled against root's
-    # declared scope instead; requiring two of them inside the run would refuse
-    # a correct run for recording less, which is a different fault.
+    # all sized by the people -- so each must be written down in at least two
+    # distinct places inside the run before it is used. Distinct places: a warm
+    # restatement of a cold location is the same field read twice and does not
+    # count towards this. Nothing here claims the places are statistically
+    # independent of one another; the claim is only that more than one of them
+    # exists and that they agree. The other entity counts are recorded once on
+    # the first producer and are reconciled against root's declared scope
+    # instead; requiring two of them inside the run would refuse a correct run
+    # for recording less, which is a different fault.
     for entity in ("household", "person"):
         require(
-            len(measured.sources(entity)) >= 2,
-            "A load-bearing scope count has only one independent recording.",
+            len(measured.locations(entity)) >= 2,
+            "A load-bearing scope count is recorded in only one place.",
         )
 
 
@@ -1590,7 +1678,17 @@ def _export(
         approval_sha256=pins.approval_sha256,
         root_output_review_sha256=pins.root_binding_sha256,
         exporter_sha256=sha256(_file_bytes(Path(__file__))),
-        base_exporter_sha256=sha256(_file_bytes(Path(_income.__file__))),
+        # The base helper module, keeping this key's meaning identical to the
+        # reviewed profile's: ``graph_evidence.py``, whose ``safe_text``,
+        # ``bounded_tree``, ``_file_bytes`` and writer loading are load-bearing
+        # here. It named a different file in this profile before, so a consumer
+        # comparing the two profiles' identity blocks was comparing digests of
+        # different sources under one name.
+        base_exporter_sha256=sha256(_file_bytes(Path(_base.__file__))),
+        # The reviewed income-v3 profile this successor imports its closed
+        # semantics from, published under its own name rather than borrowing the
+        # base key's.
+        reviewed_exporter_sha256=sha256(_file_bytes(Path(_income.__file__))),
         operator_declaration_sha256=pins.operator_declaration_sha256,
         runtime_identity_sha256=next(iter(runtime_hashes)),
         loaded_module_manifest_sha256=run["loaded_module_manifest_sha256"],
@@ -1629,10 +1727,13 @@ def _export(
         measurement=dict(
             basis="measured_from_recorded_outputs_and_reconciled",
             selection_rule=selection["rule"],
+            selection_rule_scope=selection["scope"],
+            sampling_fraction=selection["fraction"],
+            eligible_households=selection["eligible_total"],
             entity_structure_recorded=structure is not None,
             nesting=[] if structure is None else structure["nesting"],
-            independent_recordings=measured.published(),
-            note="Every count above was read from the run's own recorded outputs, required to agree across each independent place the run writes it down, and required to equal the scope an accepted root output review declares. No count is taken from a single field and none is inferred.",
+            recorded_count_locations=measured.published(),
+            note="Every count above was read from the run's own recorded outputs, required to agree in every place the run writes it down, and required to equal the scope an accepted root output review declares. Places are counted once each: where a cold and a warm execution restate the same recorded location, the restatement is counted apart rather than as a second place that counted the sample. No count is taken from a single field and none is inferred, and nothing here claims that two places are statistically independent of each other.",
         ),
         note=(
             f"{households} sampled households from {len(COHORT_YEARS)} source cohorts, "
@@ -1765,6 +1866,7 @@ def _export(
         "build_summary_sha256": sha256(summary_raw),
         "exporter_sha256": identity["exporter_sha256"],
         "base_exporter_sha256": identity["base_exporter_sha256"],
+        "reviewed_exporter_sha256": identity["reviewed_exporter_sha256"],
         "writer_sha256": sha256(_file_bytes(Path(writer.__file__))),
         "root_output_review_sha256": pins.root_binding_sha256,
         "producer_schema": producer.name,
