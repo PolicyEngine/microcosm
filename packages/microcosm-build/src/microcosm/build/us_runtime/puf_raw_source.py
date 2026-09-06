@@ -172,6 +172,55 @@ _TYPED_DTYPES = {
 _TYPED_COLUMNS = tuple(_TYPED_DTYPES)
 _LEXICAL_COLUMNS = _MAIN_FIELDS + _DEMOGRAPHIC_FIELDS
 _ABSENT_SENTINEL = -1
+#: The widest lexical allocation any field may declare, matching the closed
+#: definition's own ``0 < lexical_width <= 64`` bound.
+_LEXICAL_WIDTH_MAX = 64
+
+_TYPED_KIND = "typed"
+_LEXICAL_KIND = "lexical_fixed_ascii_nul_padded"
+
+#: The envelope header is a closed schema. Every key set below is exact: an
+#: unknown key, a missing key or a renamed key is a refusal, not a default.
+_ENVELOPE_HEADER_KEYS = frozenset(
+    {
+        "schema_version",
+        "type",
+        "rows",
+        "definition_sha256",
+        "definition_route",
+        "sources",
+        "header_length_endianness",
+        "body_endianness",
+        "columns",
+        "facts",
+    }
+)
+_ENVELOPE_TYPED_COLUMN_KEYS = frozenset({"name", "kind", "dtype", "bytes", "sha256"})
+_ENVELOPE_LEXICAL_COLUMN_KEYS = frozenset(
+    {"name", "kind", "width", "bytes", "sha256"}
+)
+_ENVELOPE_SOURCE_KEYS = frozenset(
+    {"sha256", "git_blob_sha1", "bytes", "header_record_canonical_sha256"}
+)
+_ENVELOPE_FACT_KEYS = frozenset(
+    {
+        "rows",
+        "main_records",
+        "demographic_records",
+        "matched_keys",
+        "main_unmatched_records",
+        "demographic_orphan_records",
+        "aggregate_records",
+        "aggregate_demographic_records",
+        "join_status",
+        "join_method",
+        "code_frequencies",
+        "period_semantics",
+        "weight_units",
+        "amounts_decoded",
+        "untyped_main_columns",
+    }
+)
 _INT64_MAX = 2**63 - 1
 _DIGITS = frozenset(b"0123456789")
 
@@ -678,25 +727,14 @@ def decode_puf_raw_source(
             aggregate_demographic_rows += 1
     typed["demographic_status"][:] = status
 
-    matched = int(status.sum())
-    facts = {
-        "rows": rows,
-        "main_records": rows,
-        "demographic_records": demographic["records"],
-        "matched_keys": matched,
-        "main_unmatched_records": rows - matched,
-        "demographic_orphan_records": 0,
-        "aggregate_records": int(typed["disclosure_aggregate"].sum()),
-        "aggregate_demographic_records": aggregate_demographic_rows,
-        "join_status": "one_to_one_subset_compatible",
-        "join_method": definition.document["join"]["method"],
-        "code_frequencies": _code_frequencies(typed),
-        "period_semantics": "unresolved_raw_FLPDYR",
-        "weight_units": "S006_hundredths",
-        "amounts_decoded": False,
-        "untyped_main_columns": len(definition.main.delivered_header)
-        - len(_MAIN_FIELDS),
-    }
+    del aggregate_demographic_rows  # re-derived below from the arrays themselves
+    if demographic["records"] != int(status.sum()):
+        raise _refuse("DEMOGRAPHIC_RECORD_COUNT")
+    facts = _facts_from_arrays(
+        typed,
+        join_method=_join_method(definition),
+        untyped_main_columns=_untyped_main_columns(definition),
+    )
     return PufRawReturnStatus(
         typed=MappingProxyType({name: array for name, array in typed.items()}),
         lexical=MappingProxyType(
@@ -704,6 +742,56 @@ def decode_puf_raw_source(
         ),
         facts=MappingProxyType(facts),
     )
+
+
+def _join_method(definition: PufRawSourceDefinition) -> str:
+    method = definition.document["join"]["method"]
+    if not isinstance(method, str) or not method:
+        raise _refuse("DEFINITION_JOIN_METHOD")
+    return method
+
+
+def _untyped_main_columns(definition: PufRawSourceDefinition) -> int:
+    return len(definition.main.delivered_header) - len(_MAIN_FIELDS)
+
+
+def _facts_from_arrays(
+    typed: Mapping[str, np.ndarray],
+    *,
+    join_method: str,
+    untyped_main_columns: int,
+) -> dict[str, object]:
+    """Derive every reported fact from the typed arrays themselves.
+
+    The producer builds its facts here and the envelope readback rebuilds them
+    here, so a header can never report a count the arrays do not carry. Only
+    ``join_method`` and ``untyped_main_columns`` come from outside: both are
+    properties of the definition, not of the decoded rows.
+    """
+
+    rows = int(typed["RECID"].shape[0])
+    status = typed["demographic_status"]
+    aggregate = typed["disclosure_aggregate"]
+    matched = int(np.count_nonzero(status == 1))
+    return {
+        "rows": rows,
+        "main_records": rows,
+        "demographic_records": matched,
+        "matched_keys": matched,
+        "main_unmatched_records": rows - matched,
+        "demographic_orphan_records": 0,
+        "aggregate_records": int(np.count_nonzero(aggregate == 1)),
+        "aggregate_demographic_records": int(
+            np.count_nonzero((aggregate == 1) & (status == 1))
+        ),
+        "join_status": "one_to_one_subset_compatible",
+        "join_method": join_method,
+        "code_frequencies": _code_frequencies(typed),
+        "period_semantics": "unresolved_raw_FLPDYR",
+        "weight_units": "S006_hundredths",
+        "amounts_decoded": False,
+        "untyped_main_columns": untyped_main_columns,
+    }
 
 
 def _code_frequencies(typed: Mapping[str, np.ndarray]) -> dict[str, dict[str, int]]:
@@ -822,7 +910,10 @@ def _read_fixed_ascii(
         stripped = cell.rstrip(b"\x00")
         if b"\x00" in stripped:
             raise _refuse("LEXICAL_EMBEDDED_NUL", label)
-        values.append(stripped.decode("ascii"))
+        try:
+            values.append(stripped.decode("ascii"))
+        except UnicodeDecodeError as error:
+            raise _refuse("LEXICAL_NON_ASCII", label) from error
     return tuple(values)
 
 
@@ -925,8 +1016,233 @@ def encode_return_status(
     )
 
 
-def decode_return_status(payload: bytes) -> PufRawReturnStatus:
-    """Decode and fully re-verify an artifact payload, digest by digest."""
+def _exact_keys(value: object, keys: frozenset[str], label: str) -> Mapping[str, object]:
+    """A mapping whose key set is exactly ``keys``. Nothing extra, nothing missing."""
+
+    if not isinstance(value, dict) or set(value) != set(keys):
+        raise _refuse("ENVELOPE_SCHEMA", label)
+    return value
+
+
+def _envelope_int(value: object, label: str, *, minimum: int = 0) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < minimum:
+        raise _refuse("ENVELOPE_INTEGER", label)
+    return value
+
+
+def _resolve_envelope_definition(
+    header: Mapping[str, object], definition: PufRawSourceDefinition | None
+) -> PufRawSourceDefinition | None:
+    """The definition this payload may be checked against, or ``None``.
+
+    A caller may hand one in. Otherwise a payload that declares the *packaged*
+    route is checked against this module's own packaged definition, because
+    that one is closed and importable. A fixture-route payload has no
+    reconstructible definition, so it is checked structurally only: the
+    production and fixture boundaries stay exactly where they are.
+    """
+
+    route = header["definition_route"]
+    if route not in ("packaged", "test_fixture"):
+        raise _refuse("ENVELOPE_DEFINITION_ROUTE")
+    digest = _hex64(header["definition_sha256"], "envelope.definition_sha256")
+    if definition is not None:
+        if not isinstance(definition, PufRawSourceDefinition):
+            raise _refuse("DECODE_DEFINITION_TYPE")
+        if definition.route != route or definition.sha256 != digest:
+            raise _refuse("ENVELOPE_DEFINITION_MISMATCH")
+        return definition
+    if route == "packaged":
+        packaged = packaged_definition()
+        if packaged.sha256 != digest:
+            raise _refuse("ENVELOPE_DEFINITION_NOT_PACKAGED")
+        return packaged
+    return None
+
+
+def _check_envelope_sources(
+    header: Mapping[str, object], definition: PufRawSourceDefinition | None
+) -> None:
+    sources = _exact_keys(header["sources"], frozenset({"main", "demographic"}), "sources")
+    for name in ("main", "demographic"):
+        entry = _exact_keys(sources[name], _ENVELOPE_SOURCE_KEYS, f"sources.{name}")
+        _hex64(entry["sha256"], f"sources.{name}.sha256")
+        _hex40(entry["git_blob_sha1"], f"sources.{name}.git_blob_sha1")
+        _hex64(
+            entry["header_record_canonical_sha256"], f"sources.{name}.header"
+        )
+        size = _envelope_int(entry["bytes"], f"sources.{name}.bytes", minimum=1)
+        if size > PUF_RAW_SOURCE_MAX_BYTES:
+            raise _refuse("ENVELOPE_SOURCE_OVER_CAP", name)
+        if definition is None:
+            continue
+        pin = definition.main if name == "main" else definition.demographic
+        if (
+            entry["sha256"] != pin.sha256
+            or entry["git_blob_sha1"] != pin.git_blob_sha1
+            or size != pin.bytes
+            or entry["header_record_canonical_sha256"]
+            != pin.header_record_canonical_sha256
+        ):
+            raise _refuse("ENVELOPE_SOURCE_PIN", name)
+
+
+def _envelope_columns(
+    header: Mapping[str, object],
+    rows: int,
+    definition: PufRawSourceDefinition | None,
+) -> tuple[list[Mapping[str, object]], dict[str, int]]:
+    """Close the column schema: exact order, kind, dtype, width and size."""
+
+    columns = header["columns"]
+    if not isinstance(columns, list):
+        raise _refuse("ENVELOPE_COLUMNS")
+    declared = [
+        *_TYPED_COLUMNS,
+        *(f"{name}_lexical" for name in _LEXICAL_COLUMNS),
+    ]
+    if len(columns) != len(declared):
+        raise _refuse("ENVELOPE_COLUMNS")
+    widths = _widths(definition) if definition is not None else None
+    resolved: list[Mapping[str, object]] = []
+    sizes: dict[str, int] = {}
+    total = 0
+    for column, name in zip(columns, declared, strict=True):
+        if not isinstance(column, dict) or column.get("name") != name:
+            raise _refuse("ENVELOPE_COLUMNS")
+        if name in _TYPED_DTYPES:
+            entry = _exact_keys(column, _ENVELOPE_TYPED_COLUMN_KEYS, name)
+            if entry["kind"] != _TYPED_KIND:
+                raise _refuse("ENVELOPE_COLUMN_KIND", name)
+            # Exact dtype string: this closes width, signedness and endianness
+            # at once, so ``<f8`` can never stand in for ``<i8``.
+            if entry["dtype"] != _TYPED_DTYPES[name]:
+                raise _refuse("ENVELOPE_COLUMN_DTYPE", name)
+            expected = rows * np.dtype(_TYPED_DTYPES[name]).itemsize
+        else:
+            entry = _exact_keys(column, _ENVELOPE_LEXICAL_COLUMN_KEYS, name)
+            if entry["kind"] != _LEXICAL_KIND:
+                raise _refuse("ENVELOPE_COLUMN_KIND", name)
+            field = name.removesuffix("_lexical")
+            width = _envelope_int(entry["width"], f"{name}.width", minimum=1)
+            if width > _LEXICAL_WIDTH_MAX:
+                raise _refuse("ENVELOPE_COLUMN_WIDTH", name)
+            if widths is not None and width != widths[field]:
+                raise _refuse("ENVELOPE_COLUMN_WIDTH", name)
+            expected = rows * width
+            sizes[field] = width
+        _hex64(entry["sha256"], f"{name}.sha256")
+        size = _envelope_int(entry["bytes"], f"{name}.bytes")
+        if size != expected:
+            raise _refuse("ENVELOPE_COLUMN_SIZE", name)
+        total += size
+        if total > BODY_MAX_BYTES:
+            raise _refuse("ENVELOPE_BODY_OVER_BOUND", total)
+        resolved.append(entry)
+    return resolved, sizes
+
+
+def _verify_readback(
+    typed: Mapping[str, np.ndarray],
+    lexical: Mapping[str, tuple[str, ...]],
+    widths: Mapping[str, int],
+    definition: PufRawSourceDefinition | None,
+) -> None:
+    """Re-prove the slice's own invariants from the arrays that were read back.
+
+    Lexical and numeric spellings must agree, absence must stay absence rather
+    than a zero code, the aggregate flag must follow from ``RECID`` and agree
+    with ``MARS``, and the join keys must still be unique both ways.
+    """
+
+    rows = int(typed["RECID"].shape[0])
+    status = typed["demographic_status"]
+    aggregate = typed["disclosure_aggregate"]
+    if not np.isin(status, (0, 1)).all():
+        raise _refuse("READBACK_DEMOGRAPHIC_STATUS")
+    if not np.isin(aggregate, (0, 1)).all():
+        raise _refuse("READBACK_AGGREGATE_FLAG")
+    if int(typed["S006"].min(initial=0)) < 0:
+        raise _refuse("READBACK_S006_NEGATIVE")
+
+    present = status == 1
+    for name in _MAIN_FIELDS:
+        tokens = lexical[name]
+        if len(tokens) != rows:
+            raise _refuse("READBACK_LEXICAL_ROWS", name)
+        width = widths[name]
+        values = typed[name]
+        for position, token in enumerate(tokens):
+            _token(token, width=width, label=name)
+            if int(token) != int(values[position]):
+                raise _refuse("READBACK_LEXICAL_DISAGREEMENT", name)
+    for name in _DEMOGRAPHIC_FIELDS:
+        tokens = lexical[name]
+        if len(tokens) != rows:
+            raise _refuse("READBACK_LEXICAL_ROWS", name)
+        width = widths[name]
+        values = typed[name]
+        for position, token in enumerate(tokens):
+            if not present[position]:
+                # Absence is the sentinel and an empty spelling, never a zero.
+                if token or int(values[position]) != _ABSENT_SENTINEL:
+                    raise _refuse("READBACK_ABSENCE_NOT_EMPTY", name)
+                continue
+            _token(token, width=width, label=name)
+            if int(token) != int(values[position]):
+                raise _refuse("READBACK_LEXICAL_DISAGREEMENT", name)
+
+    keys = lexical["RECID"]
+    if len(set(keys)) != rows:
+        raise _refuse("READBACK_DUPLICATE_LEXICAL_KEY")
+    recids = typed["RECID"]
+    if len(np.unique(recids)) != rows:
+        raise _refuse("READBACK_NUMERIC_KEY_COLLISION")
+    expected_aggregate = np.isin(recids, np.asarray(PUF_AGGREGATE_RECIDS, dtype="<i8"))
+    if not np.array_equal(aggregate == 1, expected_aggregate):
+        raise _refuse("READBACK_AGGREGATE_RECID")
+    if not np.array_equal(expected_aggregate, typed["MARS"] == 0):
+        raise _refuse("READBACK_AGGREGATE_MARS_DISAGREEMENT")
+
+    if definition is None:
+        return
+    domains = _domains(definition)
+    agerange = _agerange_domains(definition)
+    for name in ("FLPDYR", "FLPDMO", "MARS", "DSI"):
+        if not np.isin(typed[name], sorted(domains[name])).all():
+            raise _refuse("READBACK_MAIN_DOMAIN", name)
+    for name in _DEMOGRAPHIC_FIELDS:
+        values = typed[name][present]
+        if name == "AGERANGE":
+            for condition, allowed in agerange.items():
+                selected = values[typed["DSI"][present] == condition]
+                if selected.size and not np.isin(selected, sorted(allowed)).all():
+                    raise _refuse("READBACK_DEMOGRAPHIC_DOMAIN", name)
+            if not np.isin(
+                typed["DSI"][present], sorted(agerange)
+            ).all():
+                raise _refuse("READBACK_AGERANGE_CONDITION_UNKNOWN")
+            continue
+        if values.size and not np.isin(values, sorted(domains[name])).all():
+            raise _refuse("READBACK_DEMOGRAPHIC_DOMAIN", name)
+
+
+def decode_return_status(
+    payload: bytes, definition: PufRawSourceDefinition | None = None
+) -> PufRawReturnStatus:
+    """Decode an artifact payload and re-prove it, never trusting its header.
+
+    The header is a closed schema: exact key sets, an exact dtype string for
+    every typed column, an exact width and body size for every lexical column,
+    and a total body bound. Every reported fact is then **recomputed** from the
+    arrays actually read back and must agree exactly, so a payload cannot
+    report a row count, a match count or a code frequency it does not carry.
+
+    This stays structural. It is not source authority: it proves that a payload
+    is internally consistent and, when a definition is available, that it
+    matches that definition's widths, domains and source pins. It authorizes
+    nothing about where the delivery bytes came from — the codec does that.
+    """
 
     if not isinstance(payload, bytes) or not payload.startswith(RETURN_STATUS_MAGIC):
         raise _refuse("ENVELOPE_MAGIC")
@@ -939,54 +1255,78 @@ def decode_return_status(payload: bytes) -> PufRawReturnStatus:
     encoded = payload[start + 4 : start + 4 + length]
     try:
         header = json.loads(encoded.decode("ascii"))
-    except (UnicodeError, ValueError) as error:
+    except (UnicodeError, ValueError, RecursionError) as error:
+        # A deeply nested or malformed header is a refusal, not a stray
+        # ``RecursionError`` or ``UnicodeDecodeError`` out of the JSON reader.
         raise _refuse("ENVELOPE_HEADER_JSON") from error
-    if canonical_json(header) != encoded:
+    try:
+        recanonical = canonical_json(header)
+    except (TypeError, ValueError, RecursionError) as error:
+        raise _refuse("ENVELOPE_HEADER_JSON") from error
+    if recanonical != encoded:
         raise _refuse("ENVELOPE_HEADER_NOT_CANONICAL")
-    if header.get("schema_version") != 1 or header.get("type") != [
+    _exact_keys(header, _ENVELOPE_HEADER_KEYS, "header")
+    if header["schema_version"] != 1 or header["type"] != [
         RETURN_STATUS_TYPE.name,
         RETURN_STATUS_TYPE.schema_version,
     ]:
         raise _refuse("ENVELOPE_TYPE")
-    rows = header["rows"]
-    if not isinstance(rows, int) or isinstance(rows, bool) or rows < 0:
-        raise _refuse("ENVELOPE_ROWS")
-    expected = [column["name"] for column in header["columns"]]
-    if expected != [
-        *_TYPED_COLUMNS,
-        *(f"{name}_lexical" for name in _LEXICAL_COLUMNS),
-    ]:
-        raise _refuse("ENVELOPE_COLUMNS")
+    if (
+        header["header_length_endianness"] != "big"
+        or header["body_endianness"] != "little"
+    ):
+        raise _refuse("ENVELOPE_ENDIANNESS")
+    rows = _envelope_int(header["rows"], "rows", minimum=1)
+    resolved = _resolve_envelope_definition(header, definition)
+    _check_envelope_sources(header, resolved)
+    columns, widths = _envelope_columns(header, rows, resolved)
+
     cursor = start + 4 + length
     typed: dict[str, np.ndarray] = {}
     lexical: dict[str, tuple[str, ...]] = {}
-    for column in header["columns"]:
+    for column in columns:
+        name = column["name"]
         size = column["bytes"]
-        if not isinstance(size, int) or isinstance(size, bool) or size < 0:
-            raise _refuse("ENVELOPE_COLUMN_BYTES", column["name"])
         body = payload[cursor : cursor + size]
         if len(body) != size:
-            raise _refuse("ENVELOPE_BODY_TRUNCATED", column["name"])
+            raise _refuse("ENVELOPE_BODY_TRUNCATED", name)
         if hashlib.sha256(body).hexdigest() != column["sha256"]:
-            raise _refuse("ENVELOPE_BODY_DIGEST", column["name"])
+            raise _refuse("ENVELOPE_BODY_DIGEST", name)
         cursor += size
-        if column["kind"] == "typed":
-            dtype = np.dtype(column["dtype"])
-            if size != rows * dtype.itemsize:
-                raise _refuse("ENVELOPE_COLUMN_SIZE", column["name"])
-            typed[column["name"]] = np.frombuffer(body, dtype=dtype)
+        if column["kind"] == _TYPED_KIND:
+            typed[name] = np.frombuffer(body, dtype=np.dtype(column["dtype"]))
         else:
-            width = column["width"]
-            if size != rows * width:
-                raise _refuse("ENVELOPE_COLUMN_SIZE", column["name"])
-            name = column["name"].removesuffix("_lexical")
-            lexical[name] = _read_fixed_ascii(body, rows, width, name)
+            field = name.removesuffix("_lexical")
+            lexical[field] = _read_fixed_ascii(body, rows, column["width"], field)
     if cursor != len(payload):
         raise _refuse("ENVELOPE_TRAILING_BYTES")
+
+    _verify_readback(typed, lexical, widths, resolved)
+    facts = header["facts"]
+    _exact_keys(facts, _ENVELOPE_FACT_KEYS, "facts")
+    if resolved is not None:
+        join_method = _join_method(resolved)
+        untyped_main_columns = _untyped_main_columns(resolved)
+    else:
+        join_method = facts["join_method"]
+        if not isinstance(join_method, str) or not join_method:
+            raise _refuse("ENVELOPE_FACTS", "join_method")
+        untyped_main_columns = _envelope_int(
+            facts["untyped_main_columns"], "facts.untyped_main_columns"
+        )
+    recomputed = _facts_from_arrays(
+        typed,
+        join_method=join_method,
+        untyped_main_columns=untyped_main_columns,
+    )
+    if canonical_json(recomputed) != canonical_json(dict(facts)):
+        raise _refuse("ENVELOPE_FACTS_INCONSISTENT")
+    if recomputed["rows"] != rows:
+        raise _refuse("ENVELOPE_ROWS")
     return PufRawReturnStatus(
         typed=MappingProxyType(typed),
         lexical=MappingProxyType(lexical),
-        facts=MappingProxyType(header["facts"]),
+        facts=MappingProxyType(recomputed),
     )
 
 
