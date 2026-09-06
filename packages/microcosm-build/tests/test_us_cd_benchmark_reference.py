@@ -1625,7 +1625,10 @@ def test_the_command_line_writes_bytes_it_can_be_held_to(tmp_path, bundle, capsy
     assert not absent.exists()
 
 
-def test_the_command_line_refuses_a_pathologically_nested_document(tmp_path, capsys):
+@pytest.mark.parametrize("recursion_limit", [1000, 3000])
+def test_the_command_line_refuses_a_pathologically_nested_document(
+    tmp_path, capsys, recursion_limit
+):
     """``main`` returns an int; the deep-freeze walk must not break that.
 
     The freeze spends a Python frame per nesting level on top of what ``json``
@@ -1633,25 +1636,41 @@ def test_the_command_line_refuses_a_pathologically_nested_document(tmp_path, cap
     limit during the freeze but not during the parse would escape ``main`` as a
     traceback where the pre-freeze reader refused cleanly.
     """
-    nested = tmp_path / "nested.json"
-    depth = sys.getrecursionlimit() - 1000
-    nested.write_bytes(b"[" * depth + b"]" * depth)
-    assert (
-        main(
-            [
-                "--inventory",
-                str(nested),
-                "--expect-sha256",
-                hashlib.sha256(nested.read_bytes()).hexdigest(),
-                "--aggregate-only",
-                "--all-roster-districts",
-                "--block",
-                "population_total",
-            ]
+    from microcosm.build.us_runtime.cd_benchmark_reference import _frozen_json
+
+    previous_limit = sys.getrecursionlimit()
+    try:
+        sys.setrecursionlimit(recursion_limit)
+        nested = tmp_path / "nested.json"
+        depth = 3 * recursion_limit // 4
+        payload = b"[" * depth + b"]" * depth
+        nested.write_bytes(payload)
+        # Prove the input passes parsing and specifically exhausts the freeze.
+        # An empty or invalid JSON input would exercise a different refusal.
+        parsed = strict_load(payload)
+        assert isinstance(parsed, list) and parsed
+        with pytest.raises(RecursionError, match="maximum recursion depth"):
+            _frozen_json(parsed)
+        assert (
+            main(
+                [
+                    "--inventory",
+                    str(nested),
+                    "--expect-sha256",
+                    hashlib.sha256(payload).hexdigest(),
+                    "--aggregate-only",
+                    "--all-roster-districts",
+                    "--block",
+                    "population_total",
+                ]
+            )
+            == 1
         )
-        == 1
-    )
-    assert "Reference projection failed:" in capsys.readouterr().err
+        error = capsys.readouterr().err
+        assert "Reference projection failed:" in error
+        assert "maximum recursion depth" in error
+    finally:
+        sys.setrecursionlimit(previous_limit)
 
 
 def test_the_command_line_without_an_output_writes_the_same_bytes_to_stdout(
