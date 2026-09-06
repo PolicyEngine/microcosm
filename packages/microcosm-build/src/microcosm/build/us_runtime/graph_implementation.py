@@ -42,7 +42,7 @@ STAGE_DEPENDENCIES = MappingProxyType(
         # a pinned field of every admitted closure contract, so engine drift
         # refuses there. Putting it here instead would make a secrets-free lane
         # without the engine extra unable to hash any stage of this graph.
-        "asec_prepared_v2": (
+        "asec_prepared_v3": (
             "numpy",
             "pandas",
             "microunit",
@@ -63,8 +63,8 @@ _CODECS = MappingProxyType(
             "acs_codec_2024",
             "microcosm.build.us_runtime.graph_sources:load_graph_acs",
         ),
-        "us-asec-prepared-current-money-v2": (
-            "asec_prepared_v2",
+        "us-asec-prepared-current-money-v3": (
+            "asec_prepared_v3",
             "microcosm.build.us_runtime.asec_prepared_source:load_graph_asec_prepared",
         ),
         "raw-bytes-v1": ("geography", "microcosm.graph.codecs:load_raw_bytes"),
@@ -317,7 +317,7 @@ def validate_source_codecs(codecs) -> None:
         loaders = (
             codecs.get("us-asec-raw-stage-v4"),
             codecs.get("us-acs-native-2024-v1"),
-            codecs.get("us-asec-prepared-current-money-v2"),
+            codecs.get("us-asec-prepared-current-money-v3"),
             codecs.get("raw-bytes-v1"),
         )
     except Exception as error:
@@ -386,7 +386,7 @@ def implementation_manifest(stage: str) -> dict:
         "asec_codec_v4",
         "acs_codec_2024",
         "geography",
-        "asec_prepared_v2",
+        "asec_prepared_v3",
     ):
         manifest["codecs"] = {
             name: {"loader": loader}

@@ -1,9 +1,9 @@
 # ASEC current-money graph bridge
 
-`us_runtime.graph_asec_prepared` supplies a bounded four-node graph over the
+`us_runtime.graph_asec_prepared` supplies a bounded five-node graph over the
 authenticated ASEC source. It prepares current money, selects whole households,
-derives corrected CPS leaves, and evaluates four complete PolicyEngine-US output
-closures. It provides local engineering evidence. It does not establish annual
+derives corrected CPS leaves, evaluates four complete PolicyEngine-US output
+closures, and records six reported-income accounting columns. It provides local engineering evidence. It does not establish annual
 student classification, population representativeness, tax or benefit scoring,
 calibration, or release eligibility.
 
@@ -13,10 +13,11 @@ calibration, or release eligibility.
 | `asec_prepared.select_households` | Seeded exact-count selection by source-year stratum | Selected population, context, selection receipt, separately typed selected money |
 | `asec_prepared.cps_carried_current` | Read corrected amounts and declared routing codes | 24 person leaves including `age`, one SPM childcare leaf, updated context |
 | `asec_prepared.engine_current_money` | Admit exact installed formula closures and invoke the actual PE adapter | Evaluation artifact; no formula-owned population columns |
+| `asec_prepared.reported_income` | Combine selected money with separately authenticated PAW observations | Six reported-income columns, derived accounting artifact and updated context |
 
 ## Original source and separate student controls
 
-The `us-asec-prepared-current-money-v2` source codec accepts one directory with
+The `us-asec-prepared-current-money-v3` source codec accepts one directory with
 exactly the ten names in `asec_prepared_source.PREPARED_SOURCE_FILES`: raw parent
 P, household attachment H, restored T1, its canonical restoration receipt, three
 housing cohort HDFs, and three official Census PERSON CSV members. The roster
@@ -32,6 +33,7 @@ source = load_authenticated_restored_current_money_source(
     parent, household_attachment, t1, member_paths=members
 )
 ready = source.ready()
+income = load_authenticated_income_observations(source, ready, member_paths=members)
 controls = load_authenticated_student_controls(source, ready, member_paths=members)
 with_students = attach_student_controls(source, ready, controls)
 tax = reconstruct_current_money_tax_units(with_students, ready)
@@ -107,10 +109,20 @@ input leaves are unchanged. Pure ACS evidence remains unbound; authenticated
 ACS lineage, a shared stacked denominator, B25003 evaluation, cloning/pruning
 custody and release eligibility are separate work.
 
-V2 explicitly changes the prepared source/codec/receipt and implementation-scope
+The earlier v2 generation changed the prepared source/codec/receipt and implementation-scope
 identities, four kernel reference versions and the prepared/selection typed
 receipt versions. Existing T1, money and HU source artifact schemas remain v1.
-Older v1 graph checkpoints do not certify reuse under the v2 declarations.
+Older v1 graph checkpoints did not certify reuse under the v2 declarations.
+
+V3 adds a separate PAW_VAL/PAW_YN source artifact and the reported-income branch,
+with no additional source file or raw Frame alias. Its prepared receipt binds
+that artifact and scope. All five kernel refs use generation 3; selection stays
+v2 and selected-money/HU transport stay v1. Historical artifacts are preserved;
+the v3 runtime invalidates old prepared cache keys. The new branch carries
+source evidence axes without upgrading old zero origins and keeps reported
+SSI/cash assistance separate from simulated policy outputs. Its six columns
+and two fixed artifact layouts are specified in
+[the reported-income contract](us-asec-reported-income.md).
 
 ## Typed artifacts and exact selection
 
@@ -173,14 +185,14 @@ columns. There is no prior-wage or tax/benefit scoring claim.
 
 ## Cache identity and verification
 
-`us_asec_prepared_graph` declares the four nodes against an explicit prepared
+`us_asec_prepared_graph` declares the five nodes against an explicit prepared
 column inventory; `us_asec_prepared_registry` supplies their actual kernels.
 The registered source codec and CREATE share preparation code. The executor
 validates the codec and keys source bytes; CREATE performs preparation once,
 including mandatory authenticated source reconstruction. It does not invoke
 the codec to prepare the same population a second time.
 
-The `asec_prepared_v2` implementation scope binds graph/source/runtime modules,
+The `asec_prepared_v3` implementation scope binds graph/source/runtime modules,
 reviewed packaged resources, installed dependencies and actual loader identity.
 Typed artifacts and producer keys bind body, selection, context and evaluation.
 Required-cache lookup refuses changed source bytes, implementation, missing or

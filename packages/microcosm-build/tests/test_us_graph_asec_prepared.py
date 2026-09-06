@@ -27,8 +27,10 @@ from microcosm.build.us_runtime import asec_current_money as money
 from microcosm.build.us_runtime import asec_current_money_source as legacy
 from microcosm.build.us_runtime import asec_housing_universe as hu
 from microcosm.build.us_runtime import asec_housing_universe_source as hu_source
+from microcosm.build.us_runtime import asec_income_observations as income_source
 from microcosm.build.us_runtime import asec_person_income_source as restoration
 from microcosm.build.us_runtime import asec_prepared_source as prepared
+from microcosm.build.us_runtime import graph_asec_income as income
 from microcosm.build.us_runtime import graph_asec_prepared as bridge
 from microcosm.build.us_runtime import graph_context
 from microcosm.build.us_runtime import graph_housing_universe as graph_hu
@@ -77,6 +79,7 @@ KERNELS = (
     bridge.USAsecPreparedSelectionKernel,
     bridge.USAsecPreparedLeavesKernel,
     bridge.USAsecPreparedEngineKernel,
+    income.USAsecReportedIncomeKernel,
 )
 SEED = 578
 
@@ -135,6 +138,7 @@ def _restore_test_pins(root):
     )
     restoration._MEMBER_PINS = tuple(tuple(item) for item in pins["members"])
     student._MEMBER_PINS = tuple(tuple(item) for item in pins["students"])
+    income_source._MEMBER_PINS = tuple(tuple(item) for item in pins["income"])
 
 
 def _direct(root):
@@ -184,6 +188,19 @@ def _direct(root):
     for entity, values in (("person", leaves.person), ("spm_unit", leaves.spm_unit)):
         for name in sorted(values):
             frame.table(entity)[name] = values[name]
+    # Independent direct arithmetic oracle over the actual source-bound values.
+    paw = income.bind_income_observations(
+        value.income_observations_payload, prepared_receipt=value.receipt
+    )
+    w = selected.field("WSAL_VAL").amounts
+    e = selected.field("SEMP_VAL").amounts + selected.field("FRSE_VAL").amounts
+    s = selected.field("SSI_VAL").amounts
+    p = paw.array("PAW_VAL_2024_price")
+    t = selected.field("PTOTVAL").amounts
+    for name, amounts in zip(
+        income.RESULT_COLUMNS, (w, e, s, p, t, t - (((w + e) + s) + p)), strict=True
+    ):
+        frame.person[name] = amounts
     write_frame_checkpoint(root / "direct-frame.h5", frame)
     tables = {
         entity: frame.table(entity)
@@ -341,6 +358,7 @@ def executed(tmp_path_factory):
                     "source": legacy._SOURCE_PINS,
                     "members": restoration._MEMBER_PINS,
                     "students": student._MEMBER_PINS,
+                    "income": income_source._MEMBER_PINS,
                 }
             )
         )
@@ -373,6 +391,7 @@ def test_real_direct_cold_and_fresh_cache_only_parity(executed):
         "source_preparation",
         bridge.SELECT_NODE,
         bridge.LEAVES_NODE,
+        income.REPORTED_INCOME_NODE,
         bridge.ENGINE_NODE,
     ]
     assert not any(record.hit for record in manifest.nodes.values())
@@ -489,7 +508,7 @@ def test_leaf_kernel_refuses_changed_typed_context_selection_body_or_producer(
         bridge.USAsecPreparedLeavesKernel().run(replace(context, artifacts=artifacts))
 
 
-def test_registry_declares_exact_four_real_kernels_and_no_raw_money_leaf_reads(
+def test_registry_declares_exact_five_real_kernels_and_no_raw_money_leaf_reads(
     executed,
 ):
     root, *_rest = executed
@@ -497,7 +516,7 @@ def test_registry_declares_exact_four_real_kernels_and_no_raw_money_leaf_reads(
     assert bridge.us_asec_prepared_registry().refs() == tuple(
         sorted(cls.ref for cls in KERNELS)
     )
-    assert len(compile_graph(graph).graph.nodes) == 4
+    assert len(compile_graph(graph).graph.nodes) == 5
     leaves = graph.node(bridge.LEAVES_NODE)
     assert leaves.inputs[0].columns == CPS_CARRIED_CURRENT_ROUTING_COLUMNS
     assert not set(leaves.inputs[0].columns) & set(money.FIELDS)
