@@ -53,8 +53,18 @@ ordinary viewer shows P+1. For every field in both tables below the printed page
 number was read off the foot of that page in the PDF itself, not inferred from
 where a name falls in a text rendering: a text-boundary guess and the page a
 field's `Name:` line actually sits on are different claims, and only the second
-is transcribed here. Column presence was confirmed against the pinned parent's
-pipe-delimited header only. No SIPP data row was read to write this.
+is transcribed here. No SIPP data row was read to write this.
+
+Column **presence** is a separate claim from the transcription above, and it is
+not established for all of these columns. The version 2 columns were confirmed
+against the pinned parent's pipe-delimited header. Of the nine version 3
+columns, only `TAGE_EHC` is known to be present, because the frozen
+sixteen-field producer already reads it from that parent. The presence of the
+other eight is **unverified**: this increment opens no real file. Nothing
+guesses on their behalf — `header_positions()` refuses with
+`HOUSING_PROJECTION_HEADER` for a declared column the header does not carry, so
+a version 3 extraction fails closed rather than misreading. Confirming those
+eight against the parent header is the first step of the extraction proposal.
 
 `EEHC_RENTSUB`'s universe is transcribed with straight quotes as
 `TEHC_ST <= '60'`; the dictionary's own rendering uses typographic quotes. That
@@ -165,10 +175,11 @@ rather than "unresolved"; their own universes are `TPRVAL > 0` and `TMHVAL > 0`,
 so an owner with neither reported is recorded as `owner_debt_unresolved` instead
 of assumed debt-free. `EEHC_TEN` is the person-month tenure gate of
 `EEHC_RENTSUB`'s universe. The topcode companions are what section 6.5 of the
-requirements needs. `TEHC_ST`, `TPRVLVQRT` and `THHLDSTATUS` are **not** carried,
-so the residence-state arm of `EEHC_RENTSUB`'s universe stays unseparated from
-plain missingness at that grain — see "The state arm, now observed" below, which
-changes no classification.
+requirements needs. `TPRVLVQRT` and `THHLDSTATUS` are **not** carried. `TEHC_ST`
+was not carried at version 2 either, which left the residence-state arm of
+`EEHC_RENTSUB`'s universe unseparated from plain missingness at that grain;
+version 3 carries it, and observing it **changes no classification** — see "The
+state arm, now observed" below.
 
 `TAGE_EHC` is the one column shared with the frozen sixteen-field producer,
 which reads it as `_number(..., 0, 90, -999)` to gate its retirement-income and
@@ -321,14 +332,32 @@ predictor_copy_conflict  predictor_suppressed  predictor_not_in_universe
 predictor_unknown  predictor_age_coverage_incomplete
 ```
 
-Withheld and out-of-universe evidence keep their own states rather than joining
-plain unknowns, on the same rule the assistance classification already follows.
-
-with `predictor_complete` for a household that clears it. The diagnostics report
-the counter over all households and, separately,
+with `predictor_complete` for a household that clears every rung. Withheld and
+out-of-universe evidence keep their own states rather than joining plain
+unknowns, on the same rule the assistance classification already follows. The
+diagnostics report the counter over all households and, separately,
 `predictor_status_exclusive_admitted` over the households the measurement ladder
 admitted. Neither is a fit admission: which predictor states a fit may accept is
 that lane's decision, not this one's.
+
+**Allocation is not a rung.** An allocated value is a published value, not a
+missing answer, so a household whose state, size, children and income are all
+hot-deck imputed clears the ladder and is `predictor_complete`. Folding
+allocation into the exclusive ladder would say such a household had no answer to
+give. It is reported non-exclusively instead — `predictor_allocation` per
+household, and `predictor_allocation_exclusive`,
+`predictor_complete_allocation_exclusive` and their admitted counterparts in the
+diagnostics — so the fit lane can restrict on it. `TAGE_EHC` is excluded from
+that judgement because it publishes no status flag.
+
+**A copy conflict can hide a universe case.** The conflict rung outranks
+`predictor_not_in_universe`, so one member published outside the universe beside
+members inside it is recorded as a conflict and the reason is lost. Because this
+projection carries no `THHLDSTATUS` to ask,
+`predictor_copy_conflict_members_not_in_universe` and
+`predictor_copy_conflicts_with_a_member_not_in_universe` count, per field, the
+flag-0 member observations inside conflicted households, so the first real
+reading can separate the two causes from the aggregates alone.
 
 ### State is source geography, and not fifty-one levels
 
@@ -407,11 +436,24 @@ so a reader cannot mistake an age for a topcode marker.
 
 The household statistic is the **maximum over admissible December person
 observations only**, with `age_coverage` reported as `complete`, `partial` or
-`none` and `age_covered_members` beside it. Partial coverage produces a
-**lower bound, not a maximum** — an unreadable member could be older than every
-member that was read — so the measurement's status is
-`household_maximum_member_age_lower_bound`, `maximum_age_is_lower_bound` is
-true, and the household cannot be `predictor_complete`.
+`none` and `age_covered_members` beside it.
+
+Partial coverage yields **no maximum**: an unreadable member could be older than
+every member that was read. `sipp_december_household_maximum_member_age` is then
+an explicit unknown carrying `age_coverage:partial`, and the household cannot be
+`predictor_complete`. The bound that *was* observed is not discarded — it is a
+separate measurement,
+`sipp_december_household_maximum_member_age_lower_bound`, whose name and status
+say what it is.
+
+The two are split rather than merged because a measurement carrying reasons
+carries no value everywhere else in this module and in the frozen kernel, and
+`Measurement.require_value` tests only for `None`. A single measurement holding
+a bound beside a reason would hand that bound to a strict adapter as the
+household's oldest member. `maximum_age_known`,
+`maximum_age_lower_bound_known` and `maximum_age_is_lower_bound_only` report the
+three states, and the aggregate counters follow the same split. Under complete
+coverage the bound is attained and equals the maximum.
 
 The published maximum is 90. A household maximum of 90 is counted in
 `maximum_age_at_domain_maximum_households`. The page does not call it a topcode
@@ -511,11 +553,27 @@ rung of `EXCLUSION_ORDER`.
 `SUPERSEDED_RECIPE_VERSIONS` now carries `/1` and `/2`, and the two are
 superseded in different senses. Version 1's outputs never existed: no version 1
 receipt was ever produced. Version 2's did — a December extraction was run under
-it and reviewed — and those receipts are **not** invalidated by this bump and
-are **not** reproduced by it. A version 3 run reads more columns and therefore
-writes a different measurement digest and a different receipt. Version 2 remains
-the identity under which the accepted measurement evidence was recorded; it is
-superseded as a recipe for new extractions, not voided as a record.
+it and reviewed — and those receipts are **not** invalidated by this bump.
+Version 2 remains the identity under which the accepted measurement evidence was
+recorded; it is superseded as a recipe for new extractions, not voided as a
+record.
+
+A version 3 run writes a different **receipt**: it binds a new recipe identity,
+a new module set and a predictor digest the version 2 receipt had no field for.
+It does **not** write a different **measurement digest**. `_measurement_digest`
+and `_membership` cover the `december_housing` output alone; the predictor
+observations are bound separately; and every version 3 addition to the
+measurement pass — the per-field `sentinel`, `kind`, `unflagged_origin` and the
+`rule_id` argument — defaults to the version 2 behaviour, with no version 2
+domain containing the token that marks a value missing. On identical rows the
+measurement and membership digests therefore reproduce version 2 exactly.
+
+That is a continuity check, not a caveat: a version 3 extraction must reproduce
+the version 2 measurement and membership digests **beside** the 17,646 / 4,348 /
+4,057 ladder counts, and a difference in either would mean the measurement
+contract moved rather than that more columns were read. The digests for the
+fixture set are pinned in the tests from the accepted base implementation, so
+the head cannot move them silently.
 
 Version 1 admitted an explicit `ERENTSUB = 2` whatever `EVOUCHER` carried,
 folded `assistance_not_in_universe` into the unknown rung, bound no
@@ -662,7 +720,11 @@ placed inside a published domain refusing rather than hiding an observation; the
 absence of an age status flag and of any topcode claim at age 90; copy conflict
 over a disagreeing state or income; both household counts retained through a
 disagreement; the child roster counterpart withheld under incomplete age
-coverage; a partial-coverage maximum age declared a lower bound; the predictor
+coverage; a partial-coverage maximum withheld while its lower bound is carried
+as its own measurement; an all-allocated household staying `predictor_complete`
+while the allocation counters say so; the member observations outside the
+universe behind a copy conflict counted per field; the version 2 measurement and
+membership digests reproduced exactly from pinned base values; the predictor
 status ladder exhausted; predictor validity reported separately for admitted
 households; the exclusion ladder identical with and without the nine columns and
 `_exclusion`'s signature asserted directly; a moved predictor value moving the
