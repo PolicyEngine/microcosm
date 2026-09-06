@@ -85,3 +85,48 @@ only. A separately reviewed private rung may fit the full admitted subset and
 draw a small explicit recipient fixture; that fixture would be an engineering
 recipient population, not a US population estimate. Engine mapping, the 2024
 bridge and scientific validation remain separate outstanding work.
+
+## Consumer contract identity in graph keys
+
+The packaged contract is a JSON resource, so no module `source_hash` covers
+it. Its identity — a domain-separated SHA-256 over the canonical contract
+document — is therefore declared in the `contract_identity` param of the
+donor, recipient and support nodes, which `node_key` binds through
+`normative(node)`. Each of those kernels compares that declared identity
+against the contract it actually loads and refuses `CONTRACT_IDENTITY_MISMATCH`
+on a mismatch, so a hand-built node cannot execute under a contract other than
+the one it declares.
+
+The consequence is the one the root review asked for: a changed source pin,
+admission policy or model setting moves all three keys, and through the
+column and typed-artifact edges it moves fit and draw as well. A cache entry
+written under an older contract cannot satisfy a node declaring a newer one.
+The FIT and DRAW nodes keep the shipped QRF kernels' own params unchanged;
+they invalidate transitively, not by declaring the contract themselves.
+
+## Supplied recipient household sizes
+
+Recipient CREATE derives and owns `roster_household_size` from the linked
+person roster. A caller may also supply a `household_size` claim; it is
+compared to the derived roster **exactly, before any cast**, and dropped once
+it agrees. Casting first would truncate a fractional 1.5 to 1 and let it agree
+with a one-person roster. A fractional, nonfinite, boolean or non-numeric
+claim is a clean refusal (`RECIPIENT_SIZE_NOT_INTEGER`,
+`RECIPIENT_SIZE_NOT_FINITE`, `RECIPIENT_SIZE_TYPE:*`); a disagreeing but
+otherwise valid claim is `RECIPIENT_SIZE_CONFLICT`. The derived roster remains
+the membership identity in every case.
+
+## Boundary hardening
+
+- The prepared source store is copied object by object, bounded by each
+  object's pinned byte length and a small cap on `meta.json`, rather than by
+  an unbounded `copyfile`.
+- The closed-roster check refuses a symlinked `objects/`, an object parked
+  under a shard other than its key prefix, and a duplicate.
+- Readback refuses a scratch namespace equal to the store root, not only one
+  beneath it.
+- The signed target has its own float64 conversion, which refuses a nonfinite
+  value while admitting negative and exact-zero equity. The strictly-positive
+  predicate stays where it belongs, on the design weight.
+- The three kernels declare the `numpy` and `pandas` versions their behavior
+  depends on, so a behavior-bearing upgrade moves their implementation hash.

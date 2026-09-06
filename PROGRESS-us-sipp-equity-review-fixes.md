@@ -28,15 +28,26 @@ no scientific fit, no weights calibration. Invented fixtures only.
 
 ## Done
 
-- (nothing yet)
+1. Contract identity is declared in the donor, recipient and support node
+   params and verified against the loaded contract on execution.
+2. Supplied recipient household sizes are compared exactly before any cast.
+3. Close issues: declared numpy/pandas dependencies; closed-roster symlink,
+   shard-placement and duplicate refusals; `scratch == store.root`; bounded
+   object copy; a signed-but-finite target conversion.
+4. 62 tests pass (38 existing, 24 new). `ruff check .` is green across the
+   repository; it reported 12 errors at the parent. `ci_test_groups --verify`
+   is ok and the new file lands in `us-qs` / `rest`, not `[defaulted]`.
+5. The root's own counterexample script, repointed at this worktree, now
+   fails where it previously observed five warm hits. The adapted probe
+   `R/us-sipp-equity-review-fixes-counterexamples.py` passes.
 
-## Next
+## State
 
-1. Bind the closed contract identity into donor/recipient/support node params
-   and verify param-vs-kernel-contract on execution.
-2. Compare supplied recipient household sizes exactly before any int64 cast.
-3. Concrete close-issue fixes: declared numpy/pandas dependencies, closed-roster
-   shard placement and duplicate refusal, `scratch == source_root`, bounded
-   object copy, signed-but-finite target conversion.
-4. Regression tests, full suite, lint, CI registration check.
-5. Report + capture into R.
+Complete and reported. Nothing pushed; no PR, merge or deploy. The code
+awaits the root's peer review before any genuine fit.
+
+## Not done, deliberately
+
+No genuine fit, no 2024 bridge, no PolicyEngine alias, no weights
+calibration, no scientific validation. Source flag 9 stays unresolved. The
+global runtime-classification lane and the parent journal are untouched.
