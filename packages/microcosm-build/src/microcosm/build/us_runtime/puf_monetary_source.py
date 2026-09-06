@@ -255,6 +255,9 @@ _AGGREGATE_INTERPRETATION = "refused"
 #: The aggregate lexical grammar is an explicit operational input bound for
 #: this pinned delivered file, not a newly discovered IRS specification.
 _AGGREGATE_GRAMMAR = "ascii_decimal_optional_single_fraction_bounded"
+_AGGREGATE_GRAMMAR_AUTHORITY = (
+    "operational_input_bound_for_pinned_delivery_not_publisher_specification"
+)
 
 #: Keys a projection column may never carry: this increment computes no
 #: derived quantity at all, so a document that declares one is a refusal
@@ -936,8 +939,9 @@ def _amount_known(flags: np.ndarray) -> np.ndarray:
     """
 
     known = np.asarray(flags, dtype=_STRUCTURAL_DTYPES["disclosure_aggregate"]) == 0
-    known.setflags(write=False)
-    return known
+    # A read-only flag on an owning ndarray can be reversed with setflags.
+    # An immutable bytes backing store makes that reversal impossible.
+    return np.frombuffer(known.tobytes(), dtype=np.bool_)
 
 
 def _typed_column(
@@ -1091,6 +1095,12 @@ def decode_puf_monetary_source(
 
     lexical = {name: tuple(items) for name, items in tokens.items()}
     facts = _facts_from_arrays(typed, lexical, projection)
+    # Match envelope readback's immutable byte-backed arrays. In particular,
+    # disclosure flags cannot change after an amount-known mask is returned.
+    typed = {
+        name: np.frombuffer(array.tobytes(), dtype=array.dtype)
+        for name, array in typed.items()
+    }
     return PufMonetarySourceProjection(
         typed=MappingProxyType(typed),
         lexical=MappingProxyType(lexical),
@@ -1275,6 +1285,9 @@ def _facts_from_arrays(
                 "aggregate_row_treatment": _AGGREGATE_TREATMENT,
                 "aggregate_typed_sentinel": AGGREGATE_SENTINEL,
                 "aggregate_token_grammar": _AGGREGATE_GRAMMAR,
+                "aggregate_token_max_digits": column.max_digits,
+                "aggregate_token_max_width": column.lexical_width,
+                "aggregate_token_grammar_authority": _AGGREGATE_GRAMMAR_AUTHORITY,
                 "aggregate_lexical_authority": _AGGREGATE_AUTHORITY,
                 "aggregate_numeric_interpretation": _AGGREGATE_INTERPRETATION,
                 "period_semantics": _PERIOD_SEMANTICS,

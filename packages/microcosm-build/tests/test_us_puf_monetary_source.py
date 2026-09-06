@@ -1693,6 +1693,11 @@ def test_a_malformed_amount_refuses_cleanly_with_no_partial_artifact(tmp_path):
             compiled, sources=sources, store=store, kernels=registry, resume="forbid"
         )
     assert "AMOUNT_TOKEN_GRAMMAR" in str(error.value)
+    # The upstream status artifact can survive a failed monetary node, but
+    # no monetary payload, including one in a staging directory, may remain.
+    payloads = [path.read_bytes() for path in (tmp_path / "store").rglob("payload.bin")]
+    assert payloads
+    assert all(payload.startswith(puf.RETURN_STATUS_MAGIC) for payload in payloads)
 
 
 def test_the_producer_node_requires_an_explicit_population(invented):
@@ -1993,7 +1998,10 @@ def test_the_widest_token_the_aggregate_grammar_admits_is_accepted():
 
 
 @pytest.mark.parametrize("index,recid", [(0, "11"), (1, "12")])
-def test_an_ordinary_row_still_refuses_a_decimal_in_either_return_class(index, recid):
+@pytest.mark.parametrize("field", PROJECTED)
+def test_an_ordinary_row_still_refuses_a_decimal_in_either_return_class(
+    index, recid, field
+):
     """The genuine failure, reproduced on both per-return classes.
 
     Row 11 has a demographic row and row 12 has none. Neither is inside the
@@ -2002,7 +2010,7 @@ def test_an_ordinary_row_still_refuses_a_decimal_in_either_return_class(index, r
     """
 
     records = list(DEFAULT_MAIN)
-    records[index] = main_record(recid=recid, amounts={"E00200": "50000.5"})
+    records[index] = main_record(recid=recid, amounts={field: "50000.5"})
     main, demographic, definition, projection = build_fixture(main_records=records)
     status = decoded_status(main, demographic, definition)
     with pytest.raises(PufMonetaryRefusalError) as error:
@@ -2134,6 +2142,14 @@ def test_the_amount_known_mask_cannot_be_mutated_or_drift_from_the_flags(decoded
     assert known.dtype == np.bool_
     with pytest.raises(ValueError):
         known[0] = False
+    with pytest.raises(ValueError):
+        known.setflags(write=True)
+    # The source flag must also remain authenticated after a mask is handed
+    # out. Otherwise a previously obtained mask can contradict its source.
+    with pytest.raises(ValueError):
+        projected.typed["disclosure_aggregate"][0] = 1
+    with pytest.raises(ValueError):
+        projected.typed["disclosure_aggregate"].setflags(write=True)
     # A fresh read-only view on every access, derived from the flag:
     # there is no stored mask for anything to tamper with.
     again = projected.amount_known
@@ -2141,6 +2157,19 @@ def test_the_amount_known_mask_cannot_be_mutated_or_drift_from_the_flags(decoded
     assert np.array_equal(again, projected.typed["disclosure_aggregate"] == 0)
     assert "amount_known" not in projected.facts
     assert "amount_known" not in projected.typed
+
+
+@pytest.mark.parametrize("index", [0, 4])
+def test_status_alignment_precedes_even_a_malformed_amount(index):
+    records = [list(record) for record in DEFAULT_MAIN]
+    records[index][MAIN_HEADER.index("E00200")] = "invalid"
+    main, _, definition, projection = build_fixture(main_records=records)
+    status = status_stub(
+        [12, 11, 13, 14, PUF_AGGREGATE_RECIDS[0]], [0, 0, 0, 0, 1], [0, 1, 1, 0, 0]
+    )
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_puf_monetary_source(main, status, projection, definition)
+    assert error.value.reason == "STATUS_RECID_SEQUENCE"
 
 
 def test_the_column_metadata_scopes_the_whole_dollar_semantics(decoded):
@@ -2160,6 +2189,11 @@ def test_the_column_metadata_scopes_the_whole_dollar_semantics(decoded):
         assert metadata["aggregate_typed_sentinel"] == AGGREGATE_SENTINEL
         assert metadata["aggregate_token_grammar"] == (
             "ascii_decimal_optional_single_fraction_bounded"
+        )
+        assert metadata["aggregate_token_max_digits"] == 12
+        assert metadata["aggregate_token_max_width"] == 13
+        assert metadata["aggregate_token_grammar_authority"] == (
+            "operational_input_bound_for_pinned_delivery_not_publisher_specification"
         )
         assert metadata["aggregate_lexical_authority"] == (
             "delivered_token_exact_for_every_row"
@@ -2425,6 +2459,25 @@ def test_a_forged_aggregate_token_class_is_refused(envelope):
     assert error.value.reason == "ENVELOPE_FACTS_INCONSISTENT"
 
 
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("aggregate_token_max_digits", 13),
+        ("aggregate_token_max_width", 14),
+        ("aggregate_token_grammar_authority", "publisher_specification"),
+    ],
+)
+def test_readback_refuses_changed_aggregate_operational_bounds(envelope, key, value):
+    payload, projection, _ = envelope
+
+    def forge(header):
+        header["facts"]["column_metadata"]["E00200"][key] = value
+
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(reheader(payload, projection, forge), projection)
+    assert error.value.reason == "ENVELOPE_FACTS_INCONSISTENT"
+
+
 def test_readback_recomputes_the_mask_metadata_and_aggregate_facts(envelope):
     payload, projection, projected = envelope
     back = decode_monetary_projection(payload, projection)
@@ -2432,6 +2485,8 @@ def test_readback_recomputes_the_mask_metadata_and_aggregate_facts(envelope):
     assert back.column_metadata == projected.column_metadata
     assert canonical_json(dict(back.facts)) == canonical_json(dict(projected.facts))
     assert back.aggregate_lexical_rows() == projected.aggregate_lexical_rows()
+    with pytest.raises(ValueError):
+        back.amount_known.setflags(write=True)
     for field in PROJECTED:
         assert back.lexical[field] == projected.lexical[field]
         assert int(back.typed[field][4]) == AGGREGATE_SENTINEL
