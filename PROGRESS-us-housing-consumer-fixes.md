@@ -12,14 +12,25 @@ Fixing the root+Fable review at
 
 ## State
 
-Reading the reviewed code and the typed source/attachment/HU interfaces. No edits yet.
+Writing the consequential tests for C1/C2/C3/A1/A2 before touching the consumer.
 
 ## Done
 
 - Created the fresh child worktree from fetched `origin/main`, fast-forwarded to `ffbef26e`.
 - Read the full root report, the peer capture and the root reproduction receipts.
+- Read the consumer, the probes, `asec_housing_status{,_source}`, `asec_housing_universe{,_source}`,
+  the five named spine-blindness guards and the existing invented-byte source fixtures.
+- Reproduced the reviewed baseline in this worktree: 69 passed, 3 failed
+  (`test_us_runtime_module_classification_is_complete`,
+  `test_runtime_classification_rejects_a_new_unreviewed_module`,
+  `test_runtime_population_operators_are_source_spine_blind`).
+- Located the AST offences exactly: `asec_housing_receipt_consumer.py:197:68` and `:474:83`,
+  both `key=lambda ...: ...[1]`. The guard marks every **unannotated** parameter a possible
+  column container, and a lambda parameter can never be annotated, so an annotated
+  module-level sort key clears it without weakening the guard.
 
 ## Next
 
-1. C1 household identity binding, C2 module classification + AST, C3 typed attached reader,
-   A1 bound HU evidence, A2 portable requirements link, plus the practical items.
+1. Land the tests, then C1 household identity binding, C2 classification + typed sort keys,
+   C3 typed attached reader, A1 bound HU evidence, A2 portable requirements link,
+   plus read-only arrays, codebook-bound diagnostics and the labelling clarifications.
