@@ -119,9 +119,7 @@ def _asec_arm() -> Frame:
         US_SCHEMA,
         # One zero-weight household and two unequal positive ones.
         {"household": Weights(np.array([1200.0, 0.0, 730.0]), WeightKind.DESIGN)},
-        _string(
-            ["asec-a", "asec-a", "asec-b", "asec-c", "asec-b", "asec-b", "asec-c"]
-        ),
+        _string(["asec-a", "asec-a", "asec-b", "asec-c", "asec-b", "asec-b", "asec-c"]),
     )
 
 
@@ -344,6 +342,57 @@ def _keyed(frame: Frame, entity: str) -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------
+# Declaration surface
+# --------------------------------------------------------------------------
+
+
+def test_registration_binds_both_kernels_of_the_stage():
+    registry = KernelRegistry()
+    register_us_combined_survey_clone_kernels(registry)
+    assert set(registry.refs()) == {
+        clone_stage.USCombinedSurveyCloneExpandKernel.ref,
+        clone_stage.USCombinedSurveyCloneClaimKernel.ref,
+    }
+    expand = registry.get(clone_stage.USCombinedSurveyCloneExpandKernel.ref)
+    assert expand.capabilities.structural is StructuralDelta.EXPAND
+    assert expand.capabilities.determinism is Determinism.DETERMINISTIC
+    assert expand.capabilities.numeric is Numeric.BITWISE
+    assert expand.capabilities.dependencies == ("numpy", "pandas")
+
+
+def test_declared_inputs_are_exactly_the_four_provenance_columns():
+    pool = _pool()
+    expand, claim = us_combined_survey_clone_nodes(
+        frame_column_declarations(pool), base="source", source_channels=SOURCE_CHANNELS
+    )
+    assert {slice_.entity for slice_ in expand.inputs} == set(US_SCHEMA.entities)
+    for slice_ in expand.inputs:
+        assert slice_.columns == combined_clone_provenance_columns(slice_.entity)
+        assert len(slice_.columns) == 4
+    assert expand.structural is StructuralDelta.EXPAND
+    assert expand.entrants is False
+    assert expand.mass == "conserve"
+    assert expand.base == "source"
+    assert claim.population == expand.id
+    assert all(output.rewrite for output in claim.outputs)
+    assert {(output.entity, output.column) for output in claim.outputs} == {
+        (entity, support_clone_index_column(entity)) for entity in US_SCHEMA.entities
+    }
+
+
+def test_the_stage_reads_no_amount_it_is_not_declared_to_read():
+    """The kernel's visible surface is provenance and structure, never money."""
+
+    pool = _pool()
+    expand, _ = us_combined_survey_clone_nodes(
+        frame_column_declarations(pool), base="source", source_channels=SOURCE_CHANNELS
+    )
+    declared = {column for slice_ in expand.inputs for column in slice_.columns}
+    for amount in ("asec_wage", "acs_income", "age", "state_fips"):
+        assert amount not in declared
+
+
+# --------------------------------------------------------------------------
 # The host itself is what the scope says it is
 # --------------------------------------------------------------------------
 
@@ -361,9 +410,10 @@ def test_invented_host_is_a_combined_native_importance_pool():
     # Both arms carry a colliding raw record id, so assembly had to remap one
     # of them: the spine-source id and the assembly-unique source id differ.
     person = pool.table("person")
-    remapped = person[spine_source_id_column("person")].to_numpy() != person[
-        support_source_id_column("person")
-    ].to_numpy()
+    remapped = (
+        person[spine_source_id_column("person")].to_numpy()
+        != person[support_source_id_column("person")].to_numpy()
+    )
     assert remapped.any(), "fixture must exercise a remapped raw record id"
     # A zero weight and unequal weights are both present.
     values = pool.weights_for("household").values
@@ -561,15 +611,13 @@ def test_stage_creates_no_column_draw_or_tax_benefit_value(tmp_path):
         assert set(graphed.table(entity).columns) == set(pool.table(entity).columns)
     # The clone node declares no source at all, so no donor artifact can reach
     # it, and the donor sampling weight is not a column of the host.
-    expand = next(
-        node
-        for node in _nodes(pool)
-        if node.id == COMBINED_CLONE_NODE
-    )
+    expand = next(node for node in _nodes(pool) if node.id == COMBINED_CLONE_NODE)
     assert expand.sources == ()
     assert expand.artifact_inputs == () and expand.artifact_outputs == ()
     every_column = {
-        column for entity in graphed.entities for column in graphed.table(entity).columns
+        column
+        for entity in graphed.entities
+        for column in graphed.table(entity).columns
     }
     assert not {"S006", "s006"} & every_column
 
@@ -707,21 +755,23 @@ def test_required_warm_replay_recomputes_nothing_and_agrees(tmp_path):
     codecs.register("frame-store", load_frame_store)
     store = ContentStore(tmp_path / "store", codecs=codecs)
     cold_counter = _Counter()
-    cold, _, _ = _run(
-        tmp_path, pool, resume="auto", counter=cold_counter, store=store
-    )
+    cold, _, _ = _run(tmp_path, pool, resume="auto", counter=cold_counter, store=store)
     assert (cold_counter.expand, cold_counter.claim) == (1, 1)
-    assert manifest_hits(cold) == {COMBINED_CLONE_NODE: False, COMBINED_CLONE_CLAIM_NODE: False}
+    assert manifest_hits(cold) == {
+        COMBINED_CLONE_NODE: False,
+        COMBINED_CLONE_CLAIM_NODE: False,
+    }
 
     warm_counter = _Counter()
     warm, _, _ = _run(
         tmp_path, pool, resume="require", counter=warm_counter, store=store
     )
     assert (warm_counter.expand, warm_counter.claim) == (0, 0)
-    assert manifest_hits(warm) == {COMBINED_CLONE_NODE: True, COMBINED_CLONE_CLAIM_NODE: True}
-    assert (
-        warm.nodes[COMBINED_CLONE_NODE].key == cold.nodes[COMBINED_CLONE_NODE].key
-    )
+    assert manifest_hits(warm) == {
+        COMBINED_CLONE_NODE: True,
+        COMBINED_CLONE_CLAIM_NODE: True,
+    }
+    assert warm.nodes[COMBINED_CLONE_NODE].key == cold.nodes[COMBINED_CLONE_NODE].key
 
     cold_frame, warm_frame = _expanded(cold), _expanded(warm)
     for entity in US_SCHEMA.entities:
@@ -800,18 +850,21 @@ def test_node_key_binds_amounts_ids_order_provenance_and_weights(tmp_path):
     person["person_id"] = person["person_id"] + 1
     tables = {e: renumbered.table(e).copy() for e in renumbered.entities}
     tables["person"] = person
-    assert _key_for(
-        tmp_path,
-        _pool(
-            asec=Frame(
-                tables,
-                renumbered.schema,
-                {"household": renumbered.weights_for("household")},
-                renumbered.strata,
-            )
-        ),
-        "ids",
-    ) != baseline
+    assert (
+        _key_for(
+            tmp_path,
+            _pool(
+                asec=Frame(
+                    tables,
+                    renumbered.schema,
+                    {"household": renumbered.weights_for("household")},
+                    renumbered.strata,
+                )
+            ),
+            "ids",
+        )
+        != baseline
+    )
 
     # Row order.
     reordered = _asec_arm()
@@ -819,37 +872,43 @@ def test_node_key_binds_amounts_ids_order_provenance_and_weights(tmp_path):
     person = reordered.table("person").iloc[order].reset_index(drop=True)
     tables = {e: reordered.table(e).copy() for e in reordered.entities}
     tables["person"] = person
-    assert _key_for(
-        tmp_path,
-        _pool(
-            asec=Frame(
-                tables,
-                reordered.schema,
-                {"household": reordered.weights_for("household")},
-                reordered.strata.iloc[order].reset_index(drop=True),
-            )
-        ),
-        "order",
-    ) != baseline
+    assert (
+        _key_for(
+            tmp_path,
+            _pool(
+                asec=Frame(
+                    tables,
+                    reordered.schema,
+                    {"household": reordered.weights_for("household")},
+                    reordered.strata.iloc[order].reset_index(drop=True),
+                )
+            ),
+            "order",
+        )
+        != baseline
+    )
 
     # Incoming weights.
     reweighted = _asec_arm()
-    assert _key_for(
-        tmp_path,
-        _pool(
-            asec=Frame(
-                {e: reweighted.table(e).copy() for e in reweighted.entities},
-                reweighted.schema,
-                {
-                    "household": Weights(
-                        np.array([1201.0, 0.0, 730.0]), WeightKind.DESIGN
-                    )
-                },
-                reweighted.strata,
-            )
-        ),
-        "weights",
-    ) != baseline
+    assert (
+        _key_for(
+            tmp_path,
+            _pool(
+                asec=Frame(
+                    {e: reweighted.table(e).copy() for e in reweighted.entities},
+                    reweighted.schema,
+                    {
+                        "household": Weights(
+                            np.array([1201.0, 0.0, 730.0]), WeightKind.DESIGN
+                        )
+                    },
+                    reweighted.strata,
+                )
+            ),
+            "weights",
+        )
+        != baseline
+    )
 
     # Provenance: a different declared source-channel roster is a different node.
     pool = _pool()
@@ -919,11 +978,7 @@ def test_refuses_a_design_weighted_host(tmp_path):
     design = Frame(
         {entity: pool.table(entity).copy() for entity in pool.entities},
         pool.schema,
-        {
-            "household": Weights(
-                pool.weights_for("household").values, WeightKind.DESIGN
-            )
-        },
+        {"household": Weights(pool.weights_for("household").values, WeightKind.DESIGN)},
         pool.strata,
         mass_log=pool.mass_log,
         metadata=pool.metadata,
@@ -1049,9 +1104,7 @@ def _mutated_clone(mutate):
     return broken
 
 
-def test_refuses_a_clone_output_whose_household_pairing_is_wrong(
-    tmp_path, monkeypatch
-):
+def test_refuses_a_clone_output_whose_household_pairing_is_wrong(tmp_path, monkeypatch):
     """The reused validator, not a private re-derivation, is what refuses."""
 
     def mutate(tables, result):
@@ -1093,9 +1146,7 @@ def test_refuses_a_clone_output_whose_person_layout_disagrees_with_its_lineage(
         _run(tmp_path, _pool(), label="mispaired-person")
 
 
-def test_refuses_a_clone_output_with_an_unauthorized_person_role(
-    tmp_path, monkeypatch
-):
+def test_refuses_a_clone_output_with_an_unauthorized_person_role(tmp_path, monkeypatch):
     def mutate(tables, result):
         column = support_clone_index_column("person")
         values = tables["person"][column].to_numpy(copy=True)

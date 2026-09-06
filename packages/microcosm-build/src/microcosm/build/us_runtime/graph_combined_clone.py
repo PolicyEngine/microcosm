@@ -403,7 +403,9 @@ class USCombinedSurveyCloneExpandKernel(KernelBase):
         _require(not node.artifact_inputs, "NODE_ARTIFACT_INPUTS")
         _require(not node.artifact_outputs, "NODE_ARTIFACT_OUTPUTS")
         declared = {
-            (slice_.entity, column) for slice_ in node.inputs for column in slice_.columns
+            (slice_.entity, column)
+            for slice_ in node.inputs
+            for column in slice_.columns
         }
         expected = {
             (entity, column)
@@ -550,7 +552,8 @@ class USCombinedSurveyCloneExpandKernel(KernelBase):
         for entity, column, dtype in _expected_expand_cells():
             incumbent = before.table(entity)[column]
             _require(
-                token_for_dtype(incumbent.dtype) == dtype, f"CELL_DTYPE:{entity}.{column}"
+                token_for_dtype(incumbent.dtype) == dtype,
+                f"CELL_DTYPE:{entity}.{column}",
             )
             table = after.table(entity)
             values = table[column]
@@ -567,7 +570,9 @@ class USCombinedSurveyCloneExpandKernel(KernelBase):
 
         weights = self._split_weights(before, after, lineage)
         receipt = self._receipt(before, after, channels, authority, entity_facts)
-        return KernelResult(columns=columns, expand=lineage, weights=weights, receipt=receipt)
+        return KernelResult(
+            columns=columns, expand=lineage, weights=weights, receipt=receipt
+        )
 
     @staticmethod
     def _split_weights(
@@ -578,9 +583,7 @@ class USCombinedSurveyCloneExpandKernel(KernelBase):
         entity = COMBINED_CLONE_WEIGHT_ENTITY
         id_column = US_SCHEMA.entity_id_column(entity)
         after_weights = after.weights_for(entity)
-        _require(
-            after_weights.kind is COMBINED_CLONE_WEIGHT_KIND, "CLONE_WEIGHT_KIND"
-        )
+        _require(after_weights.kind is COMBINED_CLONE_WEIGHT_KIND, "CLONE_WEIGHT_KIND")
         by_id = pd.Series(
             np.asarray(after_weights.values, dtype=np.float64),
             index=pd.Index(after.table(entity)[id_column].to_numpy(copy=True)),
@@ -630,20 +633,14 @@ class USCombinedSurveyCloneExpandKernel(KernelBase):
                 "fraction": COMBINED_CLONE_ATTACHMENT_FRACTION,
                 "seed": COMBINED_CLONE_ATTACHMENT_SEED,
                 "authority_form": authority["authority_form"],
-                "eligible_household_count": int(
-                    authority["eligible_household_count"]
-                ),
-                "realized_household_count": int(
-                    authority["realized_household_count"]
-                ),
+                "eligible_household_count": int(authority["eligible_household_count"]),
+                "realized_household_count": int(authority["realized_household_count"]),
                 "exact_count_rule": authority["exact_count_rule"],
                 "selected_household_source_ids_sha256": authority[
                     "selected_household_source_ids_sha256"
                 ],
             },
-            "entities": {
-                entity: entity_facts[entity] for entity in US_SCHEMA.entities
-            },
+            "entities": {entity: entity_facts[entity] for entity in US_SCHEMA.entities},
             "provenance_counts": {
                 "base": spine_provenance_counts(
                     before, boundary=f"{COMBINED_CLONE_PHASE} base"
@@ -727,7 +724,9 @@ class USCombinedSurveyCloneClaimKernel(KernelBase):
             columns=columns,
             receipt={
                 "phase": COMBINED_CLONE_PHASE,
-                "claimed_cells": sorted(f"{entity}.{column}" for entity, column in owned),
+                "claimed_cells": sorted(
+                    f"{entity}.{column}" for entity, column in owned
+                ),
             },
         )
 
@@ -806,7 +805,8 @@ def us_combined_survey_clone_nodes(
         id=claim_node,
         kernel=USCombinedSurveyCloneClaimKernel.ref,
         outputs=tuple(
-            Owned(entity, column, dtype, rewrite=True) for entity, column, dtype in cells
+            Owned(entity, column, dtype, rewrite=True)
+            for entity, column, dtype in cells
         ),
         population=expand_node,
         params={"phase": COMBINED_CLONE_PHASE},
