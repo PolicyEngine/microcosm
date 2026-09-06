@@ -719,3 +719,194 @@ def test_the_reviewed_raw_source_module_bytes_are_unchanged():
     assert (
         hashlib.sha256(path.read_bytes()).hexdigest() == REVIEWED_RAW_SOURCE_SHA256
     )
+
+
+# --------------------------------------------------------------------------
+# The amount grammar: units, sign, nulls
+# --------------------------------------------------------------------------
+
+
+def parse_amount(token, field="E00200"):
+    column = next(c for c in PACKAGED_PROJECTION.columns if c.field == field)
+    return money._amount(token, column)
+
+
+@pytest.mark.parametrize(
+    ("token", "value"),
+    [
+        ("0", 0),
+        ("7", 7),
+        ("-7", -7),
+        ("007", 7),
+        ("-007", -7),
+        ("999999999999", 999999999999),
+        ("-999999999999", -999999999999),
+    ],
+)
+def test_the_amount_grammar_accepts_signed_whole_dollars(token, value):
+    assert parse_amount(token) == value
+
+
+@pytest.mark.parametrize(
+    ("token", "reason"),
+    [
+        ("", "AMOUNT_TOKEN_EMPTY"),
+        (" ", "AMOUNT_TOKEN_GRAMMAR"),
+        (" 7", "AMOUNT_TOKEN_GRAMMAR"),
+        ("7 ", "AMOUNT_TOKEN_GRAMMAR"),
+        ("+7", "AMOUNT_TOKEN_GRAMMAR"),
+        ("7.0", "AMOUNT_TOKEN_GRAMMAR"),
+        ("1e3", "AMOUNT_TOKEN_GRAMMAR"),
+        ("--7", "AMOUNT_TOKEN_GRAMMAR"),
+        ("-", "AMOUNT_TOKEN_GRAMMAR"),
+        ("7-", "AMOUNT_TOKEN_GRAMMAR"),
+        ("1,000", "AMOUNT_TOKEN_GRAMMAR"),
+        ("NA", "AMOUNT_TOKEN_GRAMMAR"),
+        ("-0", "AMOUNT_TOKEN_NEGATIVE_ZERO"),
+        ("-000", "AMOUNT_TOKEN_NEGATIVE_ZERO"),
+        ("1234567890123", "AMOUNT_TOKEN_OVER_DIGITS"),
+        ("-1234567890123", "AMOUNT_TOKEN_OVER_WIDTH"),
+        ("-123456789012345", "AMOUNT_TOKEN_OVER_WIDTH"),
+        ("7\u00a0", "AMOUNT_TOKEN_NON_ASCII"),
+        ("7\x00", "AMOUNT_TOKEN_EMBEDDED_NUL"),
+    ],
+)
+def test_the_amount_grammar_refuses_everything_else(token, reason):
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        parse_amount(token)
+    assert error.value.reason == reason
+
+
+def test_an_empty_amount_token_is_a_refusal_and_never_a_zero(invented):
+    main_records = [
+        main_record(recid="11", amounts={"E00200": ""}),
+    ]
+    main, demographic, definition, projection = build_fixture(
+        main_records=main_records, demographic_records=[]
+    )
+    status = decoded_status(main, demographic, definition)
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_puf_monetary_source(main, status, projection, definition)
+    assert error.value.reason == "AMOUNT_TOKEN_EMPTY"
+
+
+def test_a_delivered_zero_is_a_reported_zero_and_is_counted_as_one(decoded):
+    projected, projection = decoded
+    facts = projected.facts["column_facts"]["E00300"]
+    # Rows 12, 13 and 14 report a zero; the aggregate reports one too.
+    assert facts["demographic_matched"]["zero"] == 1
+    assert facts["demographic_unmatched"]["zero"] == 2
+    assert facts["disclosure_aggregate"]["zero"] == 1
+    assert int(projected.typed["E00300"][2]) == 0
+    assert projected.lexical["E00300"][2] == "0"
+
+
+def test_a_negative_amount_keeps_its_sign_and_is_never_absolute_valued(decoded):
+    projected, _ = decoded
+    assert int(projected.typed["E00900"][1]) == -2500
+    assert projected.lexical["E00900"][1] == "-2500"
+    assert int(projected.typed["P22250"][1]) == -3000
+    # P22250 prints no (+/-) marker on its layout row, yet the negative value
+    # is preserved rather than refused or folded.
+    column = next(c for c in PACKAGED_PROJECTION.columns if c.field == "P22250")
+    assert column.publisher_signed_marker is False
+    assert column.negative_values == "documented_by_publisher_definition_text"
+    assert projected.facts["column_facts"]["P22250"]["demographic_unmatched"][
+        "negative"
+    ] == 1
+
+
+def test_a_negative_wage_is_preserved_even_though_no_marker_documents_one():
+    """The absent marker is recorded, not enforced.
+
+    Refusing a negative wage would be inventing a nonnegative domain the
+    booklets never state; silently taking its absolute value would be worse.
+    The parser keeps it and the facts count it, so a later review can settle
+    the domain from evidence.
+    """
+
+    main_records = [main_record(recid="11", amounts={"E00200": "-5"})]
+    main, demographic, definition, projection = build_fixture(
+        main_records=main_records, demographic_records=[]
+    )
+    status = decoded_status(main, demographic, definition)
+    projected = decode_puf_monetary_source(main, status, projection, definition)
+    assert int(projected.typed["E00200"][0]) == -5
+    assert (
+        projected.facts["column_facts"]["E00200"]["demographic_unmatched"]["negative"]
+        == 1
+    )
+
+
+def test_the_lexical_spelling_is_retained_alongside_the_typed_value(decoded):
+    projected, _ = decoded
+    assert projected.lexical["E00200"][0] == "50000"
+    assert projected.lexical["E01000"][4] == "-999999999999"
+    for field in PROJECTED:
+        assert len(projected.lexical[field]) == projected.rows
+
+
+# --------------------------------------------------------------------------
+# Header, width and record structure
+# --------------------------------------------------------------------------
+
+
+def test_a_shuffled_missing_extra_or_duplicate_header_is_refused(invented):
+    main, demographic, definition, projection = invented
+    status = decoded_status(main, demographic, definition)
+    for header in (
+        MAIN_HEADER[1:] + MAIN_HEADER[:1],
+        MAIN_HEADER[:-1],
+        MAIN_HEADER + ["EXTRA"],
+        [MAIN_HEADER[0], *MAIN_HEADER[1:]][:-1] + [MAIN_HEADER[0]],
+    ):
+        payload = csv_bytes(header, [record[: len(header)] for record in DEFAULT_MAIN])
+        with pytest.raises(PufMonetaryRefusalError) as error:
+            decode_puf_monetary_source(payload, status, projection, definition)
+        assert error.value.reason in ("HEADER_MISMATCH", "RECORD_WIDTH")
+
+
+def test_a_short_or_long_record_is_refused(invented):
+    main, demographic, definition, projection = invented
+    status = decoded_status(main, demographic, definition)
+    records = [record[:-1] for record in DEFAULT_MAIN]
+    payload = csv_bytes(MAIN_HEADER, records)
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_puf_monetary_source(payload, status, projection, definition)
+    assert error.value.reason == "RECORD_WIDTH"
+
+
+def test_a_duplicate_or_colliding_key_is_refused(invented):
+    _, _, _, _ = invented
+    main_records = [main_record(recid="11"), main_record(recid="11")]
+    main, demographic, definition, projection = build_fixture(
+        main_records=main_records, demographic_records=[]
+    )
+    status = status_stub([11, 11], [0, 0], [0, 0])
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_puf_monetary_source(main, status, projection, definition)
+    assert error.value.reason == "MAIN_DUPLICATE_LEXICAL_KEY"
+
+
+def test_a_record_count_other_than_the_declared_one_is_refused(invented):
+    main, demographic, definition, projection = invented
+    status = decoded_status(main, demographic, definition)
+    payload = csv_bytes(MAIN_HEADER, DEFAULT_MAIN[:-1])
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_puf_monetary_source(payload, status, projection, definition)
+    assert error.value.reason == "MAIN_RECORD_COUNT"
+
+
+def test_a_lowered_or_raised_csv_field_size_limit_is_refused(invented, monkeypatch):
+    import csv as csv_module
+
+    main, demographic, definition, projection = invented
+    status = decoded_status(main, demographic, definition)
+    original = csv_module.field_size_limit()
+    try:
+        csv_module.field_size_limit(original // 2)
+        with pytest.raises(PufMonetaryRefusalError) as error:
+            decode_puf_monetary_source(main, status, projection, definition)
+        assert error.value.reason == "CSV_FIELD_SIZE_LIMIT"
+    finally:
+        csv_module.field_size_limit(original)
