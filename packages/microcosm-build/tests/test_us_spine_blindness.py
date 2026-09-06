@@ -105,6 +105,11 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # stage validators can inspect them; no graph kernel reads or mutates
         # them, and the stage kernels stay under the operator guard below.
         "graph.py",
+        # Composed prepared-ASEC/native-ACS population owner: declares the
+        # source-channel views its CREATE and the reused harmonization node
+        # need, and reads the assembled provenance columns to receipt the exact
+        # source-to-output mapping. It applies no population treatment.
+        "graph_composed_population.py",
         # Production pre-operator graph owner: declares source-channel views
         # for actual source DESIGN preparation and importance harmonization.
         # It applies no post-assembly population treatment; those graph
@@ -354,6 +359,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "asec_current_money_units.py",  # Verified current-money tax-only boundary.
         # Source import/assembly/harmonization owner, classified above.
         "graph_sources.py",
+        # Composed prepared-ASEC/native-ACS population seam, classified above.
+        # It declares one CREATE over two authenticated sources and reuses the
+        # existing harmonization and geography nodes; it treats no population.
+        "graph_composed_population.py",
         # ASEC current-money graph slice: full-source preparation, the typed
         # body/selection artifacts it emits, the corrected CPS leaf derivation
         # over that subset, and the closure-admitted engine evaluation. Every
