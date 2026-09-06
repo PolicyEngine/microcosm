@@ -48,11 +48,32 @@ tests worth adding.
 - [x] Expected-versus-observed admission reconciliation that refuses.
 - [x] Meaningful same-store permutation and second-valid-source tests.
 - [x] Documented recipient-column constraint and honest error wording.
-- [ ] Full test run, ruff, CI bucket verification, module manifests.
+- [x] Full test run, ruff, CI bucket verification, module manifests.
 
-## Next
+## What changed
 
-Run the capture harness: the five SIPP equity files plus the parent's probe,
-repo-wide ruff, `ci_test_groups --verify`, the byte-identity check on the two
-accepted producer modules, and the per-process module manifests with each
-module's file SHA and its Git blob SHA at final HEAD.
+`sipp_equity_graph.py` gained `admission_summary`, `reconcile_admission`,
+`evidence_document`, `_encode_evidence` and the `donor_evidence`
+`ArtifactOutput` on the donor CREATE node in the production builder. The donor
+receipt carries the coverage report and an identifier-free admission summary
+plus the evidence digest; the private artifact carries the identifiers, the
+exact `Decimal` strings and the lineage. The bounded-copy scratch is a
+temporary directory rather than a sibling of the source store.
+
+`sipp_december_readback.py` recomputes `selected_ssuid_digest` with the
+producer's own `_selected_ssuids` selector and `_key` formula, compares it to
+both the packaged pin and the receipt's own field, and refuses a selection
+other than all-SSUID. Both refusal types now say honestly what they do and do
+not wrap.
+
+`test_us_sipp_equity_graph_run.py`'s two vacuous cache tests are meaningful:
+both permutation arms and the second-valid-source arm run against one warm
+store. `test_us_sipp_equity_persistence.py` is new. The blindness suite's
+module-hash test compares loader bytes to disk instead of a digest length.
+
+## Not done here
+
+No genuine fit, no genuine source open, nothing pushed. `17,588 / 20 / 38`
+remain contract pins asserted by test, never claimed as observed. The
+`weight_unknown` exclusion count is not separately pinned: the three pinned
+counts already exhaust the pinned roster.
