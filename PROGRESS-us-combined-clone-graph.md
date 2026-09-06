@@ -85,13 +85,13 @@ check rather than a declared one.
   returns lineage + six clone-index overlays + halved IMPORTANCE household
   weights, the claim kernel that owns those cells as full-cell rewrites, and
   the two-node declaration factory.
-- Wrote `test_us_graph_combined_clone.py`: 40 tests over an invented mixed
+- Wrote `test_us_graph_combined_clone.py`: 42 tests over an invented mixed
   ASEC/ACS host with colliding raw ids, a zero-weight household, unequal
   weights, two tax units in one household, non-contiguous ids and a person
   order that is not the id order. Graph equals the direct operator column for
   column through the declared `(channel, source id, role)` key; native rows are
   untouched; both channels survive in both roles; every pair sums to its parent
-  exactly; required warm replay recomputes nothing; ten refusal paths.
+  exactly; required warm replay recomputes nothing; twelve refusal paths.
 - Documented the stage in `docs/us-combined-survey-clone-graph.md` and pointed
   `CLAUDE.md` at it and at its limits.
 - Recorded evidence in the review directory: test log/XML, engine-free rerun,
@@ -99,7 +99,8 @@ check rather than a declared one.
 
 ## Verified numbers (this worktree, head recorded in the report)
 
-- New suite: 40 passed, 0 failed, 0 skipped.
+- New suite: 42 passed, 0 failed, 0 skipped, both with and without the
+  engine extras present.
 - Peer suites (`microcosm-graph`, `microcosm-frame`, `test_us_puf_support.py`,
   `test_us_graph.py`): 808 tests, 0 failures, 0 errors, 68 skipped.
 - `ruff check .` clean; `tools/ci_test_groups.py --verify` = ok, file lands in
