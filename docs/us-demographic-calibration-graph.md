@@ -23,7 +23,9 @@ key. Mutating an original registry after constructing a node cannot change the
 node's frozen declaration. B19001 and B25003 are reserved and are refused.
 
 The node reads only its declared household count columns. Missing, negative and
-fractional counts refuse execution. The same household weight applies to all
+fractional counts refuse execution; Boolean indicators are valid zero/one counts.
+Incoming importance weights must be strictly positive, and skipped targets refuse
+the result. The same household weight applies to all
 people in the household; this module does not introduce independent person or
 tax-unit weight vectors. Count preparation must preserve every included person's
 membership and make any excluded or unknown universe explicit upstream.
@@ -40,18 +42,25 @@ Two weight caps have different anchors:
 The returned weights have kind `calibrated`; graph execution preserves all
 population columns and memberships. The diagnostic artifact includes per-target
 before/after estimates, source metadata, loss history, weight concentration,
-skipped targets and diagnostic warnings. Standard errors travel with the target
+an empty skipped-target list and diagnostic warnings. Its `build` metadata
+names both cap anchors and values, so an artifact reader does not have to infer
+them from the node receipt. The artifact type follows the diagnostic payload's
+schema constant. Standard errors travel with the target
 rows but are **not consumed by the current loss**. Calibration fit is distinct
 from a holdout test. Neither this node nor a successful replay certifies national
 or congressional-district analysis.
 
 The first fixture has four fictional households and six people. Source design
-weights become different importance weights before calibration, so the two cap
-anchors are exercised rather than assumed equal. The real graph result matches
+weights become different importance weights before calibration. Additional
+fixtures verify rejection when the solver's allowed result exceeds the original
+design cap, and when a source has no original design anchor. The real graph result matches
 the direct solver and diagnostic payload; a fresh Python process replays all
 three nodes from the content store with every kernel forbidden from running.
 No Census values, national registry activation or genuine population calibration
 are established by that fixture.
+
+Descriptions and citations remain descriptive: they do not change a node's
+normative declaration or prevent execution.
 
 This slice does not rewrite a US frame-context artifact from an earlier
 population version. Downstream consumers should use the executor-owned calibrated

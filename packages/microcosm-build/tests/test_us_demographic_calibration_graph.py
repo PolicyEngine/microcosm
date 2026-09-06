@@ -12,10 +12,12 @@ import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime.demographic_calibration_graph import (
+    DIAGNOSTICS_TYPE,
     DemographicCalibrationKernel,
     demographic_calibration_node,
 )
 from microcosm.calibrate import calibrate, diagnostics_payload
+from microcosm.calibrate.diagnostics import CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
 from microcosm.calibrate.registry import TargetRegistry, TargetSpec
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph import (
@@ -28,6 +30,7 @@ from microcosm.graph import (
     KernelRegistry,
     KernelResult,
     Node,
+    NodeRejected,
     Owned,
     Slice,
     SourceRef,
@@ -132,8 +135,17 @@ def test_registry_metadata_and_actual_solver_diagnostics_survive():
     result = DemographicCalibrationKernel().run(context(frame, fixture_node(registry)))
     np.testing.assert_array_equal(result.weights.values, direct.weights)
     payload = json.loads(result.artifacts["diagnostics"])
-    assert payload == diagnostics_payload(direct, target_registry=registry)
-    assert payload["schema_version"] == 6
+    anchors = {
+        "solver_weight_anchor": "incoming_importance",
+        "solver_max_weight_ratio": 4.0,
+        "executor_weight_anchor": "original_design",
+        "executor_max_weight_ratio": 4.0,
+    }
+    assert payload == diagnostics_payload(
+        direct, target_registry=registry, build=anchors
+    )
+    assert payload["schema_version"] == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    assert DIAGNOSTICS_TYPE.schema_version == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
     assert payload["final_loss"] < payload["initial_loss"]
     assert payload["targets"][0]["period"] == "2024"
     assert result.receipt["consumes_standard_errors"] is False
@@ -141,6 +153,27 @@ def test_registry_metadata_and_actual_solver_diagnostics_survive():
     assert result.receipt["executor_weight_anchor"] == "original_design"
     assert result.receipt["release_eligible"] is False
     assert result.weights.kind is WeightKind.CALIBRATED
+
+
+def test_descriptions_and_citations_do_not_change_calibration():
+    node = fixture_node()
+    described = replace(node, description="Invented age margins", citation="Fixture")
+    kernel = DemographicCalibrationKernel()
+    original = kernel.run(context(fixture_frame(), node))
+    result = kernel.run(context(fixture_frame(), described))
+    np.testing.assert_array_equal(result.weights.values, original.weights.values)
+    assert result.artifacts == original.artifacts
+    assert result.receipt == original.receipt
+
+
+def test_zero_incoming_weight_is_refused_before_solver():
+    frame = fixture_frame()
+    ctx = context(frame, fixture_node())
+    ctx.weights["household"] = Weights(
+        np.array([0.0, 1.0, 1.0, 3.0]), WeightKind.IMPORTANCE
+    )
+    with pytest.raises(ValueError, match="strictly positive incoming"):
+        DemographicCalibrationKernel().run(ctx)
 
 
 @pytest.mark.parametrize("table", ["B19001", "B25003"])
@@ -259,12 +292,21 @@ class FixtureImportance(FixtureSource):
     def run(self, context):
         return KernelResult(
             weights=Weights(
-                context.weights["household"].values / 2, WeightKind.IMPORTANCE
+                context.weights["household"].values * context.params["factor"],
+                WeightKind.IMPORTANCE,
             )
         )
 
 
-def graph_fixture(output, warm=False):
+def graph_fixture(
+    output,
+    warm=False,
+    *,
+    source_kind=WeightKind.DESIGN,
+    design_scale=2.0,
+    importance_factor=0.5,
+    design_cap=4.0,
+):
     """Cold and warm use the same on-disk fixture and real production kernel."""
     from microcosm.build.transfer_example import _source_frame_path
 
@@ -277,7 +319,7 @@ def graph_fixture(output, warm=False):
             frame.schema,
             {
                 "household": Weights(
-                    frame.weights_for("household").values * 2, WeightKind.DESIGN
+                    frame.weights_for("household").values * design_scale, source_kind
                 )
             },
             frame.strata,
@@ -307,10 +349,21 @@ def graph_fixture(output, warm=False):
                 structural=StructuralDelta.REWEIGHT,
                 mass="free",
                 weights=WeightTransition("household", "importance", mass="free"),
+                params={"factor": importance_factor},
             ),
-            fixture_node(),
+            replace(
+                fixture_node(),
+                params={**fixture_node().params, "max_weight_ratio": design_cap},
+            ),
         ),
     )
+    if source_kind is WeightKind.IMPORTANCE:
+        # A CREATE carrying already-importance weights has no original design
+        # anchor; do not obscure that check with an invalid same-kind REWEIGHT.
+        graph = replace(
+            graph,
+            nodes=(replace(graph.nodes[0], id="assembled"), graph.nodes[-1]),
+        )
     registry = KernelRegistry()
     for kernel in (
         FixtureSource(),
@@ -349,7 +402,14 @@ def graph_fixture(output, warm=False):
     )
     assert calibrated.weights_for("household").kind is WeightKind.CALIBRATED
     assert json.loads(payload) == diagnostics_payload(
-        direct, target_registry=fixture_registry()
+        direct,
+        target_registry=fixture_registry(),
+        build={
+            "solver_weight_anchor": "incoming_importance",
+            "solver_max_weight_ratio": 4.0,
+            "executor_weight_anchor": "original_design",
+            "executor_max_weight_ratio": design_cap,
+        },
     )
     return {
         "key": result.key,
@@ -357,6 +417,24 @@ def graph_fixture(output, warm=False):
         "weight_bytes_sha256": hashlib.sha256(direct.weights.tobytes()).hexdigest(),
         "hits": [n.hit for n in result.nodes.values()],
     }
+
+
+def test_executor_rejects_solver_result_above_original_design_cap(tmp_path):
+    direct = DemographicCalibrationKernel().run(
+        context(fixture_frame(), fixture_node())
+    )
+    initial = fixture_frame().weights_for("household").values
+    assert np.any(direct.weights.values > initial * 1.05)
+    assert np.all(direct.weights.values <= initial * 4.0)
+    with pytest.raises(NodeRejected, match="design"):
+        graph_fixture(
+            tmp_path, design_scale=1.0, importance_factor=1.0, design_cap=1.05
+        )
+
+
+def test_executor_refuses_missing_original_design_anchor(tmp_path):
+    with pytest.raises(NodeRejected, match="original design"):
+        graph_fixture(tmp_path, source_kind=WeightKind.IMPORTANCE)
 
 
 def test_real_graph_and_fresh_process_warm_diagnostics(tmp_path):

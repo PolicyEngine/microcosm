@@ -26,6 +26,7 @@ import microcosm.build.cd_benchmark.protocol as protocol_module
 import microcosm.calibrate._target_loss_attribution as attribution_module
 import microcosm.calibrate.diagnostics as diagnostics_module
 import microcosm.calibrate.kernels as kernels_module
+import microcosm.calibrate.monetary_binding as monetary_binding_module
 import microcosm.calibrate.registry as registry_module
 import microcosm.calibrate.solve as solve_module
 from microcosm.build.cd_benchmark.protocol import RESERVED_FAMILIES
@@ -49,7 +50,10 @@ from microcosm.graph import (
     source_hash,
 )
 
-DIAGNOSTICS_TYPE = ArtifactType("microcosm.calibration_diagnostics", 6)
+DIAGNOSTICS_TYPE = ArtifactType(
+    "microcosm.calibration_diagnostics",
+    diagnostics_module.CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+)
 _OUTPUTS = (ArtifactOutput("diagnostics", DIAGNOSTICS_TYPE),)
 _PARAMS = frozenset(
     {
@@ -241,6 +245,7 @@ class DemographicCalibrationKernel(KernelBase):
                         attribution_module,
                         solve_module,
                         kernels_module,
+                        monetary_binding_module,
                         protocol_module,
                         dependencies=self.capabilities.dependencies,
                     ),
@@ -266,10 +271,12 @@ class DemographicCalibrationKernel(KernelBase):
                 )
             },
         )
-        if context.node != expected:
+        if context.node.normative() != expected.normative():
             raise ValueError("Calibration node differs from its complete declaration.")
         if context.weights["household"].kind is not WeightKind.IMPORTANCE:
             raise ValueError("Calibration requires the declared importance weights.")
+        if not np.all(context.weights["household"].values > 0):
+            raise ValueError("Calibration requires strictly positive incoming weights.")
         table = context.tables["household"]
         for spec in registry:
             dtype = table[spec.measure].dtype
@@ -291,7 +298,17 @@ class DemographicCalibrationKernel(KernelBase):
             seed=0,
             **options,
         )
-        payload = _json(diagnostics_payload(result, target_registry=registry))
+        if result.skipped:
+            raise ValueError("Demographic calibration cannot skip declared targets.")
+        anchors = {
+            "solver_weight_anchor": "incoming_importance",
+            "solver_max_weight_ratio": context.params["max_initial_weight_ratio"],
+            "executor_weight_anchor": "original_design",
+            "executor_max_weight_ratio": context.params["max_weight_ratio"],
+        }
+        payload = _json(
+            diagnostics_payload(result, target_registry=registry, build=anchors)
+        )
         return KernelResult(
             weights=result.frame.weights_for("household"),
             artifacts={"diagnostics": payload},
@@ -305,10 +322,7 @@ class DemographicCalibrationKernel(KernelBase):
                 "diagnostics_sha256": hashlib.sha256(payload).hexdigest(),
                 "reserved_families": sorted(RESERVED_FAMILIES),
                 "consumes_standard_errors": False,
-                "solver_weight_anchor": "incoming_importance",
-                "solver_max_weight_ratio": context.params["max_initial_weight_ratio"],
-                "executor_weight_anchor": "original_design",
-                "executor_max_weight_ratio": context.params["max_weight_ratio"],
+                **anchors,
                 "release_eligible": False,
                 "national_validation": "not_evaluated",
                 "congressional_district_validation": "not_evaluated",
