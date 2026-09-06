@@ -1302,8 +1302,12 @@ def test_the_state_domain_is_the_published_fifty_three_code_set():
     entry = next(e for e in hp.field_contracts() if e["name"] == "TEHC_ST")
     codes = entry["codes"]
     assert len(codes) == 53
-    # A range would admit 3, 7, 14, 43, 52 and 57-59; the published list does not.
-    assert not {3, 7, 14, 43, 52, 57, 58, 59} & set(codes)
+    # A published code set is wrong in both directions if read as a range: the
+    # range 01-56 admits 3, 7, 14, 43 and 52, which are not published, and
+    # discards 60 and 61, which are; widening it to 01-61 adds 57, 58 and 59.
+    assert not {3, 7, 14, 43, 52} & set(codes)
+    assert not {57, 58, 59} & set(codes)
+    assert {60, 61} <= set(codes)
     assert codes[:3] == [1, 2, 4] and codes[-2:] == [60, 61]
     assert entry["code_labels"]["60"] == "Puerto Rico and Island Areas"
     assert entry["code_labels"]["61"] == "Foreign Country"
