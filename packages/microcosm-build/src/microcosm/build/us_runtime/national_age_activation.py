@@ -331,9 +331,13 @@ def _read_pinned(path: Path, digest: str, *, what: str) -> tuple[bytes, object]:
 
 
 def _selected_source(inventory: dict, declaration: NationalAgeActivation, kind: str):
+    sources = inventory.get("sources")
+    _require(isinstance(sources, dict), "INVENTORY_SOURCES")
+    census = sources.get("census")
+    _require(isinstance(census, list), "INVENTORY_CENSUS_SOURCES")
     entries = [
         entry
-        for entry in inventory["sources"]["census"]
+        for entry in census
         if isinstance(entry, dict)
         and entry.get("table") == declaration.table
         and entry.get("kind") == kind
@@ -441,6 +445,8 @@ def _standard_error(
         f"MOE_NOT_NONNEGATIVE:{variable}",
     )
     if value == 0:
+        # A zero margin is a statement about a controlled cell, not a claim
+        # that the count is certain. Null again, never a zero standard error.
         return None
     return float(value) / _MOE_90_TO_SE
 
@@ -470,7 +476,7 @@ def activate_national_age_targets(
     """
 
     root = Path(bundle_dir)
-    inventory_payload, inventory = _read_pinned(
+    _, inventory = _read_pinned(
         root / "national-derived-inventory.json",
         declaration.inventory_sha256,
         what="inventory",
@@ -629,5 +635,4 @@ def activate_national_age_targets(
         sum(int(spec.value) for spec in specs) == total,
         "ACTIVATED_BANDS_DO_NOT_PARTITION_THE_PUBLISHED_TOTAL",
     )
-    _require(len(inventory_payload) > 0, "INVENTORY_EMPTY")
     return TargetRegistry(specs, country="us")

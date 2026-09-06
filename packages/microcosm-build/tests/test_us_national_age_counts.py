@@ -7,6 +7,7 @@ Census value is established by anything in this file.
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import subprocess
@@ -18,6 +19,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.us_runtime import graph_national_age_counts
 from microcosm.build.us_runtime.demographic_calibration_graph import (
     DemographicCalibrationKernel,
 )
@@ -342,6 +344,64 @@ def test_an_incoherent_band_schema_is_refused(bands):
         NationalAgeCountKernel().run(
             count_context(frame, replace(node, params={**node.params, "bands": bands}))
         )
+
+
+# --------------------------------------------------------------------------
+# What the operator is statically incapable of reading
+# --------------------------------------------------------------------------
+
+
+OPERATOR_MODULE = Path(graph_national_age_counts.__file__)
+
+
+def _operator_tree() -> ast.Module:
+    return ast.parse(OPERATOR_MODULE.read_text())
+
+
+def test_the_operator_never_touches_weights_sources_artifacts_or_randomness():
+    """A static read of the kernel's own source, not a runtime sample."""
+
+    forbidden = {"weights", "sources", "artifacts", "rng", "strata"}
+    reads = {
+        node.attr
+        for node in ast.walk(_operator_tree())
+        if isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "context"
+        and node.attr in forbidden
+    }
+    assert not reads, f"the age-count operator reads context.{sorted(reads)}"
+
+
+def test_the_operator_opens_no_file_and_imports_no_rules_engine():
+    tree = _operator_tree()
+    imported = {
+        name.split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for name in (alias.name for alias in node.names)
+    } | {
+        (node.module or "").split(".")[0]
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.level == 0
+    }
+    assert not imported & {"policyengine_us", "policyengine", "microdf", "urllib"}
+    called = {
+        node.func.id if isinstance(node.func, ast.Name) else node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, (ast.Name, ast.Attribute))
+    }
+    assert not called & {
+        "open",
+        "read_bytes",
+        "read_text",
+        "read_csv",
+        "read_hdf",
+        "load",
+        "calculate",
+        "simulate",
+    }
 
 
 # --------------------------------------------------------------------------
