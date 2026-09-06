@@ -88,6 +88,22 @@ STAGE_DEPENDENCIES = MappingProxyType(
             "PyYAML",
             "pyarrow",
         ),
+        # Binding the accepted ASEC demographic projection to the composed ASEC
+        # rows. It reads one pinned artifact through the generic byte codec and
+        # runs no source loader of its own, but every helper it reuses -- the
+        # explicit demographic source contract, its classifier and its household
+        # membership fence -- lives beside the arm binding, so its module
+        # inventory is that stage's plus the demographic source module and this
+        # stage's own, and its dependency set is identical.
+        "composed_asec_demographic_binding_v1": (
+            "numpy",
+            "pandas",
+            "microunit",
+            "tables",
+            "h5py",
+            "PyYAML",
+            "pyarrow",
+        ),
     }
 )
 _CODECS = MappingProxyType(
@@ -419,6 +435,7 @@ def implementation_manifest(stage: str) -> dict:
                 "acs_housing_universe_2024",
                 "composed_population_v1",
                 "composed_asec_binding_v1",
+                "composed_asec_demographic_binding_v1",
             }
             else {}
         ),
@@ -429,6 +446,7 @@ def implementation_manifest(stage: str) -> dict:
         "acs_housing_universe_2024",
         "composed_population_v1",
         "composed_asec_binding_v1",
+        "composed_asec_demographic_binding_v1",
     }:
         # Both stages parse pinned official CSV members with the stdlib reader.
         # csv's field size limit is process state, so it belongs in the identity
@@ -439,15 +457,19 @@ def implementation_manifest(stage: str) -> dict:
         "assembly_prepare",
         "composed_population_v1",
         "composed_asec_binding_v1",
+        "composed_asec_demographic_binding_v1",
     }:
         bound = (
             ("asec_codec_v4", "acs_codec_2024")
             if stage == "assembly_prepare"
             # The composed CREATE reads the prepared directory, not the
             # raw-stage checkpoint, so it binds that codec's identity instead.
-            # The binding stage reads no source, but every artifact it admits
-            # was produced under those two codecs, so it binds them too rather
-            # than claiming an identity narrower than its actual inputs.
+            # The two binding stages read no survey source, but every artifact
+            # they admit was produced under those two codecs, so they bind them
+            # too rather than claiming an identity narrower than their actual
+            # inputs. The demographic projection arrives through the generic
+            # ``raw-bytes-v1`` codec, whose identity the executor's own source
+            # content key already carries.
             else ("asec_prepared_v3", "acs_codec_2024")
         )
         for name, (codec_stage, loader) in _CODECS.items():

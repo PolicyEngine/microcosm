@@ -396,6 +396,14 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # resolved by the reviewed binding owner, so no source-channel or
         # spine-source-ID column is read here.
         "graph_composed_asec_measures.py",
+        # Canonical sex and household-reference cells over the composed ASEC
+        # rows, bound from the accepted demographic projection. Source-blind on
+        # the same terms as the measurement module: the arm arrives as the
+        # declared boolean row mask and its native identifiers inside the typed
+        # arm-rows artifact, so no support-channel or spine-source-ID column is
+        # read. Reading one pinned projection artifact through the generic byte
+        # codec is not source-spine provenance and mints no source authority.
+        "graph_composed_asec_demographics.py",
         # Closed ASEC source restorations and their evidence codecs. Each
         # authenticates pinned Census members by canonical byte replay and
         # issues typed observations; none applies a population treatment.
