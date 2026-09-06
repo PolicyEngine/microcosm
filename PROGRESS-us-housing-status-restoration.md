@@ -98,9 +98,62 @@ access`.
 - [x] Re-derived and committed the inventory classification; 42 errors resolved.
 - [x] Verified G1-G9 closure by reading every new test, not by trusting the journal.
 
+## Adversarial audit (this continuation)
+
+Eight independent dimension reviewers ran against the contract — classification
+conformance, source authentication and the exact join, artifact immutability and
+tamper checking, the non-mutating attachment, forbidden scope creep, test
+meaningfulness, the packaged authority resource, and the graph seam. Every
+finding was then handed to a refute-first verifier. Ten findings were raised;
+four survived. Evidence:
+`us-housing-status-restoration-continuation-audit.json`.
+
+Clean with zero findings: source authentication/join, artifact immutability,
+the non-mutating attachment, and the authority resource.
+
+Three surviving findings were test-coverage gaps this assignment names, and are
+now closed in `Cover relevant allocation, per-field zero origin and every
+conflict bit`:
+
+- A relevant `I_HPUBLI=1` never appeared in any fixture, so `public_quality`
+  never took the `allocated` value anywhere in the repo.
+- Three of the four zero-origin masks were unasserted, including the §3 row that
+  requires preserving the routed-out `HLORENT` zero.
+- Conflict bits 1, 2 and 16 were never checked against the published codebook.
+
+Each new test was mutation-checked: ignoring the allocation flag, collapsing the
+conflict bits to a bool, and sharing one zero-origin mask across all four fields
+each make exactly the intended test fail. The pre-existing exact-key join,
+unknown-reason and raw-retention tests were mutation-checked the same way.
+
+The fourth surviving finding is a semantics question left for root, below.
+
+## Open decision for root: group-quarters scope
+
+`_derive` conditions `known`/`excluded` on `H_HHTYPE` and `H_TENURE` only.
+HRHTYPE 9/10 feeds the informational `group_quarters` column, never a scope
+mask, so an interviewed group-quarters renter classifies through the ordinary
+table and can carry `receipt_valid=1`. Contract §3 asks the three context fields
+to distinguish interviewed occupied housing units from "owners, group quarters,
+noninterviews and unknown tenure", and §5 lists "known owner/GQ exclusions"; the
+implementation honours the owner half and defers the GQ half.
+
+This is disclosed rather than silent — the header declares
+`non_housing_unit_scope: not_derived`, the doc states it, and
+`test_group_quarters_is_scope_flag_not_added_receipt_exclusion` locks it. The
+downstream `asec_housing_universe.py` does derive `occupied_hu` with GQ outside
+the housing-unit universe, and `asec_prepared_source.py` composes it on the
+attached frame, so the integrated path is covered; the standalone status
+artifact is not. `asec_housing_observed_group_quarters` ships in the same
+attached column set, so a consumer can apply it today.
+
+This lane did not change it. The assignment routes owner/GQ/noninterview
+semantics to the existing reviewed HU adapter, and the behaviour is locked by a
+test the earlier independent review approved. Changing it is a semantics
+decision for root, not a unilateral edit.
+
 ## Next
 
-- [ ] Adversarial audit of the integrated implementation against the contract.
-- [ ] Update the doc for the authority resource and the existing downstream seam.
-- [ ] Run affected + new tests, ruff, CI group inventory; durable JUnit/logs.
-- [ ] Write `us-housing-status-restoration-REPORT.md` / `.json` and the receipt.
+- [ ] Root review, then an independent Fable PR-style review.
+- [ ] Root ruling on the group-quarters scope question above.
+- [ ] Next rung: a tiny source-only genuine read, per the report's proposal.
