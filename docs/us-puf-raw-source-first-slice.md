@@ -114,6 +114,60 @@ This module is deliberately **not** imported into the generic
 `us_runtime/graph_sources.py`: that import would need a real dependency
 inventory update, and the slice does not need one.
 
+## The artifact envelope is closed, and re-proved on readback
+
+`decode_return_status` never trusts the header it is handed. The header is a
+closed schema: the header, every column entry and every source pin must carry
+exactly their declared key sets, the column kind is one of the two known
+values, each typed column declares an **exact** dtype string — which closes
+width, signedness and endianness in one comparison, so `<f8` can never stand
+in for `<i8` — and each lexical column declares an exact allocation width and
+body size, under a total body bound. A malformed, deeply nested, `null` or
+non-ASCII header is a typed refusal, not a stray `UnicodeDecodeError` or
+`RecursionError` escaping the JSON reader.
+
+Every reported fact is then **recomputed** from the arrays that were actually
+read back, through `_facts_from_arrays` — the same derivation the producer
+uses — and must agree exactly. A payload cannot report 987,654,321 rows over
+four real ones, or a match count, an aggregate count or a code frequency its
+arrays do not carry. The readback also re-proves the slice's own invariants:
+lexical and numeric spellings agree, `S006` stays a nonnegative exact integer,
+absence stays the `-1` sentinel with an empty spelling rather than a zero
+code, the `disclosure_aggregate` flag follows from `RECID` and agrees with
+`MARS` 0, and both join keys stay unique.
+
+This is still structure, not source authority. The decoder proves a payload is
+internally consistent and, where a definition is available, that it matches
+that definition's widths, domains and source pins. It authorizes nothing about
+where the delivery bytes came from — the codec does that, by content — and no
+signature or capability is invented. A payload declaring the **packaged**
+route is checked against this module's own packaged definition, because that
+one is closed and importable; a fixture-route payload has no reconstructible
+definition and stays structural unless a caller passes one in, so the
+production and fixture boundaries stay exactly where they were.
+
+## The CSV acceptance profile is part of the producer's identity
+
+`csv.field_size_limit` is process-global state that decides which deliveries
+parse: lowered, a file that was admitted is refused; raised, a file that was
+refused is admitted. `csv_acceptance_profile()` reads it without changing it —
+nothing in this module ever sets it — exactly as `asec_income_observations`
+and `acs_housing_universe_source` already do, and `USPufRawSourceKernel`
+folds it into its implementation hash and records it in its receipt.
+
+A changed limit therefore moves the node key. `resume="require"` misses rather
+than hitting, `resume="auto"` recomputes and then refuses, and a restored
+limit restores the original key and every hit. No run can reuse an artifact
+admitted under an acceptance that no longer holds.
+
+The packaged definition's `csv_profile.field_size_limit` used to be a
+decorative fact — the decoder relied on the process default happening to match
+it. `decode_puf_raw_source` now refuses with `CSV_FIELD_SIZE_LIMIT` when the
+effective limit is not the pinned one, so that fact is true of the parse that
+actually ran. The delimiter, quote character and doublequote flag still come
+from the closed definition, and `QUOTE_MINIMAL` and `strict` are still fixed
+by the reader itself.
+
 ## Genuine run: prepared, not executed
 
 Everything above is verified on invented fixtures written under `tmp_path`. No
