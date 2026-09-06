@@ -20,6 +20,13 @@ US source/geography graph implementation scopes and their reviewed dependency
 inventory are documented in `docs/us-production-graph-development.md`. New
 dependency/resource failures require a scope review, not an automatic pin refresh.
 
+The December SIPP housing projection is additive and lives beside the frozen
+sixteen-field producer, not inside it: `sipp_december_source.py` and
+`sipp_measurements.py` must keep every byte, because their module hashes are
+inside the producer binding that already-published receipts carry. Housing work
+goes in `sipp_housing_measurements.py` / `sipp_housing_projection.py`, which
+import those internals. See `docs/us-sipp-december-housing-projection.md`.
+
 IRS fiscal targets require explicit supported return universes and actual model
 filer decisions before household aggregation. Target-frame materializer version
 13 invalidates older SOI measurements; its compilation receipt records filing
