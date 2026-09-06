@@ -220,8 +220,22 @@ measured = measure_acs_household_reported_income(
 measured = measure_asec_household_reported_income(
     household_keys=("2024:1",),
     htotval=household["asec_HTOTVAL"],
-    income_year=household["income_year"],
+    income_year=income_year,   # see below
 )
+```
+
+The prepared household table has no `income_year` column. `asec_HTOTVAL` is
+attached by `with_asec_household_observations`, which derives each household's
+income year from its members' `source_year` and refuses when members disagree.
+A caller projects the same way, in household-table order:
+
+```python
+keys = (
+    frame.person[["person_household_id", "source_year"]]
+    .drop_duplicates()
+    .set_index("person_household_id")
+)
+income_year = keys.loc[household["household_id"], "source_year"].to_numpy()
 ```
 
 `HouseholdReportedIncome` carries the household value (`values`, float64 in
@@ -242,8 +256,12 @@ refuses an input a caller already adjusted. The ASEC arm uses the packaged,
 byte-pinned `asec_current_money_price_basis_v1.json` C-CPI-U basis
 (`163.6` / `170.0` / `174.4`, target 2024): the 2024 identity year copies its
 amount with no arithmetic, and earlier years multiply once by
-`174.4 / source`. Zeros never enter arithmetic. The stale CPI-U-RS prose the
-Subject Definitions use for *across-year* comparisons is not the ASEC
+`174.4 / source`. On the ASEC arm a coded zero never enters arithmetic; on the
+ACS arm zero is multiplied like any amount, which is harmless. The declared
+loss floor is likewise multiplied like any amount — `-59999` becomes about
+`-60914` in 2024 dollars — and only the `declared_open_ended_bound` quality
+code says it is a bound rather than a measured loss. The stale CPI-U-RS prose
+the Subject Definitions use for *across-year* comparisons is not the ASEC
 restatement and is not reused here.
 
 `align_household_values` joins by exact native string key, so a leading-zero
@@ -270,6 +288,13 @@ spec activates no national or congressional-district target and scores no
 candidate.
 
 ## Limits
+
+The 1-year PUMS file exposes one enumerated annual `ADJINC` code. The
+month-of-interview CPI factors the Subject Definitions describe are what the
+Census Bureau applies when it *tabulates*, and the PUMS file does not carry
+them. A PUMS-adjusted `HINCP` therefore approximates, rather than reproduces,
+the dollars behind a published B19001 cell. That is one more reason B19001 is a
+holdout for diagnosis and not a target.
 
 Fixture checks establish engineering contracts only. No genuine ACS or ASEC
 microdata was read or executed for this contract, so nothing here establishes

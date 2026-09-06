@@ -165,6 +165,10 @@ def read_acs_household_income_columns(
     zero, and never applies the adjustment factor.
     """
 
+    # Defense in depth. AcsPumsSource already refuses any other vintage in its
+    # own constructor, so this branch is unreachable through the public API; it
+    # exists so a future alternate construction path cannot silently reuse the
+    # 2024-pinned column contract for a different file.
     if source.vintage != ACS_2024_1YR_VINTAGE:
         raise ValueError(
             "The version 2 household source-column contract is pinned to the "
@@ -206,6 +210,12 @@ def read_acs_household_income_columns(
         "vacant_household_rows_dropped": vacant_rows,
         "join_key": "SERIALNO",
         "adjustment_applied": False,
+        # This read is deliberately whole-file: the version 1 loader's smoke
+        # subset is a hash-ranked selection this read does not replicate, and
+        # the caller joins on SERIALNO, so a superset is harmless. Recording it
+        # keeps a smoke caller from reading the row count as its own selection.
+        "max_households_requested": source.max_households,
+        "max_households_applied": False,
     }
     return table, metadata
 

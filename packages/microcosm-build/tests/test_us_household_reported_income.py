@@ -145,6 +145,37 @@ def test_acs_unavailable_in_universe_income_is_distinguished_from_out_of_univers
     assert np.isnan(measured.values).all()
 
 
+def test_a_declared_zero_is_an_observed_total_not_a_missing_one():
+    """`0 .No household income` is a value the publisher declares, not a blank."""
+
+    measured = _acs(("2024HU0000001", "2024HU0000002"), [0, None], [1, 1])
+    assert measured.availability.tolist() == [
+        reported.AVAILABILITY["observed"],
+        reported.AVAILABILITY["unavailable_in_universe"],
+    ]
+    assert measured.quality.tolist() == [
+        reported.QUALITY["exact_publisher_total"],
+        reported.QUALITY["not_applicable"],
+    ]
+    assert measured.values[0] == 0.0
+    assert not np.signbit(measured.values[0])
+    assert np.isnan(measured.values[1])
+    assert measured.raw_values.tolist() == [0, pd.NA]
+    asec = _asec(("2024:1",), [0], [2024])
+    assert asec.values.tolist() == [0.0]
+    assert asec.availability.tolist() == [reported.AVAILABILITY["observed"]]
+
+
+def test_the_declared_loss_floor_is_adjusted_like_any_other_amount():
+    """Only the quality flag marks the bound; the value is not special-cased."""
+
+    measured = _acs(("2024HU0000001",), [reported.ACS_HINCP_MINIMUM], [1])
+    assert measured.values[0] == reported.ACS_HINCP_MINIMUM * (
+        DECLARED_ADJINC / 1_000_000
+    )
+    assert measured.quality.tolist() == [reported.QUALITY["declared_open_ended_bound"]]
+
+
 @pytest.mark.parametrize("arm", ["acs", "asec"])
 def test_an_empty_household_sample_refuses(arm):
     with pytest.raises(reported.ReportedIncomeRefusalError, match="EMPTY_SAMPLE"):
@@ -225,6 +256,85 @@ def test_asec_refuses_an_income_year_outside_the_restatement_basis():
         _asec(("2021:1",), [1], [2021])
 
 
+@pytest.mark.parametrize(
+    "reason,kwargs",
+    [
+        ("HOUSEHOLD_KEY_SPELLING", {"household_keys": (" 2024HU0000001",)}),
+        ("HOUSEHOLD_KEY_SPELLING", {"household_keys": ("",)}),
+        ("HINCP_LENGTH", {"hincp": pd.array([1, 2], dtype="Int64")}),
+        ("ADJINC_LENGTH", {"adjinc": pd.array([DECLARED_ADJINC] * 2, dtype="Int64")}),
+        ("ADJINC_DTYPE", {"adjinc": pd.Series([1.01525])}),
+        ("TYPEHUGQ_MISSING", {"housing_unit_kind": pd.array([None], dtype="Int64")}),
+        ("TYPEHUGQ_DOMAIN", {"housing_unit_kind": pd.array([4], dtype="Int64")}),
+        ("ADJINC_MISSING", {"adjinc": pd.array([None], dtype="Int64")}),
+    ],
+)
+def test_every_acs_input_refusal_names_its_reason(reason, kwargs):
+    call = {
+        "household_keys": ("2024HU0000001",),
+        "hincp": pd.array([1], dtype="Int64"),
+        "adjinc": pd.array([DECLARED_ADJINC], dtype="Int64"),
+        "housing_unit_kind": pd.array([1], dtype="Int64"),
+    }
+    call.update(kwargs)
+    with pytest.raises(reported.ReportedIncomeRefusalError, match=reason):
+        reported.measure_acs_household_reported_income(**call)
+
+
+def test_asec_refusals_and_helper_argument_checks_name_their_reasons():
+    with pytest.raises(
+        reported.ReportedIncomeRefusalError, match="INCOME_YEAR_MISSING"
+    ):
+        _asec(("2024:1",), [1], [None])
+    with pytest.raises(reported.ReportedIncomeRefusalError, match="HTOTVAL_DTYPE"):
+        reported.measure_asec_household_reported_income(
+            household_keys=("2024:1",),
+            htotval=pd.Series([1.5]),
+            income_year=pd.array([2024], dtype="Int64"),
+        )
+    with pytest.raises(reported.ReportedIncomeRefusalError, match="VARIABLE"):
+        reported.b19001_household_income_distribution_spec(" value")
+    acs = _acs(("2024HU0000001",), [1], [1])
+    asec = _asec(("2024:1",), [1], [2024])
+    with pytest.raises(
+        reported.ReportedIncomeRefusalError, match="SECOND_ARGUMENT_MUST_BE_ASEC"
+    ):
+        reported.two_arm_comparability(acs, acs)
+    with pytest.raises(
+        reported.ReportedIncomeRefusalError, match="FIRST_ARGUMENT_MUST_BE_ACS"
+    ):
+        reported.two_arm_comparability(asec, asec)
+
+
+def test_the_asec_price_basis_resource_is_verified_on_every_read(monkeypatch):
+    """A changed packaged price basis refuses instead of restating silently."""
+
+    import microcosm.build.us_runtime.household_reported_income as module
+
+    monkeypatch.setattr(module, "_ASEC_PRICE_BASIS_SHA256", "0" * 64)
+    with pytest.raises(
+        reported.ReportedIncomeRefusalError,
+        match="ASEC_PRICE_BASIS_RESOURCE_CHANGED",
+    ):
+        _asec(("2024:1",), [1], [2024])
+
+
+def test_the_additive_read_binds_the_loader_helpers_it_depends_on():
+    """The version 2 read reuses the executed loader; name what it reuses."""
+
+    import inspect
+
+    assert inspect.isfunction(acs_pums._read_archive)
+    assert inspect.isfunction(acs_pums._occupied_households)
+    read_archive = inspect.signature(acs_pums._read_archive).parameters
+    assert {"path", "member_prefix", "required", "optional", "chunksize"} <= set(
+        read_archive
+    )
+    occupied = inspect.signature(acs_pums._occupied_households).parameters
+    assert list(occupied) == ["household"]
+    assert acs_pums.ACS_2024_1YR_VINTAGE == 2024
+
+
 def test_measured_artifacts_are_read_only():
     measured = _acs(("2024HU0000001",), [1], [1])
     for array in (measured.values, measured.availability, measured.quality):
@@ -254,6 +364,7 @@ def test_the_measurement_module_imports_no_engine_or_frame_loader():
         "struct",
         "collections.abc",
         "dataclasses",
+        "functools",
         "importlib",
         "types",
         "numpy",
@@ -596,11 +707,19 @@ def test_version_two_read_keeps_blanks_missing_and_never_adjusts(tmp_path):
     assert receipt["adjustment_applied"] is False
     assert receipt["household_source_column_version"] == 2
     assert receipt["join_key"] == "SERIALNO"
+    # The read is whole-file; a smoke caller must not read the row count as a
+    # selection it asked for.
+    assert receipt["max_households_requested"] is None
+    assert receipt["max_households_applied"] is False
 
+    # ADJINC is read, not invented: it is present on the group-quarters row
+    # too, and the read column feeds the measurement exactly as documented.
+    assert table["ADJINC"].dtype == pd.Int64Dtype()
+    assert table["ADJINC"].tolist() == [DECLARED_ADJINC] * 3
     measured = reported.measure_acs_household_reported_income(
         household_keys=tuple(table["SERIALNO"]),
         hincp=table["HINCP"],
-        adjinc=pd.array([DECLARED_ADJINC] * len(table), dtype="Int64"),
+        adjinc=table["ADJINC"],
         housing_unit_kind=table["TYPEHUGQ"],
     )
     assert measured.availability.tolist() == [
@@ -672,7 +791,16 @@ def test_version_one_frame_ignores_the_version_two_columns(tmp_path):
     assert table["HINCP"].tolist() == [50_000, 50_000]
 
 
-def test_version_two_read_refuses_a_vintage_it_is_not_pinned_to(tmp_path):
+def test_the_source_constructor_refuses_a_vintage_the_contract_is_not_pinned_to(
+    tmp_path,
+):
+    """`AcsPumsSource` refuses first, so the reader never sees another vintage.
+
+    The reader keeps its own vintage guard as defense in depth; it is
+    unreachable through this constructor, which is the only public way to build
+    a source.
+    """
+
     with pytest.raises(ValueError, match="ACS multispine v1 is pinned"):
         acs_pums.AcsPumsSource(
             tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip", vintage=2023

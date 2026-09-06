@@ -20,6 +20,7 @@ import json
 import struct
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from functools import cache
 from importlib import metadata, resources
 from types import MappingProxyType
 
@@ -164,7 +165,7 @@ def _require(condition: bool, reason: str) -> None:
         raise ReportedIncomeRefusalError(reason)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class ReportedIncomeOrigin:
     """Where one arm's household total comes from and what it means."""
 
@@ -423,7 +424,9 @@ B19001_2024_METADATA: Mapping[str, object] = MappingProxyType(
 )
 
 
-@dataclass(frozen=True)
+# Identity, not value, equality: the measured arrays make a field-by-field
+# comparison raise rather than answer, and two measurements are never compared.
+@dataclass(frozen=True, eq=False)
 class HouseholdReportedIncome:
     """One arm's measured household total plus its complete provenance."""
 
@@ -466,7 +469,14 @@ class HouseholdReportedIncome:
         return self.origin.transformation
 
 
+@cache
 def _definition_identity() -> str:
+    """Return this contract's identity, computed once per process.
+
+    Module bytes and installed dependency versions cannot change under a live
+    interpreter, so recomputing this per measurement only costs time.
+    """
+
     module = resources.files(__package__).joinpath("household_reported_income.py")
     body = {
         "contract": CONTRACT,
@@ -793,11 +803,17 @@ def two_arm_comparability(
             },
             {
                 "axis": "price restatement",
-                "acs": "Census ADJINC to 2024 dollars, monthly CPI factors",
+                "acs": (
+                    "Census ADJINC to 2024 dollars: one enumerated annual "
+                    "factor on the 1-year PUMS file"
+                ),
                 "asec": "Census C-CPI-U annual restatement to 2024",
                 "consequence": (
                     "both land on 2024 dollars through different published "
-                    "indices; neither is applied twice"
+                    "indices, and neither is applied twice; the published "
+                    "tabulations use month-of-interview CPI factors the PUMS "
+                    "file does not expose, so a PUMS-adjusted amount "
+                    "approximates rather than reproduces a tabulated one"
                 ),
             },
             {
