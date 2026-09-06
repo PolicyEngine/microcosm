@@ -59,6 +59,20 @@ STAGE_DEPENDENCIES = MappingProxyType(
             "PyYAML",
             "pyarrow",
         ),
+        # The composed prepared-ASEC/native-ACS population. It runs both source
+        # scopes in one CREATE, so its module inventory is their union and its
+        # dependency set is theirs (identical in both). PolicyEngine-US is
+        # absent for the same reason it is absent from the prepared scope: no
+        # engine node lives in this graph.
+        "composed_population_v1": (
+            "numpy",
+            "pandas",
+            "microunit",
+            "tables",
+            "h5py",
+            "PyYAML",
+            "pyarrow",
+        ),
     }
 )
 _CODECS = MappingProxyType(
@@ -384,20 +398,36 @@ def implementation_manifest(stage: str) -> dict:
                 "acs_reader_resolved_string_storage": pd.StringDtype().storage,
             }
             if stage
-            in {"acs_codec_2024", "assembly_prepare", "acs_housing_universe_2024"}
+            in {
+                "acs_codec_2024",
+                "assembly_prepare",
+                "acs_housing_universe_2024",
+                "composed_population_v1",
+            }
             else {}
         ),
         "codecs": {},
     }
-    if stage in {"asec_prepared_v3", "acs_housing_universe_2024"}:
+    if stage in {
+        "asec_prepared_v3",
+        "acs_housing_universe_2024",
+        "composed_population_v1",
+    }:
         # Both stages parse pinned official CSV members with the stdlib reader.
         # csv's field size limit is process state, so it belongs in the identity
         # of each stage that reads under it. No other stage binds it, so no
         # existing stage identity moves.
         manifest["runtime_options"]["csv.field_size_limit"] = csv.field_size_limit()
-    if stage == "assembly_prepare":
+    if stage in {"assembly_prepare", "composed_population_v1"}:
+        bound = (
+            ("asec_codec_v4", "acs_codec_2024")
+            if stage == "assembly_prepare"
+            # The composed CREATE reads the prepared directory, not the
+            # raw-stage checkpoint, so it binds that codec's identity instead.
+            else ("asec_prepared_v3", "acs_codec_2024")
+        )
         for name, (codec_stage, loader) in _CODECS.items():
-            if codec_stage in ("asec_codec_v4", "acs_codec_2024"):
+            if codec_stage in bound:
                 manifest["codecs"][name] = {
                     "loader": loader,
                     "implementation_sha256": implementation_hash(codec_stage),
