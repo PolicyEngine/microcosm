@@ -1,0 +1,1 @@
+Bind every compiled PUF growth factor to its immutable canonical table, preserve nested provenance, and include NumPy and pandas versions in graph cache identities. Clarify import behavior and the remaining raw-source classification boundary.

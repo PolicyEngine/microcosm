@@ -1,0 +1,1 @@
+Name ACS housing candidate readback size failures separately from pinned archive failures, keep a failed capture's failure record from replacing the refusal it records, and bind the source receipt's format, vintage and archive pins directly in graph evidence.

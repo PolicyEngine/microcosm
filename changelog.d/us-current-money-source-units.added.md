@@ -1,0 +1,1 @@
+Add fixed-checkpoint ASEC current-money authentication and actual pinned microunit tax-only reconstruction, with sealed scope and replay bindings, exact source preservation, and synthetic-only integration evidence.

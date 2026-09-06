@@ -1,0 +1,1 @@
+Compose the six nominal US pre-clone source stages through their actual accepted contexts, including the real housing donor fit, full-pool merge and eligibility kernel, with authenticated original-oracle and cache-replay checks.

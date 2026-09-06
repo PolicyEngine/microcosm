@@ -509,10 +509,10 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 11 = target checkpoints preserve nullable booleans explicitly; schema 2
-    # distinguishes the new values+mask codec from schema-1 checkpoints.
+    # 13 = unsupported SOI diagnostics and full live-input cache binding;
+    # schema 2 continues to preserve nullable boolean values and masks.
     assert identity["schema_version"] == 2
-    assert identity["materializer_version"] == 11
+    assert identity["materializer_version"] == 13
     # The SSI prior-weight basis is identity-bearing (microcosm#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
@@ -8346,13 +8346,35 @@ def test_soi_filtered_targets_keep_mortgage_and_broad_interest_distinct(
         ),
     )
 
+    # These legacy slice tests stub the engine; the actual-engine filer
+    # regression lives in test_us_soi_filer_universe.py.
+    targets = tuple(
+        replace(spec, metadata={"soi_return_universe": "all_returns", **spec.metadata})
+        for spec in targets
+    )
+    from microcosm.build.us_runtime import soi_return_universe
+
+    monkeypatch.setattr(
+        soi_return_universe,
+        "_model_source_identity",
+        lambda system, names: {"test_fixture": "legacy_slice_engine_stub"},
+    )
+
     class FakeVariable:
         entity = SimpleNamespace(key="tax_unit")
+        value_type = bool
+        definition_period = "year"
+        default_value = False
 
     class FakeSystem:
         variables = {
             name: FakeVariable()
             for name in (
+                "tax_unit_is_filer",
+                "tax_unit_is_required_to_file",
+                "eligible_for_refundable_credits",
+                "would_file_if_eligible_for_refundable_credit",
+                "would_file_taxes_voluntarily",
                 "income_tax",
                 "taxable_income",
                 "adjusted_gross_income",
@@ -8388,6 +8410,7 @@ def test_soi_filtered_targets_keep_mortgage_and_broad_interest_distinct(
             assert period == builder.PERIOD
             assert kwargs == {}
             arrays = {
+                "tax_unit_is_filer": np.ones(frame.n("tax_unit"), dtype=bool),
                 "income_tax": np.asarray([0.0, 0.0, 0.0, 0.0]),
                 "taxable_income": np.asarray([0.0, 0.0, 0.0, 0.0]),
                 "adjusted_gross_income": np.asarray(
@@ -8591,13 +8614,35 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
         ),
     )
 
+    # These legacy slice tests stub the engine; the actual-engine filer
+    # regression lives in test_us_soi_filer_universe.py.
+    targets = tuple(
+        replace(spec, metadata={"soi_return_universe": "all_returns", **spec.metadata})
+        for spec in targets
+    )
+    from microcosm.build.us_runtime import soi_return_universe
+
+    monkeypatch.setattr(
+        soi_return_universe,
+        "_model_source_identity",
+        lambda system, names: {"test_fixture": "legacy_slice_engine_stub"},
+    )
+
     class FakeVariable:
         entity = SimpleNamespace(key="tax_unit")
+        value_type = bool
+        definition_period = "year"
+        default_value = False
 
     class FakeSystem:
         variables = {
             name: FakeVariable()
             for name in (
+                "tax_unit_is_filer",
+                "tax_unit_is_required_to_file",
+                "eligible_for_refundable_credits",
+                "would_file_if_eligible_for_refundable_credit",
+                "would_file_taxes_voluntarily",
                 "income_tax",
                 "taxable_income",
                 "adjusted_gross_income",
@@ -8624,6 +8669,7 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
             assert period == builder.PERIOD
             assert kwargs == {}
             arrays = {
+                "tax_unit_is_filer": np.ones(frame.n("tax_unit"), dtype=bool),
                 "income_tax": np.asarray([0.0, 0.0, 0.0]),
                 "taxable_income": np.asarray([0.0, 0.0, 0.0]),
                 "adjusted_gross_income": np.asarray([10_000.0, 20_000.0, 30_000.0]),

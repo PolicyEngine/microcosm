@@ -18,6 +18,12 @@ from microcosm.build.us_runtime import (
     us_eligibility_inputs_summary,
     with_us_eligibility_inputs,
 )
+from microcosm.build.us_runtime.eligibility_inputs import (
+    prepare_us_eligibility_person,
+    us_eligibility_inputs_gate_from_summary,
+    us_eligibility_inputs_person_gate,
+    us_eligibility_inputs_person_summary,
+)
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.source_runtime import us_source_operation_handlers
 from microcosm.build.us_runtime.support_provenance import support_clone_index_column
@@ -366,3 +372,297 @@ class TestGate:
         gate = us_eligibility_inputs_signal_gate(frame)
         assert not gate.passed
         assert any("disabled share" in failure for failure in gate.failures)
+
+
+class TestPreparePersonHelper:
+    """``prepare_us_eligibility_person`` as the wrapper's deterministic core."""
+
+    def test_matches_wrapper_output_exactly(self) -> None:
+        frame = _us_frame(_plausible_rows())
+        wrapped = with_us_eligibility_inputs(frame, seed=0, time_period=TIME_PERIOD)
+
+        prepared = prepare_us_eligibility_person(
+            frame.table("person"),
+            frame.resolve_weights("person").values,
+            seed=0,
+            time_period=TIME_PERIOD,
+        )
+
+        pd.testing.assert_frame_equal(prepared, wrapped.table("person"))
+
+    def test_preserves_nondefault_person_index_and_row_order(self) -> None:
+        person = _person_table(
+            [
+                {},
+                {"PEDISPHY": 1},
+                {"VET_VAL": 8_400},
+            ]
+        )
+        shuffled = person.iloc[[2, 0, 1]].copy()
+        shuffled.index = pd.Index([70, 20, 40])
+        weights = np.array([5.0, 1.0, 3.0])
+
+        result = prepare_us_eligibility_person(
+            shuffled, weights, seed=0, time_period=TIME_PERIOD
+        )
+
+        assert result.index.tolist() == [70, 20, 40]
+        assert result["A_LINENO"].tolist() == shuffled["A_LINENO"].tolist()
+        assert result["veterans_benefits"].tolist() == [8_400.0, 0.0, 0.0]
+        assert result["is_disabled"].tolist() == [False, False, True]
+        for column in ("is_disabled", "is_blind", "is_full_time_college_student"):
+            assert result[column].dtype == bool
+        for column in ("own_children_in_household", "veterans_benefits"):
+            assert result[column].dtype == np.float64
+
+    def test_rejects_weights_misaligned_in_length(self) -> None:
+        person = _person_table([{}, {}])
+        with pytest.raises(ValueError, match="aligned 1:1"):
+            prepare_us_eligibility_person(
+                person, np.array([1.0]), seed=0, time_period=TIME_PERIOD
+            )
+
+    @pytest.mark.parametrize("bad_weights", [[np.nan, 1.0], [np.inf, 1.0], [-1.0, 1.0]])
+    def test_rejects_nonfinite_or_negative_weights(
+        self, bad_weights: list[float]
+    ) -> None:
+        person = _person_table([{}, {}])
+        with pytest.raises(ValueError, match="finite|nonnegative"):
+            prepare_us_eligibility_person(
+                person, np.array(bad_weights), seed=0, time_period=TIME_PERIOD
+            )
+
+    def test_missing_raw_column_is_named(self) -> None:
+        person = _person_table([{}]).drop(columns=["VET_VAL"])
+        with pytest.raises(SourceRuntimeError, match="VET_VAL"):
+            prepare_us_eligibility_person(
+                person, np.array([1.0]), seed=0, time_period=TIME_PERIOD
+            )
+
+
+class TestPersonSummaryAndGate:
+    """Real-person-table summary/gate APIs, composed by the Frame wrappers."""
+
+    def test_person_summary_matches_frame_summary(self) -> None:
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+
+        person_summary = us_eligibility_inputs_person_summary(
+            frame.table("person"), frame.resolve_weights("person").values
+        )
+
+        assert person_summary == us_eligibility_inputs_summary(frame)
+
+    def test_person_gate_matches_frame_gate_when_passing(self) -> None:
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+
+        person_gate = us_eligibility_inputs_person_gate(
+            frame.table("person"), frame.resolve_weights("person").values
+        )
+        frame_gate = us_eligibility_inputs_signal_gate(frame)
+
+        assert person_gate.passed
+        assert person_gate == frame_gate
+
+    def test_person_gate_matches_frame_gate_when_failing(self) -> None:
+        rows = [{"PEDISPHY": 1} for _ in range(10)]
+        frame = with_us_eligibility_inputs(
+            _us_frame(rows), seed=0, time_period=TIME_PERIOD
+        )
+
+        person_gate = us_eligibility_inputs_person_gate(
+            frame.table("person"), frame.resolve_weights("person").values
+        )
+        frame_gate = us_eligibility_inputs_signal_gate(frame)
+
+        assert not person_gate.passed
+        assert person_gate == frame_gate
+
+    def test_person_gate_rejects_missing_columns_without_touching_weights(
+        self,
+    ) -> None:
+        # The raw fixture never carries the five output columns.
+        person = _person_table([{}])
+
+        gate = us_eligibility_inputs_person_gate(person, np.array([1.0]))
+
+        assert not gate.passed
+        assert "missing" in gate.failures[0]
+
+    def test_gate_from_summary_reproduces_the_signal_gate_bands(self) -> None:
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+        summary = us_eligibility_inputs_summary(frame)
+
+        gate_from_summary = us_eligibility_inputs_gate_from_summary(summary)
+        frame_gate = us_eligibility_inputs_signal_gate(frame)
+
+        assert gate_from_summary == frame_gate
+
+
+class TestPersonSignalContracts:
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "missing_field",
+            "missing_count",
+            "empty_counts",
+            "extra_count",
+            "altered_band",
+            "nan_share",
+            "infinite_share",
+            "boolean_share",
+            "negative_count",
+            "fractional_count",
+            "boolean_count",
+            "extra_field",
+        ],
+    )
+    def test_summary_gate_refuses_malformed_evidence(self, mutation):
+        from microcosm.build.us_runtime import eligibility_inputs as module
+
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+        summary = module.us_eligibility_inputs_summary(frame)
+        if mutation == "missing_field":
+            del summary["disabled_share_band"]
+        elif mutation == "missing_count":
+            del summary["unique_counts"]["is_blind"]
+        elif mutation == "empty_counts":
+            summary["unique_counts"] = {}
+        elif mutation == "extra_count":
+            summary["unique_counts"]["unregistered"] = 2
+        elif mutation == "altered_band":
+            summary["disabled_share"] = 1.0
+            summary["disabled_share_band"] = [0.0, 1.0]
+        elif mutation == "nan_share":
+            summary["disabled_share"] = np.nan
+        elif mutation == "infinite_share":
+            summary["disabled_share"] = np.inf
+        elif mutation == "boolean_share":
+            summary["disabled_share"] = False
+        elif mutation == "extra_field":
+            summary["unregistered"] = 0
+        else:
+            summary["unique_counts"]["is_blind"] = {
+                "negative_count": -1,
+                "fractional_count": 2.5,
+                "boolean_count": True,
+            }[mutation]
+        with pytest.raises(ValueError, match="Malformed eligibility-input summary"):
+            module.us_eligibility_inputs_gate_from_summary(summary)
+
+    @pytest.mark.parametrize(
+        "mutation,expected",
+        [
+            ("mixed", True),
+            ("missing", False),
+            ("constant", False),
+            ("partial_null_mixed", True),
+            ("partial_null_constant", False),
+        ],
+    )
+    def test_complete_person_predicate_matches_wrapper_passthrough(
+        self, mutation, expected
+    ):
+        from microcosm.build.us_runtime import eligibility_inputs as module
+
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+        person = frame.person.copy()
+        if mutation == "missing":
+            person = person.drop(columns=["is_blind"])
+        elif mutation in {"constant", "partial_null_constant"}:
+            person["is_disabled"] = False
+        if mutation.startswith("partial_null"):
+            person["is_disabled"] = pd.array(person["is_disabled"], dtype="boolean")
+            person.iloc[-1, person.columns.get_loc("is_disabled")] = pd.NA
+        before = person.copy(deep=True)
+        assert module.us_eligibility_inputs_person_carries_signal(person) is expected
+        pd.testing.assert_frame_equal(person, before)
+        # A valid Frame can carry two explicit weighted groups. Resolving person
+        # weights is ambiguous, but an incumbent pass-through must not resolve them.
+        weighted = {e: frame.weights_for(e) for e in frame.weighted_entities}
+        weighted["tax_unit"] = Weights(
+            np.ones(len(frame.table("tax_unit"))), WeightKind.DESIGN
+        )
+        if expected:
+            person = person.drop(columns=["VET_VAL"])
+        candidate = Frame(
+            {e: person if e == "person" else frame.table(e) for e in frame.entities},
+            frame.schema,
+            weighted,
+            frame.strata,
+        )
+        if expected:
+            assert (
+                module.with_us_eligibility_inputs(candidate, seed=7, time_period=2024)
+                is candidate
+            )
+            with pytest.raises(SourceRuntimeError, match="VET_VAL"):
+                module.prepare_us_eligibility_person(
+                    person, np.ones(len(person)), seed=7, time_period=2024
+                )
+        else:
+            with pytest.raises(ValueError, match="2 weighted group entities"):
+                module.with_us_eligibility_inputs(candidate, seed=7, time_period=2024)
+
+    def test_zero_plain_weights_produce_zero_share_diagnostics_not_canonical_weights(
+        self,
+    ):
+        from microcosm.build.us_runtime import eligibility_inputs as module
+
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+        weights = np.zeros(len(frame.person))
+        summary = module.us_eligibility_inputs_person_summary(frame.person, weights)
+        assert summary["disabled_share"] == 0.0
+        assert not module.us_eligibility_inputs_gate_from_summary(summary).passed
+        with pytest.raises(ValueError, match="all zero"):
+            Weights(weights, WeightKind.DESIGN)
+
+    def test_missing_blind_summary_cannot_pass_the_summary_gate(self):
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+        person = frame.person.drop(columns=["is_blind"])
+        weights = frame.resolve_weights("person").values
+        assert not us_eligibility_inputs_person_gate(person, weights).passed
+        summary = us_eligibility_inputs_person_summary(person, weights)
+        with pytest.raises(ValueError, match="Malformed eligibility-input summary"):
+            us_eligibility_inputs_gate_from_summary(summary)
+
+    def test_genuine_frozen_summary_preserves_decision_and_supplied_details(self):
+        from types import MappingProxyType
+
+        from microcosm.build.us_runtime import eligibility_inputs as module
+
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+        summary = module.us_eligibility_inputs_summary(frame)
+        frozen = MappingProxyType(
+            {
+                name: tuple(value)
+                if name.endswith("_band")
+                else MappingProxyType(value)
+                if name == "unique_counts"
+                else value
+                for name, value in summary.items()
+            }
+        )
+        gate = module.us_eligibility_inputs_gate_from_summary(frozen)
+        original = module.us_eligibility_inputs_signal_gate(frame)
+        assert (gate.name, gate.passed, gate.failures) == (
+            original.name,
+            original.passed,
+            original.failures,
+        )
+        assert gate.details == frozen

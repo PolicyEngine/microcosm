@@ -35,6 +35,12 @@ from microcosm.build.us_runtime.asec_pool import _with_relationship_recode
 from microcosm.build.us_runtime.l0_refit_export import (
     US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS,
 )
+from microcosm.build.us_runtime.relationship_inputs import (
+    prepare_us_relationship_person,
+    us_relationship_inputs_gate_from_summary,
+    us_relationship_inputs_person_gate,
+    us_relationship_inputs_person_summary,
+)
 from microcosm.build.us_runtime.release_input_coverage import (
     RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS,
 )
@@ -289,6 +295,152 @@ class TestFrameAndGate:
         assert _HEAD in gate.details["missing"]
 
 
+class TestPreparePersonHelper:
+    """``prepare_us_relationship_person`` as the wrapper's deterministic core."""
+
+    def test_matches_wrapper_output_exactly(self) -> None:
+        frame = _frame(
+            [
+                {"PH_SEQ": 1, "P_SEQ": 1, "A_MARITL": 4},
+                {"PH_SEQ": 1, "P_SEQ": 2, "A_MARITL": 6},
+                {"PH_SEQ": 2, "P_SEQ": 1, "A_MARITL": 7},
+            ],
+            weights=[2.0, 1.0],
+        )
+        wrapped = with_us_relationship_inputs(frame, seed=0, time_period=2024)
+
+        prepared = prepare_us_relationship_person(
+            frame.table("person"),
+            frame.resolve_weights("person").values,
+            seed=0,
+            time_period=2024,
+        )
+
+        pd.testing.assert_frame_equal(prepared, wrapped.table("person"))
+
+    def test_preserves_nondefault_person_index_and_row_order(self) -> None:
+        person = _person(
+            [
+                {"PH_SEQ": 1, "P_SEQ": 1, "A_MARITL": 4},
+                {"PH_SEQ": 1, "P_SEQ": 2, "A_MARITL": 6},
+                {"PH_SEQ": 2, "P_SEQ": 1, "A_MARITL": 7},
+            ]
+        )
+        # Shuffle rows and attach an arbitrary, non-contiguous index.
+        shuffled = person.iloc[[2, 0, 1]].copy()
+        shuffled.index = pd.Index([50, 10, 30])
+        weights = np.array([9.0, 2.0, 1.0])  # aligned to the shuffled row order
+
+        result = prepare_us_relationship_person(
+            shuffled, weights, seed=0, time_period=2024
+        )
+
+        assert result.index.tolist() == [50, 10, 30]
+        assert result["PH_SEQ"].tolist() == shuffled["PH_SEQ"].tolist()
+        assert result[_HEAD].tolist() == [True, True, False]
+        assert result[_SEPARATED].tolist() == [False, False, True]
+        assert result[_SURVIVING].tolist() == [False, True, False]
+
+    def test_rejects_weights_misaligned_in_length(self) -> None:
+        person = _person([{}, {}])
+        with pytest.raises(ValueError, match="aligned 1:1"):
+            prepare_us_relationship_person(
+                person, np.array([1.0]), seed=0, time_period=2024
+            )
+
+    @pytest.mark.parametrize("bad_weights", [[np.nan, 1.0], [np.inf, 1.0], [-1.0, 1.0]])
+    def test_rejects_nonfinite_or_negative_weights(
+        self, bad_weights: list[float]
+    ) -> None:
+        person = _person([{}, {}])
+        with pytest.raises(ValueError, match="finite|nonnegative"):
+            prepare_us_relationship_person(
+                person, np.array(bad_weights), seed=0, time_period=2024
+            )
+
+    def test_missing_raw_column_is_named(self) -> None:
+        person = _person([{}]).drop(columns=["A_MARITL"])
+        with pytest.raises(SourceRuntimeError, match="A_MARITL"):
+            prepare_us_relationship_person(
+                person, np.array([1.0]), seed=0, time_period=2024
+            )
+
+
+class TestPersonSummaryAndGate:
+    """Real-person-table summary/gate APIs, composed by the Frame wrappers."""
+
+    def _plausible_frame(self) -> Frame:
+        rows: list[dict[str, object]] = []
+        for household in range(1, 51):
+            rows.extend(
+                [
+                    {
+                        "PH_SEQ": household,
+                        "P_SEQ": 1,
+                        "A_MARITL": 4 if household <= 5 else 7,
+                    },
+                    {
+                        "PH_SEQ": household,
+                        "P_SEQ": 2,
+                        "A_MARITL": 6 if household <= 2 else 7,
+                    },
+                ]
+            )
+        return with_us_relationship_inputs(_frame(rows), seed=0, time_period=2024)
+
+    def test_person_summary_matches_frame_summary(self) -> None:
+        frame = self._plausible_frame()
+
+        person_summary = us_relationship_inputs_person_summary(
+            frame.table("person"), frame.resolve_weights("person").values
+        )
+
+        assert person_summary == us_relationship_inputs_summary(frame)
+
+    def test_person_gate_matches_frame_gate_when_passing(self) -> None:
+        frame = self._plausible_frame()
+
+        person_gate = us_relationship_inputs_person_gate(
+            frame.table("person"), frame.resolve_weights("person").values
+        )
+        frame_gate = us_relationship_inputs_signal_gate(frame)
+
+        assert person_gate.passed
+        assert person_gate == frame_gate
+
+    def test_person_gate_matches_frame_gate_when_failing(self) -> None:
+        frame = self._plausible_frame()
+        frame.table("person").loc[1, _HEAD] = True
+
+        person_gate = us_relationship_inputs_person_gate(
+            frame.table("person"), frame.resolve_weights("person").values
+        )
+        frame_gate = us_relationship_inputs_signal_gate(frame)
+
+        assert not person_gate.passed
+        assert person_gate == frame_gate
+
+    def test_person_gate_rejects_missing_columns_without_touching_weights(
+        self,
+    ) -> None:
+        # The raw fixture never carries the three output columns.
+        person = _person([{}])
+
+        gate = us_relationship_inputs_person_gate(person, np.array([1.0]))
+
+        assert not gate.passed
+        assert _HEAD in gate.details["missing"]
+
+    def test_gate_from_summary_reproduces_the_signal_gate_bands(self) -> None:
+        frame = self._plausible_frame()
+        summary = us_relationship_inputs_summary(frame)
+
+        gate_from_summary = us_relationship_inputs_gate_from_summary(summary)
+        frame_gate = us_relationship_inputs_signal_gate(frame)
+
+        assert gate_from_summary == frame_gate
+
+
 class TestCoverageAndExclusion:
     def test_restored_inputs_are_hard_release_requirements(self) -> None:
         manifest = load_release_input_coverage_manifest()
@@ -436,3 +588,159 @@ def test_shipped_household_head_neutralization_probe() -> None:
     assert probe.effect_direction == "baseline_minus_reform"
     assert probe.expected_sign == "negative"
     assert probe.min_abs_effect >= 1_000_000.0
+
+
+class TestPersonSignalContracts:
+    @pytest.mark.parametrize(
+        "mutation",
+        [
+            "missing_field",
+            "missing_count",
+            "empty_counts",
+            "extra_count",
+            "altered_band",
+            "nan_share",
+            "infinite_share",
+            "boolean_share",
+            "negative_count",
+            "fractional_count",
+            "boolean_count",
+            "extra_field",
+        ],
+    )
+    def test_summary_gate_refuses_malformed_evidence(self, mutation):
+        from microcosm.build.us_runtime import relationship_inputs as module
+
+        frame = TestPersonSummaryAndGate()._plausible_frame()
+        summary = module.us_relationship_inputs_summary(frame)
+        if mutation == "missing_field":
+            del summary["separated_share_band"]
+        elif mutation == "missing_count":
+            del summary["unique_counts"]["is_surviving_spouse"]
+        elif mutation == "empty_counts":
+            summary["unique_counts"] = {}
+        elif mutation == "extra_count":
+            summary["unique_counts"]["unregistered"] = 2
+        elif mutation == "altered_band":
+            summary["separated_share"] = 1.0
+            summary["separated_share_band"] = [0.0, 1.0]
+        elif mutation == "nan_share":
+            summary["separated_share"] = np.nan
+        elif mutation == "infinite_share":
+            summary["separated_share"] = np.inf
+        elif mutation == "boolean_share":
+            summary["separated_share"] = False
+        elif mutation == "extra_field":
+            summary["unregistered"] = 0
+        else:
+            summary["unique_counts"]["is_surviving_spouse"] = {
+                "negative_count": -1,
+                "fractional_count": 2.5,
+                "boolean_count": True,
+            }[mutation]
+        with pytest.raises(ValueError, match="Malformed relationship-input summary"):
+            module.us_relationship_inputs_gate_from_summary(summary)
+
+    @pytest.mark.parametrize(
+        "mutation,expected",
+        [
+            ("mixed", True),
+            ("missing", False),
+            ("constant", False),
+            ("partial_null_mixed", True),
+            ("partial_null_constant", False),
+        ],
+    )
+    def test_complete_person_predicate_matches_wrapper_passthrough(
+        self, mutation, expected
+    ):
+        from microcosm.build.us_runtime import relationship_inputs as module
+
+        frame = TestPersonSummaryAndGate()._plausible_frame()
+        person = frame.person.copy()
+        if mutation == "missing":
+            person = person.drop(columns=["is_surviving_spouse"])
+        elif mutation in {"constant", "partial_null_constant"}:
+            person["is_separated"] = False
+        if mutation.startswith("partial_null"):
+            person["is_separated"] = pd.array(person["is_separated"], dtype="boolean")
+            person.iloc[-1, person.columns.get_loc("is_separated")] = pd.NA
+        before = person.copy(deep=True)
+        assert module.us_relationship_inputs_person_carries_signal(person) is expected
+        pd.testing.assert_frame_equal(person, before)
+        # A valid Frame can carry two explicit weighted groups. Resolving person
+        # weights is ambiguous, but an incumbent pass-through must not resolve them.
+        weighted = {e: frame.weights_for(e) for e in frame.weighted_entities}
+        weighted["tax_unit"] = Weights(
+            np.ones(len(frame.table("tax_unit"))), WeightKind.DESIGN
+        )
+        if expected:
+            person = person.drop(columns=["A_MARITL"])
+        candidate = Frame(
+            {e: person if e == "person" else frame.table(e) for e in frame.entities},
+            frame.schema,
+            weighted,
+            frame.strata,
+        )
+        if expected:
+            assert (
+                module.with_us_relationship_inputs(candidate, seed=7, time_period=2024)
+                is candidate
+            )
+            with pytest.raises(SourceRuntimeError, match="A_MARITL"):
+                module.prepare_us_relationship_person(
+                    person, np.ones(len(person)), seed=7, time_period=2024
+                )
+        else:
+            with pytest.raises(ValueError, match="2 weighted group entities"):
+                module.with_us_relationship_inputs(candidate, seed=7, time_period=2024)
+
+    def test_zero_plain_weights_produce_zero_share_diagnostics_not_canonical_weights(
+        self,
+    ):
+        from microcosm.build.us_runtime import relationship_inputs as module
+
+        frame = TestPersonSummaryAndGate()._plausible_frame()
+        weights = np.zeros(len(frame.person))
+        summary = module.us_relationship_inputs_person_summary(frame.person, weights)
+        assert summary["separated_share"] == 0.0
+        assert not module.us_relationship_inputs_gate_from_summary(summary).passed
+        with pytest.raises(ValueError, match="all zero"):
+            Weights(weights, WeightKind.DESIGN)
+
+    @pytest.mark.parametrize(
+        "field", ["households_without_exactly_one_head", "separated_and_surviving"]
+    )
+    @pytest.mark.parametrize("value", [-1, 0.5, False])
+    def test_relationship_invariant_counts_are_nonnegative_integers(self, field, value):
+        frame = TestPersonSummaryAndGate()._plausible_frame()
+        summary = us_relationship_inputs_summary(frame)
+        summary[field] = value
+        with pytest.raises(ValueError, match="Malformed relationship-input summary"):
+            us_relationship_inputs_gate_from_summary(summary)
+
+    def test_genuine_frozen_summary_preserves_decision_and_supplied_details(self):
+        from types import MappingProxyType
+
+        from microcosm.build.us_runtime import relationship_inputs as module
+
+        frame = TestPersonSummaryAndGate()._plausible_frame()
+        summary = module.us_relationship_inputs_summary(frame)
+        frozen = MappingProxyType(
+            {
+                name: tuple(value)
+                if name.endswith("_band")
+                else MappingProxyType(value)
+                if name == "unique_counts"
+                else value
+                for name, value in summary.items()
+            }
+        )
+        gate = module.us_relationship_inputs_gate_from_summary(frozen)
+        original = module.us_relationship_inputs_signal_gate(frame)
+        assert (gate.name, gate.passed, gate.failures) == (
+            original.name,
+            original.passed,
+            original.failures,
+        )
+        assert gate.details == frozen
