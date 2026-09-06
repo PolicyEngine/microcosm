@@ -68,17 +68,31 @@ class _Harness:
     """One invented accepted store, one recipient population, one graph."""
 
     def __init__(
-        self, monkeypatch, tmp_path, sizes=(1, 2, 3, 4, 2), recipient_dir=None, **kwargs
+        self,
+        monkeypatch,
+        tmp_path,
+        sizes=(1, 2, 3, 4, 2),
+        recipient_dir=None,
+        namespace="",
+        rows=None,
+        expected=None,
+        **kwargs,
     ):
         import microcosm.fit.graph_models as graph_models
 
         self.tmp_path = Path(tmp_path)
-        root, self.contract, _, _ = fx.accepted_store(self.tmp_path)
+        # ``namespace`` gives a second harness its own accepted store, source
+        # store and recipient inside one tmp_path, so both can be run against
+        # the SAME graph store and a "not hit" assertion means something.
+        base = self.tmp_path / namespace if namespace else self.tmp_path
+        root, self.contract, _, _ = fx.accepted_store(
+            base, rows=rows, expected=expected
+        )
         self.source_store = equity.prepare_source_store(
-            root, self.tmp_path / "source-store", contract=self.contract
+            root, base / "source-store", contract=self.contract
         )
         self.recipient = fx.recipient_source(
-            recipient_dir or self.tmp_path / "recipient", sizes, **kwargs
+            recipient_dir or base / "recipient", sizes, **kwargs
         )
         # Explicit test-only construction route: the packaged loader is
         # replaced by the invented contract for the duration of the test. The
@@ -107,11 +121,17 @@ class _Harness:
             registry.register(kernel)
         return registry
 
-    def run(self, *, store_name="store", resume="auto", compiled=None):
+    def use_recipient(self, name, sizes, **kwargs):
+        """Point this harness at another recipient population, same everything else."""
+        self.recipient = fx.recipient_source(self.tmp_path / name, sizes, **kwargs)
+        self.sources[equity.RECIPIENT_POPULATION] = self.recipient
+        return self.recipient
+
+    def run(self, *, store_name="store", store_root=None, resume="auto", compiled=None):
         return mgraph.run_graph(
             compiled or self.compiled(),
             sources=self.sources,
-            store=mgraph.ContentStore(self.tmp_path / store_name),
+            store=mgraph.ContentStore(store_root or self.tmp_path / store_name),
             kernels=self.kernels(),
             resume=resume,
         )
@@ -293,31 +313,123 @@ def test_a_recipient_supplying_an_agreeing_household_size_is_accepted(
     assert roster["roster_column"] == ROSTER
 
 
-def test_permuting_recipient_household_ids_invalidates_the_draw_cache(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize(
+    "name,sizes,extra",
+    [
+        # Person ids allocated in the reverse household order: identical
+        # households, identical sizes, permuted person-to-household identity.
+        (
+            "permuted-order",
+            (1, 2, 3, 4, 2),
+            {"person_allocation_order": [4, 3, 2, 1, 0]},
+        ),
+        # Sizes relabelled across the same ids; the multiset {1,2,2,3,4} holds.
+        ("permuted-ids", (2, 1, 3, 4, 2), {}),
+    ],
+)
+def test_permuting_recipient_identity_moves_draw_in_the_same_warm_store(
+    tmp_path, monkeypatch, name, sizes, extra
 ):
-    """Same length, same size multiset, different recipient identity."""
-    base = _Harness(monkeypatch, tmp_path / "a", sizes=(1, 2, 3, 4, 2))
-    first = base.run()
-    permuted = _Harness(
-        monkeypatch,
-        tmp_path / "b",
-        sizes=(2, 4, 3, 2, 1),
-        household_ids=[900001, 900002, 900003, 900004, 900005],
+    """One store, one donor, one recipient size multiset, permuted identity.
+
+    The store is genuinely warm — the donor and fit nodes are served from it —
+    so "the draw was not a hit" is evidence rather than a tautology about an
+    empty directory. Both arms carry the same five household sizes; only the
+    recipient's identity moves.
+    """
+    harness = _Harness(monkeypatch, tmp_path, sizes=(1, 2, 3, 4, 2))
+    first = harness.run()
+    baseline = harness.calls()
+
+    harness.use_recipient(name, sizes, **extra)
+    second = harness.run()
+    assert sorted(
+        second.populations[equity.RECIPIENT_POPULATION].table("household")[ROSTER]
+    ) == sorted(
+        first.populations[equity.RECIPIENT_POPULATION].table("household")[ROSTER]
     )
-    second = permuted.run()
-    assert first.nodes[equity.DRAW_NODE].key != second.nodes[equity.DRAW_NODE].key
-    assert first.nodes[equity.ROSTER_NODE].key != second.nodes[equity.ROSTER_NODE].key
-    assert permuted.calls()["draw"] == 1
-    assert not second.nodes[equity.DRAW_NODE].hit
+
+    # The same warm store still serves everything upstream of the recipient.
+    assert second.nodes[equity.DONOR_POPULATION].hit
+    assert second.nodes[equity.FIT_NODE].hit
+    assert (
+        first.nodes[equity.DONOR_POPULATION].key
+        == second.nodes[equity.DONOR_POPULATION].key
+    )
+    assert first.nodes[equity.FIT_NODE].key == second.nodes[equity.FIT_NODE].key
+
+    for node in (equity.ROSTER_NODE, equity.VALIDATE_NODE, equity.DRAW_NODE):
+        assert first.nodes[node].key != second.nodes[node].key
+        assert not second.nodes[node].hit
+    assert harness.calls()["draw"] == baseline["draw"] + 1
+    assert harness.calls()["create_donor"] == baseline["create_donor"]
 
 
-def test_a_changed_source_store_changes_the_donor_and_descendant_keys(
+def test_a_second_valid_source_store_moves_the_donor_and_descendant_keys(
     tmp_path, monkeypatch
 ):
-    base = _Harness(monkeypatch, tmp_path / "a")
-    base.run()
-    changed = _Harness(monkeypatch, tmp_path / "b")
+    """Two valid invented sources in one store: keys move, nothing is refused.
+
+    The variant adds one more admitted two-person residence, so it is a second
+    *valid* accepted artifact rather than a corrupted one, and both runs
+    execute to a draw. The recipient bytes are identical in both arms, so its
+    node still hits: the store is warm, and the donor chain moved anyway.
+    """
+    store_root = tmp_path / "store"
+    base = _Harness(monkeypatch, tmp_path, namespace="base")
+    first = base.run(store_root=store_root)
+
+    variant = _Harness(
+        monkeypatch,
+        tmp_path,
+        namespace="variant",
+        rows=fx.variant_rows(),
+        expected=fx.VARIANT_EXPECTED,
+    )
+    second = variant.run(store_root=store_root)
+
+    for node in (
+        equity.DONOR_POPULATION,
+        equity.ROSTER_NODE,
+        equity.VALIDATE_NODE,
+        equity.FIT_NODE,
+        equity.DRAW_NODE,
+    ):
+        assert first.nodes[node].key != second.nodes[node].key
+        assert not second.nodes[node].hit
+
+    # The store holds both generations, so it is genuinely warm: replaying the
+    # first source under resume='require' serves all five nodes from cache.
+    replay = base.run(store_root=store_root, resume="require")
+    assert all(record.hit for record in replay.nodes.values())
+    assert {n: r.key for n, r in replay.nodes.items()} == {
+        n: r.key for n, r in first.nodes.items()
+    }
+
+    assert (
+        first.nodes[equity.DONOR_POPULATION].receipt["admitted_residences"]
+        == fx.ADMITTED_RESIDENCES
+    )
+    assert (
+        second.nodes[equity.DONOR_POPULATION].receipt["admitted_residences"]
+        == fx.VARIANT_ADMITTED_RESIDENCES
+    )
+    # Every node executed: the second source is valid, not refused. The
+    # recipient re-executes because its own node declares the contract
+    # identity, which moved with the source pins.
+    assert variant.calls() == {
+        "create_donor": 1,
+        "create_recipient": 1,
+        "support": 1,
+        "fit": 1,
+        "draw": 1,
+    }
+    drawn = second.populations[equity.RECIPIENT_POPULATION].table("household")[TARGET]
+    assert len(drawn) == 5 and np.isfinite(drawn.to_numpy()).all()
+
+
+def test_a_corrupted_source_payload_is_refused_before_any_fit(tmp_path, monkeypatch):
+    changed = _Harness(monkeypatch, tmp_path)
     projection_key = changed.contract.source["projection_key"]
     obj = mgraph.ContentStore(changed.source_store).object_path(projection_key)
     (obj / "payload.bin").write_bytes(b"different bytes entirely")

@@ -150,6 +150,20 @@ def variant_rows():
     return invented_rows() + extra
 
 
+def source_identifiers(rows=None):
+    """Every invented source identifier, for the privacy assertions.
+
+    These are what must never leave the private evidence artifact: the SSUIDs,
+    the December residence ids and the person numbers of the invented roster.
+    """
+    rows = invented_rows() if rows is None else rows
+    return {
+        "ssuids": frozenset(row["SSUID"] for row in rows),
+        "residences": frozenset(int(row["ERESIDENCEID"]) for row in rows),
+        "pnums": frozenset(int(row["PNUM"]) for row in rows),
+    }
+
+
 def build_projection(rows=None):
     """Serialize invented rows exactly as the accepted producer would."""
     rows = invented_rows() if rows is None else rows
@@ -339,16 +353,39 @@ def accepted_store(
     return root, contract, projection, receipt
 
 
-def recipient_source(directory: Path, sizes, *, household_ids=None, extra_column=None):
-    """An invented recipient population as csv-tables: complete rosters only."""
+def recipient_source(
+    directory: Path,
+    sizes,
+    *,
+    household_ids=None,
+    extra_column=None,
+    person_allocation_order=None,
+):
+    """An invented recipient population as csv-tables: complete rosters only.
+
+    ``person_allocation_order`` permutes the order in which households are
+    handed their person ids. The household table is unchanged and every
+    household keeps its size, so the result is the same recipient content under
+    a different person identity — the Frame requires ascending group ids, so
+    this is where a pure order permutation has to live.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     ids = list(household_ids or range(900001, 900001 + len(sizes)))
-    person_lines = ["person_id,person_household_id"]
+    order = (
+        list(range(len(ids)))
+        if person_allocation_order is None
+        else list(person_allocation_order)
+    )
+    assert sorted(order) == list(range(len(ids)))
     person_id = 0
-    for household_id, size in zip(ids, sizes, strict=True):
-        for _ in range(size):
+    allocated: list[tuple[int, int]] = []
+    for position in order:
+        for _ in range(list(sizes)[position]):
             person_id += 1
-            person_lines.append(f"{person_id},{household_id}")
+            allocated.append((person_id, ids[position]))
+    person_lines = ["person_id,person_household_id"]
+    for pid, household_id in sorted(allocated):
+        person_lines.append(f"{pid},{household_id}")
     header = "household_id" + (f",{extra_column[0]}" if extra_column else "")
     household_lines = [header]
     for offset, household_id in enumerate(ids):

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import sys
 from pathlib import Path
 
 import microcosm.build.sipp_december_readback as readback
@@ -104,13 +105,34 @@ def test_importing_the_consumer_opens_no_genuine_data_file(tmp_path):
     del importlib
 
 
-def test_the_loaded_module_hashes_match_the_files_on_disk():
-    """Record what this process actually loaded, not what the tree contains."""
-    manifest = {}
-    for name, path in _module_paths().items():
-        manifest[name] = hashlib.sha256(path.read_bytes()).hexdigest()
-    assert len(manifest) == len(MODULES)
-    assert all(len(digest) == 64 for digest in manifest.values())
+def test_the_loaded_module_bytes_are_the_bytes_on_disk_in_this_tree():
+    """Compare what the loader would read against the file, not just a length.
+
+    Asserting a digest is 64 characters long proved nothing. What the name
+    claims is that the module objects in this process came from these files,
+    so this compares the loader's own bytes for each module against the file
+    at its recorded origin, and requires every loaded ``microcosm`` module —
+    not only the three under review — to resolve inside this checkout rather
+    than an installed copy.
+    """
+    root = Path(equity.__file__).resolve().parents[5]
+    loaded = {
+        name: module
+        for name, module in sys.modules.items()
+        if (name == "microcosm" or name.startswith("microcosm."))
+        and getattr(module, "__file__", None)
+    }
+    assert {module.__name__ for module in MODULES} <= set(loaded)
+    for name, module in sorted(loaded.items()):
+        path = Path(module.__file__).resolve()
+        assert path.is_relative_to(root), f"{name} resolves outside {root}"
+        spec = module.__spec__
+        assert spec is not None and Path(spec.origin).resolve() == path, name
+        # ``get_data`` is what the import system reads; a stale module object
+        # whose file has since changed fails right here.
+        on_disk = path.read_bytes()
+        assert module.__loader__.get_data(str(path)) == on_disk, name
+        assert len(hashlib.sha256(on_disk).hexdigest()) == 64
 
 
 def test_the_producer_and_measurement_modules_are_unchanged():
@@ -140,6 +162,7 @@ def test_the_new_test_files_land_in_a_real_ci_bucket():
         "test_us_sipp_equity_graph_run.py",
         "test_us_sipp_equity_blindness.py",
         "test_us_sipp_equity_review_fixes.py",
+        "test_us_sipp_equity_persistence.py",
     ):
         path = f"packages/microcosm-build/tests/{name}"
         assert ci_test_groups.us_bucket(name) == "us-qs"
