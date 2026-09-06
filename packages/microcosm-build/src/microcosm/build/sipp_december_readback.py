@@ -104,7 +104,14 @@ def read_sipp_december_projection(
     scratch = Path(scratch)
     _require(scratch.is_dir(), "SCRATCH_NOT_A_DIRECTORY")
     root = Path(store.root).resolve()
-    _require(root not in scratch.resolve().parents, "SCRATCH_INSIDE_SOURCE_STORE")
+    resolved_scratch = scratch.resolve()
+    # The store root is itself "inside" the store: checking only the parents
+    # would have let ``scratch == store.root`` write bounded copies into the
+    # closed roster the codec just validated.
+    _require(
+        resolved_scratch != root and root not in resolved_scratch.parents,
+        "SCRATCH_INSIDE_SOURCE_STORE",
+    )
     binding = source_pins["producer_binding"]
 
     receipt_bytes = _pinned_bytes(

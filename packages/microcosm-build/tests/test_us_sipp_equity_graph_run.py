@@ -307,7 +307,12 @@ def test_a_changed_source_store_changes_the_donor_and_descendant_keys(tmp_path, 
     assert changed.calls()["fit"] == 0
 
 
-def test_a_changed_model_configuration_changes_the_fit_and_draw_keys(tmp_path, monkeypatch):
+def test_a_changed_model_configuration_changes_every_node_key(tmp_path, monkeypatch):
+    """The model section lives in the contract, so it moves the whole graph.
+
+    Both runs use the same kernel classes, so the implementation hash is held
+    fixed and the only moving part is the declared contract identity.
+    """
     harness = _Harness(monkeypatch, tmp_path)
     first = harness.run()
     document = json.loads(json.dumps(dict(_plain(harness.contract.document))))
@@ -316,9 +321,32 @@ def test_a_changed_model_configuration_changes_the_fit_and_draw_keys(tmp_path, m
     compiled = mgraph.compile_graph(
         equity.build_sipp_equity_graph(concept=TARGET, period=2022, contract=other)
     )
-    second = harness.run(compiled=compiled, store_name="store")
-    assert first.nodes[equity.FIT_NODE].key != second.nodes[equity.FIT_NODE].key
-    assert first.nodes[equity.DRAW_NODE].key != second.nodes[equity.DRAW_NODE].key
+    registry = mgraph.KernelRegistry()
+    for kernel in (
+        _CountingDonor(contract=other),
+        _CountingRoster(contract=other),
+        _CountingSupport(contract=other),
+        harness.train,
+        harness.apply,
+    ):
+        registry.register(kernel)
+    second = mgraph.run_graph(
+        compiled,
+        sources=harness.sources,
+        store=mgraph.ContentStore(harness.tmp_path / "store"),
+        kernels=registry,
+        resume="auto",
+    )
+    for node in (
+        equity.DONOR_POPULATION,
+        equity.ROSTER_NODE,
+        equity.VALIDATE_NODE,
+        equity.FIT_NODE,
+        equity.DRAW_NODE,
+    ):
+        assert first.nodes[node].key != second.nodes[node].key
+    # The warm store from the first contract satisfies none of them.
+    assert not any(record.hit for record in second.nodes.values())
 
 
 def _plain(value):
@@ -347,7 +375,11 @@ def test_a_hand_built_node_cannot_bypass_the_contract_check(tmp_path, monkeypatc
                 structural=node.structural,
                 outputs=node.outputs,
                 artifact_outputs=node.artifact_outputs,
-                params={"concept": TARGET, "period": 2024},
+                params={
+                    "concept": TARGET,
+                    "period": 2024,
+                    "contract_identity": harness.contract.identity,
+                },
                 description=node.description,
             )
         nodes.append(node)

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import stat
 from collections import Counter
 from dataclasses import dataclass
@@ -80,6 +79,8 @@ FIT_NODE = "sipp.equity.fit"
 DRAW_NODE = "sipp.equity.draw"
 DONOR_SUPPORT_TYPE = ArtifactType("microcosm.build.sipp_equity_support", 1)
 _SUPPORT_MAX_BYTES = 64 * 1024
+_META_MAX_BYTES = 64 * 1024
+_COPY_CHUNK_BYTES = 1024 * 1024
 _SCRATCH_DIRNAME = "readback-scratch"
 RANDOM_STREAM = ("sha256-u53-v1", "sipp-nominal-equity-dec2022-v1", 0, 0)
 _STORE_MEMBERS = ("objects", "tmp")
@@ -92,8 +93,25 @@ class EquityGraphError(ValueError):
 # --------------------------------------------------------------------------
 # Prepared read-only source store
 # --------------------------------------------------------------------------
-def _copy_object(source_root: Path, dest_root: Path, key: str, payload: str) -> None:
-    src = ContentStore.__new__(ContentStore)
+def _bounded_copy(origin: Path, destination: Path, limit: int) -> None:
+    """Copy at most ``limit`` bytes, refusing anything larger at this boundary.
+
+    The prepared store's whole point is a bounded input, so the copy is bounded
+    by the closed object's own pinned byte length rather than by an unbounded
+    ``copyfile`` that would happily materialize whatever the origin holds.
+    """
+    remaining = limit
+    with origin.open("rb") as stream, destination.open("wb") as out:
+        while chunk := stream.read(min(_COPY_CHUNK_BYTES, remaining + 1)):
+            remaining -= len(chunk)
+            if remaining < 0:
+                raise EquityGraphError("SOURCE_OBJECT_TOO_LARGE")
+            out.write(chunk)
+
+
+def _copy_object(
+    source_root: Path, dest_root: Path, key: str, payload: str, payload_bytes: int
+) -> None:
     # object_path is a pure function of the root; build the two paths directly
     # rather than constructing a store over a directory we are still preparing.
     src_dir = source_root / "objects" / key[:2] / key
@@ -103,13 +121,13 @@ def _copy_object(source_root: Path, dest_root: Path, key: str, payload: str) -> 
     names = sorted(entry.name for entry in os.scandir(src_dir))
     if names != sorted(("meta.json", payload)):
         raise EquityGraphError("SOURCE_OBJECT_LAYOUT")
+    limits = {"meta.json": _META_MAX_BYTES, payload: payload_bytes}
     dest_dir.mkdir(parents=True)
     for name in names:
         origin = src_dir / name
         if origin.is_symlink() or not stat.S_ISREG(origin.lstat().st_mode):
             raise EquityGraphError("SOURCE_OBJECT_NOT_REGULAR")
-        shutil.copyfile(origin, dest_dir / name)
-    del src
+        _bounded_copy(origin, dest_dir / name, limits[name])
 
 
 def prepare_source_store(accepted_store_root, destination, *, contract=None) -> Path:
@@ -117,7 +135,8 @@ def prepare_source_store(accepted_store_root, destination, *, contract=None) -> 
 
     The destination gets ``objects/`` and an empty ``tmp/`` so a ContentStore can
     be constructed over it read-only. No original CSV and no unrelated store
-    object is copied. The destination must not already exist.
+    object is copied, and each copy is bounded by that object's pinned length.
+    The destination must not already exist.
     """
     contract = contract or contract_module.load_contract()
     pins = contract.source
@@ -127,8 +146,16 @@ def prepare_source_store(accepted_store_root, destination, *, contract=None) -> 
         raise EquityGraphError("SOURCE_STORE_EXISTS")
     (dest / "objects").mkdir(parents=True)
     (dest / "tmp").mkdir()
-    _copy_object(source_root, dest, pins["receipt_key"], "payload.json")
-    _copy_object(source_root, dest, pins["projection_key"], "payload.bin")
+    _copy_object(
+        source_root, dest, pins["receipt_key"], "payload.json", pins["receipt_bytes"]
+    )
+    _copy_object(
+        source_root,
+        dest,
+        pins["projection_key"],
+        "payload.bin",
+        pins["projection_bytes"],
+    )
     return dest
 
 
@@ -142,19 +169,31 @@ def _check_closed_roster(root: Path, contract) -> None:
     pins = contract.source
     if sorted(entry.name for entry in os.scandir(root)) != sorted(_STORE_MEMBERS):
         raise EquityGraphError("SOURCE_STORE_MEMBERS")
+    objects = root / "objects"
+    # The two top-level members are checked as real directories, not merely as
+    # names: a symlinked ``objects/`` would otherwise satisfy the roster below
+    # while pointing at an entirely different store.
+    if objects.is_symlink() or not objects.is_dir():
+        raise EquityGraphError("SOURCE_STORE_OBJECTS_NOT_A_DIRECTORY")
     tmp = root / "tmp"
     if tmp.is_symlink() or not tmp.is_dir() or any(os.scandir(tmp)):
         raise EquityGraphError("SOURCE_STORE_TMP_NOT_EMPTY")
-    expected = {pins["receipt_key"], pins["projection_key"]}
-    found = set()
-    for shard in os.scandir(root / "objects"):
+    expected = sorted((pins["receipt_key"], pins["projection_key"]))
+    found: list[str] = []
+    for shard in os.scandir(objects):
         if shard.is_symlink() or not shard.is_dir():
             raise EquityGraphError("SOURCE_STORE_SHARD")
         for obj in os.scandir(shard.path):
             if obj.is_symlink() or not obj.is_dir():
                 raise EquityGraphError("SOURCE_STORE_OBJECT")
-            found.add(obj.name)
-    if found != expected:
+            # A key resolves through exactly one shard. An object parked under
+            # the wrong shard is unreachable by ``object_path`` but would still
+            # satisfy a set-valued roster, so refuse the placement itself.
+            if obj.name[:2] != shard.name:
+                raise EquityGraphError("SOURCE_STORE_SHARD_PLACEMENT")
+            found.append(obj.name)
+    # Compared as a sorted list, so a duplicated object also refuses.
+    if sorted(found) != expected:
         raise EquityGraphError("SOURCE_STORE_ROSTER")
 
 
@@ -259,11 +298,27 @@ def coverage_report(readback_result, contract) -> dict:
 
 
 def _checked_float(value: Decimal, code: str) -> float:
-    """Convert exact source Decimal evidence to the Frame's float64 weight type."""
+    """Convert an exact source Decimal weight to the Frame's float64 type.
+
+    A design weight is strictly positive by admission, so this predicate is the
+    weight's, not the target's: the signed target has its own conversion below.
+    """
     converted = float(value)
     if not np.isfinite(converted) or converted <= 0.0:
         raise EquityGraphError(code)
     if Decimal(converted).is_nan() or Decimal(converted).is_infinite():
+        raise EquityGraphError(code)
+    return converted
+
+
+def _checked_target_float(value: Decimal, code: str) -> float:
+    """Convert an exact signed source Decimal target to float64.
+
+    The target is signed nominal December-2022 dollars: negative equity and an
+    exact zero are both valid values, so only a nonfinite conversion refuses.
+    """
+    converted = float(value)
+    if not np.isfinite(converted):
         raise EquityGraphError(code)
     return converted
 
@@ -297,7 +352,11 @@ def _donor_frame(admitted, coverage, admission, contract, readback_result) -> Fr
                 [a.size for a in admitted], dtype=np.int64
             ),
             target_name: np.array(
-                [float(a.target) for a in admitted], dtype=np.float64
+                [
+                    _checked_target_float(a.target, "TARGET_CONVERSION")
+                    for a in admitted
+                ],
+                dtype=np.float64,
             ),
         }
     )
@@ -376,6 +435,54 @@ def register_codecs(registry, *, contract=None) -> None:
 # --------------------------------------------------------------------------
 # Kernels
 # --------------------------------------------------------------------------
+_KERNEL_DEPENDENCIES = ("numpy", "pandas")
+
+
+def _require_declared_contract(params, contract) -> None:
+    """Refuse a node whose declared contract is not the one being executed.
+
+    The packaged contract is a JSON resource, so no module ``source_hash``
+    covers it. Its identity is therefore declared in the node's params — which
+    ``node_key`` binds through ``normative(node)`` — and checked here against
+    the contract this kernel actually loaded. A changed source pin, admission
+    policy or model setting moves the identity, so it moves the donor,
+    recipient and support keys, and through them fit and draw. No cache entry
+    written under an older contract can satisfy a node declaring a newer one.
+    """
+    if params.get("contract_identity") != contract.identity:
+        raise EquityGraphError("CONTRACT_IDENTITY_MISMATCH")
+
+
+def _exact_supplied_sizes(supplied) -> np.ndarray:
+    """Exact integer values of a supplied size claim, before any cast.
+
+    ``astype(np.int64)`` truncates, so casting first would silently accept 1.5
+    as 1. Every rejection here is a clean refusal at this boundary: a boolean
+    or non-numeric column, a nonfinite value, a fractional value, or a
+    magnitude float64 cannot carry exactly.
+    """
+    values = supplied.to_numpy()
+    kind = values.dtype.kind
+    if kind == "b":
+        raise EquityGraphError("RECIPIENT_SIZE_TYPE:bool")
+    if kind == "i":
+        return values.astype(np.int64, copy=False)
+    if kind == "u":
+        if (values > np.iinfo(np.int64).max).any():
+            raise EquityGraphError("RECIPIENT_SIZE_NOT_EXACT")
+        return values.astype(np.int64)
+    if kind == "f":
+        if not np.isfinite(values).all():
+            raise EquityGraphError("RECIPIENT_SIZE_NOT_FINITE")
+        rounded = np.rint(values)
+        if not np.array_equal(rounded, values):
+            raise EquityGraphError("RECIPIENT_SIZE_NOT_INTEGER")
+        if (np.abs(values) > float(2**53)).any():
+            raise EquityGraphError("RECIPIENT_SIZE_NOT_EXACT")
+        return rounded.astype(np.int64)
+    raise EquityGraphError(f"RECIPIENT_SIZE_TYPE:{values.dtype.name}")
+
+
 def _encode_support(payload: dict) -> bytes:
     encoded = canonical_json(payload)
     if len(encoded) > _SUPPORT_MAX_BYTES:
@@ -388,7 +495,9 @@ class SippDonorCreateKernel(KernelBase):
 
     ref = "build.sipp.equity.donor@1"
     capabilities = Capabilities(
-        Determinism.DETERMINISTIC, structural=StructuralDelta.CREATE
+        Determinism.DETERMINISTIC,
+        structural=StructuralDelta.CREATE,
+        dependencies=_KERNEL_DEPENDENCIES,
     )
 
     def implementation_hash(self):
@@ -414,8 +523,9 @@ class SippDonorCreateKernel(KernelBase):
             ArtifactOutput("donor_support", DONOR_SUPPORT_TYPE),
         ) or node.artifact_inputs:
             raise EquityGraphError("DONOR_NODE_ARTIFACTS")
-        if set(context.params) != {"concept", "period"}:
+        if set(context.params) != {"concept", "period", "contract_identity"}:
             raise EquityGraphError("DONOR_NODE_PARAMS")
+        _require_declared_contract(context.params, contract)
         contract.require_request(
             concept=context.params["concept"], period=context.params["period"]
         )
@@ -468,7 +578,9 @@ class SippRecipientRosterKernel(KernelBase):
 
     ref = "build.sipp.equity.recipient@1"
     capabilities = Capabilities(
-        Determinism.DETERMINISTIC, structural=StructuralDelta.CREATE
+        Determinism.DETERMINISTIC,
+        structural=StructuralDelta.CREATE,
+        dependencies=_KERNEL_DEPENDENCIES,
     )
 
     def implementation_hash(self):
@@ -482,8 +594,9 @@ class SippRecipientRosterKernel(KernelBase):
     def run(self, context: KernelContext) -> KernelResult:
         contract = self._contract or contract_module.load_contract()
         node = context.node
-        if set(context.params) != {"codec"}:
+        if set(context.params) != {"codec", "contract_identity"}:
             raise EquityGraphError("RECIPIENT_NODE_PARAMS")
+        _require_declared_contract(context.params, contract)
         (name,) = node.sources
         frame = load_source(context.params["codec"], context.sources[name])
         roster = contract.predictor["roster_column"]
@@ -501,8 +614,10 @@ class SippRecipientRosterKernel(KernelBase):
             raise EquityGraphError("RECIPIENT_INCOMPLETE_MEMBERSHIP")
         sizes = derived.to_numpy().astype(np.int64)
         supplied = household.get(contract.predictor["name"])
+        # Compare the supplied numbers exactly against the derived roster. The
+        # roster is the identity either way: an agreeing claim is dropped below.
         if supplied is not None and not np.array_equal(
-            supplied.to_numpy().astype(np.int64), sizes
+            _exact_supplied_sizes(supplied), sizes
         ):
             raise EquityGraphError("RECIPIENT_SIZE_CONFLICT")
         # CREATE owns exactly its declared columns: a supplied, agreeing size
@@ -535,7 +650,9 @@ class SippSupportValidationKernel(KernelBase):
     """
 
     ref = "build.sipp.equity.support@1"
-    capabilities = Capabilities(Determinism.DETERMINISTIC)
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC, dependencies=_KERNEL_DEPENDENCIES
+    )
 
     def implementation_hash(self):
         return source_hash(
@@ -550,6 +667,9 @@ class SippSupportValidationKernel(KernelBase):
         node = context.node
         roster = contract.predictor["roster_column"]
         predictor = contract.predictor["name"]
+        if set(context.params) != {"contract_identity"}:
+            raise EquityGraphError("SUPPORT_NODE_PARAMS")
+        _require_declared_contract(context.params, contract)
         if (
             len(node.artifact_inputs) != 1
             or node.artifact_inputs[0].name != "donor_support"
@@ -635,7 +755,11 @@ def build_sipp_equity_graph(
             Owned("household", target, "float64"),
         ),
         artifact_outputs=(ArtifactOutput("donor_support", DONOR_SUPPORT_TYPE),),
-        params={"concept": concept, "period": period},
+        params={
+            "concept": concept,
+            "period": period,
+            "contract_identity": contract.identity,
+        },
         description="admitted December-2022 SIPP equity donors, source weights",
     )
     recipient = Node(
@@ -644,7 +768,7 @@ def build_sipp_equity_graph(
         sources=(RECIPIENT_POPULATION,),
         structural=StructuralDelta.CREATE,
         outputs=(Owned("household", roster, "int64"),),
-        params={"codec": recipient_codec},
+        params={"codec": recipient_codec, "contract_identity": contract.identity},
         description="caller recipient households; roster size derived and owned here",
     )
     validate = Node(
@@ -658,6 +782,7 @@ def build_sipp_equity_graph(
                 "donor_support", DONOR_POPULATION, "donor_support", DONOR_SUPPORT_TYPE
             ),
         ),
+        params={"contract_identity": contract.identity},
         description="refuse unsupported recipient sizes, then own the predictor",
     )
     fit = Node(
