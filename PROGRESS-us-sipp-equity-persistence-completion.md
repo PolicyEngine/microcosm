@@ -41,16 +41,18 @@ tests worth adding.
 - [x] `git status` / `git fetch origin --prune` / upstream inspection; new
       worktree created from `b19c287a` (the requested path is occupied by the
       original, which is left untouched).
-- [ ] Persist coverage + admission in the donor receipt, identifier-free.
-- [ ] Second typed artifact: exact `Decimal` target/weight strings and
+- [x] Persist coverage + admission in the donor receipt, identifier-free.
+- [x] Second typed artifact: exact `Decimal` target/weight strings and
       household/SSUID lineage, bound in the production graph path.
-- [ ] Recompute `selected_ssuid_digest` with the producer's own algorithm.
-- [ ] Expected-versus-observed admission reconciliation that refuses.
-- [ ] Meaningful same-store permutation and second-valid-source tests.
-- [ ] Documented recipient-column constraint and honest error wording.
+- [x] Recompute `selected_ssuid_digest` with the producer's own algorithm.
+- [x] Expected-versus-observed admission reconciliation that refuses.
+- [x] Meaningful same-store permutation and second-valid-source tests.
+- [x] Documented recipient-column constraint and honest error wording.
 - [ ] Full test run, ruff, CI bucket verification, module manifests.
 
 ## Next
 
-Implement in `sipp_equity_graph.py`, `sipp_december_readback.py` and the
-fixture, then the new test file, then the capture harness.
+Run the capture harness: the five SIPP equity files plus the parent's probe,
+repo-wide ruff, `ci_test_groups --verify`, the byte-identity check on the two
+accepted producer modules, and the per-process module manifests with each
+module's file SHA and its Git blob SHA at final HEAD.

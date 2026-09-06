@@ -45,8 +45,8 @@ conflicting-equity residences retained outside the fit.
 - `microcosm.build.sipp_december_readback` — a public sibling of the December
   producer that reads the two closed objects without rereading the 3.7 GB
   parent. It reuses the producer's private `_bounded_object`, `_counts`,
-  `_membership` and `_measurement_digest` helpers as an explicit, tested
-  internal dependency. The producer module itself is byte-for-byte unchanged,
+  `_membership`, `_measurement_digest` and `_selected_ssuids` helpers as an
+  explicit, tested internal dependency. The producer module itself is byte-for-byte unchanged,
   so its accepted historical output identity still holds. The historical
   producer binding and contract are validated **by comparison**; the receipt
   and projection key formulas are recomputed only as a consistency check.
@@ -57,7 +57,7 @@ conflicting-equity residences retained outside the fit.
 ## Graph shape
 
     donors (CREATE)  ──> fit (QRF train) ──┐
-        │  donor_support artifact          │ model artifact
+        │  donor_support + donor_evidence   │ model artifact
         ▼                                  ▼
     recipients (CREATE, owns              draw (QRF apply)
       roster_household_size)                  ▲
@@ -130,3 +130,91 @@ the membership identity in every case.
   predicate stays where it belongs, on the design weight.
 - The three kernels declare the `numpy` and `pandas` versions their behavior
   depends on, so a behavior-bearing upgrade moves their implementation hash.
+
+## Where the evidence lives, and why
+
+`ContentStore` replay reconstructs a population from its tables, weights and
+strata. It does **not** persist `Frame.metadata`, so everything the codec
+attaches to the donor Frame — the coverage report, the exact `Decimal` weights
+and targets, the household and person lineage — is gone the moment a run is
+served from cache. Two surfaces carry it instead, and both survive a warm hit
+in a fresh process.
+
+**The donor receipt** carries the complete coverage report and an
+identifier-free admission summary: the rule id, the denominators, the admitted
+and excluded counts, the mutually exclusive reasons, and the expected-versus-
+observed reconciliation. Receipts are rendered verbatim into the explain report
+(`explain.py`), so nothing that identifies a residence or a person may enter
+one. The receipt also carries the SHA-256, byte length and record counts of the
+evidence artifact, so the two are bound.
+
+**The `donor_evidence` typed artifact** carries what the receipt may not: each
+admitted residence with its SSUID, December residence id, household size and
+its exact `Decimal` source weight and signed target as strings, plus the full
+ordered person lineage, plus the whole admission record including each excluded
+residence's own key. It is declared as a second `ArtifactOutput` of the donor
+CREATE node in the production graph builder, so the executor stores it beside
+the node's outputs and replays it on a hit. It is private evidence: the explain
+report shows only its key and digest. The support artifact the validator reads
+carries the same digest, so the two donor outputs cannot drift apart, and the
+validator's own receipt records it.
+
+The lineage digest is recomputable from the artifact alone — the donor records
+and the person list rebuild exactly the document it hashes.
+
+## Expected versus observed admission
+
+The packaged contract pins 17,588 admitted, 20 known-equity zero-weight and 38
+conflicting-equity residences out of a pinned roster of 17,646. Those were
+inert: nothing compared them to what admission actually produced.
+`reconcile_admission` now compares four numbers — the denominator, the admitted
+count, the zero-weight exclusions and the unknown-target exclusions — and
+refuses `ADMISSION_RECONCILIATION:<fields>` on any disagreement, before the
+donor Frame is built. The result, expected beside observed, is recorded in the
+receipt. Because the three pinned counts sum exactly to the pinned roster, and
+the readback has already refused a roster of any other size, agreement on those
+four numbers leaves no room for an exclusion reason the contract does not name.
+Invented fixtures carry their own expected counts through the same field, so
+the reconciliation is exercised rather than bypassed.
+
+## `selected_ssuid_digest`
+
+The contract pinned it and nothing checked it. The readback now recomputes it
+with the producer's **own** selector and key formula — `_selected_ssuids` and
+`_key` over the reconstructed roster's identity tuples — and compares the
+result to both the packaged pin and the accepted receipt's own field. The
+recomputation is only sound under the all-SSUID selection, where the
+reconstructed roster is the producer's full roster, so a narrower selection is
+refused (`SELECTION_NOT_ALL_SSUIDS`) rather than compared incomparably.
+
+## The recipient population's column constraint
+
+`CREATE` must load exactly its declared columns: the executor compares the
+returned Frame's non-structural columns to the node's `outputs` and rejects any
+missing or extra one. The recipient node declares only
+`roster_household_size`. A recipient population may therefore carry **only**
+its entity ids, its person-to-household membership, its weights, and
+optionally an exactly agreeing `household_size` claim, which is compared and
+then dropped. Any other column — a region label, a diagnostic — rejects the
+node. Adding one means declaring it as an `Owned` output of a node, not
+smuggling it through the source.
+
+A household with no members is refused before the kernel: `csv-tables` builds
+the Frame first, and the Frame requires the group ids to be exactly the
+distinct membership values.
+
+## What the refusal types do and do not promise
+
+`EquityGraphError` and `ReadbackError` are each raised only by their own
+module, and their messages are closed codes rather than paths or payload bytes.
+Neither wraps what happens beneath it: a `ContentStore` integrity failure, a
+`StoreMiss`, or a producer-helper `SourceError` propagates as itself, with that
+layer's own message. Code that needs a single exception type must catch those
+too — the tests do.
+
+## Scratch
+
+The codec's bounded-copy namespace is a private temporary directory, created
+and removed inside the codec call. It is outside the source store — the
+readback refuses a scratch equal to or beneath the store root — and it writes
+nothing into any caller-owned directory.
