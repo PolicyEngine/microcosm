@@ -123,3 +123,10 @@ with the journal pointing to them.
 Update this guide in the same PR whenever the workspace layout, test
 commands, or release flow change. If you find it contradicting the repo,
 trust the repo and fix this file.
+
+## Combined survey age evidence export
+
+The versioned aggregate-only combined ASEC/ACS age profile is documented in
+`docs/us-combined-age-graph-evidence-export.md`. Execute its module by file path
+to avoid package initialization; it needs root-pinned aggregate JSON inputs and
+always excludes release eligibility and disables candidate index updates.

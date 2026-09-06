@@ -1,0 +1,1 @@
+Add an aggregate-only combined ASEC/ACS national age-calibration evidence profile. Verify root-pinned composition ancestry, calibration cache origins, all 18 target cells, independent support, calibrated checkpoint attestations and recorded solver diagnostics before sealing candidate attachments without updating an index.
