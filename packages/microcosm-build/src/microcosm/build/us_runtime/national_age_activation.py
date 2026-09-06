@@ -555,6 +555,29 @@ def activate_national_age_targets(
         _require(variable not in by_variable, f"DUPLICATE_CELL:{variable}")
         by_variable[variable] = cell
 
+    def derived_cell(variable: str) -> dict:
+        """Re-derive one cell from the authenticated bytes and cross-check it.
+
+        The same annotation-precedence reader the district inventory uses runs
+        again over exactly the response that was hashed; the accepted inventory
+        must then agree with it cell for cell.
+        """
+
+        for suffix in ("E", "M", "EA", "MA"):
+            _require(
+                f"{variable}{suffix}" in row,
+                f"RESPONSE_CELL_MISSING:{variable}{suffix}",
+            )
+        derived = {
+            "variable": variable,
+            "estimate": classify_acs_value(row[f"{variable}E"], row[f"{variable}EA"]),
+            "moe": classify_acs_value(row[f"{variable}M"], row[f"{variable}MA"]),
+        }
+        recorded = by_variable.get(variable)
+        _require(recorded is not None, f"CELL_ABSENT_FROM_INVENTORY:{variable}")
+        _require(derived == recorded, f"CELL_DISAGREES_WITH_INVENTORY:{variable}")
+        return derived
+
     specs: list[TargetSpec] = []
     digest = activation_digest(declaration)
     for band in declaration.bands:
@@ -564,22 +587,7 @@ def activate_national_age_targets(
         _require(
             published.get("predicateType") == "int", f"PUBLISHED_NOT_A_COUNT:{variable}"
         )
-        for suffix in ("E", "M", "EA", "MA"):
-            _require(
-                f"{variable}{suffix}" in row,
-                f"RESPONSE_CELL_MISSING:{variable}{suffix}",
-            )
-        # Re-derive from the authenticated response bytes with the same
-        # annotation-precedence reader the district inventory uses, then
-        # require the accepted inventory to agree cell for cell.
-        derived = {
-            "variable": variable,
-            "estimate": classify_acs_value(row[f"{variable}E"], row[f"{variable}EA"]),
-            "moe": classify_acs_value(row[f"{variable}M"], row[f"{variable}MA"]),
-        }
-        recorded = by_variable.get(variable)
-        _require(recorded is not None, f"CELL_ABSENT_FROM_INVENTORY:{variable}")
-        _require(derived == recorded, f"CELL_DISAGREES_WITH_INVENTORY:{variable}")
+        derived = derived_cell(variable)
         value = _count_estimate(derived, variable)
         specs.append(
             TargetSpec(
@@ -615,9 +623,8 @@ def activate_national_age_targets(
 
     # Coherence with the publisher's own total, checked and then discarded:
     # the total is deliberately not activated as a nineteenth loss term.
-    total_cell = by_variable.get(f"{declaration.table}_C01_001")
-    _require(total_cell is not None, "PUBLISHED_TOTAL_ABSENT")
-    total = _count_estimate(total_cell, f"{declaration.table}_C01_001")
+    total_variable = f"{declaration.table}_C01_001"
+    total = _count_estimate(derived_cell(total_variable), total_variable)
     _require(
         sum(int(spec.value) for spec in specs) == total,
         "ACTIVATED_BANDS_DO_NOT_PARTITION_THE_PUBLISHED_TOTAL",
