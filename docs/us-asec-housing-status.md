@@ -12,10 +12,27 @@ The source meanings are bound to the public
 [2024](https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf)
 and [2025](https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf)
 ASEC dictionaries. Printed pages 6A-2 through 6A-4 define interview and tenure
-context; pages 6A-9 and 6A-11 define the answer and allocation fields. The module
-records the full dictionary hashes and zero-based PDF page indices. The income
+context; pages 6A-9 and 6A-11 define the answer and allocation fields. The income
 cohorts 2022, 2023 and 2024 correspond to observed survey years 2023, 2024 and
 2025. The loader reads `H_YEAR` and verifies that relationship.
+
+Both named publisher documents are bound through one packaged resource,
+`asec_housing_status_authority_v1.json`. For each survey year it records the
+dictionary and the matching questionnaire technical document: full document
+`sha256`, source URL, and one locator per relevant page carrying the printed
+page label, the zero-based PDF page index and the unnormalized UTF-8 page-text
+`sha256`. It also records the questionnaire's printed Q85 answer numbers and
+the unresolved facsimile discrepancy, and states that field access is by named
+column only, so the changed ASCII record positions across survey years cannot
+misalign this artifact.
+
+`AUTHORITY_SHA256` pins the resource bytes, and `_authority()` refuses on any
+drift between the resource's per-survey dictionary hashes and page indices and
+the module's own `DICTIONARIES` tuple. The resource is therefore evidence, not
+a recoding switch: nothing in it can change a code domain or a classification
+outcome. It is bound into `definition_sha256` and reaches every artifact header,
+so changing the evidence re-derives the definition identity rather than silently
+restating it.
 
 ## Interpretation
 
@@ -86,6 +103,29 @@ The implementation identity covers the classifier, codec, source reader,
 composition, money adapter, Frame implementation and their declared runtime
 dependencies. Source evidence does not contain its own content commitment.
 Receipts contain structural join counts, without status-frequency statistics.
+
+## Graph seam
+
+This adapter adds no graph producer or attachment node of its own; the seam
+already exists downstream and is owned by the prepared-source lane.
+`asec_prepared_source.py` calls `load_authenticated_housing_status` against the
+original T1 source and then `attach_housing_status(tax, status)` after
+current-money tax reconstruction, and composes the housing universe on the
+result. Its receipt records `housing_content_sha256`,
+`housing_attachment_receipt_sha256`, `pre_housing_universe_frame_sha256` and
+`parent_kind: HousingStatusAttachedAsec`. `graph_asec_prepared.py` declares the
+`us.asec_prepared.create@3` node and carries the composed frame;
+`graph_housing_universe.py` binds the universe transport by checking that same
+`parent_kind`. `asec_housing_universe_source.py` accepts
+`HousingStatusAttachedAsec` as a parent alongside `CurrentMoneyTaxUnitResult`.
+
+Declaring another producer here would duplicate that wiring. The module and its
+packaged authority resource are instead classified in
+`graph_implementation_inventory.json`, so `implementation_manifest("asec_prepared_v3")`
+binds both housing modules and the resource digest. All housing definition and
+implementation digests are live projections rather than frozen constants, so
+editing these modules re-derives the downstream receipts instead of invalidating
+a pinned one.
 
 ## Composition after tax reconstruction
 
