@@ -69,7 +69,6 @@ from .graph_asec_income import (
 )
 from .graph_asec_prepared import PreparedGraphError, _artifact, _same_producer
 from .graph_composed_asec_binding import (
-    ARM_ROW_COLUMN,
     BIND_NODE,
     COHORT_COLUMN,
     COMPOSED_ASEC_DEPENDENCIES,
@@ -78,6 +77,7 @@ from .graph_composed_asec_binding import (
     US_COMPOSED_ASEC_ARM_ROWS_TYPE,
     US_COMPOSED_ASEC_BINDING_TYPE,
     USComposedAsecBindKernel,
+    arm_row_column,
     bind_composed_asec_arm_rows,
     bind_composed_asec_document,
     composed_asec_bind_node,
@@ -124,7 +124,7 @@ def _leaf_coordinates() -> tuple[tuple[str, str], ...]:
 def composed_leaf_declarations() -> tuple[Owned, ...]:
     """The corrected-leaf cells, owned only at the bound arm's rows."""
     return tuple(
-        Owned(entity, column, LEAF_DTYPE, rows=ARM_ROW_COLUMN)
+        Owned(entity, column, LEAF_DTYPE, rows=arm_row_column(entity))
         for entity, column in _leaf_coordinates()
     )
 
@@ -132,7 +132,7 @@ def composed_leaf_declarations() -> tuple[Owned, ...]:
 def composed_reported_income_declarations() -> tuple[Owned, ...]:
     """The six reported-income cells, owned only at the bound arm's rows."""
     return tuple(
-        Owned("person", name, LEAF_DTYPE, rows=ARM_ROW_COLUMN)
+        Owned("person", name, LEAF_DTYPE, rows=arm_row_column("person"))
         for name in RESULT_COLUMNS
     )
 
@@ -155,9 +155,10 @@ def _bound_population(document: dict, binding: dict) -> None:
             and declared["ordered_ids_sha256"] == recorded["ordered_ids_sha256"],
             f"BINDING_POPULATION_IDENTITY:{entity}",
         )
-    for entity in binding["arm"]:
+    for entity, column in binding["arm_row_columns"].items():
         _require(
-            ARM_ROW_COLUMN in document["entities"][entity]["columns"],
+            column == arm_row_column(entity)
+            and column in document["entities"][entity]["columns"],
             f"BINDING_ARM_COLUMN:{entity}",
         )
 
@@ -173,8 +174,9 @@ def _arm_rows(table: pd.DataFrame, entity: str, binding: dict) -> np.ndarray:
         == recorded["composed_ordered_ids_sha256"],
         f"ARM_VIEW_IDENTITY:{entity}",
     )
+    column = arm_row_column(entity)
     _require(
-        ARM_ROW_COLUMN in table and bool(table[ARM_ROW_COLUMN].to_numpy().all()),
+        column in table and bool(table[column].to_numpy().all()),
         f"ARM_VIEW_MASK:{entity}",
     )
     return ids
@@ -486,15 +488,25 @@ def _leaves_inputs() -> tuple[Slice, ...]:
     return (
         Slice(
             "person",
-            (*CPS_CARRIED_CURRENT_ROUTING_COLUMNS, ARM_ROW_COLUMN),
-            rows=ARM_ROW_COLUMN,
+            (*CPS_CARRIED_CURRENT_ROUTING_COLUMNS, arm_row_column("person")),
+            rows=arm_row_column("person"),
         ),
-        Slice("spm_unit", (ARM_ROW_COLUMN,), rows=ARM_ROW_COLUMN),
+        Slice(
+            "spm_unit",
+            (arm_row_column("spm_unit"),),
+            rows=arm_row_column("spm_unit"),
+        ),
     )
 
 
 def _reported_income_inputs() -> tuple[Slice, ...]:
-    return (Slice("person", (COHORT_COLUMN, ARM_ROW_COLUMN), rows=ARM_ROW_COLUMN),)
+    return (
+        Slice(
+            "person",
+            (COHORT_COLUMN, arm_row_column("person")),
+            rows=arm_row_column("person"),
+        ),
+    )
 
 
 def composed_asec_measure_nodes(*, population: str, population_context: str):

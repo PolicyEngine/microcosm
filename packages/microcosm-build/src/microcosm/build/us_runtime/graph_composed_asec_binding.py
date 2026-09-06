@@ -133,12 +133,20 @@ BIND_NODE = "composed_population.asec_bind"
 ARM_CHANNEL = BASE_ASEC_SUPPORT_CHANNEL
 _OTHER_CHANNEL = ACS_STACKED_SUPPORT_CHANNEL
 
-#: The declared boolean arm-membership cell. Every measurement node writes under
-#: this mask, so the executor — not a convention — is what keeps the opposite
-#: arm's storage byte-identical: ``population._patch_columns`` refuses any
-#: change outside an ``Owned`` mask, missingness included.
-ARM_ROW_COLUMN = "composed_asec_row"
+#: The declared boolean arm-membership cell, entity-prefixed because ``Frame``
+#: requires column names to be globally unique across entity tables. Every
+#: measurement node writes under this mask, so the executor — not a convention —
+#: is what keeps the opposite arm's storage byte-identical:
+#: ``population._patch_columns`` refuses any change outside an ``Owned`` mask,
+#: missingness included.
+ARM_ROW_SUFFIX = "composed_asec_row"
 ARM_ROW_DTYPE = "bool"
+
+
+def arm_row_column(entity: str) -> str:
+    """Return the entity-prefixed arm-membership cell name."""
+    _require(entity in US_SCHEMA.entities, f"ARM_ROW_ENTITY:{entity}")
+    return f"{entity}_{ARM_ROW_SUFFIX}"
 
 #: The entities a measurement of this arm addresses: persons, the households
 #: whose carried housing evidence is verified against the source, and the SPM
@@ -198,7 +206,7 @@ _BINDING_KEYS = frozenset(
     {
         "arm",
         "arm_channel",
-        "arm_row_column",
+        "arm_row_columns",
         "certified",
         "claim",
         "cohorts",
@@ -667,7 +675,9 @@ def resolve_composed_asec_binding(
         "certified": False,
         "claim": "engineering_binding_only_no_calibration_or_district_claim",
         "arm_channel": ARM_CHANNEL,
-        "arm_row_column": ARM_ROW_COLUMN,
+        "arm_row_columns": {
+            entity: arm_row_column(entity) for entity in BOUND_ENTITIES
+        },
         "resolution": {
             "keys": ["support_channel", "spine_source_id", COHORT_COLUMN],
             "source_identity": {
@@ -723,7 +733,7 @@ def resolve_composed_asec_binding(
         household_identity_sha256=identities["household"]["ordered_ids_sha256"],
     )
     for entity in BOUND_ENTITIES:
-        context["entities"][entity]["columns"].append(ARM_ROW_COLUMN)
+        context["entities"][entity]["columns"].append(arm_row_column(entity))
     return ComposedAsecBinding(
         document=document,
         context_document=context,
@@ -749,7 +759,11 @@ def bind_composed_asec_document(payload: bytes) -> dict:
     _require(document["schema"] == BINDING_SCHEMA, "BINDING_SCHEMA")
     _require(document["phase"] == COMPOSED_ASEC_PHASE, "BINDING_PHASE")
     _require(document["arm_channel"] == ARM_CHANNEL, "BINDING_ARM_CHANNEL")
-    _require(document["arm_row_column"] == ARM_ROW_COLUMN, "BINDING_ARM_ROW_COLUMN")
+    _require(
+        document["arm_row_columns"]
+        == {entity: arm_row_column(entity) for entity in BOUND_ENTITIES},
+        "BINDING_ARM_ROW_COLUMNS",
+    )
     _require(
         document["release_eligible"] is False and document["certified"] is False,
         "BINDING_RELEASE_CLAIM",
@@ -1010,7 +1024,8 @@ def bind_composed_asec_arm_rows(
 def arm_row_declarations() -> tuple[Owned, ...]:
     """The boolean arm-membership cells this node owns, in one canonical order."""
     return tuple(
-        Owned(entity, ARM_ROW_COLUMN, ARM_ROW_DTYPE) for entity in BOUND_ENTITIES
+        Owned(entity, arm_row_column(entity), ARM_ROW_DTYPE)
+        for entity in BOUND_ENTITIES
     )
 
 
@@ -1132,7 +1147,7 @@ class USComposedAsecBindKernel(KernelBase):
             index = pd.Index(
                 context.tables[entity][id_column].to_numpy(), name=id_column
             )
-            columns[(entity, ARM_ROW_COLUMN)] = pd.Series(
+            columns[(entity, arm_row_column(entity))] = pd.Series(
                 binding.masks[entity], index=index, dtype=ARM_ROW_DTYPE
             )
         payload = binding.payload
@@ -1167,8 +1182,8 @@ class USComposedAsecBindKernel(KernelBase):
 
 __all__ = [
     "ARM_CHANNEL",
-    "ARM_ROW_COLUMN",
     "ARM_ROW_DTYPE",
+    "ARM_ROW_SUFFIX",
     "BINDING_SCHEMA",
     "BIND_NODE",
     "BOUND_ENTITIES",
@@ -1183,6 +1198,7 @@ __all__ = [
     "ComposedAsecBinding",
     "USComposedAsecBindKernel",
     "arm_mask",
+    "arm_row_column",
     "arm_row_declarations",
     "bind_composed_asec_arm_rows",
     "bind_composed_asec_document",
