@@ -73,6 +73,21 @@ STAGE_DEPENDENCIES = MappingProxyType(
             "PyYAML",
             "pyarrow",
         ),
+        # Binding the carried prepared-ASEC evidence to the composed ASEC rows
+        # and deriving the reviewed corrected leaves and reported observations
+        # over them. It runs no source loader of its own, but its resolution and
+        # every verifier it reuses live inside the composing scope, so its module
+        # inventory is that scope's plus the two binding modules and its
+        # dependency set is identical.
+        "composed_asec_binding_v1": (
+            "numpy",
+            "pandas",
+            "microunit",
+            "tables",
+            "h5py",
+            "PyYAML",
+            "pyarrow",
+        ),
     }
 )
 _CODECS = MappingProxyType(
@@ -403,6 +418,7 @@ def implementation_manifest(stage: str) -> dict:
                 "assembly_prepare",
                 "acs_housing_universe_2024",
                 "composed_population_v1",
+                "composed_asec_binding_v1",
             }
             else {}
         ),
@@ -412,18 +428,26 @@ def implementation_manifest(stage: str) -> dict:
         "asec_prepared_v3",
         "acs_housing_universe_2024",
         "composed_population_v1",
+        "composed_asec_binding_v1",
     }:
         # Both stages parse pinned official CSV members with the stdlib reader.
         # csv's field size limit is process state, so it belongs in the identity
         # of each stage that reads under it. No other stage binds it, so no
         # existing stage identity moves.
         manifest["runtime_options"]["csv.field_size_limit"] = csv.field_size_limit()
-    if stage in {"assembly_prepare", "composed_population_v1"}:
+    if stage in {
+        "assembly_prepare",
+        "composed_population_v1",
+        "composed_asec_binding_v1",
+    }:
         bound = (
             ("asec_codec_v4", "acs_codec_2024")
             if stage == "assembly_prepare"
             # The composed CREATE reads the prepared directory, not the
             # raw-stage checkpoint, so it binds that codec's identity instead.
+            # The binding stage reads no source, but every artifact it admits
+            # was produced under those two codecs, so it binds them too rather
+            # than claiming an identity narrower than its actual inputs.
             else ("asec_prepared_v3", "acs_codec_2024")
         )
         for name, (codec_stage, loader) in _CODECS.items():
