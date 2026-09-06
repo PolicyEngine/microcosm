@@ -15,21 +15,40 @@ housing authority, dynamics, the dashboard, or graph assembly.
 
 ## State
 
-- Primary Census authority established and byte-verified (see
-  `docs/us-household-reported-income.md`).
-- ACS household source-column contract v2 adds `HINCP` and the housing-record
-  `ADJINC`; v1 stays byte-identical and remains the default.
-- `microcosm.build.us_runtime.household_reported_income` is a pure measurement
-  module: no engine inputs, no Frame, no graph registration.
+- Primary Census authority established and byte-verified. Quoted locators,
+  digests and limits are in `docs/us-household-reported-income.md`; the full
+  evidence package, including the retrieved PDFs and their extracted text, is
+  preserved outside this repository at
+  `architecture-reviews/microcosm-20260904/us-household-reported-income-authority/`.
+- The publisher household total is admissible on both arms, so no total was
+  manufactured. `HINCP` is the ACS aggregate; `asec_HTOTVAL` is the ASEC one.
+  Neither arm sums components: the executed ACS person roster carries six of
+  the eight published income types.
+- `acs_household_source_columns` declares the versioned household roster.
+  Version 1 restates the executed roster and is asserted against the loader's
+  own tuples. Version 2 adds exactly `HINCP` and the housing-record `ADJINC`
+  through a separate additive read, so `acs_pums.py` is unedited and its
+  implementation identity and source cache are unchanged.
+- `household_reported_income` is the pure measurement module: no Frame, no
+  archive, no country model, no engine output. A test pins its whole import
+  closure.
+- B19001 is expressed through the existing `quality_aggregates` distribution
+  helper and stays a reserved same-source holdout: no target is activated and
+  no candidate is scored.
 
 ## Next
 
-- Two-arm consumer (other lane) binds the documented API.
-- One genuine small extension is required before any measured comparison; the
-  exact extension is stated in the doc and the lane report.
+- The separate assembly child binds the API documented in
+  `docs/us-household-reported-income.md` ("The two-arm surface"). This lane
+  registers no source codec and no graph node, so the two additions do not
+  collide.
+- One genuine small extension is needed before any measured comparison: run
+  `read_acs_household_income_columns` over the already-pinned `csv_hus.zip`
+  from `acs_2024_1yr_sources.json`. The ASEC arm needs no new input.
 
 ## Not done, deliberately
 
 - No push, merge, publication, target activation, or candidate scoring.
 - No genuine raw-source read or run; only public publisher documentation.
-- No eight-component reconstruction and no railroad / private-public split.
+- No eight-component reconstruction, and no railroad or private/public split.
+- No CD reference, housing authority, dynamics or dashboard change.
