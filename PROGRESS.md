@@ -67,3 +67,11 @@ Integrated proof and nonvacuous zero-weight correction:
 - Added draft future-binding/cap documentation and exact no-overwrite private
   household staging command text. It has not been executed on genuine archives.
 Next: complete committed cold/warm proof and report exact dependencies and keys.
+
+Zero-graph codec registration:
+- r5 again passed integrated execution and the first three refusals, then the
+  separate zero graph correctly refused an unregistered frame-store codec.
+- Registered the real built-in frame-store decoder explicitly in that private
+  test store, matching the accepted native graph fixture pattern.
+- Receipt now includes exact source codecs and per-kernel declared dependencies.
+Next: complete the final serial proof on committed bytes.

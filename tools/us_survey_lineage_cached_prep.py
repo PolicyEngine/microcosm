@@ -394,6 +394,11 @@ def phase(root, name, checkout, head):
             "kernel_calls": list(calls),
             "source_decoder_calls": decoder_calls,
             "source_keys": source_keys,
+            "source_codecs": {s.name: s.codec for s in graph.sources},
+            "kernel_dependencies": {
+                n.id: registry.get(n.kernel).capabilities.dependencies
+                for n in graph.nodes
+            },
             "manifest_key": manifest.key,
             "clone_verification": clone_proof,
             "design_anchors": anchors,

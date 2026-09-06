@@ -227,7 +227,11 @@ def zero_weight_graph(root, before, sources):
         {"household": Weights(weights, before.weights_for("household").kind)},
         before.strata.copy(),
     )
-    store = ContentStore(root / "zero-store", codecs=us_source_codecs())
+    from microcosm.graph.codecs import load_frame_store
+
+    codecs = us_source_codecs()
+    codecs.register("frame-store", load_frame_store)
+    store = ContentStore(root / "zero-store", codecs=codecs)
     key = hashlib.sha256(b"invented-downstream-zero-weights").hexdigest()
     population_path = store.put_frame(key, frame)
     columns = frame_column_declarations(frame)
