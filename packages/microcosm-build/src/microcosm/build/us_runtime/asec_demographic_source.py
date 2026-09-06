@@ -333,7 +333,7 @@ SEX_UNBOUND_REASONS: Mapping[int, str] = MappingProxyType(
     }
 )
 SEX_ALLOCATION_STATES: Mapping[int, str] = MappingProxyType(
-    {0: "undetermined", 1: "reported_no_change", 2: "census_allocated"}
+    {0: "undetermined", 1: "no_change", 2: "census_allocated"}
 )
 HOUSEHOLD_REFERENCE_STATES: Mapping[int, str] = MappingProxyType(
     {
@@ -401,6 +401,11 @@ def contract_document() -> dict:
         "artifact_kind": ARTIFACT_KIND,
         "fields": [field.document() for field in ASEC_DEMOGRAPHIC_FIELDS],
         "readset": list(ASEC_DEMOGRAPHIC_SOURCE_COLUMNS),
+        "missing_token_policy": "refuse_source_member_without_filling_or_coercion",
+        "incumbent_relationship_policy": (
+            "A_EXPRRP presence does not attest source observation; compare and "
+            "diagnose discrepancies without replacing or trusting the incumbent recode"
+        ),
         "production_fields": {
             "restored_observations": [
                 {
@@ -416,22 +421,27 @@ def contract_document() -> dict:
             "derived": [
                 {
                     "column": "asec_sex_binding_state",
+                    "dtype": "int64",
                     "codes": _code_document(SEX_BINDING_STATES),
                 },
                 {
                     "column": "asec_sex_unbound_reason",
+                    "dtype": "int64",
                     "codes": _code_document(SEX_UNBOUND_REASONS),
                 },
                 {
                     "column": "asec_sex_allocation_state",
+                    "dtype": "int64",
                     "codes": _code_document(SEX_ALLOCATION_STATES),
                 },
                 {
                     "column": "asec_household_reference_state",
+                    "dtype": "int64",
                     "codes": _code_document(HOUSEHOLD_REFERENCE_STATES),
                 },
                 {
                     "column": "asec_household_reference_unbound_reason",
+                    "dtype": "int64",
                     "codes": _code_document(HOUSEHOLD_REFERENCE_UNBOUND_REASONS),
                 },
             ],
@@ -439,6 +449,21 @@ def contract_document() -> dict:
         "household_reference_codes": list(HOUSEHOLD_REFERENCE_CODES),
         "non_adopted_head_signals": [dict(item) for item in NON_ADOPTED_HEAD_SIGNALS],
         "household_and_family_roles_separate": True,
+        "acs_diagnostic_reference_contract": {
+            "source_column": "RELSHIPP",
+            "declared_range": [20, 38],
+            "housing_unit_reference_code": 20,
+            "group_quarters_codes": {
+                "37": "institutionalized",
+                "38": "noninstitutionalized",
+            },
+            "authority": {
+                "url": "https://www2.census.gov/programs-surveys/acs/tech_docs/pums/data_dict/PUMS_Data_Dictionary_2024.pdf",
+                "sha256": "929c2752995b0af1c16d5c64de8cdc43b4aa7d388ee2d45b4b4df90fecce1dff",
+                "pdf_page_1based": 43,
+            },
+            "production_acs_values_changed": False,
+        },
         "family_relationship_field_read": False,
         "line_number_used_for_headship": False,
         "sex_binding_requires": [
@@ -470,8 +495,13 @@ def _implementation() -> dict:
         "schema": 1,
         "modules": {
             name: _sha(package.joinpath(name).read_bytes())
-            for name in ("asec_demographic_source.py",)
+            for name in (
+                "asec_demographic_source.py",
+                "asec_person_income_source.py",
+                "asec_student_controls.py",
+            )
         },
+        "legacy_verification": legacy._verification_identity(),
         "dependencies": {n: metadata.version(n) for n in ("numpy", "pandas")},
         "member_pins": _MEMBER_PINS,
         "contract": contract_document(),
@@ -577,6 +607,11 @@ def classify_asec_demographic_observations(
             "CLASSIFY_INPUT",
             name,
         )
+    _require(
+        bool(np.isin(income_year, list(COHORTS)).all())
+        and bool((household_id > 0).all()),
+        "CLASSIFY_COORDINATES",
+    )
 
     sex_state = np.zeros(rows, dtype=np.int64)
     sex_reason = np.zeros(rows, dtype=np.int64)
@@ -658,6 +693,28 @@ def classify_asec_demographic_observations(
             "observed_period_kind": OBSERVED_PERIOD_KIND,
             "rows": int(mask.sum()),
             "households": int(household_mask.sum()),
+            "field_domains": {
+                field.name: {
+                    "rows_in_declared_range": int(
+                        np.isin(arrays[field.name][mask], field.declared_domain).sum()
+                    ),
+                    "rows_outside_declared_range": int(
+                        (
+                            ~np.isin(arrays[field.name][mask], field.declared_domain)
+                        ).sum()
+                    ),
+                    "rows_in_named_codes": int(
+                        np.isin(arrays[field.name][mask], list(field.named_codes)).sum()
+                    ),
+                    "rows_in_unnamed_range_codes": int(
+                        np.isin(
+                            arrays[field.name][mask], field.unnamed_in_range_codes
+                        ).sum()
+                    ),
+                    "role": field.role,
+                }
+                for field in ASEC_DEMOGRAPHIC_FIELDS
+            },
             "sex_binding_state": _counts(sex_state[mask], SEX_BINDING_STATES),
             "sex_unbound_reason": _counts(sex_reason[mask], SEX_UNBOUND_REASONS),
             "sex_allocation_state": _counts(allocation[mask], SEX_ALLOCATION_STATES),
@@ -694,12 +751,12 @@ def classify_asec_demographic_observations(
                 "households_with_multiple_p_seq_one": int(
                     (household_p_seq_ones[household_mask] > 1).sum()
                 ),
-                "agreement_rows": int((p_seq_one & (head_state == 1))[mask].sum()),
+                "agreement_rows": int((p_seq_one & reference)[mask].sum()),
                 "p_seq_one_without_reference_code": int(
-                    (p_seq_one & (head_state != 1))[mask].sum()
+                    (p_seq_one & ~reference)[mask].sum()
                 ),
                 "reference_code_without_p_seq_one": int(
-                    ((head_state == 1) & ~p_seq_one)[mask].sum()
+                    (reference & ~p_seq_one)[mask].sum()
                 ),
                 "unbound_households_with_one_p_seq_one": int(
                     ((household_verdicts != 1) & (household_p_seq_ones == 1))[
@@ -772,6 +829,7 @@ def acs_household_reference_states(
             name,
         )
     group_quarters = np.isin(relshipp, list(ACS_GROUP_QUARTERS_CODES))
+    valid_relationship = np.isin(relshipp, np.arange(20, 39))
     reference = relshipp == ACS_OBSERVED_REFERENCE_CODE
     states = np.where(reference, 1, 2).astype(np.int64)
     order = np.argsort(household_id, kind="stable")
@@ -781,6 +839,9 @@ def acs_household_reference_states(
     housing_units = 0
     gq_households = 0
     unbound_housing_units = 0
+    bad_reference_cardinality = 0
+    mixed_households = 0
+    invalid_households = 0
     for index in range(len(starts)):
         positions = order[bounds[index] : bounds[index + 1]]
         if group_quarters[positions].all():
@@ -788,7 +849,14 @@ def acs_household_reference_states(
             gq_households += 1
             continue
         housing_units += 1
-        if int(reference[positions].sum()) != 1:
+        bad_reference_cardinality += int(int(reference[positions].sum()) != 1)
+        mixed_households += int(group_quarters[positions].any())
+        invalid_households += int(not valid_relationship[positions].all())
+        if (
+            group_quarters[positions].any()
+            or not valid_relationship[positions].all()
+            or int(reference[positions].sum()) != 1
+        ):
             states[positions] = 0
             unbound_housing_units += 1
     diagnostics = {
@@ -796,11 +864,14 @@ def acs_household_reference_states(
         "households": len(starts),
         "housing_unit_households": housing_units,
         "group_quarters_only_households": gq_households,
-        "housing_unit_households_without_exactly_one_reference": (
-            unbound_housing_units
-        ),
+        "unbound_housing_unit_households": unbound_housing_units,
+        "housing_unit_households_without_exactly_one_reference": bad_reference_cardinality,
+        "mixed_housing_unit_group_quarters_households": mixed_households,
+        "households_with_invalid_relationship_codes": invalid_households,
         "state_counts": _counts(states, ACS_REFERENCE_STATES),
         "group_quarters_rows": int(group_quarters.sum()),
+        "institutional_group_quarters_rows": int((relshipp == 37).sum()),
+        "noninstitutional_group_quarters_rows": int((relshipp == 38).sum()),
         "manufactured_group_quarters_reference_person": False,
         "synthetic_group_quarters_relationship_code": (
             ACS_SYNTHETIC_GROUP_QUARTERS_RELATIONSHIP_CODE
@@ -933,6 +1004,14 @@ def _reconstruct(source, member_paths: Mapping[int, str | Path]):
                     name,
                 )
             compared = {}
+            relationship_crosscheck = {
+                "incumbent_present": "A_EXPRRP" in person,
+                "compared_rows": 0,
+                "missing_rows": 0,
+                "mismatch_rows": 0,
+                "presence_certifies_source_observation": False,
+                "used_as_semantic_proof": False,
+            }
             for alias, name in zip(ALIASES, OBSERVATIONS, strict=True):
                 observed = joined[name].to_numpy(dtype=np.int64)
                 output[alias][positions] = observed
@@ -941,11 +1020,23 @@ def _reconstruct(source, member_paths: Mapping[int, str | Path]):
                     continue
                 incumbent = person[name].iloc[positions]
                 known = ~incumbent.isna().to_numpy()
+                equal = (
+                    incumbent.to_numpy(dtype=np.float64, na_value=np.nan)[known]
+                    == observed[known]
+                )
+                if name == "A_EXPRRP":
+                    # Older prepared cohorts carry an A_LINENO-derived recode.
+                    # The restored alias owns the CSV observation; an unverified
+                    # incumbent may diagnose a discrepancy but cannot veto it.
+                    relationship_crosscheck.update(
+                        compared_rows=int(known.sum()),
+                        missing_rows=int((~known).sum()),
+                        mismatch_rows=int((~equal).sum()),
+                    )
+                    compared[name] = int(known.sum())
+                    continue
                 _require(
-                    np.array_equal(
-                        incumbent.to_numpy(dtype=np.float64, na_value=np.nan)[known],
-                        observed[known],
-                    ),
+                    bool(equal.all()),
                     "DEMOGRAPHIC_INCUMBENT_CONFLICT",
                     name,
                 )
@@ -961,6 +1052,8 @@ def _reconstruct(source, member_paths: Mapping[int, str | Path]):
                     "joined_rows": len(positions),
                     "unreferenced_source_rows": 0,
                     "incumbent_compared_rows": compared,
+                    "incumbent_relationship_crosscheck": relationship_crosscheck,
+                    "accepted_source_missing_tokens": dict.fromkeys(OBSERVATIONS, 0),
                     "incumbent_absent_columns": sorted(
                         name for name, value in compared.items() if value is None
                     ),
