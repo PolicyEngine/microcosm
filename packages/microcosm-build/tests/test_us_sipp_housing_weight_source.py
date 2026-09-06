@@ -446,3 +446,68 @@ def test_decoder_refuses_noncanonical_bytes_and_wrong_expected_sha():
                 expected_parent_receipt_sha256=p.receipt_sha256,
                 source=SOURCE,
             )
+
+
+def test_reported_rent_scope_matches_parent_with_allocated_tenure():
+    rows = [row(ATENURE="2")]
+    p = parent(rows)
+    result = project(rows, original=p)
+    assert p.households[0].exclusion is None
+    assert p.diagnostics["rent_quality_admitted"] == {"reported": 1}
+    assert result.diagnostics["reported_rent_donors"]["households"] == 1
+
+
+def test_populated_relationship_outside_universe_blocks_unique_reference():
+    result = project([row(), row(102, "300", THHLDSTATUS="4", ERELRPE="1")])
+    mean, reference = candidates(result)
+    assert mean["value"] == "200"
+    assert reference["known_interview_reference_members"] == 1
+    assert reference["unknown_reference_classifications"] == 1
+    assert reference["value"] is None
+    assert reference["status"] == "reference_classification_incomplete"
+    assert (
+        result.households[0]["members"][1]["fields"]["ERELRPE"]["state"]
+        == "value_outside_universe"
+    )
+
+
+def test_two_residences_in_one_ssuid_do_not_share_reference_members():
+    result = project(
+        [
+            row(),
+            row(102, "300", ERESIDENCEID="100002", ERELRPE="2", EHRESIDENCID="100002"),
+        ]
+    )
+    assert len(result.households) == 2
+    assert [h["key"] for h in result.households] == [["0001", 100001], ["0001", 100002]]
+    refs = [
+        h["interview_reference_person_member_december_weight"]
+        for h in result.households
+    ]
+    assert [r["value"] for r in refs] == ["100", "300"]
+    assert [r["known_interview_reference_members"] for r in refs] == [1, 1]
+
+
+def test_status_two_new_member_is_reference_eligible():
+    _, reference = candidates(project([row(THHLDSTATUS="2", ERELRPE="2")]))
+    assert reference["value"] == "100" and reference["status"] == "positive"
+
+
+def test_parent_upper_endpoint_disagreement_is_visible():
+    result = project([row(weight="10000000")])
+    mean, _ = candidates(result)
+    assert mean["value"] is None and mean["parent_mean_equal"] is False
+    assert (
+        result.diagnostics["all_households"]["mean_parent_disagreement_households"] == 1
+    )
+
+
+def test_csv_quotes_are_literal_as_in_frozen_parent_parser():
+    fields = list(ws.FIELDS)
+    values = row(ERELRPE='"1"').values
+    raw = "|".join(fields) + "\n" + "|".join(values[f] for f in fields) + "\n"
+    decoded = list(ws.iter_csv_rows(io.StringIO(raw)))
+    assert decoded[0].values["ERELRPE"] == '"1"'
+    complete = m.SippRow({**row().values, **decoded[0].values})
+    _, reference = candidates(project([complete]))
+    assert reference["status"] == "reference_classification_incomplete"

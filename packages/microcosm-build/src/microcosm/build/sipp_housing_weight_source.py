@@ -345,7 +345,7 @@ def header_positions(header: Sequence[str]) -> tuple[int, ...]:
 def iter_csv_rows(stream: Iterable[str]) -> Iterator[m.SippRow]:
     """Decode an already-opened pipe CSV; authentication/selection stay upstream."""
     try:
-        reader = csv.reader(stream, delimiter="|", strict=True)
+        reader = csv.reader(stream, delimiter="|", quoting=csv.QUOTE_NONE, strict=True)
         header = next(reader)
         positions = header_positions(header)
         for row in reader:
@@ -495,6 +495,8 @@ def _household(
         fields = _field_evidence(row.values)
         relationship = fields["ERELRPE"]
         if row.contradictions:
+            reference = "unknown"
+        elif relationship["state"] == "value_outside_universe":
             reference = "unknown"
         elif relationship["universe"] == "out":
             reference = "outside_interview_universe"
@@ -693,7 +695,8 @@ def _diagnostics(records: Sequence[dict], parent: hp.HousingProjectionResult) ->
     reported = [
         i
         for i in admitted
-        if hm.measurement_quality(parent.households[i].rent) == "reported"
+        if hm.measurement_quality(parent.households[i].household("TRENTMORT"))
+        == "reported"
     ]
     return {
         "all_households": summarize(list(range(len(records)))),
