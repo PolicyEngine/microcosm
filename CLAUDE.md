@@ -32,8 +32,8 @@ The bounded whole-household PUF-support clone over that combined population is
 `docs/us-combined-survey-clone-graph.md`. It is a real graph `EXPAND` that
 reuses `clone_us_frame_for_puf_support` as its operator and validator; it reads
 no donor, fits nothing, draws nothing and is labelled development, not release
-eligible. Do not extend it with donor, fit, draw or placement work — those are
-separate reviewed scopes.
+eligible. Downstream donor admission, fitting, drawing and placement consume
+its expanded population through their own declared graph nodes.
 
 IRS fiscal targets require explicit supported return universes and actual model
 filer decisions before household aggregation. Target-frame materializer version

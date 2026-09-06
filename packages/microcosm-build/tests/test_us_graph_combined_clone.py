@@ -325,20 +325,77 @@ def _role_key(frame: Frame, entity: str) -> pd.DataFrame:
 
 
 def _keyed(frame: Frame, entity: str) -> pd.DataFrame:
-    """One entity's rows indexed by the declared key, ids dropped from values.
+    """Compare payload by source identity, with memberships expressed as keys.
 
-    Raw ids are excluded from the compared payload and carried in a separate
-    column, so a comparison states plainly whether the two paths agree on the
-    contractual identity and, separately, on the integers.
+    Exclude each row's raw entity id. Replace person-to-group raw membership
+    ids with the referenced group's (channel, source id, clone role) tuple,
+    so a changed membership remains visible while consistent renumbering does
+    not affect this comparison. Raw ids have a separate assertion below.
     """
 
-    table = frame.table(entity).reset_index(drop=True)
-    key = _role_key(frame, entity)
-    keyed = pd.concat([key, table], axis=1)
-    index = pd.MultiIndex.from_frame(key)
-    keyed.index = index
+    table = frame.table(entity).reset_index(drop=True).copy()
+    table = table.drop(columns=frame.schema.entity_id_column(entity))
+    if entity == frame.schema.person_entity:
+        for group in frame.schema.group_entities:
+            raw_ids = frame.table(group)[frame.schema.entity_id_column(group)]
+            group_keys = list(
+                _role_key(frame, group).itertuples(index=False, name=None)
+            )
+            id_to_key = dict(zip(raw_ids, group_keys, strict=True))
+            assert len(id_to_key) == len(raw_ids), f"{group}: duplicate raw id"
+            membership = frame.schema.membership_column(group)
+            # Indexing the map explicitly refuses an unknown member; dropping
+            # memberships or mapping a miss to NaN would hide broken structure.
+            table[membership] = [id_to_key[value] for value in table[membership]]
+    index = pd.MultiIndex.from_frame(_role_key(frame, entity))
     assert index.is_unique, f"{entity}: declared key is not a bijection"
-    return keyed.drop(columns=list(key.columns)).sort_index()
+    table.index = index
+    return table.sort_index()
+
+
+def _raw_id_map(frame: Frame, entity: str) -> dict:
+    return dict(
+        zip(
+            pd.MultiIndex.from_frame(_role_key(frame, entity)),
+            frame.table(entity)[frame.schema.entity_id_column(entity)],
+            strict=True,
+        )
+    )
+
+
+def _renumbered(frame: Frame) -> Frame:
+    """Renumber every invented entity id and membership, preserving provenance."""
+    start = (
+        max(
+            int(frame.table(entity)[frame.schema.entity_id_column(entity)].max())
+            for entity in frame.entities
+        )
+        + 1_000_000
+    )
+    tables = {entity: frame.table(entity).copy(deep=True) for entity in frame.entities}
+    remaps = {}
+    for entity in frame.entities:
+        column = frame.schema.entity_id_column(entity)
+        old = tables[entity][column].to_numpy(copy=True)
+        new = start + np.arange(len(old), dtype=np.int64) * 7
+        start = int(new[-1]) + 1_000_000
+        assert np.all(old != new)
+        remaps[entity] = dict(zip(old, new, strict=True))
+        tables[entity][column] = new
+    person = tables[frame.schema.person_entity]
+    for group in frame.schema.group_entities:
+        column = frame.schema.membership_column(group)
+        person[column] = np.array(
+            [remaps[group][value] for value in person[column]], dtype=np.int64
+        )
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -445,21 +502,49 @@ def test_graph_and_direct_agree_on_raw_ids_too(tmp_path):
     graphed, direct = _expanded(manifest), _direct(_pool())
     for entity in US_SCHEMA.entities:
         id_column = US_SCHEMA.entity_id_column(entity)
-        graph_map = dict(
-            zip(
-                pd.MultiIndex.from_frame(_role_key(graphed, entity)),
-                graphed.table(entity)[id_column],
-                strict=True,
-            )
+        assert id_column not in _keyed(graphed, entity).columns
+        assert _raw_id_map(graphed, entity) == _raw_id_map(direct, entity), entity
+
+
+def test_declared_key_comparison_survives_renumbering_every_id(tmp_path):
+    manifest, _, _ = _run(tmp_path, _pool())
+    graphed, renumbered = _expanded(manifest), _renumbered(_direct(_pool()))
+    for entity in US_SCHEMA.entities:
+        pd.testing.assert_frame_equal(
+            _keyed(graphed, entity), _keyed(renumbered, entity), check_exact=True
         )
-        direct_map = dict(
-            zip(
-                pd.MultiIndex.from_frame(_role_key(direct, entity)),
-                direct.table(entity)[id_column],
-                strict=True,
-            )
+
+
+def test_raw_id_comparison_detects_renumbering_every_id():
+    original = _direct(_pool())
+    renumbered = _renumbered(original)
+    for entity in US_SCHEMA.entities:
+        before, after = _raw_id_map(original, entity), _raw_id_map(renumbered, entity)
+        assert before.keys() == after.keys()
+        assert all(before[key] != after[key] for key in before), entity
+
+
+def test_declared_key_comparison_still_detects_a_membership_change():
+    original = _direct(_pool())
+    tables = {
+        entity: original.table(entity).copy(deep=True) for entity in original.entities
+    }
+    membership = US_SCHEMA.membership_column("tax_unit")
+    first_id = tables["person"].loc[0, membership]
+    another_id = next(
+        value for value in tables["tax_unit"]["tax_unit_id"] if value != first_id
+    )
+    tables["person"].loc[0, membership] = another_id
+    changed = Frame(
+        tables,
+        original.schema,
+        {"household": original.weights_for("household")},
+        original.strata,
+    )
+    with pytest.raises(AssertionError):
+        pd.testing.assert_frame_equal(
+            _keyed(original, "person"), _keyed(changed, "person"), check_exact=True
         )
-        assert graph_map == direct_map, entity
 
 
 def test_graph_weights_and_strata_equal_the_direct_operator(tmp_path):
@@ -1221,3 +1306,69 @@ def test_refuses_a_clone_output_with_an_unauthorized_household_role(
     )
     with pytest.raises(NodeRejectedError, match="full-clone identity failed"):
         _run(tmp_path, _pool(), label="extra-household-role")
+
+
+@pytest.mark.parametrize("group", ["tax_unit", "family", "spm_unit", "marital_unit"])
+@pytest.mark.parametrize("include_person", [False, True])
+def test_equal_explicit_group_weights_still_refuse(tmp_path, group, include_person):
+    """Numerical equality cannot authorize a stored vector copied unhalved."""
+    pool = _pool()
+    stored = {
+        "household": pool.weights_for("household"),
+        group: pool.resolve_weights(group),
+    }
+    if include_person:
+        stored["person"] = pool.resolve_weights("person")
+    weighted = Frame(
+        {entity: pool.table(entity).copy(deep=True) for entity in pool.entities},
+        pool.schema,
+        stored,
+        pool.strata,
+        mass_log=pool.mass_log,
+        metadata=pool.metadata,
+    )
+    diagnosis = (
+        "mass='conserve' changed stratum"
+        if include_person
+        else "Cannot resolve person-level weights"
+    )
+    with pytest.raises(NodeRejectedError, match=diagnosis):
+        _run(tmp_path, weighted, label=f"equal-{group}-{include_person}")
+
+
+def test_equal_explicit_person_weights_still_refuse(tmp_path):
+    pool = _pool()
+    weighted = Frame(
+        {entity: pool.table(entity).copy(deep=True) for entity in pool.entities},
+        pool.schema,
+        {
+            "household": pool.weights_for("household"),
+            "person": pool.resolve_weights("person"),
+        },
+        pool.strata,
+        mass_log=pool.mass_log,
+        metadata=pool.metadata,
+    )
+    with pytest.raises(NodeRejectedError, match="mass='conserve' changed stratum"):
+        _run(tmp_path, weighted, label="equal-person")
+
+
+def test_all_zero_weights_cannot_evade_the_conservation_refusal():
+    with pytest.raises(ValueError, match="Weights cannot be all zero"):
+        Weights([0.0, 0.0], WeightKind.IMPORTANCE)
+
+
+def test_subnormal_weight_that_cannot_be_halved_exactly_refuses(tmp_path):
+    pool = _pool()
+    values = pool.weights_for("household").values.copy()
+    values[0] = np.nextafter(0.0, 1.0)
+    weighted = Frame(
+        {entity: pool.table(entity).copy(deep=True) for entity in pool.entities},
+        pool.schema,
+        {"household": Weights(values, WeightKind.IMPORTANCE)},
+        pool.strata,
+        mass_log=pool.mass_log,
+        metadata=pool.metadata,
+    )
+    with pytest.raises(NodeRejectedError, match="PAIR_WEIGHT_SUM"):
+        _run(tmp_path, weighted, label="smallest-subnormal")

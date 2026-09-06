@@ -65,15 +65,21 @@ own output through the `(entity_source_id, clone_index)` bijection, with the
 positional pairing checked independently; a disagreement between the two is a
 refusal (`LINEAGE_POSITION_DISAGREES`), not a silent choice between them. The
 tests compare graph against direct through that declared key and state the raw
-id agreement as a separate, observed fact.
+id agreement as a separate, observed fact. The keyed comparison drops each
+entity's raw id and replaces person memberships with the referenced group's
+`(support_channel, source_id, clone_index)` key. Renumbering every id and every
+membership therefore preserves this comparison; changing a membership to a
+different source group remains a detectable mismatch.
 
 ## Mass
 
 The node declares `mass="conserve"`. Halving household weights while doubling
 rows leaves the executor's weighted person mass per stratum unchanged, so the
-ledger is a real check rather than a declared one. Each pair's weights sum to
-their parent bit for bit: halving a finite double and adding the two halves is
-exact, so the kernel requires equality rather than a tolerance.
+ledger is a real check rather than a declared one. The kernel requires each pair's weights to sum exactly to its parent. Halving
+some subnormal doubles loses a low bit, so these inputs refuse with
+`PAIR_WEIGHT_SUM` rather than silently losing mass. The direct operator divides
+by its role count; `weight_split_denominator=2` is a re-validated declaration of
+that two-role contract, not a separate arithmetic control.
 
 ## What the node key binds
 
@@ -100,6 +106,12 @@ cross-grain check that each person's support channel matches every group row
 that person references. Drift *between* stages is caught by the executor's own
 content addressing, which is what the manifest exists to do upstream.
 
+The expanded graph population still has no assembly manifest in
+`Frame.metadata`. A downstream consumer that requires that manifest will
+refuse until an explicit artifact or receipt-based integration supplies the
+contract it needs. This stage does not silently reconstruct metadata for
+future consumers.
+
 ## Receipt
 
 The stage publishes counts, mass totals, declared labels and 64-hex digests
@@ -109,6 +121,12 @@ before and after, household mass in total and per source channel, the clone
 attachment authority receipt, and explicit `donor_inputs` flags recording that
 no donor was read, no donor weight entered a host weight, no draw or
 tax/benefit value was written and no prior-wage stage ran.
+
+Receipt float totals are diagnostic reductions and are outside the kernel's
+`BITWISE` population-output claim. Their last bits can differ across platforms;
+receipt hashes and manifests that contain them are therefore not portable
+identity pins. The invented fixture also begins with a `PLATFORM_BITWISE`
+CREATE kernel, which makes its recorded downstream node keys platform-scoped.
 
 The executor authors the rest of the node receipt itself. That includes
 `receipt["expand"]`, the per-entity `[[new id, source id], …]` lineage it needs

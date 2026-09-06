@@ -601,9 +601,9 @@ class USCombinedSurveyCloneExpandKernel(KernelBase):
         )
         native = values[: len(base_ids)]
         detail = values[len(base_ids) :]
-        # Halving a finite double and adding the two halves is exact, so the
-        # pair sum is required to equal its parent bit for bit rather than
-        # within a tolerance a silent rescale could hide inside.
+        # Require an exact pair sum rather than a tolerance that could hide
+        # a rescale. Halving can lose the low bit of a subnormal double;
+        # such a weight refuses here instead of silently losing mass.
         _require(np.array_equal(native + detail, incoming), "PAIR_WEIGHT_SUM")
         _require(np.array_equal(native, detail), "PAIR_WEIGHT_SYMMETRY")
         return Weights(values, after_weights.kind)
@@ -616,7 +616,12 @@ class USCombinedSurveyCloneExpandKernel(KernelBase):
         authority: Mapping[str, object],
         entity_facts: Mapping[str, object],
     ) -> dict[str, object]:
-        """Counts, digests and declared labels. No row, id or amount is named."""
+        """Counts, digests, labels and platform-sensitive mass summaries.
+
+        Floating reductions here and in ``_channel_mass`` are receipt evidence,
+        outside the BITWISE population-output promise. Their last bits can
+        differ across platforms, so receipt/manifest hashes are scoped too.
+        """
 
         return {
             "phase": COMBINED_CLONE_PHASE,
@@ -651,6 +656,9 @@ class USCombinedSurveyCloneExpandKernel(KernelBase):
             },
             "household_weights": {
                 "kind": COMBINED_CLONE_WEIGHT_KIND.value,
+                # The operator divides by its role count. This literal is
+                # the re-validated declaration of that two-role contract,
+                # not a separate arithmetic control for the operator.
                 "split_denominator": COMBINED_CLONE_WEIGHT_SPLIT_DENOMINATOR,
                 "base_total": float(
                     before.weights_for(COMBINED_CLONE_WEIGHT_ENTITY).total
