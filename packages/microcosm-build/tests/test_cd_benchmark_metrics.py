@@ -472,7 +472,13 @@ def test_precision_never_widens_a_point_bound(protocol):
         annotation = "*****" if moe == "-555555555" else None
         published = cell("100", moe, ma=annotation)
         precision = relative_moe_precision(published, ceiling=Decimal("0.05"))
-        assert precision.status is not PrecisionStatus.ADEQUATE or moe != "50000"
+        expected = {
+            "0": PrecisionStatus.ADEQUATE,
+            "1": PrecisionStatus.ADEQUATE,
+            "50000": PrecisionStatus.INADEQUATE,
+            "-555555555": PrecisionStatus.CONTROLLED_UNKNOWN,
+        }
+        assert precision.status is expected[moe]
         assert point_check(block, candidate=102.5, reference=100) == verdict
 
 

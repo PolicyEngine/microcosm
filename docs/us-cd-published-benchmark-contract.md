@@ -213,9 +213,44 @@ complete district inventory still has to be checked with
 `district_scope_reasons` and its reasons passed to `evaluate_scope`; this pure
 fixture interface does not discover or authenticate that inventory itself.
 
+The composition checks also bind each metric to the exact immutable block
+used to compute it and require matching block and district labels. Precision
+readings retain their source cells: a distribution needs the distinct complete
+published-percentage roster or numerator/denominator pairs specified by its
+rule. The kind, ceiling, dataset, table, units and geography must match. The
+scope reducer additionally checks year, Congress, published geography, support
+bounds and the partition definition against its own protocol. Count-based
+precision uses the same reference counts as the metric. Repeated readings cannot
+substitute for missing cells.
+
+Support must contain one matching denominator and every positive-reference bin,
+with the matching contribution measure and candidate mass. Exposure classes must
+agree with the block's reserved-family status. The scope reducer rechecks these
+relations even for a previously assembled block and refuses duplicate district/
+block pairs. It requires exact approval/protocol identity and canonical bytes
+before setting `scoring_permitted`.
+
+`evaluate_scope(required_geography_ids=..., published_geography_ids=...)` can
+check a supplied district inventory against its actual block set, retaining that
+evidence. When omitted, `district_inventory_checked_here` is false: the caller
+still owns inventory authentication and must supply external scope reasons.
+A conforming fixture-only block set without that inventory is not evidence for
+the full 436-district scope. Plain result dataclasses and caller-supplied
+bindings remain trusted in-process inputs, not cryptographic capabilities or
+publisher authentication.
+
+Printed numeric reference strings are parsed as exact decimals after the ACS
+adapter classifies them. Candidate floats retain their exact binary values;
+`sum(m_i) + U == D` is an exact caller obligation, so independently rounded
+candidate totals can refuse. The protocol prescribes raw published-count shares
+without a separate exact reference-partition closure rule. Their sum is retained
+as a diagnostic; this implementation adds no new tolerance or silent rescaling.
+The separately declared renter discrepancy bound is enforced as well as the
+common bin and total-variation bounds.
+
 ## Where this package's reading fills a gap
 
-Four things the document leaves open are decided here and named as
+Five things the document leaves open are decided here and named as
 implementation choices rather than contract text.
 
 1. **Approval artifact format.** Defined as
@@ -236,7 +271,7 @@ implementation choices rather than contract text.
 5. **Reason codes for absent axis evidence.** The document names codes for
    values that are known and wrong, and for evidence that is unavailable, but
    does not assign one to "no support reading was produced at all". The three
-   choices above are this package's reading.
+   missing-axis classifications in the preceding section are this package's reading.
 
 Two smaller readings: the adapter's `moe_open_interval` and `open_interval`
 classes both map to the document's single `open_interval`, with the adapter's own

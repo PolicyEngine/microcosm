@@ -34,8 +34,9 @@ EXPLICIT_SHARED_SPEC = (
     "packages/microcosm-build/tests/test_candidate_quality.py",
     # The CD published-benchmark contract suite touches US source adapters but
     # needs no engine: it is pure protocol/metric/ledger logic over invented
-    # fixtures, and a test asserts the import closure loads neither
-    # policyengine_* nor microcosm.build.us_runtime. Shared-spec, not us-*.
+    # fixtures. The package-only import test loads neither policyengine_*
+    # nor us_runtime; adapter tests do import us_runtime without an engine.
+    "packages/microcosm-build/tests/test_cd_benchmark_axis_identity.py",
     "packages/microcosm-build/tests/test_cd_benchmark_ledger.py",
     "packages/microcosm-build/tests/test_cd_benchmark_metrics.py",
     "packages/microcosm-build/tests/test_cd_benchmark_protocol.py",

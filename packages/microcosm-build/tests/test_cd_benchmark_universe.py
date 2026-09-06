@@ -8,6 +8,7 @@ candidate, population or Census artifact is read.
 from __future__ import annotations
 
 import dataclasses
+from decimal import Decimal
 
 import numpy as np
 import pandas as pd
@@ -49,10 +50,12 @@ from microcosm.build.cd_benchmark.reference import (
     published_percentage_precision,
     reference_cell,
     relative_moe_precision,
+    subset_share_precision,
 )
 from microcosm.build.cd_benchmark.support import (
     SourceRecord,
     SupportMeasure,
+    bin_support,
     denominator_support,
 )
 from microcosm.build.cd_benchmark.universe import (
@@ -384,8 +387,54 @@ def percentage_cell():
     )
 
 
-def complete_axes(protocol):
-    """Precision and support evidence a mandatory block cannot go without."""
+def fixture_cell(variable, dataset, estimate, *, units="persons", moe="0.5"):
+    return reference_cell(
+        {
+            "E": str(estimate),
+            "M": moe,
+            "EA": None,
+            "MA": None,
+            "published_GEO_ID": "5001900US0601",
+            "canonical_geography_id": "5001900US0601",
+            "dataset": dataset,
+            "table": variable.split("_")[0],
+            "variable": variable,
+            "year": 2024,
+            "congress": 119,
+            "units": units,
+            "universe": "population"
+            if units in ("persons", "percent")
+            else "occupied_housing_units",
+        }
+    )
+
+
+def support_reading(protocol, block_id, total=100, *, bin_id=None):
+    count = 1000 if bin_id is None else 50
+    mass = Decimal(total) / count
+    records = [
+        SourceRecord(origin_key=f"origin-{i}", weight=mass, contribution=mass)
+        for i in range(count)
+    ]
+    kwargs = dict(
+        block_id=block_id,
+        geography_id="5001900US0601",
+        measure_kind=SupportMeasure.PERSONS
+        if block_id in ("population_total", "age_distribution")
+        else SupportMeasure.OCCUPIED_HOUSING_UNITS,
+    )
+    if bin_id is None:
+        return denominator_support(protocol.support, records, **kwargs)
+    return bin_support(
+        protocol.support,
+        records,
+        bin_id=bin_id,
+        reference_share_positive=True,
+        **kwargs,
+    )
+
+
+def complete_axes(protocol, candidate=100):
     block = protocol.block("population_total")
     return {
         "precision": (
@@ -393,52 +442,27 @@ def complete_axes(protocol):
                 population_cell(), ceiling=block.reference_relative_moe_ceiling
             ),
         ),
-        "support": (
-            denominator_support(
-                protocol.support,
-                [
-                    SourceRecord(origin_key=f"origin-{index}", weight=1, contribution=1)
-                    for index in range(1000)
-                ],
-                block_id=block.id,
-                geography_id="5001900US0601",
-                measure_kind=SupportMeasure.PERSONS,
-            ),
-        ),
+        "support": (support_reading(protocol, block.id, candidate),),
     }
 
 
 def conforming_block(protocol):
+    block = protocol.block("population_total")
     return evaluate_block(
-        protocol.block("population_total"),
+        block,
         geography_id="5001900US0601",
         metric=point_check(
-            protocol.block("population_total"), candidate=100, reference=100
+            block, candidate=100, reference=100, geography_id="5001900US0601"
         ),
         exposure=ExposureStatus.NOT_RESERVED_CONFORMITY,
         **complete_axes(protocol),
     )
 
 
-def support_reading(protocol, block_id):
-    return denominator_support(
-        protocol.support,
-        [
-            SourceRecord(origin_key=f"origin-{index}", weight=1, contribution=1)
-            for index in range(1000)
-        ],
-        block_id=block_id,
-        geography_id="5001900US0601",
-        measure_kind=SupportMeasure.PERSONS,
-    )
-
-
 def exact_distribution(protocol, block_id):
-    """A candidate partition that matches its reference cell for cell."""
     block = protocol.block(block_id)
-    ids = [item.id for item in block.known_bins]
-    counts = dict.fromkeys(ids, 100)
-    total = 100 * len(ids)
+    counts = dict.fromkeys((item.id for item in block.known_bins), 100)
+    total = 100 * len(counts)
     return categorical_check(
         block,
         partition=protocol.partition,
@@ -452,42 +476,77 @@ def exact_distribution(protocol, block_id):
 
 
 def every_mandatory_block(protocol):
-    """One conforming, fully evidenced evaluation per mandatory block."""
-    reserved_exposure = ExposureStatus.FRESH_SAME_SOURCE_HOLDOUT_ELIGIBLE
-    unreserved = ExposureStatus.NOT_RESERVED_CONFORMITY
+    """One fully identified evaluation per block in one invented district."""
     results = [conforming_block(protocol)]
     households = protocol.block("occupied_household_total")
     results.append(
         evaluate_block(
             households,
             geography_id="5001900US0601",
-            metric=point_check(households, candidate=1000, reference=1000),
+            metric=point_check(
+                households, candidate=1000, reference=1000, geography_id="5001900US0601"
+            ),
             precision=(
                 relative_moe_precision(
-                    population_cell(),
+                    fixture_cell(
+                        households.variables[0],
+                        households.dataset,
+                        1000,
+                        units="occupied_housing_units",
+                    ),
                     ceiling=households.reference_relative_moe_ceiling,
                 ),
             ),
-            support=(support_reading(protocol, households.id),),
-            exposure=reserved_exposure,
+            support=(support_reading(protocol, households.id, 1000),),
+            exposure=ExposureStatus.FRESH_SAME_SOURCE_HOLDOUT_ELIGIBLE,
         )
     )
-    for block_id in ("age_distribution", "income_distribution", "tenure_distribution"):
-        block = protocol.block(block_id)
+    for block in protocol.distribution_blocks:
+        total = 100 * len(block.known_bins)
+        if block.precision_variables:
+            precision = tuple(
+                published_percentage_precision(
+                    fixture_cell(var, block.dataset, "5.6", units="percent"),
+                    ceiling=block.reference_moe_ceiling_pp,
+                )
+                for var in block.precision_variables
+            )
+        else:
+            denominator = fixture_cell(
+                block.denominator_variable,
+                block.dataset,
+                total,
+                units="occupied_housing_units",
+            )
+            precision = tuple(
+                subset_share_precision(
+                    fixture_cell(
+                        bin.publisher_variable,
+                        block.dataset,
+                        100,
+                        units="occupied_housing_units",
+                    ),
+                    denominator,
+                    ceiling=block.reference_moe_ceiling_pp,
+                )
+                for bin in block.known_bins
+            )
         results.append(
             evaluate_block(
                 block,
                 geography_id="5001900US0601",
-                metric=exact_distribution(protocol, block_id),
-                precision=(
-                    published_percentage_precision(
-                        percentage_cell(), ceiling=block.reference_moe_ceiling_pp
+                metric=exact_distribution(protocol, block.id),
+                precision=precision,
+                support=(
+                    support_reading(protocol, block.id, total),
+                    *(
+                        support_reading(protocol, block.id, 100, bin_id=bin.id)
+                        for bin in block.known_bins
                     ),
                 ),
-                support=(support_reading(protocol, block_id),),
-                exposure=unreserved
-                if block_id == "age_distribution"
-                else reserved_exposure,
+                exposure=ExposureStatus.FRESH_SAME_SOURCE_HOLDOUT_ELIGIBLE
+                if block.reserved
+                else ExposureStatus.NOT_RESERVED_CONFORMITY,
             )
         )
     return results
@@ -587,10 +646,13 @@ def test_nonconformity_is_retained_under_an_incomplete_scope(protocol):
         protocol.block("population_total"),
         geography_id="5001900US0601",
         metric=point_check(
-            protocol.block("population_total"), candidate=110, reference=100
+            protocol.block("population_total"),
+            candidate=110,
+            reference=100,
+            geography_id="5001900US0601",
         ),
         exposure=ExposureStatus.NOT_RESERVED_CONFORMITY,
-        **complete_axes(protocol),
+        **complete_axes(protocol, candidate=110),
     )
     blocks = [failing, *every_mandatory_block(protocol)[1:]]
     scoped = evaluate_scope(
@@ -691,7 +753,9 @@ def test_a_mandatory_block_without_axis_evidence_is_incomplete(protocol):
     bare = evaluate_block(
         block,
         geography_id="5001900US0601",
-        metric=point_check(block, candidate=100, reference=100),
+        metric=point_check(
+            block, candidate=100, reference=100, geography_id="5001900US0601"
+        ),
         exposure=ExposureStatus.NOT_RESERVED_CONFORMITY,
     )
     assert bare.metric_conforming is True
@@ -721,9 +785,11 @@ def test_no_axis_is_allowed_to_rescue_another(protocol):
     result = evaluate_block(
         block,
         geography_id="5001900US0601",
-        metric=point_check(block, candidate=110, reference=100),
+        metric=point_check(
+            block, candidate=110, reference=100, geography_id="5001900US0601"
+        ),
         exposure=ExposureStatus.NOT_RESERVED_CONFORMITY,
-        **complete_axes(protocol),
+        **complete_axes(protocol, candidate=110),
     )
     assert result.evidence["precision_does_not_widen_point_bound"] is True
     assert result.evidence["support_does_not_rescue_a_metric"] is True

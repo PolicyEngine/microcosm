@@ -164,7 +164,14 @@ def classify_reference_value(raw: object, annotation: object) -> ClassifiedValue
         annotation=annotation,
         adapter_class=adapter_class,
         validity=validity,
-        numeric_value=None if numeric is None else measure(numeric, "reference value"),
+        numeric_value=(
+            None
+            if numeric is None
+            else measure(
+                Decimal(raw.strip()) if isinstance(raw, str) else numeric,
+                "reference value",
+            )
+        ),
         annotation_conflict=bool(result["annotation_conflict"]),
     )
 
@@ -196,6 +203,24 @@ def reference_cell(fields: Mapping[str, object]) -> ReferenceCell:
     missing = [name for name in REQUIRED_RAW_FIELDS if name not in fields]
     if missing:
         raise ReferenceError(f"Reference cell is missing raw fields {missing}.")
+    for name in ("year", "congress"):
+        if (
+            isinstance(fields[name], bool)
+            or not isinstance(fields[name], int)
+            or fields[name] <= 0
+        ):
+            raise ReferenceError(f"{name} must be a positive integer.")
+    for name in (
+        "variable",
+        "table",
+        "dataset",
+        "units",
+        "universe",
+        "published_GEO_ID",
+        "canonical_geography_id",
+    ):
+        if not isinstance(fields[name], str) or not fields[name].strip():
+            raise ReferenceError(f"{name} must be a nonempty string.")
     estimate = classify_reference_value(fields["E"], fields["EA"])
     moe = classify_reference_value(fields["M"], fields["MA"])
     for value, label in ((estimate, "estimate"), (moe, "margin of error")):
@@ -237,10 +262,14 @@ class PrecisionResult:
     ceiling: Decimal
     reasons: tuple[Reason, ...]
     evidence: Mapping[str, object] = field(default_factory=dict)
+    cells: tuple[ReferenceCell, ...] = ()
 
 
 def _unavailable(
-    kind: str, ceiling: Decimal, evidence: dict[str, object]
+    kind: str,
+    ceiling: Decimal,
+    evidence: dict[str, object],
+    cells: tuple[ReferenceCell, ...],
 ) -> PrecisionResult:
     return PrecisionResult(
         kind=kind,
@@ -249,6 +278,7 @@ def _unavailable(
         ceiling=ceiling,
         reasons=(Reason.REFERENCE_PRECISION_INADEQUATE,),
         evidence=MappingProxyType(evidence),
+        cells=cells,
     )
 
 
@@ -259,6 +289,7 @@ def _controlled(kind: str, ceiling: Decimal, cell: ReferenceCell) -> PrecisionRe
         measured=None,
         ceiling=ceiling,
         reasons=(),
+        cells=(cell,),
         evidence=MappingProxyType(
             {
                 "raw_moe": cell.moe.raw,
@@ -274,7 +305,11 @@ def _controlled(kind: str, ceiling: Decimal, cell: ReferenceCell) -> PrecisionRe
 
 
 def _verdict(
-    kind: str, measured: Decimal, ceiling: Decimal, evidence: dict[str, object]
+    kind: str,
+    measured: Decimal,
+    ceiling: Decimal,
+    evidence: dict[str, object],
+    cells: tuple[ReferenceCell, ...],
 ) -> PrecisionResult:
     within = measured <= ceiling
     return PrecisionResult(
@@ -284,6 +319,7 @@ def _verdict(
         ceiling=ceiling,
         reasons=() if within else (Reason.REFERENCE_PRECISION_INADEQUATE,),
         evidence=MappingProxyType(evidence),
+        cells=cells,
     )
 
 
@@ -295,20 +331,24 @@ def relative_moe_precision(cell: ReferenceCell, *, ceiling: Decimal) -> Precisio
     as unavailable precision, never as a perfect one.
     """
     kind = "relative_moe"
-    if cell.moe.validity is ReferenceValidity.CONTROLLED_ESTIMATE:
+    cells = (cell,)
+    if (
+        cell.estimate.usable
+        and cell.moe.validity is ReferenceValidity.CONTROLLED_ESTIMATE
+    ):
         return _controlled(kind, ceiling, cell)
     evidence: dict[str, object] = {
         "estimate_class": cell.estimate.adapter_class,
         "moe_class": cell.moe.adapter_class,
     }
     if not (cell.estimate.usable and cell.moe.usable):
-        return _unavailable(kind, ceiling, evidence)
+        return _unavailable(kind, ceiling, evidence, cells)
     if cell.estimate.numeric_value == 0:
         evidence["zero_reference_estimate"] = True
-        return _unavailable(kind, ceiling, evidence)
+        return _unavailable(kind, ceiling, evidence, cells)
     with localcontext(ARITHMETIC):
         measured = cell.moe.numeric_value / cell.estimate.numeric_value
-    return _verdict(kind, measured, ceiling, evidence)
+    return _verdict(kind, measured, ceiling, evidence, cells)
 
 
 def published_percentage_precision(
@@ -321,15 +361,19 @@ def published_percentage_precision(
     still come from the count column, not from this percentage.
     """
     kind = "published_percentage_moe_pp"
-    if cell.moe.validity is ReferenceValidity.CONTROLLED_ESTIMATE:
+    cells = (cell,)
+    if (
+        cell.estimate.usable
+        and cell.moe.validity is ReferenceValidity.CONTROLLED_ESTIMATE
+    ):
         return _controlled(kind, ceiling, cell)
     evidence: dict[str, object] = {
         "published_percentage": cell.estimate.raw,
         "moe_class": cell.moe.adapter_class,
     }
-    if not cell.moe.usable:
-        return _unavailable(kind, ceiling, evidence)
-    return _verdict(kind, cell.moe.numeric_value, ceiling, evidence)
+    if not (cell.estimate.usable and cell.moe.usable):
+        return _unavailable(kind, ceiling, evidence, cells)
+    return _verdict(kind, cell.moe.numeric_value, ceiling, evidence, cells)
 
 
 def subset_share_precision(
@@ -345,6 +389,7 @@ def subset_share_precision(
     approximation at all: nothing is fabricated, and the result is unavailable.
     """
     kind = "subset_share_moe_pp"
+    cells = (numerator, denominator)
     evidence: dict[str, object] = {
         "numerator_variable": numerator.variable,
         "denominator_variable": denominator.variable,
@@ -362,14 +407,14 @@ def subset_share_precision(
     )
     if not all(item.usable for item in inputs):
         evidence["no_fabricated_approximation"] = True
-        return _unavailable(kind, ceiling, evidence)
+        return _unavailable(kind, ceiling, evidence, cells)
     estimate_x = numerator.estimate.numeric_value
     moe_x = numerator.moe.numeric_value
     estimate_y = denominator.estimate.numeric_value
     moe_y = denominator.moe.numeric_value
     if estimate_y == 0:
         evidence["zero_reference_denominator"] = True
-        return _unavailable(kind, ceiling, evidence)
+        return _unavailable(kind, ceiling, evidence, cells)
     with localcontext(ARITHMETIC):
         share = estimate_x / estimate_y
         radicand = moe_x**2 - share**2 * moe_y**2
@@ -379,9 +424,9 @@ def subset_share_precision(
         try:
             measured = Decimal(100) * radicand.sqrt() / estimate_y
         except (InvalidOperation, DivisionByZero, MetricError):
-            return _unavailable(kind, ceiling, evidence)
+            return _unavailable(kind, ceiling, evidence, cells)
     evidence["negative_radicand_plus_fallback"] = fallback
-    return _verdict(kind, measured, ceiling, evidence)
+    return _verdict(kind, measured, ceiling, evidence, cells)
 
 
 def discrepancy_over_moe(

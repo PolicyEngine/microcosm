@@ -105,6 +105,7 @@ class PointResult:
     within_bound: bool | None
     reasons: tuple[Reason, ...]
     evidence: Mapping[str, object] = field(default_factory=dict)
+    definition: PointBlock | None = None
 
 
 def point_check(
@@ -133,6 +134,7 @@ def point_check(
     if measured is None or published is None:
         return PointResult(
             block_id=block.id,
+            definition=block,
             geography_id=geography_id,
             bound=block.point_relative_bound,
             candidate=measured,
@@ -156,6 +158,7 @@ def point_check(
         problems.append(Reason.PUBLISHED_BENCHMARK_NONCONFORMITY)
     return PointResult(
         block_id=block.id,
+        definition=block,
         geography_id=geography_id,
         bound=block.point_relative_bound,
         candidate=measured,
@@ -199,6 +202,8 @@ class CategoricalResult:
     independent_votes: bool | None
     reasons: tuple[Reason, ...]
     evidence: Mapping[str, object] = field(default_factory=dict)
+    definition: DistributionBlock | None = None
+    partition: PartitionRules | None = None
 
 
 def _empty(
@@ -207,12 +212,15 @@ def _empty(
     problems: list[Reason],
     evidence: dict[str, object],
     *,
+    partition: PartitionRules,
     denominator: Decimal | None = None,
     reference_total: Decimal | None = None,
     unclassified: Decimal | None = None,
 ) -> CategoricalResult:
     return CategoricalResult(
         block_id=block.id,
+        definition=block,
+        partition=partition,
         geography_id=geography_id,
         candidate_denominator=denominator,
         reference_total=reference_total,
@@ -310,6 +318,7 @@ def categorical_check(
             geography_id,
             problems,
             evidence,
+            partition=partition,
             denominator=denominator,
             reference_total=published_total,
             unclassified=residual,
@@ -325,6 +334,7 @@ def categorical_check(
                 geography_id,
                 problems,
                 evidence,
+                partition=partition,
                 denominator=denominator,
                 reference_total=published_total,
                 unclassified=residual,
@@ -340,6 +350,7 @@ def categorical_check(
                 geography_id,
                 problems,
                 evidence,
+                partition=partition,
                 denominator=denominator,
                 reference_total=published_total,
                 unclassified=residual,
@@ -377,6 +388,14 @@ def categorical_check(
             maximum <= block.max_each_bin_discrepancy_pp
             and total_variation <= block.max_total_variation
         )
+        # A successor may tighten the explicitly declared renter bound.
+        if "max_renter_discrepancy_pp" in block.additional_bounds:
+            renter = next(row for row in rows if row.bin_id == "renter")
+            within = (
+                within
+                and renter.discrepancy_pp
+                <= block.additional_bounds["max_renter_discrepancy_pp"]
+            )
         evidence["reference_share_sum"] = str(reference_share_sum)
         if fraction > partition.maximum_unclassified_fraction:
             problems.append(Reason.UNCLASSIFIED_FRACTION_EXCEEDED)
@@ -384,6 +403,8 @@ def categorical_check(
         problems.append(Reason.PUBLISHED_BENCHMARK_NONCONFORMITY)
     return CategoricalResult(
         block_id=block.id,
+        definition=block,
+        partition=partition,
         geography_id=geography_id,
         candidate_denominator=denominator,
         reference_total=published_total,

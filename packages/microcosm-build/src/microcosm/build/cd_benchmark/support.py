@@ -115,6 +115,7 @@ class SupportResult:
     verdict: SupportVerdict
     reasons: tuple[Reason, ...]
     evidence: Mapping[str, object] = field(default_factory=dict)
+    bounds: SupportBounds | None = None
 
 
 def aggregate_origins(records: Iterable[SourceRecord]) -> OriginTotals:
@@ -207,6 +208,7 @@ def _reading(
         evidence["carrier_floor"] = "not_applicable_zero_reference_share_bin"
         return SupportResult(
             scope=scope,
+            bounds=bounds,
             block_id=block_id,
             geography_id=geography_id,
             bin_id=bin_id,
@@ -222,6 +224,7 @@ def _reading(
     if problems:
         return SupportResult(
             scope=scope,
+            bounds=bounds,
             block_id=block_id,
             geography_id=geography_id,
             bin_id=bin_id,
@@ -251,6 +254,7 @@ def _reading(
         evidence["breached_bounds"] = tuple(breaches)
     return SupportResult(
         scope=scope,
+        bounds=bounds,
         block_id=block_id,
         geography_id=geography_id,
         bin_id=bin_id,

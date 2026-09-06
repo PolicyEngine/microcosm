@@ -38,6 +38,7 @@ from microcosm.build.cd_benchmark.protocol import (
     CompiledProtocol,
     DistributionBlock,
     PointBlock,
+    PrecisionKind,
     ScopeRules,
 )
 from microcosm.build.cd_benchmark.reasons import (
@@ -50,8 +51,15 @@ from microcosm.build.cd_benchmark.reasons import (
     SupportVerdict,
     dedupe,
 )
-from microcosm.build.cd_benchmark.reference import PrecisionResult
-from microcosm.build.cd_benchmark.support import SupportResult
+from microcosm.build.cd_benchmark.reference import (
+    PrecisionResult,
+    reference_validity_reasons,
+)
+from microcosm.build.cd_benchmark.support import (
+    SupportMeasure,
+    SupportResult,
+    SupportScope,
+)
 
 __all__ = [
     "BenchmarkEvaluation",
@@ -124,6 +132,147 @@ class BlockEvaluation:
         return not (set(self.reasons) & _SCOPE_REASONS)
 
 
+def _axis_identity_reasons(
+    block: PointBlock | DistributionBlock,
+    geography_id: str,
+    metric: PointResult | CategoricalResult | None,
+    precision: tuple[PrecisionResult, ...],
+    support: tuple[SupportResult, ...],
+    scope: ScopeRules | None,
+) -> list[Reason]:
+    """Check labels and complete cell rosters before evidence can be combined.
+
+    These checks do not authenticate a publisher or a candidate. They reject
+    contradictory identities and missing cells inside already supplied inputs.
+    """
+    problems = []
+    point = isinstance(block, PointBlock)
+    if not isinstance(geography_id, str) or not geography_id:
+        problems.append(Reason.IDENTITY_MISMATCH)
+    if metric is not None and (
+        not isinstance(metric, PointResult if point else CategoricalResult)
+        or metric.block_id != block.id
+        or metric.geography_id != geography_id
+        or metric.definition != block
+    ):
+        problems.append(Reason.IDENTITY_MISMATCH)
+
+    if point:
+        expected_cells = {(variable,) for variable in block.variables}
+        kind, ceiling = "relative_moe", block.reference_relative_moe_ceiling
+    elif block.precision_kind is PrecisionKind.PUBLISHED_PERCENTAGE_MOE:
+        expected_cells = {(variable,) for variable in block.precision_variables}
+        kind, ceiling = "published_percentage_moe_pp", block.reference_moe_ceiling_pp
+    else:
+        expected_cells = {
+            (bin.publisher_variable, block.denominator_variable)
+            for bin in block.known_bins
+        }
+        kind, ceiling = "subset_share_moe_pp", block.reference_moe_ceiling_pp
+    actual_cells = [tuple(cell.variable for cell in item.cells) for item in precision]
+    if precision and (
+        set(actual_cells) != expected_cells or len(actual_cells) != len(expected_cells)
+    ):
+        problems.append(Reason.REQUIRED_CELL_OR_DISTRICT_MISSING)
+    expected_units = (
+        {"percent"}
+        if kind == "published_percentage_moe_pp"
+        else {"persons"}
+        if block.id == "population_total"
+        else {"occupied_housing_units", "households"}
+    )
+    expected_universes = (
+        {"population"}
+        if block.id in ("population_total", "age_distribution")
+        else {"occupied_housing_units", "households"}
+    )
+    reference_identities = set()
+    for item in precision:
+        if item.kind != kind or item.ceiling != ceiling:
+            problems.append(Reason.IDENTITY_MISMATCH)
+        for cell in item.cells:
+            problems.extend(reference_validity_reasons(cell))
+            if (
+                cell.canonical_geography_id != geography_id
+                or cell.dataset != block.dataset
+                or cell.table != cell.variable.split("_")[0]
+                or cell.units not in expected_units
+                or cell.universe not in expected_universes
+            ):
+                problems.append(Reason.IDENTITY_MISMATCH)
+            reference_identities.add((cell.year, cell.congress, cell.published_geo_id))
+            if scope is not None and (
+                cell.year != scope.acs_year or cell.congress != scope.congress
+            ):
+                problems.append(Reason.IDENTITY_MISMATCH)
+            if scope is not None and cell.published_geo_id != (
+                scope.dc_published_id
+                if geography_id == scope.dc_canonical_id
+                else geography_id
+            ):
+                problems.append(Reason.IDENTITY_MISMATCH)
+        # Count-based precision must describe the very reference used by the metric.
+        if metric is not None and item.cells and item.kind == kind:
+            if point and isinstance(metric, PointResult):
+                if item.cells[0].estimate.numeric_value != metric.reference:
+                    problems.append(Reason.IDENTITY_MISMATCH)
+            elif (
+                not point
+                and kind == "subset_share_moe_pp"
+                and len(item.cells) == 2
+                and isinstance(metric, CategoricalResult)
+            ):
+                counts = {
+                    bin.publisher_variable: row.reference_count
+                    for bin in block.known_bins
+                    for row in metric.bins
+                    if row.bin_id == bin.id
+                }
+                if (
+                    item.cells[0].estimate.numeric_value
+                    != counts.get(item.cells[0].variable)
+                    or item.cells[1].estimate.numeric_value != metric.reference_total
+                ):
+                    problems.append(Reason.IDENTITY_MISMATCH)
+    if len(reference_identities) > 1:
+        problems.append(Reason.IDENTITY_MISMATCH)
+
+    measure = (
+        SupportMeasure.PERSONS
+        if block.id in ("population_total", "age_distribution")
+        else SupportMeasure.OCCUPIED_HOUSING_UNITS
+    )
+    expected_support = {(SupportScope.DENOMINATOR, None)}
+    masses = {}
+    if isinstance(metric, PointResult):
+        masses[(SupportScope.DENOMINATOR, None)] = metric.candidate
+    elif isinstance(metric, CategoricalResult):
+        masses[(SupportScope.DENOMINATOR, None)] = metric.candidate_denominator
+        for bin in metric.bins:
+            masses[(SupportScope.BIN, bin.bin_id)] = bin.candidate_mass
+            if bin.reference_count is not None and bin.reference_count > 0:
+                expected_support.add((SupportScope.BIN, bin.bin_id))
+    actual_support = [(item.scope, item.bin_id) for item in support]
+    if support and (
+        not expected_support <= set(actual_support)
+        or len(actual_support) != len(set(actual_support))
+    ):
+        problems.append(Reason.UNRESOLVED_SOURCE_LINEAGE)
+    for item in support:
+        key = (item.scope, item.bin_id)
+        if (
+            item.block_id != block.id
+            or item.geography_id != geography_id
+            or item.measure != measure
+            or (metric is not None and key not in masses)
+            or (metric is not None and item.contribution_total != masses.get(key))
+        ):
+            problems.append(Reason.IDENTITY_MISMATCH)
+        if key in expected_support and item.verdict is SupportVerdict.NOT_APPLICABLE:
+            problems.append(Reason.UNRESOLVED_SOURCE_LINEAGE)
+    return problems
+
+
 def evaluate_block(
     block: PointBlock | DistributionBlock,
     *,
@@ -133,6 +282,7 @@ def evaluate_block(
     support: Iterable[SupportResult] = (),
     exposure: ExposureStatus,
     extra_reasons: Iterable[Reason] = (),
+    scope: ScopeRules | None = None,
 ) -> BlockEvaluation:
     """Collect one block's axes without letting any of them overwrite another.
 
@@ -159,8 +309,20 @@ def evaluate_block(
     for item in support:
         problems.extend(item.reasons)
     problems.extend(extra_reasons)
+    problems.extend(
+        _axis_identity_reasons(block, geography_id, metric, precision, support, scope)
+    )
     if exposure is ExposureStatus.EXPOSURE_HISTORY_UNKNOWN:
         problems.append(Reason.EXPOSURE_HISTORY_UNKNOWN)
+    elif (
+        not isinstance(exposure, ExposureStatus)
+        or (block.reserved and exposure is ExposureStatus.NOT_RESERVED_CONFORMITY)
+        or (
+            not block.reserved
+            and exposure is not ExposureStatus.NOT_RESERVED_CONFORMITY
+        )
+    ):
+        problems.append(Reason.IDENTITY_MISMATCH)
     absent: list[str] = []
     if block.mandatory:
         if metric is None:
@@ -261,6 +423,8 @@ def evaluate_scope(
     scope_reasons: Iterable[Reason] = (),
     ledger_reasons: Iterable[Reason] = (),
     ledger_writer_available: bool = True,
+    required_geography_ids: Iterable[str] | None = None,
+    published_geography_ids: Mapping[str, str] | None = None,
 ) -> BenchmarkEvaluation:
     """Reduce block axes to one scope verdict in the document's order.
 
@@ -295,13 +459,26 @@ def evaluate_scope(
         for geography, present in sorted(present_by_geography.items())
         for block_id in sorted(mandatory - present)
     )
+    inventory_notes = None
+    if required_geography_ids is not None:
+        inventory_reasons, inventory_notes = district_scope_reasons(
+            protocol.scope,
+            required_geography_ids=required_geography_ids,
+            present_geography_ids=present_by_geography,
+            published_geography_ids=published_geography_ids or {},
+        )
+        problems.extend(inventory_reasons)
     if missing_blocks or missing_block_geographies:
         problems.append(Reason.REQUIRED_CELL_OR_DISTRICT_MISSING)
     scoring = (
         approval.authorized
         and approval.registration_resolved
         and approval.action is ApprovalScope.CANDIDATE_SCORING
+        and approval.protocol_sha256 == protocol.sha256
+        and protocol.canonical
     )
+    if approval.protocol_sha256 != protocol.sha256:
+        problems.append(Reason.IDENTITY_MISMATCH)
     if not scoring:
         problems.append(Reason.PROTOCOL_UNAPPROVED)
     problems.extend(approval.reasons)
@@ -312,6 +489,35 @@ def evaluate_scope(
         problems.append(Reason.LEDGER_BUSY)
     for block in blocks:
         problems.extend(block.reasons)
+        if any(reading.bounds != protocol.support for reading in block.support):
+            problems.append(Reason.IDENTITY_MISMATCH)
+        if (
+            isinstance(block.metric, CategoricalResult)
+            and block.metric.partition != protocol.partition
+        ):
+            problems.append(Reason.IDENTITY_MISMATCH)
+        definition = next(
+            (item for item in protocol.blocks if item.id == block.block_id), None
+        )
+        if definition is None:
+            problems.append(Reason.IDENTITY_MISMATCH)
+        else:
+            # Recheck against the protocol reduced here; a previously assembled
+            # result from another block definition cannot authorize this scope.
+            problems.extend(
+                evaluate_block(
+                    definition,
+                    geography_id=block.geography_id,
+                    metric=block.metric,
+                    precision=block.precision,
+                    support=block.support,
+                    exposure=block.exposure,
+                    scope=protocol.scope,
+                ).reasons
+            )
+    identities = [(item.block_id, item.geography_id) for item in blocks]
+    if len(set(identities)) != len(identities):
+        problems.append(Reason.IDENTITY_MISMATCH)
     reasons = dedupe(problems)
     known = set(reasons)
     if known & _SCOPE_REASONS:
@@ -357,6 +563,8 @@ def evaluate_scope(
             {
                 "scope_reduction_order": protocol.scope_reduction_order,
                 "missing_mandatory_blocks": missing_blocks,
+                "district_inventory_evidence": inventory_notes,
+                "district_inventory_checked_here": inventory_notes is not None,
                 "missing_mandatory_block_geographies": missing_block_geographies,
                 "allowed_missing_mandatory_block_fraction": str(
                     protocol.scope.allowed_missing_mandatory_block_fraction
