@@ -501,9 +501,7 @@ def test_the_accepted_prepared_kernels_refuse_this_population(executed):
     nodes = composed.composed_population_nodes(
         _columns(root), sample_fraction=FRACTION, sample_seed=SEED
     )
-    carried = binding.bind_node_artifact_inputs(
-        population_context=composed.CREATE_NODE
-    )
+    carried = binding.bind_node_artifact_inputs(population_context=composed.CREATE_NODE)
     select = Node(
         id="composed_probe.select_households",
         kernel=USAsecPreparedSelectionKernel.ref,
@@ -565,9 +563,7 @@ def test_the_layers_behind_that_refusal_are_real_too(executed):
     receipt = json.loads(
         _payload(manifest, store, composed.CREATE_NODE, "prepared_receipt")
     )
-    context = json.loads(
-        _payload(manifest, store, GEOGRAPHY_PHASE, "frame_context")
-    )
+    context = json.loads(_payload(manifest, store, GEOGRAPHY_PHASE, "frame_context"))
     # The prepared receipt describes the ASEC arm, not the composed population.
     assert receipt["entity_rows"]["person"] < context["entities"]["person"]["rows"]
     body = parse_current_money_body(
@@ -596,9 +592,7 @@ def test_the_layers_behind_that_refusal_are_real_too(executed):
         prepared_receipt=receipt,
     )
     composed_ids = frame.table("person")["person_id"].to_numpy(dtype="int64")
-    assert (
-        pd.Index(income.array("person_id")).get_indexer(composed_ids) < 0
-    ).any()
+    assert (pd.Index(income.array("person_id")).get_indexer(composed_ids) < 0).any()
     del root
 
 
@@ -624,9 +618,10 @@ def test_cold_graph_matches_the_direct_binding(executed):
             "reported_income",
         ),
     ):
-        assert _payload(manifest, store, node, artifact) == (
-            Path(root) / name
-        ).read_bytes(), name
+        assert (
+            _payload(manifest, store, node, artifact)
+            == (Path(root) / name).read_bytes()
+        ), name
     frame = _bound_frame(manifest)
     leaves = json.loads((Path(root) / "direct-leaves.json").read_text())
     person = _arm(frame, "person")
@@ -802,9 +797,7 @@ def test_leaves_and_accounting_match_the_standalone_prepared_derivation(executed
             len(b"MCAINACC\x03") + 4 : len(b"MCAINACC\x03")
             + 4
             + int.from_bytes(
-                graph_accounting[
-                    len(b"MCAINACC\x03") : len(b"MCAINACC\x03") + 4
-                ],
+                graph_accounting[len(b"MCAINACC\x03") : len(b"MCAINACC\x03") + 4],
                 "little",
             )
         ]
@@ -837,7 +830,7 @@ def test_three_income_cohorts_bind_with_their_observed_periods(executed):
     }
     unbound = {item["column"]: item for item in document["demographics"]["unbound"]}
     assert set(unbound) == {"is_female", "is_household_head"}
-    assert unbound["is_female"]["required_asec_source_columns"] == ["A_SEX"]
+    assert unbound["is_female"]["required_asec_source_columns"] == ["A_SEX", "AXSEX"]
     assert unbound["is_female"]["present_in_prepared_arm"] == []
     frame = _bound_frame(manifest)
     # The gap is a fact about this population, not a claim: the arm really has
@@ -908,9 +901,7 @@ def test_a_fraction_below_one_binds_only_the_drawn_rows(executed):
     )
     document = binding.bind_composed_asec_document(bound.payload)
     assert document["composed_is_whole_arm"] is False
-    assert (
-        document["arm"]["person"]["rows"] < document["prepared_arm_rows"]["person"]
-    )
+    assert document["arm"]["person"]["rows"] < document["prepared_arm_rows"]["person"]
     assert document["origin"]["sample_fraction"] == 0.5
     # The source positions are a real subset of the whole arm, resolved by id.
     positions = bound.positions["person"]
@@ -944,9 +935,7 @@ def test_a_mismatched_input_refuses(executed, mutation, reason):
         ),
         "money": _payload(manifest, store, composed.CREATE_NODE, "current_money"),
         "receipt": _payload(manifest, store, composed.CREATE_NODE, "prepared_receipt"),
-        "housing": _payload(
-            manifest, store, composed.CREATE_NODE, "housing_universe"
-        ),
+        "housing": _payload(manifest, store, composed.CREATE_NODE, "housing_universe"),
         "income": _payload(
             manifest, store, composed.CREATE_NODE, "income_observations"
         ),
@@ -994,14 +983,10 @@ def test_an_origin_document_from_another_population_refuses(executed):
         sample_seed=SEED,
     )
     frame = _bound_frame(manifest)
-    with pytest.raises(
-        PreparedGraphError, match="ORIGIN_DOES_NOT_DESCRIBE_THIS_FRAME"
-    ):
+    with pytest.raises(PreparedGraphError, match="ORIGIN_DOES_NOT_DESCRIBE_THIS_FRAME"):
         binding.resolve_composed_asec_binding(
             {entity: frame.table(entity) for entity in US_SCHEMA.entities},
-            context_payload=_payload(
-                manifest, store, GEOGRAPHY_PHASE, "frame_context"
-            ),
+            context_payload=_payload(manifest, store, GEOGRAPHY_PHASE, "frame_context"),
             origin_payload=canonical_json(other.source_origin),
             prepared_context_payload=_payload(
                 manifest, store, composed.CREATE_NODE, "asec_frame_context"
@@ -1106,9 +1091,7 @@ def _bind_context(root, manifest, store, *, node=None, origin_producer=None):
         strata=pd.Series(dtype="int64"),
         params=dict(bind.params),
         rng=np.random.default_rng(SEED),
-        artifacts=_create_artifacts(
-            manifest, store, origin_producer=origin_producer
-        ),
+        artifacts=_create_artifacts(manifest, store, origin_producer=origin_producer),
     )
 
 
@@ -1132,9 +1115,7 @@ def test_the_origin_must_come_from_the_same_create_execution(executed):
 
     # Same origin bytes, a different producing execution.
     with pytest.raises(PreparedGraphError, match="ARTIFACT_PRODUCER_SPLIT"):
-        kernel.run(
-            _bind_context(root, manifest, store, origin_producer=_ORACLE_DIGEST)
-        )
+        kernel.run(_bind_context(root, manifest, store, origin_producer=_ORACLE_DIGEST))
 
     # And an origin edge declared from another producer entirely.
     bind = next(
@@ -1150,9 +1131,7 @@ def test_the_origin_must_come_from_the_same_create_execution(executed):
         artifact_inputs=tuple(
             edge
             if edge.name != "source_origin"
-            else ArtifactInput(
-                edge.name, GEOGRAPHY_PHASE, edge.artifact, edge.type
-            )
+            else ArtifactInput(edge.name, GEOGRAPHY_PHASE, edge.artifact, edge.type)
             for edge in bind.artifact_inputs
         ),
         artifact_outputs=bind.artifact_outputs,
@@ -1164,13 +1143,13 @@ def test_the_origin_must_come_from_the_same_create_execution(executed):
 def test_a_prepared_arm_carrying_the_demographic_sources_binds_and_records_them(
     executed,
 ):
-    """A prepared roster with ``A_SEX`` and ``P_SEQ`` is recorded, not refused.
+    """A prepared roster carrying the declared sources is recorded, not refused.
 
-    The genuine prepared ASEC person roster carries both columns; this invented
-    parent carries neither. Presence is an observation about the population in
-    hand and binds nothing, so the stage must record it and keep going —
-    refusing on it would stop every genuine run while proving nothing about
-    what this stage writes.
+    Presence is an observation about the population in hand and binds nothing,
+    so the stage must record it and keep going — refusing on it would stop
+    every genuine run while proving nothing about what this stage writes. The
+    diagnostic-only ``P_SEQ`` is recorded on its own axis and never counts
+    towards the requirement.
     """
     root, manifest, store, *_rest = executed
     frame = _bound_frame(manifest)
@@ -1178,18 +1157,19 @@ def test_a_prepared_arm_carrying_the_demographic_sources_binds_and_records_them(
         _payload(manifest, store, composed.CREATE_NODE, "asec_frame_context")
     )
     columns = prepared["entities"]["person"]["columns"]
-    assert "A_SEX" not in columns and "P_SEQ" not in columns
-    prepared["entities"]["person"]["columns"] = [*columns, "A_SEX", "P_SEQ"]
+    declared = ("A_SEX", "AXSEX", "P_SEQ")
+    # A_EXPRRP is already on this roster: microunit requires it, so asec_pool
+    # supplies it — derived from A_LINENO == 1 for a cohort whose locked input
+    # omits it. That is exactly why presence carries a caveat here.
+    assert not set(declared) & set(columns)
+    assert "A_EXPRRP" in columns
+    prepared["entities"]["person"]["columns"] = [*columns, *declared]
     bound = binding.resolve_composed_asec_binding(
         {entity: frame.table(entity) for entity in US_SCHEMA.entities},
         context_payload=_payload(manifest, store, GEOGRAPHY_PHASE, "frame_context"),
-        origin_payload=_payload(
-            manifest, store, composed.CREATE_NODE, "source_origin"
-        ),
+        origin_payload=_payload(manifest, store, composed.CREATE_NODE, "source_origin"),
         prepared_context_payload=canonical_json(prepared),
-        money_payload=_payload(
-            manifest, store, composed.CREATE_NODE, "current_money"
-        ),
+        money_payload=_payload(manifest, store, composed.CREATE_NODE, "current_money"),
         receipt_payload=_payload(
             manifest, store, composed.CREATE_NODE, "prepared_receipt"
         ),
@@ -1210,10 +1190,24 @@ def test_a_prepared_arm_carrying_the_demographic_sources_binds_and_records_them(
     document = binding.bind_composed_asec_document(bound.payload)
     unbound = {item["column"]: item for item in document["demographics"]["unbound"]}
     assert set(unbound) == set(binding.UNBOUND_DEMOGRAPHIC_COLUMNS)
-    assert unbound["is_female"]["present_in_prepared_arm"] == ["A_SEX"]
+    assert unbound["is_female"]["present_in_prepared_arm"] == ["AXSEX", "A_SEX"]
     assert unbound["is_female"]["absent_from_prepared_arm"] == []
-    assert unbound["is_household_head"]["present_in_prepared_arm"] == ["P_SEQ"]
+    assert unbound["is_female"]["diagnostic_only_source_columns"] == []
+    assert unbound["is_household_head"]["present_in_prepared_arm"] == ["A_EXPRRP"]
     assert unbound["is_household_head"]["absent_from_prepared_arm"] == []
+    assert all(
+        item["presence_certifies_observation"] is False and item["presence_caveats"]
+        for item in unbound.values()
+    )
+    # P_SEQ is present, and it is recorded on the diagnostic axis only: it is
+    # not one of the required columns and claims no proof.
+    assert unbound["is_household_head"]["diagnostic_only_source_columns"] == ["P_SEQ"]
+    assert unbound["is_household_head"]["diagnostic_only_present_in_prepared_arm"] == [
+        "P_SEQ"
+    ]
+    assert all(
+        item["diagnostic_only_is_semantic_proof"] is False for item in unbound.values()
+    )
     assert all(item["bound_by_this_stage"] is False for item in unbound.values())
     # Nothing was bound from them: the node still owns exactly three booleans
     # and the only bound demographic is still age.
@@ -1224,7 +1218,9 @@ def test_a_prepared_arm_carrying_the_demographic_sources_binds_and_records_them(
     del root
 
 
-def test_the_unbound_demographics_are_recorded_as_absent_on_this_fixture(executed):
+def test_the_unbound_demographic_presence_is_recorded_without_claiming_observation(
+    executed,
+):
     """On this invented parent the same fields are recorded absent, not present."""
     _root, manifest, store, *_rest = executed
     document = binding.bind_composed_asec_document(
@@ -1232,9 +1228,44 @@ def test_the_unbound_demographics_are_recorded_as_absent_on_this_fixture(execute
     )
     unbound = {item["column"]: item for item in document["demographics"]["unbound"]}
     assert unbound["is_female"]["present_in_prepared_arm"] == []
-    assert unbound["is_female"]["absent_from_prepared_arm"] == ["A_SEX"]
-    assert unbound["is_household_head"]["absent_from_prepared_arm"] == ["P_SEQ"]
+    assert unbound["is_female"]["absent_from_prepared_arm"] == ["AXSEX", "A_SEX"]
+    # A_EXPRRP is present because asec_pool derives it, not because the invented
+    # source observed it; the entry records presence and its caveat, not proof.
+    assert unbound["is_household_head"]["present_in_prepared_arm"] == ["A_EXPRRP"]
+    assert unbound["is_household_head"]["absent_from_prepared_arm"] == []
+    assert unbound["is_household_head"]["presence_certifies_observation"] is False
+    assert unbound["is_household_head"]["diagnostic_only_present_in_prepared_arm"] == []
     assert all(item["bound_by_this_stage"] is False for item in unbound.values())
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["sex_readset", "head_readset", "contract", "acs_gq", "crosscheck_claim"],
+)
+def test_unbound_demographic_contract_cannot_be_rewritten_by_a_binding_payload(
+    executed, mutation
+):
+    _root, manifest, store, *_rest = executed
+    document = binding.bind_composed_asec_document(
+        _payload(manifest, store, binding.BIND_NODE, "asec_binding")
+    )
+    sex, head = document["demographics"]["unbound"]
+    if mutation == "sex_readset":
+        sex["required_asec_source_columns"] = ["A_SEX"]
+        sex["absent_from_prepared_arm"] = ["A_SEX"]
+    elif mutation == "head_readset":
+        head["required_asec_source_columns"] = ["P_SEQ"]
+        head["present_in_prepared_arm"] = []
+        head["absent_from_prepared_arm"] = ["P_SEQ"]
+        head["diagnostic_only_source_columns"] = []
+    elif mutation == "contract":
+        head["explicit_asec_source_contract"] = "P_SEQ identifies the head"
+    elif mutation == "acs_gq":
+        head["acs_arm_mapping"] = "Every ACS household has an observed head"
+    else:
+        head["diagnostic_only_is_semantic_proof"] = True
+    with pytest.raises(PreparedGraphError, match="BINDING_UNBOUND_DEMOGRAPHICS"):
+        binding.bind_composed_asec_document(canonical_json(document))
 
 
 @pytest.mark.parametrize(
@@ -1256,9 +1287,7 @@ def test_a_mapping_that_bound_an_unbound_demographic_refuses(
     monkeypatch, attribute, extra, declarations
 ):
     """The recorded gap fails closed on a write, which is what could stale it."""
-    monkeypatch.setattr(
-        measures, attribute, (*getattr(measures, attribute), extra)
-    )
+    monkeypatch.setattr(measures, attribute, (*getattr(measures, attribute), extra))
     with pytest.raises(
         PreparedGraphError, match=f"ASEC_DEMOGRAPHIC_COLUMN_BOUND:{extra}"
     ):
@@ -1334,9 +1363,7 @@ def test_the_arm_rows_artifact_refuses_a_tampered_payload(executed):
     flipped = bytearray(payload)
     flipped[-40] ^= 0x01
     with pytest.raises(Exception, match="ARM_ROWS_CHECKSUM"):
-        binding.bind_composed_asec_arm_rows(
-            bytes(flipped), binding_document=document
-        )
+        binding.bind_composed_asec_arm_rows(bytes(flipped), binding_document=document)
     del root
 
 
@@ -1557,11 +1584,11 @@ def test_interleaved_group_ids_and_multiple_spm_units_bind(structural):
     )
     # The multi-SPM ACS household really exists and is left unmeasured.
     acs_person = _other_arm(frame, "person")
-    per_household = acs_person.groupby("person_household_id").person_spm_unit_id.nunique()
+    per_household = acs_person.groupby(
+        "person_household_id"
+    ).person_spm_unit_id.nunique()
     assert sorted(per_household.tolist()) == [1, 2]
-    assert _other_arm(frame, "spm_unit")[
-        binding.arm_row_column("spm_unit")
-    ].sum() == 0
+    assert _other_arm(frame, "spm_unit")[binding.arm_row_column("spm_unit")].sum() == 0
 
 
 def test_native_acs_group_quarters_survive_the_binding(structural):

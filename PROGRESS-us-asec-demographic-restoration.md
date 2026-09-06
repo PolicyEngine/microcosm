@@ -18,7 +18,10 @@ modified in place.
 
 ## State
 
-Lane opened. Base integrated; implementation not started.
+2026-09-06: local source preparation and focused fixture verification completed.
+Genuine extraction and live demographic binding were not run. The external
+`us-asec-demographic-restoration-REPORT.md/.json` receipts record the final clean
+head and exact tested-code attestation for root review.
 
 ## Done
 
@@ -32,10 +35,25 @@ Lane opened. Base integrated; implementation not started.
 - Created the child worktree from `origin/main` (`c1b832418`) and integrated
   the accepted composition dependency by fast-forward to `84e7a011f`, which
   is the tree this lane builds on.
+- Preserved the original source-contract and runtime-classification commits and
+  finished the partial composed-binding metadata edits after the external
+  author's session stopped.
+- Declared exact source tokens, domains, allocation provenance, reference-person
+  cardinality, cohort periods, additive columns and per-cohort diagnostics.
+- Fixed invented counterexamples for incumbent relationship recodes, raw-code
+  sequence diagnostics, mixed/invalid ACS relationship households, and binding
+  payloads that could rewrite the declared demographic contract.
+- Ran 115 focused cases: all passed, no skips. All 278 loaded Microcosm modules
+  came from this worktree and stayed unchanged during testing. The final report
+  also compares those tested bytes and the test files with the committed blobs.
+- Verified that the original source/schema/restoration identities and eight
+  graph-stage identities are unchanged; only the composed ASEC binding stage
+  changes for its corrected metadata contract. The new reader remains unwired.
 
 ## Next
 
-- Declare the explicit demographic source contract and its reader.
-- Correct the composed binding's unbound-demographic registry so it names the
-  explicit household reference field rather than `P_SEQ`.
-- Focused direct and graph tests on invented fixtures; report.
+- Root/peer review of the exact local source revision before genuine use.
+- A separately authorized new extraction from the existing pinned members,
+  with aggregate per-cohort diagnostics and preserved frozen parents.
+- A later explicit prepared-source/graph integration decision; no sex/head
+  booleans or microunit relationship construction are changed by this lane.

@@ -148,6 +148,7 @@ def arm_row_column(entity: str) -> str:
     _require(entity in US_SCHEMA.entities, f"ARM_ROW_ENTITY:{entity}")
     return f"{entity}_{ARM_ROW_SUFFIX}"
 
+
 #: The entities a measurement of this arm addresses: persons, the households
 #: whose carried housing evidence is verified against the source, and the SPM
 #: units the corrected childcare leaf is grained on.
@@ -177,18 +178,77 @@ COHORT_COLUMN = "source_year"
 #: (``ASEC_DEMOGRAPHIC_COLUMN_BOUND``), not the source column's presence. Keying
 #: the refusal on presence would have refused every genuine run while proving
 #: nothing about what this stage binds.
+#: Each entry is (column, required source columns, diagnostic-only source
+#: columns, the explicit source contract that would supply it, the mappings
+#: deliberately not adopted as proof, the caveats on reading presence as
+#: observation, the ACS arm's own observed mapping).
+#: The required columns are the ones an *explicit* binding needs, which is not
+#: the same as the columns some existing mapping happens to read: the root
+#: adjudication of 2026-09-06 refused ``P_SEQ == 1`` as semantic proof of
+#: headship and required sex to carry its allocation provenance, so those
+#: mappings are recorded here as not adopted rather than as the requirement.
 _UNBOUND_DEMOGRAPHICS = (
     (
         "is_female",
-        ("A_SEX",),
-        "cps_carried.derive_us_cps_carried_inputs (is_female = A_SEX == 2)",
-        "SEX == 2 on the native ACS arm",
+        ("A_SEX", "AXSEX"),
+        (),
+        "asec_demographic_source: A_SEX printed codes 1 = Male and 2 = Female, "
+        "admitted only with AXSEX printed codes 0 = No change or 4 = Allocated; "
+        "any other token leaves the person unbound",
+        (
+            (
+                "cps_carried.derive_us_cps_carried_inputs (is_female = A_SEX == 2)",
+                "maps every token other than 2 onto male, so an unprinted code "
+                "would be admitted as male, and it reads no allocation flag",
+            ),
+        ),
+        (
+            "A_SEX reaches the prepared person roster as a carried source "
+            "column, but its presence attests the column, not that every "
+            "delivered token is one of the two printed codes",
+        ),
+        "SEX == 2 on the native ACS arm, whose pinned dictionary prints the "
+        "same 1 = Male / 2 = Female convention",
     ),
     (
         "is_household_head",
+        ("A_EXPRRP",),
         ("P_SEQ",),
-        "relationship_inputs (is_household_head = P_SEQ == 1)",
-        "RELSHIPP == 20 on the native ACS arm",
+        "asec_demographic_source: A_EXPRRP printed codes 1 = Reference person "
+        "with relatives and 2 = Reference person without relatives, with "
+        "exactly one such person per household and every household relationship "
+        "token inside the printed named codes",
+        (
+            (
+                "relationship_inputs (is_household_head = P_SEQ == 1)",
+                "P_SEQ's dictionary entry labels no code as reference person, "
+                "and the ordering statement behind it is expressly limited to "
+                "the ASCII file while this arm is restored from the CSV member",
+            ),
+            (
+                "A_FAMREL == 1",
+                "a family relationship scoped to primary-family membership, "
+                "which a subfamily reference person does not carry; household "
+                "and family roles stay separate",
+            ),
+            (
+                "asec_pool relationship recode (A_LINENO == 1)",
+                "a separately assigned Basic-CPS roster line number with no "
+                "source guarantee of agreement with any ASEC sequence",
+            ),
+        ),
+        (
+            "asec_pool._with_relationship_recode derives A_EXPRRP from "
+            "A_LINENO == 1 whenever the locked input omits it, so the column's "
+            "presence on a prepared arm does not certify an observed source "
+            "value for that cohort",
+            "the native ACS arm's A_EXPRRP is likewise derived by acs_pums "
+            "from RELSHIPP, and its group-quarters households carry the "
+            "nonrelative code 14 rather than any reference-person code",
+        ),
+        "RELSHIPP == 20 observed on the native ACS arm's housing units only; "
+        "RELSHIPP 37 and 38 are the group-quarters populations and carry no "
+        "observed reference person",
     ),
 )
 #: The population columns this stage records as unbound, and therefore may not
@@ -317,9 +377,7 @@ def _original_ids(table: pd.DataFrame, entity: str, mask: np.ndarray) -> np.ndar
     """The arm's own pre-remap identifiers, never the post-offset source IDs."""
     column = spine_source_id_column(entity)
     _require(column in table, f"ARM_SPINE_SOURCE_ID:{entity}")
-    return _int64_view(
-        table.loc[mask, column], reason=f"ARM_SPINE_SOURCE_ID:{entity}"
-    )
+    return _int64_view(table.loc[mask, column], reason=f"ARM_SPINE_SOURCE_ID:{entity}")
 
 
 def _resolved_positions(
@@ -508,10 +566,23 @@ def _demographics(prepared_columns: Sequence[str], cohorts: Mapping[str, int]) -
     and which it does not. That observation is evidence, not authority —
     ``bound_by_this_stage`` is ``False`` either way, and
     :func:`refuse_unbound_demographic_writes` is what keeps it true.
+
+    Each entry also records the explicit source contract that would supply the
+    column, the mappings deliberately **not** adopted as proof of it, and the
+    diagnostic-only columns that are crosschecked against that contract and
+    never substituted for it.
     """
     present = set(prepared_columns)
     unbound = []
-    for column, sources, mapping, acs_mapping in _UNBOUND_DEMOGRAPHICS:
+    for (
+        column,
+        sources,
+        diagnostics,
+        contract,
+        not_adopted,
+        caveats,
+        acs_mapping,
+    ) in _UNBOUND_DEMOGRAPHICS:
         found = sorted(name for name in sources if name in present)
         absent = sorted(name for name in sources if name not in present)
         unbound.append(
@@ -520,8 +591,19 @@ def _demographics(prepared_columns: Sequence[str], cohorts: Mapping[str, int]) -
                 "required_asec_source_columns": list(sources),
                 "present_in_prepared_arm": found,
                 "absent_from_prepared_arm": absent,
+                "diagnostic_only_source_columns": list(diagnostics),
+                "diagnostic_only_present_in_prepared_arm": sorted(
+                    name for name in diagnostics if name in present
+                ),
+                "diagnostic_only_is_semantic_proof": False,
                 "bound_by_this_stage": False,
-                "reviewed_asec_mapping": mapping,
+                "explicit_asec_source_contract": contract,
+                "asec_mappings_not_adopted": [
+                    {"mapping": mapping, "refusal": refusal}
+                    for mapping, refusal in not_adopted
+                ],
+                "presence_certifies_observation": False,
+                "presence_caveats": list(caveats),
                 "acs_arm_mapping": acs_mapping,
                 "reason": (
                     "required_asec_source_column_absent_from_this_prepared_population"
@@ -673,9 +755,11 @@ def resolve_composed_asec_binding(
             ),
             f"BINDING_CROSSCHECK:{column}",
         )
-    composed_household_ids = tables["household"].loc[
-        masks["household"], US_SCHEMA.entity_id_column("household")
-    ].to_numpy(dtype="int64")
+    composed_household_ids = (
+        tables["household"]
+        .loc[masks["household"], US_SCHEMA.entity_id_column("household")]
+        .to_numpy(dtype="int64")
+    )
     verify_graph_housing_rows(
         _arm_household_evidence(
             tables["household"], masks["household"], original["household"]
@@ -853,9 +937,10 @@ def bind_composed_asec_document(payload: bytes) -> dict:
     )
     # What the unbound entries must satisfy is that they are unbound and that
     # they say the whole truth about the source, not that the source lacked the
-    # column: a genuine prepared arm does carry A_SEX and P_SEQ, and a document
+    # column: a genuine prepared arm does carry some of these, and a document
     # recording that is correct. Every required column is accounted for exactly
-    # once, on one side or the other.
+    # once, on one side or the other. A diagnostic-only column is held apart
+    # from the requirement and is never allowed to claim it proves anything.
     _require(
         [item["column"] for item in demographics["unbound"]]
         == list(UNBOUND_DEMOGRAPHIC_COLUMNS)
@@ -867,13 +952,38 @@ def bind_composed_asec_document(payload: bytes) -> dict:
             == sorted(item["required_asec_source_columns"])
             and not set(item["present_in_prepared_arm"])
             & set(item["absent_from_prepared_arm"])
+            and item["diagnostic_only_is_semantic_proof"] is False
+            and not set(item["diagnostic_only_source_columns"])
+            & set(item["required_asec_source_columns"])
+            and set(item["diagnostic_only_present_in_prepared_arm"])
+            <= set(item["diagnostic_only_source_columns"])
+            and bool(item["explicit_asec_source_contract"])
+            and bool(item["asec_mappings_not_adopted"])
+            and item["presence_certifies_observation"] is False
+            and bool(item["presence_caveats"])
+            and all(
+                bool(entry["mapping"]) and bool(entry["refusal"])
+                for entry in item["asec_mappings_not_adopted"]
+            )
             for item in demographics["unbound"]
         ),
         "BINDING_UNBOUND_DEMOGRAPHICS",
     )
-    refuse_unbound_demographic_writes(
-        item["column"] for item in demographics["bound"]
+    # Presence varies with the prepared roster. The required columns and their
+    # semantics do not: a transported document cannot redefine this registry.
+    declared_presence = [
+        name
+        for item in demographics["unbound"]
+        for name in (
+            *item["present_in_prepared_arm"],
+            *item["diagnostic_only_present_in_prepared_arm"],
+        )
+    ]
+    _require(
+        demographics["unbound"] == _demographics(declared_presence, {})["unbound"],
+        "BINDING_UNBOUND_DEMOGRAPHICS",
     )
+    refuse_unbound_demographic_writes(item["column"] for item in demographics["bound"])
     _require(
         all(
             _is_digest(value)
@@ -889,8 +999,7 @@ def bind_composed_asec_document(payload: bytes) -> dict:
         type(document["composed_is_whole_arm"]) is bool
         and bool(document["cohorts"])
         and all(
-            type(count) is int and count > 0
-            for count in document["cohorts"].values()
+            type(count) is int and count > 0 for count in document["cohorts"].values()
         ),
         "BINDING_COHORTS",
     )
@@ -968,9 +1077,7 @@ def _arm_rows_parts(
             "release_eligible": False,
             "binding_sha256": binding_sha256,
             "dtype": "<i8",
-            "rows": {
-                entity: int(len(original_ids[entity])) for entity in _ID_ENTITIES
-            },
+            "rows": {entity: int(len(original_ids[entity])) for entity in _ID_ENTITIES},
             "buffers": [
                 {
                     "entity": entity,
@@ -1063,7 +1170,8 @@ def bind_composed_asec_arm_rows(
     ):
         width = rows[entity] * 8
         _require(
-            declared == {
+            declared
+            == {
                 "entity": entity,
                 "name": name,
                 "bytes": width,

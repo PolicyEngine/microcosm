@@ -1,0 +1,1 @@
+Declare an unwired ASEC demographic source contract with exact sex/allocation domains, explicit household reference codes, per-cohort diagnostics, and invented-source verification. Correct the composed graph's unbound-field metadata to require allocation provenance and distinguish reference evidence from sequence crosschecks.

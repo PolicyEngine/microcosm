@@ -145,10 +145,21 @@ stage deliberately leaves open.
 Two demographic fields a calibration will also want are **not** bound by this
 stage, and the binding records exactly what it observed rather than guessing:
 
-| Column | Reviewed ASEC mapping | Required source column |
-| --- | --- | --- |
-| `is_female` | `cps_carried` (`is_female = A_SEX == 2`) | `A_SEX` |
-| `is_household_head` | `relationship_inputs` (`is_household_head = P_SEQ == 1`) | `P_SEQ` |
+| Column | Explicit ASEC source contract | Required source columns | Diagnostic only |
+| --- | --- | --- | --- |
+| `is_female` | `asec_demographic_source`: printed `A_SEX` codes 1/2 admitted only with printed `AXSEX` codes 0/4 | `A_SEX`, `AXSEX` | — |
+| `is_household_head` | `asec_demographic_source`: printed `A_EXPRRP` codes 1/2, exactly one per household | `A_EXPRRP` | `P_SEQ` |
+
+The required columns are what an *explicit* binding needs, which is not the
+same as what some existing mapping happens to read. The root adjudication of
+2026-09-06 refused `P_SEQ == 1` as semantic proof of headship and required sex
+to carry its allocation provenance, so `cps_carried`'s `A_SEX == 2`,
+`relationship_inputs`' `P_SEQ == 1`, `A_FAMREL == 1` and the `asec_pool`
+`A_LINENO == 1` recode are each recorded in the binding document under
+`asec_mappings_not_adopted`, with the reason each is refused. `P_SEQ` is
+recorded on its own `diagnostic_only_*` axis with
+`diagnostic_only_is_semantic_proof: false`; it is crosschecked against the
+reference code and never substituted for it.
 
 Binding either column needs a reviewed cross-arm mapping decision — a decision
 about the prepared arm and its ACS counterpart, not a choice this stage may
@@ -161,9 +172,14 @@ question, and the two must not be confused:
   `frame_context` of the genuine 505-household run — the very payload this node
   reads as `asec_frame_context` — declares a 179-column person roster
   containing both. Read as metadata only, from the existing prepared-source
-  directory and run artifacts.
+  directory and run artifacts. That observation was made before the required
+  columns were corrected, and it says nothing about `AXSEX` or `A_EXPRRP`;
+  whether those reach the prepared arm as observations is a source question the contract in
+  [us-asec-demographic-source-contract.md](us-asec-demographic-source-contract.md)
+  prepares to resolve, not this stage.
 - **Observed on the invented fixture.** The invented parent frame the test
-  module builds carries neither column.
+  module builds carries `A_EXPRRP`, which may be a derived recode, and lacks
+  `A_SEX`, `AXSEX`, and `P_SEQ`. Presence is never certified as observation.
 
 The binding document therefore records what it saw rather than generalising
 either observation into a source contract: each unbound entry carries
