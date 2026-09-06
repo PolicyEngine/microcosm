@@ -32,11 +32,16 @@ genuine-small run is proposed in `docs/us-composed-population-graph.md` only.
 - Reviewed implementation scope `composed_population_v1`: the union of
   `assembly_prepare`, `asec_prepared_v3` and `geography` plus the new module,
   both bound codecs, both runtime-option families.
-- `test_us_graph_composed_population.py`: 25 tests — direct, cold graph, and
+- `test_us_graph_composed_population.py`: 30 tests — direct, cold graph, and
   fresh-process warm replay with zero kernels; native identity, absence,
   membership, lineage, mass, importance anchor, evidence, geography, checkpoint;
-  eleven refusal cases; and a structural case with a reordered multi-SPM
-  household.
+  the refusal cases; a `sample_fraction = 0.5` case; and a structural case with a
+  reordered multi-SPM household.
+- The root's independent Fable 5.1 review of `76d1a9b8` raised 0 critical and 4
+  should-address items. All four are fixed: the false "node keys unchanged"
+  claim, an origin digest that bound nothing back to either arm, unrecorded
+  alignment between the whole-arm prepared evidence and the composed rows, and an
+  overclaiming binder docstring. See the report's review section.
 - `docs/us-composed-population-graph.md`, including the genuine-small
   preparation/runner proposal and its memory measurement plan.
 
