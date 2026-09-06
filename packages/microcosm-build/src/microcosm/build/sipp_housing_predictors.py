@@ -327,6 +327,7 @@ PREDICTOR_FIELDS_DELIBERATELY_ABSENT = {
 # household's ``exclusion``.
 PREDICTOR_STATUS_ORDER = (
     "predictor_copy_conflict",
+    "predictor_suppressed",
     "predictor_not_in_universe",
     "predictor_unknown",
     "predictor_age_coverage_incomplete",
@@ -335,6 +336,7 @@ AGE_COVERAGE_STATES = ("complete", "partial", "none")
 DISAGREEMENT_STATES = (
     "agree",
     "disagree",
+    "publisher_conflict",
     "publisher_unknown",
     "roster_coverage_incomplete",
 )
@@ -454,6 +456,10 @@ def _status(
     classes = {name: hm.measurement_class(household[name]) for name in household}
     if any(state == "copy_conflict" for state in classes.values()):
         return "predictor_copy_conflict"
+    # Withheld and out-of-universe evidence are each kept apart from having no
+    # answer to give, on the same rule the assistance classification follows.
+    if any(state == "suppressed" for state in classes.values()):
+        return "predictor_suppressed"
     if any(state == "not_in_universe" for state in classes.values()):
         return "predictor_not_in_universe"
     if any(household[name].value is None for name in household):
@@ -472,8 +478,16 @@ def _income_sign(measure: m.Measurement) -> str:
 
 
 def _agreement(publisher: m.Measurement, roster: int | None) -> str:
+    """Compare a publisher count with its roster counterpart, correcting neither.
+
+    A roster counterpart that could not be established is reported as such
+    rather than as agreement, and a publisher measurement that did not resolve
+    is separated into a copy conflict and every other non-resolving state.
+    """
     if roster is None:
         return "roster_coverage_incomplete"
+    if "household_copy_conflict" in publisher.reasons:
+        return "publisher_conflict"
     if publisher.value is None:
         return "publisher_unknown"
     return "agree" if int(publisher.value) == roster else "disagree"

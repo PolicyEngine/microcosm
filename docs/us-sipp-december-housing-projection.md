@@ -317,9 +317,12 @@ it rather than the claim.
 Prospective validity is reported on its own exclusive ladder instead:
 
 ```
-predictor_copy_conflict  predictor_not_in_universe
+predictor_copy_conflict  predictor_suppressed  predictor_not_in_universe
 predictor_unknown  predictor_age_coverage_incomplete
 ```
+
+Withheld and out-of-universe evidence keep their own states rather than joining
+plain unknowns, on the same rule the assistance classification already follows.
 
 with `predictor_complete` for a household that clears it. The diagnostics report
 the counter over all households and, separately,
@@ -353,9 +356,11 @@ the state column against the same rows without it.
 
 `RHNUMPER` is the publisher's own December household size; the roster count is
 the number of supplied December person records for that residence. Both are
-retained, and `household_size_agreement` reports `agree`, `disagree` or
-`publisher_unknown` with a signed `household_size_difference`. Neither is
-adjusted toward the other.
+retained, and `household_size_agreement` reports `agree`, `disagree`,
+`publisher_conflict`, `publisher_unknown` or `roster_coverage_incomplete` with a
+signed `household_size_difference`. Neither is adjusted toward the other, and a
+publisher measurement that did not resolve is separated from one whose members
+disagreed.
 
 A disagreement is expected rather than defective, and the reason is a dictionary
 fact: the pinned dictionary publishes `RHNUMPERWT2` (printed page 899), whose

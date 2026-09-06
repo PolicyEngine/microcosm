@@ -1522,9 +1522,28 @@ def test_every_predictor_allocation_class_stays_distinct_from_reported(flag, qua
 
 
 def test_a_suppressed_predictor_flag_is_neither_observed_nor_a_value():
-    measure = _project(_row(AEHC_ST="-99")).predictors[0].household("TEHC_ST")
+    household = _project(_row(AEHC_ST="-99")).predictors[0]
+    measure = household.household("TEHC_ST")
     assert measure.value is None
     assert hm.measurement_class(measure) == "suppressed"
+    # Withheld evidence keeps its own state rather than joining plain unknowns.
+    assert household.status == "predictor_suppressed"
+
+
+def test_a_publisher_count_that_conflicts_is_kept_apart_from_an_unknown_one():
+    conflict = _project(
+        _row(pnum=101, RHNUMPER="2"), _row(pnum=102, RHNUMPER="3")
+    ).predictors[0]
+    unknown = _project(_row(RHNUMPER="", AHNUMPER="")).predictors[0]
+    assert conflict.diagnostics["household_size_agreement"] == "publisher_conflict"
+    assert unknown.diagnostics["household_size_agreement"] == "publisher_unknown"
+    assert set(predictors.DISAGREEMENT_STATES) == {
+        "agree",
+        "disagree",
+        "publisher_conflict",
+        "publisher_unknown",
+        "roster_coverage_incomplete",
+    }
 
 
 # --- version 3 age universe and coverage ------------------------------------
@@ -1681,6 +1700,7 @@ def test_the_predictor_status_ladder_is_exclusive_and_declared():
         _row(ssuid="0003", residence="100003", RHNUMPER="", AHNUMPER="0"),
         _row(ssuid="0004", residence="100004", TEHC_ST=""),
         _row(ssuid="0005", residence="100005", TAGE_EHC=""),
+        _row(ssuid="0006", residence="100006", AHTOTINC="-99"),
     ]
     result = hp.project(rows, source=SOURCE, selection="all_ssuids")
     diagnostics = result.diagnostics["prospective_predictors"]
@@ -1689,6 +1709,7 @@ def test_the_predictor_status_ladder_is_exclusive_and_declared():
         "predictor_complete": 1,
         "predictor_copy_conflict": 1,
         "predictor_not_in_universe": 1,
+        "predictor_suppressed": 1,
         "predictor_unknown": 1,
     }
     assert set(diagnostics["predictor_status_exclusive"]) - {"predictor_complete"} == (
@@ -1697,8 +1718,8 @@ def test_the_predictor_status_ladder_is_exclusive_and_declared():
     assert diagnostics["predictor_status_order_exclusive"] == list(
         predictors.PREDICTOR_STATUS_ORDER
     )
-    # Not one of the five is excluded by the measurement ladder.
-    assert result.diagnostics["exclusions_exclusive"] == {"admitted": 5}
+    # Not one of the six is excluded by the measurement ladder.
+    assert result.diagnostics["exclusions_exclusive"] == {"admitted": 6}
 
 
 def test_predictor_validity_is_reported_separately_for_admitted_households():

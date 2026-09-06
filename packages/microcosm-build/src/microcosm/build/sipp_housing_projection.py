@@ -71,7 +71,7 @@ IMPLEMENTATION_MODULES = (
 # Byte identity of ``recipe_bytes()``. A recipe change must move this pin in the
 # same commit; a silent drift between the declared contract and the transcribed
 # field table refuses instead of extracting under an unreviewed contract.
-RECIPE_SHA256 = "29a686a37713954952fe2b5c2a3b91fa84e9746d052056db6479b3656831dca3"
+RECIPE_SHA256 = "60ea23566e4b1524935249805bfe83a828fbc8d8b350503c6c99e422df60fdd0"
 
 # The official document these contracts were transcribed from. Its digest is not
 # a second authority: ``verify_dictionary()`` requires it to equal the frozen
