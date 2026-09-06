@@ -402,6 +402,12 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "asec_income_observations.py",
         "asec_person_income_source.py",
         "asec_student_controls.py",
+        # Explicit ASEC demographic source contract: the printed sex, sex
+        # allocation and household reference-person entries, their reader and
+        # their per-person binding states. It authenticates pinned members and
+        # issues typed observations; it applies no population treatment, and it
+        # reads no support channel or spine-source-ID column.
+        "asec_demographic_source.py",
         # ASEC housing observation and occupied-HU evidence, their source
         # authentication, and the non-authoritative graph transport. These are
         # interview-time observations: no participation, eligibility, rent or
