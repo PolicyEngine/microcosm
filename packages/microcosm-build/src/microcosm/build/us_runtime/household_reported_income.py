@@ -779,11 +779,16 @@ def two_arm_comparability(
             },
             {
                 "axis": "household universe",
-                "acs": "occupied housing units; GQ and vacant are N/A",
-                "asec": "All Households as printed",
+                "acs": "occupied housing units; GQ and vacant records are N/A",
+                "asec": (
+                    "All Households as printed; the CPS household count "
+                    "excludes persons living in group quarters"
+                ),
                 "consequence": (
-                    "the ACS arm carries an explicit out-of-universe "
-                    "availability code the ASEC arm has no publisher basis for"
+                    "both universes are occupied housing units, but only the "
+                    "ACS file carries group-quarters rows at all, so only the "
+                    "ACS arm has a publisher basis for an out-of-universe "
+                    "availability code"
                 ),
             },
             {

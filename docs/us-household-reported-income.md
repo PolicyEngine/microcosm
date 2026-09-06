@@ -148,16 +148,20 @@ members are that 15-and-over universe; this module never sums `PTOTVAL` into
 > characteristics of the person such as age, labor force status, etc., and the
 > composition of households refer to the time of the survey.
 
-Three things follow. The CPS partitions money income into **eleven** listed
+Four things follow. The CPS partitions money income into **eleven** listed
 sources where the ACS uses **eight**, so the two totals are built from
 differently partitioned question sets even though both are money income. CPS
 money income is published *exclusive of capital gains*, so the separate ASEC
 `CAP_VAL` field (PDF page 44 of the ASEC dictionary, `capital gains value`,
 `Universe: CAP_YN = 1`) is outside `HTOTVAL`; it is neither the ACS
 all-other-income component `OIP` nor an unallocated residual, and no residual
-may be labelled "other income". And the ASEC household composition is fixed at
-the survey date exactly as the ACS composition is fixed at the interview date,
-so that axis does not distinguish the arms — the reference *window* does.
+may be labelled "other income". The ASEC household composition is fixed at the
+survey date exactly as the ACS composition is fixed at the interview date, so
+that axis does not distinguish the arms — the reference *window* does. And both
+universes are occupied housing units: the CPS household count excludes persons
+living in group quarters, while the ACS file carries group-quarters rows and
+declares `HINCP` not applicable on them, which is why only the ACS arm has a
+publisher basis for an out-of-universe availability code.
 
 ### What the executed ACS person roster does and does not carry
 
