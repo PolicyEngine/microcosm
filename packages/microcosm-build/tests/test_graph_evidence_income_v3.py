@@ -871,6 +871,12 @@ def test_recorded_receipt_contradictions_refuse(tmp_path, filename, mutation):
 
 
 def _manifest_mutation(mutation):
+    """Edit both manifests and leave the content body and key as they were.
+
+    Everything reached this way is refused by the manifest-body checks, before
+    any node is read. Node contracts need `_resealed_manifest_mutation`.
+    """
+
     def apply(root, run, dec, review):
         for mode in ("cold", "warm"):
             mutate_json(root, f"{mode}-manifest.json", mutation)
@@ -878,53 +884,332 @@ def _manifest_mutation(mutation):
     return apply
 
 
+def _resealed_manifest_mutation(mutation):
+    """Edit both manifests and restore their own internal consistency.
+
+    Without resealing, a node edit contradicts `content_addressed` and the
+    recomputed content key, so the export refuses at the content-body check and
+    the node validator is never reached. The four-node suite reseals the same
+    three places; this is its five-node counterpart. Both phases reseal to one
+    shared content key because `hit` and `wall_time` stay out of the body.
+    """
+
+    def apply(root, run, dec, review):
+        for mode in ("cold", "warm"):
+            manifest = json.loads((root / f"{mode}-manifest.json").read_bytes())
+            mutation(manifest)
+            manifest["content_addressed"]["nodes"] = {
+                name: {
+                    field: value
+                    for field, value in node.items()
+                    if field not in ("hit", "wall_time")
+                }
+                for name, node in manifest["nodes"].items()
+            }
+            key = digest(b"manifest\0" + canonical(manifest["content_addressed"]))
+            manifest["key"] = key
+            (root / f"{mode}-manifest.json").write_bytes(canonical(manifest) + b"\n")
+            mutate_json(
+                root,
+                f"{mode}-receipt.json",
+                lambda value, key=key: value["result"].update(key=key),
+            )
+
+    return apply
+
+
+def test_resealing_alone_leaves_the_export_valid(tmp_path):
+    """The control for every resealed case: the helper changes no contract.
+
+    If this failed, a resealed negative could be passing for the helper's own
+    reason rather than the contradiction it names.
+    """
+    reference = export_fixture(tmp_path, _resealed_manifest_mutation(lambda v: None))
+    assert read_candidate_quality(tmp_path / "quality", reference["sha256"])
+
+
 @pytest.mark.parametrize(
-    "mutation",
+    "reason,mutation",
     [
-        lambda v: v["nodes"].pop(IDS[4]),
-        lambda v: v["content_addressed"]["nodes"].pop(IDS[4]),
-        lambda v: v["nodes"][IDS[4]].update(
-            kernel_ref="us.asec_prepared.reported_income@1"
+        (
+            "Content body differs from execution nodes",
+            lambda v: v["content_addressed"]["nodes"].pop(IDS[4]),
         ),
-        lambda v: v["nodes"][IDS[4]].update(kernel_impl_hash="9" * 64),
-        lambda v: v["nodes"][IDS[0]].update(kernel_impl_hash=IMPL[IDS[4]]),
-        lambda v: v["nodes"][IDS[4]]["capabilities"].update(structural="create"),
-        lambda v: v["nodes"][IDS[4]]["capabilities"].update(determinism="seeded"),
-        lambda v: v["nodes"][IDS[1]]["capabilities"].update(seed_source="none"),
-        lambda v: v["nodes"][IDS[4]]["receipt"].update(release_eligible=True),
-        lambda v: v["nodes"][IDS[4]]["receipt"].update(unapproved_key=1),
-        lambda v: v["nodes"][IDS[4]]["receipt"].update(phase="other_phase"),
-        lambda v: v["nodes"][IDS[0]]["typed_artifacts"]["outputs"].pop(
-            "income_observations"
+        (
+            "Content body differs from execution nodes",
+            lambda v: v["nodes"][IDS[4]].update(kernel_impl_hash="9" * 64),
         ),
-        lambda v: v["nodes"][IDS[4]]["typed_artifacts"]["outputs"].pop(
-            "reported_income"
+        (
+            "Content body differs from execution nodes",
+            lambda v: v["content_addressed"]["nodes"][IDS[0]].update(hit=False),
         ),
-        lambda v: v["nodes"][IDS[4]]["typed_artifacts"]["inputs"].__setitem__(
-            "engine_evaluation",
-            copy.deepcopy(
-                v["nodes"][IDS[3]]["typed_artifacts"]["outputs"]["engine_evaluation"]
-            ),
+        (
+            "Computation content key and execution byte digest are distinct",
+            lambda v: v.update(key="9" * 64),
         ),
-        lambda v: v["nodes"][IDS[4]]["typed_artifacts"]["inputs"]["selection"].update(
-            producer=IDS[4]
+        ("Unsupported execution manifest or failures", lambda v: v.update(tier="a")),
+        (
+            "Unsupported execution manifest or failures",
+            lambda v: v.update(schema_version=2),
         ),
-        lambda v: v["nodes"][IDS[4]]["typed_artifacts"]["inputs"]["selection"].update(
-            producer_key="9" * 64
+        (
+            "Unsupported execution manifest or failures",
+            lambda v: v.update(country="uk"),
         ),
-        lambda v: v["nodes"][IDS[4]]["typed_artifacts"]["inputs"]["selection"].update(
-            key="9" * 64
+        (
+            "Unsupported execution manifest or failures",
+            lambda v: v.update(known_failures=["asec_prepared.reported_income"]),
         ),
-        lambda v: v.update(schema_version=2),
-        lambda v: v.update(country="uk"),
-        lambda v: v.update(known_failures=["asec_prepared.reported_income"]),
-        lambda v: v.update(key="9" * 64),
+        (
+            "Unsupported execution manifest or failures",
+            lambda v: v.update(decisions=["kept"]),
+        ),
+        ("Missing or unknown receipt fields", lambda v: v.pop("host")),
+        ("Missing or unknown receipt fields", lambda v: v.update(extra_field=1)),
     ],
 )
-def test_manifest_contradictions_refuse(tmp_path, mutation):
-    with pytest.raises(EvidenceError):
+def test_manifest_body_contradictions_refuse(tmp_path, reason, mutation):
+    with pytest.raises(EvidenceError, match=reason):
         export_fixture(tmp_path, _manifest_mutation(mutation))
     assert not (tmp_path / "quality").exists()
+
+
+def _add_engine_input(v):
+    v["nodes"][IDS[4]]["typed_artifacts"]["inputs"]["engine_evaluation"] = (
+        copy.deepcopy(
+            v["nodes"][IDS[3]]["typed_artifacts"]["outputs"]["engine_evaluation"]
+        )
+    )
+
+
+def _duplicate_typed_output_key(v):
+    borrowed = v["nodes"][IDS[0]]["typed_artifacts"]["outputs"]["frame_context"]["key"]
+    v["nodes"][IDS[1]]["typed_artifacts"]["outputs"]["frame_context"]["key"] = borrowed
+    v["nodes"][IDS[1]]["opaque_artifacts"]["frame_context"] = borrowed
+
+
+@pytest.mark.parametrize(
+    "reason,mutation",
+    [
+        ("Exact five-node graph roster mismatch", lambda v: v["nodes"].pop(IDS[4])),
+        (
+            "Exact five-node graph roster mismatch",
+            lambda v: v["nodes"].__setitem__(
+                "asec_prepared.extra", copy.deepcopy(v["nodes"][IDS[2]])
+            ),
+        ),
+        (
+            "Cache evidence contradicts phase",
+            lambda v: v["nodes"][IDS[0]].update(hit=True),
+        ),
+        (
+            "Cache evidence contradicts phase",
+            lambda v: v["nodes"][IDS[0]].update(legacy_capabilities=True),
+        ),
+        (
+            "Node implementation identity mismatch",
+            lambda v: v["nodes"][IDS[4]].update(
+                kernel_ref="us.asec_prepared.reported_income@1"
+            ),
+        ),
+        (
+            "Node implementation identity mismatch",
+            lambda v: v["nodes"][IDS[4]].update(kernel_impl_hash="9" * 64),
+        ),
+        (
+            "Node implementation identity mismatch",
+            lambda v: v["nodes"][IDS[0]].update(kernel_impl_hash=IMPL[IDS[4]]),
+        ),
+        (
+            "Unsupported node capabilities",
+            lambda v: v["nodes"][IDS[4]]["capabilities"].update(structural="create"),
+        ),
+        (
+            "Unsupported node capabilities",
+            lambda v: v["nodes"][IDS[4]]["capabilities"].update(determinism="seeded"),
+        ),
+        (
+            "Unsupported node capabilities",
+            lambda v: v["nodes"][IDS[1]]["capabilities"].update(seed_source="none"),
+        ),
+        (
+            "Unsupported node capabilities",
+            lambda v: v["nodes"][IDS[3]]["capabilities"].update(consumes_se=True),
+        ),
+        (
+            "Unsupported node capabilities",
+            lambda v: v["nodes"][IDS[3]]["capabilities"].update(tolerance=0.0),
+        ),
+        (
+            "Invalid dependency list",
+            lambda v: v["nodes"][IDS[0]]["capabilities"].update(
+                dependencies=["numpy", "numpy"]
+            ),
+        ),
+        (
+            "Missing or contradictory node receipt",
+            lambda v: v["nodes"][IDS[4]]["receipt"].update(release_eligible=True),
+        ),
+        (
+            "Missing or unknown receipt fields",
+            lambda v: v["nodes"][IDS[4]]["receipt"].update(unapproved_key=1),
+        ),
+        (
+            "Missing or unknown receipt fields",
+            lambda v: v["nodes"][IDS[1]]["receipt"].pop("phase"),
+        ),
+        (
+            "Unsupported node receipt phase",
+            lambda v: v["nodes"][IDS[4]]["receipt"].update(phase="other_phase"),
+        ),
+        (
+            "Typed output roster mismatch",
+            lambda v: v["nodes"][IDS[0]]["typed_artifacts"]["outputs"].pop(
+                "income_observations"
+            ),
+        ),
+        (
+            "Typed output roster mismatch",
+            lambda v: v["nodes"][IDS[4]]["typed_artifacts"]["outputs"].pop(
+                "reported_income"
+            ),
+        ),
+        (
+            "Typed output roster mismatch",
+            lambda v: v["nodes"][IDS[2]]["opaque_artifacts"].pop("frame_context"),
+        ),
+        (
+            "Typed output identity mismatch",
+            lambda v: v["nodes"][IDS[2]]["typed_artifacts"]["outputs"][
+                "frame_context"
+            ].update(producer=IDS[0]),
+        ),
+        ("Duplicate typed output key", _duplicate_typed_output_key),
+        (
+            "Typed input names a producer outside this node's reviewed roster",
+            _add_engine_input,
+        ),
+        (
+            "Typed input names a producer outside this node's reviewed roster",
+            lambda v: v["nodes"][IDS[4]]["typed_artifacts"]["inputs"][
+                "selection"
+            ].update(producer=IDS[4]),
+        ),
+        (
+            "Typed input names a producer outside this node's reviewed roster",
+            lambda v: v["nodes"][IDS[3]]["typed_artifacts"]["inputs"][
+                "frame_context"
+            ].update(producer=IDS[0]),
+        ),
+        (
+            "Typed input differs from its actual producer",
+            lambda v: v["nodes"][IDS[4]]["typed_artifacts"]["inputs"][
+                "selection"
+            ].update(producer_key="9" * 64),
+        ),
+        (
+            "Typed input differs from its actual producer",
+            lambda v: v["nodes"][IDS[4]]["typed_artifacts"]["inputs"][
+                "selection"
+            ].update(key="9" * 64),
+        ),
+        (
+            "Invalid exact seed",
+            lambda v: v["nodes"][IDS[4]].update(seed=True),
+        ),
+        (
+            "Duplicate column artifact",
+            lambda v: v["nodes"][IDS[0]]["artifacts"].append(
+                copy.deepcopy(v["nodes"][IDS[0]]["artifacts"][0])
+            ),
+        ),
+    ],
+)
+def test_resealed_node_contradictions_reach_the_node_validator(
+    tmp_path, reason, mutation
+):
+    with pytest.raises(EvidenceError, match=reason):
+        export_fixture(tmp_path, _resealed_manifest_mutation(mutation))
+    assert not (tmp_path / "quality").exists()
+
+
+@pytest.mark.parametrize(
+    "reason,mutation",
+    [
+        (
+            "Engine node receipt evaluation digest differs from the recorded output",
+            lambda v: v["nodes"][IDS[3]]["receipt"].update(evaluation_sha256="9" * 64),
+        ),
+        (
+            "Accounting node receipt digest differs from the recorded payload",
+            lambda v: v["nodes"][IDS[4]]["receipt"].update(accounting_sha256="9" * 64),
+        ),
+        (
+            # The receipt records the payload digest, never the body digest.
+            "Accounting node receipt digest differs from the recorded payload",
+            lambda v: v["nodes"][IDS[4]]["receipt"].update(accounting_sha256="7" * 64),
+        ),
+        (
+            "Accounting node does not record the published price basis contract",
+            lambda v: v["nodes"][IDS[4]]["receipt"]["implementation"][
+                "resources"
+            ].update({income.PRICE_BASIS_RESOURCE: "9" * 64}),
+        ),
+        (
+            "Accounting node does not record the published price basis contract",
+            lambda v: v["nodes"][IDS[4]]["receipt"]["implementation"]["resources"].pop(
+                income.PRICE_BASIS_RESOURCE
+            ),
+        ),
+        (
+            "Accounting node does not record the published price basis contract",
+            lambda v: v["nodes"][IDS[4]]["receipt"].pop("implementation"),
+        ),
+    ],
+)
+def test_node_receipt_digests_are_bound(tmp_path, reason, mutation):
+    with pytest.raises(EvidenceError, match=reason):
+        export_fixture(tmp_path, _resealed_manifest_mutation(mutation))
+    assert not (tmp_path / "quality").exists()
+
+
+def test_unsealed_node_edits_never_reach_the_node_validator(tmp_path):
+    """Why the resealing helper exists, pinned as a contract.
+
+    An accounting node that consumes the engine is the case that matters: left
+    unsealed it is refused by the content body long before the typed-input
+    roster is consulted, so an unsealed suite would report node coverage it does
+    not have. Resealed, the same edit reaches the roster rule.
+    """
+    unsealed, resealed = tmp_path / "unsealed", tmp_path / "resealed"
+    unsealed.mkdir()
+    resealed.mkdir()
+    with pytest.raises(
+        EvidenceError, match="Content body differs from execution nodes"
+    ):
+        export_fixture(unsealed, _manifest_mutation(_add_engine_input))
+    with pytest.raises(
+        EvidenceError,
+        match="Typed input names a producer outside this node's reviewed roster",
+    ):
+        export_fixture(resealed, _resealed_manifest_mutation(_add_engine_input))
+    assert not (unsealed / "quality").exists()
+    assert not (resealed / "quality").exists()
+
+
+def test_absent_optional_node_digests_still_export(tmp_path):
+    """Both digest keys are pin-approved optional metadata, so absence is allowed.
+
+    The price basis contract digest is not optional and stays required, which is
+    why only the two optional keys are dropped here.
+    """
+
+    def mutation(v):
+        v["nodes"][IDS[3]]["receipt"].pop("evaluation_sha256")
+        v["nodes"][IDS[4]]["receipt"].pop("accounting_sha256")
+
+    reference = export_fixture(tmp_path, _resealed_manifest_mutation(mutation))
+    assert read_candidate_quality(tmp_path / "quality", reference["sha256"])
 
 
 def test_cold_and_warm_opaque_output_bytes_must_agree(tmp_path):
