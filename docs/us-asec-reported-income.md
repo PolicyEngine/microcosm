@@ -124,3 +124,12 @@ v3 preparation generation. Historical v2 artifacts remain preserved, but the
 v3 runtime invalidates their cache keys. A new cold run must precede a v3 warm
 replay. No new source file or source pin is introduced. The four real engine
 outputs and their defaults remain separate from reported observations.
+
+## Effective CSV parser profile
+
+The source receipt records the field-size limit and the dialect of the default
+`csv.reader` that actually reads member headers. Re-registering the name `excel`
+does not change that default reader, so an unused named registration does not
+change the recorded parser, source identity or warm result. The live field-size
+limit does affect parsing: source validation and the prepared-stage cache key
+both bind it. Preparation never changes either process setting.
