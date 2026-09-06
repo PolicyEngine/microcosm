@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -261,37 +262,54 @@ def test_the_measurement_module_imports_no_engine_or_frame_loader():
     }
 
 
+# The sixteen Census group-metadata labels for the 2024 ACS 1-year B19001
+# estimate variables B19001_002..B19001_017, with the shared
+# "Estimate!!Total:!!" prefix removed. Retrieved from
+# https://api.census.gov/data/2024/acs/acs1/groups/B19001.json
+_B19001_PUBLISHED_LABELS = (
+    "Less than $10,000",
+    "$10,000 to $14,999",
+    "$15,000 to $19,999",
+    "$20,000 to $24,999",
+    "$25,000 to $29,999",
+    "$30,000 to $34,999",
+    "$35,000 to $39,999",
+    "$40,000 to $44,999",
+    "$45,000 to $49,999",
+    "$50,000 to $59,999",
+    "$60,000 to $74,999",
+    "$75,000 to $99,999",
+    "$100,000 to $124,999",
+    "$125,000 to $149,999",
+    "$150,000 to $199,999",
+    "$200,000 or more",
+)
+
+
 def test_b19001_bins_match_the_pinned_group_metadata():
     metadata = reported.B19001_2024_METADATA
+    assert metadata["reservation"] == "reserved_same_source_holdout"
     assert metadata["targets_allowed"] is False
     assert metadata["tuning_allowed"] is False
-    assert metadata["reservation"] == "reserved_same_source_holdout"
-    labels = [
-        item.replace("Estimate!!Total:!!", "")
-        for item in (
-            "Estimate!!Total:!!Less than $10,000",
-            "Estimate!!Total:!!$10,000 to $14,999",
-            "Estimate!!Total:!!$15,000 to $19,999",
-            "Estimate!!Total:!!$20,000 to $24,999",
-            "Estimate!!Total:!!$25,000 to $29,999",
-            "Estimate!!Total:!!$30,000 to $34,999",
-            "Estimate!!Total:!!$35,000 to $39,999",
-            "Estimate!!Total:!!$40,000 to $44,999",
-            "Estimate!!Total:!!$45,000 to $49,999",
-            "Estimate!!Total:!!$50,000 to $59,999",
-            "Estimate!!Total:!!$60,000 to $74,999",
-            "Estimate!!Total:!!$75,000 to $99,999",
-            "Estimate!!Total:!!$100,000 to $124,999",
-            "Estimate!!Total:!!$125,000 to $149,999",
-            "Estimate!!Total:!!$150,000 to $199,999",
-            "Estimate!!Total:!!$200,000 or more",
-        )
-    ]
+    assert metadata["groups_url"] == (
+        "https://api.census.gov/data/2024/acs/acs1/groups/B19001.json"
+    )
+    assert re.fullmatch("[0-9a-f]{64}", metadata["groups_sha256"])
+    assert metadata["bin_variables"] == tuple(
+        f"B19001_{index:03d}" for index in range(2, 18)
+    )
+    assert metadata["denominator"] == "B19001_001"
+
     spec = reported.b19001_household_income_distribution_spec("value")
-    assert [item.label for item in spec.bins] == labels
+    assert tuple(item.label for item in spec.bins) == _B19001_PUBLISHED_LABELS
     assert len(spec.bins) == len(metadata["bin_variables"]) == 16
     assert spec.bins[0] == DistributionBin("Less than $10,000", None, 10_000.0)
     assert spec.bins[-1] == DistributionBin("$200,000 or more", 200_000.0, None)
+    # Every published label's own lower bound is the bin's lower bound, so a
+    # transcription slip in either direction fails here rather than silently
+    # shifting a cutpoint.
+    for label, item in zip(_B19001_PUBLISHED_LABELS[1:], spec.bins[1:], strict=True):
+        assert item.lower == float(label.split()[0].lstrip("$").replace(",", ""))
 
 
 def _distribution_frame(values):
