@@ -7,6 +7,7 @@ import struct
 import subprocess
 import sys
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -26,7 +27,7 @@ from microcosm.build.us_runtime.graph_sources import (
     us_source_codecs,
 )
 from microcosm.frame import US_SCHEMA
-from microcosm.graph import ContentStore, compile_graph, run_graph
+from microcosm.graph import ContentStore, NodeRejectedError, compile_graph, run_graph
 from microcosm.graph.canonical import canonical_json
 
 
@@ -99,7 +100,13 @@ def _graph(root, *, fraction=1.0, projection_path=None):
 
 
 def _run(
-    root, *, fraction=1.0, resume="forbid", store_name="store", projection_path=None
+    root,
+    *,
+    fraction=1.0,
+    resume="forbid",
+    store_name="store",
+    projection_path=None,
+    graph_override=None,
 ):
     sources = {
         composed.ASEC_PREPARED_SOURCE_NAME: root / "prepared-source",
@@ -109,7 +116,11 @@ def _run(
     store = ContentStore(root / store_name, codecs=us_source_codecs())
     registry = binding.composed_asec_demographic_registry(geography=False)
     manifest = run_graph(
-        compile_graph(_graph(root, fraction=fraction, projection_path=projection_path)),
+        compile_graph(
+            graph_override
+            if graph_override is not None
+            else _graph(root, fraction=fraction, projection_path=projection_path)
+        ),
         sources=sources,
         store=store,
         kernels=registry,
@@ -339,13 +350,16 @@ def test_one_reference_or_whole_household_unknown(states):
     ) == (1, 0)
 
 
-def _rewrite_projection(payload, *, header_change=None, arrays_change=None):
+def _rewrite_projection(
+    payload, *, header_change=None, arrays_change=None, reclassify=True
+):
     """Reframe invented bytes, preserving all internal cryptographic checks."""
     value = binding.admit_asec_demographic_projection(payload)
     header = value.header
     arrays = {name: value.array(name).copy() for name in demographic.COLUMNS}
     if arrays_change:
         arrays_change(arrays)
+    if arrays_change and reclassify:
         classification = demographic.classify_asec_demographic_observations(
             income_year=arrays["income_year"],
             household_id=binding._grouping_from_published(
@@ -510,6 +524,158 @@ def test_foreign_native_roster_refuses_even_when_numeric_coordinates_match(execu
             arm_document,
             income_payload_sha256=demographic._sha(income_payload),
         )
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "asec_sex_binding_state",
+        "asec_household_reference_state",
+        "asec_sex_allocation_state",
+        "asec_sex_unbound_reason",
+        "asec_household_reference_unbound_reason",
+    ],
+)
+def test_forged_derived_state_refuses_even_with_valid_transport_digests(
+    executed, column
+):
+    root, *_ = executed
+    payload = _rewrite_projection(
+        (root / "demographic.bin").read_bytes(),
+        arrays_change=lambda arrays: arrays[column].__setitem__(0, 99),
+        reclassify=False,
+    )
+    with pytest.raises(PreparedGraphError, match="DEMOGRAPHIC_PROJECTION_STATE"):
+        binding.admit_asec_demographic_projection(payload)
+
+
+@pytest.mark.parametrize("change", ["digest", "rows", "cohorts"])
+def test_source_node_refuses_declared_identity_mismatching_supplied_bytes(
+    executed, change
+):
+    root, *_ = executed
+    graph = _graph(root)
+    node = graph.node(binding.SOURCE_NODE)
+    params = dict(node.params)
+    if change == "digest":
+        params["projection_sha256"] = "0" * 64
+        reason = "DEMOGRAPHIC_DECLARED_PROJECTION_DIGEST"
+    else:
+        cohorts = dict(params["cohort_rows"])
+        years = sorted(cohorts)
+        cohorts[years[0]] += 1
+        if change == "rows":
+            params["rows"] += 1
+            reason = "DEMOGRAPHIC_DECLARED_ROWS"
+        else:
+            cohorts[years[1]] -= 1
+            reason = "DEMOGRAPHIC_DECLARED_COHORT_ROWS"
+        params["cohort_rows"] = tuple(sorted(cohorts.items()))
+    changed = replace(
+        graph,
+        nodes=tuple(
+            replace(item, params=params) if item.id == node.id else item
+            for item in graph.nodes
+        ),
+    )
+    with pytest.raises(NodeRejectedError, match=reason) as refused:
+        _run(root, graph_override=changed, resume="auto")
+    assert isinstance(refused.value.__cause__, PreparedGraphError)
+    assert str(refused.value.__cause__) == reason
+
+
+def _roster_args(executed, *, payload=None):
+    root, manifest, store, *_ = executed
+    projection = binding.admit_asec_demographic_projection(
+        (root / "demographic.bin").read_bytes() if payload is None else payload
+    )
+    income_payload = _payload(
+        manifest, store, composed.CREATE_NODE, "income_observations"
+    )
+    income = binding.bind_income_observations(
+        income_payload,
+        prepared_receipt=json.loads(
+            _payload(manifest, store, composed.CREATE_NODE, "prepared_receipt")
+        ),
+    )
+    arm_document = arm.bind_composed_asec_document(
+        _payload(manifest, store, arm.BIND_NODE, "asec_binding")
+    )
+    return projection, income, arm_document, demographic._sha(income_payload)
+
+
+@pytest.mark.parametrize("change", ["person", "cohort", "age", "income_digest"])
+def test_projection_parent_roster_fences_refuse_mismatched_coordinates(
+    executed, change
+):
+    root, *_ = executed
+    payload = (root / "demographic.bin").read_bytes()
+
+    def mutate(arrays):
+        if change == "person":
+            arrays["person_id"][0] = arrays["person_id"].max() + 1
+        elif change == "age":
+            arrays["A_AGE"][0] += 1
+        elif change == "cohort":
+            # Keep every declared cohort row count intact, so admission passes
+            # and the source-to-income correspondence is the failing fence.
+            years = arrays["income_year"]
+            other = np.flatnonzero(years != years[0])[0]
+            years[0], years[other] = years[other], years[0]
+
+    if change != "income_digest":
+        payload = _rewrite_projection(payload, arrays_change=mutate)
+    projection, income, document, digest = _roster_args(executed, payload=payload)
+    if change == "income_digest":
+        document["inputs"]["income_observations_sha256"] = "0" * 64
+    reason = {
+        "person": "DEMOGRAPHIC_PARENT_PERSON_ROSTER",
+        "cohort": "DEMOGRAPHIC_PARENT_COHORT_COORDINATES",
+        "age": "DEMOGRAPHIC_PARENT_COHORT_COORDINATES",
+        "income_digest": "DEMOGRAPHIC_ARM_INCOME_IDENTITY",
+    }[change]
+    with pytest.raises(PreparedGraphError, match=reason):
+        binding.verify_projection_native_roster(
+            projection, income, document, income_payload_sha256=digest
+        )
+
+
+def test_merged_composed_households_refuse_through_resolver(executed):
+    person, args = _resolver_args(executed)
+    membership = binding._HOUSEHOLD_MEMBERSHIP_COLUMN
+    first_year = person[arm.COHORT_COLUMN].iloc[0]
+    household_ids = person.loc[
+        person[arm.COHORT_COLUMN] == first_year, membership
+    ].unique()
+    assert len(household_ids) >= 2
+    person.loc[person[membership] == household_ids[1], membership] = household_ids[0]
+    with pytest.raises(PreparedGraphError, match="DEMOGRAPHIC_COMPOSED_MEMBERSHIP"):
+        binding.resolve_composed_asec_demographics(person, **args)
+
+
+def test_valid_household_and_income_descendant_source_identities_may_differ(executed):
+    projection, income, document, digest = _roster_args(executed)
+    income_header = json.loads(income.header)
+    demographic_identity = json.loads(projection.header["source_identity"])
+    income_identity = json.loads(income_header["source_identity"])
+    assert (
+        demographic_identity["source_kind"] == "asec_v4_with_household_observations_v1"
+    )
+    assert (
+        income_identity["source_kind"]
+        == "asec_v4_with_household_and_person_income_observations_v1"
+    )
+    assert projection.header["source_identity"] != income_header["source_identity"]
+    assert (
+        projection.header["source_frame_sha256"] != income_header["source_frame_sha256"]
+    )
+    assert (
+        projection.header["native_person_keys_sha256"]
+        == income_header["native_person_keys_sha256"]
+    )
+    binding.verify_projection_native_roster(
+        projection, income, document, income_payload_sha256=digest
+    )
 
 
 def test_changed_projection_invalidates_only_source_and_binding_keys(executed):

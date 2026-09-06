@@ -96,3 +96,29 @@ When an authenticated run receipt supplies those aggregate source-content
 keys, all nine node keys can be recomputed from metadata alone. The local
 comparison uses the accepted clone extension's receipt to do this and confirms
 the six unchanged keys and three deliberate changes described above.
+
+## Refusal coverage and source ancestry
+
+Invented regression cases also forge all five carried derived-state columns
+while recomputing transport hashes, supply mismatched graph-declared projection
+identities, and exercise missing parent persons, changed cohorts/ages, a foreign
+income-payload digest, and merged composed households. Each case must reach and
+fail its specific existing fence before demographic output is written.
+
+The demographic projection and income transport intentionally have different
+whole-source identities and frame hashes. The former is produced from the
+household attachment (`asec_v4_with_household_observations_v1`); the latter from
+its person-income-restored descendant
+(`asec_v4_with_household_and_person_income_observations_v1`). Unconditionally
+equating those headers would reject the accepted pipeline. Their common native
+person roster, complete parent person/cohort/age correspondence, prepared
+receipt, and exact income payload remain the enforced cross-artifact bindings.
+A regression explicitly accepts the legitimate differing ancestors while the
+coordinate and payload mismatch cases refuse.
+
+The historical 806-test run occurred while Git HEAD was `67e867a6`, with the
+scoped-identity edits present in the worktree. The later loaded-source proof
+compared all 280 unique loaded Microcosm files against committed `8bb879b0`
+bytes. It verifies the tested bytes belonged to that commit; it does not claim
+that the test process started after the commit. Subsequent review-follow-up
+evidence records this distinction and runs the affected tests after committing.
