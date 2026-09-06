@@ -297,3 +297,70 @@ def test_authority_dictionary_pins_cannot_drift_from_the_module(monkeypatch):
         housing.HousingStatusRefusalError, match="AUTHORITY_DICTIONARY_PINS"
     ):
         housing.classify_synthetic_housing_status(observations())
+
+
+@pytest.mark.parametrize(
+    "public,lower,route,lower_quality",
+    [(1, 0, 1, 0), (2, 1, 2, 1)],
+)
+def test_relevant_public_allocation_marks_quality_without_moving_status(
+    public, lower, route, lower_quality
+):
+    """A relevant I_HPUBLI=1 is quality, not a different answer or a conflict."""
+    quality = housing._codebook()["quality"]
+    result = housing.classify_synthetic_housing_status(
+        observations(HPUBLIC=public, HLORENT=lower, I_HPUBLI=1)
+    )
+    assert result.array("status").tolist() == [1]
+    assert result.array("route").tolist() == [route]
+    assert result.array("receipt_valid").tolist() == [1]
+    assert result.array("conflicts").tolist() == [0]
+    assert result.array("public_quality").tolist() == [quality["allocated"]]
+    assert result.array("lower_quality").tolist() == [lower_quality]
+    # The allocated answer itself is unchanged; allocation is a separate axis.
+    assert result.array("HPUBLIC").tolist() == [public]
+    assert result.array("HPUBLIC_zero_origin").tolist() == [0]
+
+
+def test_each_zero_origin_mask_tracks_only_its_own_field():
+    """Contract row 1/0 keeps the routed-out HLORENT zero unresolved."""
+    routed_out = housing.classify_synthetic_housing_status(
+        observations(HPUBLIC=1, HLORENT=0)
+    )
+    assert routed_out.array("status").tolist() == [1]
+    assert routed_out.array("HPUBLIC_zero_origin").tolist() == [0]
+    assert routed_out.array("HLORENT_zero_origin").tolist() == [1]
+    assert routed_out.array("lower_quality").tolist() == [0]
+    # One row where each of the four fields differs, so no mask can be shared.
+    mixed = housing.classify_synthetic_housing_status(
+        observations(HPUBLIC=2, HLORENT=1, I_HPUBLI=0, I_HLOREN=1)
+    )
+    assert [
+        mixed.array(name + "_zero_origin").tolist()[0]
+        for name in housing.OBSERVED_COLUMNS
+    ] == [0, 0, 1, 0]
+    assert (
+        mixed.header_data["codebook"]["zero_origin"]["frozen_zero_origin_unresolved"]
+        == 1
+    )
+
+
+def test_every_conflict_reason_bit_is_reachable_under_its_published_name():
+    """All five published conflict bits stay separable, not one convenient bool."""
+    bits = housing._codebook()["conflict_bits"]
+    for change, expected in (
+        ({"H_TENURE": 1}, bits["excluded_scope"]),
+        ({"HPUBLIC": 1, "HLORENT": 1}, bits["parent_route"]),
+        ({"HPUBLIC": 0, "HLORENT": 0, "I_HPUBLI": 1}, bits["public_allocation"]),
+        ({"I_HLOREN": 1, "HPUBLIC": 1, "HLORENT": 0}, bits["lower_allocation"]),
+        ({"HRHTYPE": 0}, bits["context"]),
+        # Two independent reasons must accumulate rather than overwrite.
+        (
+            {"H_HHTYPE": 2, "HRHTYPE": 0},
+            bits["excluded_scope"] | bits["context"],
+        ),
+    ):
+        result = housing.classify_synthetic_housing_status(observations(**change))
+        assert result.array("conflicts").tolist() == [expected], change
+        assert result.array("status").tolist() == [4], change
+        assert result.array("receipt_valid").tolist() == [0], change

@@ -122,10 +122,18 @@ result. Its receipt records `housing_content_sha256`,
 Declaring another producer here would duplicate that wiring. The module and its
 packaged authority resource are instead classified in
 `graph_implementation_inventory.json`, so `implementation_manifest("asec_prepared_v3")`
-binds both housing modules and the resource digest. All housing definition and
-implementation digests are live projections rather than frozen constants, so
-editing these modules re-derives the downstream receipts instead of invalidating
-a pinned one.
+binds both housing modules and the resource digest. The housing definition and
+implementation digests are themselves live projections rather than frozen
+constants, so editing these modules re-derives the downstream receipts instead
+of invalidating a pinned one.
+
+The inventory's own dependency/resource contract is different: it pins each
+module's import, resource-access and unbound-use fingerprints, and
+`implementation_manifest` fails closed with `Unclassified US dependency/resource
+contract: <module>` when the recomputed contract differs. Adding the packaged
+authority read moved `asec_housing_status.py`'s `resource_accesses_sha256` and
+required re-classification here. Per `CLAUDE.md`, treat such a failure as a
+scope review of what the module newly reads, not an automatic pin refresh.
 
 ## Composition after tax reconstruction
 
