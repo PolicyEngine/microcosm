@@ -118,6 +118,15 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # graph_composed_asec_measures.py, which consumes this module's typed
         # artifact and declared row mask and stays under the guard below.
         "graph_composed_asec_binding.py",
+        # Clone source-channel reads declare/preserve lineage, validate the
+        # live source roster and report arm mass. Every row receives the same
+        # two-role clone and half weight; channels never select treatment or
+        # determine the weight split. This is a provenance-owner boundary.
+        "graph_combined_clone.py",
+        # Resolves original native household identities and their exact
+        # population/clone lineage; it applies no population treatment.
+        "native_household_origin.py",
+        "graph_native_household_origin.py",
         # Production pre-operator graph owner: declares source-channel views
         # for actual source DESIGN preparation and importance harmonization.
         # It applies no post-assembly population treatment; those graph
@@ -352,6 +361,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Typed metadata codec and source-blind geography graph adapter.
         "graph_context.py",
         "graph_implementation.py",
+        "graph_combined_clone.py",
+        "graph_native_origin_implementation.py",
+        "native_household_origin.py",
+        "graph_native_household_origin.py",
         "graph_geography.py",
         # Measured-hours adapter; still subject to the all-runtime AST scan.
         "graph_early_preparation.py",

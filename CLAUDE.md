@@ -35,6 +35,12 @@ no donor, fits nothing, draws nothing and is labelled development, not release
 eligible. Downstream donor admission, fitting, drawing and placement consume
 its expanded population through their own declared graph nodes.
 
+Original survey-household origin evidence and its exact population/clone grain
+are documented in `docs/us-native-household-origin.md`. The extension has its
+own implementation inventory; do not change the shared v1 inventory to register
+it. Original ASEC household-member pins require a separate source audit; neither
+the derived household HDF nor the original person member substitutes for them.
+
 IRS fiscal targets require explicit supported return universes and actual model
 filer decisions before household aggregation. Target-frame materializer version
 13 invalidates older SOI measurements; its compilation receipt records filing
