@@ -88,7 +88,7 @@ def load_authenticated_housing_status(
         raise HousingStatusRefusalError("SOURCE_CONTRACT_REFUSAL") from None
 
 
-def _load(source, cohort_paths):
+def _load(source, cohort_paths: Mapping[int, str | Path]):
     _require(
         type(source) is money_source.AuthenticatedCurrentMoneySource,
         "AUTHENTICATED_SOURCE",

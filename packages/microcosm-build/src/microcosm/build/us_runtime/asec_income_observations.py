@@ -12,6 +12,7 @@ import os
 import stat
 import struct
 import tempfile
+from collections.abc import Mapping
 from dataclasses import InitVar, dataclass
 from importlib import metadata, resources
 from pathlib import Path
@@ -238,7 +239,9 @@ def _read_member(path, *, rows):
     return table
 
 
-def _validate_observations(age, receipt_code, nominal):
+def _validate_observations(
+    age: np.ndarray, receipt_code: np.ndarray, nominal: np.ndarray
+):
     _require(
         all(
             type(a) is np.ndarray
@@ -357,7 +360,7 @@ def encode_income_observations(value):
     return payload + hashlib.sha256(payload).digest()
 
 
-def _reconstruct(source, ready, member_paths):
+def _reconstruct(source, ready, member_paths: Mapping[int, str | Path]):
     restoration._paths(member_paths)
     _parent(source, ready, reconstruct_money=True)
     before = _implementation()

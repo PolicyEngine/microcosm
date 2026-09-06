@@ -105,7 +105,7 @@ def _pins():
     )
 
 
-def _identity(value):
+def _identity(value: os.stat_result):
     return tuple(
         getattr(value, key)
         for key in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")

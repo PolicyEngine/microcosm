@@ -163,7 +163,7 @@ def encode_acs_housing_evidence(prepared):
     return payload
 
 
-def bind_acs_housing_evidence(payload, *, prepared_receipt, frame_context):
+def bind_acs_housing_evidence(payload: bytes, *, prepared_receipt, frame_context):
     """Parse only bounded canonical transport under an explicit graph receipt."""
     try:
         _require(

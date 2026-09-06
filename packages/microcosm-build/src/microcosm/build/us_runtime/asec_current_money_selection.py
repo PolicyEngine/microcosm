@@ -119,7 +119,7 @@ def _decoded_entities(data: dict) -> tuple[str, ...]:
     return _entities(tuple(tuple(item) for item in roster))
 
 
-def _positions(values, *, rows: int, reason: str) -> np.ndarray:
+def _positions(values: np.ndarray, *, rows: int, reason: str) -> np.ndarray:
     _require(
         type(values) is np.ndarray
         and values.dtype == np.dtype("int64")
@@ -132,7 +132,9 @@ def _positions(values, *, rows: int, reason: str) -> np.ndarray:
     return values
 
 
-def _split(payload: bytes, cursor: int, entities, counts) -> tuple[MoneyField, ...]:
+def _split(
+    payload: bytes, cursor: int, entities, counts: dict[str, int]
+) -> tuple[MoneyField, ...]:
     fields = []
     for name, entity in zip(FIELDS, entities, strict=True):
         count = counts[entity]
@@ -144,7 +146,7 @@ def _split(payload: bytes, cursor: int, entities, counts) -> tuple[MoneyField, .
     return tuple(fields)
 
 
-def _field_shapes(fields, entities, counts) -> None:
+def _field_shapes(fields, entities, counts: dict[str, int]) -> None:
     for field, entity in zip(fields, entities, strict=True):
         count = counts[entity]
         widths = (

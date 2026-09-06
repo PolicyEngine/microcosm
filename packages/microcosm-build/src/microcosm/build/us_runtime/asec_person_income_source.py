@@ -137,7 +137,7 @@ def _owned_frame(parent: Frame) -> Frame:
     return result
 
 
-def _reconstruct(source, member_paths):
+def _reconstruct(source, member_paths: Mapping[int, str | Path]):
     _paths(member_paths)
     source.validate()
     before = _implementation()
