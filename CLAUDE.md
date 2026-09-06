@@ -28,6 +28,11 @@ binding module reads source provenance by charter and is classified as a
 source-spine provenance owner; its measurement module stays source-blind. Do not
 add a provenance-owner exemption to an ordinary population operator.
 
+The subsequent masked ASEC sex/reference binding is documented in
+`docs/us-composed-asec-demographic-binding.md`. It reuses the accepted source
+projection and prepared native-roster digest; it preserves the ACS canonical
+incumbents and represents unknown ASEC booleans as declared nulls.
+
 IRS fiscal targets require explicit supported return universes and actual model
 filer decisions before household aggregation. Target-frame materializer version
 13 invalidates older SOI measurements; its compilation receipt records filing

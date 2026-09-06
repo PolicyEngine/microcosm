@@ -45,7 +45,7 @@ the difference is the whole point of naming it differently:
   to equal this checkout's demographic implementation identity, so a projection
   produced under a different mapping or a different reader refuses here rather
   than being bound under today's code meanings;
-* it **recomputes** every derived state, the household-membership verification
+* it **recomputes** every derived state, the published household counts
   and the full diagnostics block from the projection's own carried
   observations, with the accepted
   :func:`~.asec_demographic_source.classify_asec_demographic_observations` and
@@ -56,17 +56,19 @@ the difference is the whole point of naming it differently:
   receipt, and reaches the graph as the declared source pin the executor keys
   on — not as anything this module could check.
 
-The published-household grouping the classifier needs is not carried by the
-artifact, and is not invented here: the header records a proven bidirectional
-bijection between the parent roster's ``person_household_id`` partition and the
-``(income_year, source_household_id)`` partition, so the recomputation groups by
-the latter, which the bijection makes the identical partition. That recorded
-bijection is itself re-derived from the carried coordinates before it is used.
+The original parent household membership array is not carried by the artifact.
+The accepted producer attests a bijection with the published household key.
+This stage recomputes published household counts and classification from that
+key; it cannot independently reverify the original parent partition here.
+It does independently verify the actual composed partition at binding time.
 
 How a composed row is resolved to a projection row
 --------------------------------------------------
-By the composed row's declared cohort and the ASEC arm's own pre-remap person
-identifier — never by row position, and never by a provenance column. This
+By the composed row's declared cohort and the ASEC arm's own pre-remap parent
+person identifier — never by row position, and never by a provenance column.
+The parent numeric ID is not PERIDNUM: the whole native-key roster digest and
+parent person/cohort/age correspondence are bound to the already admitted
+prepared income artifact before these numeric IDs can be used. This
 module reads no support channel and no spine-source-ID column: the arm's rows
 arrive as the declared boolean mask ``person_composed_asec_row`` and the arm's
 own identifiers arrive inside the typed ``arm_rows`` artifact, both already
@@ -123,8 +125,8 @@ The ASEC observation is the interview household one year after the income year,
 so the three cohorts are observed in survey years 2023/2024/2025 while the
 native ACS arm is observed in its own vintage. No person is aged from any date
 and the source's own observed age stays unharmonized. The native ACS arm is
-**not** bound: both canonical cells stay declared-null on every ACS row, which
-is a recorded gap and not a measurement. A half-populated canonical column is
+**not** rewritten: both canonical cells retain their incumbent observations,
+including their existing missingness. A source binding is
 not a national sex distribution, is not calibrated to any control total, and
 does not make this population launch-eligible.
 """
@@ -162,6 +164,11 @@ from microcosm.graph.canonical import canonical_json
 from microcosm.graph.codecs import load_source_bytes
 
 from . import asec_demographic_source as demographic
+from .asec_current_money_selection import US_ASEC_PREPARED_RECEIPT_TYPE
+from .graph_asec_income import (
+    US_ASEC_INCOME_OBSERVATIONS_TYPE,
+    bind_income_observations,
+)
 from .graph_asec_prepared import PreparedGraphError, _artifact, _same_producer
 from .graph_composed_asec_binding import (
     BIND_NODE,
@@ -179,6 +186,7 @@ from .graph_composed_asec_measures import (
 )
 from .graph_composed_population import (
     COMPOSED_SOURCES,
+    CREATE_NODE,
     GEOGRAPHY_PHASE,
     HARMONIZE_NODE,
     composed_population_nodes,
@@ -252,7 +260,8 @@ _RETAINED_STATES = (
 )
 
 #: Every population cell this stage owns, in one canonical order. All five are
-#: new columns, so the native ACS arm keeps a declared null on each of them.
+#: masked columns: the two canonical incumbents are rewritten only on ASEC;
+#: the three new provenance columns are null on ACS.
 OWNED_COLUMNS: tuple[str, ...] = (
     FEMALE_COLUMN,
     HOUSEHOLD_HEAD_COLUMN,
@@ -574,6 +583,21 @@ def _verify_projection_body(
         ),
         "DEMOGRAPHIC_PROJECTION_SOURCE_COUNTERS",
     )
+    pins = {
+        year: (name, archive, digest, count)
+        for year, name, archive, digest, count, _size in demographic._MEMBER_PINS
+    }
+    for item in declared_sources:
+        year = int(item["income_year"])
+        name, archive, digest, count = pins[year]
+        _require(
+            item["member"] == name
+            and item["archive_sha256"] == archive
+            and item["member_sha256"] == digest
+            and item["source_rows"] == item["joined_rows"] == count
+            and int((income_year == year).sum()) == count,
+            "DEMOGRAPHIC_PROJECTION_MEMBER_IDENTITY",
+        )
 
 
 def projection_document(
@@ -615,8 +639,9 @@ def projection_document(
             "contract_identical_to_this_checkout": True,
             "implementation_identical_to_this_checkout": True,
             "derived_states_recomputed_from_carried_observations": True,
-            "household_membership_recomputed_from_carried_coordinates": True,
+            "published_household_counts_recomputed_from_carried_coordinates": True,
             "diagnostics_recomputed_from_carried_observations": True,
+            "parent_household_partition_reverified_here": False,
             "reconstructed_from_census_members_here": False,
             "reconstruction_attested_by": (
                 "the accepted extraction receipt, carried into this graph as the "
@@ -694,9 +719,11 @@ def bind_projection_document(payload: bytes) -> dict:
         and document["admission"]["derived_states_recomputed_from_carried_observations"]
         is True
         and document["admission"][
-            "household_membership_recomputed_from_carried_coordinates"
+            "published_household_counts_recomputed_from_carried_coordinates"
         ]
-        is True,
+        is True
+        and document["admission"]["parent_household_partition_reverified_here"]
+        is False,
         "DEMOGRAPHIC_SOURCE_ADMISSION_CLAIM",
     )
     _require(
@@ -738,7 +765,7 @@ def _resolved_projection_rows(
     income_years: np.ndarray,
     person_ids: np.ndarray,
 ) -> np.ndarray:
-    """Locate ``(cohort, native person id)`` in the projection's own identity.
+    """Locate ``(cohort, parent person id)`` in the projection's own identity.
 
     Every failure mode refuses rather than dropping a row, and a cohort
     mismatch is named as one instead of hiding inside "not found": the three
@@ -791,6 +818,24 @@ def _household_reference_constraint(
     return int(bound.sum()), int(fully_unknown.sum())
 
 
+def _require_complete_households(projection, positions) -> None:
+    """Reference-person observations must retain each selected source household."""
+    keys = pd.MultiIndex.from_arrays(
+        [projection.array("income_year"), projection.array("source_household_id")]
+    )
+    full_counts = keys.value_counts(sort=False)
+    selected_counts = keys.take(positions).value_counts(sort=False)
+    _require(
+        bool(
+            (
+                full_counts.reindex(selected_counts.index).to_numpy()
+                == selected_counts.to_numpy()
+            ).all()
+        ),
+        "DEMOGRAPHIC_INCOMPLETE_HOUSEHOLD",
+    )
+
+
 def resolve_composed_asec_demographics(
     person: pd.DataFrame,
     *,
@@ -802,6 +847,11 @@ def resolve_composed_asec_demographics(
     producers: Mapping[str, str],
 ) -> ComposedAsecDemographicBinding:
     """Bind the projection to the composed ASEC arm, or refuse without writing."""
+    _require(
+        source_document["payload_sha256"] == projection.payload_sha256
+        and source_document["content_sha256"] == projection.content_sha256,
+        "DEMOGRAPHIC_SOURCE_DOCUMENT_PAYLOAD",
+    )
     mask_column = arm_row_column("person")
     _require(mask_column in person, "DEMOGRAPHIC_ARM_MASK_COLUMN")
     _require(bool(person[mask_column].to_numpy().all()), "DEMOGRAPHIC_ARM_MASK")
@@ -827,6 +877,7 @@ def resolve_composed_asec_demographics(
     positions = _resolved_projection_rows(
         projection, income_years=income_years, person_ids=native_ids
     )
+    _require_complete_households(projection, positions)
     for column in _CROSSCHECK_COLUMNS:
         _require(column in person, f"DEMOGRAPHIC_CROSSCHECK_COLUMN:{column}")
         _require(
@@ -923,8 +974,11 @@ def resolve_composed_asec_demographics(
     updated = json.loads(canonical_json(context_document))
     for cell in OWNED_COLUMNS:
         columns = updated["entities"]["person"]["columns"]
-        _require(cell not in columns, f"DEMOGRAPHIC_INCUMBENT_COLUMN:{cell}")
-        columns.append(cell)
+        if cell in CANONICAL_COLUMNS:
+            _require(cell in columns, f"DEMOGRAPHIC_MISSING_INCUMBENT_COLUMN:{cell}")
+        else:
+            _require(cell not in columns, f"DEMOGRAPHIC_INCUMBENT_COLUMN:{cell}")
+            columns.append(cell)
     return ComposedAsecDemographicBinding(
         document=document,
         context_document=updated,
@@ -1066,7 +1120,7 @@ def claims_document() -> dict:
         "aged_from_a_date": False,
         "source_year_observed_age_harmonized": False,
         "acs_arm_demographics_bound": False,
-        "acs_arm_cells_are_declared_null_not_measured": True,
+        "acs_arm_incumbent_cells_preserved": True,
         "claim": "engineering_binding_only_no_calibration_or_launch_claim",
     }
 
@@ -1119,7 +1173,9 @@ def _demographic_document(
             ]
         },
         "resolution": {
-            "keys": [COHORT_COLUMN, "arm_person_identifier"],
+            "keys": [COHORT_COLUMN, "arm_parent_person_identifier"],
+            "census_native_roster_digest_bound_to_prepared_income": True,
+            "native_person_keys_carried_in_projection": False,
             "source_identity": "asec_demographic_source.person_id",
             "crosschecks": list(_CROSSCHECK_COLUMNS),
             "uses_composed_row_position": False,
@@ -1262,7 +1318,7 @@ def bind_composed_asec_demographic_document(payload: bytes) -> dict:
     )
     resolution = document["resolution"]
     _require(
-        resolution["keys"] == [COHORT_COLUMN, "arm_person_identifier"]
+        resolution["keys"] == [COHORT_COLUMN, "arm_parent_person_identifier"]
         and resolution["crosschecks"] == list(_CROSSCHECK_COLUMNS)
         and resolution["uses_composed_row_position"] is False
         and resolution["uses_provenance_column"] is False
@@ -1321,16 +1377,15 @@ def demographic_owned_declarations() -> tuple[Owned, ...]:
 
     ``Slice.rows`` masks the table a kernel receives and
     ``population._patch_columns`` refuses any change to storage outside an
-    ``Owned`` mask, missingness included, so the native ACS arm's cells are held
-    at the declared null the executor created them with. The two canonical cells
-    are nullable ``boolean`` for the same reason: a masked non-nullable ``bool``
-    column cannot be null outside its owned rows, so it could not represent the
-    ACS arm's absence — or an ASEC arm unknown — without inventing ``False``.
+    ``Owned`` mask, missingness included. The two nullable canonical columns
+    are explicit rewrites; ACS values and null masks remain exactly as carried
+    from the base. The three new provenance columns remain null on ACS. Unknown
+    ASEC observations are nullable booleans, never manufactured ``False``.
     """
     mask = arm_row_column("person")
     return (
-        Owned("person", FEMALE_COLUMN, BOOLEAN_DTYPE, rows=mask),
-        Owned("person", HOUSEHOLD_HEAD_COLUMN, BOOLEAN_DTYPE, rows=mask),
+        Owned("person", FEMALE_COLUMN, BOOLEAN_DTYPE, rows=mask, rewrite=True),
+        Owned("person", HOUSEHOLD_HEAD_COLUMN, BOOLEAN_DTYPE, rows=mask, rewrite=True),
         *(
             Owned("person", cell, STATE_DTYPE, rows=mask)
             for cell, _name in _RETAINED_STATES
@@ -1365,6 +1420,8 @@ _BIND_ARTIFACT_TYPES = (
     ("arm_rows", US_COMPOSED_ASEC_ARM_ROWS_TYPE),
     ("demographic_projection", US_ASEC_DEMOGRAPHIC_PROJECTION_TYPE),
     ("demographic_source", US_ASEC_DEMOGRAPHIC_SOURCE_DOCUMENT_TYPE),
+    ("income_observations", US_ASEC_INCOME_OBSERVATIONS_TYPE),
+    ("prepared_receipt", US_ASEC_PREPARED_RECEIPT_TYPE),
 )
 #: The projection and its identity document are one source read, so they must
 #: come from one producing node execution.
@@ -1372,6 +1429,46 @@ _SOURCE_EDGES = ("demographic_projection", "demographic_source")
 #: The binding document and the resolved arm rows are positional over one arm
 #: resolution, so they must come from one producing node execution too.
 _ARM_EDGES = ("asec_binding", "arm_rows")
+_PREPARED_EDGES = ("income_observations", "prepared_receipt")
+
+
+def verify_projection_native_roster(
+    projection, income, binding_document, *, income_payload_sha256
+) -> None:
+    """Bind parent numeric IDs to the same authenticated Census native roster.
+
+    The demographic transport does not carry PERIDNUM strings. Its producer
+    records their ordered digest; the composed source's income transport carries
+    the same digest and the parent person/cohort coordinates. All three must
+    agree. This permits repeated PERIDNUM across cohorts without pretending the
+    graph has reread or joined raw Census keys.
+    """
+    header = json.loads(income.header)
+    _require(
+        projection.header["native_person_keys_sha256"]
+        == header["native_person_keys_sha256"],
+        "DEMOGRAPHIC_NATIVE_ROSTER_IDENTITY",
+    )
+    income_ids = income.array("person_id")
+    positions = pd.Index(income_ids).get_indexer(projection.array("person_id"))
+    _require(
+        len(income_ids) == projection.rows
+        and bool((positions >= 0).all())
+        and len(np.unique(positions)) == projection.rows,
+        "DEMOGRAPHIC_PARENT_PERSON_ROSTER",
+    )
+    _require(
+        np.array_equal(
+            projection.array("income_year"), income.array("income_year")[positions]
+        )
+        and np.array_equal(projection.array("A_AGE"), income.array("A_AGE")[positions]),
+        "DEMOGRAPHIC_PARENT_COHORT_COORDINATES",
+    )
+    _require(
+        binding_document["inputs"]["income_observations_sha256"]
+        == income_payload_sha256,
+        "DEMOGRAPHIC_ARM_INCOME_IDENTITY",
+    )
 
 
 def _source_params(*, projection_sha256: str, rows: int, cohort_rows: tuple) -> dict:
@@ -1435,6 +1532,18 @@ def demographic_bind_node(*, population: str, context_producer: str) -> Node:
                 SOURCE_NODE,
                 "demographic_source",
                 US_ASEC_DEMOGRAPHIC_SOURCE_DOCUMENT_TYPE,
+            ),
+            ArtifactInput(
+                "income_observations",
+                CREATE_NODE,
+                "income_observations",
+                US_ASEC_INCOME_OBSERVATIONS_TYPE,
+            ),
+            ArtifactInput(
+                "prepared_receipt",
+                CREATE_NODE,
+                "prepared_receipt",
+                US_ASEC_PREPARED_RECEIPT_TYPE,
             ),
         ),
         artifact_outputs=_BIND_ARTIFACTS,
@@ -1575,10 +1684,32 @@ class USComposedAsecDemographicBindKernel(KernelBase):
         }
         arm_producer = _same_producer(context, _ARM_EDGES)
         source_producer = _same_producer(context, _SOURCE_EDGES)
+        _require(
+            {
+                edge.producer
+                for edge in node.artifact_inputs
+                if edge.name in _PREPARED_EDGES
+            }
+            == {CREATE_NODE},
+            "NODE_PREPARED_PRODUCER",
+        )
+        _same_producer(context, _PREPARED_EDGES)
         binding = bind_composed_asec_document(values["asec_binding"].payload)
         source_document = bind_projection_document(values["demographic_source"].payload)
         projection = admit_asec_demographic_projection(
             values["demographic_projection"].payload
+        )
+        income = bind_income_observations(
+            values["income_observations"].payload,
+            prepared_receipt=json.loads(values["prepared_receipt"].payload),
+        )
+        verify_projection_native_roster(
+            projection,
+            income,
+            binding,
+            income_payload_sha256=demographic._sha(
+                values["income_observations"].payload
+            ),
         )
         _require(
             projection.payload_sha256 == source_document["payload_sha256"]

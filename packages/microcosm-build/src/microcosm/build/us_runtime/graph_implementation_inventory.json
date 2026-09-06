@@ -499,6 +499,8 @@
     "microcosm.build/us_runtime/graph_composed_asec_demographics.py": {
       "imports": [
         "microcosm.build.us_runtime",
+        "microcosm.build.us_runtime.asec_current_money_selection",
+        "microcosm.build.us_runtime.graph_asec_income",
         "microcosm.build.us_runtime.graph_asec_prepared",
         "microcosm.build.us_runtime.graph_composed_asec_binding",
         "microcosm.build.us_runtime.graph_composed_asec_measures",
