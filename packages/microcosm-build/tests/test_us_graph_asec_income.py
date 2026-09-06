@@ -326,12 +326,12 @@ def test_real_kernel_refuses_changed_lineage_and_inputs(executed, mutation):
             data["person_positions_sha256"] = "f" * 64
         artifacts[name] = replace(artifacts[name], payload=canonical_json(data))
     reasons = {
-        "source_producer": "ACCOUNTING_PRODUCER|BOUND_INCOME",
-        "selected_producer": "ACCOUNTING_PRODUCER|SELECTED_",
-        "source_type": "ACCOUNTING_SOURCE_TYPE|INCOME_ARTIFACT_TYPE",
+        "source_producer": "ARTIFACT_PRODUCER_SPLIT",
+        "selected_producer": "ARTIFACT_PRODUCER_SPLIT",
+        "source_type": "ARTIFACT_EDGE:income_observations",
         "source_year": "ACCOUNTING_SOURCE_COHORTS",
-        "selection_positions": "ACCOUNTING_SOURCE_POSITIONS|SELECTED_",
-        "incumbent": "REPORTED_INCOME_COLUMN|FRAME_CONTEXT",
+        "selection_positions": "ACCOUNTING_SOURCE_POSITIONS",
+        "incumbent": "OWNED_LEAF_INCUMBENT",
     }
     with pytest.raises(ValueError, match=reasons[mutation]):
         income.USAsecReportedIncomeKernel().run(
@@ -401,11 +401,11 @@ def test_fully_rechecksummed_source_transport_still_requires_its_definition(
     )
     reasons = {
         "price": "BOUND_INCOME_DEFINITION",
-        "nominal": "BOUND_INCOME_CONTENT",
-        "source_frame": "BOUND_INCOME_CONTENT",
-        "scope": "BOUND_INCOME_CONTENT",
-        "zero_class": "BOUND_INCOME_CONTENT",
-        "join": "BOUND_INCOME_CONTENT",
+        "nominal": "BOUND_INCOME_RESTATEMENT",
+        "source_frame": "BOUND_INCOME_SOURCE_FIELDS",
+        "scope": "BOUND_INCOME_SOURCE",
+        "zero_class": "BOUND_INCOME_ZERO_CLASSES",
+        "join": "BOUND_INCOME_JOINS",
     }
     with pytest.raises(money.MoneyRefusalError, match=reasons[mutation]):
         income.bind_income_observations(payload, prepared_receipt=receipt)
