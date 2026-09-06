@@ -69,7 +69,6 @@ against source.
       and guard changes, and the new test module
 - [x] `uv sync --all-packages` in this child (exit 0)
 - [x] genuine roster established from existing inventory/metadata (above)
-
 - [x] code-1: truthful `present_in_prepared_arm`/`absent_from_prepared_arm`;
       refuse only an attempted write (`ASEC_DEMOGRAPHIC_COLUMN_BOUND`)
 - [x] code-2: `source_origin` inside the CREATE producer equality, origin
