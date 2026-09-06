@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
 import re
 import sys
 import tempfile
@@ -898,6 +899,11 @@ def _cohort_selection_receipt(run_root: Path, output_records: dict, measured: Me
     them, and a stratum that says it added units beyond its draw is refused here
     by name rather than being read as an ordinary draw.
 
+    The rule is also replayed. Each stratum's request has to be what
+    ``floor(fraction * eligible)`` produces from that stratum's own published
+    operands, so a receipt cannot publish a rule, a fraction and an eligible
+    cohort that its own counts never came out of.
+
     The fraction, the eligible total and the scope the rule ranges over are
     returned so the published surface can show the operands the rule was applied
     to, instead of a rule with nothing to check it against.
@@ -974,6 +980,21 @@ def _cohort_selection_receipt(run_root: Path, output_records: dict, measured: Me
         require(
             realized[year] == requested + added and eligible[year] >= realized[year],
             "Recorded cohort selection contradicts the recorded sampler arithmetic.",
+        )
+        # The rule, replayed against the operands published beside it. The
+        # producer computes this stratum's request as
+        # ``int(math.floor(fraction * len(group)))`` from the same two numbers
+        # (``frame_sampling.py``), and writes the fraction out as a plain float,
+        # so this is the producer's own expression over the producer's own
+        # operands in the same IEEE doubles -- a replay, not a derivation. It
+        # buys what publishing the operands alone did not: a receipt whose
+        # counts, totals and rule string all agree with each other but whose
+        # fraction or eligible cohort is not the one those counts came out of is
+        # refused here rather than drawn on the surface as the method behind
+        # them.
+        require(
+            requested == math.floor(fraction * eligible[year]),
+            "Recorded cohort selection contradicts the recorded selection rule.",
         )
         requested_total += requested
         added_total += added

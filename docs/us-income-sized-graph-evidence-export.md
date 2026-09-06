@@ -109,8 +109,20 @@ requests and `realized_unit_count` that sum plus the additions.
 The operands are published beside the rule — `sampling_fraction` and
 `eligible_households`, and each cohort's `eligible_households` beside its realised
 count — so the surface can show what the rule was applied to instead of a rule
-with nothing to check it against. This profile still derives no count from the
-rule.
+with nothing to check it against.
+
+The rule is then replayed against those operands: each stratum's
+`requested_units` must equal `floor(fraction * eligible_units)` for that stratum.
+This is still not a derivation — no count is taken from the rule, and a receipt
+that omits the counts is refused rather than filled in — it is the last of the
+agreement checks. Publishing the operands alone left a receipt whose counts,
+totals and rule string all agreed with each other, but whose fraction or eligible
+cohort was not the one those counts came out of, accepted and drawn on the
+surface as the method behind them. The producer computes the request as
+`int(math.floor(fraction * len(group)))` from those same two numbers and records
+the fraction as a plain float, so the replay is the producer's own expression
+over the producer's own operands, in the same IEEE doubles. The consumer replays
+it a second time from the published payload.
 
 On top of agreement, the size has to be arithmetically coherent with the rest of
 the evidence:

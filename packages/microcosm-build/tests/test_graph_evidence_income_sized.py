@@ -21,6 +21,7 @@ import copy
 import hashlib
 import importlib.util
 import json
+import math
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -1088,6 +1089,110 @@ def test_the_unit_eligible_total_must_equal_the_household_eligible_total(tmp_pat
         match="Recorded selection unit totals contradict the recorded household totals.",
     ):
         export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_a_false_eligible_operand_refuses_though_every_count_agrees(tmp_path, size):
+    """The rule replayed against the operands published beside it.
+
+    Widening one cohort's eligible count on its own would fail an existing
+    check, so this widens it everywhere it is recorded: the stratum, the
+    sampler's own household and unit eligible totals, and the worker's
+    ``eligible_households_by_cohort``. Afterwards every equality this profile
+    checked before still holds -- the strata sum to the totals, the unit block
+    agrees with the household block, the sampler agrees with the worker, and
+    nothing realises more than it requested. The only thing wrong is that the
+    published request is no longer ``floor(fraction * eligible)``, which is the
+    rule published beside it, so the receipt is exactly the self-consistent
+    fabrication the operands were published to make checkable.
+    """
+
+    def mutate(root, run, declaration, binding):
+        year = YEARS[0]
+
+        def widen(value):
+            value["strata"][year]["eligible_units"] += 100
+            value["eligible_household_count"] += 100
+            value["sampling_unit"]["eligible_unit_count"] += 100
+
+        mutate_json(root, "direct-sampler.json", widen)
+        mutate_json(
+            root,
+            "direct-receipt.json",
+            lambda v: v["result"]["eligible_households_by_cohort"].__setitem__(
+                year, v["result"]["eligible_households_by_cohort"][year] + 100
+            ),
+        )
+
+    with pytest.raises(
+        EvidenceError,
+        match="Recorded cohort selection contradicts the recorded selection rule.",
+    ):
+        export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_a_false_sampling_fraction_refuses_though_every_count_agrees(tmp_path, size):
+    """The other operand, moved on its own.
+
+    The fraction is checked for being a proper fraction and is then published
+    beside the counts and drawn on the surface as the share the sample is of the
+    eligible frame. Nothing else in the receipt restates it, so before the replay
+    a run could record any proper fraction it liked without contradicting one of
+    its own counts.
+    """
+
+    def mutate(root, run, declaration, binding):
+        mutate_json(
+            root, "direct-sampler.json", lambda v: v.__setitem__("fraction", 0.02)
+        )
+
+    with pytest.raises(
+        EvidenceError,
+        match="Recorded cohort selection contradicts the recorded selection rule.",
+    ):
+        export_fixture(tmp_path, size, mutate)
+
+
+@pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
+def test_the_replayed_rule_floors_the_share_rather_than_rounding_it(tmp_path, size):
+    """A share whose fractional part is above a half still floors down.
+
+    Both shapes' eligible cohorts are exact multiples of the fraction, so a
+    replay that rounded, or that compared against ``int(round(...))``, would
+    pass every other case in this file. This widens the first cohort until its
+    exact share is ``x.9`` -- 3.9 and 14.9 -- and requires the export to
+    succeed: the recorded request is the floor, and rounding would refuse a
+    correct run.
+    """
+
+    def mutate(root, run, declaration, binding):
+        year = YEARS[0]
+
+        def widen(value):
+            value["strata"][year]["eligible_units"] += 90
+            value["eligible_household_count"] += 90
+            value["sampling_unit"]["eligible_unit_count"] += 90
+
+        mutate_json(root, "direct-sampler.json", widen)
+        mutate_json(
+            root,
+            "direct-receipt.json",
+            lambda v: v["result"]["eligible_households_by_cohort"].__setitem__(
+                year, v["result"]["eligible_households_by_cohort"][year] + 90
+            ),
+        )
+
+    reference = export_fixture(tmp_path, size, mutate)
+    candidate = read_candidate_quality(tmp_path / "quality", reference["sha256"])
+    graph = json.loads(
+        (tmp_path / "quality" / candidate["attachments"]["graph_receipts"]["path"]).read_bytes()
+    )
+    cohort = graph["scope"]["households_by_source_cohort"][0]
+    share = graph["scope"]["measurement"]["sampling_fraction"] * cohort["eligible_households"]
+    assert cohort["eligible_households"] == size.cohorts[0] * 100 + 90
+    assert math.floor(share) == cohort["households"] == size.cohorts[0]
+    assert round(share) != cohort["households"]
 
 
 @pytest.mark.parametrize("size", SIZES, ids=SIZE_IDS)
