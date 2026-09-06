@@ -5,8 +5,8 @@ The delivery, the raw definition and the projection document are all built
 from literals here and travel the explicit ``test_fixture`` route. The CPI
 levels are the real published annual averages, because the point of the
 developmental authority is that a public resource may say so about itself; the
-resource digest and URL below are invented placeholders for the pin a genuine
-run supplies.
+resource body and URL below are fabricated fixtures, with the digest computed
+from those exact invented bytes. A genuine run must supply its retained body.
 """
 
 from __future__ import annotations
@@ -79,11 +79,33 @@ PACKAGED_THIRTEEN = packaged_agi_projection()
 MAIN_HEADER = list(PACKAGED_DEFINITION.main.delivered_header)
 DEMOGRAPHIC_HEADER = list(PACKAGED_DEFINITION.demographic.delivered_header)
 
+#: A fabricated stand-in for the BLS flat file, in the publisher's own
+#: tab-delimited, space-padded shape (see ``us-puf-price-baseline-cpi-pin.py``
+#: in the architecture-review lane, which extracted this exact row shape from
+#: the genuine download). This is **not** the genuine ~2.7 MB distribution —
+#: it is three invented lines carrying the two real published levels, and its
+#: digest below is computed from these exact bytes, not asserted.
+FIXTURE_CPI_RESOURCE_BYTES = (
+    b"series_id        \tyear\tperiod\t       value\tfootnote_codes\r\n"
+    b"CUUR0000SA0      \t2015\tM13\t     237.017\t\r\n"
+    b"CUUR0000SA0      \t2024\tM13\t     313.689\t\r\n"
+)
+
+#: A second fabricated body, distinguished from the one above only by an
+#: extra row for a series this baseline does not read. Same two verified
+#: records, a different whole-file digest — the shape
+#: ``test_the_two_contracts_differ_only_in_identity`` needs, without simply
+#: asserting a ``resource_sha256`` string no bytes back up.
+FIXTURE_CPI_RESOURCE_BYTES_ALT = FIXTURE_CPI_RESOURCE_BYTES + (
+    b"CUUS0000SA0      \t2024\tM13\t     312.332\t\r\n"
+)
+
 #: Invented stand-ins for the pin a genuine run supplies. The URL is a
 #: reserved non-resolvable domain; nothing here retrieved anything.
 FIXTURE_RESOURCE = {
     "source_url": "https://example.invalid/pub/time.series/cu/cu.data.1.AllItems",
-    "resource_sha256": "a" * 64,
+    "resource_sha256": hashlib.sha256(FIXTURE_CPI_RESOURCE_BYTES).hexdigest(),
+    "resource_bytes": FIXTURE_CPI_RESOURCE_BYTES,
     "retrieved_utc": "2026-09-06T00:00:00+00:00",
 }
 
@@ -363,13 +385,164 @@ def test_a_developmental_table_cannot_be_relabelled_reviewed():
 
 
 # --------------------------------------------------------------------------
+# The resource bytes: verified, not merely asserted
+# --------------------------------------------------------------------------
+
+
+def test_verify_cpi_resource_bytes_matches_the_fixture():
+    receipt = baseline.verify_cpi_resource_bytes(
+        FIXTURE_CPI_RESOURCE_BYTES, resource_sha256=FIXTURE_RESOURCE["resource_sha256"]
+    )
+    assert receipt["series_id"] == "CUUR0000SA0"
+    assert receipt["period"] == "M13"
+    assert receipt["resource_bytes"] == len(FIXTURE_CPI_RESOURCE_BYTES)
+    assert receipt["resource_sha256"] == FIXTURE_RESOURCE["resource_sha256"]
+    assert receipt["records"]["2015"]["level_text"] == "237.017"
+    assert receipt["records"]["2024"]["level_text"] == "313.689"
+    assert receipt["records"]["2015"]["level_float64"] == float("237.017")
+    assert receipt["records"]["2024"]["level_float64"] == float("313.689")
+
+
+def test_bytes_that_are_not_bytes_are_refused():
+    with pytest.raises(PufGrowthRefusalError) as error:
+        baseline.verify_cpi_resource_bytes("not bytes", resource_sha256="0" * 64)
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_TYPE"
+
+
+def test_empty_resource_bytes_are_refused():
+    with pytest.raises(PufGrowthRefusalError) as error:
+        baseline.verify_cpi_resource_bytes(
+            b"", resource_sha256=hashlib.sha256(b"").hexdigest()
+        )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_EMPTY"
+
+
+def test_oversize_resource_bytes_are_refused():
+    body = b"x" * (baseline._CPI_RESOURCE_MAX_BYTES + 1)
+    with pytest.raises(PufGrowthRefusalError) as error:
+        baseline.verify_cpi_resource_bytes(
+            body, resource_sha256=hashlib.sha256(body).hexdigest()
+        )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_OVERSIZE"
+
+
+def test_a_wrong_digest_is_refused():
+    with pytest.raises(PufGrowthRefusalError) as error:
+        baseline.verify_cpi_resource_bytes(
+            FIXTURE_CPI_RESOURCE_BYTES, resource_sha256="0" * 64
+        )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_DIGEST"
+
+
+def test_a_missing_record_is_refused():
+    body = (
+        b"series_id        \tyear\tperiod\t       value\tfootnote_codes\r\n"
+        b"CUUR0000SA0      \t2015\tM13\t     237.017\t\r\n"
+    )
+    with pytest.raises(PufGrowthRefusalError) as error:
+        baseline.verify_cpi_resource_bytes(
+            body, resource_sha256=hashlib.sha256(body).hexdigest()
+        )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_RECORD_MISSING"
+    assert error.value.field == "2024"
+
+
+def test_a_duplicate_record_is_refused():
+    body = (
+        FIXTURE_CPI_RESOURCE_BYTES + b"CUUR0000SA0      \t2015\tM13\t     237.017\t\r\n"
+    )
+    with pytest.raises(PufGrowthRefusalError) as error:
+        baseline.verify_cpi_resource_bytes(
+            body, resource_sha256=hashlib.sha256(body).hexdigest()
+        )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_DUPLICATE_RECORD"
+    assert error.value.field == "2015"
+
+
+def test_a_wrong_value_is_refused():
+    body = (
+        b"series_id        \tyear\tperiod\t       value\tfootnote_codes\r\n"
+        b"CUUR0000SA0      \t2015\tM13\t     237.017\t\r\n"
+        b"CUUR0000SA0      \t2024\tM13\t     999.999\t\r\n"
+    )
+    with pytest.raises(PufGrowthRefusalError) as error:
+        baseline.verify_cpi_resource_bytes(
+            body, resource_sha256=hashlib.sha256(body).hexdigest()
+        )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_RECORD_VALUE"
+    assert error.value.field == "2024"
+
+
+def test_a_malformed_matching_line_is_refused():
+    """A truncated row for this series is refused, not silently skipped."""
+    body = (
+        b"series_id        \tyear\tperiod\t       value\tfootnote_codes\r\n"
+        b"CUUR0000SA0      \t2015\tM13\r\n"
+        b"CUUR0000SA0      \t2024\tM13\t     313.689\t\r\n"
+    )
+    with pytest.raises(PufGrowthRefusalError) as error:
+        baseline.verify_cpi_resource_bytes(
+            body, resource_sha256=hashlib.sha256(body).hexdigest()
+        )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_LINE_SHAPE"
+
+
+def test_a_different_series_period_or_year_row_does_not_interfere():
+    """Only this series, this period and the two wanted years are read."""
+    body = FIXTURE_CPI_RESOURCE_BYTES + (
+        b"CUUR0000SA0      \t2016\tM13\t     240.007\t\r\n"
+        b"CUUR0000SA0      \t2024\tM01\t     308.417\t\r\n"
+        b"CUUS0000SA0      \t2024\tM13\t     312.332\t\r\n"
+    )
+    receipt = baseline.verify_cpi_resource_bytes(
+        body, resource_sha256=hashlib.sha256(body).hexdigest()
+    )
+    assert set(receipt["records"]) == {"2015", "2024"}
+
+
+def test_compile_price_baseline_requires_resource_bytes():
+    """The keyword is required, not optional-with-a-trusting-default."""
+    without_bytes = {k: v for k, v in FIXTURE_RESOURCE.items() if k != "resource_bytes"}
+    with pytest.raises(TypeError):
+        compile_price_baseline(PACKAGED_THIRTEEN.fields, **without_bytes)
+
+
+def test_compile_price_baseline_refuses_a_digest_mismatch():
+    with pytest.raises(PufGrowthRefusalError) as error:
+        compile_price_baseline(
+            PACKAGED_THIRTEEN.fields,
+            **{**FIXTURE_RESOURCE, "resource_sha256": "0" * 64},
+        )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_DIGEST"
+
+
+def test_compile_price_baseline_refuses_bytes_missing_a_record():
+    body = (
+        b"series_id        \tyear\tperiod\t       value\tfootnote_codes\r\n"
+        b"CUUR0000SA0      \t2015\tM13\t     237.017\t\r\n"
+    )
+    with pytest.raises(PufGrowthRefusalError) as error:
+        compile_price_baseline(
+            PACKAGED_THIRTEEN.fields,
+            **{
+                **FIXTURE_RESOURCE,
+                "resource_sha256": hashlib.sha256(body).hexdigest(),
+                "resource_bytes": body,
+            },
+        )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_RECORD_MISSING"
+
+
+# --------------------------------------------------------------------------
 # The artifact-to-money-view adapter
 # --------------------------------------------------------------------------
 
 
 def test_the_money_view_keeps_every_amount_known_return(fixture, contract):
     decoded, status, _, _ = fixture
-    adaptation = adapt_projection_to_money_view(decoded, status, contract)
+    adaptation = adapt_projection_to_money_view(
+        decoded, status, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     view = adaptation.money_view
     assert len(view) == 5
     assert decoded.rows == 6
@@ -388,7 +561,9 @@ def test_only_the_aggregate_rows_are_removed_and_their_identity_is_kept(
     fixture, contract
 ):
     decoded, status, _, _ = fixture
-    adaptation = adapt_projection_to_money_view(decoded, status, contract)
+    adaptation = adapt_projection_to_money_view(
+        decoded, status, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     excluded = adaptation.excluded
     assert excluded["rows"] == 1
     assert excluded["recid"] == [PUF_AGGREGATE_RECIDS[0]]
@@ -411,7 +586,9 @@ def test_only_the_aggregate_rows_are_removed_and_their_identity_is_kept(
 
 def test_flpdyr_status_and_the_unaltered_weight_travel_separately(fixture, contract):
     decoded, status, _, _ = fixture
-    adaptation = adapt_projection_to_money_view(decoded, status, contract)
+    adaptation = adapt_projection_to_money_view(
+        decoded, status, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     assert adaptation.flpdyr.tolist() == [2015, 2013, 2014, 2012, 2015]
     assert adaptation.demographic_status.tolist() == [1, 0, 1, 0, 0]
     assert adaptation.design_weight.tolist() == [12345, 9900, 700, 42, 1000]
@@ -434,7 +611,9 @@ def test_flpdyr_status_and_the_unaltered_weight_travel_separately(fixture, contr
 
 def test_no_sentinel_ever_reaches_a_numeric_input(fixture, contract):
     decoded, status, _, _ = fixture
-    adaptation = adapt_projection_to_money_view(decoded, status, contract)
+    adaptation = adapt_projection_to_money_view(
+        decoded, status, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     for field in contract.money_fields:
         assert not (adaptation.money_view[field] == AGGREGATE_SENTINEL).any()
         assert int(decoded.typed[field][5]) == AGGREGATE_SENTINEL
@@ -451,7 +630,9 @@ def test_a_sentinel_on_an_ordinary_row_refuses_the_adaptation(fixture, contract)
         column_metadata=decoded.column_metadata,
     )
     with pytest.raises(PufGrowthRefusalError) as error:
-        adapt_projection_to_money_view(forged, status, contract)
+        adapt_projection_to_money_view(
+            forged, status, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "SENTINEL_IN_ORDINARY_ROW"
 
 
@@ -468,7 +649,9 @@ def test_an_aggregate_row_without_the_sentinel_refuses_the_adaptation(
         column_metadata=decoded.column_metadata,
     )
     with pytest.raises(PufGrowthRefusalError) as error:
-        adapt_projection_to_money_view(forged, status, contract)
+        adapt_projection_to_money_view(
+            forged, status, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "AGGREGATE_SLOT_NOT_SENTINEL"
 
 
@@ -482,7 +665,9 @@ def test_a_status_artifact_that_is_not_this_projection_is_refused(fixture, contr
     shifted = _Status()
     shifted.typed["RECID"] = shifted.typed["RECID"][::-1].copy()
     with pytest.raises(PufGrowthRefusalError) as error:
-        adapt_projection_to_money_view(decoded, shifted, contract)
+        adapt_projection_to_money_view(
+            decoded, shifted, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "STATUS_RECID_JOIN"
 
     flags = _Status()
@@ -490,14 +675,18 @@ def test_a_status_artifact_that_is_not_this_projection_is_refused(fixture, contr
         flags.typed["disclosure_aggregate"]
     )
     with pytest.raises(PufGrowthRefusalError) as error:
-        adapt_projection_to_money_view(decoded, flags, contract)
+        adapt_projection_to_money_view(
+            decoded, flags, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "STATUS_FLAG_JOIN"
 
     class _Missing:
         typed = {"RECID": np.array([1], dtype="<i8")}
 
     with pytest.raises(PufGrowthRefusalError) as error:
-        adapt_projection_to_money_view(decoded, _Missing(), contract)
+        adapt_projection_to_money_view(
+            decoded, _Missing(), contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "STATUS_ARTIFACT_COLUMN"
 
     # A side column of the wrong length would misalign FLPDYR or S006 against
@@ -505,12 +694,16 @@ def test_a_status_artifact_that_is_not_this_projection_is_refused(fixture, contr
     short = _Status()
     short.typed["FLPDYR"] = short.typed["FLPDYR"][:-1].copy()
     with pytest.raises(PufGrowthRefusalError) as error:
-        adapt_projection_to_money_view(decoded, short, contract)
+        adapt_projection_to_money_view(
+            decoded, short, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "STATUS_COLUMN_ROWS"
     assert error.value.field == "FLPDYR"
 
     with pytest.raises(PufGrowthRefusalError) as error:
-        adapt_projection_to_money_view(decoded, object(), contract)
+        adapt_projection_to_money_view(
+            decoded, object(), contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "STATUS_ARTIFACT_TYPE"
 
 
@@ -521,7 +714,9 @@ def test_a_status_artifact_that_is_not_this_projection_is_refused(fixture, contr
 
 def grown_for(fixture, contract):
     decoded, status, _, _ = fixture
-    adaptation = adapt_projection_to_money_view(decoded, status, contract)
+    adaptation = adapt_projection_to_money_view(
+        decoded, status, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     return adaptation, apply_puf_growth(adaptation.money_view, contract)
 
 
@@ -578,7 +773,9 @@ def test_the_design_weight_is_untouched_by_the_declared_identity(fixture, contra
 
 def test_the_invariants_hold_and_are_measured(fixture, contract):
     adaptation, grown = grown_for(fixture, contract)
-    invariants = price_baseline_invariants(adaptation, grown, contract)
+    invariants = price_baseline_invariants(
+        adaptation, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     assert invariants["rows"] == 5
     assert invariants["output_rounding"] == "none_unrounded_float64"
     assert invariants["release_eligible"] is False
@@ -608,7 +805,9 @@ def test_the_scaled_sum_check_catches_a_wrong_grown_column(fixture, contract):
     adaptation, grown = grown_for(fixture, contract)
     grown.table.loc[0, "E00200"] = grown.table.loc[0, "E00200"] + 1.0
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(adaptation, grown, contract)
+        price_baseline_invariants(
+            adaptation, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "SCALED_SUM_DISAGREEMENT"
 
 
@@ -623,7 +822,9 @@ def test_a_moved_pairwise_violation_would_be_caught(fixture, contract):
     values[0], values[4] = values[4], values[0]
     grown.table["E00650"] = values
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(adaptation, grown, contract)
+        price_baseline_invariants(
+            adaptation, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "PAIRWISE_VIOLATIONS_MOVED"
 
 
@@ -636,7 +837,9 @@ def test_nothing_in_this_baseline_can_become_release_eligible(contract):
 
 def test_a_money_view_carrying_the_design_weight_is_refused(fixture, contract):
     decoded, status, _, _ = fixture
-    adaptation = adapt_projection_to_money_view(decoded, status, contract)
+    adaptation = adapt_projection_to_money_view(
+        decoded, status, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     view = adaptation.money_view.copy()
     view["S006"] = adaptation.design_weight
     with pytest.raises(PufGrowthRefusalError) as error:
@@ -650,14 +853,18 @@ def test_the_projection_and_the_contract_must_be_the_same_field_set(fixture):
     twelve = compile_price_baseline(
         [f for f in PACKAGED_THIRTEEN.fields if f != "P23250"], **FIXTURE_RESOURCE
     )
-    adaptation = adapt_projection_to_money_view(decoded, status, twelve)
+    adaptation = adapt_projection_to_money_view(
+        decoded, status, twelve, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     assert "P23250" not in adaptation.money_view.columns
     assert set(adaptation.money_view.columns) == set(twelve.money_view_fields)
 
 
 def test_an_artifact_that_is_not_a_projection_is_refused(contract):
     with pytest.raises(PufGrowthRefusalError) as error:
-        adapt_projection_to_money_view(object(), object(), contract)
+        adapt_projection_to_money_view(
+            object(), object(), contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "PROJECTION_ARTIFACT_TYPE"
     assert PufMonetaryRefusalError is not PufGrowthRefusalError
 
@@ -748,9 +955,13 @@ def refusal_from_both_entries(fixture, compiled):
     """Both entry points must decline the same contract with the same reason."""
     decoded, status, _, _ = fixture
     with pytest.raises(PufGrowthRefusalError) as adapter_error:
-        adapt_projection_to_money_view(decoded, status, compiled)
+        adapt_projection_to_money_view(
+            decoded, status, compiled, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     with pytest.raises(PufGrowthRefusalError) as gate_error:
-        require_price_baseline_contract(compiled)
+        require_price_baseline_contract(
+            compiled, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert adapter_error.value.reason == gate_error.value.reason
     return adapter_error.value
 
@@ -1006,9 +1217,16 @@ def test_an_invented_fixture_table_with_the_right_factor_is_declined(fixture):
 
 def test_the_gate_accepts_the_contract_the_lane_actually_compiles(contract):
     """The gate is closed, not shut: the adopted contract passes it."""
-    assert require_price_baseline_contract(contract) is None
+    assert (
+        require_price_baseline_contract(
+            contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
+        is None
+    )
     with pytest.raises(PufGrowthRefusalError) as error:
-        require_price_baseline_contract(object())
+        require_price_baseline_contract(
+            object(), resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "COMPILED_TYPE"
 
 
@@ -1033,13 +1251,24 @@ def other_contract():
     """The same baseline pinned to different resource bytes: a second identity."""
     return compile_price_baseline(
         PACKAGED_THIRTEEN.fields,
-        **{**FIXTURE_RESOURCE, "resource_sha256": "b" * 64},
+        **{
+            **FIXTURE_RESOURCE,
+            "resource_sha256": hashlib.sha256(
+                FIXTURE_CPI_RESOURCE_BYTES_ALT
+            ).hexdigest(),
+            "resource_bytes": FIXTURE_CPI_RESOURCE_BYTES_ALT,
+        },
     )
 
 
 def test_the_two_contracts_differ_only_in_identity(contract, other_contract):
     assert other_contract.sha256 != contract.sha256
-    assert require_price_baseline_contract(other_contract) is None
+    assert (
+        require_price_baseline_contract(
+            other_contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES_ALT
+        )
+        is None
+    )
     assert (
         other_contract.factor_for(AGI_FIELD, SignBranch.ANY).ratio_bits
         == contract.factor_for(AGI_FIELD, SignBranch.ANY).ratio_bits
@@ -1052,7 +1281,12 @@ def test_measuring_a_table_grown_under_another_contract_is_refused(
     """Every number in the receipt is attributed to the contract it names."""
     adaptation, grown = grown_for(fixture, contract)
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(adaptation, grown, other_contract)
+        price_baseline_invariants(
+            adaptation,
+            grown,
+            other_contract,
+            resource_bytes=FIXTURE_CPI_RESOURCE_BYTES_ALT,
+        )
     assert error.value.reason == "GROWN_CONTRACT_MISMATCH"
 
 
@@ -1060,10 +1294,14 @@ def test_an_adaptation_from_another_contract_is_refused(
     fixture, contract, other_contract
 ):
     decoded, status, _, _ = fixture
-    foreign = adapt_projection_to_money_view(decoded, status, other_contract)
+    foreign = adapt_projection_to_money_view(
+        decoded, status, other_contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES_ALT
+    )
     grown = apply_puf_growth(foreign.money_view, contract)
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(foreign, grown, contract)
+        price_baseline_invariants(
+            foreign, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "ADAPTATION_CONTRACT_MISMATCH"
 
 
@@ -1086,14 +1324,18 @@ def test_a_grown_result_whose_receipt_names_another_contract_is_refused(
     )
     assert forged.contract_sha256 == contract.sha256
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(adaptation, forged, contract)
+        price_baseline_invariants(
+            adaptation, forged, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "GROWN_RECEIPT_CONTRACT_MISMATCH"
 
 
 def test_the_invariants_refuse_something_that_is_not_an_adaptation(fixture, contract):
     _, grown = grown_for(fixture, contract)
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(object(), grown, contract)
+        price_baseline_invariants(
+            object(), grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "ADAPTATION_TYPE"
 
 
@@ -1126,7 +1368,9 @@ def test_a_permutation_that_preserves_every_summary_is_still_refused(fixture, co
     }
     grown.table["E00200"] = after
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(adaptation, grown, contract)
+        price_baseline_invariants(
+            adaptation, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "ROW_GROWTH_DISAGREEMENT"
     assert error.value.field == "E00200"
 
@@ -1157,7 +1401,9 @@ def test_a_differently_associated_rederivation_is_refused(fixture, contract):
     assert np.array_equal(rederived == 0.0, exact == 0.0)
     grown.table[field] = rederived
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(adaptation, grown, contract)
+        price_baseline_invariants(
+            adaptation, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "ROW_GROWTH_DISAGREEMENT"
     assert error.value.field == field
 
@@ -1170,7 +1416,9 @@ def test_a_negative_zero_written_into_a_grown_column_is_refused(fixture, contrac
     values[zeros[0]] = -0.0
     grown.table[AGI_FIELD] = values
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(adaptation, grown, contract)
+        price_baseline_invariants(
+            adaptation, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "NEGATIVE_ZERO"
 
 
@@ -1182,14 +1430,18 @@ def test_a_restated_provenance_column_is_refused(fixture, contract):
         grown.table[PROVENANCE_SOURCE_AGI_COLUMN].to_numpy() * factor
     )
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(adaptation, grown, contract)
+        price_baseline_invariants(
+            adaptation, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "PROVENANCE_DISAGREEMENT"
     assert error.value.field == PROVENANCE_SOURCE_AGI_COLUMN
 
 
 def test_the_row_comparison_is_recorded_as_what_it_measured(fixture, contract):
     adaptation, grown = grown_for(fixture, contract)
-    invariants = price_baseline_invariants(adaptation, grown, contract)
+    invariants = price_baseline_invariants(
+        adaptation, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     row = invariants["row_exact_growth"]
     assert row["rows"] == len(adaptation.money_view)
     assert row["disagreeing_rows"] == 0
@@ -1213,7 +1465,9 @@ def test_without_a_weight_array_the_receipt_declares_and_does_not_measure(
 ):
     """The one claim that used to be a literal is now honestly absent."""
     adaptation, grown = grown_for(fixture, contract)
-    invariants = price_baseline_invariants(adaptation, grown, contract)
+    invariants = price_baseline_invariants(
+        adaptation, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     assert invariants["design_weight_unchanged"] is None
     weight = invariants["design_weight"]
     assert weight["observed"] is False
@@ -1243,7 +1497,11 @@ def test_with_the_weights_the_caller_carried_forward_it_is_measured(fixture, con
         adaptation.design_weight.astype("float64"), contract
     )
     invariants = price_baseline_invariants(
-        adaptation, grown, contract, design_weight_after=carried
+        adaptation,
+        grown,
+        contract,
+        design_weight_after=carried,
+        resource_bytes=FIXTURE_CPI_RESOURCE_BYTES,
     )
     assert invariants["design_weight_unchanged"] is True
     weight = invariants["design_weight"]
@@ -1266,7 +1524,11 @@ def test_a_weight_that_actually_moved_is_refused_not_reported_unchanged(
     carried[2] += 1.0
     with pytest.raises(PufGrowthRefusalError) as error:
         price_baseline_invariants(
-            adaptation, grown, contract, design_weight_after=carried
+            adaptation,
+            grown,
+            contract,
+            design_weight_after=carried,
+            resource_bytes=FIXTURE_CPI_RESOURCE_BYTES,
         )
     assert error.value.reason == "DESIGN_WEIGHT_CHANGED"
     assert error.value.field == "S006"
@@ -1277,7 +1539,11 @@ def test_a_weight_array_of_the_wrong_shape_is_refused(fixture, contract):
     weights = adaptation.design_weight.astype("float64")
     with pytest.raises(PufGrowthRefusalError) as error:
         price_baseline_invariants(
-            adaptation, grown, contract, design_weight_after=weights[:-1]
+            adaptation,
+            grown,
+            contract,
+            design_weight_after=weights[:-1],
+            resource_bytes=FIXTURE_CPI_RESOURCE_BYTES,
         )
     assert error.value.reason == "DESIGN_WEIGHT_AFTER_ROWS"
     with pytest.raises(PufGrowthRefusalError) as error:
@@ -1286,13 +1552,18 @@ def test_a_weight_array_of_the_wrong_shape_is_refused(fixture, contract):
             grown,
             contract,
             design_weight_after=weights.reshape(-1, 1),
+            resource_bytes=FIXTURE_CPI_RESOURCE_BYTES,
         )
     assert error.value.reason == "DESIGN_WEIGHT_AFTER_SHAPE"
     infinite = weights.copy()
     infinite[0] = np.inf
     with pytest.raises(PufGrowthRefusalError) as error:
         price_baseline_invariants(
-            adaptation, grown, contract, design_weight_after=infinite
+            adaptation,
+            grown,
+            contract,
+            design_weight_after=infinite,
+            resource_bytes=FIXTURE_CPI_RESOURCE_BYTES,
         )
     assert error.value.reason == "DESIGN_WEIGHT_AFTER_NONFINITE"
 
@@ -1308,11 +1579,15 @@ def test_a_subset_contract_names_what_it_left_behind(fixture):
     subset = compile_price_baseline(
         [f for f in PACKAGED_THIRTEEN.fields if f != dropped], **FIXTURE_RESOURCE
     )
-    adaptation = adapt_projection_to_money_view(decoded, status, subset)
+    adaptation = adapt_projection_to_money_view(
+        decoded, status, subset, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     assert adaptation.receipt["projected_fields_not_in_contract"] == [dropped]
     assert adaptation.receipt["projected_fields"] == sorted(PACKAGED_THIRTEEN.fields)
     grown = apply_puf_growth(adaptation.money_view, subset)
-    invariants = price_baseline_invariants(adaptation, grown, subset)
+    invariants = price_baseline_invariants(
+        adaptation, grown, subset, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     dividends = invariants["pairwise_observations"][
         "qualified_within_ordinary_dividends"
     ]
@@ -1328,7 +1603,9 @@ def test_a_subset_contract_names_what_it_left_behind(fixture):
 def test_the_sum_tolerance_is_scaled_by_the_gross_not_the_net(fixture, contract):
     """A signed column's gross is what bounds the error, and is recorded."""
     adaptation, grown = grown_for(fixture, contract)
-    invariants = price_baseline_invariants(adaptation, grown, contract)
+    invariants = price_baseline_invariants(
+        adaptation, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     losses = invariants["columns"]["E00900"]
     assert losses["scale_basis"] == "gross_absolute_source_sum_times_factor"
     original = adaptation.money_view["E00900"].to_numpy()
@@ -1392,7 +1669,9 @@ def test_a_grown_table_missing_a_provenance_column_is_refused(fixture, contract)
     adaptation, grown = grown_for(fixture, contract)
     del grown.table[PROVENANCE_RECID_COLUMN]
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(adaptation, grown, contract)
+        price_baseline_invariants(
+            adaptation, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "PROVENANCE_COLUMN_MISSING"
     assert error.value.field == PROVENANCE_RECID_COLUMN
 
@@ -1404,7 +1683,9 @@ def test_a_weight_side_that_is_not_one_dimensional_is_refused(fixture, contract)
         adaptation, design_weight=adaptation.design_weight.reshape(-1, 1)
     )
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(forged, grown, contract)
+        price_baseline_invariants(
+            forged, grown, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "DESIGN_WEIGHT_SHAPE"
 
 
@@ -1414,11 +1695,149 @@ def test_a_pairwise_column_present_on_only_one_side_is_refused(fixture):
     subset = compile_price_baseline(
         [f for f in PACKAGED_THIRTEEN.fields if f != "E00650"], **FIXTURE_RESOURCE
     )
-    adaptation = adapt_projection_to_money_view(decoded, status, subset)
+    adaptation = adapt_projection_to_money_view(
+        decoded, status, subset, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+    )
     grown = apply_puf_growth(adaptation.money_view, subset)
     assert "E00650" not in adaptation.money_view.columns
     grown.table["E00650"] = np.zeros(len(grown.table), dtype="float64")
     with pytest.raises(PufGrowthRefusalError) as error:
-        price_baseline_invariants(adaptation, grown, subset)
+        price_baseline_invariants(
+            adaptation, grown, subset, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES
+        )
     assert error.value.reason == "PAIRWISE_COLUMN_ASYMMETRY"
     assert error.value.field == "qualified_within_ordinary_dividends"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        b"313.6890",
+        b"313.6890000001",
+        b"3.13689e2",
+        b"+313.689",
+        b"NaN",
+        b"inf",
+        b"",
+        b"\xff",
+    ],
+)
+def test_source_level_text_must_match_exactly(text):
+    body = FIXTURE_CPI_RESOURCE_BYTES.replace(b"313.689", text)
+    with pytest.raises(PufGrowthRefusalError) as error:
+        baseline.verify_cpi_resource_bytes(
+            body, resource_sha256=hashlib.sha256(body).hexdigest()
+        )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_RECORD_VALUE"
+    assert error.value.field == "2024"
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [(b"CUUR0000SA0", b"CUUS0000SA0"), (b"2024", b"2023"), (b"M13", b"M12")],
+)
+def test_wrong_series_year_or_period_cannot_supply_a_required_record(old, new):
+    body = FIXTURE_CPI_RESOURCE_BYTES.replace(old, new)
+    with pytest.raises(PufGrowthRefusalError) as error:
+        baseline.verify_cpi_resource_bytes(
+            body, resource_sha256=hashlib.sha256(body).hexdigest()
+        )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_RECORD_MISSING"
+
+
+@pytest.mark.parametrize("year,level", [(b"2015", b"237.017"), (b"2024", b"313.689")])
+def test_conflicting_or_repeated_required_records_are_refused(year, level):
+    body = (
+        FIXTURE_CPI_RESOURCE_BYTES + b"CUUR0000SA0\t" + year + b"\tM13\t999.999\t\r\n"
+    )
+    with pytest.raises(PufGrowthRefusalError) as error:
+        baseline.verify_cpi_resource_bytes(
+            body, resource_sha256=hashlib.sha256(body).hexdigest()
+        )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_DUPLICATE_RECORD"
+    assert error.value.field == year.decode("ascii")
+
+
+def test_bls_field_padding_and_lf_or_crlf_do_not_change_the_record_text():
+    body = FIXTURE_CPI_RESOURCE_BYTES.replace(b"\r\n", b"\n").replace(b"     ", b" ")
+    receipt = baseline.verify_cpi_resource_bytes(
+        bytearray(body), resource_sha256=hashlib.sha256(body).hexdigest()
+    )
+    assert receipt["records"]["2015"]["level_text"] == "237.017"
+    assert receipt["records"]["2024"]["level_text"] == "313.689"
+
+
+@pytest.mark.parametrize(
+    "entry", ["factor_document", "compile", "gate", "adapt", "invariants"]
+)
+def test_every_baseline_entry_requires_resource_bytes(entry, fixture, contract):
+    decoded, status, _, _ = fixture
+    arguments = {k: v for k, v in FIXTURE_RESOURCE.items() if k != "resource_bytes"}
+    with pytest.raises(TypeError, match="resource_bytes"):
+        if entry == "factor_document":
+            price_baseline_factor_document(**arguments)
+        elif entry == "compile":
+            compile_price_baseline(PACKAGED_THIRTEEN.fields, **arguments)
+        elif entry == "gate":
+            require_price_baseline_contract(contract)
+        elif entry == "adapt":
+            adapt_projection_to_money_view(decoded, status, contract)
+        else:
+            price_baseline_invariants(object(), object(), contract)
+
+
+@pytest.mark.parametrize(
+    "entry", ["factor_document", "compile", "gate", "adapt", "invariants"]
+)
+def test_every_baseline_entry_authenticates_the_named_digest(entry, fixture, contract):
+    decoded, status, _, _ = fixture
+    arguments = {**FIXTURE_RESOURCE, "resource_bytes": FIXTURE_CPI_RESOURCE_BYTES_ALT}
+    with pytest.raises(PufGrowthRefusalError) as error:
+        if entry == "factor_document":
+            price_baseline_factor_document(**arguments)
+        elif entry == "compile":
+            compile_price_baseline(PACKAGED_THIRTEEN.fields, **arguments)
+        elif entry == "gate":
+            require_price_baseline_contract(
+                contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES_ALT
+            )
+        elif entry == "adapt":
+            adapt_projection_to_money_view(
+                decoded, status, contract, resource_bytes=FIXTURE_CPI_RESOURCE_BYTES_ALT
+            )
+        else:
+            price_baseline_invariants(
+                object(),
+                object(),
+                contract,
+                resource_bytes=FIXTURE_CPI_RESOURCE_BYTES_ALT,
+            )
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_DIGEST"
+
+
+@pytest.mark.parametrize("entry", ["gate", "adapt", "invariants"])
+def test_generic_growth_compiler_cannot_bypass_record_verification(entry, fixture):
+    body = FIXTURE_CPI_RESOURCE_BYTES.replace(b"313.689", b"999.999")
+    document = json.loads(price_baseline_factor_document(**FIXTURE_RESOURCE))
+    # The generic format accepts a declared resource digest. Baseline entry
+    # points must authenticate it even when their own factory was bypassed.
+    document["provenance"]["resource_sha256"] = hashlib.sha256(body).hexdigest()
+    compiled = compile_puf_growth(
+        price_baseline_recipe(PACKAGED_THIRTEEN.fields),
+        GrowthFactorTable.from_bytes(
+            json.dumps(
+                document, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+            ).encode("ascii")
+        ),
+    )
+    decoded, status, _, _ = fixture
+    with pytest.raises(PufGrowthRefusalError) as error:
+        if entry == "gate":
+            require_price_baseline_contract(compiled, resource_bytes=body)
+        elif entry == "adapt":
+            adapt_projection_to_money_view(
+                decoded, status, compiled, resource_bytes=body
+            )
+        else:
+            price_baseline_invariants(object(), object(), compiled, resource_bytes=body)
+    assert error.value.reason == "PRICE_BASELINE_RESOURCE_RECORD_VALUE"

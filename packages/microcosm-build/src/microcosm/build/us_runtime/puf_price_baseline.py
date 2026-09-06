@@ -14,8 +14,10 @@ Three things this module is, and three it refuses
 items, not seasonally adjusted, ``M13`` annual average, base 1982-84=100. The
 levels are the publisher's own decimal text, copied verbatim, and the factor
 table it builds carries the ``developmental_public_resource`` authority: the
-levels really did come from a public publisher, and that authority can never
-become release-eligible.
+retained bytes are checked against their named digest and their two records
+against the declared level text. Retrieval location and time remain caller
+metadata, not claims proved by hashing. The authority cannot become
+release-eligible.
 
 *It declares the recipe.* One ``nominal_price_restatement`` series for all
 thirteen money fields, one source reference year, one target year, ``RECID``
@@ -95,6 +97,7 @@ __all__ = [
     "price_baseline_invariants",
     "price_baseline_recipe",
     "require_price_baseline_contract",
+    "verify_cpi_resource_bytes",
 ]
 
 #: The primary BLS series this baseline is read from.
@@ -144,6 +147,11 @@ DESIGN_WEIGHT_IDENTITY_SERIES = "declared_identity.no_return_mass_transition"
 PRICE_BASELINE_TABLE_ID = "us_puf_price_baseline_cpi_u_2015_2024_v1"
 PRICE_BASELINE_RECIPE_ID = "us_puf_price_baseline_2015_to_2024_v1"
 
+#: A generous ceiling on the retained BLS flat-file body. The genuine
+#: ``cu.data.1.AllItems`` distribution is roughly 2.7 MB; this is not a
+#: prediction of its future size, only a refusal of an input much larger than the retained source before splitting it into lines.
+_CPI_RESOURCE_MAX_BYTES = 16 * 1024 * 1024
+
 _CITATION = (
     f"BLS {CPI_U_SERIES_ID} ({CPI_U_SERIES_TITLE}), {CPI_U_ANNUAL_AVERAGE_PERIOD} "
     f"annual average, base {CPI_U_INDEX_BASE}"
@@ -184,8 +192,116 @@ def _canonical(value: object) -> bytes:
     ).encode("ascii")
 
 
+def _cpi_annual_average_records(
+    resource_bytes: bytes, years: Sequence[int]
+) -> dict[int, bytes]:
+    """The CPI-U all-items ``M13`` level text for each of *years*, or fewer.
+
+    BLS pads ``series_id`` and ``value`` with spaces for monospace column
+    alignment; the character that actually delimits a field is the tab, so
+    every field is stripped before it is compared or returned — the same
+    convention this lane's own retrieval script used to extract and hash
+    these two lines. A row whose first field is this series but which does
+    not split into the publisher's five tab-delimited fields
+    (``series_id``, ``year``, ``period``, ``value``, ``footnote_codes``) is
+    refused rather than silently skipped, because a truncated or reshuffled
+    row is exactly the failure mode this check exists to catch. Rows for a
+    year not in *years* are ignored: this baseline does not require the file
+    to be otherwise well-formed, only that its own two records are.
+    """
+    series = CPI_U_SERIES_ID.encode("ascii")
+    period = CPI_U_ANNUAL_AVERAGE_PERIOD.encode("ascii")
+    wanted = {str(year).encode("ascii") for year in years}
+    found: dict[int, bytes] = {}
+    for line in resource_bytes.split(b"\n"):
+        if not line.strip():
+            continue
+        fields = line.split(b"\t")
+        if fields[0].strip() != series:
+            continue
+        _require(len(fields) == 5, "PRICE_BASELINE_RESOURCE_LINE_SHAPE")
+        _, year_field, period_field, value_field, _ = (
+            field.strip() for field in fields
+        )
+        if period_field != period or year_field not in wanted:
+            continue
+        year = int(year_field)
+        _require(
+            year not in found, "PRICE_BASELINE_RESOURCE_DUPLICATE_RECORD", str(year)
+        )
+        found[year] = value_field
+    return found
+
+
+def verify_cpi_resource_bytes(
+    resource_bytes: bytes, *, resource_sha256: str
+) -> Mapping[str, object]:
+    """Refuse unless *resource_bytes* is this baseline's named public resource.
+
+    The whole-file digest is bound first — the caller's ``resource_sha256``
+    is no longer a string nobody checks. Then the bytes themselves are parsed
+    with the publisher's own tab-delimited, space-padded convention (see
+    :func:`_cpi_annual_average_records`) and must contain **exactly** the two
+    ``CUUR0000SA0`` ``M13`` records this baseline reads, at the two years
+    :data:`PRICE_BASELINE_LEVELS` names, each with exactly
+    the declared decimal text after removing BLS column padding. Different
+    numeric spellings and near-equal floats are refused: source lexical
+    identity is stronger than arithmetic agreement.
+
+    Args:
+        resource_bytes: The exact bytes retrieved from ``source_url``.
+        resource_sha256: The digest the caller claims for those bytes.
+
+    Returns:
+        A receipt naming the series, period, verified digest and the two
+        matched records.
+
+    Raises:
+        PufGrowthRefusalError: On a type, size, digest, shape, duplicate,
+            missing-record or value mismatch.
+    """
+    _require(
+        isinstance(resource_bytes, (bytes, bytearray)), "PRICE_BASELINE_RESOURCE_TYPE"
+    )
+    _require(len(resource_bytes) > 0, "PRICE_BASELINE_RESOURCE_EMPTY")
+    _require(
+        len(resource_bytes) <= _CPI_RESOURCE_MAX_BYTES,
+        "PRICE_BASELINE_RESOURCE_OVERSIZE",
+    )
+    body = bytes(resource_bytes)
+    actual_sha256 = hashlib.sha256(body).hexdigest()
+    _require(actual_sha256 == resource_sha256, "PRICE_BASELINE_RESOURCE_DIGEST")
+
+    years = tuple(PRICE_BASELINE_LEVELS)
+    found = _cpi_annual_average_records(body, years)
+    records: dict[str, object] = {}
+    for year in years:
+        _require(year in found, "PRICE_BASELINE_RESOURCE_RECORD_MISSING", str(year))
+        _require(
+            found[year] == PRICE_BASELINE_LEVELS[year].encode("ascii"),
+            "PRICE_BASELINE_RESOURCE_RECORD_VALUE",
+            str(year),
+        )
+        # Decode only after exact ASCII equality; malformed values must refuse
+        # by the same domain reason rather than leaking a parser exception.
+        level_text = found[year].decode("ascii")
+        found_value = float(level_text)
+        records[str(year)] = MappingProxyType(
+            {"level_text": level_text, "level_float64": found_value}
+        )
+    return MappingProxyType(
+        {
+            "series_id": CPI_U_SERIES_ID,
+            "period": CPI_U_ANNUAL_AVERAGE_PERIOD,
+            "resource_sha256": actual_sha256,
+            "resource_bytes": len(body),
+            "records": MappingProxyType(records),
+        }
+    )
+
+
 def price_baseline_factor_document(
-    *, source_url: str, resource_sha256: str, retrieved_utc: str
+    *, source_url: str, resource_sha256: str, retrieved_utc: str, resource_bytes: bytes
 ) -> bytes:
     """The developmental factor table, as the exact bytes it hashes to.
 
@@ -193,12 +309,18 @@ def price_baseline_factor_document(
         source_url: The publisher endpoint the levels were read from.
         resource_sha256: Digest of the exact resource bytes that were read.
         retrieved_utc: When they were read, as an ISO 8601 UTC instant.
+        resource_bytes: The exact bytes retrieved from ``source_url``. Checked
+            against ``resource_sha256`` and parsed for the two annual-average
+            records this baseline names — see
+            :func:`verify_cpi_resource_bytes`. Without this the two prior
+            arguments were caller assertions nothing in this module verified.
 
     Returns:
         A canonical factor-table document carrying the price series and the
         identity design-weight series, with the
         ``developmental_public_resource`` authority.
     """
+    verify_cpi_resource_bytes(resource_bytes, resource_sha256=resource_sha256)
     return _canonical(
         {
             "authority": "developmental_public_resource",
@@ -300,7 +422,9 @@ def price_baseline_recipe(
     return GrowthRecipe(recipe_id, tuple(rules))
 
 
-def require_price_baseline_contract(compiled: CompiledPufGrowth) -> None:
+def require_price_baseline_contract(
+    compiled: CompiledPufGrowth, *, resource_bytes: bytes
+) -> None:
     """Refuse any contract that is not the adopted price baseline.
 
     :func:`adapt_projection_to_money_view` and
@@ -325,7 +449,9 @@ def require_price_baseline_contract(compiled: CompiledPufGrowth) -> None:
       the declared identity series, whose resolved factor is exactly ``1.0``
       and whose two level texts are the same text — not two texts whose
       float64 quotient happens to round to one;
-    * no rule in any other role.
+    * no rule in any other role;
+    * the exact resource bytes against the digest the contract names, and the
+      two source records against their declared series, years, period and text.
 
     The *field set* is deliberately not fixed: a contract over a subset of the
     projection's money fields is still this baseline, and the adapter checks
@@ -333,6 +459,8 @@ def require_price_baseline_contract(compiled: CompiledPufGrowth) -> None:
 
     Args:
         compiled: The contract a caller is about to run.
+        resource_bytes: The retained BLS body; checked against the contract's
+            own resource digest even if it came from the generic growth compiler.
 
     Raises:
         PufGrowthRefusalError: With a ``PRICE_BASELINE_*`` reason naming the
@@ -344,6 +472,10 @@ def require_price_baseline_contract(compiled: CompiledPufGrowth) -> None:
         "PRICE_BASELINE_AUTHORITY",
     )
     _require(compiled.release_eligible is False, "PRICE_BASELINE_RELEASE_ELIGIBLE")
+    verify_cpi_resource_bytes(
+        resource_bytes,
+        resource_sha256=compiled.factors.provenance["resource_sha256"],
+    )
 
     rules = compiled.recipe.rules
     money = tuple(rule for rule in rules if rule.role is FieldRole.MONEY)
@@ -464,15 +596,22 @@ def compile_price_baseline(
     source_url: str,
     resource_sha256: str,
     retrieved_utc: str,
+    resource_bytes: bytes,
     recipe_id: str = PRICE_BASELINE_RECIPE_ID,
 ) -> CompiledPufGrowth:
-    """Compile the price-baseline contract; never release-eligible."""
+    """Compile the price-baseline contract; never release-eligible.
+
+    ``resource_bytes`` is required and is checked against ``resource_sha256``
+    by :func:`price_baseline_factor_document`; this function cannot hand back
+    a contract pinned to resource metadata nobody verified.
+    """
     recipe = price_baseline_recipe(money_fields, recipe_id=recipe_id)
     factors = GrowthFactorTable.from_bytes(
         price_baseline_factor_document(
             source_url=source_url,
             resource_sha256=resource_sha256,
             retrieved_utc=retrieved_utc,
+            resource_bytes=resource_bytes,
         )
     )
     compiled = compile_puf_growth(recipe, factors)
@@ -482,7 +621,7 @@ def compile_price_baseline(
     _require(compiled.release_eligible is False, "PRICE_BASELINE_RELEASE_ELIGIBLE")
     # The same gate the two entry points apply, so this function cannot hand
     # back a contract they would decline.
-    require_price_baseline_contract(compiled)
+    require_price_baseline_contract(compiled, resource_bytes=resource_bytes)
     return compiled
 
 
@@ -547,6 +686,8 @@ def adapt_projection_to_money_view(
     decoded: PufMonetarySourceProjection,
     status: object,
     compiled: CompiledPufGrowth,
+    *,
+    resource_bytes: bytes,
 ) -> PufMoneyViewAdaptation:
     """Join the projection to the status artifact and drop only the aggregates.
 
@@ -569,6 +710,7 @@ def adapt_projection_to_money_view(
         decoded: A decoded thirteen-field projection.
         status: The decoded ``puf_2015_raw_return_status`` artifact.
         compiled: The compiled price-baseline contract.
+        resource_bytes: The retained BLS body authenticated by the entry gate.
 
     Returns:
         The money view and everything deliberately kept out of it.
@@ -577,7 +719,7 @@ def adapt_projection_to_money_view(
         PufGrowthRefusalError: On any contract, join, universe or sentinel
             violation.
     """
-    require_price_baseline_contract(compiled)
+    require_price_baseline_contract(compiled, resource_bytes=resource_bytes)
     _require(
         isinstance(decoded, PufMonetarySourceProjection), "PROJECTION_ARTIFACT_TYPE"
     )
@@ -747,6 +889,7 @@ def price_baseline_invariants(
     grown: GrownPufTable,
     compiled: CompiledPufGrowth,
     *,
+    resource_bytes: bytes,
     design_weight_after: Sequence[float] | np.ndarray | None = None,
     relative_tolerance: float = 1e-12,
 ) -> Mapping[str, object]:
@@ -779,6 +922,7 @@ def price_baseline_invariants(
         grown: The result of :func:`~microcosm.build.us_runtime.puf_growth.apply_puf_growth`
             on that money view, under this same contract.
         compiled: The contract, checked against the adopted baseline.
+        resource_bytes: The retained BLS body authenticated by the entry gate.
         design_weight_after: The post-growth design weights, if the caller ran
             :func:`~microcosm.build.us_runtime.puf_growth.apply_puf_design_weight_growth`.
             Omitted, ``design_weight_unchanged`` is ``None``, not ``True``.
@@ -788,7 +932,7 @@ def price_baseline_invariants(
         PufGrowthRefusalError: On any contract, identity, row, sum, pairwise or
             weight violation.
     """
-    require_price_baseline_contract(compiled)
+    require_price_baseline_contract(compiled, resource_bytes=resource_bytes)
     _require(type(grown) is GrownPufTable, "GROWN_TYPE")
     _require(type(adaptation) is PufMoneyViewAdaptation, "ADAPTATION_TYPE")
     # One contract, named the same way by all three objects. Without this the
