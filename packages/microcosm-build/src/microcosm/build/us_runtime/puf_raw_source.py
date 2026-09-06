@@ -98,6 +98,7 @@ __all__ = [
     "USPufRawSourceKernel",
     "csv_acceptance_profile",
     "decode_puf_raw_source",
+    "definition_document_json",
     "decode_return_status",
     "encode_return_status",
     "fixture_definition",
@@ -325,6 +326,25 @@ def _pin(document: Mapping[str, object], name: str) -> SourcePin:
     )
 
 
+def _frozen(value: object) -> object:
+    """A deeply immutable view: mappings become proxies, sequences tuples.
+
+    ``MappingProxyType`` only freezes the top level. ``definition.document``
+    is reached through ordinary read-only attribute access, so handing out a
+    mutable nested container let a caller change a declared lexical width or
+    a CSV limit — changing what parses — while ``canonical``, ``sha256`` and
+    therefore ``params_text`` and the node key all stayed identical. Freezing
+    the whole tree closes that without any caller sandboxing: the document is
+    simply a value, as its canonical bytes always were.
+    """
+
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _frozen(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(_frozen(item) for item in value)
+    return value
+
+
 def _canonical_header_digest(header: Sequence[str]) -> str:
     """The audit's header identity: sha256 of the canonical JSON header list."""
 
@@ -360,14 +380,26 @@ def _definition_from_document(
     if tuple(document["aggregates"]["recids"]) != PUF_AGGREGATE_RECIDS:
         raise _refuse("DEFINITION_AGGREGATE_RECIDS")
     canonical = canonical_json(dict(document))
+    # The document is re-derived from the canonical bytes and then deeply
+    # frozen, so the two can never disagree and neither can be edited.
     return PufRawSourceDefinition(
         route=route,
-        document=MappingProxyType(json.loads(canonical.decode("ascii"))),
+        document=_frozen(json.loads(canonical.decode("ascii"))),
         canonical=canonical,
         sha256=hashlib.sha256(canonical).hexdigest(),
         main=_pin(document, "main"),
         demographic=_pin(document, "demographic"),
     )
+
+
+def _thawed(value: object) -> object:
+    """The plain-container form of a frozen document, for canonical rendering."""
+
+    if isinstance(value, Mapping):
+        return {key: _thawed(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thawed(item) for item in value]
+    return value
 
 
 def _packaged_bytes() -> bytes:
@@ -387,6 +419,19 @@ def packaged_definition() -> PufRawSourceDefinition:
         document = json.loads(_packaged_bytes().decode("ascii"))
         _PACKAGED = _definition_from_document(document, route="packaged")
     return _PACKAGED
+
+
+def definition_document_json(
+    definition: PufRawSourceDefinition,
+) -> dict[str, object]:
+    """A fresh, plain, mutable JSON copy of a definition's document.
+
+    The definition's own document is deeply frozen. A caller that wants to
+    build a *different* document from this one — a fixture, say — starts here
+    and gets a copy it owns, rather than a handle on the original.
+    """
+
+    return json.loads(definition.canonical.decode("ascii"))
 
 
 def fixture_definition(document: Mapping[str, object]) -> PufRawSourceDefinition:
@@ -1407,7 +1452,15 @@ class USPufRawSourceKernel(KernelBase):
         if self.definition.route == "packaged":
             # The production wrapper, not the bare decoder, is the authority:
             # the definition must be the packaged file's own canonical bytes.
-            if self.definition.sha256 != packaged_definition().sha256:
+            # Compare the bytes, not only their digest, and re-prove that the
+            # document this definition carries is still those exact bytes.
+            packaged = packaged_definition()
+            if (
+                self.definition.canonical != packaged.canonical
+                or self.definition.sha256 != packaged.sha256
+                or canonical_json(_thawed(self.definition.document))
+                != self.definition.canonical
+            ):
                 raise _refuse("KERNEL_DEFINITION_NOT_PACKAGED")
         self.source_codecs = (
             puf_raw_source_codecs(self.definition)

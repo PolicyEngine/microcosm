@@ -32,6 +32,7 @@ from microcosm.build.us_runtime.puf_raw_source import (
     USPufRawSourceKernel,
     decode_puf_raw_source,
     decode_return_status,
+    definition_document_json,
     encode_return_status,
     fixture_definition,
     load_pinned_puf_bytes,
@@ -151,7 +152,8 @@ DEFAULT_DEMOGRAPHIC = [
 def fixture_document(main_payload: bytes, demographic_payload: bytes) -> dict:
     """A fixture definition over invented bytes, on the explicit test route."""
 
-    document = json.loads(json.dumps(dict(PACKAGED.document)))
+    # The packaged document is deeply frozen; take a plain copy to build from.
+    document = puf.definition_document_json(PACKAGED)
     document["route"] = "test_fixture"
     document["authority"] = "invented_fixture_nonauthority"
     for name, payload, header, records in (
@@ -213,13 +215,16 @@ def test_packaged_definition_is_closed_and_reproduces_its_pinned_identities():
     assert document["artifact"]["period_semantics"] == "unresolved_raw_FLPDYR"
     assert document["artifact"]["weight_units"] == "S006_hundredths"
     assert document["artifact"]["amounts_decoded"] is False
+    # The document is deeply frozen, so JSON arrays read back as tuples.
     domains = {field["name"]: field.get("domain") for field in document["fields"]}
-    assert domains["GENDER"] == [1, 2]
-    assert domains["EARNSPLIT"] == [0, 1, 2, 3]
-    assert domains["AGEDP1"] == domains["AGEDP2"] == domains["AGEDP3"] == list(range(7))
+    assert domains["GENDER"] == (1, 2)
+    assert domains["EARNSPLIT"] == (0, 1, 2, 3)
+    assert (
+        domains["AGEDP1"] == domains["AGEDP2"] == domains["AGEDP3"] == tuple(range(7))
+    )
     agerange = next(f for f in document["fields"] if f["name"] == "AGERANGE")
-    assert agerange["conditional_domain"]["cases"]["0"] == list(range(7))
-    assert agerange["conditional_domain"]["cases"]["1"] == [0, 1, 2, 3]
+    assert agerange["conditional_domain"]["cases"]["0"] == tuple(range(7))
+    assert agerange["conditional_domain"]["cases"]["1"] == (0, 1, 2, 3)
     booklet = document["documentary_sources"]["demographic_booklet"]
     assert booklet["pdf_sha256"].startswith("7bb623c7")
     assert booklet["text_sha256"] == (
@@ -249,6 +254,34 @@ def test_fixture_route_refuses_production_authority_or_a_packaged_pin(invented):
     document["sources"]["main"]["sha256"] = PACKAGED.main.sha256
     with pytest.raises(PufRawSourceRefusalError, match="FIXTURE_RESTATES_PACKAGED_PIN"):
         fixture_definition(document)
+
+
+def test_the_definition_document_is_immutable_all_the_way_down(invented):
+    """A nested edit used to change what parses under an unchanged node key."""
+
+    main, demographic, definition = invented
+    before = definition.sha256, definition.params_text
+    assert decode_puf_raw_source(main, demographic, definition).rows == 4
+    with pytest.raises(TypeError):
+        definition.document["fields"][0]["lexical_width"] = 3
+    with pytest.raises(TypeError):
+        definition.document["csv_profile"]["field_size_limit"] = 7
+    with pytest.raises(TypeError):
+        definition.document["fields"] = ()
+    with pytest.raises(AttributeError):
+        definition.canonical = b"{}"
+    assert (definition.sha256, definition.params_text) == before
+    assert decode_puf_raw_source(main, demographic, definition).rows == 4
+    # A caller that wants to build a different document gets its own copy.
+    copy = definition_document_json(definition)
+    copy["fields"][0]["lexical_width"] = 3
+    assert definition.document["fields"][0]["lexical_width"] == 64
+
+
+def test_the_packaged_route_compares_canonical_bytes_not_only_a_digest():
+    kernel = USPufRawSourceKernel()
+    assert kernel.definition.canonical == PACKAGED.canonical
+    assert canonical(puf._thawed(PACKAGED.document)) == PACKAGED.canonical
 
 
 def test_a_fixture_definition_never_reaches_the_packaged_kernel_route(invented):
