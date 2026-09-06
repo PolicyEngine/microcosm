@@ -174,7 +174,8 @@ def resolve_calibration_tail_contracts(
         puf.pop("execution_binding_ref", None),
         _PUF_TAIL_EXECUTION_REF,
         location=(
-            "calibration/tail_contracts/puf_capital_gains_tail/execution_binding_ref"
+            "calibration/tail_contracts/puf_capital_gains_tail/"
+            "execution_binding_ref"
         ),
     )
 

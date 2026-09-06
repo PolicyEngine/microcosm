@@ -189,10 +189,7 @@ class ProducerNodeIR:
                     "column": output["column"],
                     "coverage_scope": output["coverage_scope"],
                 }
-                for output in (
-                    _mapping(_wire(row), location="compiled output")
-                    for row in self.outputs
-                )
+                for output in (_mapping(_wire(row), location="compiled output") for row in self.outputs)
             ],
         }
 
@@ -259,7 +256,9 @@ class ProducerGraphIR:
                 "edges": [],
                 "waves": [],
                 "order": [],
-                "incomparable_node_policy": _wire(self.incomparable_node_policy),
+                "incomparable_node_policy": _wire(
+                    self.incomparable_node_policy
+                ),
                 "schedule_sha256": self.schedule_sha256,
             }
         assert self.authored is not None
@@ -319,7 +318,11 @@ class SeedStreamMap:
 
     def owner(self, kind: str, owner_id: str) -> SeedOwnerIR | None:
         return next(
-            (row for row in self.owners if row.kind == kind and row.id == owner_id),
+            (
+                row
+                for row in self.owners
+                if row.kind == kind and row.id == owner_id
+            ),
             None,
         )
 
@@ -470,7 +473,9 @@ def _typed_inventory(spec: ResolvedSpec) -> FrozenMap:
                     "id": artifact.id,
                     "kind": artifact.kind,
                     "producing_stages": list(artifact.producing_stages),
-                    "entity": (None if artifact.entity is None else artifact.entity.id),
+                    "entity": (
+                        None if artifact.entity is None else artifact.entity.id
+                    ),
                     "key": artifact.key,
                     "lifetime": artifact.lifetime,
                     "validation": artifact.validation,
@@ -590,7 +595,9 @@ def _validate_ownership_matrix(
                 )
             owns_final = action.get("owns_final")
             if not isinstance(owns_final, bool):
-                raise CompilerIRError(f"{action_location}/owns_final: boolean required")
+                raise CompilerIRError(
+                    f"{action_location}/owns_final: boolean required"
+                )
             if owns_final:
                 final_actions.append(producer)
         if final_actions != [final_owner]:
@@ -782,7 +789,9 @@ def _incomparable_policy(
     return _frozen_mapping(
         {
             "requirement": "commute_or_disjoint_writes",
-            "proof_method": ("transitive_closure_and_closed_cell_segment_intersection"),
+            "proof_method": (
+                "transitive_closure_and_closed_cell_segment_intersection"
+            ),
             "overlap_rule": "explicit_commutativity_proof_required",
             "commutativity_proofs": [],
             "incomparable_pair_count": incomparable,
@@ -847,9 +856,13 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
     rank: dict[str, int] = {}
     for index, row in enumerate(node_rows):
         node_id = _string(row.get("id"), location=f"producer_graph/nodes/{index}/id")
-        name = _string(row.get("name"), location=f"producer_graph/nodes/{index}/name")
+        name = _string(
+            row.get("name"), location=f"producer_graph/nodes/{index}/name"
+        )
         if node_id != name:
-            raise CompilerIRError(f"producer_graph/nodes/{index}: id must equal name")
+            raise CompilerIRError(
+                f"producer_graph/nodes/{index}: id must equal name"
+            )
         if node_id in node_by_id:
             raise CompilerIRError(
                 f"producer_graph/nodes/{index}/id: duplicate {node_id!r}"
@@ -968,7 +981,8 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
         )
         if not wave:
             raise CompilerIRError(
-                f"producer_graph: dependency cycle among {sorted(remaining)!r}"
+                "producer_graph: dependency cycle among "
+                f"{sorted(remaining)!r}"
             )
         waves.append(wave)
         remaining.difference_update(wave)
@@ -1016,7 +1030,9 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
                 kind=_string(node.get("kind"), location=f"{node_id}/kind"),
                 kernel=kernel,
                 source=_frozen_mapping(node, location=f"{node_id}/source"),
-                depends_on=tuple(sorted(predecessors[node_id], key=rank.__getitem__)),
+                depends_on=tuple(
+                    sorted(predecessors[node_id], key=rank.__getitem__)
+                ),
                 inputs=input_rows,
                 outputs=output_rows,
                 write_scopes=write_scopes,
@@ -1176,9 +1192,7 @@ def _node_resolved_params(
     spec: ResolvedSpec,
 ) -> tuple[ResolvedParam, ...]:
     params: list[ResolvedParam] = [
-        _resolved_param(
-            f"/imputation/producer_graph/nodes/{node.id}", _wire(node.source)
-        ),
+        _resolved_param(f"/imputation/producer_graph/nodes/{node.id}", _wire(node.source)),
         _resolved_param(
             f"/compiled/producer_graph/nodes/{node.id}/outputs",
             [_wire(output) for output in node.outputs],
@@ -1209,7 +1223,9 @@ def _node_resolved_params(
         )
     if family_matches:
         family_index, family = family_matches[0]
-        params.append(_resolved_param(f"/imputation/families/{family_index}", family))
+        params.append(
+            _resolved_param(f"/imputation/families/{family_index}", family)
+        )
         models = _mapping(imputation.get("models", {}), location="imputation/models")
         model = family.get("model")
         if isinstance(model, str):
@@ -1279,7 +1295,8 @@ def _node_resolved_params(
     output_keys = {
         f"{output['entity']}.{output['column']}"
         for output in (
-            _mapping(_wire(value), location="compiled output") for value in node.outputs
+            _mapping(_wire(value), location="compiled output")
+            for value in node.outputs
         )
         if not str(output["column"]).startswith("@")
         or output["column"] == "@resolved_weight"
@@ -1353,7 +1370,9 @@ def _compile_nodes(
             for candidate in producer_graph.order
             if candidate in ancestors
         )
-        owner = seed_stream_map.owner(SeedSiteOwnerKind.PRODUCER_NODE.value, node_id)
+        owner = seed_stream_map.owner(
+            SeedSiteOwnerKind.PRODUCER_NODE.value, node_id
+        )
         streams = () if owner is None else owner.streams
         slice_wire = {
             "domain": _NODE_SLICE_DOMAIN,

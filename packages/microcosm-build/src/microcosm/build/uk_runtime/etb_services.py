@@ -144,7 +144,9 @@ class UKETBServicesStageTransform:
         )
         clip_result = support_clip_to_donor(draws, donor)
         draws = clip_result.clipped
-        draws["rail_usage"] = draws["rail_subsidy_spending"] / config["rail_fare_index"]
+        draws["rail_usage"] = (
+            draws["rail_subsidy_spending"] / config["rail_fare_index"]
+        )
         household = frame.table("household").copy()
         for column in UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS:
             household[column] = draws[column].to_numpy()
@@ -261,7 +263,9 @@ def etb_services_configuration(stage: SourceStageSpec | None = None) -> dict:
     }
     if stage is not None:
         derive = next(
-            operation for operation in stage.operations if operation.kind == "derive"
+            operation
+            for operation in stage.operations
+            if operation.kind == "derive"
         )
         if "year" in derive.parameters:
             config["year"] = derive.parameters["year"]
@@ -469,7 +473,9 @@ def allocate_nhs_by_age_gender(
     household = household.assign(
         household_weight=np.asarray(household_weights, dtype=float)
     )
-    cells = build_nhs_cell_table(nhs_table, person, household, nhs_budget=nhs_budget)
+    cells = build_nhs_cell_table(
+        nhs_table, person, household, nhs_budget=nhs_budget
+    )
     output = pd.DataFrame(0.0, index=person.index, columns=UK_NHS_OUTPUT_COLUMNS)
     service_to_columns = {
         "A&E": ("a_and_e_visits", "nhs_a_and_e_spending"),
