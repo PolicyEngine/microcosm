@@ -474,6 +474,15 @@ def contract_document() -> dict:
             "every A_EXPRRP in the household inside printed codes",
             "exactly one household member carrying code 1 or 2",
         ],
+        "household_membership_verification": {
+            "grouping_column": HOUSEHOLD_GROUPING_COLUMN,
+            "published_household_key": list(HOUSEHOLD_MEMBERSHIP_KEY),
+            "equivalence": "bidirectional_partition_bijection",
+            "verified_before_classification": True,
+            "merged_published_households": "refused",
+            "split_published_households": "refused",
+            "native_household_id_reuse_across_cohorts": "admitted_and_counted",
+        },
         "other_than_two_is_male": False,
         "cohorts": {
             str(year): {
@@ -563,6 +572,184 @@ def _counts(codes: np.ndarray, meanings: Mapping[int, str]) -> dict:
     return {meanings[code]: int((codes == code).sum()) for code in sorted(meanings)}
 
 
+#: The published household key. ``A_EXPRRP`` names a person's role inside the
+#: household the Census published, and that household is identified by its
+#: native ``PH_SEQ`` **within one income year**: an unrelated household in
+#: another year legitimately carries the same native id.
+HOUSEHOLD_MEMBERSHIP_KEY: tuple[str, ...] = ("income_year", "source_household_id")
+#: The parent roster column headship is grouped by. It is a remapped id, not
+#: the published one, so its partition is proven equal to the key above rather
+#: than assumed to be.
+HOUSEHOLD_GROUPING_COLUMN = "person_household_id"
+#: Counters below that any nonzero value would have refused before an artifact
+#: exists. Named so a later reader cannot read their zero as a measurement.
+MEMBERSHIP_REFUSAL_COUNTERS: tuple[str, ...] = (
+    "grouping_households_spanning_multiple_cohorts",
+    "grouping_households_spanning_multiple_published_households",
+    "published_households_spanning_multiple_grouping_households",
+)
+ZERO_COUNTER_SEMANTICS = (
+    "derived from the delivered values, but any nonzero value refuses the run "
+    "before an artifact exists, so a zero in a successful receipt attests that "
+    "refusal and is not an independent measurement of the source"
+)
+
+
+def _dense_codes(*keys: np.ndarray) -> tuple[np.ndarray, int]:
+    """Number the distinct key tuples 0..n-1 without combining them numerically.
+
+    Key columns are compared component-wise after a lexicographic sort, so no
+    two coordinates are ever multiplied or concatenated into one integer and
+    no width assumption can silently collide two distinct households.
+    """
+    order = np.lexsort(tuple(reversed(keys)))
+    changed = np.zeros(len(order), dtype=bool)
+    changed[0] = True
+    for values in keys:
+        sorted_values = values[order]
+        changed[1:] |= sorted_values[1:] != sorted_values[:-1]
+    codes = np.empty(len(order), dtype=np.int64)
+    codes[order] = np.cumsum(changed) - 1
+    return codes, int(changed.sum())
+
+
+def _representatives(codes: np.ndarray, count: int) -> np.ndarray:
+    """One arbitrary but deterministic row position per distinct code."""
+    positions = np.zeros(count, dtype=np.int64)
+    positions[codes] = np.arange(len(codes), dtype=np.int64)
+    return positions
+
+
+def verify_household_membership(
+    *,
+    income_year: np.ndarray,
+    source_household_id: np.ndarray,
+    household_id: np.ndarray,
+) -> dict:
+    """Prove the grouping column partitions persons exactly as the publisher did.
+
+    Household reference status is a statement about the household the Census
+    published: the cardinality of ``A_EXPRRP`` 1/2 is evidence only inside
+    ``(income_year, source_household_id)``. Classification groups instead by
+    the parent roster's remapped :data:`HOUSEHOLD_GROUPING_COLUMN`, and a
+    per-row equality between that roster's ``source_household_id`` and the
+    member's ``PH_SEQ`` says nothing about how either column *groups*. So the
+    two partitions are proven identical in both directions here, before any
+    household verdict is formed.
+
+    Refused in both directions: a grouping household carrying persons from
+    more than one published household (a merge, whether inside one cohort or
+    across cohorts), and a published household split across more than one
+    grouping household. Admitted and counted: the same native household id
+    reused by unrelated households in different income years, which is
+    ordinary and is what makes the income year part of the key.
+
+    Returns the aggregate verification recorded in the artifact receipt. It
+    carries counts, column names and cohort years only; no person, household
+    or native identifier appears in it or in any refusal raised here.
+    """
+    rows = len(income_year)
+    _require(0 < rows <= _MAX_PERSONS, "MEMBERSHIP_ROWS")
+    arrays = {
+        "income_year": income_year,
+        "source_household_id": source_household_id,
+        HOUSEHOLD_GROUPING_COLUMN: household_id,
+    }
+    for name, values in arrays.items():
+        _require(
+            isinstance(values, np.ndarray)
+            and values.dtype == np.dtype("int64")
+            and values.shape == (rows,),
+            "MEMBERSHIP_INPUT",
+            name,
+        )
+    _require(
+        bool(np.isin(income_year, list(COHORTS)).all()),
+        "MEMBERSHIP_COHORT",
+        "income_year",
+    )
+    for name in ("source_household_id", HOUSEHOLD_GROUPING_COLUMN):
+        _require(bool((arrays[name] > 0).all()), "MEMBERSHIP_COORDINATE", name)
+
+    published, published_count = _dense_codes(income_year, source_household_id)
+    grouping, grouping_count = _dense_codes(household_id)
+    edges, edge_count = _dense_codes(grouping, published)
+    # The relation between the two partitions is exactly its distinct
+    # (grouping household, published household) pairs; take one row per pair.
+    edge_rows = _representatives(edges, edge_count)
+    edge_grouping = grouping[edge_rows]
+    edge_published = published[edge_rows]
+    edge_year = income_year[edge_rows]
+
+    _, grouping_degree = np.unique(edge_grouping, return_counts=True)
+    _, published_degree = np.unique(edge_published, return_counts=True)
+    cohort_edges, cohort_edge_count = _dense_codes(edge_grouping, edge_year)
+    _, cohort_degree = np.unique(
+        edge_grouping[_representatives(cohort_edges, cohort_edge_count)],
+        return_counts=True,
+    )
+    native_rows = _representatives(published, published_count)
+    _, native_degree = np.unique(source_household_id[native_rows], return_counts=True)
+
+    collisions = int((cohort_degree > 1).sum())
+    merged = int((grouping_degree > 1).sum())
+    split = int((published_degree > 1).sum())
+    _require(collisions == 0, "MEMBERSHIP_COHORT_COLLISION", HOUSEHOLD_GROUPING_COLUMN)
+    _require(
+        merged == 0, "MEMBERSHIP_MERGED_NATIVE_HOUSEHOLDS", HOUSEHOLD_GROUPING_COLUMN
+    )
+    _require(
+        split == 0, "MEMBERSHIP_SPLIT_NATIVE_HOUSEHOLDS", HOUSEHOLD_GROUPING_COLUMN
+    )
+    # A relation whose edge count equals both vertex counts, with every vertex
+    # incident to at least one edge by construction, is a bijection. Asserted
+    # independently of the three counters above so a gap in any one of them
+    # still cannot let an unequal partition through.
+    _require(
+        edge_count == grouping_count == published_count,
+        "MEMBERSHIP_NOT_BIJECTIVE",
+        HOUSEHOLD_GROUPING_COLUMN,
+    )
+
+    return {
+        "schema_version": 1,
+        "grouping_column": HOUSEHOLD_GROUPING_COLUMN,
+        "published_household_key": list(HOUSEHOLD_MEMBERSHIP_KEY),
+        "equivalence": "bidirectional_partition_bijection",
+        "verified_before_classification": True,
+        "rows": rows,
+        "grouping_households": grouping_count,
+        "published_households": published_count,
+        "membership_edges": edge_count,
+        # Recomputable from the three counts recorded immediately above it.
+        "bijective": edge_count == grouping_count == published_count,
+        "grouping_households_spanning_multiple_cohorts": collisions,
+        "grouping_households_spanning_multiple_published_households": merged,
+        "published_households_spanning_multiple_grouping_households": split,
+        "native_household_ids_reused_across_cohorts": int((native_degree > 1).sum()),
+        "native_household_id_reuse_across_cohorts_is_admitted": True,
+        "by_cohort": {
+            str(year): {
+                "income_year": int(year),
+                "survey_year": int(COHORTS[int(year)]),
+                "rows": int((income_year == year).sum()),
+                "grouping_households": int(
+                    np.unique(household_id[income_year == year]).size
+                ),
+                "published_households": int(
+                    np.unique(published[income_year == year]).size
+                ),
+                "native_household_ids": int(
+                    np.unique(source_household_id[income_year == year]).size
+                ),
+            }
+            for year in sorted({int(value) for value in np.unique(income_year)})
+        },
+        "counters_zero_in_every_successful_receipt": list(MEMBERSHIP_REFUSAL_COUNTERS),
+        "zero_counter_semantics": ZERO_COUNTER_SEMANTICS,
+    }
+
+
 @dataclass(frozen=True)
 class DemographicClassification:
     """Per-person states plus value-free counts. Holds no source identifier."""
@@ -588,6 +775,13 @@ def classify_asec_demographic_observations(
     printed and exactly one member carries a reference-person code. Every other
     person is reported unbound with the reason, and ``P_SEQ`` is diagnosed
     against the result without ever supplying it.
+
+    ``household_id`` is the grouping column, and the reference-person
+    cardinality this reads is only evidence about the household the Census
+    published. The caller must therefore have proven that grouping equal to
+    ``(income_year, source_household_id)`` with
+    :func:`verify_household_membership` first; the cohort-uniformity check
+    below is a weaker self-check and is not that proof.
     """
     arrays = {
         "income_year": income_year,
@@ -967,6 +1161,14 @@ def _reconstruct(source, member_paths: Mapping[int, str | Path]):
             name,
         )
         output[name] = person[name].to_numpy(copy=True)
+    # The grouping column is a coordinate of the headship verdict, so it is
+    # typed here rather than coerced by the conversion that consumes it.
+    _require(
+        person[HOUSEHOLD_GROUPING_COLUMN].dtype == np.dtype("int64"),
+        "DEMOGRAPHIC_COORDINATE_DTYPE",
+        HOUSEHOLD_GROUPING_COLUMN,
+    )
+    household_id = person[HOUSEHOLD_GROUPING_COLUMN].to_numpy(copy=True)
     for alias in ALIASES:
         output[alias] = np.empty(rows, dtype=np.int64)
     joins = []
@@ -991,19 +1193,19 @@ def _reconstruct(source, member_paths: Mapping[int, str | Path]):
                 "DEMOGRAPHIC_KEY_COVERAGE",
             )
             joined = raw.iloc[indices]
+            coordinate_conflicts = 0
             for name, raw_name in (
                 ("source_household_id", "PH_SEQ"),
                 ("A_LINENO", "A_LINENO"),
                 ("A_AGE", "A_AGE"),
             ):
-                _require(
-                    np.array_equal(
-                        output[name][positions], joined[raw_name].to_numpy()
-                    ),
-                    "DEMOGRAPHIC_NATIVE_KEY_OR_AGE",
-                    name,
+                conflicts = int(
+                    (output[name][positions] != joined[raw_name].to_numpy()).sum()
                 )
+                coordinate_conflicts += conflicts
+                _require(conflicts == 0, "DEMOGRAPHIC_NATIVE_KEY_OR_AGE", name)
             compared = {}
+            incumbent_conflicts = 0
             relationship_crosscheck = {
                 "incumbent_present": "A_EXPRRP" in person,
                 "compared_rows": 0,
@@ -1035,11 +1237,9 @@ def _reconstruct(source, member_paths: Mapping[int, str | Path]):
                     )
                     compared[name] = int(known.sum())
                     continue
-                _require(
-                    bool(equal.all()),
-                    "DEMOGRAPHIC_INCUMBENT_CONFLICT",
-                    name,
-                )
+                conflicts = int((~equal).sum())
+                incumbent_conflicts += conflicts
+                _require(conflicts == 0, "DEMOGRAPHIC_INCUMBENT_CONFLICT", name)
                 compared[name] = int(known.sum())
             joins.append(
                 {
@@ -1050,20 +1250,34 @@ def _reconstruct(source, member_paths: Mapping[int, str | Path]):
                     "member_sha256": pin,
                     "source_rows": member_rows,
                     "joined_rows": len(positions),
-                    "unreferenced_source_rows": 0,
+                    "unreferenced_source_rows": int(
+                        member_rows - len(np.unique(indices))
+                    ),
                     "incumbent_compared_rows": compared,
                     "incumbent_relationship_crosscheck": relationship_crosscheck,
                     "accepted_source_missing_tokens": dict.fromkeys(OBSERVATIONS, 0),
                     "incumbent_absent_columns": sorted(
                         name for name, value in compared.items() if value is None
                     ),
-                    "incumbent_conflicts": 0,
-                    "native_key_or_age_conflicts": 0,
+                    "incumbent_conflicts": incumbent_conflicts,
+                    "native_key_or_age_conflicts": coordinate_conflicts,
+                    "counters_zero_in_every_successful_receipt": [
+                        "accepted_source_missing_tokens",
+                        "incumbent_conflicts",
+                        "native_key_or_age_conflicts",
+                        "unreferenced_source_rows",
+                    ],
+                    "zero_counter_semantics": ZERO_COUNTER_SEMANTICS,
                 }
             )
+    membership = verify_household_membership(
+        income_year=years,
+        source_household_id=output["source_household_id"],
+        household_id=household_id,
+    )
     classification = classify_asec_demographic_observations(
         income_year=years,
-        household_id=person["person_household_id"].to_numpy(dtype=np.int64),
+        household_id=household_id,
         a_sex=output["asec_A_SEX"],
         axsex=output["asec_AXSEX"],
         a_exprrp=output["asec_A_EXPRRP"],
@@ -1090,7 +1304,8 @@ def _reconstruct(source, member_paths: Mapping[int, str | Path]):
         "sources": joins,
         "join_keys": ["source_year", "PERIDNUM"],
         "crosschecks": ["source_household_id", "A_LINENO", "A_AGE"],
-        "household_grouping_column": "person_household_id",
+        "household_grouping_column": HOUSEHOLD_GROUPING_COLUMN,
+        "household_membership": membership,
         "diagnostics": classification.diagnostics,
         "contract": contract_document(),
         "release_eligible": False,
@@ -1275,15 +1490,19 @@ __all__ = [
     "COHORTS",
     "COLUMNS",
     "DERIVED",
+    "HOUSEHOLD_GROUPING_COLUMN",
+    "HOUSEHOLD_MEMBERSHIP_KEY",
     "HOUSEHOLD_REFERENCE_CODES",
     "HOUSEHOLD_REFERENCE_STATES",
     "HOUSEHOLD_REFERENCE_UNBOUND_REASONS",
+    "MEMBERSHIP_REFUSAL_COUNTERS",
     "NON_ADOPTED_HEAD_SIGNALS",
     "OBSERVATIONS",
     "OBSERVED_PERIOD_KIND",
     "SEX_ALLOCATION_STATES",
     "SEX_BINDING_STATES",
     "SEX_UNBOUND_REASONS",
+    "ZERO_COUNTER_SEMANTICS",
     "AsecDemographicField",
     "AuthenticatedAsecDemographicSource",
     "DemographicClassification",
@@ -1295,5 +1514,6 @@ __all__ = [
     "contract_document",
     "load_authenticated_asec_demographic_source",
     "read_demographic_member",
+    "verify_household_membership",
     "write_asec_demographic_source",
 ]
