@@ -27,7 +27,9 @@ Three refusals stay distinct here, exactly as the contract separates them:
 Excluding NP=0 rows as known vacant is a fourth, different thing:
 ``vacancy_bridge_missing``, which applies to a *drop*, not to a retention. An
 unknown drop history is ``unresolved_source_lineage`` and cannot imply a zero
-drop count; a known zero drop count waives none of the other requirements.
+drop count; a known zero drop count waives none of the other requirements; and
+a count that is not a nonnegative integer is refused outright rather than read
+as a known nonpositive drop.
 
 The GQ weight bridge is likewise an external required predicate. The shipped
 ACS loader's policy of substituting ``PWGTP`` for a zero ``WGTP`` on a GQ
@@ -58,6 +60,7 @@ __all__ = [
     "acs_housing_universe",
     "asec_housing_universe",
     "gq_weight_bridge_reasons",
+    "vacant_drop_count",
     "verify_pinned_adapters",
 ]
 
@@ -130,6 +133,30 @@ class GqWeightBridge:
             self.weight_definition_id.strip()
         ):
             raise UniverseError("A GQ weight bridge needs a nonempty definition id.")
+
+
+def vacant_drop_count(value: object) -> int | None:
+    """Read a caller's vacant-row drop count, or refuse a value that is not one.
+
+    ``None`` is the unknown drop history the module docstring separates from a
+    known zero, and it is returned unchanged. Anything else must be a
+    nonnegative JSON-style integer. A negative number is not a known nonpositive
+    drop: read as one it would waive the vacancy-bridge obligation that a
+    positive drop carries, so it is refused rather than compared.
+
+    Raises:
+        UniverseError: If the count is a bool, a float, a string or negative.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise UniverseError("vacant_household_rows_dropped must be an integer or None.")
+    if value < 0:
+        raise UniverseError(
+            "vacant_household_rows_dropped must be nonnegative; a negative count "
+            "is not a known nonpositive drop."
+        )
+    return value
 
 
 def gq_weight_bridge_reasons(bridge: GqWeightBridge | None) -> tuple[Reason, ...]:
@@ -211,7 +238,14 @@ def acs_housing_universe(
     Returns:
         Counts plus the reasons they carry. A retained NP=0 row without a bridge
         is ``denominator_unknown``; a dropped one is ``vacancy_bridge_missing``.
+
+    Raises:
+        UniverseError: If ``vacant_household_rows_dropped`` is not a
+            nonnegative integer or ``None``. This is checked before the adapter
+            is imported, so a miscounted drop never reaches a classification.
     """
+    vacant_household_rows_dropped = vacant_drop_count(vacant_household_rows_dropped)
+
     from microcosm.build.us_runtime.acs_housing_universe import (
         ACSHousingUniverseRefusalError,
         classify_acs_housing_universe,

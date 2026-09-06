@@ -19,7 +19,11 @@ explicitly at the call site, so no code path acquires approval by omission.
 Activation additionally needs a valid ``protocol_registered`` record naming the
 same digests (``/exposure_ledger/protocol_registration_payload``). A registration
 that names an approval digest the injected authority does not hold is refused:
-a ledger line cannot authorize itself.
+a ledger line cannot authorize itself. Holding the digest is not enough either.
+The named artifact has to be the record that authorizes *this* action for *this*
+protocol — the same record the authority resolved — so a registration of
+implementation-only approvals can never activate candidate scoring beside an
+unrelated scoring approval the registration never named.
 """
 
 from __future__ import annotations
@@ -290,6 +294,9 @@ def _registration_problems(
     registration: RegistrationClaim,
     authority: ApprovalAuthority,
     notes: dict[str, object],
+    *,
+    action: ApprovalScope,
+    resolution: ApprovalResolution,
 ) -> list[Reason]:
     problems: list[Reason] = []
     if registration.protocol_sha256 != protocol.sha256:
@@ -306,13 +313,34 @@ def _registration_problems(
     ):
         notes["registration_block_hash_mismatch"] = True
         problems.append(Reason.IDENTITY_MISMATCH)
-    for role, claimed in (
-        (ReviewerRole.ROOT, registration.root_approval_artifact_sha256),
-        (ReviewerRole.PEER, registration.peer_approval_artifact_sha256),
+    for role, claimed, selected in (
+        (
+            ReviewerRole.ROOT,
+            registration.root_approval_artifact_sha256,
+            resolution.root,
+        ),
+        (
+            ReviewerRole.PEER,
+            registration.peer_approval_artifact_sha256,
+            resolution.peer,
+        ),
     ):
         held = authority.by_digest(claimed)
         if held is None or held.reviewer_role is not role:
             notes[f"{role}_artifact_unresolved"] = True
+            problems.append(Reason.PROTOCOL_UNAPPROVED)
+            continue
+        if held.protocol_sha256 != protocol.sha256:
+            notes[f"{role}_artifact_protocol_mismatch"] = True
+            problems.append(Reason.IDENTITY_MISMATCH)
+        if held.verdict is not ApprovalVerdict.APPROVE:
+            notes[f"{role}_artifact_verdict"] = str(held.verdict)
+            problems.append(Reason.PROTOCOL_UNAPPROVED)
+        if action not in held.scopes:
+            notes[f"{role}_artifact_scope_missing"] = True
+            problems.append(Reason.PROTOCOL_UNAPPROVED)
+        if held is not selected:
+            notes[f"{role}_artifact_not_the_resolved_record"] = True
             problems.append(Reason.PROTOCOL_UNAPPROVED)
     return problems
 
@@ -332,6 +360,11 @@ def resolve_action(
     artifact digests. The injected authority must resolve one root and one peer
     ``APPROVE`` naming this digest and covering this action.
 
+    The registered artifact digests and the resolved records are one thing, not
+    two: each named digest must resolve to the very record the authority
+    selected for that role, and independently to an ``APPROVE`` for this
+    protocol digest whose scopes cover this action.
+
     A missing registration is not an oversight this function forgives: without
     one the action stays ``protocol_unapproved``.
     """
@@ -345,13 +378,20 @@ def resolve_action(
     if not protocol.canonical:
         notes["non_canonical_protocol_bytes"] = True
         problems.append(Reason.PROTOCOL_UNAPPROVED)
+    resolution = authority.resolve(protocol.sha256, action)
     if registration is None:
         problems.append(Reason.PROTOCOL_UNAPPROVED)
     else:
         problems.extend(
-            _registration_problems(protocol, registration, authority, notes)
+            _registration_problems(
+                protocol,
+                registration,
+                authority,
+                notes,
+                action=action,
+                resolution=resolution,
+            )
         )
-    resolution = authority.resolve(protocol.sha256, action)
     problems.extend(resolution.reasons)
     authorized = resolution.authorized and not problems
     return ApprovalResolution(
