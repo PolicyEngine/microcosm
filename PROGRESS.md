@@ -33,3 +33,10 @@ Prepared helper step:
 - Prepared four targeted counterprobes and fresh REQUIRED with raising kernels.
 - Baseline source worktree is frozen 1f6ffa7b, sharing only invented inputs/store.
 Next: run the committed bounded proof and correct any integration issues.
+
+Harness correction:
+- Initial supervisor launch failed because sandbox forbids ps; its invented stage
+  completed. Retained r1 as discarded supervisor evidence.
+- Replaced process-table polling with a worker-local RSS watchdog; supervisor
+  retains wall timeout and worker retains CPU limit. Added explicit anchor names.
+Next: rerun from a new invented directory on committed corrected helper bytes.

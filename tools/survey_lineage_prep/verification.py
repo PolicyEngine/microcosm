@@ -6,6 +6,9 @@ by the integrated caller. Full frame and design checks retain original logic.
 
 import hashlib
 
+BOUND = "assign_us_puma_ladder.boundary"
+ADDED = ("combined_survey_puf_support_clone",)
+
 
 def require(condition, reason):
     if not condition:

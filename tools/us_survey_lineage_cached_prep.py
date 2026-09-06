@@ -9,6 +9,7 @@ import resource
 import signal
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from collections.abc import Mapping
@@ -48,7 +49,8 @@ def dump(path, data):
         raise TypeError(type(value).__name__)
 
     Path(path).write_text(
-        json.dumps(data, indent=2, sort_keys=True, allow_nan=False, default=default) + "\n"
+        json.dumps(data, indent=2, sort_keys=True, allow_nan=False, default=default)
+        + "\n"
     )
 
 
@@ -249,6 +251,14 @@ def verify_demographics(before, after, root):
 def phase(root, name, checkout, head):
     flags = bootstrap(checkout, head)
     resource.setrlimit(resource.RLIMIT_CPU, (CAPS["cpu_seconds"], CAPS["cpu_seconds"]))
+
+    def watch_rss():
+        while True:
+            if resource.getrusage(resource.RUSAGE_SELF).ru_maxrss > CAPS["rss_bytes"]:
+                os._exit(86)
+            time.sleep(0.25)
+
+    threading.Thread(target=watch_rss, daemon=True).start()
     from survey_lineage_prep import guard, invented
 
     denials, wires = guard.install()
@@ -328,7 +338,7 @@ def phase(root, name, checkout, head):
                 n: v.typed_artifacts for n, v in manifest.nodes.items()
             },
             "cache_hits": {n: v.hit for n, v in manifest.nodes.items()},
-            "kernel_calls": calls,
+            "kernel_calls": list(calls),
             "source_keys": source_keys,
             "manifest_key": manifest.key,
             "clone_verification": clone_proof,
@@ -488,14 +498,7 @@ def supervise(root, name, checkout, head):
             },
         )
         while child.poll() is None:
-            rss = subprocess.run(
-                ["ps", "-o", "rss=", "-p", str(child.pid)],
-                capture_output=True,
-                text=True,
-            ).stdout.strip()
-            if time.monotonic() - start > CAPS["wall_seconds"] or (
-                rss and int(rss) * 1024 > CAPS["rss_bytes"]
-            ):
+            if time.monotonic() - start > CAPS["wall_seconds"]:
                 os.killpg(child.pid, signal.SIGTERM)
                 try:
                     child.wait(timeout=5)
