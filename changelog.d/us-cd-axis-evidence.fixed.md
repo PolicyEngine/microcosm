@@ -1,1 +1,1 @@
-Bind CD benchmark metrics, reference precision and source support to their declared block, geography and protocol; reject missing or mismatched evidence and preserve exact published decimals.
+Bind CD benchmark metrics, reference precision and source support to their declared block, geography and protocol; reject missing or mismatched evidence and preserve exact published decimals. Bind approval registration to the authorizing action and records, validate exposure-family arrays and attempt ordering, and refuse malformed protocol rosters and vacancy counts.

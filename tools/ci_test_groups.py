@@ -40,6 +40,7 @@ EXPLICIT_SHARED_SPEC = (
     "packages/microcosm-build/tests/test_cd_benchmark_ledger.py",
     "packages/microcosm-build/tests/test_cd_benchmark_metrics.py",
     "packages/microcosm-build/tests/test_cd_benchmark_protocol.py",
+    "packages/microcosm-build/tests/test_cd_benchmark_review_auxiliary.py",
     "packages/microcosm-build/tests/test_cd_benchmark_support.py",
     "packages/microcosm-build/tests/test_cd_benchmark_universe.py",
     "packages/microcosm-build/tests/test_cross_grain.py",

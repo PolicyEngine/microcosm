@@ -248,6 +248,14 @@ as a diagnostic; this implementation adds no new tolerance or silent rescaling.
 The separately declared renter discrepancy bound is enforced as well as the
 common bin and total-variation bounds.
 
+Registration must name the exact root and peer records selected to authorize
+that action and protocol; an implementation-only or unrelated approval cannot
+stand in. Ledger identifier arrays are validated before exposure reduction, and
+a new attempt requires completion or interruption of the prior attempt. The
+verification result retains any final unfinished attempt. Required protocol
+rosters refuse missing or non-array values as `ProtocolError`. Vacancy-drop
+history admits only `None` or a nonnegative integer.
+
 ## Where this package's reading fills a gap
 
 Five things the document leaves open are decided here and named as
