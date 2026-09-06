@@ -82,9 +82,11 @@ The audited top-level key list, the audited ``candidate_evaluation`` scalar and
 the pinned inventory byte count are read from the **packaged canonical protocol
 document** and from nowhere else. A ``protocol`` argument selects blocks, scope
 and bounds; it does not redirect those three. Rather than quietly attributing
-canonical facts to some other contract, the two entry points that mix them —
-:func:`load_pinned_inventory` and :meth:`ReferenceInventory.from_document` —
-refuse a non-canonical :class:`CompiledProtocol`. Reading them out of an
+canonical facts to some other contract, the three entry points that mix them —
+:func:`load_pinned_inventory`, :meth:`ReferenceInventory.from_document` and
+:func:`projection_completeness`, whose payload carries canonically derived
+fields beside the passed protocol's digest — refuse a non-canonical
+:class:`CompiledProtocol`. Reading them out of an
 arbitrary document instead would widen what this module treats as authority, and
 that is a protocol-scope change, deliberately not made here.
 
@@ -260,9 +262,10 @@ def _canonical_only(protocol: CompiledProtocol) -> CompiledProtocol:
 
     :func:`inventory_top_level_keys`, :func:`inventory_candidate_evaluation` and
     :func:`pinned_inventory_size_bytes` always read the packaged canonical
-    document. Enforcing those against a bundle while a different compiled
-    protocol supplies the blocks and scope would attribute canonical facts to a
-    contract that never stated them, so it is refused instead of documented away.
+    document. Enforcing those against a bundle — or reporting them in a payload
+    — while a different compiled protocol supplies the blocks and scope would
+    attribute canonical facts to a contract that never stated them, so it is
+    refused instead of documented away.
     """
     if not isinstance(protocol, CompiledProtocol):
         raise ReferenceProjectionError("A compiled protocol is required.")
