@@ -409,6 +409,13 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Measures the actual engine filer predicate for IRS return-based
         # target design rows; reads no source spine and treats no population.
         "soi_return_universe.py",
+        # Explicitly versioned ACS household source-column contract and its
+        # additive version 2 read. Declares rosters and reads native columns;
+        # applies no adjustment, universe policy or population treatment.
+        "acs_household_source_columns.py",
+        # Pure publisher household-total measurement for both arms. Runs on
+        # supplied projections; constructs no Frame and treats no population.
+        "household_reported_income.py",
     }
 )
 _CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(
