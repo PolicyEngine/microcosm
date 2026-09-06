@@ -113,7 +113,74 @@ preserved byte-for-byte, and every artifact this continuation writes carries a
   `asec_H_SEQ`. The narrower gap is real and correctly scoped; this lane did
   not modify it.
 
+### Fixed in this continuation, from confirmed review findings
+
+A six-dimension adversarial review of the corrections (freeze, identity,
+counting, CLI, tests, report accuracy), each finding then handed to an
+independent verifier told to refute it, surfaced defects the first attempt's own
+report asserted were impossible. Every one below was reproduced by this lane
+before it was fixed.
+
+- **A verified identity could still be forged.** `sha256` and `size_bytes` were
+  ordinary constructor fields, so `dataclasses.replace(inventory, sha256=…)` and
+  the public dataclass constructor both produced `identity_verified True`. A
+  three-district invented fixture emitted the real bundle's pinned digest and
+  byte count under a verified label — review finding 1 re-entering by a second
+  door, while the module said in three places and the report said in one that
+  there was no other door. Both fields are now `field(init=False)`, written by
+  `_index_inventory` through `object.__setattr__`; the constructor raises
+  `TypeError` and `dataclasses.replace` refuses. The remaining route is
+  subclassing or `object.__setattr__` itself, which is code substitution rather
+  than a caller mistake, and the docstring now says exactly that instead of
+  claiming impossibility.
+- **The identity label over-described itself.** `identity_verified` claimed the
+  pinned byte count had been matched. That leg only runs when the caller states
+  the pinned digest — which is not the arm any test takes. Reworded to what both
+  arms guarantee.
+- **`**unverifiable` accused typos of forgery.** Catching the whole keyword
+  space turned `from_document(doc, protocl=p)` into a `ReferenceProjectionError`
+  alleging an identity forgery, and `inspect.signature` advertised arbitrary
+  keywords. Now only `sha256` and `size_bytes` are named; they raise `TypeError`
+  — a defect in the call, not in the bundle, so a caller that reports every
+  `ReferenceProjectionError` as a rejected bundle cannot turn its own mistake
+  into a false statement about the inventory. Every other keyword gets Python's
+  own diagnostic.
+- **`reserved_families_projected_into_values` over-claimed.** It was derived
+  from blocks' *declared* exposure families, so `occupied_household_total`
+  reported B19001 as projected in the same payload whose evidence recorded
+  `B19001_001` as a duplicate alias **not** projected. It is now derived from
+  the cells actually projected.
+- **DC could be counted twice.** The duplicate key was the identity string, so
+  DC under its canonical id and under the `…1198` alias the raw `GEO_ID` column
+  carries were two keys: `districts_projected` 4 against a
+  `roster_district_count` of 3 — root's counterexample in a second form. The
+  alias is now folded onto the canonical id before the key is formed, and the
+  refusal names the earlier identity.
+- **The reserved-indexing sentence was unconditional.** A payload built with no
+  inventory still stated that indexing had validated every required table's
+  structure. It now says no inventory was indexed, and the family list is empty.
+- **`projection_completeness` accepted a non-canonical protocol** the indexing
+  entry points refuse, while the payload mixes canonically derived fields with
+  that protocol's digest. It now calls `_canonical_only` too.
+- **"Only mutability is removed" was false.** A `mappingproxy` is not a `dict`,
+  so the frozen document is not directly serializable, picklable or
+  deep-copyable — `canonical_bytes(inventory.document)` fails where it succeeded
+  before the freeze. Nothing computes a wrong value; it fails loudly. The
+  docstring now says so and says how a consumer thaws.
+- **`from_document` was weaker than the byte route on values.** `strict_load`
+  refuses `NaN`/`Infinity`; `_frozen_json` passed any float through. It now
+  refuses nonfinite floats, so the claim that the two routes are equally strict
+  is true rather than asserted.
+
+Tests grew 63 → 68 cases in the reader file (focused group 148 → 153), covering
+each of the above. The freeze's cost, which the first attempt recorded as *not
+measured*, is now measured on a synthetic tree sized to the pinned byte count
+(the real bundle is still never opened): freeze 0.95 s against 0.24 s to parse
+and 0.012 s to digest the same 38.8 MB, ~88 MB peak for the freeze alone, and
+recursion is not a risk — the producer's shape nests 6 deep against a limit of
+3000.
+
 ### Next
 
-Adversarial review of the corrections across six dimensions, then any confirmed
-fixes, then the continuation report. Still **no genuine projection**.
+Remaining review dimensions, then the continuation report. Still **no genuine
+projection**.
