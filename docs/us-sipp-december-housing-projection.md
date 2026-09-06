@@ -23,6 +23,11 @@ keys of receipts that already exist, so adding a housing field to the closed
 `sipp_december_source_v1` receipt format are unchanged, and
 `test_us_sipp_housing_projection.py` asserts each of them.
 
+The housing receipt binds all four modules' bytes (see "Implementation binding"
+below). Binding is a read: it records what the frozen modules are, and moves the
+*housing* receipt if they ever change. It does not alter them, and the frozen
+producer's own `_contract()` binding is untouched.
+
 The housing modules therefore import those internals rather than copying them.
 The kernel reuses `_number`, `_flag`, `_raw`, `_prepare`, `_check_source`,
 `_QUALITY`, the fixed arithmetic context and `december_households`; the recipe
@@ -44,6 +49,10 @@ so this lane introduces no second document authority.
 Page locators use **zero-based PDF page P**; the printed page is P+1 and an
 ordinary viewer shows P+1. Column presence was confirmed against the pinned
 parent's pipe-delimited header only. No SIPP data row was read to write this.
+
+`EEHC_RENTSUB`'s universe is transcribed with straight quotes as
+`TEHC_ST <= '60'`; the dictionary's own rendering uses typographic quotes. That
+is quote normalization in the transcription, not a difference in the condition.
 
 ## The transcribed field table
 
@@ -167,19 +176,41 @@ public file. Any statement that SIPP observes a landlord subsidy is false.
 
 `ERENTSUB` applies to `ETENURE in (2,3)`. **`EVOUCHER` applies only when
 `ERENTSUB = 1`.** That is its published universe, so an unassisted household has
-no `EVOUCHER` answer to give and its blank is expected, not missing. The
-applicable household indicator for an unassisted determination is therefore
-`ERENTSUB` alone, and an applicable `EVOUCHER` answer alongside an explicit
-`ERENTSUB = 2` is recorded as `assistance_universe_conflict` rather than
-absorbed.
+no `EVOUCHER` answer to give: a **blank value under allocation flag 0** is the
+one voucher state that universe predicts, and it is expected, not missing.
 
 A household is `explicit_unassisted` only when `ERENTSUB = 2` carries allocation
-flag `1` (reported) with no copy conflict. An imputed "No" is
-`unassisted_allocated` — its own class, excluded from the donor universe. NIU,
-missing, suppressed, allocated and conflicting statuses each keep their own
-class and are **never** recoded as unassisted. A renter whose `ARENTSUB` reports
-flag 0 is `assistance_not_in_universe`, which contradicts the published universe
-and is kept distinct from plain missingness.
+flag `1` (reported) with no copy conflict **and** its `EVOUCHER` evidence is
+exactly that expected blank. `_voucher_evidence()` grades the raw observations
+rather than the collapsed measurement class, because once a value has been
+discarded the class reports the flag: a populated `EVOUCHER` under flag 0 and an
+empty one under flag 0 both read as `not_in_universe`, and only the second is
+the expected case. The six graded states, and what each does:
+
+| Voucher evidence | Meaning | With an explicit `ERENTSUB = 2` |
+| --- | --- | --- |
+| `expected_blank_not_in_universe` | blank value, flag 0 | admitted |
+| `copy_conflict` | members disagree | `assistance_copy_conflict` |
+| `suppressed` | flag `-99` | `assistance_universe_conflict` |
+| `answer_present` | an in-domain value under any flag | `assistance_universe_conflict` |
+| `applicable_without_answer` | flag 1–9, no value | `assistance_universe_conflict` |
+| `unresolved` | absent column, invalid code, invalid flag | `assistance_voucher_unresolved` |
+
+An imputed "No" is `unassisted_allocated` — its own class, excluded from the
+donor universe — and conflicting voucher evidence is reported before that split,
+so an imputed negative never becomes an explicit one. NIU, missing, suppressed,
+allocated and conflicting statuses each keep their own class and are **never**
+recoded as unassisted. A renter whose `ARENTSUB` reports flag 0 is
+`assistance_not_in_universe`, which contradicts the published universe, is kept
+distinct from plain missingness, and now has its own exclusion rung rather than
+sharing the unknown one.
+
+An owner is outside `ERENTSUB`'s universe. An owner with an in-universe answer
+is `assistance_universe_conflict`; an owner whose assistance evidence is a copy
+conflict, a suppressed flag or an applicable flag without an answer is
+`owner_assistance_evidence_unresolved`, because withheld or contradictory
+evidence is not the same as having no answer to give. Either way the exclusive
+ladder still reports `tenure_owner`, and the class keeps the evidence visible.
 
 Assisted households keep their voucher detail: `assisted_with_voucher`,
 `assisted_without_voucher` or `assisted_voucher_unknown`.
@@ -191,10 +222,14 @@ reason:
 
 ```
 tenure_copy_conflict  tenure_unknown  tenure_owner  tenure_no_payment
-assistance_universe_conflict  assistance_copy_conflict  assistance_assisted
-assistance_unassisted_allocated  assistance_unknown
+assistance_universe_conflict  assistance_copy_conflict
+assistance_not_in_universe  assistance_voucher_unresolved
+assistance_assisted  assistance_unassisted_allocated  assistance_unknown
 rent_copy_conflict  rent_unknown  weight_unknown  weight_not_positive
 ```
+
+Every rung is reachable, and the test suite asserts that the exclusive counts
+over an invented fixture set cover the declared order exactly.
 
 Every household that clears the ladder is `admitted`. Nothing is trimmed by rent
 magnitude, and no unassisted subset is created by dropping cheap rents. An
@@ -208,11 +243,35 @@ owner households, which the ladder reports as `tenure_owner`.
 
 `housing_diagnostics()` reports unweighted counts of: households and people;
 tenure classes and raw `ETENURE`/`ERENTSUB`/`EVOUCHER`/`EPRDEBT`/`EMHDEBT` codes;
-assistance classes; the exclusive exclusion ladder; per-field evidence class,
-allocation quality, copy conflicts and unknown measurements; person-month codes,
-quality and member disagreement; owner-debt resolution; admitted rent class and
-quality; and boundary counts for zero rent, domain-maximum rent, topcode-marked
-and partly-marked households, and the utilities equivalents.
+assistance classes; how every household's voucher evidence was graded, overall
+and among admitted households; the exclusive exclusion ladder; per-field
+evidence class, allocation quality, copy conflicts and unknown measurements;
+person-month codes, quality and member disagreement; owner-debt resolution and
+the evidence classes behind it; admitted rent class and quality; and boundary
+counts for zero rent, domain-maximum rent, topcode-marked, partly-marked and
+per-state marker households, and the utilities equivalents.
+
+Owner debt is reported as `owner_debt_indicated`, `owner_debt_absent` or
+`owner_debt_unresolved`. "Indicated" rather than "reported" is deliberate:
+`EPRDEBT`/`EMHDEBT` admit an allocated answer, and *reported* means allocation
+flag 1 in this vocabulary, so `owner_debt_evidence_classes` carries the
+contributing evidence class for each field beside the resolution.
+
+### Topcode markers: a zero is not a cleared non-topcode
+
+`TUTILS_MED` and `TUTILS_STD` carry a published minimum of **$0**, so a lexical
+`0` is an in-domain marker value for them, while the same token is
+`invalid_domain` for the $1-minimum `TRNTMT_MED`/`TRNTMT_STD` pair. The
+dictionary does not say what the public file writes for a person who is not in a
+topcoded group, and **no data row has been read**, so the real incidence of zero
+markers is unknown. If the file populates `0` rather than a blank,
+`utilities_topcode_marked_households` would equal the household count and would
+mean nothing.
+
+The diagnostics therefore count the raw states separately — `*_topcode_marker_`
+`zero`, `invalid_domain`, `blank` and `absent` `_records`, plus the household
+counts for each — and **no zero is scored as a cleared non-topcode**. Read those
+counts in the first-32 output before interpreting any marker total.
 
 Cross-grain contradictions are surfaced rather than averaged away:
 `person_month_receipt_in_explicit_unassisted_households`,
@@ -257,6 +316,14 @@ existing evidence, reused.
 
 ## Recipe identity and refusals
 
+The current recipe is `sipp-december-housing-projection/2`. Version 1 admitted
+an explicit `ERENTSUB = 2` whatever `EVOUCHER` carried, folded
+`assistance_not_in_universe` into the unknown rung, bound no implementation
+identity and copied the caller's `selection` label into the receipt without
+counting the SSUIDs behind it. **No version 1 receipt was ever produced** — the
+extraction has not been run — so nothing published moves with the bump;
+`SUPERSEDED_RECIPE_VERSIONS` records it.
+
 `recipe_bytes()` is the canonical serialization of `recipe_document()` and
 `RECIPE_SHA256` pins it. A contract change must move that pin in the same
 commit; otherwise `verify_recipe()` raises `HOUSING_RECIPE_TAMPERED` before any
@@ -267,21 +334,97 @@ raises `HOUSING_RECIPE_DICTIONARY_MISMATCH`, and `header_positions()` raises
 duplicating a declared column.
 
 `project()` returns households, diagnostics and a
-`sipp_december_housing_projection_v1` receipt carrying the recipe, its pin and
-digest, the membership and measurement digests, and aggregates only. The receipt
-contains no individual identifier and no individual amount; the returned
-measurement tuples necessarily do, and must not be printed in a report.
+`sipp_december_housing_projection_v2` receipt carrying the recipe, its pin and
+digest, the implementation binding, the source identity, the selection evidence,
+the membership and measurement digests, and aggregates only. The receipt
+contains no individual identifier and **no individual dollar amount**. It is not
+free of every individual quantity: with a single household in a class,
+`source_weight_totals` and the `known_weight_sum` in the weight blocks expose
+that household's mean member `WPFINWGT`. The returned measurement tuples carry
+individual amounts and identifiers, and must not be printed in a report.
+
+### Implementation binding
+
+`RECIPE_SHA256` pins the declared contract, not the code that applies it: a
+change to `_assistance_class`, `_exclusion` or `measurement_class` can leave the
+recipe bytes untouched while changing what a receipt means. The receipt
+therefore carries `implementation.module_sha256` for
+`sipp_housing_measurements`, `sipp_housing_projection` and the two frozen
+modules they reuse, plus a `binding` key over those digests. It sits in the
+receipt and **not** inside `recipe_bytes()`, because a module hash placed inside
+the bytes it hashes cannot be computed; the recipe names what is bound and
+records `inside_recipe_bytes: false`. The frozen modules are read, never
+written, so the producer binding that already-published vehicle-equity receipts
+carry is unchanged. No dependency version is bound here — the measurement path
+is standard-library `Decimal` arithmetic under a fixed context — and the
+receipt says so.
+
+### Selection is a caller assertion
+
+`project()` sees only the rows it is handed. `selection_evidence` records the
+mode, the distinct `selected_ssuid_count`, a digest over the sorted SSUIDs,
+`source_authentication: caller_asserted`, and
+`relative_selection_established_by: authenticated_runner_over_the_full_december_roster`.
+`first_32_ssuids` refuses more than 32 SSUIDs with `SELECTION_EXCEEDS_FIRST_32`,
+but a count of 32 or fewer is **not** proof that those are the first 32 SSUIDs of
+the whole source: only a runner that enumerated the full authenticated December
+roster establishes that relative claim, and the receipt says so in its own words.
+
+`source_identity` is separate from that assertion. It records the pins the
+caller's `SippSource` carries, which `verify_source()` has checked against the
+frozen producer's, together with
+`supplied_rows_verified_against_these_bytes: false` and
+`new_source_byte_proof_claimed: false`. No parent byte is opened here and the
+supplied rows are not hashed, so the block says which source the caller asserts
+the rows came from — never that they did.
 
 ## Extraction proposal
 
 The runnable first-32-SSUID proposal lives outside this repository, with the
-review artifacts, and has **not** been executed. It authenticates the parent
-through the frozen producer's own bounded, no-follow, hash-checked snapshot
-helpers, parses the snapshot once with the frozen record grammar, keeps December
-rows for the first 32 December SSUIDs, and calls `project()`. It writes a
-receipt and a diagnostics JSON to explicitly named paths under the review root
-and prints no source row. `all_ssuids` remains a closed option that needs its
-own approval after the first-32 result is reviewed; it is not implied here.
+review artifacts, and has **not** been executed. The current version is
+`us-sipp-housing-projection-extract-v2.py`
+(`sipp-december-housing-extraction-proposal/2`), with
+`us-sipp-housing-projection-extract-v2-selfcheck.py` beside it. Version 1,
+`us-sipp-housing-projection-extract.py`, is kept unmodified as history and must
+not be run.
+
+The proposal authenticates the parent through the frozen producer's own bounded,
+no-follow, hash-checked snapshot helpers, parses the snapshot once with the
+frozen record grammar, keeps every December row of the first 32 December SSUIDs,
+and calls `project()`. It writes a receipt, a diagnostics JSON and a run record
+to explicitly named paths under the review root and prints no source row.
+`all_ssuids` remains a closed option that needs its own approval after the
+first-32 result is reviewed; version 2 keeps that gate exactly and adds no new
+approval flow.
+
+Version 2 fixes what the review found in version 1:
+
+- The **frozen reconciliation continuity check refuses before any output is
+  written**. Version 1 wrote the receipt, diagnostics and run record at mode
+  0400 and only then raised, so a failed run left a file named as a first-32
+  receipt on disk and every rerun refused with `OUTPUT_EXISTS`.
+- Every output path is checked for collision **before the parent is opened**, so
+  a rerun costs nothing and can never half-write a set.
+- `--no-snapshot` is removed. It hashed the original in place and never compared
+  that descriptor identity at parse time, so the bytes read could differ from
+  the bytes hashed. The snapshot path always applies.
+- An available-memory preflight runs before the copy, using the frozen
+  producer's own estimator and its 8 GiB requirement, and the copy is bracketed
+  by the time and peak-RSS guard.
+- Diagnostics and the run record are serialized with `canonical_json`, which
+  refuses an unknown type instead of stringifying it, so `diagnostics_sha256` is
+  deterministic. Version 1 used `default=str`.
+
+The self-check runs the proposal's own code path on an invented pipe-delimited
+file with a scrambled header and decoy columns on both sides. It asserts the
+`all_ssuids` gate, that `--no-snapshot` no longer parses, whole-SSUID selection
+over households of two and three members, a continuity refusal that leaves the
+output directory empty, an `OUTPUT_EXISTS` refusal reached before a nonexistent
+parent path is touched, 0400 output modes, and byte-identical canonical
+diagnostics. It opens no SIPP byte. The one frozen value it replaces is
+`_PINS.expected_counts`, so the continuity branch can be exercised in both
+directions over a file whose counts are known; the replacement is restored and
+the restoration is asserted.
 
 ## Tests
 
@@ -291,3 +434,17 @@ household copy disagreement, missing/NIU versus zero versus negative, owner
 versus renter, assistance unknown/conflict versus explicit unassisted, every
 allocation quality class, the household-copied versus person-month grain, the
 topcode markers, the weights and the aggregate ladder.
+
+It also covers, from the independent review: each of the four voucher states
+that must not be absorbed into `explicit_unassisted` and the expected blank that
+must not become missing; the discarded-value versus blank distinction in the
+preserved raw observations; an owner's unresolved evidence; the
+`SELECTION_EXCEEDS_FIRST_32` refusal and the receipt's selection evidence and
+source identity; the implementation binding against the real module bytes, its
+absence from the recipe bytes, and that a changed module digest moves the
+receipt while the recipe pin stays; the zero versus invalid-domain marker
+states; a November row that cannot contradict December; one SSUID with two
+residences becoming two classified households; `owner_debt_absent`; an assisted
+household with no member receipt; `ETENURE = 3` with a reported `ERENTSUB = 2`;
+a renter whose `ARENTMORT = 0` reaches `rent_unknown`; and person-month evidence
+that never reaches the household measurements.
