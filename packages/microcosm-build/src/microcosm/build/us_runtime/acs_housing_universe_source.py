@@ -16,7 +16,7 @@ import shutil
 import stat
 import tempfile
 import zipfile
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import InitVar, dataclass
 from pathlib import Path
 
@@ -222,9 +222,12 @@ def _capture(source_dir, snapshot_root):
             if isinstance(error, ACSHousingSourceError)
             else "SOURCE_PREPARATION_REFUSED"
         )
-        failure = _json({"status": "failed", "reason": code})
-        if not (private / "failure.json").exists():
-            _write(private / "failure.json", failure, ACS_HU_RECEIPT_MAX_BYTES)
+        # Recording is best effort and strictly subordinate: if the record
+        # cannot be written, the refusal it was recording still propagates.
+        with suppress(Exception):
+            failure = _json({"status": "failed", "reason": code})
+            if not (private / "failure.json").exists():
+                _write(private / "failure.json", failure, ACS_HU_RECEIPT_MAX_BYTES)
         raise
 
 
@@ -640,9 +643,18 @@ def _run_source(source_dir, snapshot_root, serialnos, output_dir, readback):
                     ("receipt.json", result.receipt_json, ACS_HU_RECEIPT_MAX_BYTES),
                 ):
                     target = private / ("candidate-" + name)
-                    digest = _copy(
-                        destination / name, target, cap, exact_size=len(expected)
-                    )
+                    # SOURCE_SIZE and FILE_TOO_LARGE are the pinned-archive
+                    # codes. A candidate of the wrong length is a different
+                    # fact, and an operator has to be able to tell them apart,
+                    # so only this call's size refusals are renamed.
+                    try:
+                        digest = _copy(
+                            destination / name, target, cap, exact_size=len(expected)
+                        )
+                    except ACSHousingSourceError as error:
+                        if str(error) not in ("SOURCE_SIZE", "FILE_TOO_LARGE"):
+                            raise
+                        raise ACSHousingSourceError("RECONSTRUCTION_SIZE") from None
                     _require(
                         digest == _sha(expected)
                         and _persisted_sha(target, len(expected)) == digest,

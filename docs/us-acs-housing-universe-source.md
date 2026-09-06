@@ -94,6 +94,9 @@ freshly captures and reconstructs the full parents. It privately captures both
 candidate files and compares exact lengths and bytes by SHA256 before returning
 the reconstructed source. Candidate JSON is never decoded as authority. Changed
 metadata, rewritten projection values, reparenting and crossed selections refuse.
+A candidate of the wrong length refuses with `RECONSTRUCTION_SIZE`, which names
+the candidate only; the pinned parent archives keep their own `SOURCE_SIZE` and
+`FILE_TOO_LARGE` codes, so a bad readback and a bad archive stay distinguishable.
 Both operations return immutable byte-backed `AuthenticatedACSHousingSource`;
 DataFrame access creates owned copies.
 
@@ -101,7 +104,10 @@ Capture and output writes never replace an existing path. Successful captures
 and output directories must sit outside the closed original source directory;
 overlap refuses before copying source bytes. Successful captures
 remain available for local audit. Failed captures remain private with a sanitized
-`failure.json`; a failed publication can leave a partially written, exclusively
+`failure.json`. Writing that record is subordinate to the refusal it records: if
+the record itself cannot be written, the original refusal still propagates
+unchanged, and the capture is simply left without a `failure.json`. A failed
+publication can leave a partially written, exclusively
 owned output directory. Neither source inputs nor earlier artifacts are cleaned
 up or modified. Retrying requires a fresh output directory. Retained captures
 consume disk and need a separate, explicit cleanup decision.
@@ -148,6 +154,17 @@ An explicit `ContentStore` loader call uses the dedicated
 The graph executor content-keys declared source paths; CREATE performs the
 authenticated Frame construction.
 
+`serialnos` seeds the CREATE population itself, before any SELECT pruning. The
+complete HU payload carries the full projection under a 64 MiB cap, so the
+`serialnos=None` graph route is expected to refuse on the genuine 2024 archives
+and a seed selection is expected to be required there. No genuine projection has
+been built or measured, so the size at which that boundary actually bites is
+unknown and is not forecast here; the cap is a refusal bound, not a prediction.
+A seeded CREATE stores the parent Frame's retained person index labels, which are
+gapped rather than renumbered, and SELECT hashes the stored index as it stands.
+A vacancy-only seed carries source evidence but no person and refuses with
+`EMPTY_GRAPH_POPULATION`; a vacancy-only SELECT refuses with `EMPTY_SELECTION`.
+
 CREATE emits Frame context, preparation receipt and native HU evidence as typed
 artifacts from one producer. The complete HU payload has its own64MiB cap,
 separate from the existing raw-byte source cap. It contains bounded canonical
@@ -160,7 +177,10 @@ the sanitized `JSON_DEPTH` domain error, including canonicalization recursion.
 
 SELECT consumes the same producer's original artifacts and all declared Frame
 cells. Type, artifact key, producer, original context, source receipt and complete
-Frame storage identity must agree. Structural-only group ID tables are rebuilt
+Frame storage identity must agree. Bound evidence also checks the source receipt's
+own `format`, `vintage` and archive pins against the current manifest, so the
+evidence states what it rests on instead of covering it only transitively through
+the implementation hash. Structural-only group ID tables are rebuilt
 from declared person memberships and checked against the producer's ordered-ID
 digest; implicit IDs are never declared as invented owned data cells.
 
@@ -180,7 +200,8 @@ unchanged; the new modules receive actual stage/contract entries, not a fictitio
 build-package roster.
 
 Invented tests exercise source reconstruction and rejection, same-snapshot real
-Frame construction, direct/graph equality, nonidentity selection and zero-kernel
-warm replay. These establish code and custody contracts only. A later reviewed
+Frame construction, direct/graph equality, nonidentity selection, zero-kernel
+warm replay, a seeded CREATE with a further SELECT subset cold and warm, and the
+registered codec loader's success path through a real `ContentStore`. These establish code and custody contracts only. A later reviewed
 run must measure genuine source/member inventory, projection size and resources
 before authorizing scale, calibrated descendant bridges or CD evaluation.

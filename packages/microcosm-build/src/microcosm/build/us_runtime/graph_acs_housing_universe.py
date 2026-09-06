@@ -258,6 +258,20 @@ def bind_acs_housing_evidence(payload, *, prepared_receipt, frame_context):
             "IMPLEMENTATION_BINDING",
         )
         _require(header["frame_sha256"] == prepared["frame_sha256"], "FRAME_BINDING")
+        # Coverage of the pins is otherwise only transitive, through the
+        # implementation hash over the archive manifest. Comparing them here
+        # makes the evidence say what it rests on.
+        _require(
+            receipt["format"] == "microcosm.acs_housing_universe_source.v1"
+            and receipt["release_eligible"] is False
+            and receipt["vintage"] == 2024
+            and receipt["archives"]
+            == [
+                {"role": r, "filename": n, "sha256": d, "bytes": s}
+                for r, n, d, s in source._pins()
+            ],
+            "SOURCE_PINS",
+        )
         household, person, _typed, _lines, _pw, derived = source._tables(projection)
         _require(
             len(household) == nhouse == receipt["selected_counts"]["households"]
