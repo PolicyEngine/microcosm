@@ -528,6 +528,34 @@ def test_two_arm_comparability_keeps_period_and_universe_differences_visible():
         reported.two_arm_comparability(asec, acs)
 
 
+def test_two_arm_comparability_declares_the_asec_hu_binding_requirement():
+    """GQ file coverage and the measurement universe are distinct claims.
+
+    A published household count excluding group-quarters residents is not
+    evidence that the ASEC file itself carries no group-quarters records, and
+    this pure function must not assert that it does. The required binding is
+    a stable declaration, not prose a future edit could quietly reword away.
+    """
+
+    acs = _acs(("2024HU0000001",), [50_000], [1])
+    asec = _asec(("2024:1",), [50_000], [2024])
+    report = reported.two_arm_comparability(acs, asec)
+
+    assert report["asec_universe_binding"] == (
+        reported.ASEC_MEASUREMENT_REQUIRES_INDEPENDENT_HU_MASK
+    )
+    universe_axis = next(
+        item for item in report["differences"] if item["axis"] == "household universe"
+    )
+    assert universe_axis["asec"] == (
+        "All Households as printed; the CPS household count "
+        "excludes persons living in group quarters"
+    )
+    serialized = json.dumps(report)
+    assert "only the ACS file carries group-quarters rows at all" not in serialized
+    assert json.loads(serialized) == report
+
+
 def test_no_component_or_split_claim_is_made_by_either_arm():
     acs = _acs(("2024HU0000001",), [50_000], [1])
     asec = _asec(("2024:1",), [50_000], [2024])

@@ -34,6 +34,7 @@ __all__ = [
     "ACS_CARRIED_REPORTED_INCOME",
     "ACS_UNCARRIED_INCOME_TYPES",
     "ASEC_HTOTVAL_ORIGIN",
+    "ASEC_MEASUREMENT_REQUIRES_INDEPENDENT_HU_MASK",
     "AVAILABILITY",
     "B19001_2024_BIN_DEFINITION_ID",
     "B19001_2024_METADATA",
@@ -67,6 +68,24 @@ QUALITY: Mapping[str, int] = MappingProxyType(
         "declared_open_ended_bound": 1,
         "not_applicable": 2,
     }
+)
+
+#: The ASEC arm's raw total carries no occupied-housing-unit determination of
+#: its own: `measure_asec_household_reported_income` never derives an
+#: out-of-universe code, because HTOTVAL's printed universe is All Households
+#: with no declared N/A pattern. A published household count excluding
+#: group-quarters residents does not mean the underlying file has no
+#: group-quarters rows -- the prepared ASEC household table retains the raw
+#: fields `asec_housing_universe` classifies -- so a B19001-style consumer
+#: must bind that independently carried housing-universe mask before treating
+#: an ASEC household as occupied-HU in scope. This module does not compute or
+#: expose that mask; it only states the requirement.
+ASEC_MEASUREMENT_REQUIRES_INDEPENDENT_HU_MASK = (
+    "unbound_by_this_measurement: the ASEC arm's raw asec_HTOTVAL total does "
+    "not by itself establish occupied-housing-unit membership; a "
+    "B19001-style consumer must bind the independently carried ASEC "
+    "housing-universe mask before counting an ASEC household in an "
+    "occupied-HU universe"
 )
 
 _ACS_DICTIONARY_URL = (
@@ -804,6 +823,7 @@ def two_arm_comparability(
             "target_price_year": 2024,
             "component_sum": "never; both arms use the publisher aggregate",
         },
+        "asec_universe_binding": ASEC_MEASUREMENT_REQUIRES_INDEPENDENT_HU_MASK,
         "differences": [
             {
                 "axis": "reference period",
@@ -837,10 +857,19 @@ def two_arm_comparability(
                     "excludes persons living in group quarters"
                 ),
                 "consequence": (
-                    "both universes are occupied housing units, but only the "
-                    "ACS file carries group-quarters rows at all, so only the "
-                    "ACS arm has a publisher basis for an out-of-universe "
-                    "availability code"
+                    "both source files carry group-quarters-flagged records: "
+                    "the prepared ASEC household table retains the raw "
+                    "group-quarters fields a separate classifier keys on, so "
+                    "a published household count excluding GQ does not mean "
+                    "the file has no GQ rows. This measurement derives an "
+                    "out-of-universe availability code only from the ACS "
+                    "TYPEHUGQ field, because only the ACS dictionary "
+                    "declares an N/A pattern for HINCP; the ASEC arm's raw "
+                    "asec_HTOTVAL total does not by itself establish "
+                    "occupied-housing-unit membership, so a B19001-style "
+                    "consumer must bind the independently carried ASEC "
+                    "housing-universe mask before treating an ASEC household "
+                    "as in scope"
                 ),
             },
             {

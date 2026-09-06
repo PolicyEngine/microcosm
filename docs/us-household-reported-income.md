@@ -157,11 +157,29 @@ money income is published *exclusive of capital gains*, so the separate ASEC
 all-other-income component `OIP` nor an unallocated residual, and no residual
 may be labelled "other income". The ASEC household composition is fixed at the
 survey date exactly as the ACS composition is fixed at the interview date, so
-that axis does not distinguish the arms — the reference *window* does. And both
-universes are occupied housing units: the CPS household count excludes persons
-living in group quarters, while the ACS file carries group-quarters rows and
-declares `HINCP` not applicable on them, which is why only the ACS arm has a
-publisher basis for an out-of-universe availability code.
+that axis does not distinguish the arms — the reference *window* does. Both
+published universes are occupied housing units: the CPS household count
+excludes persons living in group quarters, and the ACS file carries
+group-quarters rows and declares `HINCP` not applicable on them.
+
+### File record coverage versus measurement universe
+
+The published CPS household-count exclusion is not evidence that the ASEC
+file itself has no group-quarters records. `asec_housing_universe.py`
+separately classifies `HRHTYPE` 9/10 as group quarters over the same prepared
+household table, and `with_asec_household_observations` retains the raw
+`asec_H_LIVQRT` / `asec_HRHTYPE` fields that classification keys on. File
+record coverage and measurement universe are therefore distinct: only the
+ACS dictionary declares an N/A pattern for its own field, so only
+`measure_acs_household_reported_income` derives an out-of-universe
+availability code; `measure_asec_household_reported_income` derives none,
+because its raw `asec_HTOTVAL` total does not by itself establish
+occupied-housing-unit membership. A consumer who wants an occupied-HU-only
+ASEC measurement — for example before a B19001-style comparison — must bind
+the independently carried ASEC housing-universe mask first; this module
+states that requirement (`ASEC_MEASUREMENT_REQUIRES_INDEPENDENT_HU_MASK`,
+also returned as `two_arm_comparability(...)["asec_universe_binding"]`) but
+does not compute or expose the mask itself.
 
 ### What the executed ACS person roster does and does not carry
 
@@ -248,7 +266,11 @@ the single transformation, and JSON-safe evidence. Arrays are read-only;
 `unavailable_in_universe`. Only the ACS arm can report the out-of-universe
 code, because only the ACS dictionary declares one. `QUALITY` is
 `exact_publisher_total` / `declared_open_ended_bound` / `not_applicable`; only
-the ACS arm can report a declared bound, at `HINCP == -59999`.
+the ACS arm can report a declared bound, at `HINCP == -59999`. The ASEC arm's
+own evidence beyond these shared axes is narrow — the measured `values`, the
+`household_keys` they align to, and the `income_years` each value restates
+from. None of that is an occupied-housing-unit determination: see
+"File record coverage versus measurement universe" above.
 
 Price handling is stated, not implied. The ACS arm multiplies once by the
 declared `1015250 / 1000000`; requiring that exact enumerated code is what
