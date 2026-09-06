@@ -169,7 +169,9 @@ def clean_etb_vat_table(
     train["weight"] = data["hhold_adj_weight"]
     denominator = data["expdis"] - data["totvat"]
     if (denominator == 0).any():
-        raise ValueError("ETB VAT donor contains zero disposable-expenditure denominators.")
+        raise ValueError(
+            "ETB VAT donor contains zero disposable-expenditure denominators."
+        )
     train["full_rate_vat_expenditure_rate"] = (
         data["totvat"] * (1 - reduced_rate_share) / standard_rate
     ) / denominator
@@ -199,9 +201,7 @@ def etb_vat_configuration(
     }
     if stage is not None:
         derive = next(
-            operation
-            for operation in stage.operations
-            if operation.kind == "derive"
+            operation for operation in stage.operations if operation.kind == "derive"
         )
         for key, value in config.items():
             declared = derive.parameters.get(key)

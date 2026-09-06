@@ -7,6 +7,7 @@ what the recipe must refuse and how it must classify evidence it is given.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import inspect
 import json
@@ -2122,3 +2123,112 @@ def test_the_state_and_dc_count_is_derived_from_the_published_code_set():
     geography = hp.recipe_document()["prospective_predictors"]["state_geography"]
     assert geography["state_and_dc_code_count"] == len(predictors.STATE_AND_DC_CODES)
     assert geography["published_code_count"] == len(predictors._STATE_CODES)
+
+
+# --- the version 2 measurement surface, unmoved by version 3 ----------------
+
+# The version 2 digests for the fixture set below, computed by running the
+# accepted base implementation (5534a0fc155dfdfe3b399725ed44fbb9d42f859e,
+# before this lane) over rows built by these same helpers. They are pinned, not
+# recomputed from the head, so a change to the measurement pass cannot move
+# them silently.
+VERSION_2_MEASUREMENT_DIGEST = (
+    "66b034162cd90c9c25ccf5a03a4f3929248a5cb435499aeaf94258e19dbe79a5"
+)
+VERSION_2_MEMBERSHIP_DIGEST = (
+    "d6fe155599b49d0295bebbd35884e82300d3c0058789a779bce98e6d9032a1c5"
+)
+
+
+def _ladder_fixture():
+    """A spread across the admission ladder, every row carrying the nine columns."""
+    return [
+        _row(ssuid="0001", pnum=101, residence="100001"),
+        _row(ssuid="0001", pnum=102, residence="100001", TAGE_EHC="9"),
+        _row(ssuid="0002", pnum=101, residence="100002", **OWNER),
+        _row(ssuid="0003", pnum=101, residence="100003", TRENTMORT="", ARENTMORT="0"),
+        _row(
+            ssuid="0004",
+            pnum=101,
+            residence="100004",
+            ERENTSUB="1",
+            EVOUCHER="1",
+            AVOUCHER="1",
+        ),
+        _row(ssuid="0005", pnum=101, residence="100005", TRENTMORT="0"),
+        _row(ssuid="0006", pnum=101, residence="100006", ATENURE="2"),
+        _row(ssuid="0007", pnum=101, residence="100007", TUTILS="", AUTILS="0"),
+    ]
+
+
+def test_version_3_reproduces_the_version_2_measurement_and_membership_digests():
+    """The bump adds a surface; it does not move the one the ladder read.
+
+    ``_measurement_digest`` covers the ``december_housing`` output alone and the
+    predictor observations carry their own digest, so on identical rows a
+    version 3 run must reproduce the version 2 measurement and membership
+    digests exactly. This is the continuity check a real version 3 extraction
+    has to pass beside the ladder counts: a difference here would mean the
+    measurement contract moved, not that more columns were read.
+    """
+    rows = _ladder_fixture()
+    households = hm.december_housing(rows, source=SOURCE, complete_membership=True)
+    assert hp._measurement_digest(households) == VERSION_2_MEASUREMENT_DIGEST
+    assert source._membership(households) == VERSION_2_MEMBERSHIP_DIGEST
+    receipt = json.loads(_project(*rows).receipt_json)
+    assert receipt["measurement_digest"] == VERSION_2_MEASUREMENT_DIGEST
+    assert receipt["membership_digest"] == VERSION_2_MEMBERSHIP_DIGEST
+    # The receipt as a whole does move: it binds a surface version 2 had not.
+    assert receipt["predictor_digest"] != receipt["measurement_digest"]
+    assert receipt["recipe_version"] == "sipp-december-housing-projection/3"
+
+
+def test_the_version_2_amount_contracts_keep_their_version_2_defaults():
+    """Why the digests above cannot move: every new knob defaults to version 2.
+
+    ``sentinel``, ``kind`` and ``unflagged_origin`` exist for the predictor
+    fields. No version 2 field sets any of them, and no version 2 domain
+    contains the token that marks a value missing.
+    """
+    for table in (hm._HOUSEHOLD_AMOUNTS, hm._PERSON_TOPCODE_AMOUNTS):
+        for name, spec in table.items():
+            assert spec.sentinel == hm._UNDOCUMENTED_SENTINEL, name
+            assert spec.kind == "amount", name
+            assert spec.unflagged_origin == "published_topcode_marker", name
+            assert not spec.low <= spec.sentinel <= spec.high, name
+    for function in (hm._build, hm._copied):
+        assert (
+            inspect.signature(function).parameters["rule_id"].default
+            == hm.HOUSING_RULE_ID
+        )
+
+
+def test_a_sentinel_inside_a_published_domain_is_refused():
+    """A field whose published minimum sits below the kernel's single token.
+
+    ``THTOTINC`` is why the sentinel became per-field: its published domain
+    starts at -$10,000,000,000, below the one out-of-domain token version 2
+    used, so reading it with that token would have turned a legitimate income
+    into a missing code. A domain that swallows its own sentinel refuses.
+    """
+    swallowed = dataclasses.replace(hm._HOUSEHOLD_AMOUNTS["TRENTMORT"], low=-20_000_000)
+    with pytest.raises(hm.HousingMeasurementError, match="SENTINEL_INSIDE_DOMAIN"):
+        hm._amount_lexical({"TRENTMORT": "900"}, "TRENTMORT", swallowed)
+    # The real motivating field names its own token, outside its own domain.
+    income = predictors._PREDICTOR_AMOUNTS["THTOTINC"]
+    assert income.low == -10_000_000_000
+    assert not income.low <= income.sentinel <= income.high
+    assert hm._amount_lexical({"THTOTINC": "-500"}, "THTOTINC", income) == (
+        "numeric",
+        Decimal("-500"),
+    )
+    # Editing an amount table also moves the recipe bytes, which the pin
+    # refuses before any row is measured.
+    original = dict(hm._HOUSEHOLD_AMOUNTS)
+    hm._HOUSEHOLD_AMOUNTS["TRENTMORT"] = swallowed
+    try:
+        with pytest.raises(hp.HousingProjectionError, match="HOUSING_RECIPE_TAMPERED"):
+            _project(_row())
+    finally:
+        hm._HOUSEHOLD_AMOUNTS.clear()
+        hm._HOUSEHOLD_AMOUNTS.update(original)

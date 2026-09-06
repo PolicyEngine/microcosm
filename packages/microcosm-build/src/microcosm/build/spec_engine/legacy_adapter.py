@@ -79,7 +79,9 @@ def diff_legacy_payloads(
     if isinstance(expected, Mapping):
         if not isinstance(actual, Mapping):
             return (
-                LegacyFieldDiff(location, "type differs", "object", type(actual).__name__),
+                LegacyFieldDiff(
+                    location, "type differs", "object", type(actual).__name__
+                ),
             )
         expected_keys = set(expected)
         actual_keys = set(actual)
@@ -114,7 +116,9 @@ def diff_legacy_payloads(
     if isinstance(expected, list | tuple):
         if not isinstance(actual, list | tuple):
             return (
-                LegacyFieldDiff(location, "type differs", "array", type(actual).__name__),
+                LegacyFieldDiff(
+                    location, "type differs", "array", type(actual).__name__
+                ),
             )
         common = min(len(expected), len(actual))
         for index in range(common):
@@ -200,9 +204,7 @@ def _source_manifest(sources: Mapping[str, object]) -> dict[str, object]:
         for operation_index, operation_value in enumerate(operations):
             operation = _mapping(
                 operation_value,
-                location=(
-                    f"sources/stages/{stage_index}/operations/{operation_index}"
-                ),
+                location=(f"sources/stages/{stage_index}/operations/{operation_index}"),
             )
             if operation.get("kind") != "derive_wic_claim":
                 continue
@@ -311,9 +313,7 @@ def compile_to_legacy_payload(spec: ResolvedSpec) -> dict[str, object]:
         "support_spine": _support_spine(spine),
         "imputation": imputation_payload,
         "take_up_contract": take_up_contract,
-        "take_up_contract_identity": project_legacy_take_up_identity(
-            take_up_contract
-        ),
+        "take_up_contract_identity": project_legacy_take_up_identity(take_up_contract),
         "calibration_contract": project_legacy_calibration_contract(calibration),
         "calibration_tail_contracts": resolve_calibration_tail_contracts(
             calibration,

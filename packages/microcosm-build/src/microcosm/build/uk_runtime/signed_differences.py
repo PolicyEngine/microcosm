@@ -84,9 +84,7 @@ SIGNED_DIFFERENCE_EXPECTATIONS = frozenset(
     }
 )
 
-SIGNED_DIFFERENCE_SHARE_DIRECTIONS = frozenset(
-    {"candidate_above", "candidate_below"}
-)
+SIGNED_DIFFERENCE_SHARE_DIRECTIONS = frozenset({"candidate_above", "candidate_below"})
 
 _ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _ISO_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -350,8 +348,7 @@ def _require_quantitative(
                 "incumbent_share": _require_number(
                     raw_entry.get("incumbent_share"),
                     field_name=(
-                        f"{where}.quantitative.shares[{column!r}]."
-                        "incumbent_share"
+                        f"{where}.quantitative.shares[{column!r}].incumbent_share"
                     ),
                     resource=resource,
                     minimum=0.0,
@@ -372,8 +369,7 @@ def _require_quantitative(
         raw_deltas = quantitative.get("expected_deltas")
         if not isinstance(raw_deltas, Mapping):
             raise ValueError(
-                f"{resource}: {where}.quantitative.expected_deltas must be an "
-                "object."
+                f"{resource}: {where}.quantitative.expected_deltas must be an object."
             )
         expected_entities = set(columns)
         missing = sorted(expected_entities - set(raw_deltas))

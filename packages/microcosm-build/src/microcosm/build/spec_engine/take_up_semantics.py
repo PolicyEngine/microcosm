@@ -249,11 +249,11 @@ def validate_take_up_semantics(
                     )
                 segment_owners.add(segment_owner)
                 _validate_pipeline(
-                        pipeline_value=segment.get("pipeline"),
-                        final_owner_value=segment.get("final_owner_stage"),
-                        ownership=segment_owner,
-                        location=f"{segment_location}/pipeline",
-                        source_stages=source_stages,
+                    pipeline_value=segment.get("pipeline"),
+                    final_owner_value=segment.get("final_owner_stage"),
+                    ownership=segment_owner,
+                    location=f"{segment_location}/pipeline",
+                    source_stages=source_stages,
                 )
             if len(segment_owners) < 2:
                 raise SpecValidationError(
@@ -267,11 +267,11 @@ def validate_take_up_semantics(
                     "pipeline/final_owner_stage and forbids segments"
                 )
             _validate_pipeline(
-                    pipeline_value=program.get("pipeline"),
-                    final_owner_value=program.get("final_owner_stage"),
-                    ownership=ownership,
-                    location=f"{location}/pipeline",
-                    source_stages=source_stages,
+                pipeline_value=program.get("pipeline"),
+                final_owner_value=program.get("final_owner_stage"),
+                ownership=ownership,
+                location=f"{location}/pipeline",
+                source_stages=source_stages,
             )
 
 
@@ -354,9 +354,7 @@ def _effective_step(
     reference_value = step.get("source_operation_ref")
     if reference_value is None:
         return step
-    reference = _mapping(
-        reference_value, location=f"{location}/source_operation_ref"
-    )
+    reference = _mapping(reference_value, location=f"{location}/source_operation_ref")
     stage_id = _identifier(
         reference.get("stage"), location=f"{location}/source_operation_ref/stage"
     )
@@ -498,16 +496,10 @@ def _project_reviewed_rate(
         if rate_owner is None:
             raise SpecValidationError(f"{location}/pipeline: seeded rate required")
         return deepcopy(
-            dict(
-                _mapping(
-                    rate_owner[2]["rate"], location=f"{rate_owner[1]}/rate"
-                )
-            )
+            dict(_mapping(rate_owner[2]["rate"], location=f"{rate_owner[1]}/rate"))
         )
 
-    rate_review = _single_step_with(
-        steps, "rate_review", program_location=location
-    )
+    rate_review = _single_step_with(steps, "rate_review", program_location=location)
     source_rate = _single_effective_step_with(
         steps,
         "take_up_rate",
@@ -557,9 +549,10 @@ def _project_reviewed_calibration(
     source_stages: Mapping[str, Sequence[object]],
 ) -> dict[str, object] | None:
     if treatment != "count_calibrated":
-        if _single_step_with(
-            steps, "calibration_review", program_location=location
-        ) is not None:
+        if (
+            _single_step_with(steps, "calibration_review", program_location=location)
+            is not None
+        ):
             raise SpecValidationError(
                 f"{location}/pipeline: calibration review requires "
                 "count_calibrated treatment"
@@ -570,9 +563,7 @@ def _project_reviewed_calibration(
         steps, "calibration_review", program_location=location
     )
     if review_owner is None:
-        raise SpecValidationError(
-            f"{location}/pipeline: calibration_review required"
-        )
+        raise SpecValidationError(f"{location}/pipeline: calibration_review required")
     review = deepcopy(
         dict(
             _mapping(
@@ -582,7 +573,11 @@ def _project_reviewed_calibration(
         )
     )
     delivery = next(
-        ((step, pointer) for step, pointer in steps if step.get("kind") == "delivery_gate"),
+        (
+            (step, pointer)
+            for step, pointer in steps
+            if step.get("kind") == "delivery_gate"
+        ),
         None,
     )
     if delivery is not None:
@@ -622,9 +617,7 @@ def _project_reviewed_calibration(
                 f"{location}/pipeline: expected one count_calibration step"
             )
         step, pointer = calibration_steps[0]
-        effective = _effective_step(
-            step, location=pointer, source_stages=source_stages
-        )
+        effective = _effective_step(step, location=pointer, source_stages=source_stages)
         result = {
             "anchor": deepcopy(effective.get("preserve_true_anchor")),
             "targets": deepcopy(effective.get("targets")),
@@ -674,9 +667,7 @@ def project_legacy_take_up_contract(
         row = _mapping(value, location=location)
         program_id = _identifier(row.get("id"), location=f"{location}/id")
         variable = _identifier(row.get("variable"), location=f"{location}/variable")
-        ownership = _identifier(
-            row.get("ownership"), location=f"{location}/ownership"
-        )
+        ownership = _identifier(row.get("ownership"), location=f"{location}/ownership")
         steps = _program_steps(row, location=location)
         kinds = _checked_step_kinds(steps)
         treatment = _derived_populace_treatment(
@@ -741,9 +732,7 @@ def project_legacy_take_up_contract(
         if treatment == "seed":
             projection["seed_method"] = (
                 "calibrated_bernoulli_by_children"
-                if _single_step_with(
-                    steps, "rate_selector", program_location=location
-                )
+                if _single_step_with(steps, "rate_selector", program_location=location)
                 is not None
                 else "calibrated_bernoulli"
             )
@@ -826,9 +815,7 @@ def project_legacy_take_up_identity(
         "country": country,
         "resource_sha256": sha256_json(legacy_contract),
         "asserted_constraint": str(asserted.get("constraint", "")),
-        "inventory_built_against": str(
-            asserted.get("inventory_built_against", "")
-        ),
+        "inventory_built_against": str(asserted.get("inventory_built_against", "")),
         "programs": [deepcopy(dict(program)) for program in programs],
     }
 

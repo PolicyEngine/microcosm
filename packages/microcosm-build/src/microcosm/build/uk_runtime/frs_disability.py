@@ -170,9 +170,7 @@ def uk_dwp_disability_flag_rates(
 
     instant = f"{int(build_period)}-01-01"
     dwp = (
-        policyengine_uk.CountryTaxBenefitSystem()
-        .parameters(int(build_period))
-        .gov.dwp
+        policyengine_uk.CountryTaxBenefitSystem().parameters(int(build_period)).gov.dwp
     )
     return UKDWPDisabilityFlagRates(
         aa_higher=_parameter_value(dwp.attendance_allowance.higher, instant),
@@ -230,7 +228,10 @@ def derive_frs_disability(
     )
     values["dla_m_category"] = _category(
         _amount(person, "dla_m_reported"),
-        (("LOWER", baseline_rates.dla_m_lower), ("HIGHER", baseline_rates.dla_m_higher)),
+        (
+            ("LOWER", baseline_rates.dla_m_lower),
+            ("HIGHER", baseline_rates.dla_m_higher),
+        ),
     )
     values["pip_m_category"] = _category(
         _amount(person, "pip_m_reported"),
@@ -246,7 +247,9 @@ def derive_frs_disability(
             ("ENHANCED", baseline_rates.pip_dl_enhanced),
         ),
     )
-    total = sum(_amount(person, column) for column in UK_DISABILITY_FLAG_REPORTED_COLUMNS)
+    total = sum(
+        _amount(person, column) for column in UK_DISABILITY_FLAG_REPORTED_COLUMNS
+    )
     dla_sc = _amount(person, "dla_sc_reported")
     aa = _amount(person, "attendance_allowance_reported")
     pip_dl = _amount(person, "pip_dl_reported")

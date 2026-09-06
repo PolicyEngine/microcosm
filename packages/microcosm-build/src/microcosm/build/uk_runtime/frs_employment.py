@@ -69,7 +69,9 @@ def add_frs_employment(
 
     artifacts = _artifact_by_table(stage)
     adult = normalize_ids(
-        read_pinned_tab(Path(raw_dir) / str(artifacts["adult"]["locator"]), artifacts["adult"])
+        read_pinned_tab(
+            Path(raw_dir) / str(artifacts["adult"]["locator"]), artifacts["adult"]
+        )
     )
     derived = derive_frs_employment(frame.table("person"), adult)
     person = frame.table("person").copy()
@@ -113,7 +115,11 @@ def derive_frs_employment(person: pd.DataFrame, adult: pd.DataFrame) -> pd.DataF
         sector.astype(int).map(EMPLOYMENT_SECTOR_MAP).fillna("NOT_EMPLOYED").to_numpy()
     )
     values["sic_industry_division"] = (
-        pd.to_numeric(aligned["sic"], errors="coerce").fillna(0).clip(lower=0).astype(int).to_numpy()
+        pd.to_numeric(aligned["sic"], errors="coerce")
+        .fillna(0)
+        .clip(lower=0)
+        .astype(int)
+        .to_numpy()
     )
     return values
 

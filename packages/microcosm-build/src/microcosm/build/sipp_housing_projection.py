@@ -41,11 +41,18 @@ RECEIPT_FORMAT = "sipp_december_housing_projection_v3"
 #
 # Version 2 is the reviewed measurement contract and, unlike version 1, it did
 # produce receipts: a December extraction was run under it and reviewed. Those
-# receipts are not invalidated by this bump and are not reproduced by it - a
-# version 3 run reads more columns and therefore writes a different measurement
-# digest and a different receipt. Version 2 remains the identity under which the
-# accepted measurement evidence was recorded, and this list says that it is
-# superseded as a *recipe for new extractions*, not that its outputs are void.
+# receipts are not invalidated by this bump. A version 3 run writes a different
+# *receipt* - it binds a new recipe identity, a new module set and a predictor
+# digest the version 2 receipt had no field for. It does **not** write a
+# different measurement digest: ``_measurement_digest`` and ``_membership``
+# cover the ``december_housing`` output alone, every version 3 addition to the
+# measurement pass defaults to the version 2 behaviour, and the predictor
+# observations are bound separately. On identical rows the measurement and
+# membership digests must therefore reproduce version 2 exactly, and that is the
+# continuity check a version 3 extraction has to pass beside the ladder counts.
+# Version 2 remains the identity under which the accepted measurement evidence
+# was recorded, and this list says that it is superseded as a *recipe for new
+# extractions*, not that its outputs are void.
 #
 # Version 1 declared that an explicit ``ERENTSUB = 2`` admitted a household
 # whatever EVOUCHER carried, folded ``assistance_not_in_universe`` into the

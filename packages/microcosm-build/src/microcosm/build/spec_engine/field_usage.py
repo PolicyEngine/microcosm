@@ -249,13 +249,9 @@ def _claim_rows(
         )
 
     if claim.pointer_class == "stacked_geography_source_identity":
-        return [
-            row for row in rows if is_stacked_geography_source_identity(row[0])
-        ]
+        return [row for row in rows if is_stacked_geography_source_identity(row[0])]
     if claim.pointer_class == "source_validation":
-        return [
-            row for row in rows if not is_stacked_geography_source_identity(row[0])
-        ]
+        return [row for row in rows if not is_stacked_geography_source_identity(row[0])]
     raise FieldUsageError(f"{claim.id}: unknown pointer class {claim.pointer_class!r}")
 
 
@@ -1125,7 +1121,9 @@ def _verify_source_pins(context: _VerificationContext, claim: UsageClaim) -> Non
         if isinstance(row, Mapping) and isinstance(row.get("id"), str)
     ]
     if len(ids) != len(rows) or len(ids) != len(set(ids)):
-        raise FieldUsageError("source_pins: source ids are not an exact unique registry")
+        raise FieldUsageError(
+            "source_pins: source ids are not an exact unique registry"
+        )
 
     expected_refs: set[tuple[str, str, str]] = set()
     for index, value in enumerate(rows):
@@ -1468,9 +1466,7 @@ def _verify_claim(context: _VerificationContext, claim: UsageClaim) -> None:
         "legacy": lambda: _verify_legacy(context, claim),
         "source_pins": lambda: _verify_source_pins(context, claim),
         "spine_channels": lambda: _verify_spine_channels(context, claim),
-        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(
-            context, claim
-        ),
+        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(context, claim),
         "spine_assembly_validation": lambda: _verify_spine_assembly_validation(
             context, claim
         ),
