@@ -280,14 +280,17 @@ def categorical_check(
         evidence["candidate_bins_unknown"] = tuple(
             sorted(set(candidate_bin_masses) - expected)
         )
-    if set(reference_counts) != expected:
+    missing_cells = tuple(sorted(expected - set(reference_counts)))
+    unknown_cells = tuple(sorted(set(reference_counts) - expected))
+    if missing_cells or unknown_cells:
+        evidence["reference_cells_missing"] = missing_cells
+        evidence["reference_cells_unknown"] = unknown_cells
+    if missing_cells:
         problems.append(Reason.REQUIRED_CELL_OR_DISTRICT_MISSING)
-        evidence["reference_cells_missing"] = tuple(
-            sorted(expected - set(reference_counts))
-        )
-        evidence["reference_cells_unknown"] = tuple(
-            sorted(set(reference_counts) - expected)
-        )
+    if unknown_cells:
+        # A published cell the block does not declare is a roster failure, not a
+        # missing one: the reference no longer matches this block's definition.
+        problems.append(Reason.INVALID_REDUCER_INPUT)
     denominator = _nonnegative(candidate_denominator, "candidate denominator", problems)
     published_total = _nonnegative(reference_total, "reference total", problems)
     residual = _nonnegative(unclassified_mass, "unclassified mass", problems)

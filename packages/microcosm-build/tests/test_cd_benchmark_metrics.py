@@ -293,6 +293,21 @@ def test_missing_candidate_and_reference_bins_report_different_reasons(protocol)
     assert missing_reference.evidence["reference_cells_missing"] == ("renter",)
 
 
+def test_an_undeclared_reference_cell_is_a_roster_failure(protocol):
+    result = categorical_check(
+        protocol.block("tenure_distribution"),
+        partition=protocol.partition,
+        candidate_bin_masses={"owner": 600, "renter": 400},
+        unclassified_mass=0,
+        candidate_denominator=1000,
+        reference_counts={"owner": 600, "renter": 400, "B25003_004": 1},
+        reference_total=1001,
+    )
+    assert result.reasons == (Reason.INVALID_REDUCER_INPUT,)
+    assert result.evidence["reference_cells_unknown"] == ("B25003_004",)
+    assert result.evidence["reference_cells_missing"] == ()
+
+
 def test_an_unknown_bin_id_is_not_quietly_accepted(protocol):
     result = categorical_check(
         protocol.block("tenure_distribution"),
