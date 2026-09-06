@@ -9,6 +9,7 @@ It intentionally does not emit PolicyEngine formula-owned totals such as
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
@@ -20,6 +21,9 @@ from microcosm.build.us_runtime.alimony import (
 from microcosm.build.us_runtime.public_assistance_type_source import (
     PAW_TYPE_TANF_CODES,
     fill_asec_public_assistance_type_source,
+)
+from microcosm.build.us_runtime.reported_coverage_source import (
+    fill_asec_reported_coverage_source,
 )
 from microcosm.frame import US_SCHEMA, Frame
 
@@ -35,6 +39,8 @@ __all__ = [
     "US_REPORTED_COVERAGE_VINTAGE_GATE_MIN_ROWS",
     "WIC_CARRIER_ADJUDICATION_URL",
     "derive_us_cps_carried_inputs",
+    "derive_us_cps_carried_tables",
+    "CpsCarriedTables",
     "reported_snap_receipt_by_spm_unit",
     "reported_tanf_enrollment_by_spm_unit",
     "reported_wic_receipt_carrier",
@@ -132,17 +138,75 @@ CPS_CARRIED_SPM_UNIT_INPUTS = frozenset(
     }
 )
 
+# Actual person reads for the no-sidecar measured mapping. Optional restoration
+# remains a separate explicit argument on the legacy/table entrypoints.
+CPS_CARRIED_RAW_PERSON_COLUMNS = frozenset(
+    {
+        "A_AGE",
+        "A_SEX",
+        "WICYN",
+        "WSAL_VAL",
+        "SEMP_VAL",
+        "INT_VAL",
+        "DIV_VAL",
+        "CAP_VAL",
+        "SS_VAL",
+        "RESNSS1",
+        "RESNSS2",
+        "PNSN_VAL",
+        "ANN_VAL",
+        "OI_VAL",
+        "OI_OFF",
+        "RNT_VAL",
+        "FRSE_VAL",
+        "UC_VAL",
+        "PHIP_VAL",
+        "PMED_VAL",
+        "POTC_VAL",
+        "NOW_MRK",
+        "NOW_NONM",
+        "NOW_MCAID",
+        "NOW_GRP",
+        "NOW_CHAMPVA",
+        "NOW_MIL",
+        "NOW_VACARE",
+        "NOW_OTHMT",
+        "NOW_IHSFLG",
+        "PAW_VAL",
+        "PAW_TYP",
+        "SPM_SNAPSUB",
+        "SPM_CHILDCAREXPNS",
+        *(f"DST_SC{suffix}" for suffix in ("1", "2", "1_YNG", "2_YNG")),
+        *(f"DST_VAL{suffix}" for suffix in ("1", "2", "1_YNG", "2_YNG")),
+    }
+)
+CPS_CARRIED_BOOLEAN_INPUTS = frozenset(
+    {
+        "is_female",
+        "receives_wic",
+        "receives_tanf",
+        "receives_snap",
+        *US_REPORTED_COVERAGE_PERSON_INPUTS,
+    }
+)
+
 
 def derive_us_cps_carried_inputs(
     frame: Frame,
     *,
     public_assistance_type_source: pd.DataFrame | None = None,
+    reported_coverage_source: pd.DataFrame | None = None,
 ) -> Frame:
     """Carry raw CPS ASEC values onto PE input leaves.
 
-    Existing leaf input columns are preserved, making the transform idempotent.
-    The transform refuses to run on a non-US frame and never creates
-    formula-owned aggregate variables.
+    Existing leaves keep the original presence rules; the raw other-income
+    pair intentionally recomputes its three split leaves. The transform
+    refuses a non-US frame and never creates formula-owned aggregates.
+
+    Optional ``reported_coverage_source`` restores seven measured at-interview
+    recodes before deriving coverage leaves. It requires an exact source join;
+    conflicting observations fail. Native ``NOW_GRP`` and ``NOW_MRK`` remain
+    unchanged. These observed inputs do not certify a fitted model or release.
 
     ``PAW_VAL``, ``SPM_SNAPSUB``, and ``WICYN`` are annual reported facts,
     while the engine's ``receives_tanf``, ``receives_snap``, and
@@ -164,7 +228,49 @@ def derive_us_cps_carried_inputs(
     if frame.schema != US_SCHEMA:
         raise ValueError("CPS-carried derivations require the US schema.")
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    person = tables["person"]
+    produced = derive_us_cps_carried_tables(
+        tables["person"],
+        tables["spm_unit"],
+        public_assistance_type_source=public_assistance_type_source,
+        reported_coverage_source=reported_coverage_source,
+    )
+    tables["person"] = produced.person
+    tables["spm_unit"] = produced.spm_unit
+
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+@dataclass(frozen=True)
+class CpsCarriedTables:
+    """The two actual entity tables touched by the CPS-carried operator."""
+
+    person: pd.DataFrame
+    spm_unit: pd.DataFrame
+
+
+def derive_us_cps_carried_tables(
+    person: pd.DataFrame,
+    spm_unit: pd.DataFrame,
+    *,
+    public_assistance_type_source: pd.DataFrame | None = None,
+    reported_coverage_source: pd.DataFrame | None = None,
+) -> CpsCarriedTables:
+    """Run the original measured mapping on isolated person and SPM views.
+
+    Group outputs align by actual SPM IDs. Monetary amounts retain their
+    existing nominal source-year basis; this operation does no price alignment.
+    """
+    person = person.copy(deep=True)
+    spm_unit = spm_unit.copy(deep=True)
+    if reported_coverage_source is not None:
+        person = fill_asec_reported_coverage_source(person, reported_coverage_source)
 
     _fill_missing(person, "age", _source(person, "A_AGE"))
     _fill_bool_missing(person, "is_female", _integer_source(person, "A_SEX") == 2)
@@ -222,7 +328,6 @@ def derive_us_cps_carried_inputs(
     _fill_missing(person, "taxable_ira_distributions", _ira_distributions(person))
 
     person = derive_us_alimony_from_asec(person)
-    tables["person"] = person
 
     direct_sources: Mapping[str, str] = {
         "rental_income": "RNT_VAL",
@@ -241,10 +346,10 @@ def derive_us_cps_carried_inputs(
     _fill_health_coverage_inputs(person)
     _fill_spm_unit_reported_enrollment_inputs(
         person,
-        tables["spm_unit"],
+        spm_unit,
         public_assistance_type_source=public_assistance_type_source,
     )
-    _fill_spm_unit_childcare_inputs(person, tables["spm_unit"])
+    _fill_spm_unit_childcare_inputs(person, spm_unit)
 
     formula_owned = sorted(CPS_CARRIED_FORMULA_OWNED_COLUMNS.intersection(person))
     if formula_owned:
@@ -253,14 +358,7 @@ def derive_us_cps_carried_inputs(
             f"columns: {formula_owned}."
         )
 
-    return Frame(
-        tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-        mass_log=frame.mass_log,
-        metadata=frame.metadata,
-    )
+    return CpsCarriedTables(person, spm_unit)
 
 
 def reported_tanf_enrollment_by_spm_unit(

@@ -12,6 +12,36 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 `data`. There is no top-level `microcosm` package directory — never add an
 `__init__.py` to the namespace root.
 
+The separate local ASEC v3-to-v4 restoration producer is documented in
+`docs/us-asec-raw-stage-v4.md`; it requires explicit pinned local inputs and writes
+a new bundle. Keep the historical v3 loader and producer behavior unchanged.
+
+US source/geography graph implementation scopes and their reviewed dependency
+inventory are documented in `docs/us-production-graph-development.md`. New
+dependency/resource failures require a scope review, not an automatic pin refresh.
+
+The composed prepared-ASEC/native-ACS population seam is documented in
+`docs/us-composed-population-graph.md`; the stage that binds its carried ASEC
+evidence to the composed ASEC rows and derives the reviewed corrected leaves and
+reported observations over them is `docs/us-composed-asec-binding.md`. That
+binding module reads source provenance by charter and is classified as a
+source-spine provenance owner; its measurement module stays source-blind. Do not
+add a provenance-owner exemption to an ordinary population operator.
+
+The subsequent masked ASEC sex/reference binding is documented in
+`docs/us-composed-asec-demographic-binding.md`. It reuses the accepted source
+projection and prepared native-roster digest; it preserves the ACS canonical
+incumbents and represents unknown ASEC booleans as declared nulls.
+
+IRS fiscal targets require explicit supported return universes and actual model
+filer decisions before household aggregation. Target-frame materializer version
+13 invalidates older SOI measurements; its compilation receipt records filing
+inputs/defaults and modeled-universe limits. Unsupported dependent-return targets
+remain visibly dropped in diagnostic materialization. Release builds refuse
+them immediately after Ledger compilation, before base-population loading.
+Warm reuse binds the full live base-input Frame. See
+`docs/us-soi-modeled-return-universes.md` for the source and checkpoint boundaries.
+
 ## Commands
 
 ```bash

@@ -656,10 +656,10 @@ def test_frame_checkpoint_preserves_range_indexes_and_column_axis_name(
 @pytest.mark.parametrize(
     "unsupported",
     [
-        pd.Series([1, pd.NA, 3], dtype="Int64"),
+        pd.Series([1.0, pd.NA, 3.0], dtype="Float64"),
         pd.Series(["a", "b", "a"], dtype="category"),
     ],
-    ids=["nullable_integer", "categorical"],
+    ids=["nullable_float", "categorical"],
 )
 def test_frame_checkpoint_rejects_unsupported_dtype_without_replacing_destination(
     tmp_path: Path,
@@ -741,3 +741,255 @@ def test_legacy_string_specs_restore_python_storage() -> None:
             path=Path("legacy.h5"),
             label="person.label",
         )
+
+
+_NULLABLE_INTEGER_DTYPES = (
+    "Int8",
+    "Int16",
+    "Int32",
+    "Int64",
+    "UInt8",
+    "UInt16",
+    "UInt32",
+    "UInt64",
+)
+
+
+def _nullable_integer_checkpoint_frame(dtype="Int64", mode="mixed") -> Frame:
+    original = _nullable_boolean_checkpoint_frame()
+    tables = {name: original.table(name).copy() for name in original.entities}
+    tables.update({name: original.link(name).copy() for name in original.links})
+    native = pd.api.types.pandas_dtype(dtype).numpy_dtype
+    largest = int(np.iinfo(native).max)
+    smallest = int(np.iinfo(native).min)
+    values = {
+        "mixed": [0, pd.NA, largest],
+        "complete": [smallest, 0, largest],
+        "all_null": [pd.NA, pd.NA, pd.NA],
+    }[mode]
+    person = tables["person"]
+    person["nullable_integer"] = pd.Series(values, dtype=dtype, index=person.index)
+    person["all_null_boolean"] = pd.Series(pd.NA, dtype="boolean", index=person.index)
+    person.columns.name = ("person", "variables")
+    return Frame(
+        tables,
+        original.schema,
+        {name: original.weights_for(name) for name in original.weighted_entities},
+        original.strata,
+        mass_log=original.mass_log,
+        metadata={"source": {"codec": "nullable-integer"}},
+    )
+
+
+@pytest.mark.parametrize("dtype", _NULLABLE_INTEGER_DTYPES)
+@pytest.mark.parametrize("mode", ["mixed", "complete", "all_null"])
+def test_nullable_integer_checkpoint_exact_roundtrip(tmp_path, dtype, mode):
+    frame = _nullable_integer_checkpoint_frame(dtype, mode)
+    first, second = tmp_path / "first.h5", tmp_path / "second.h5"
+    external = {"stage": "assembly", "versions": [2, 3, 4]}
+    write_frame_checkpoint(first, frame, metadata=external)
+    loaded = load_frame_checkpoint(first, frame_metadata=frame.metadata)
+    write_frame_checkpoint(second, loaded.frame, metadata=loaded.metadata)
+    assert first.read_bytes() == second.read_bytes()
+    assert loaded.metadata == external
+    assert loaded.frame.metadata == frame.metadata
+    assert loaded.frame.schema == frame.schema
+    assert loaded.frame.mass_log == frame.mass_log
+    for entity in frame.entities:
+        pd.testing.assert_frame_equal(
+            loaded.frame.table(entity), frame.table(entity), check_exact=True
+        )
+    for link in frame.links:
+        pd.testing.assert_frame_equal(
+            loaded.frame.link(link), frame.link(link), check_exact=True
+        )
+    pd.testing.assert_series_equal(loaded.frame.strata, frame.strata, check_exact=True)
+    for entity in frame.weighted_entities:
+        assert loaded.frame.weights_for(entity).kind == frame.weights_for(entity).kind
+        np.testing.assert_array_equal(
+            loaded.frame.weights_for(entity).values, frame.weights_for(entity).values
+        )
+    h5py = pytest.importorskip("h5py")
+    with h5py.File(first, "r") as h5:
+        metadata, spec, group = _checkpoint_series_group(
+            h5["_populace_frame_checkpoint"], table="person", column="nullable_integer"
+        )
+        assert metadata["schema_version"] == 4
+        assert spec == {
+            "name": "nullable_integer",
+            "dtype": dtype,
+            "encoding": "nullable_integer_v1",
+            "has_null_mask": mode != "complete",
+        }
+        assert group["values"].dtype == pd.api.types.pandas_dtype(dtype).numpy_dtype
+        assert ("null_mask" in group) == (mode != "complete")
+        if mode != "complete":
+            mask = np.asarray(group["null_mask"])
+            assert mask.dtype == np.dtype("uint8")
+            assert (np.asarray(group["values"])[mask.astype(bool)] == 0).all()
+
+
+@pytest.mark.parametrize("location", ["index", "link_index", "link_column", "strata"])
+def test_nullable_integer_checkpoint_structural_series(tmp_path, location):
+    original = _checkpoint_frame()
+    tables = {name: original.table(name).copy() for name in original.entities}
+    tables.update({name: original.link(name).copy() for name in original.links})
+    strata = original.strata.copy()
+    if location == "index":
+        tables["person"].index = pd.Index(
+            [2**53 + 1, 2**53 + 2, 2**53 + 3], dtype="Int64", name=("row", "id")
+        )
+        strata.index = tables["person"].index
+    elif location == "link_index":
+        tables["jobs"].index = pd.Index(
+            [2**63 + n for n in range(4)], dtype="UInt64", name="row"
+        )
+    elif location == "link_column":
+        tables["jobs"]["nullable_integer"] = pd.Series(
+            [0, pd.NA, 2**63 + 1, pd.NA], dtype="UInt64", index=tables["jobs"].index
+        )
+    else:
+        strata = pd.Series([0, 1, 2], dtype="Int64", index=strata.index, name="stratum")
+    frame = Frame(
+        tables,
+        original.schema,
+        {name: original.weights_for(name) for name in original.weighted_entities},
+        strata,
+        mass_log=original.mass_log,
+    )
+    path = tmp_path / "structural.h5"
+    write_frame_checkpoint(path, frame)
+    restored = load_frame_checkpoint(path).frame
+    for entity in frame.entities:
+        pd.testing.assert_frame_equal(
+            restored.table(entity), frame.table(entity), check_exact=True
+        )
+    for link in frame.links:
+        pd.testing.assert_frame_equal(
+            restored.link(link), frame.link(link), check_exact=True
+        )
+    pd.testing.assert_series_equal(restored.strata, frame.strata, check_exact=True)
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "missing",
+        "all_zero",
+        "nonbinary",
+        "wrong_length",
+        "wrong_dtype",
+        "wrong_rank",
+        "hidden_value",
+        "values_float",
+        "values_unsigned",
+        "values_rank",
+        "mask_flag",
+        "encoding",
+        "dtype",
+    ],
+)
+def test_nullable_integer_checkpoint_rejects_tampering(tmp_path, damage):
+    path = tmp_path / "tampered.h5"
+    write_frame_checkpoint(path, _nullable_integer_checkpoint_frame())
+    h5py = pytest.importorskip("h5py")
+    with h5py.File(path, "r+") as h5:
+        root = h5["_populace_frame_checkpoint"]
+        metadata, spec, group = _checkpoint_series_group(
+            root, table="person", column="nullable_integer"
+        )
+        bad_masks = {
+            "all_zero": np.array([0, 0, 0], dtype="uint8"),
+            "nonbinary": np.array([0, 2, 0], dtype="uint8"),
+            "wrong_length": np.array([0, 1], dtype="uint8"),
+            "wrong_dtype": np.array([0, 1, 0], dtype="int8"),
+            "wrong_rank": np.array([[0, 1, 0]], dtype="uint8"),
+        }
+        if damage in bad_masks or damage == "missing":
+            del group["null_mask"]
+            if damage != "missing":
+                group.create_dataset("null_mask", data=bad_masks[damage])
+        elif damage == "hidden_value":
+            group["values"][1] = 99
+        elif damage.startswith("values_"):
+            replacement = {
+                "values_float": np.array([0, 0, 1], dtype="float64"),
+                "values_unsigned": np.array([0, 0, 1], dtype="uint64"),
+                "values_rank": np.array([[0, 0, 1]], dtype="int64"),
+            }[damage]
+            del group["values"]
+            group.create_dataset("values", data=replacement)
+        else:
+            field, value = {
+                "mask_flag": ("has_null_mask", 1),
+                "encoding": ("encoding", "numpy"),
+                "dtype": ("dtype", "UInt128"),
+            }[damage]
+            spec[field] = value
+            _replace_checkpoint_metadata(root, metadata)
+    with pytest.raises(ValueError, match="nullable integer|null mask"):
+        load_frame_checkpoint(path)
+
+
+@pytest.mark.parametrize("schema_version", [2, 3])
+@pytest.mark.parametrize("encoding", ["nullable_integer_v1", "numpy"])
+def test_older_checkpoint_schemas_cannot_smuggle_nullable_integer(
+    tmp_path, schema_version, encoding
+):
+    path = tmp_path / "downgraded.h5"
+    write_frame_checkpoint(path, _nullable_integer_checkpoint_frame())
+    h5py = pytest.importorskip("h5py")
+    with h5py.File(path, "r+") as h5:
+        root = h5["_populace_frame_checkpoint"]
+        metadata, spec, _ = _checkpoint_series_group(
+            root, table="person", column="nullable_integer"
+        )
+        metadata["schema_version"] = schema_version
+        spec["encoding"] = encoding
+        _replace_checkpoint_metadata(root, metadata)
+    with pytest.raises(ValueError, match=f"schema version {schema_version}.*nullable"):
+        load_frame_checkpoint(path)
+
+
+def test_schema_4_requires_nullable_integer(tmp_path):
+    path = tmp_path / "forged-v4.h5"
+    write_frame_checkpoint(path, _nullable_boolean_checkpoint_frame())
+    h5py = pytest.importorskip("h5py")
+    with h5py.File(path, "r+") as h5:
+        root = h5["_populace_frame_checkpoint"]
+        metadata = json.loads(np.asarray(root["metadata_json"]).tobytes())
+        metadata["schema_version"] = 4
+        _replace_checkpoint_metadata(root, metadata)
+    with pytest.raises(ValueError, match="schema version 4.*nullable integer"):
+        load_frame_checkpoint(path)
+
+
+def test_nullable_integer_hidden_storage_is_canonical_without_mutation(tmp_path):
+    first, second = tmp_path / "first.h5", tmp_path / "second.h5"
+    frame = _nullable_integer_checkpoint_frame()
+    array = pd.arrays.IntegerArray(
+        np.array([0, 987, 2**53 + 1], dtype="int64"), np.array([False, True, False])
+    )
+    frame.person["nullable_integer"] = pd.Series(
+        array, index=frame.person.index, copy=False
+    )
+    write_frame_checkpoint(first, frame)
+    assert array._data[1] == 987
+    frame.person["nullable_integer"] = pd.Series(
+        [0, pd.NA, 2**53 + 1], dtype="Int64", index=frame.person.index
+    )
+    write_frame_checkpoint(second, frame)
+    assert first.read_bytes() == second.read_bytes()
+
+
+def test_maskless_nullable_integer_rejects_unexpected_mask(tmp_path):
+    path = tmp_path / "unexpected.h5"
+    write_frame_checkpoint(path, _nullable_integer_checkpoint_frame(mode="complete"))
+    h5py = pytest.importorskip("h5py")
+    with h5py.File(path, "r+") as h5:
+        _, _, group = _checkpoint_series_group(
+            h5["_populace_frame_checkpoint"], table="person", column="nullable_integer"
+        )
+        group.create_dataset("null_mask", data=np.zeros(3, dtype="uint8"))
+    with pytest.raises(ValueError, match="unexpected null mask"):
+        load_frame_checkpoint(path)

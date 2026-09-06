@@ -1,0 +1,1 @@
+Refuse contradictory embedded candidate evidence identities, nonfinite or unsupported JSON, unsafe bundle paths, and malformed discovery indexes. Bound local file reads and bundle totals while preserving aggregate bytes and independent evaluation identities. Keep malformed optional pool-receipt fields as null diagnostic evidence.

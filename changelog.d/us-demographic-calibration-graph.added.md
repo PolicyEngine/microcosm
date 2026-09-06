@@ -1,0 +1,1 @@
+Add a development graph seam for explicit national demographic calibration registries, with typed per-target diagnostics and separate solver and design-weight caps. The diagnostic artifact names both weight-cap anchors; executor cap refusal and fresh-process cache replay are covered.

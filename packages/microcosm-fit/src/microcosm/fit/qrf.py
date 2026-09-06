@@ -1034,6 +1034,36 @@ def _draw_target_with_rng(
     return values
 
 
+def _draw_target_from_uniforms(
+    features: pd.DataFrame,
+    model: _TargetModel,
+    quantiles: np.ndarray,
+    sign_uniforms: np.ndarray,
+) -> np.ndarray:
+    """Evaluate a target without consuming or replacing any model RNG state."""
+    if model is _RELEASED:
+        raise RuntimeError("This target's fitted forests were released; refit to draw.")
+    if model.regime == Regime.DEGENERATE_ZERO:
+        return np.zeros(len(features), dtype=np.float64)
+    if model.regime == Regime.POSITIVE_ONLY:
+        return model.positive.draw(features, quantiles)
+    if model.regime == Regime.NEGATIVE_ONLY:
+        return model.negative.draw(features, quantiles)
+    x = features.loc[:, list(model.columns)].to_numpy(dtype=np.float64)
+    cumulative = np.cumsum(model.gate.predict_proba(x), axis=1)
+    # Uniforms occupy [0, 1): strict comparison skips zero-probability classes
+    # even at u=0. Close the final CDF bin against floating-point roundoff.
+    cumulative[:, -1] = 1.0
+    chosen = (cumulative > sign_uniforms[:, None]).argmax(axis=1)
+    signs = np.asarray(model.gate.classes_)[chosen]
+    values = np.zeros(len(features), dtype=np.float64)
+    for sign, forest in ((1, model.positive), (-1, model.negative)):
+        mask = signs == sign
+        if mask.any() and forest is not None:
+            values[mask] = forest.draw(features.loc[mask], quantiles[mask])
+    return values
+
+
 class RegimeGatedQRF:
     """The canonical :class:`~microcosm.fit.model.ConditionalModel`.
 
@@ -1562,6 +1592,60 @@ class FittedRegimeGatedQRF:
             augmented[target] = np.asarray(drawn, dtype=np.float64)
             if release_models:
                 self._target_models[target] = _RELEASED
+        return out
+
+    def predict_from_uniforms(
+        self,
+        frame_or_df: Frame | pd.DataFrame,
+        *,
+        quantiles: Mapping[str, np.ndarray],
+        sign_uniforms: Mapping[str, np.ndarray],
+    ) -> pd.DataFrame:
+        """Draw using caller-supplied per-row uniforms, without advancing RNG.
+
+        Each mapping must contain exactly the fitted targets, with one finite
+        one-dimensional array in ``[0, 1)`` per target, aligned to input rows.
+        Supply both arrays even for single-sign or all-zero targets. Later
+        targets condition on earlier draws, just as in :meth:`predict`.
+
+        Pairing uniforms with stable entity IDs makes results invariant to
+        recipient ordering and batching. Fitted forests remain reusable. The
+        legacy :meth:`predict` stream and its consumption order are unchanged.
+        """
+        features = self._predictor_frame(frame_or_df)
+        arrays = {}
+        for name, supplied in (
+            ("quantiles", quantiles),
+            ("sign_uniforms", sign_uniforms),
+        ):
+            if not isinstance(supplied, Mapping) or set(supplied) != set(self.targets):
+                raise ValueError(f"{name} must contain exactly the fitted targets.")
+            arrays[name] = {}
+            for target in self.targets:
+                values = np.asarray(supplied[target], dtype=np.float64)
+                if values.shape != (len(features),):
+                    raise ValueError(
+                        f"{name}[{target!r}] must have shape ({len(features)},)."
+                    )
+                if (
+                    not np.isfinite(values).all()
+                    or ((values < 0) | (values >= 1)).any()
+                ):
+                    raise ValueError(f"{name}[{target!r}] uniforms must be in [0, 1).")
+                arrays[name][target] = values
+        out = pd.DataFrame(index=features.index)
+        if features.empty:
+            return out.reindex(columns=self.targets).astype(np.float64)
+        augmented = features.copy()
+        for target in self.targets:
+            drawn = _draw_target_from_uniforms(
+                augmented,
+                self._target_models[target],
+                arrays["quantiles"][target],
+                arrays["sign_uniforms"][target],
+            )
+            out[target] = drawn
+            augmented[target] = drawn
         return out
 
     def _predictor_frame(self, frame_or_df: Frame | pd.DataFrame) -> pd.DataFrame:

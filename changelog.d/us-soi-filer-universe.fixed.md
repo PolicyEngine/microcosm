@@ -1,0 +1,1 @@
+Apply actual modeled filer decisions to IRS return counts, indicators, and amounts before household aggregation. Require explicit return universes and itemization where declared, preserve filing-input provenance through target checkpoints, and invalidate earlier target-frame cache identities.

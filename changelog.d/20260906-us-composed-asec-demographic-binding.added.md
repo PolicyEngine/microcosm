@@ -1,0 +1,1 @@
+Add a local graph stage that binds accepted ASEC sex and household-reference observations onto the combined survey population. Authenticate the prepared native roster, preserve ACS observations through masked rewrites, and retain explicit unknown and allocation states. This engineering stage does not claim calibration or release eligibility.

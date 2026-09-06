@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "artifact_kind": "microcosm.us.asec_income_observations.v1",
+  "fields": {
+    "PAW_VAL": {
+      "dtype": "int64",
+      "minimum": 0,
+      "maximum": 99999,
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone",
+      "universe": "PAW_YN = 1"
+    },
+    "PAW_YN": {
+      "dtype": "int64",
+      "codes": {
+        "0": "niu",
+        "1": "yes",
+        "2": "no"
+      },
+      "universe": "All persons aged 15+"
+    }
+  },
+  "cohorts": {
+    "2022": {
+      "survey_year": 2023,
+      "source_references": {
+        "PAW_VAL": {
+          "url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "pdf_page": 49,
+          "excerpt_sha256": "cff5717e53b91eea99f1d87ecc29bea72f2c4a93dcb0adb37204b4173ed52b2c"
+        },
+        "PAW_YN": {
+          "url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "pdf_page": 49,
+          "excerpt_sha256": "d860a892c16da095d47dfe2f4a7f6f412556dbd91c2a41b5a6ca26f20d0e661b"
+        }
+      }
+    },
+    "2023": {
+      "survey_year": 2024,
+      "source_references": {
+        "PAW_VAL": {
+          "url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "pdf_page": 50,
+          "excerpt_sha256": "cff5717e53b91eea99f1d87ecc29bea72f2c4a93dcb0adb37204b4173ed52b2c"
+        },
+        "PAW_YN": {
+          "url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "pdf_page": 50,
+          "excerpt_sha256": "d860a892c16da095d47dfe2f4a7f6f412556dbd91c2a41b5a6ca26f20d0e661b"
+        }
+      }
+    },
+    "2024": {
+      "survey_year": 2025,
+      "source_references": {
+        "PAW_VAL": {
+          "url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "pdf_page": 51,
+          "excerpt_sha256": "57d6f91454cc6a19eb991f6ecda75ed615e4e321acc00cd71e9a5c865ee12487"
+        },
+        "PAW_YN": {
+          "url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "pdf_page": 52,
+          "excerpt_sha256": "96230020ee4159b4015853223734586f6993221724ead55b3af1d53e2a66644a"
+        }
+      }
+    }
+  },
+  "monetary_basis": {
+    "2022": {
+      "currency": "USD",
+      "unit": "base_currency",
+      "period": "2022",
+      "temporal_basis": "annual_flow",
+      "sector": "households",
+      "perimeter": "cps_asec_person_money_income",
+      "valuation": "2024 annual average C-CPI-U dollars (census_ccpiu_annual_2024)"
+    },
+    "2023": {
+      "currency": "USD",
+      "unit": "base_currency",
+      "period": "2023",
+      "temporal_basis": "annual_flow",
+      "sector": "households",
+      "perimeter": "cps_asec_person_money_income",
+      "valuation": "2024 annual average C-CPI-U dollars (census_ccpiu_annual_2024)"
+    },
+    "2024": {
+      "currency": "USD",
+      "unit": "base_currency",
+      "period": "2024",
+      "temporal_basis": "annual_flow",
+      "sector": "households",
+      "perimeter": "cps_asec_person_money_income",
+      "valuation": "2024 annual average C-CPI-U dollars (census_ccpiu_annual_2024)"
+    }
+  },
+  "price": {
+    "algorithm": "parse_float64_target_divide_source_then_multiply_nonzero_v1",
+    "target_year": 2024,
+    "cells": {
+      "2022": "163.6",
+      "2023": "170.0",
+      "2024": "174.4"
+    },
+    "resource_sha256": "88cec207a3c73e5de93d677acf16e8db9ddae9761c644c06da92cacf0feb3f63"
+  },
+  "zero_origin_classes": [
+    "observed_amount",
+    "niu_below_receipt_age",
+    "reported_receipt_zero_amount",
+    "reported_no_receipt",
+    "niu_in_age_universe"
+  ],
+  "consumer": {
+    "semantic": "reported_cash_public_assistance_not_simulated_tanf",
+    "raw_frame_aliases": [],
+    "PAW_TYP_authority": "excluded_from_this_artifact_existing_tanf_handling_unchanged",
+    "acs_eight_categories_complete": false,
+    "release_eligible": false
+  }
+}

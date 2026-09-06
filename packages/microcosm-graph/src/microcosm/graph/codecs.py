@@ -1,12 +1,32 @@
-"""Source codecs: the sole boundary from source bytes to :class:`Frame`.
+"""Source codecs: the boundary from source bytes to a decoded input.
 
-Two codecs ship with the graph runtime:
+A codec is registered in exactly one of two explicit modes, and a name
+belongs to at most one mode:
 
-``frame-store``
+*Frame mode* (:data:`SourceCodec`, :meth:`SourceCodecRegistry.register`,
+:meth:`SourceCodecRegistry.load`) decodes a source into a population
+:class:`Frame`. A ``CREATE`` node's kernel calls it to build a population,
+and so does any other node whose source really is one — a held-out reference
+frame read for scoring, say.
+
+*Raw-byte mode* (:data:`SourceBytesCodec`,
+:meth:`SourceCodecRegistry.register_bytes`,
+:meth:`SourceCodecRegistry.load_bytes`) decodes a source into immutable
+``bytes``. A lookup table (an NPZ of ratios, a CSV crosswalk) is not a
+population, and an import kernel that turns one into a typed
+:class:`~microcosm.graph.decl.ArtifactOutput` must be able to read its real
+bytes without a Frame codec registered as a pretence. Neither mode can be
+loaded through the other: the mismatch is a :class:`TypeError` naming the
+mode the codec actually has, so no caller receives bytes where it declared a
+Frame.
+
+Three codecs ship with the graph runtime:
+
+``frame-store`` (Frame)
     Loads a content-verified Frame from the path of a ``ContentStore`` frame
     object directory.
 
-``csv-tables``
+``csv-tables`` (Frame)
     Loads one CSV per entity using ``schema.json``.  The schema may give a
     ``tables`` mapping (otherwise ``<entity>.csv`` is used), global or
     per-entity dtype mappings, a ``strata_column``, and either (a) a weight
@@ -14,11 +34,19 @@ Two codecs ship with the graph runtime:
     A JSON weight entry is ``{"kind": "design", "values": [...]}`` or
     ``{"kind": "design", "column": "household_weight"}``; entries are
     keyed by entity, or may carry their own ``entity`` field.
+
+``raw-bytes-v1`` (raw bytes)
+    Reads one regular file, bounded at :data:`RAW_BYTES_MAX_BYTES`. It
+    interprets nothing: the consuming kernel owns the payload's format and
+    validates it. Identity, the pre-run content key, and the post-run
+    mutation check stay where they already are, in the executor.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import stat
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import MappingProxyType
@@ -32,41 +60,112 @@ from microcosm.frame import EntitySchema, Frame, LinkSpec, WeightKind, Weights
 from .store import ContentStore, StoreUnavailable
 
 __all__ = [
+    "RAW_BYTES_MAX_BYTES",
     "SOURCE_CODECS",
+    "SourceBytesCodec",
     "SourceCodec",
     "SourceCodecRegistry",
     "load_csv_tables",
     "load_frame_store",
+    "load_raw_bytes",
     "load_source",
+    "load_source_bytes",
 ]
 
 type SourceCodec = Callable[..., Frame]
+type SourceBytesCodec = Callable[..., bytes]
+
+RAW_BYTES_MAX_BYTES = 64 * 1024 * 1024
+"""The most ``raw-bytes-v1`` will read from one source file (64 MiB)."""
 
 
 class SourceCodecRegistry:
-    """Named source-to-Frame loaders."""
+    """Named source loaders in two explicit modes: Frame and raw bytes.
+
+    A name is registered in one mode only. :meth:`get` answers the
+    availability question the executor asks before any kernel runs, in
+    either mode; :meth:`load` and :meth:`load_bytes` are what hold a codec
+    to the mode it was registered in.
+    """
 
     def __init__(self) -> None:
         self._loaders: dict[str, SourceCodec] = {}
+        self._byte_loaders: dict[str, SourceBytesCodec] = {}
 
-    def register(self, name: str, loader: SourceCodec) -> SourceCodec:
-        """Register and return ``loader`` under a non-empty codec name."""
-
+    @staticmethod
+    def _check_declaration(name: str, loader: object) -> None:
         if not isinstance(name, str) or not name:
             raise ValueError("Source codec names must be non-empty strings.")
         if not callable(loader):
             raise TypeError("Source codec loaders must be callable.")
+
+    def register(self, name: str, loader: SourceCodec) -> SourceCodec:
+        """Register and return a Frame ``loader`` under a non-empty codec name."""
+
+        self._check_declaration(name, loader)
+        if name in self._byte_loaders:
+            raise ValueError(
+                f"Source codec {name!r} is already registered as a raw-bytes codec."
+            )
         incumbent = self._loaders.get(name)
         if incumbent is not None and incumbent is not loader:
             raise ValueError(f"Source codec {name!r} is already registered.")
         self._loaders[name] = loader
         return loader
 
-    def get(self, name: str) -> SourceCodec:
-        """Resolve ``name`` or raise fatal :class:`StoreUnavailable`."""
+    def register_bytes(self, name: str, loader: SourceBytesCodec) -> SourceBytesCodec:
+        """Register and return a raw-byte ``loader`` under a non-empty codec name.
 
+        A raw-byte codec returns the source's bytes and claims nothing about
+        their meaning; it never stands in for a population.
+        """
+
+        self._check_declaration(name, loader)
+        if name in self._loaders:
+            raise ValueError(
+                f"Source codec {name!r} is already registered as a Frame codec."
+            )
+        incumbent = self._byte_loaders.get(name)
+        if incumbent is not None and incumbent is not loader:
+            raise ValueError(f"Source codec {name!r} is already registered.")
+        self._byte_loaders[name] = loader
+        return loader
+
+    def get(self, name: str) -> SourceCodec | SourceBytesCodec:
+        """Resolve ``name`` in either mode, or raise fatal :class:`StoreUnavailable`.
+
+        This is availability, not decoding: a registered raw-byte codec is
+        installed, and resolving it here never turns it into a Frame codec.
+        """
+
+        for loaders in (self._loaders, self._byte_loaders):
+            try:
+                return loaders[name]
+            except KeyError:
+                continue
+        raise StoreUnavailable(f"Source codec {name!r} is not installed.")
+
+    def _frame_loader(self, name: str) -> SourceCodec:
+        if name in self._byte_loaders:
+            raise TypeError(
+                f"Source codec {name!r} is a raw-bytes codec; read it with "
+                "load_bytes. Bytes are never presented as a Frame."
+            )
         try:
             return self._loaders[name]
+        except KeyError as error:
+            raise StoreUnavailable(
+                f"Source codec {name!r} is not installed."
+            ) from error
+
+    def _bytes_loader(self, name: str) -> SourceBytesCodec:
+        if name in self._loaders:
+            raise TypeError(
+                f"Source codec {name!r} is a Frame codec; read it with load. "
+                "A Frame is never presented as raw bytes."
+            )
+        try:
+            return self._byte_loaders[name]
         except KeyError as error:
             raise StoreUnavailable(
                 f"Source codec {name!r} is not installed."
@@ -79,9 +178,9 @@ class SourceCodecRegistry:
         *,
         store: ContentStore | None = None,
     ) -> Frame:
-        """Decode ``path`` with ``name`` and require a Frame result."""
+        """Decode ``path`` with the Frame codec ``name`` and require a Frame."""
 
-        loader = self.get(name)
+        loader = self._frame_loader(name)
         try:
             frame = loader(Path(path), store=store)
         except StoreUnavailable:
@@ -96,15 +195,65 @@ class SourceCodecRegistry:
             )
         return frame
 
+    def load_bytes(
+        self,
+        name: str,
+        path: Path,
+        *,
+        store: ContentStore | None = None,
+    ) -> bytes:
+        """Read ``path`` with the raw-byte codec ``name`` and require bytes.
+
+        This decodes an external source path, unlike
+        :meth:`ContentStore.load_bytes`, which reads a stored object back by
+        its content key.
+
+        Unavailability keeps the classification :meth:`load` gives it: an
+        uninstalled codec or a missing dependency is fatal
+        :class:`StoreUnavailable`, never a decoded value.
+        """
+
+        loader = self._bytes_loader(name)
+        try:
+            payload = loader(Path(path), store=store)
+        except StoreUnavailable:
+            raise
+        except ImportError as error:
+            raise StoreUnavailable(
+                f"Source codec {name!r} needs an unavailable dependency."
+            ) from error
+        if not isinstance(payload, bytes):
+            raise TypeError(
+                f"Source codec {name!r} returned {type(payload).__name__}, not bytes."
+            )
+        return payload
+
     def names(self) -> tuple[str, ...]:
-        """Registered names in canonical order."""
+        """The registered Frame codec names, in canonical order.
+
+        Each mode is enumerated by its own pair — ``names``/``as_mapping``
+        here, :meth:`bytes_names`/:meth:`as_bytes_mapping` there — so a
+        snapshot taken through either pair stays resolvable through it. The
+        name space is still shared: a name in neither tuple is not therefore
+        free, because registering it in one mode reserves it in both.
+        """
 
         return tuple(sorted(self._loaders))
 
+    def bytes_names(self) -> tuple[str, ...]:
+        """The registered raw-byte codec names, in canonical order."""
+
+        return tuple(sorted(self._byte_loaders))
+
     def as_mapping(self) -> Mapping[str, SourceCodec]:
-        """A read-only snapshot of registered loaders."""
+        """A read-only snapshot of the registered Frame loaders."""
 
         return MappingProxyType(dict(self._loaders))
+
+    def as_bytes_mapping(self) -> Mapping[str, SourceBytesCodec]:
+        """A read-only snapshot of the registered raw-byte loaders."""
+
+        return MappingProxyType(dict(self._byte_loaders))
 
 
 def load_frame_store(path: Path, *, store: ContentStore | None = None) -> Frame:
@@ -372,9 +521,68 @@ def load_csv_tables(path: Path, *, store: ContentStore | None = None) -> Frame:
     return Frame(tables, schema, weights, strata)
 
 
+def _nonblocking_opener(path: str, flags: int) -> int:
+    """Open without blocking, so a FIFO in a source's place cannot hang a run."""
+
+    return os.open(path, flags | getattr(os, "O_NONBLOCK", 0))
+
+
+def load_raw_bytes(path: Path, *, store: ContentStore | None = None) -> bytes:
+    """Read one regular file's bytes, bounded at :data:`RAW_BYTES_MAX_BYTES`.
+
+    The codec claims nothing about the payload: a lookup NPZ, a crosswalk
+    CSV, and a corrupt file are all just bytes here, and the kernel that
+    imports them validates their format. What this function does own is the
+    refusal to read something that is not one bounded regular file.
+
+    Symlinks are followed, as the executor's ``resolve(strict=True)`` and
+    ``source_content_key`` already do. A directory, a FIFO, a device, or a
+    socket is refused: the mode is read from the descriptor this function
+    itself opened, and the open is non-blocking, so the codec cannot be made
+    to wait on a pipe or stream a device. The read is bounded rather than
+    trusted to ``st_size``, because a file may grow after it is measured.
+    Detecting that a source moved is the executor's post-run content check;
+    this bound only keeps the codec from reading an unbounded amount first.
+    """
+
+    del store  # raw bytes are self-describing; no content store is consulted
+    source = Path(path)
+    try:
+        handle = open(source, "rb", opener=_nonblocking_opener)
+    except IsADirectoryError as error:
+        raise ValueError(
+            f"Raw source at {source} is a directory; raw-bytes-v1 reads one "
+            "regular file."
+        ) from error
+    except OSError as error:
+        raise ValueError(f"Raw source at {source} is not readable: {error}") from error
+    with handle:
+        # A directory never reaches here: opening one raises IsADirectoryError
+        # above.  Everything else that is not a regular file is refused from the
+        # descriptor's own mode, not from a second look at the path.
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise ValueError(
+                f"Raw source at {source} is not a regular file; raw-bytes-v1 "
+                "reads one regular file."
+            )
+        try:
+            payload = handle.read(RAW_BYTES_MAX_BYTES + 1)
+        except OSError as error:
+            raise ValueError(
+                f"Raw source at {source} is not readable: {error}"
+            ) from error
+    if len(payload) > RAW_BYTES_MAX_BYTES:
+        raise ValueError(
+            f"Raw source at {source} is larger than the "
+            f"{RAW_BYTES_MAX_BYTES}-byte raw-bytes-v1 limit."
+        )
+    return payload
+
+
 SOURCE_CODECS = SourceCodecRegistry()
 SOURCE_CODECS.register("frame-store", load_frame_store)
 SOURCE_CODECS.register("csv-tables", load_csv_tables)
+SOURCE_CODECS.register_bytes("raw-bytes-v1", load_raw_bytes)
 
 
 def load_source(
@@ -384,6 +592,18 @@ def load_source(
     store: ContentStore | None = None,
     registry: SourceCodecRegistry = SOURCE_CODECS,
 ) -> Frame:
-    """Decode one source through the selected registry."""
+    """Decode one source into a Frame through the selected registry."""
 
     return registry.load(codec, path, store=store)
+
+
+def load_source_bytes(
+    codec: str,
+    path: Path,
+    *,
+    store: ContentStore | None = None,
+    registry: SourceCodecRegistry = SOURCE_CODECS,
+) -> bytes:
+    """Read one source's bytes through the selected registry."""
+
+    return registry.load_bytes(codec, path, store=store)
