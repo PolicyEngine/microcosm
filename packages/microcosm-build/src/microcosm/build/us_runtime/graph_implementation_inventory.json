@@ -244,7 +244,7 @@
         "numpy",
         "pandas"
       ],
-      "resource_accesses_sha256": "11b2b6becb66ad05e2cc9d4728cb56c348701971f0dcf4cd491d56a8c813b23f",
+      "resource_accesses_sha256": "27b6a6e33d9beeffaa960d89c8d08994a2feda7e9b4a4b4e533f030f086a893d",
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
     "microcosm.build/us_runtime/asec_housing_status_source.py": {
@@ -1332,6 +1332,7 @@
     "asec_prepared_v3": "Full P/H/T1 restoration, unchanged money recipe, separate S authentication/attachment before tax units, housing authentication against original T1, lossless dtype promotion, typed whole-household selection, corrected CPS leaves and four admitted PE outputs. Graph/Frame/microunit rosters are bound conservatively. Only declared source codec registration and frame column declarations run from graph_sources; ACS and stack assembly routes remain inactive. Alimony's pure ASEC split and cps_carried's split constants are bound, while their legacy consumer/source-manifest routes are inactive. V2 additionally authenticates HU from original T1, attaches it after housing status, preserves the pre-HU parent signature and carries native HU bytes plus selected-row ancestry with exact int64 promotion; pure ACS HU remains inactive. V3 additionally issues separate PAW_VAL/PAW_YN observations from the same official members and a derived six-column reported-income branch. The 33-field body, T1/S definitions, selected-money v1 and selection v2 payload contract remain sealed; historical v2 artifacts are preserved, but v3 runtime keys invalidate old caches.",
     "bound_modules": "Whole bytes of explicitly named modules; helper-only parsing never imports adapters.",
     "current_money_resources": "Original source recipe and consumers declaration bytes remain unchanged to preserve authenticated T1/money identities. The additive graph consumer resource is separately pinned and supersedes only implementation status for the graph slice and microunit; all old nominal consumer routes remain pending.",
+    "housing_status_authority": "The housing status classifier reads one added packaged resource, asec_housing_status_authority_v1.json, in _authority. It carries the public ASEC dictionary and questionnaire document hashes, their printed/zero-based page locators and page-text hashes, and the unresolved 2023/24 facsimile answer-number discrepancy. The module pins the resource digest and refuses any drift between the resource's dictionary pins and its own DICTIONARIES tuple, so the file is evidence, not a recoding switch. It is bound in the asec_prepared_v3 stage resources because it determines the housing definition identity. No source address, monetary rule, code domain or classification outcome changes with this declaration.",
     "occupied_housing_review_base": "HU v1 source definition and attachment are exact approved 4b26e59b additions on d4bddcb6ac2aba52903cd8dace90330cee4a21e1; only the v2 prepared graph/transport wiring is new. Original source-verifier modules and resources are unchanged.",
     "operator_boundary": "Resolved output/formula registries projected; provider bodies are not called by source construction.",
     "other_imports": "Canonical non-stdlib import modules are explicitly classified. Ordinary symbols from a module/dependency bound in every using scope need no inventory edit. Only unbound-helper uses retain a lexical-scope fingerprint; resource-access expressions retain their own fingerprint. Expanded AST details are audit output, not packaged data. Neither fingerprint is a proof of dynamic closure.",
@@ -1634,6 +1635,7 @@
         "microcosm.build/us_runtime/asec_current_money_engine_defaults_v1.json",
         "microcosm.build/us_runtime/asec_current_money_graph_consumers_v1.json",
         "microcosm.build/us_runtime/asec_current_money_price_basis_v1.json",
+        "microcosm.build/us_runtime/asec_housing_status_authority_v1.json",
         "microcosm.build/us_runtime/asec_income_observations_v1.json",
         "microunit/data/dependent_gross_income_limit.yaml"
       ],
