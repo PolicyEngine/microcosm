@@ -63,6 +63,7 @@ from microcosm.build.us_runtime.stacked_spine import (
 )
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    spine_source_id_column,
     support_channel_column,
     support_source_id_column,
 )
@@ -288,6 +289,7 @@ def _direct(root):
     (root / "direct-housing.bin").write_bytes(result.housing_universe_payload)
     (root / "direct-income.bin").write_bytes(result.income_observations_payload)
     (root / "direct-context.bin").write_bytes(encode_us_frame_context(result.frame))
+    (root / "direct-asec-context.bin").write_bytes(result.asec_frame_context)
     return {
         "pid": os.getpid(),
         "storage_bridge": list(result.storage_bridge),
@@ -516,12 +518,17 @@ def test_source_origin_artifact_binds_each_arm_to_its_output_rows(executed):
         assert document["assembled"][entity]["rows_by_channel"] == {
             name: channels.count(name) for name in sorted(set(channels))
         }
+        spine_ids = table[spine_source_id_column(entity)].to_numpy("int64").tolist()
+        assert document["assembled"][entity]["ordered_spine_source_ids_sha256"] == _sha(
+            canonical_json(spine_ids)
+        )
         assert document["assembled"][entity]["ordered_source_to_output_sha256"] == _sha(
             canonical_json(
                 [
-                    [channel, source_id, output_id]
-                    for channel, source_id, output_id in zip(
+                    [channel, spine_id, source_id, output_id]
+                    for channel, spine_id, source_id, output_id in zip(
                         channels,
+                        spine_ids,
                         table[support_source_id_column(entity)].to_numpy("int64").tolist(),
                         table[US_SCHEMA.entity_id_column(entity)].to_numpy("int64").tolist(),
                         strict=True,
@@ -529,13 +536,40 @@ def test_source_origin_artifact_binds_each_arm_to_its_output_rows(executed):
                 ]
             )
         )
+        # The raw pre-remap ids are the binding back to the arm; the pre-clone
+        # ids equal the entity ids at CREATE and bind nothing on their own.
+        assert (
+            table[support_source_id_column(entity)].to_numpy("int64").tolist()
+            == table[US_SCHEMA.entity_id_column(entity)].to_numpy("int64").tolist()
+        )
     acs_arm = document["arms"][ACS_STACKED_SUPPORT_CHANNEL]
     assert acs_arm["native_identity"]["household.SERIALNO"]["missing"] == 0
+    assert set(acs_arm["native_identity"]) == {
+        "household.SERIALNO",
+        "person.source_household_id",
+        "person.source_person_id",
+    }
     assert acs_arm["person_cohorts"] == {"2024": 6}
     asec_arm = document["arms"][BASE_ASEC_SUPPORT_CHANNEL]
     assert set(asec_arm["person_cohorts"]) == {"2022", "2023", "2024"}
-    assert "household.asec_H_SEQ" in asec_arm["native_identity"]
+    assert set(asec_arm["native_identity"]) == {
+        "household.asec_H_SEQ",
+        "person.PERIDNUM",
+        "person.PH_SEQ",
+    }
     assert document["release_eligible"] is False
+    # Whole-source composition: the evidence and the composed ASEC rows agree,
+    # and the document says so rather than leaving it to be assumed.
+    alignment = document["asec_evidence_alignment"]
+    assert alignment["basis"] == "full_prepared_population"
+    assert alignment["composed_is_whole_arm"] is True
+    assert alignment["evidence_rows"]["person"] == alignment["composed_rows"]["person"]
+    assert document["sampling"]["sample_fraction"] == FRACTION
+    assert document["sampling"]["sample_seed"] == SEED
+    assert set(document["sampling"]["survey_samples"]) == {
+        BASE_ASEC_SUPPORT_CHANNEL,
+        ACS_STACKED_SUPPORT_CHANNEL,
+    }
 
 
 def test_harmonization_declares_the_typed_importance_anchor_and_mass(executed):
@@ -756,16 +790,53 @@ def test_origin_binding_refuses_a_tampered_or_retyped_payload(executed):
         ("schema", "microcosm.us.other.v1", "ORIGIN_SCHEMA"),
         ("phase", "assemble_stacked_spine", "ORIGIN_PHASE"),
         ("release_eligible", True, "ORIGIN_RELEASE_CLAIM"),
+        ("preparation_sha256", "not-a-digest", "ORIGIN_PREPARATION_DIGEST"),
+        ("assembled", {}, "ORIGIN_ENTITIES"),
+        ("sampling", {"sample_fraction": 1.0}, "ORIGIN_SAMPLING"),
+        (
+            "asec_evidence_alignment",
+            {**document["asec_evidence_alignment"], "basis": "sampled"},
+            "ORIGIN_ALIGNMENT",
+        ),
+        (
+            "arms",
+            {BASE_ASEC_SUPPORT_CHANNEL: document["arms"][BASE_ASEC_SUPPORT_CHANNEL]},
+            "ORIGIN_ARMS",
+        ),
     ):
         with pytest.raises(PreparedGraphError, match=reason):
             composed.bind_composed_source_origin(
                 canonical_json({**document, key: value})
             )
-    with pytest.raises(PreparedGraphError, match="ORIGIN_ARMS"):
+    # A rewritten per-entity block no longer round-trips as a valid shape.
+    tampered = {
+        **document,
+        "assembled": {
+            **document["assembled"],
+            "person": {
+                **document["assembled"]["person"],
+                "ordered_spine_source_ids_sha256": "not-a-digest",
+            },
+        },
+    }
+    with pytest.raises(PreparedGraphError, match="ORIGIN_ENTITY_DIGEST:person"):
+        composed.bind_composed_source_origin(canonical_json(tampered))
+    dropped = {
+        **document,
+        "assembled": {
+            **document["assembled"],
+            "household": {
+                key: value
+                for key, value in document["assembled"]["household"].items()
+                if key != "ordered_channels_sha256"
+            },
+        },
+    }
+    with pytest.raises(PreparedGraphError, match="ORIGIN_ENTITY_KEYS:household"):
+        composed.bind_composed_source_origin(canonical_json(dropped))
+    with pytest.raises(PreparedGraphError, match="ORIGIN_KEYS"):
         composed.bind_composed_source_origin(
-            canonical_json(
-                {**document, "arms": {BASE_ASEC_SUPPORT_CHANNEL: document["arms"][BASE_ASEC_SUPPORT_CHANNEL]}}
-            )
+            canonical_json({**document, "unexpected": 1})
         )
     with pytest.raises(PreparedGraphError, match="ORIGIN_CANONICAL"):
         composed.bind_composed_source_origin(b"  " + payload)
@@ -872,6 +943,10 @@ def _structural_acs_frame():
             "person_marital_unit_id": np.array([3, 7, 33, 30, 31], dtype=np.int64),
             "age": np.array([44.0, 61.0, 12.0, 29.0, 27.0]),
             "source_year": np.array([2024] * 5, dtype=np.int64),
+            "source_household_id": household_of,
+            "source_person_id": pd.Series(
+                ["1", "1", "3", "2", "4"], dtype=CANONICAL_STRING_DTYPE
+            ),
             "PWGTP": np.array([9, 4, 9, 9, 9], dtype=np.int64),
         }
     )
@@ -982,3 +1057,83 @@ def test_structural_arm_geography_and_origin_mapping_stay_exact(structural):
     ]
     assert household["congressional_district_geoid"].gt(0).all()
     del root
+
+
+def test_prepared_arm_context_travels_for_a_later_binding_node(executed):
+    """The evidence is positional over the prepared arm, so its identity travels.
+
+    This is what a later binding node needs; the composed CREATE does not itself
+    align the evidence to composed rows, and none of the prepared-slice kernels
+    can attach to this population without that binding.
+    """
+    root, manifest, store, _calls, _direct, _contexts = executed
+    payload = _payload(manifest, store, composed.CREATE_NODE, "asec_frame_context")
+    assert payload == (root / "direct-asec-context.bin").read_bytes()
+    document = json.loads(payload)
+    # It is the prepared arm's own pre-stack context: design weights, no
+    # assembly metadata, and its own row counts, not the composed ones.
+    assert document["weight_sources"] == {"household": "design"}
+    assert document["metadata"] == {}
+    assert document["mass_log"] == []
+    prepared_receipt = json.loads(
+        _payload(manifest, store, composed.CREATE_NODE, "prepared_receipt")
+    )
+    for entity in ("person", "household"):
+        assert document["entities"][entity]["rows"] == prepared_receipt["entity_rows"][entity]
+    composed_frame = manifest.population(composed.CREATE_NODE)
+    assert document["entities"]["person"]["rows"] < composed_frame.n("person")
+
+
+def test_a_fraction_below_one_records_the_evidence_disagreement(executed):
+    """Sampling reduces the arm; the carried evidence still describes the whole.
+
+    The origin document has to say so: a consumer that assumed the four
+    prepared artifacts were positional over the composed rows would be wrong
+    here, and nothing else in the graph would tell it.
+    """
+    root, _manifest, _store, _calls, _direct, _contexts = executed
+    # Both module fixtures patch the same private source pins, so whichever
+    # built last owns them. Re-point them at this root before reading it again.
+    _restore_test_pins(root)
+    half = composed.compose_from_sources(
+        root / "prepared-source", root / "acs", sample_fraction=0.5, sample_seed=SEED
+    )
+    whole = composed.compose_from_sources(
+        root / "prepared-source", root / "acs", sample_fraction=FRACTION, sample_seed=SEED
+    )
+    assert half.frame.n("household") < whole.frame.n("household")
+    alignment = half.source_origin["asec_evidence_alignment"]
+    assert alignment["composed_is_whole_arm"] is False
+    assert alignment["evidence_rows"]["person"] == alignment["arm_rows"]["person"]
+    assert alignment["composed_rows"]["person"] < alignment["evidence_rows"]["person"]
+    assert half.source_origin["sampling"]["sample_fraction"] == 0.5
+    # The evidence bytes are unchanged: they are the whole prepared population.
+    assert half.money_payload == whole.money_payload
+    assert half.receipt_payload == whole.receipt_payload
+    assert half.asec_frame_context == whole.asec_frame_context
+    composed.bind_composed_source_origin(canonical_json(half.source_origin))
+
+
+@pytest.mark.parametrize(
+    ("drop", "reason"),
+    [
+        (("household", "household_support_channel"), "MISSING_SUPPORT_CHANNEL:household"),
+        (("person", "person_source_id"), "MISSING_SUPPORT_SOURCE_ID:person"),
+    ],
+)
+def test_node_declaration_refuses_a_missing_provenance_column(executed, drop, reason):
+    root, *_rest = executed
+    columns = tuple(item for item in _columns(root) if (item.entity, item.column) != drop)
+    with pytest.raises(PreparedGraphError, match=reason):
+        composed.composed_population_nodes(
+            columns, sample_fraction=FRACTION, sample_seed=SEED
+        )
+
+
+def test_node_declaration_refuses_a_repeated_coordinate(executed):
+    root, *_rest = executed
+    columns = _columns(root)
+    with pytest.raises(PreparedGraphError, match="COLUMN_INVENTORY_REPEATS"):
+        composed.composed_population_nodes(
+            (*columns, columns[0]), sample_fraction=FRACTION, sample_seed=SEED
+        )

@@ -10,8 +10,11 @@ calibration, a transfer, a score, or a release; every receipt says
 
 The reviewed raw-stage seam is unchanged. `graph_sources.us_assembly_graph`
 still reads `asec_raw_stage` through `us-asec-raw-stage-v4`, and
-`us.production.spine_prepare@2` keeps its contract, params and node keys. This
-module is a separately versioned seam over the prepared source; the two coexist.
+`us.production.spine_prepare@2` keeps its kernel ref, contract, params, sources
+and node ids. This module is a separately versioned seam over the prepared
+source; the two coexist. Node *keys* do move — see "Implementation scope" —
+because declaring any new stage changes the implementation identity every stage
+binds.
 
 | Node | Kernel | Operation |
 | --- | --- | --- |
@@ -62,17 +65,40 @@ memberships and the receipt-validated support-provenance columns that record the
 exact source-to-output mapping.
 
 The CREATE node emits, besides the frame context and the stack preparation, a
-typed `source_origin` artifact and pass-through of the prepared arm's four typed
-evidence artifacts (`current_money`, `prepared_receipt`, `housing_universe`,
+typed `source_origin` artifact, the prepared arm's own `asec_frame_context`, and
+pass-through of the prepared arm's four typed evidence artifacts
+(`current_money`, `prepared_receipt`, `housing_universe`,
 `income_observations`), so the corrected-leaves, reported-income, transfer and
-calibration nodes can be appended to this graph without re-reading the source.
+calibration nodes have everything they need without re-reading the source.
 
 `source_origin` (`microcosm.us.composed_population_source_origin@1`) digests each
-arm's native identity columns, cohort counts, mass and weight kind, and — read
-back off the assembled frame's own provenance columns — the ordered
-channel/source-id/output-id mapping per entity.
+arm's native identity columns on both entities, its cohort counts, mass and
+weight kind; the sampling controls and per-arm draw receipts; and — read back
+off the assembled frame's own provenance columns — the ordered
+channel / raw-pre-remap-id / pre-clone-id / output-id mapping per entity. The
+raw `*_spine_source_id` is what binds an output row back to its source row; the
+`*_source_id` equals the entity id at CREATE and binds nothing on its own, so
+both are digested.
 
-## Known asymmetry, not repaired here
+### The carried evidence is positional over the whole prepared arm
+
+`current_money`, `prepared_receipt`, `housing_universe` and
+`income_observations` all describe the **whole** prepared ASEC population and
+are positional in its order; they are not re-sliced to the composed rows. The
+CREATE therefore also emits `asec_frame_context`, the prepared arm's own typed
+context encoded before stacking, and refuses if the prepared receipt's
+`entity_rows` disagree with the arm it just read. The origin document records
+`asec_evidence_alignment` with the evidence rows, the arm rows, the composed
+ASEC rows and a `composed_is_whole_arm` flag, so a consumer never has to assume
+alignment. At `sample_fraction < 1.0` the flag is false and the counts differ.
+
+A **binding node is still required** before the prepared-slice consumers
+(corrected leaves, reported income) can attach: their kernels require an empty
+context metadata and prepared rows equal to context rows, neither of which holds
+for a harmonized composed population. What this graph provides is the evidence
+bytes and the identity needed to write that binding, not the binding itself.
+
+## Known asymmetries, not repaired here
 
 The native ACS arm supplies a mapped `age`; the prepared ASEC arm supplies only
 raw `A_AGE`. The composed person table therefore has `age` observed on ACS rows
@@ -80,6 +106,11 @@ and missing on ASEC rows. Geography tolerates this (its boundary node keeps ever
 row and never reads age values), but a national or CD release needs a cross-arm
 age. Producing one is an income/leaf-mapping decision owned by the corrected-leaf
 and transfer nodes, not by this composition, so nothing here fills it.
+
+The prepared arm is also drawn here with the stacked spine's unstratified
+household floor, while the prepared slice's own selection node draws by
+`source_year` stratum. At `sample_fraction = 1.0` the two coincide; below it,
+this graph's ASEC draw is not stratified by income year.
 
 ## Genuine-small preparation and runner proposal (not executed)
 
@@ -131,8 +162,11 @@ exist and are covered by tests.
 
 1. `resource.getrusage(RUSAGE_SELF).ru_maxrss` at process start, and after each
    of: prepared-ASEC arm loaded; native-ACS arm loaded; both arms live
-   simultaneously (the expected peak, since `prepare_stacked_spine` holds both);
-   preparation returned; harmonization returned; geography assigned.
+   simultaneously; preparation returned; harmonization returned; geography
+   assigned. Where the peak falls is a question for the measurement, not an
+   assumption: both arms stay referenced through `_canonical_assembly` while
+   `_prepared_tables` copies each table and `pd.concat` builds the stack, so the
+   peak is sources plus stacking copies rather than sources alone.
 2. `tracemalloc` peak between the same checkpoints, so allocator high-water
    marks are separated from RSS retained by the two loaded arms.
 3. Per-arm `Frame` footprint by entity: `DataFrame.memory_usage(deep=True)`.

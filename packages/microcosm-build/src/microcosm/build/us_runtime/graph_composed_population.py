@@ -1,10 +1,17 @@
 """Compose the prepared ASEC population with the native ACS population.
 
 This is a separately versioned seam. The reviewed ``asec_raw_stage`` assembly
-kernel in :mod:`.graph_sources` keeps its contract, its codec and its node keys
-unchanged; nothing here rewrites them. What changes is only which authenticated
-ASEC source the ASEC arm reads: the reviewed prepared current-money directory
-(``us-asec-prepared-current-money-v3``) instead of the raw-stage checkpoint.
+kernel in :mod:`.graph_sources` keeps its kernel ref, contract, params, sources
+and node ids unchanged; nothing here rewrites them. What changes is only which
+authenticated ASEC source the ASEC arm reads: the reviewed prepared
+current-money directory (``us-asec-prepared-current-money-v3``) instead of the
+raw-stage checkpoint.
+
+Node *keys* are a different matter and do move. Every stage manifest binds the
+inventory and the bytes of ``graph_implementation.py``, which is in every
+stage's module list, and declaring a new stage necessarily edits both. So every
+existing US node key changes and every existing US cache is invalidated —
+exactly as when any other attested module changes.
 
 Why this is a two-source ``CREATE`` and not two parent populations
 ------------------------------------------------------------------
@@ -99,10 +106,12 @@ from .graph_sources import (
     _canonical_assembly,
     frame_column_declarations,
     load_graph_acs,
+    us_source_codecs,
 )
 from .stacked_spine import ACS_STACKED_SUPPORT_CHANNEL, prepare_stacked_spine
 from .support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
+    spine_source_id_column,
     support_channel_column,
     support_source_id_column,
 )
@@ -134,12 +143,22 @@ COMPOSED_SOURCES = (
     ),
 )
 
-#: Native source-record identity carried by each arm. These are the columns a
-#: later node must be able to bind back to an actual archive member, so the
-#: origin artifact digests them rather than the generated assembly IDs.
+#: Native source-record identity carried by each arm, on both entities. These
+#: are the columns a later node must be able to bind back to an actual archive
+#: member, so the origin artifact digests them in addition to — never instead of
+#: — the arm's own pre-remap IDs. Every declared column must be present: a
+#: silently skipped one would leave an arm unbindable while still receipting.
 NATIVE_IDENTITY_COLUMNS = {
-    BASE_ASEC_SUPPORT_CHANNEL: (("household", "asec_H_SEQ"), ("person", "PERIDNUM")),
-    ACS_STACKED_SUPPORT_CHANNEL: (("household", "SERIALNO"),),
+    BASE_ASEC_SUPPORT_CHANNEL: (
+        ("household", "asec_H_SEQ"),
+        ("person", "PERIDNUM"),
+        ("person", "PH_SEQ"),
+    ),
+    ACS_STACKED_SUPPORT_CHANNEL: (
+        ("household", "SERIALNO"),
+        ("person", "source_household_id"),
+        ("person", "source_person_id"),
+    ),
 }
 #: The per-arm cohort/vintage axis. ASEC restores three income years into one
 #: prepared population, so a single scalar vintage would misdescribe it.
@@ -157,6 +176,7 @@ class ComposedPopulationResult:
     dtype_transitions: tuple[dict[str, str], ...]
     storage_bridge: tuple[dict[str, str], ...]
     source_origin: dict[str, object]
+    asec_frame_context: bytes
     money_payload: bytes
     receipt_payload: bytes
     housing_universe_payload: bytes
@@ -200,10 +220,10 @@ def bridge_prepared_string_storage(frame: Frame) -> tuple[dict[str, str], ...]:
                     }
                 )
     before = {
-        (entity, column): frame.table(entity)[column].isna().to_numpy(copy=True)
-        for entity, column, *_ in (
-            (item["entity"], item["column"]) for item in transitions
-        )
+        (item["entity"], item["column"]): frame.table(item["entity"])[item["column"]]
+        .isna()
+        .to_numpy(copy=True)
+        for item in transitions
     }
     canonicalize_frame_string_dtypes(
         frame, boundary="US composed population source bridge", in_place=True
@@ -223,8 +243,7 @@ def _arm_origin(source: Frame, channel: str) -> dict[str, object]:
     identity = {}
     for entity, column in NATIVE_IDENTITY_COLUMNS[channel]:
         table = source.table(entity)
-        if column not in table:
-            continue
+        _require(column in table, f"ARM_NATIVE_IDENTITY:{channel}.{entity}.{column}")
         series = table[column]
         identity[f"{entity}.{column}"] = {
             "dtype": str(series.dtype),
@@ -240,10 +259,14 @@ def _arm_origin(source: Frame, channel: str) -> dict[str, object]:
             ),
         }
     person = source.table("person")
-    cohorts: dict[str, int] = {}
-    if COHORT_COLUMN in person:
-        counts = person[COHORT_COLUMN].value_counts().to_dict()
-        cohorts = {str(int(year)): int(count) for year, count in sorted(counts.items())}
+    _require(COHORT_COLUMN in person, f"ARM_COHORT_COLUMN:{channel}")
+    years = person[COHORT_COLUMN]
+    counts = years.value_counts(dropna=False).to_dict()
+    cohorts = {
+        ("missing" if pd.isna(year) else str(int(year))): int(count)
+        for year, count in counts.items()
+    }
+    cohorts = {key: cohorts[key] for key in sorted(cohorts)}
     return {
         "channel": channel,
         "rows": {entity: int(source.n(entity)) for entity in source.entities},
@@ -258,45 +281,101 @@ def _arm_origin(source: Frame, channel: str) -> dict[str, object]:
 
 
 def _source_origin(
-    frame: Frame, sources: Mapping[str, Frame]
+    frame: Frame,
+    sources: Mapping[str, Frame],
+    *,
+    sampling: Mapping[str, object],
+    preparation_sha256: str,
+    prepared_receipt: Mapping[str, object],
 ) -> dict[str, object]:
-    """Bind each output row to the arm and pre-clone source ID it came from.
+    """Bind each output row to the arm and the arm's own pre-remap source ID.
 
     The mapping is read back off the assembled frame's own receipt-validated
     support-provenance columns, so it records what assembly actually did rather
-    than restating what the caller intended.
+    than restating what the caller intended. Both provenance IDs are digested:
+    ``*_spine_source_id`` is the arm's raw pre-remap identifier and is what
+    binds an output row back to its source row, while ``*_source_id`` is the
+    assembly-unique pre-clone identifier the clone stage will later offset. At
+    CREATE the latter equals the entity ID, so digesting it alone would bind
+    nothing.
     """
     mapping: dict[str, object] = {}
     for entity in US_SCHEMA.entities:
         table = frame.table(entity)
         channel_column = support_channel_column(entity)
+        spine_column = spine_source_id_column(entity)
         source_column = support_source_id_column(entity)
         _require(channel_column in table, f"ORIGIN_CHANNEL_MISSING:{entity}")
+        _require(spine_column in table, f"ORIGIN_SPINE_SOURCE_ID_MISSING:{entity}")
         _require(source_column in table, f"ORIGIN_SOURCE_ID_MISSING:{entity}")
         channels = table[channel_column].astype(str).tolist()
+        spine_ids = table[spine_column].to_numpy(dtype="int64").tolist()
         ids = table[source_column].to_numpy(dtype="int64").tolist()
-        outputs = table[US_SCHEMA.entity_id_column(entity)].to_numpy(
-            dtype="int64"
-        ).tolist()
+        outputs = (
+            table[US_SCHEMA.entity_id_column(entity)].to_numpy(dtype="int64").tolist()
+        )
         mapping[entity] = {
             "rows_by_channel": {
-                channel: int(channels.count(channel)) for channel in sorted(set(channels))
+                channel: int(channels.count(channel))
+                for channel in sorted(set(channels))
             },
             "ordered_channels_sha256": _sha(canonical_json(channels)),
+            "ordered_spine_source_ids_sha256": _sha(canonical_json(spine_ids)),
             "ordered_source_to_output_sha256": _sha(
                 canonical_json(
                     [
-                        [channel, source_id, output_id]
-                        for channel, source_id, output_id in zip(
-                            channels, ids, outputs, strict=True
+                        [channel, spine_id, source_id, output_id]
+                        for channel, spine_id, source_id, output_id in zip(
+                            channels, spine_ids, ids, outputs, strict=True
                         )
                     ]
                 )
             ),
         }
+    asec = sources[BASE_ASEC_SUPPORT_CHANNEL]
+    composed_asec = {
+        entity: int(
+            (frame.table(entity)[support_channel_column(entity)] == BASE_ASEC_SUPPORT_CHANNEL).sum()
+        )
+        for entity in US_SCHEMA.entities
+    }
     return {
         "schema": _SOURCE_ORIGIN_SCHEMA,
         "phase": COMPOSED_PHASE,
+        "preparation_sha256": preparation_sha256,
+        "sampling": {
+            "sample_fraction": float(sampling["sample_fraction"]),
+            "sample_seed": int(sampling["sample_seed"]),
+            "survey_samples": {
+                channel: {
+                    key: sample[key]
+                    for key in (
+                        "realized_household_count",
+                        "selected_household_ids_sha256",
+                        "incoming_household_mass",
+                        "sampled_household_mass",
+                    )
+                }
+                for channel, sample in sampling["survey_samples"].items()
+            },
+        },
+        # The four carried prepared artifacts describe the whole prepared ASEC
+        # population, not the composed rows. They coincide only when the draw
+        # keeps the arm entire. Recording both counts makes the difference
+        # readable instead of leaving a later consumer to assume alignment.
+        "asec_evidence_alignment": {
+            "basis": "full_prepared_population",
+            "evidence_rows": {
+                entity: int(count)
+                for entity, count in sorted(prepared_receipt["entity_rows"].items())
+            },
+            "arm_rows": {entity: int(asec.n(entity)) for entity in asec.entities},
+            "composed_rows": composed_asec,
+            "composed_is_whole_arm": all(
+                composed_asec[entity] == int(asec.n(entity))
+                for entity in US_SCHEMA.entities
+            ),
+        },
         "arms": {
             channel: _arm_origin(source, channel)
             for channel, source in sorted(sources.items())
@@ -323,8 +402,22 @@ def compose_from_sources(
     """
     prepared = prepare_asec_current_money_population(asec_prepared_path)
     asec = prepared.frame
+    # The carried evidence is positional over the whole prepared population.
+    # If the receipt and the arm ever disagreed, everything downstream that
+    # reads the evidence by position would be silently misaligned.
+    _require(
+        {entity: int(count) for entity, count in prepared.receipt["entity_rows"].items()}
+        == {
+            entity: int(asec.n(entity))
+            for entity in prepared.receipt["entity_rows"]
+        },
+        "PREPARED_EVIDENCE_ROWS",
+    )
     acs = load_graph_acs(acs_path)
     storage_bridge = bridge_prepared_string_storage(asec)
+    # Encoded before stacking, so the identity it declares is the prepared
+    # arm's own ordered identity, which is what the evidence is positional in.
+    asec_context = encode_us_frame_context(asec)
     arms = {
         BASE_ASEC_SUPPORT_CHANNEL: asec,
         ACS_STACKED_SUPPORT_CHANNEL: acs,
@@ -333,12 +426,20 @@ def compose_from_sources(
         asec, acs, sample_fraction=sample_fraction, sample_seed=sample_seed
     )
     transitions = _canonical_assembly(stacked.frame, (asec, acs))
+    preparation_payload = canonical_json(_json_data(stacked.receipt))
     return ComposedPopulationResult(
         frame=stacked.frame,
         preparation=stacked.receipt,
         dtype_transitions=transitions,
         storage_bridge=storage_bridge,
-        source_origin=_source_origin(stacked.frame, arms),
+        source_origin=_source_origin(
+            stacked.frame,
+            arms,
+            sampling=stacked.receipt["sampling"],
+            preparation_sha256=_sha(preparation_payload),
+            prepared_receipt=prepared.receipt,
+        ),
+        asec_frame_context=asec_context,
         money_payload=prepared.money_payload,
         receipt_payload=prepared.receipt_payload,
         housing_universe_payload=prepared.housing_universe_payload,
@@ -360,6 +461,10 @@ class USComposedPopulationCreateKernel(KernelBase):
     )
 
     def implementation_hash(self) -> str:
+        # Runs before cache lookup, including resume=require, exactly as the
+        # raw-stage assembly kernel does: a renamed or substituted public
+        # loader cannot claim the declared codec implementation.
+        us_source_codecs()
         return implementation_hash(COMPOSED_STAGE)
 
     def run(self, context: KernelContext) -> KernelResult:
@@ -398,6 +503,7 @@ class USComposedPopulationCreateKernel(KernelBase):
                 "frame_context": encode_us_frame_context(result.frame),
                 "preparation": canonical_json(_json_data(result.preparation)),
                 "source_origin": canonical_json(result.source_origin),
+                "asec_frame_context": result.asec_frame_context,
                 "current_money": result.money_payload,
                 "prepared_receipt": result.receipt_payload,
                 "housing_universe": result.housing_universe_payload,
@@ -420,6 +526,10 @@ _CREATE_ARTIFACTS = (
     ArtifactOutput("frame_context", US_FRAME_CONTEXT_TYPE),
     ArtifactOutput("preparation", US_STACK_PREPARATION_TYPE),
     ArtifactOutput("source_origin", US_COMPOSED_SOURCE_ORIGIN_TYPE),
+    # The prepared arm's own typed context, encoded before stacking. The four
+    # evidence artifacts below are positional over that population, so a later
+    # binding node needs its ordered identity to align them to composed rows.
+    ArtifactOutput("asec_frame_context", US_FRAME_CONTEXT_TYPE),
     ArtifactOutput("current_money", US_ASEC_CURRENT_MONEY_BODY_TYPE),
     ArtifactOutput("prepared_receipt", US_ASEC_PREPARED_RECEIPT_TYPE),
     ArtifactOutput("housing_universe", US_ASEC_HOUSING_UNIVERSE_TYPE),
@@ -427,19 +537,87 @@ _CREATE_ARTIFACTS = (
 )
 
 
+#: Top-level keys the origin document must carry, exactly.
+_ORIGIN_KEYS = frozenset(
+    {
+        "schema",
+        "phase",
+        "preparation_sha256",
+        "sampling",
+        "asec_evidence_alignment",
+        "arms",
+        "assembled",
+        "release_eligible",
+    }
+)
+_ORIGIN_ENTITY_KEYS = frozenset(
+    {
+        "rows_by_channel",
+        "ordered_channels_sha256",
+        "ordered_spine_source_ids_sha256",
+        "ordered_source_to_output_sha256",
+    }
+)
+
+
 def bind_composed_source_origin(payload: bytes) -> dict[str, object]:
-    """Decode the origin artifact, refusing anything that is not its own bytes."""
+    """Decode the origin artifact as a typed shape, refusing a malformed one.
+
+    This checks canonical bytes and the document's declared shape: its exact
+    key set, its schema/phase, that both arms and every US entity are present
+    with well-formed digests and counts, and that it makes no release claim. It
+    verifies **no** digest against any population — it cannot, since it receives
+    only bytes. A consumer that needs the mapping to be true of a frame in hand
+    must recompute the digests against that frame.
+    """
     document = json.loads(payload)
     _require(canonical_json(document) == payload, "ORIGIN_CANONICAL")
-    _require(document.get("schema") == _SOURCE_ORIGIN_SCHEMA, "ORIGIN_SCHEMA")
-    _require(document.get("phase") == COMPOSED_PHASE, "ORIGIN_PHASE")
-    _require(
-        set(document["arms"])
-        == {BASE_ASEC_SUPPORT_CHANNEL, ACS_STACKED_SUPPORT_CHANNEL},
-        "ORIGIN_ARMS",
-    )
+    _require(isinstance(document, dict), "ORIGIN_DOCUMENT")
+    _require(set(document) == _ORIGIN_KEYS, "ORIGIN_KEYS")
+    _require(document["schema"] == _SOURCE_ORIGIN_SCHEMA, "ORIGIN_SCHEMA")
+    _require(document["phase"] == COMPOSED_PHASE, "ORIGIN_PHASE")
+    _require(_is_digest(document["preparation_sha256"]), "ORIGIN_PREPARATION_DIGEST")
     _require(document["release_eligible"] is False, "ORIGIN_RELEASE_CLAIM")
+    channels = {BASE_ASEC_SUPPORT_CHANNEL, ACS_STACKED_SUPPORT_CHANNEL}
+    _require(set(document["arms"]) == channels, "ORIGIN_ARMS")
+    sampling = document["sampling"]
+    _require(
+        set(sampling) == {"sample_fraction", "sample_seed", "survey_samples"}
+        and set(sampling["survey_samples"]) == channels,
+        "ORIGIN_SAMPLING",
+    )
+    alignment = document["asec_evidence_alignment"]
+    _require(
+        set(alignment)
+        == {"basis", "evidence_rows", "arm_rows", "composed_rows", "composed_is_whole_arm"}
+        and alignment["basis"] == "full_prepared_population"
+        and isinstance(alignment["composed_is_whole_arm"], bool),
+        "ORIGIN_ALIGNMENT",
+    )
+    _require(set(document["assembled"]) == set(US_SCHEMA.entities), "ORIGIN_ENTITIES")
+    for entity, record in document["assembled"].items():
+        _require(set(record) == _ORIGIN_ENTITY_KEYS, f"ORIGIN_ENTITY_KEYS:{entity}")
+        _require(
+            all(
+                _is_digest(record[key])
+                for key in _ORIGIN_ENTITY_KEYS
+                if key.endswith("_sha256")
+            ),
+            f"ORIGIN_ENTITY_DIGEST:{entity}",
+        )
+        _require(
+            set(record["rows_by_channel"]) <= channels
+            and all(
+                isinstance(count, int) and count >= 0
+                for count in record["rows_by_channel"].values()
+            ),
+            f"ORIGIN_ENTITY_ROWS:{entity}",
+        )
     return document
+
+
+def _is_digest(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and not set(value) - set("0123456789abcdef")
 
 
 def composed_population_nodes(
