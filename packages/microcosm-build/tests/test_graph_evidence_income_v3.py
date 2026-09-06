@@ -1212,6 +1212,289 @@ def test_absent_optional_node_digests_still_export(tmp_path):
     assert read_candidate_quality(tmp_path / "quality", reference["sha256"])
 
 
+def _accounting_mutation(change):
+    """Rewrite the direct receipt's recorded 28-column accounting roster."""
+
+    def apply(root, run, dec, review):
+        def mutate(value):
+            columns = copy.deepcopy(ACCOUNTING_COLUMNS)
+            change(columns)
+            value["result"]["reported_income_columns"] = columns
+
+        mutate_json(root, "direct-receipt.json", mutate)
+
+    return apply
+
+
+def _relay(columns):
+    offset = 0
+    for column in columns:
+        column["bytes"] = (1 if column["dtype"] == "u1" else 8) * income.PERSONS
+        column["offset"] = offset
+        offset += column["bytes"]
+
+
+def _narrow_first_column(columns):
+    # Every per-column check still passes and the offsets stay contiguous; only
+    # the recorded ninety-one byte row total no longer holds.
+    columns[0]["dtype"] = "u1"
+    _relay(columns)
+
+
+@pytest.mark.parametrize(
+    "reason,change",
+    [
+        (
+            "Reported income accounting column roster mismatch",
+            lambda columns: columns.pop(),
+        ),
+        (
+            "Reported income accounting column roster mismatch",
+            lambda columns: columns.append(copy.deepcopy(columns[0])),
+        ),
+        (
+            "Accounting column layout is not the recorded contiguous row layout",
+            lambda columns: columns[5].update(offset=columns[5]["offset"] + 8),
+        ),
+        (
+            "Accounting column layout is not the recorded contiguous row layout",
+            lambda columns: columns[0].update(bytes=8),
+        ),
+        (
+            "Accounting column layout is not the recorded contiguous row layout",
+            lambda columns: columns[9].update(dtype="<f8"),
+        ),
+        (
+            "Unsupported accounting dtype",
+            lambda columns: columns[0].update(dtype="<u4"),
+        ),
+        (
+            "Duplicate accounting column",
+            lambda columns: columns[1].update(name=columns[0]["name"]),
+        ),
+        (
+            "Accounting columns omit a declared result column",
+            lambda columns: columns[3].update(name="renamed_result_column"),
+        ),
+        ("Invalid bounded identifier", lambda columns: columns[0].update(name="a b")),
+        ("Invalid digest", lambda columns: columns[0].update(sha256="zz")),
+        (
+            "Missing or unknown receipt fields",
+            lambda columns: columns[0].update(unexpected=1),
+        ),
+        (
+            "Accounting body size differs from the recorded row contract",
+            _narrow_first_column,
+        ),
+    ],
+)
+def test_accounting_layout_contradictions_refuse(tmp_path, reason, change):
+    with pytest.raises(EvidenceError, match=reason):
+        export_fixture(tmp_path, _accounting_mutation(change))
+    assert not (tmp_path / "quality").exists()
+
+
+@pytest.mark.parametrize(
+    "reason,filename,mutation",
+    [
+        (
+            "Invalid carried housing universe cell roster",
+            "direct-receipt.json",
+            lambda v: v["result"].update(
+                selected_hu_carried_cells_sha256={
+                    f"cell_{j}": "9" * 64
+                    for j in range(income.HOUSING_UNIVERSE_EVIDENCE_FIELDS - 1)
+                }
+            ),
+        ),
+        (
+            "Invalid carried housing universe cell roster",
+            "direct-receipt.json",
+            lambda v: v["result"].update(
+                selected_hu_carried_cells_sha256={
+                    f"cell_{j}": "9" * 64 for j in range(65)
+                }
+            ),
+        ),
+        (
+            "Invalid carried housing universe cell roster",
+            "direct-receipt.json",
+            lambda v: v["result"].update(selected_hu_carried_cells_sha256=[]),
+        ),
+        (
+            "Invalid bounded identifier",
+            "direct-receipt.json",
+            lambda v: v["result"]["selected_hu_carried_cells_sha256"].update(
+                {"a b": "9" * 64}
+            ),
+        ),
+        (
+            "Invalid digest",
+            "direct-receipt.json",
+            lambda v: v["result"]["selected_hu_carried_cells_sha256"].update(
+                {"asec_invented_cell_0": "zz"}
+            ),
+        ),
+        (
+            "Graph accounting body or housing cells differ from the direct path",
+            "cold-receipt.json",
+            lambda v: v["result"]["selected_hu_carried_cells_sha256"].update(
+                {"asec_invented_cell_0": "1" * 64}
+            ),
+        ),
+        (
+            "Graph accounting body or housing cells differ from the direct path",
+            "warm-receipt.json",
+            lambda v: v["result"]["selected_hu_carried_cells_sha256"].pop(
+                "asec_invented_cell_0"
+            ),
+        ),
+    ],
+)
+def test_carried_housing_cell_contradictions_refuse(
+    tmp_path, reason, filename, mutation
+):
+    with pytest.raises(EvidenceError, match=reason):
+        export_fixture(
+            tmp_path,
+            lambda root, run, dec, review: mutate_json(root, filename, mutation),
+        )
+    assert not (tmp_path / "quality").exists()
+
+
+@pytest.mark.parametrize(
+    "reason,filename,mutation",
+    [
+        (
+            # The pins store the approved roster sorted, so an unsorted recorded
+            # list is a real difference rather than a presentation choice.
+            "Recorded lineage divergence differs from the approved field roster",
+            "cold-receipt.json",
+            lambda v: v["result"].update(
+                reported_income_header_divergence_from_direct=list(reversed(LINEAGE))
+            ),
+        ),
+        (
+            "Recorded lineage divergence differs from the approved field roster",
+            "warm-receipt.json",
+            lambda v: v["result"].update(
+                reported_income_header_divergence_from_direct=[*LINEAGE, LINEAGE[0]]
+            ),
+        ),
+        (
+            "Recorded lineage divergence differs from the approved field roster",
+            "cold-receipt.json",
+            lambda v: v["result"].update(
+                reported_income_header_divergence_from_direct=[]
+            ),
+        ),
+    ],
+)
+def test_recorded_lineage_roster_must_match_exactly(
+    tmp_path, reason, filename, mutation
+):
+    with pytest.raises(EvidenceError, match=reason):
+        export_fixture(
+            tmp_path,
+            lambda root, run, dec, review: mutate_json(root, filename, mutation),
+        )
+    assert not (tmp_path / "quality").exists()
+
+
+def test_unsorted_approved_lineage_roster_is_normalised(tmp_path):
+    """Order in the approved review is normalised; order in the run is not.
+
+    Sorting the approved roster is what makes the recorded-list comparison a
+    contract rather than an accident of how the review happened to be written.
+    """
+    reference = export_fixture(
+        tmp_path,
+        lambda root, run, dec, review: review.update(
+            reported_income_lineage_fields=list(reversed(LINEAGE))
+        ),
+    )
+    candidate = read_candidate_quality(tmp_path / "quality", reference["sha256"])
+    graph = json.loads(
+        (
+            tmp_path / "quality" / candidate["attachments"]["graph_receipts"]["path"]
+        ).read_bytes()
+    )
+    assert graph["lineage_divergence"]["fields"] == LINEAGE
+
+
+@pytest.mark.parametrize(
+    "reason,filename,mutation",
+    [
+        (
+            "Graph reported income summary differs from the direct path",
+            "cold-receipt.json",
+            lambda v: v["result"]["reported_income"]["signed_value_counts"][
+                income.RESULT_COLUMNS[0]
+            ].update(negative=2, positive=1, zero=income.PERSONS - 3),
+        ),
+        (
+            "Graph reported income summary differs from the direct path",
+            "warm-receipt.json",
+            lambda v: v["result"]["reported_income"][
+                "selected_zero_origin_class_counts"
+            ]["2024"].update(observed_amount=2),
+        ),
+        (
+            "Graph reported income summary differs from the direct path",
+            "cold-receipt.json",
+            lambda v: v["result"]["reported_income"].update(
+                alternative_association_differs=True
+            ),
+        ),
+        (
+            "Graph reported income summary differs from the direct path",
+            "cold-receipt.json",
+            lambda v: v["result"]["reported_income"].update(
+                alternative_association_sha256="9" * 64
+            ),
+        ),
+        (
+            "Graph reported income summary differs from the direct path",
+            "warm-receipt.json",
+            lambda v: v["result"]["reported_income"]["result_columns_sha256"].update(
+                {income.RESULT_COLUMNS[0]: "9" * 64}
+            ),
+        ),
+        (
+            "Signed value counts do not cover the recorded person rows",
+            "cold-receipt.json",
+            lambda v: v["result"]["reported_income"]["signed_value_counts"][
+                income.RESULT_COLUMNS[0]
+            ].update(zero=0),
+        ),
+        (
+            "Reported income accounting contract mismatch",
+            "cold-receipt.json",
+            lambda v: v["result"]["reported_income"].update(rows=51),
+        ),
+        (
+            "Reported income accounting contract mismatch",
+            "warm-receipt.json",
+            lambda v: v["result"]["reported_income"].update(hand_order="W=WSAL_VAL"),
+        ),
+        (
+            "Missing or unknown receipt fields",
+            "cold-receipt.json",
+            lambda v: v["result"]["reported_income"].pop("signed_value_counts"),
+        ),
+    ],
+)
+def test_graph_reported_income_summary_is_validated(
+    tmp_path, reason, filename, mutation
+):
+    with pytest.raises(EvidenceError, match=reason):
+        export_fixture(
+            tmp_path,
+            lambda root, run, dec, review: mutate_json(root, filename, mutation),
+        )
+    assert not (tmp_path / "quality").exists()
+
+
 def test_cold_and_warm_opaque_output_bytes_must_agree(tmp_path):
     def mutate(root, run, dec, review):
         (root / f"warm-{IDS[4]}-reported_income.bin").write_bytes(b"different bytes")
