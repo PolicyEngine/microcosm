@@ -56,3 +56,14 @@ Accepted-source boundary:
   Integrated zero-weight coverage remains nonvacuous through the ACS GQ household;
   accepted native-lineage tests separately cover downstream zero-weight ASEC rows.
 Next: rerun with valid original-source contracts and corrected ACS lexical tokens.
+
+Integrated proof and nonvacuous zero-weight correction:
+- r4 executed the complete 17-node graph, full stored-frame verifier, six old-key
+  preservation and three targeted refusals, then its zero-current-weight probe
+  found no such row. ACS deliberately substitutes positive PWGTP for GQ WGTP=0.
+- Added a separate seven-node invented downstream zero-weight graph using the
+  actual complete integrated Frame, real frame-store/source codecs and real clone
+  and origin kernels. Both arms receive an explicit synthetic zero-weight row.
+- Added draft future-binding/cap documentation and exact no-overwrite private
+  household staging command text. It has not been executed on genuine archives.
+Next: complete committed cold/warm proof and report exact dependencies and keys.

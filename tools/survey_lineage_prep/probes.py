@@ -123,8 +123,33 @@ def refusals(root, manifest, store, graph, registry, sources):
     def payload(node, output):
         return store.load_bytes(manifest.nodes[node].opaque_artifacts[output])
 
+    # Original ASEC weights are strictly positive. ACS WGTP=0 placeholders
+    # become positive current PWGTP in composition. Exercise downstream zero
+    # weights in a separate seven-node invented Frame boundary, using the
+    # actual complete integrated native Frame and the real clone/origin kernels.
+    zero_manifest, zero_store = zero_weight_graph(
+        root, manifest.population(NATIVE_POPULATION), sources
+    )
+    zero_binding = origin.verify_materialized_population_origins(
+        zero_manifest,
+        zero_store,
+        population_node=CLONE_POPULATION,
+        binding_node=CLONE_BINDING,
+        parent_binding_node=NATIVE_BINDING,
+    )
+    assert zero_binding.summary["zero_weight_households_with_lineage"] == 4
+    results["zero_weight_graph"] = {
+        "status": "PASS",
+        "nodes": len(zero_manifest.nodes),
+        "summary": zero_binding.summary,
+        "boundary": "invented downstream zero weights in both arms",
+    }
+    after = zero_manifest.population(CLONE_POPULATION)
     parent = native.PopulationOriginBinding(
-        payload(NATIVE_BINDING, "binding"), _token=native._BOUND_TOKEN
+        zero_store.load_bytes(
+            zero_manifest.nodes[NATIVE_BINDING].opaque_artifacts["binding"]
+        ),
+        _token=native._BOUND_TOKEN,
     )
     source_values = [
         native.AuthenticatedNativeOriginSource(
@@ -163,3 +188,90 @@ def refusals(root, manifest, store, graph, registry, sources):
         parent_binding_node=NATIVE_BINDING,
     )
     return results
+
+
+def zero_weight_graph(root, before, sources):
+    from pathlib import Path
+
+    from survey_lineage_prep.invented import peer
+    from us_survey_lineage_graph import CLONE_BINDING, CLONE_POPULATION, NATIVE_BINDING
+
+    from microcosm.build.us_runtime import graph_combined_clone as clone
+    from microcosm.build.us_runtime import graph_native_household_origin as origin
+    from microcosm.build.us_runtime.graph_sources import (
+        frame_column_declarations,
+        us_source_codecs,
+    )
+    from microcosm.build.us_runtime.support_provenance import support_channel_column
+    from microcosm.frame import Frame, Weights
+    from microcosm.graph import (
+        ContentStore,
+        Graph,
+        KernelRegistry,
+        Node,
+        SourceRef,
+        StructuralDelta,
+        compile_graph,
+        run_graph,
+    )
+
+    weights = before.weights_for("household").values.copy()
+    for arm in ("acs", "asec"):
+        index = before.household.index[
+            before.household[support_channel_column("household")].eq(arm)
+        ][0]
+        weights[index] = 0
+    frame = Frame(
+        {e: before.table(e).copy(deep=True) for e in before.entities},
+        before.schema,
+        {"household": Weights(weights, before.weights_for("household").kind)},
+        before.strata.copy(),
+    )
+    store = ContentStore(root / "zero-store", codecs=us_source_codecs())
+    key = hashlib.sha256(b"invented-downstream-zero-weights").hexdigest()
+    population_path = store.put_frame(key, frame)
+    columns = frame_column_declarations(frame)
+    create = peer(
+        Path(__file__).resolve().parents[2], "test_us_graph_combined_clone"
+    )._Create
+    nodes = (
+        Node(
+            "zero_native",
+            create.ref,
+            sources=("population",),
+            structural=StructuralDelta.CREATE,
+            outputs=columns,
+        ),
+        *origin.native_origin_source_nodes(population="zero_native"),
+        origin.native_origin_binding_node(
+            columns, population="zero_native", node_id=NATIVE_BINDING
+        ),
+        *clone.us_combined_survey_clone_nodes(
+            columns, base="zero_native", source_channels=("acs", "asec")
+        ),
+        origin.native_origin_binding_node(
+            columns,
+            population=CLONE_POPULATION,
+            node_id=CLONE_BINDING,
+            parent_binding_node=NATIVE_BINDING,
+        ),
+    )
+    graph = Graph(
+        country="us",
+        sources=(SourceRef("population", "frame-store"), *origin.SOURCES),
+        nodes=nodes,
+    )
+    registry = KernelRegistry()
+    registry.register(create())
+    origin.register_native_origin_kernels(registry)
+    clone.register_us_combined_survey_clone_kernels(registry)
+    paths = {s.name: sources[s.name] for s in origin.SOURCES}
+    paths["population"] = population_path
+    manifest = run_graph(
+        compile_graph(graph),
+        sources=paths,
+        store=store,
+        kernels=registry,
+        resume="forbid",
+    )
+    return manifest, store

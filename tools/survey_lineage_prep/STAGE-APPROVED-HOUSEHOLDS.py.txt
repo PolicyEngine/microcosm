@@ -1,0 +1,66 @@
+"""PREPARED ONLY: root must approve concrete archive paths and headroom first.
+
+This command was not executed against genuine archives during preparation.
+Only three exact household members are extracted. No overwrite and no other
+member payload reads. Original archive/member hashes come from root acceptance
+f997bbdc3573ed346d0e84d29f90c7b7ded9a12720c036d2789a7d561a04d602.
+"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import sys
+import zipfile
+
+PINS = (
+    (2023, 'hhpub23.csv', 'd2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11', 'c88192cb3c963a90ea98022606112a01ade0eb8e2c17df4149052970a5d5246f', 30259450),
+    (2024, 'hhpub24.csv', 'cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09', 'b12c1078e02766a4033ba1a031abdd6b9ef9df546aee5886dc8439a35abaa2ac', 30448089),
+    (2025, 'hhpub25.csv', '318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b', 'b5b7351d5d4e5d79ff189f1d90096b16b2d4749671c14328ec6474cfe83ce116', 33298479),
+)
+parser = argparse.ArgumentParser(description=__doc__)
+for year, *_ in PINS:
+    parser.add_argument(f'--archive-{year}', required=True, type=Path)
+parser.add_argument('--private-destination', required=True, type=Path)
+args = parser.parse_args()
+prefix = sys.pycache_prefix
+assert sys.dont_write_bytecode and prefix and Path(prefix).is_absolute() and not Path(prefix).exists()
+os.umask(0o077)
+destination = args.private_destination.absolute()
+# This exclusive mkdir happens before opening any source. A failed attempt is
+# retained for root inspection; rerun only with a fresh private destination.
+destination.mkdir(mode=0o700)
+receipt = []
+for year, name, archive_sha, member_sha, size in PINS:
+    path = getattr(args, f'archive_{year}')
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, 'rb') as raw:
+        before = os.fstat(raw.fileno())
+        assert hashlib.file_digest(raw, 'sha256').hexdigest() == archive_sha
+        raw.seek(0)
+        with zipfile.ZipFile(raw) as archive:
+            matches = [m for m in archive.infolist() if m.filename == name]
+            assert len(matches) == 1
+            member = matches[0]
+            assert not member.is_dir() and member.file_size == size
+            assert not member.flag_bits & 1
+            digest, count = hashlib.sha256(), 0
+            with archive.open(member) as source, (destination / name).open('xb') as output:
+                while block := source.read(1024 * 1024):
+                    count += len(block)
+                    assert count <= size
+                    digest.update(block)
+                    output.write(block)
+                output.flush()
+                os.fsync(output.fileno())
+            assert count == size and digest.hexdigest() == member_sha
+        after = os.fstat(raw.fileno())
+        assert (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) == (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns)
+    with (destination / name).open('rb') as staged:
+        assert hashlib.file_digest(staged, 'sha256').hexdigest() == member_sha
+    receipt.append({'survey_year': year, 'member': name, 'archive_sha256': archive_sha,
+                    'member_sha256': member_sha, 'bytes': size})
+assert not Path(prefix).exists()
+# Receipt contains public hashes/counts only. No native keys are emitted.
+with (destination / 'staging-receipt.json').open('x') as output:
+    json.dump({'status': 'STAGED_HASH_VERIFIED', 'members': receipt}, output, indent=2)
