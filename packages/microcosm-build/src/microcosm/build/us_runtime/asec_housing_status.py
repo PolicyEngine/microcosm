@@ -64,6 +64,8 @@ ZERO_ORIGIN_EVIDENCE = {
     "inference": "Int64 storage is consistent with fillna being a no-op only if the inspected default-CSV producer and its assumed runtime actually produced the pinned HDFs; no historical execution proof or CSV comparison is claimed.",
 }
 _STATUS_TOKEN = object()
+AUTHORITY_RESOURCE = "asec_housing_status_authority_v1.json"
+AUTHORITY_SHA256 = "da1af1702c3783f0e318854d5c6ba07ab2a4eb8c4306508ed845b6dd712437dc"
 DICTIONARIES = (
     (
         2023,
@@ -148,6 +150,41 @@ def _codebook() -> dict:
     }
 
 
+def _authority() -> dict:
+    """Read the pinned public-document page evidence for both named authorities.
+
+    The dictionary defines the code domains this module classifies; the
+    questionnaire records the interview wording and the unresolved 2023/24
+    facsimile answer-number discrepancy. Neither is a recoding permission.
+    """
+    payload = resources.files(__package__).joinpath(AUTHORITY_RESOURCE).read_bytes()
+    _require(_sha(payload) == AUTHORITY_SHA256, "AUTHORITY_FINGERPRINT")
+    document = _parse(payload)
+    _require(
+        document["resource_kind"] == "microcosm.asec_housing_status_authority.v1"
+        and document["facsimile_discrepancy"]["recode_inferred"] is False
+        and document["field_access"]["positional_parser"] == "not_used",
+        "AUTHORITY_CONTRACT",
+    )
+    # The embedded dictionary evidence and the module's own pins cannot drift.
+    surveys = document["surveys"]
+    _require(
+        len(surveys) == len(DICTIONARIES)
+        and all(
+            entry["survey_year"] == year
+            and entry["income_year"] == year - 1
+            and entry["dictionary"]["sha256"] == digest
+            and tuple(
+                page["page_index_zero_based"] for page in entry["dictionary"]["pages"]
+            )
+            == pages
+            for entry, (year, digest, pages) in zip(surveys, DICTIONARIES, strict=True)
+        ),
+        "AUTHORITY_DICTIONARY_PINS",
+    )
+    return document
+
+
 def _definition_identity() -> str:
     return _sha(
         _json(
@@ -159,6 +196,7 @@ def _definition_identity() -> str:
                 ),
                 "codebook": _codebook(),
                 "dictionaries": DICTIONARIES,
+                "authority": _authority(),
                 "zero_origin_evidence": ZERO_ORIGIN_EVIDENCE,
                 "dependencies": {
                     name: metadata.version(name) for name in ("numpy", "pandas")
@@ -379,6 +417,7 @@ def _issue(
         "columns": COLUMNS,
         "codebook": _codebook(),
         "dictionaries": DICTIONARIES,
+        "authority": _authority(),
         "definition_sha256": _definition_identity(),
         "source": source,
         "implementation": implementation,
