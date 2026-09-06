@@ -245,7 +245,7 @@ def invented(tmp_path, size: Size):
     # frame. The profile makes no arithmetic claim from the rule -- it only
     # reconciles counts -- but a fixture whose own numbers contradict the string
     # it carries is a fixture nobody can read.
-    SAMPLED_FRACTION = 0.01
+    sampled_fraction = 0.01
     eligible = {year: households * 100 for year, households in zip(YEARS, size.cohorts, strict=True)}
 
     def write(name, data):
@@ -385,7 +385,7 @@ def invented(tmp_path, size: Size):
         dict(
             eligible_household_count=sum(eligible.values()),
             exact_count_rule="floor(fraction * eligible)",
-            fraction=SAMPLED_FRACTION,
+            fraction=sampled_fraction,
             incoming_household_mass=1234.5,
             realized_household_count=size.households,
             sampled_household_mass=12.5,
