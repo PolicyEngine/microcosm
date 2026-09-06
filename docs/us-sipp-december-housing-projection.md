@@ -554,7 +554,9 @@ therefore carries `implementation.module_sha256` for
 `sipp_housing_measurements`, `sipp_housing_predictors`, `sipp_housing_projection`
 and the two frozen modules they reuse, plus a `binding` key over those digests.
 The predictor module is a new code dependency of what a receipt means, so it is
-inside that identity from the first version that has it. It sits in the
+inside that identity from the first version that has it, and the binding domain
+moves to `sipp-december-housing-implementation-binding/2` because the bound
+module set changed shape rather than only its values. It sits in the
 receipt and **not** inside `recipe_bytes()`, because a module hash placed inside
 the bytes it hashes cannot be computed; the recipe names what is bound and
 records `inside_recipe_bytes: false`. The frozen modules are read, never

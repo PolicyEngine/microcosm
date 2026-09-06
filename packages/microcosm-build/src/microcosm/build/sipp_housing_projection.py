@@ -585,7 +585,10 @@ def implementation_binding() -> dict:
     return {
         "modules": list(IMPLEMENTATION_MODULES),
         "module_sha256": digests,
-        "binding": s._key("sipp-december-housing-implementation-binding/1", digests),
+        # Version 2 of the binding domain: the bound module set gained
+        # ``sipp_housing_predictors`` with recipe version 3, so the payload's
+        # shape changed and not only its values.
+        "binding": s._key("sipp-december-housing-implementation-binding/2", digests),
         "frozen_modules_mutated": False,
         "inside_recipe_bytes": False,
         "dependency_versions_bound": False,

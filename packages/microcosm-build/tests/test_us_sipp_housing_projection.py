@@ -1783,6 +1783,16 @@ def test_the_receipt_binds_the_predictor_module_and_carries_a_predictor_digest()
         not in recipe
     )
     assert receipt["predictor_digest"] not in recipe
+    # The binding domain moved with the module set, so a version 2 binding over
+    # the four-module set cannot be mistaken for this one.
+    digests = hp.module_digests()
+    assert receipt["implementation"]["binding"] == source._key(
+        "sipp-december-housing-implementation-binding/2", digests
+    )
+    four = {k: v for k, v in digests.items() if "predictors" not in k}
+    assert receipt["implementation"]["binding"] != source._key(
+        "sipp-december-housing-implementation-binding/1", four
+    )
 
 
 def test_a_moved_predictor_value_moves_the_predictor_digest_and_the_receipt():
