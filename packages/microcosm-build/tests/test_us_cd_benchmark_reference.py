@@ -18,6 +18,8 @@ from pathlib import Path
 import pytest
 
 import microcosm.build
+import microcosm.build.cd_benchmark
+import microcosm.frame
 from microcosm.build.cd_benchmark.evaluation import evaluate_block
 from microcosm.build.cd_benchmark.metrics import ARITHMETIC
 from microcosm.build.cd_benchmark.protocol import (
@@ -235,22 +237,54 @@ def test_protocol_and_pure_adapters_are_byte_identical_to_the_contract(protocol)
 
 
 def test_pure_benchmark_package_still_loads_no_census_runtime():
-    """The projection lives outside ``cd_benchmark`` so that stays pure."""
+    """The projection lives outside ``cd_benchmark`` so that stays pure.
+
+    The child interpreter drops every ``packages/microcosm-*/src`` entry that is
+    not one of *this* checkout's, because an editable install in the ambient
+    environment can point at a different worktree — without that, this would
+    assert some other tree's purity rather than the tree under test.
+    """
     src = Path(microcosm.build.__file__).resolve().parents[2]
+    packages = src.parents[1]
+    allowed = sorted(
+        str(shard / "src")
+        for shard in packages.iterdir()
+        if shard.name.startswith("microcosm-") and (shard / "src").is_dir()
+    )
+    assert str(src) in allowed
     code = (
-        "import sys\n"
-        "import microcosm.build.cd_benchmark.evaluation\n"
+        "import os, sys\n"
+        f"allowed = {allowed!r}\n"
+        "sys.path[:] = [\n"
+        "    entry\n"
+        "    for entry in sys.path\n"
+        "    if not (\n"
+        "        os.path.realpath(entry).endswith(os.sep + 'src')\n"
+        "        and os.sep + 'packages' + os.sep + 'microcosm-'\n"
+        "        in os.path.realpath(entry)\n"
+        "    )\n"
+        "    or os.path.realpath(entry) in {os.path.realpath(p) for p in allowed}\n"
+        "]\n"
+        "import microcosm.build.cd_benchmark.evaluation as evaluation\n"
         "import microcosm.build.cd_benchmark.ledger\n"
         "import microcosm.build.cd_benchmark.reference\n"
         "import microcosm.build.cd_benchmark.universe\n"
-        "assert 'microcosm.build.us_runtime' not in sys.modules, "
-        "'the pure package pulled us_runtime'\n"
+        "loaded = os.path.realpath(evaluation.__file__)\n"
+        "assert any(\n"
+        "    loaded.startswith(os.path.realpath(entry) + os.sep) for entry in allowed\n"
+        "), 'the purity check ran against a foreign checkout: ' + loaded\n"
+        "assert 'microcosm.build.us_runtime' not in sys.modules, (\n"
+        "    'the pure package pulled us_runtime'\n"
+        ")\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
         capture_output=True,
         text=True,
-        env={**os.environ, "PYTHONPATH": str(src)},
+        env={
+            **os.environ,
+            "PYTHONPATH": os.pathsep.join(allowed),
+        },
         check=False,
     )
     assert result.returncode == 0, result.stderr
