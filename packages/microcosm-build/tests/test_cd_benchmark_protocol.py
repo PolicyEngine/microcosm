@@ -642,6 +642,24 @@ REQUIRED_ROSTERS = (
 )
 
 
+@pytest.mark.parametrize("value", ["S0101_C02_002", {}, 4, None])
+def test_precision_variables_cannot_iterate_a_non_array(value):
+    document = json.loads(load_canonical_bytes())
+    age = next(b for b in document["blocks"] if b["id"] == "age_distribution")
+    age["precision_variables"] = value
+    with pytest.raises(ProtocolError, match="precision_variables must be a JSON array"):
+        compile_protocol(canonical_bytes(document))
+
+
+@pytest.mark.parametrize("bound", ["max_unimplemented_pp", "max_renter_discrepancy_pp"])
+def test_additional_bound_requires_an_implemented_bin(bound):
+    document = json.loads(load_canonical_bytes())
+    age = next(b for b in document["blocks"] if b["id"] == "age_distribution")
+    age[bound] = "1"
+    with pytest.raises(ProtocolError, match="additional distribution bound|renter bin"):
+        compile_protocol(canonical_bytes(document))
+
+
 @pytest.mark.parametrize(("section", "key"), REQUIRED_ROSTERS)
 def test_an_absent_or_mistyped_required_roster_is_a_protocol_error(section, key):
     raw = load_canonical_bytes()

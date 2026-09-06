@@ -586,6 +586,9 @@ def test_implementation_approval_never_permits_scoring(protocol):
 
 
 def test_the_six_axes_are_reported_separately(protocol):
+    protocol = dataclasses.replace(
+        protocol, scope=dataclasses.replace(protocol.scope, district_count=1)
+    )
     injected, registration = authority(
         protocol, frozenset({ApprovalScope.CANDIDATE_SCORING})
     )
@@ -633,6 +636,9 @@ def test_an_unapproved_mapping_alone_makes_the_scope_incomplete(protocol):
 
 
 def test_nonconformity_is_retained_under_an_incomplete_scope(protocol):
+    protocol = dataclasses.replace(
+        protocol, scope=dataclasses.replace(protocol.scope, district_count=1)
+    )
     injected, registration = authority(
         protocol, frozenset({ApprovalScope.CANDIDATE_SCORING})
     )
@@ -870,9 +876,37 @@ def test_districts_cannot_fill_each_others_mandatory_block_gaps(protocol):
         registration=registration,
     )
     blocks = every_mandatory_block(protocol)
-    # Scope reduction consumes declared BlockEvaluation identities. Move just
-    # one completed block to a second invented district to isolate that roster.
-    blocks[0] = dataclasses.replace(blocks[0], geography_id="5001900US0602")
+    # Every axis moves with its block, so only the per-district roster is wrong.
+    first = blocks[0]
+    geography = "5001900US0602"
+    blocks[0] = evaluate_block(
+        protocol.block(first.block_id),
+        geography_id=geography,
+        metric=dataclasses.replace(first.metric, geography_id=geography),
+        precision=tuple(
+            dataclasses.replace(
+                reading,
+                cells=tuple(
+                    dataclasses.replace(
+                        cell,
+                        canonical_geography_id=geography,
+                        published_geo_id=geography,
+                    )
+                    for cell in reading.cells
+                ),
+            )
+            for reading in first.precision
+        ),
+        support=tuple(
+            dataclasses.replace(reading, geography_id=geography)
+            for reading in first.support
+        ),
+        exposure=first.exposure,
+    )
+    protocol = dataclasses.replace(
+        protocol, scope=dataclasses.replace(protocol.scope, district_count=2)
+    )
+    assert all(not block.reasons for block in blocks)
     result = evaluate_scope(
         protocol,
         approval=approval,

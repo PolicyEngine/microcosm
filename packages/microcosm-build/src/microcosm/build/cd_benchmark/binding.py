@@ -126,6 +126,8 @@ class CandidateBinding:
     income_claimed: bool = True
 
     def __post_init__(self) -> None:
+        if not isinstance(self.income_claimed, bool):
+            raise BindingError("income_claimed must be a boolean.")
         slots = dict(self.slots)
         for name, value in slots.items():
             if not isinstance(value, ArtifactRef):
@@ -147,6 +149,7 @@ class BindingResult:
     unauthenticated_slots: tuple[str, ...]
     unknown_slots: tuple[str, ...]
     reasons: tuple[Reason, ...]
+    income_claimed: bool
     evidence: Mapping[str, object] = field(default_factory=dict)
 
 
@@ -200,6 +203,7 @@ def resolve_binding(
         unauthenticated_slots=unauthenticated,
         unknown_slots=unknown,
         reasons=dedupe(problems),
+        income_claimed=binding.income_claimed,
         evidence=MappingProxyType(
             {
                 "authenticator_injected": authenticator is not None,

@@ -440,9 +440,14 @@ def evaluate_scope(
     ``allowed_missing_mandatory_block_fraction`` is zero, so every mandatory
     block the contract declares must appear for each supplied geography; a
     missing one is ``required_cell_or_district_missing``. A block from another
-    district cannot fill that gap. District coverage is the caller's to
-    establish with :func:`district_scope_reasons` and pass in through
-    ``scope_reasons``.
+    district cannot fill that gap. The distinct district count must equal the
+    protocol's declared count. District identities still require the caller's
+    complete inventory, supplied here or checked with
+    :func:`district_scope_reasons` and passed through ``scope_reasons``.
+
+    The income claim resolved by ``binding`` must cover any supplied income
+    block. Waiving that slot authenticates no income definition, even if the
+    caller includes an unused reference in its original binding.
 
     This package takes no ledger lock and creates no ledger.
     ``ledger_writer_available=False`` is a caller-declared state that yields
@@ -468,7 +473,11 @@ def evaluate_scope(
             published_geography_ids=published_geography_ids or {},
         )
         problems.extend(inventory_reasons)
-    if missing_blocks or missing_block_geographies:
+    if (
+        missing_blocks
+        or missing_block_geographies
+        or len(present_by_geography) != protocol.scope.district_count
+    ):
         problems.append(Reason.REQUIRED_CELL_OR_DISTRICT_MISSING)
     scoring = (
         approval.authorized
@@ -483,6 +492,14 @@ def evaluate_scope(
         problems.append(Reason.PROTOCOL_UNAPPROVED)
     problems.extend(approval.reasons)
     problems.extend(binding.reasons)
+    income_claim_mismatch = (
+        any(item.block_id == "income_distribution" for item in blocks)
+        and not binding.income_claimed
+    )
+    mapping_status = binding.status
+    if income_claim_mismatch:
+        problems.append(Reason.MAPPING_UNAPPROVED)
+        mapping_status = MappingStatus.UNAPPROVED
     problems.extend(scope_reasons)
     problems.extend(ledger_reasons)
     if not ledger_writer_available:
@@ -537,7 +554,7 @@ def evaluate_scope(
             )
         )
         or (str(PrecisionStatus.UNAVAILABLE),),
-        "mapping_status": str(binding.status),
+        "mapping_status": str(mapping_status),
         "support_status": tuple(
             sorted(
                 {str(reading.verdict) for item in blocks for reading in item.support}
@@ -565,6 +582,9 @@ def evaluate_scope(
                 "missing_mandatory_blocks": missing_blocks,
                 "district_inventory_evidence": inventory_notes,
                 "district_inventory_checked_here": inventory_notes is not None,
+                "present_district_count": len(present_by_geography),
+                "declared_district_count": protocol.scope.district_count,
+                "income_claim_binding_mismatch": income_claim_mismatch,
                 "missing_mandatory_block_geographies": missing_block_geographies,
                 "allowed_missing_mandatory_block_fraction": str(
                     protocol.scope.allowed_missing_mandatory_block_fraction

@@ -369,6 +369,8 @@ def parse_record(value: object, *, protocol: CompiledProtocol) -> LedgerRecord:
         raise LedgerError("previous_record_sha256 must be null or a digest.")
     payload = _closed(value["payload"], _roster(protocol, event), str(event))
     for name in IDENTIFIER_LIST_FIELDS.get(event, ()):
+        if name not in payload:
+            raise LedgerError(f"The {event} roster must declare {name!r}.")
         _identifier_list(payload[name], name, str(event))
     if (
         event is EventType.EVALUATION_INTERRUPTED

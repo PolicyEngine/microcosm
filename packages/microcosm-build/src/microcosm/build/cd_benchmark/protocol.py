@@ -455,6 +455,13 @@ def _distribution_block(block: dict[str, Any]) -> DistributionBlock:
         and key.endswith("_pp")
         and key not in {"max_each_bin_discrepancy_pp"}
     }
+    if set(extra) - {"max_renter_discrepancy_pp"}:
+        raise ProtocolError("Unsupported additional distribution bound.")
+    if "max_renter_discrepancy_pp" in extra and "renter" not in identifiers:
+        raise ProtocolError("The renter bound requires a renter bin.")
+    precision_variables = block.get("precision_variables", [])
+    if not isinstance(precision_variables, list):
+        raise ProtocolError("precision_variables must be a JSON array.")
     return DistributionBlock(
         id=_text(block.get("id"), "block id"),
         family=_text(block.get("family"), "block family"),
@@ -472,8 +479,7 @@ def _distribution_block(block: dict[str, Any]) -> DistributionBlock:
         reference_moe_ceiling_pp=_decimal(block[present[0]], present[0]),
         precision_kind=_PRECISION_CEILINGS[present[0]],
         precision_variables=tuple(
-            _text(item, "precision variable")
-            for item in block.get("precision_variables", [])
+            _text(item, "precision variable") for item in precision_variables
         ),
         exposure_families=_families(block),
         independent_votes=block.get("owner_and_renter_independent_votes"),

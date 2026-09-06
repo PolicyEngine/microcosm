@@ -230,14 +230,28 @@ relations even for a previously assembled block and refuses duplicate district/
 block pairs. It requires exact approval/protocol identity and canonical bytes
 before setting `scoring_permitted`.
 
+An income block also requires the binding to have claimed income. A Boolean
+`income_claimed=False` waives authentication of the income-definition slot;
+that result cannot cover an income block, even if an unused slot reference was
+supplied. The scope then reports `mapping_unapproved` on the mapping axis and
+remains incomplete. Non-Boolean claims refuse at the binding input.
+
 `evaluate_scope(required_geography_ids=..., published_geography_ids=...)` can
 check a supplied district inventory against its actual block set, retaining that
 evidence. When omitted, `district_inventory_checked_here` is false: the caller
 still owns inventory authentication and must supply external scope reasons.
-A conforming fixture-only block set without that inventory is not evidence for
-the full 436-district scope. Plain result dataclasses and caller-supplied
+The distinct district count is always checked against the protocol, including
+when no inventory is supplied: one district cannot satisfy the declared 436.
+Positive one-district tests explicitly narrow their invented protocol scope.
+Matching the count still does not authenticate the district identities.
+Plain result dataclasses and caller-supplied
 bindings remain trusted in-process inputs, not cryptographic capabilities or
 publisher authentication.
+
+Successor documents must use an array for `precision_variables`. Additional
+distribution bounds must be implemented; the renter bound requires a renter
+bin. A successor ledger roster omitting an identifier array used by the reader
+refuses as a ledger error rather than leaking a missing-key exception.
 
 Printed numeric reference strings are parsed as exact decimals after the ACS
 adapter classifies them. Candidate floats retain their exact binary values;

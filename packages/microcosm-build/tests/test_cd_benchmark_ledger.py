@@ -8,6 +8,7 @@ real local ledger contract is future work and no production ledger exists.
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 
 import pytest
 
@@ -144,6 +145,24 @@ def test_a_well_formed_chain_verifies_and_snapshots(protocol):
         "exact_NDJSON_prefix_sha256",
         "prefix_bytes",
     }
+
+
+def test_a_successor_roster_cannot_omit_a_consumed_identifier_array(protocol):
+    protocol = replace(
+        protocol,
+        attempt_payload_fields=tuple(
+            item
+            for item in protocol.attempt_payload_fields
+            if item[0] != "all_derivative_reference_family_ids"
+        ),
+    )
+    records = chain(protocol)
+    payload = dict(records[1].payload)
+    del payload["all_derivative_reference_family_ids"]
+    records[1] = replace(records[1], payload=payload)
+    # The malformed attempt is reached before any downstream chain check.
+    result = verify_ledger(build_records(records[:2]), protocol=protocol)
+    assert result.reasons == (Reason.LEDGER_INTEGRITY_UNKNOWN,)
 
 
 def test_a_record_hash_covers_the_complete_previous_record(protocol):
