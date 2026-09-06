@@ -42,6 +42,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import struct
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,9 +53,12 @@ import pandas as pd
 
 from .puf_growth import (
     DESIGN_WEIGHT_FIELD,
+    PROVENANCE_RECID_COLUMN,
+    PROVENANCE_SOURCE_AGI_COLUMN,
     SOURCE_AGI_FIELD,
     SOURCE_RECID_FIELD,
     CompiledPufGrowth,
+    FactorAuthority,
     FieldRole,
     GrownPufTable,
     GrowthFactorTable,
@@ -82,6 +86,7 @@ __all__ = [
     "PRICE_BASELINE_SOURCE_YEAR",
     "PRICE_BASELINE_TABLE_ID",
     "PRICE_BASELINE_TARGET_YEAR",
+    "PRICE_BASELINE_FACTOR_BITS",
     "PAIRWISE_OBSERVATIONS",
     "PufMoneyViewAdaptation",
     "adapt_projection_to_money_view",
@@ -89,6 +94,7 @@ __all__ = [
     "price_baseline_factor_document",
     "price_baseline_invariants",
     "price_baseline_recipe",
+    "require_price_baseline_contract",
 ]
 
 #: The primary BLS series this baseline is read from.
@@ -116,6 +122,17 @@ PRICE_BASELINE_LEVELS = MappingProxyType(
 #: levels carry exactly three decimals, so the ratio of the thousandths-scaled
 #: integers is the exact ratio of the published levels.
 PRICE_BASELINE_RATIO = (313689, 237017)
+
+#: The one float64 the adopted factor is, as its little-endian bit pattern.
+#: Derived from the exact rational here rather than written down, so it cannot
+#: drift from :data:`PRICE_BASELINE_RATIO`; a test separately checks that the
+#: division of the two published level *texts* lands on the same double.
+#: :func:`require_price_baseline_contract` compares an incoming contract's
+#: resolved bits against this, which is the check that makes every downstream
+#: statement about "the factor" a statement about the contract in hand.
+PRICE_BASELINE_FACTOR_BITS = struct.pack(
+    "<d", PRICE_BASELINE_RATIO[0] / PRICE_BASELINE_RATIO[1]
+).hex()
 
 PRICE_BASELINE_SERIES_NAME = "bls.cpi_u.all_items.us_city_average.annual_average"
 
@@ -283,6 +300,168 @@ def price_baseline_recipe(
     return GrowthRecipe(recipe_id, tuple(rules))
 
 
+#: The one contract shape this module will describe. Every constant this
+#: module goes on to state as fact — the source and target year, the exact
+#: rational, the identifier identity, the no-return-mass-transition
+#: declaration — is a property of a contract, not of the module, so a contract
+#: that does not have it is declined rather than described.
+_IDENTITY_LEVEL = "1"
+
+
+def require_price_baseline_contract(compiled: CompiledPufGrowth) -> None:
+    """Refuse any contract that is not the adopted price baseline.
+
+    :func:`adapt_projection_to_money_view` and
+    :func:`price_baseline_invariants` both call this before they record
+    anything, because both go on to state the source year, the exact rational
+    factor, the ``RECID`` identity and "this baseline transitions no return
+    mass" as facts about the run. A contract that named a different pair of
+    years, mixed a second factor series, aged rather than restated, split a
+    field across sign branches, or grew the design weight would leave every
+    other check in this module passing while those recorded statements were
+    false. The false receipt is the failure this refuses.
+
+    What is checked is exactly what those receipts assert:
+
+    * the ``developmental_public_resource`` authority, and no release
+      eligibility;
+    * every money rule at ``2015 -> 2024``, ``nominal_price_restatement``,
+      ``SignBranch.ANY``, on the one named CPI series, resolving to the
+      published level texts and to the exact float64 of ``313689/237017``;
+    * exactly one identifier rule, on ``RECID``, at the baseline source year;
+    * exactly one design-weight rule, on ``S006``, on the declared identity
+      series whose two levels are both ``1`` and whose factor is exactly
+      ``1.0``;
+    * no rule in any other role.
+
+    The *field set* is deliberately not fixed: a contract over a subset of the
+    projection's money fields is still this baseline, and the adapter checks
+    the subset relation against the artifact separately.
+
+    Args:
+        compiled: The contract a caller is about to run.
+
+    Raises:
+        PufGrowthRefusalError: With a ``PRICE_BASELINE_*`` reason naming the
+            first field that does not match.
+    """
+    _require(type(compiled) is CompiledPufGrowth, "COMPILED_TYPE")
+    _require(
+        compiled.factors.authority is FactorAuthority.DEVELOPMENTAL_PUBLIC_RESOURCE,
+        "PRICE_BASELINE_AUTHORITY",
+    )
+    _require(compiled.release_eligible is False, "PRICE_BASELINE_RELEASE_ELIGIBLE")
+
+    rules = compiled.recipe.rules
+    money = tuple(rule for rule in rules if rule.role is FieldRole.MONEY)
+    identifiers = tuple(rule for rule in rules if rule.role is FieldRole.IDENTIFIER)
+    weights = tuple(rule for rule in rules if rule.role is FieldRole.DESIGN_WEIGHT)
+    for rule in rules:
+        _require(
+            rule.role
+            in (FieldRole.MONEY, FieldRole.IDENTIFIER, FieldRole.DESIGN_WEIGHT),
+            "PRICE_BASELINE_ROLE",
+            rule.field,
+        )
+    _require(bool(money), "PRICE_BASELINE_NO_MONEY_FIELD")
+    _require(
+        SOURCE_AGI_FIELD in {rule.field for rule in money},
+        "PRICE_BASELINE_AGI_FIELD",
+        SOURCE_AGI_FIELD,
+    )
+    source_level = PRICE_BASELINE_LEVELS[PRICE_BASELINE_SOURCE_YEAR]
+    target_level = PRICE_BASELINE_LEVELS[PRICE_BASELINE_TARGET_YEAR]
+    for rule in money:
+        field = rule.field
+        _require(
+            rule.source_reference_year == PRICE_BASELINE_SOURCE_YEAR,
+            "PRICE_BASELINE_SOURCE_YEAR",
+            field,
+        )
+        _require(
+            rule.target_year == PRICE_BASELINE_TARGET_YEAR,
+            "PRICE_BASELINE_TARGET_YEAR",
+            field,
+        )
+        _require(
+            rule.growth_kind is GrowthKind.NOMINAL_PRICE_RESTATEMENT,
+            "PRICE_BASELINE_GROWTH_KIND",
+            field,
+        )
+        # ``SignBranch.ANY`` is the field's only rule, which is what lets one
+        # positive factor be checked per row rather than per branch.
+        _require(
+            rule.sign_branch is SignBranch.ANY, "PRICE_BASELINE_SIGN_BRANCH", field
+        )
+        _require(
+            rule.factor_series == PRICE_BASELINE_SERIES_NAME,
+            "PRICE_BASELINE_SERIES",
+            field,
+        )
+        resolved = compiled.factor_for(field, SignBranch.ANY)
+        _require(
+            resolved.source_level == source_level, "PRICE_BASELINE_SOURCE_LEVEL", field
+        )
+        _require(
+            resolved.target_level == target_level, "PRICE_BASELINE_TARGET_LEVEL", field
+        )
+        _require(
+            resolved.ratio_bits == PRICE_BASELINE_FACTOR_BITS,
+            "PRICE_BASELINE_FACTOR",
+            field,
+        )
+
+    # ``GrowthRule`` already fixes a non-money, non-weight role to
+    # ``GrowthKind.NONE`` with equal years, so what is open here is which
+    # field carries the role and which year it names.
+    _require(len(identifiers) == 1, "PRICE_BASELINE_IDENTIFIER")
+    identifier = identifiers[0]
+    _require(
+        identifier.field == SOURCE_RECID_FIELD,
+        "PRICE_BASELINE_IDENTIFIER",
+        identifier.field,
+    )
+    _require(
+        identifier.source_reference_year == PRICE_BASELINE_SOURCE_YEAR,
+        "PRICE_BASELINE_IDENTIFIER_YEAR",
+        identifier.field,
+    )
+
+    # Likewise the design-weight role already fixes the kind and the sign
+    # branch. What is open is the field, the series, and whether the declared
+    # factor really is one.
+    _require(len(weights) == 1, "PRICE_BASELINE_DESIGN_WEIGHT")
+    weight = weights[0]
+    _require(
+        weight.field == DESIGN_WEIGHT_FIELD,
+        "PRICE_BASELINE_DESIGN_WEIGHT",
+        weight.field,
+    )
+    _require(
+        weight.factor_series == DESIGN_WEIGHT_IDENTITY_SERIES,
+        "PRICE_BASELINE_DESIGN_WEIGHT_SERIES",
+        weight.field,
+    )
+    _require(
+        weight.source_reference_year == PRICE_BASELINE_SOURCE_YEAR
+        and weight.target_year == PRICE_BASELINE_TARGET_YEAR,
+        "PRICE_BASELINE_DESIGN_WEIGHT_YEAR",
+        weight.field,
+    )
+    resolved_weight = compiled.factor_for(weight.field, SignBranch.ANY)
+    _require(
+        resolved_weight.source_level == _IDENTITY_LEVEL
+        and resolved_weight.target_level == _IDENTITY_LEVEL,
+        "PRICE_BASELINE_DESIGN_WEIGHT_LEVEL",
+        weight.field,
+    )
+    _require(
+        resolved_weight.value == 1.0,
+        "PRICE_BASELINE_DESIGN_WEIGHT_FACTOR",
+        weight.field,
+    )
+
+
 def compile_price_baseline(
     money_fields: Sequence[str],
     *,
@@ -305,6 +484,9 @@ def compile_price_baseline(
     # one function a caller reaches for cannot hand back an eligible contract
     # even if the gate is later widened by mistake.
     _require(compiled.release_eligible is False, "PRICE_BASELINE_RELEASE_ELIGIBLE")
+    # The same gate the two entry points apply, so this function cannot hand
+    # back a contract they would decline.
+    require_price_baseline_contract(compiled)
     return compiled
 
 
@@ -382,6 +564,11 @@ def adapt_projection_to_money_view(
     out-of-universe sentinel in every projected column, and no kept row may
     hold it, so the sentinel cannot reach a numeric input in either direction.
 
+    The contract is checked against the adopted baseline before anything is
+    recorded — see :func:`require_price_baseline_contract` — because the
+    receipt below states the source year, the design-weight identity and the
+    absence of a return-mass transition as facts about this run.
+
     Args:
         decoded: A decoded thirteen-field projection.
         status: The decoded ``puf_2015_raw_return_status`` artifact.
@@ -391,9 +578,10 @@ def adapt_projection_to_money_view(
         The money view and everything deliberately kept out of it.
 
     Raises:
-        PufGrowthRefusalError: On any join, universe or sentinel violation.
+        PufGrowthRefusalError: On any contract, join, universe or sentinel
+            violation.
     """
-    _require(type(compiled) is CompiledPufGrowth, "COMPILED_TYPE")
+    require_price_baseline_contract(compiled)
     _require(
         isinstance(decoded, PufMonetarySourceProjection), "PROJECTION_ARTIFACT_TYPE"
     )
@@ -483,6 +671,18 @@ def adapt_projection_to_money_view(
         }
     )
 
+    # Read off the contract rather than restated from module constants: the
+    # gate above proved the contract declares these, so the receipt can carry
+    # the contract's own answer and a reader can check the two agree.
+    weight_rule = compiled.design_weight_rule
+    weight_factor = compiled.factor_for(weight_rule.field, SignBranch.ANY)
+    money_source_years = sorted(
+        {
+            rule.source_reference_year
+            for rule in compiled.recipe.rules
+            if rule.role is FieldRole.MONEY
+        }
+    )
     receipt = MappingProxyType(
         {
             "artifact_kind": "microcosm.us_puf_price_baseline_money_view",
@@ -500,10 +700,16 @@ def adapt_projection_to_money_view(
             "design_weight_field": DESIGN_WEIGHT_FIELD,
             "design_weight_in_money_view": False,
             "design_weight_units": "delivered_integer_hundredths_unaltered",
+            "design_weight_series": weight_rule.factor_series,
+            "design_weight_declared_factor_float64": weight_factor.value,
             "return_mass_transition": "none_declared_identity_series",
             "flpdyr_treatment": "carried_as_observation_metadata_never_restated",
-            "source_reference_year": PRICE_BASELINE_SOURCE_YEAR,
+            "source_reference_year": money_source_years[0],
             "target_year": compiled.target_year,
+            "factor_ratio_bits": compiled.factor_for(
+                money_fields[0], SignBranch.ANY
+            ).ratio_bits,
+            "entry_contract_gate": "require_price_baseline_contract",
         }
     )
     return PufMoneyViewAdaptation(
@@ -528,23 +734,73 @@ def _violations(frame, greater: str, lesser: str) -> int | None:
     return int((frame[lesser] > frame[greater]).sum())
 
 
+def _bits(values: np.ndarray) -> np.ndarray:
+    """A float64 array's raw bit patterns, so ``-0.0`` is not ``0.0``."""
+    return np.ascontiguousarray(values, dtype="float64").view("<u8")
+
+
 def price_baseline_invariants(
     adaptation: PufMoneyViewAdaptation,
     grown: GrownPufTable,
     compiled: CompiledPufGrowth,
     *,
+    design_weight_after: Sequence[float] | np.ndarray | None = None,
     relative_tolerance: float = 1e-12,
 ) -> Mapping[str, object]:
     """Measure what one positive factor must leave true, and refuse otherwise.
 
-    Sums are checked against the *exact* integer sum of the input column
-    divided out of the grown total, which is a statement about this transform's
-    arithmetic and not about any external total. Pairwise relations are
-    observed before and after and required only to be **equal**: a violation
-    in the edited public file is evidence, not something to repair.
+    Three things happen here, in this order, and the order is deliberate.
+
+    *The summaries.* Per column: dtype, finiteness, the sign set, the zero set,
+    no negative zero, and the exact integer sum of the input column times the
+    factor against the grown ``math.fsum``. Then the pairwise relations the
+    booklets leave open, counted before and after and required only to be
+    **equal**. These are the numbers a reader wants in the receipt, and each
+    names a specific symptom when it fires.
+
+    *The exact row comparison.* Every kept row of every money column must be
+    bit-for-bit the contract's own resolved float64 factor applied to that
+    row's own delivered amount, and the two provenance columns must be
+    bit-for-bit their sources. This is the statement the summaries cannot
+    make: a coordinated rearrangement preserves every total, every sign, every
+    zero and every pairwise count, and is caught only here. It runs last so
+    that the narrower checks keep reporting the narrower diagnosis — and so
+    that each of them stays independently falsifiable.
+
+    *The design weight.* Compared, if a caller supplies the weights it carried
+    forward, against the adaptation's own ``S006``. Not supplied, it is
+    reported as a declaration and **not** as a measurement.
+
+    Args:
+        adaptation: The adaptation whose money view was grown.
+        grown: The result of :func:`~microcosm.build.us_runtime.puf_growth.apply_puf_growth`
+            on that money view, under this same contract.
+        compiled: The contract, checked against the adopted baseline.
+        design_weight_after: The post-growth design weights, if the caller ran
+            :func:`~microcosm.build.us_runtime.puf_growth.apply_puf_design_weight_growth`.
+            Omitted, ``design_weight_unchanged`` is ``None``, not ``True``.
+        relative_tolerance: Tolerance for the scaled-sum comparison only.
+
+    Raises:
+        PufGrowthRefusalError: On any contract, identity, row, sum, pairwise or
+            weight violation.
     """
-    _require(type(compiled) is CompiledPufGrowth, "COMPILED_TYPE")
+    require_price_baseline_contract(compiled)
     _require(type(grown) is GrownPufTable, "GROWN_TYPE")
+    _require(type(adaptation) is PufMoneyViewAdaptation, "ADAPTATION_TYPE")
+    # One contract, named the same way by all three objects. Without this the
+    # measurements below would describe a contract the table was not grown
+    # under, and every number in the receipt would be attributed to it.
+    contract_sha256 = compiled.sha256
+    _require(grown.contract_sha256 == contract_sha256, "GROWN_CONTRACT_MISMATCH")
+    _require(
+        grown.receipt["contract_sha256"] == contract_sha256,
+        "GROWN_RECEIPT_CONTRACT_MISMATCH",
+    )
+    _require(
+        adaptation.receipt["contract_sha256"] == contract_sha256,
+        "ADAPTATION_CONTRACT_MISMATCH",
+    )
     source = adaptation.money_view
     table = grown.table
     rows = len(source)
@@ -616,6 +872,53 @@ def price_baseline_invariants(
             "violations_after": after,
             "status": "observed_not_enforced",
         }
+
+    # The exact row comparison. ``apply_puf_growth`` selects ``values != 0.0``
+    # for a SignBranch.ANY rule and writes ``values[selected] * factor``, so
+    # the expected array is reproduced here by the same two operations in the
+    # same order and compared on raw bits. Nothing is recomputed from the
+    # levels or the rational: the contract's own resolved float64 is the one
+    # multiplier, which is what makes this a check of the transform rather
+    # than a second opinion about the factor.
+    for field in compiled.money_fields:
+        resolved = compiled.factor_for(field, SignBranch.ANY)
+        original = source[field].to_numpy()
+        expected = original.astype("float64")
+        selected = expected != 0.0
+        with np.errstate(over="ignore", under="ignore"):
+            expected[selected] = expected[selected] * resolved.value
+        result = table[field].to_numpy()
+        disagreeing = int(np.count_nonzero(_bits(result) != _bits(expected)))
+        _require(disagreeing == 0, "ROW_GROWTH_DISAGREEMENT", field)
+
+    # The two columns ``apply_puf_growth`` copies rather than grows. A silent
+    # edit here would restate provenance while every money column still
+    # matched.
+    for column, origin in (
+        (PROVENANCE_RECID_COLUMN, source[SOURCE_RECID_FIELD].to_numpy()),
+        (
+            PROVENANCE_SOURCE_AGI_COLUMN,
+            source[SOURCE_AGI_FIELD].to_numpy().astype("float64"),
+        ),
+    ):
+        _require(column in table.columns, "PROVENANCE_COLUMN_MISSING", column)
+        carried = table[column].to_numpy()
+        if column == PROVENANCE_SOURCE_AGI_COLUMN:
+            _require(
+                bool((_bits(carried) == _bits(origin)).all()),
+                "PROVENANCE_DISAGREEMENT",
+                column,
+            )
+        else:
+            _require(
+                bool(np.array_equal(carried, origin)),
+                "PROVENANCE_DISAGREEMENT",
+                column,
+            )
+
+    design_weight, design_weight_unchanged = _design_weight_observation(
+        adaptation, compiled, design_weight_after
+    )
     return MappingProxyType(
         {
             "rows": rows,
@@ -630,7 +933,103 @@ def price_baseline_invariants(
             "output_rounding": "none_unrounded_float64",
             "columns": columns,
             "pairwise_observations": pairwise,
-            "design_weight_unchanged": True,
+            "row_exact_growth": {
+                "rows": rows,
+                "fields": list(compiled.money_fields),
+                "comparison": (
+                    "bitwise float64 equality of every kept row against the "
+                    "contract's own resolved factor applied to that row's "
+                    "delivered amount, zeros left untouched"
+                ),
+                "disagreeing_rows": 0,
+                "provenance_columns_compared": list(
+                    (PROVENANCE_RECID_COLUMN, PROVENANCE_SOURCE_AGI_COLUMN)
+                ),
+            },
+            "contract_sha256": contract_sha256,
+            "contract_named_by": {
+                "compiled": contract_sha256,
+                "grown_result": grown.contract_sha256,
+                "grown_receipt": grown.receipt["contract_sha256"],
+                "adaptation_receipt": adaptation.receipt["contract_sha256"],
+            },
+            "design_weight": design_weight,
+            # ``None`` when no post-growth weight was supplied. This is never
+            # ``True`` unless the arrays were actually compared.
+            "design_weight_unchanged": design_weight_unchanged,
             "release_eligible": compiled.release_eligible,
         }
     )
+
+
+def _design_weight_observation(
+    adaptation: PufMoneyViewAdaptation,
+    compiled: CompiledPufGrowth,
+    design_weight_after: Sequence[float] | np.ndarray | None,
+) -> tuple[Mapping[str, object], bool | None]:
+    """What the design weight did, separating the declaration from a measurement.
+
+    The declaration is the contract's: an identity series whose two levels are
+    both one, so the declared factor is exactly ``1.0``. That is a statement
+    about the recipe, and it is reported as one.
+
+    The measurement needs a second array. ``adaptation.design_weight`` is the
+    status artifact's own ``S006`` sliced to the kept rows — the before side,
+    with its digest recorded so the comparison is auditable. The after side is
+    whatever the caller carried forward. Without it there is no observation to
+    report, and this returns ``None`` rather than manufacturing one.
+    """
+    rule = compiled.design_weight_rule
+    declared = compiled.factor_for(rule.field, SignBranch.ANY)
+    before = np.asarray(adaptation.design_weight)
+    _require(before.ndim == 1, "DESIGN_WEIGHT_SHAPE", rule.field)
+    record: dict[str, object] = {
+        "field": rule.field,
+        "rows": int(before.shape[0]),
+        "declared_series": rule.factor_series,
+        "declared_source_level": declared.source_level,
+        "declared_target_level": declared.target_level,
+        "declared_factor_float64": declared.value,
+        "declared_return_mass_transition": "none",
+        "before_source": (
+            "adaptation.design_weight: the status artifact's own S006, in "
+            "delivered integer hundredths, sliced to the kept rows"
+        ),
+        "before_sha256": hashlib.sha256(
+            np.ascontiguousarray(before, dtype="<i8").tobytes()
+        ).hexdigest(),
+    }
+    if design_weight_after is None:
+        record["observed"] = False
+        record["basis"] = "declared_only_no_post_growth_weight_supplied"
+        record["note"] = (
+            "The contract declares an identity factor, so this baseline "
+            "transitions no return mass by declaration. Whether the weights "
+            "this caller carried forward are in fact unchanged is not "
+            "measured here; pass design_weight_after to measure it."
+        )
+        return MappingProxyType(record), None
+    after = np.asarray(design_weight_after)
+    _require(after.ndim == 1, "DESIGN_WEIGHT_AFTER_SHAPE", rule.field)
+    _require(
+        int(after.shape[0]) == int(before.shape[0]),
+        "DESIGN_WEIGHT_AFTER_ROWS",
+        rule.field,
+    )
+    after64 = np.asarray(after, dtype="float64")
+    _require(
+        bool(np.isfinite(after64).all()), "DESIGN_WEIGHT_AFTER_NONFINITE", rule.field
+    )
+    before64 = before.astype("float64")
+    changed = int(np.count_nonzero(_bits(after64) != _bits(before64)))
+    _require(changed == 0, "DESIGN_WEIGHT_CHANGED", rule.field)
+    record["observed"] = True
+    record["basis"] = (
+        "bitwise float64 equality of the supplied post-growth weights against "
+        "the adaptation's own S006"
+    )
+    record["rows_changed"] = 0
+    record["after_sha256"] = hashlib.sha256(
+        np.ascontiguousarray(after64).tobytes()
+    ).hexdigest()
+    return MappingProxyType(record), True
