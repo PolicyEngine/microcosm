@@ -264,9 +264,12 @@ def evaluate_scope(
 ) -> BenchmarkEvaluation:
     """Reduce block axes to one scope verdict in the document's order.
 
-    ``approval`` must authorize :data:`ApprovalScope.CANDIDATE_SCORING` before
-    any candidate result counts. Implementation-only approval never permits
-    scoring, so a fixture run reaches ``scope_incomplete`` with
+    ``approval`` must come from
+    :func:`~microcosm.build.cd_benchmark.approval.resolve_action` — which checks
+    canonical bytes and a matching registration, and is the only thing that sets
+    ``registration_resolved`` — and must authorize
+    :data:`ApprovalScope.CANDIDATE_SCORING`. Implementation-only approval never
+    permits scoring, so a fixture run reaches ``scope_incomplete`` with
     ``protocol_unapproved`` and every measured block result is still retained
     for inspection.
 
@@ -275,7 +278,11 @@ def evaluate_scope(
     ``ledger_busy``; it is not an observation this module makes.
     """
     problems: list[Reason] = []
-    scoring = approval.authorized and approval.action is ApprovalScope.CANDIDATE_SCORING
+    scoring = (
+        approval.authorized
+        and approval.registration_resolved
+        and approval.action is ApprovalScope.CANDIDATE_SCORING
+    )
     if not scoring:
         problems.append(Reason.PROTOCOL_UNAPPROVED)
     problems.extend(approval.reasons)

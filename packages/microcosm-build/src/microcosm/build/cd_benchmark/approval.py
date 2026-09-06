@@ -167,7 +167,16 @@ class RegistrationClaim:
 
 @dataclass(frozen=True)
 class ApprovalResolution:
-    """Whether a requested action is authorized, and on what evidence."""
+    """Whether a requested action is authorized, and on what evidence.
+
+    ``registration_resolved`` is set only by :func:`resolve_action`, which is
+    the activation entry point: it additionally requires canonical protocol
+    bytes and a matching registration claim. A resolution produced by
+    :meth:`ApprovalAuthority.resolve` alone leaves it false, and
+    :func:`~microcosm.build.cd_benchmark.evaluation.evaluate_scope` refuses to
+    treat such a resolution as activation. That closes the bypass where a
+    caller resolves reviewer verdicts and skips registration.
+    """
 
     protocol_sha256: str
     action: ApprovalScope
@@ -175,6 +184,7 @@ class ApprovalResolution:
     root: ApprovalRecord | None
     peer: ApprovalRecord | None
     reasons: tuple[Reason, ...]
+    registration_resolved: bool = False
     evidence: Mapping[str, object] = field(default_factory=dict)
 
 
@@ -246,6 +256,11 @@ class ApprovalAuthority:
 
         A verdict for a different protocol digest, a different scope, or from
         only one of the two roles leaves the action ``protocol_unapproved``.
+
+        This checks reviewer verdicts only. It does not check that the bytes are
+        canonical or that a registration exists, and it never sets
+        ``registration_resolved``; :func:`resolve_action` is the activation
+        entry point.
         """
         if not is_sha256_hex(protocol_sha256):
             raise ApprovalError("protocol_sha256 must be a lowercase SHA-256 digest.")
@@ -346,5 +361,6 @@ def resolve_action(
         root=resolution.root if authorized else None,
         peer=resolution.peer if authorized else None,
         reasons=dedupe(problems),
+        registration_resolved=authorized,
         evidence=MappingProxyType({**notes, **dict(resolution.evidence)}),
     )

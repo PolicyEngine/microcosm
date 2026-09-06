@@ -628,3 +628,37 @@ def test_no_axis_is_allowed_to_rescue_another(protocol):
     assert result.evidence["support_does_not_rescue_a_metric"] is True
     assert result.evidence["support_verdicts"] == ("within_bounds",)
     assert result.reasons == (Reason.PUBLISHED_BENCHMARK_NONCONFORMITY,)
+
+
+def test_reviewer_verdicts_alone_do_not_activate_the_protocol(protocol):
+    """A resolution that skipped registration cannot be passed off as one."""
+    injected, registration = authority(
+        protocol, frozenset({ApprovalScope.CANDIDATE_SCORING})
+    )
+    bare = injected.resolve(protocol.sha256, ApprovalScope.CANDIDATE_SCORING)
+    assert bare.authorized is True
+    assert bare.registration_resolved is False
+    result = evaluate_scope(
+        protocol,
+        approval=bare,
+        binding=authenticated_binding(protocol),
+        blocks=[conforming_block(protocol)],
+    )
+    assert result.scoring_permitted is False
+    assert Reason.PROTOCOL_UNAPPROVED in result.reasons
+    activated = resolve_action(
+        protocol,
+        authority=injected,
+        action=ApprovalScope.CANDIDATE_SCORING,
+        registration=registration,
+    )
+    assert activated.registration_resolved is True
+    assert (
+        evaluate_scope(
+            protocol,
+            approval=activated,
+            binding=authenticated_binding(protocol),
+            blocks=[conforming_block(protocol)],
+        ).scoring_permitted
+        is True
+    )
