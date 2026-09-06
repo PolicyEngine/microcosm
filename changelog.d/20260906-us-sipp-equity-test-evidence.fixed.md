@@ -1,0 +1,1 @@
+Assert the SIPP nominal-equity warm-replay module identity against paths inside the checkout, and derive the admission exhaustiveness identity from the packaged contract's own fields rather than from literals.
