@@ -1465,6 +1465,8 @@ def decode_return_status(
         raise _refuse("ENVELOPE_FACTS_INCONSISTENT")
     if recomputed["rows"] != rows:
         raise _refuse("ENVELOPE_ROWS")
+    if resolved is not None:
+        _check_declared_expectations(recomputed, resolved)
     return PufRawReturnStatus(
         typed=MappingProxyType(typed),
         lexical=MappingProxyType(lexical),

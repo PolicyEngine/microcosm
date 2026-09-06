@@ -1,0 +1,1 @@
+Check packaged PUF record expectations during artifact readback as well as source decoding. Add coverage for the packaged kernel boundary and avoid matching identifier substrings inside receipt digests.

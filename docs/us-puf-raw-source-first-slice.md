@@ -168,7 +168,12 @@ actually ran. The delimiter, quote character and doublequote flag still come
 from the closed definition, and `QUOTE_MINIMAL` and `strict` are still fixed
 by the reader itself.
 
-## Genuine run: prepared, not executed
+Readback also checks the declared record expectations whenever it resolves a
+packaged definition. A definition change invalidates older packaged payloads;
+the supported path is to recompute under the new definition. Readback does not
+silently interpret an old payload under new source semantics.
+
+## First genuine run
 
 Everything above is verified on invented fixtures written under `tmp_path`. No
 genuine PUF, capture, receipt or microdata has been read by this slice. A first

@@ -316,6 +316,45 @@ def test_the_packaged_route_cross_checks_its_declared_record_expectations():
             puf._check_declared_expectations(wrong, PACKAGED)
 
 
+def test_packaged_readback_enforces_expected_counts(invented, monkeypatch):
+    main, demographic, fixture = invented
+    status = decode_puf_raw_source(main, demographic, fixture)
+    document = definition_document_json(fixture)
+    document["route"] = "packaged"
+    document["join"]["expected_matched_keys"] = 2
+    document["join"]["expected_main_unmatched_records"] = 2
+    document["aggregates"]["expected_records"] = 1
+    accepted = puf._definition_from_document(document, route="packaged")
+    monkeypatch.setattr(puf, "packaged_definition", lambda: accepted)
+    payload = encode_return_status(status, accepted)
+    assert decode_return_status(payload).rows == 4
+
+    document["sources"]["main"]["data_records"] = 5
+    wrong = puf._definition_from_document(document, route="packaged")
+    monkeypatch.setattr(puf, "packaged_definition", lambda: wrong)
+    wrong_payload = encode_return_status(status, wrong)
+    with pytest.raises(PufRawSourceRefusalError, match="DECLARED_EXPECTATION"):
+        decode_return_status(wrong_payload)
+
+
+def test_production_kernel_refuses_a_modified_packaged_definition():
+    document = definition_document_json(PACKAGED)
+    document["fields"][0]["lexical_width"] -= 1
+    modified = puf._definition_from_document(document, route="packaged")
+    with pytest.raises(
+        PufRawSourceRefusalError, match="KERNEL_DEFINITION_NOT_PACKAGED"
+    ):
+        USPufRawSourceKernel(definition=modified)
+
+
+def test_production_kernel_refuses_an_unknown_definition_route():
+    from dataclasses import replace
+
+    modified = replace(PACKAGED, route="unrecognized")
+    with pytest.raises(PufRawSourceRefusalError, match="KERNEL_DEFINITION_ROUTE"):
+        USPufRawSourceKernel(definition=modified)
+
+
 def test_the_definition_document_is_immutable_all_the_way_down(invented):
     """A nested edit used to change what parses under an unchanged node key."""
 
@@ -1006,7 +1045,7 @@ def test_cold_run_stores_an_artifact_byte_identical_to_the_direct_decoder(
         default=dict,
     )
     assert '"' in text
-    for token in ("999996", '"11"', '"12"', '"13"'):
+    for token in ('"999996"', '"11"', '"12"', '"13"'):
         assert token not in text
 
 
@@ -1755,8 +1794,8 @@ def test_the_producer_receipt_records_the_acceptance_it_parsed_under(
     )
     # Still aggregates and digests only: no record identifier, no token.
     rendered = json.dumps(receipt, sort_keys=True, default=dict)
-    assert "999996" not in rendered
-    assert "12345" not in rendered
+    assert '"999996"' not in rendered
+    assert '"12345"' not in rendered
 
 
 def test_the_module_and_definition_carry_no_absolute_or_genuine_source_paths():
