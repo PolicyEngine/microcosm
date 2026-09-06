@@ -260,6 +260,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "capital_gain_distributions.py",
         "casualty_losses.py",
         # Public reference aggregates and pinned acquisition; no population treatment.
+        "cd_benchmark_reference.py",
         "cd_reference.py",
         "cd_reference_sources.py",
         "congressional_district_geography.py",
