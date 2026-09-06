@@ -44,7 +44,12 @@ import sys
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_bool_dtype, is_complex_dtype, is_numeric_dtype
+from pandas.api.types import (
+    is_bool_dtype,
+    is_complex_dtype,
+    is_integer_dtype,
+    is_numeric_dtype,
+)
 
 from microcosm.frame import US_SCHEMA
 from microcosm.graph import (
@@ -322,13 +327,27 @@ class NationalAgeCountKernel(KernelBase):
 
 def _ids(table: pd.DataFrame, column: str, *, what: str) -> np.ndarray:
     series = table[column]
-    if is_bool_dtype(series.dtype) or not is_numeric_dtype(series.dtype):
+    if (
+        is_bool_dtype(series.dtype)
+        or is_complex_dtype(series.dtype)
+        or not is_numeric_dtype(series.dtype)
+    ):
         raise ValueError(f"The {what} column must be an integer column.")
     if series.isna().any():
         raise ValueError(f"The {what} column contains missing values.")
     values = series.to_numpy(dtype="float64", na_value=np.nan)
     if not np.all(np.isfinite(values) & (values == np.floor(values))):
         raise ValueError(f"The {what} column must hold whole numbers.")
+    # Preserve exact integer ids without a float round trip, and refuse casts
+    # that would wrap or saturate into another household's identity. The open
+    # float upper bound matters: float64 cannot represent int64's maximum.
+    if is_integer_dtype(series.dtype):
+        limits = np.iinfo(np.int64)
+        outside = ((series < limits.min) | (series > limits.max)).any()
+    else:
+        outside = np.any(values < -(2**63)) or np.any(values >= 2**63)
+    if outside:
+        raise ValueError(f"The {what} column must fit signed int64 exactly.")
     return series.to_numpy(dtype="int64")
 
 

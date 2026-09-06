@@ -642,7 +642,7 @@ def test_a_household_with_no_people_is_refused_explicitly():
         NationalAgeCountKernel().run(context)
 
 
-@pytest.mark.parametrize("bad", [np.nan, 2.5])
+@pytest.mark.parametrize("bad", [np.nan, 2.5, 3 + 2j, 1e20, np.uint64(2**63 + 3)])
 def test_a_broken_membership_column_is_refused(bad):
     node = national_age_count_node(population="assembled")
     household = pd.DataFrame({"household_id": np.array([3], dtype="int64")})
@@ -663,6 +663,31 @@ def test_a_broken_membership_column_is_refused(bad):
     )
     with pytest.raises(ValueError, match="household membership"):
         NationalAgeCountKernel().run(context)
+
+
+@pytest.mark.parametrize("household_id", [-(2**63), 2**63 - 1])
+def test_int64_boundary_ids_keep_their_exact_household_identity(household_id):
+    node = national_age_count_node(population="assembled")
+    household = pd.DataFrame({"household_id": np.array([household_id], dtype="int64")})
+    person = pd.DataFrame(
+        {
+            "person_id": np.array([1], dtype="int64"),
+            "person_household_id": np.array([household_id], dtype="int64"),
+            "age": np.array([1.0]),
+        }
+    )
+    context = KernelContext(
+        node=node,
+        tables={"person": person, "household": household},
+        weights={"household": Weights(np.array([1.0]), WeightKind.IMPORTANCE)},
+        strata=pd.Series(["x"]),
+        params=node.params,
+        rng=np.random.default_rng(0),
+    )
+    result = NationalAgeCountKernel().run(context)
+    count = result.columns[("household", "people_age_0_4")]
+    assert count.index.tolist() == [household_id]
+    assert count.tolist() == [1]
 
 
 # --------------------------------------------------------------------------
