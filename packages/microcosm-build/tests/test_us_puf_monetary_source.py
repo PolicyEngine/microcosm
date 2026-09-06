@@ -21,12 +21,17 @@ import pytest
 from microcosm.build.us_runtime import puf_monetary_source as money
 from microcosm.build.us_runtime import puf_raw_source as puf
 from microcosm.build.us_runtime.puf_monetary_source import (
+    AGGREGATE_ROW_CLASS,
+    AGGREGATE_SENTINEL,
+    AMOUNT_KNOWN_RULE,
     BODY_MAX_BYTES,
     HEADER_MAX_BYTES,
     MONETARY_PROJECTION_NODE,
     MONETARY_PROJECTION_SUMMARY_NODE,
     MONETARY_PROJECTION_TYPE,
+    RETURN_ROW_CLASSES,
     ROW_CLASSES,
+    SUPERSEDED_MAGIC,
     PufMonetaryRefusalError,
     USPufMonetarySourceKernel,
     decode_monetary_projection,
@@ -87,6 +92,27 @@ HOST_SOURCE = "fixture_host_tables"
 REVIEWED_RAW_SOURCE_SHA256 = (
     "c0e31e335dd38a4c767b5cf83ffb09c05576b038608fdc78213e32ee0a65ecf6"
 )
+
+#: The aggregate separation is a code-contract change. The booklet-derived
+#: projection document and the raw source definition it authenticates keep the
+#: bytes the first genuine run's preparation recorded, so pin both: a version
+#: bump that quietly re-pinned a source would be a different change.
+REVIEWED_PROJECTION_SHA256 = (
+    "5e4f5943624427376a13e656a6fedd378e2a0ff8276a90bd10bc5149f1291749"
+)
+REVIEWED_RAW_DEFINITION_SHA256 = (
+    "c2ac73aa86b0b210e9919fd551f26c469098e6bade91bf8b1e03e1cf91e308e4"
+)
+
+#: The closed key sets the two row-class families report.
+RETURN_FACT_KEYS = {"rows", "zero", "negative", "positive", "minimum", "maximum", "sum"}
+AGGREGATE_FACT_KEYS = {
+    "rows",
+    "integer_tokens",
+    "fractional_tokens",
+    "negative_tokens",
+    "max_token_width",
+}
 
 
 # --------------------------------------------------------------------------
@@ -156,7 +182,10 @@ def demographic_record(*, recid, agerange="2", gender="1"):
 #: Five invented returns: a matched one, an unmatched one carrying negative
 #: business income and a negative short-term Schedule D result, a matched one
 #: whose delivered amounts are zeros, a second unmatched one, and one publisher
-#: disclosure aggregate.
+#: disclosure aggregate. The aggregate carries an invented fractional token, an
+#: invented negative fractional token and one integer token: nothing in the
+#: audits says an aggregate must be fractional, so the integer case is covered
+#: too. Every value here is invented; no delivered amount is reproduced.
 DEFAULT_MAIN = [
     main_record(
         recid="11",
@@ -194,7 +223,11 @@ DEFAULT_MAIN = [
         recid=str(PUF_AGGREGATE_RECIDS[0]),
         mars="0",
         s006="0",
-        amounts={"E00200": "999999999999", "E01000": "-999999999999"},
+        amounts={
+            "E00200": "999999999.12",
+            "E01000": "-99999999.75",
+            "E00300": "4200",
+        },
     ),
 ]
 DEFAULT_DEMOGRAPHIC = [
@@ -787,12 +820,14 @@ def test_an_empty_amount_token_is_a_refusal_and_never_a_zero(invented):
 def test_a_delivered_zero_is_a_reported_zero_and_is_counted_as_one(decoded):
     projected, projection = decoded
     facts = projected.facts["column_facts"]["E00300"]
-    # Rows 12, 13 and 14 report a zero; the aggregate reports one too.
+    # Rows 12, 13 and 14 report a zero.
     assert facts["demographic_matched"]["zero"] == 1
     assert facts["demographic_unmatched"]["zero"] == 2
-    assert facts["disclosure_aggregate"]["zero"] == 1
     assert int(projected.typed["E00300"][2]) == 0
     assert projected.lexical["E00300"][2] == "0"
+    # The aggregate class cannot report a zero at all: it has no zero key,
+    # because a zero there would be a monetary claim about an aggregate.
+    assert set(facts[AGGREGATE_ROW_CLASS]) == AGGREGATE_FACT_KEYS
 
 
 def test_a_negative_amount_keeps_its_sign_and_is_never_absolute_valued(decoded):
@@ -836,7 +871,11 @@ def test_a_negative_wage_is_preserved_even_though_no_marker_documents_one():
 def test_the_lexical_spelling_is_retained_alongside_the_typed_value(decoded):
     projected, _ = decoded
     assert projected.lexical["E00200"][0] == "50000"
-    assert projected.lexical["E01000"][4] == "-999999999999"
+    # The aggregate row's token is retained exactly and never parsed: its
+    # typed slot holds the out-of-universe sentinel, not a number read from
+    # this spelling.
+    assert projected.lexical["E01000"][4] == "-99999999.75"
+    assert int(projected.typed["E01000"][4]) == AGGREGATE_SENTINEL
     for field in PROJECTED:
         assert len(projected.lexical[field]) == projected.rows
 
@@ -934,9 +973,14 @@ def test_the_row_classes_partition_the_rows_exactly_once(decoded):
 def test_an_aggregate_is_never_counted_in_a_per_return_class(decoded):
     projected, _ = decoded
     facts = projected.facts["column_facts"]["E00200"]
-    assert facts["disclosure_aggregate"]["rows"] == 1
-    assert facts["disclosure_aggregate"]["maximum"] == 999999999999
-    # The 12-digit aggregate never reaches either per-return class.
+    assert facts[AGGREGATE_ROW_CLASS]["rows"] == 1
+    # The aggregate class carries no numeric key at all, so there is nothing
+    # here to average, extremum or total, and no maximum to contradict.
+    assert set(facts[AGGREGATE_ROW_CLASS]) == AGGREGATE_FACT_KEYS
+    assert not AGGREGATE_FACT_KEYS & {"zero", "negative", "positive"}
+    for name in RETURN_ROW_CLASSES:
+        assert set(facts[name]) == RETURN_FACT_KEYS
+    # The aggregate never reaches either per-return class.
     assert facts["demographic_matched"]["maximum"] == 50000
     assert facts["demographic_unmatched"]["maximum"] == 31000
     assert facts["demographic_matched"]["sum"] == 50000
@@ -1109,6 +1153,18 @@ def test_the_envelope_declares_its_type_endianness_and_pins(envelope):
     assert header["facts"]["period_semantics"] == "unresolved_raw_FLPDYR"
     assert header["facts"]["amounts_decoded"] is True
     assert header["facts"]["amount_units"] == "whole_usd_source_year"
+    # The universe rule and the aggregate treatment are declared strings in
+    # the header, not habits of the code that wrote it.
+    assert header["facts"]["amount_units_scope"] == "individual_return_rows_only"
+    assert header["facts"]["amount_known_rule"] == AMOUNT_KNOWN_RULE
+    assert header["facts"]["amount_known_rows"] == len(DEFAULT_MAIN) - 1
+    assert header["facts"]["aggregate_typed_sentinel"] == AGGREGATE_SENTINEL
+    assert header["facts"]["aggregate_numeric_interpretation"] == "refused"
+    assert header["facts"]["aggregate_lexical_authority"] == (
+        "delivered_token_exact_for_every_row"
+    )
+    assert header["type"][1] == 3
+    assert header["schema_version"] == 3
     for column in header["columns"]:
         if column["kind"] == "typed":
             assert column["dtype"].startswith("<")
@@ -1436,8 +1492,25 @@ def test_cold_run_stores_an_artifact_byte_identical_to_the_direct_decoder(
     assert summary["amount_units"] == "whole_usd_source_year"
     assert summary["period_semantics"] == "unresolved_raw_FLPDYR"
     assert summary["target_year_use"] == ("refused_pending_independent_growth_decision")
-    assert summary["negative_values_by_field"]["E00900"] == 1
-    assert summary["negative_values_by_field"]["E01000"] == 2
+    # The per-return negative census counts the two return classes only. The
+    # superseded summary summed all three, so the aggregate's negative token
+    # was counted as a negative return amount; E01000 has one negative return
+    # in this fixture and one negative aggregate token, and they are reported
+    # separately now.
+    assert "negative_values_by_field" not in summary
+    assert summary["per_return_negative_values_by_field"]["E00900"] == 1
+    assert summary["per_return_negative_values_by_field"]["E01000"] == 1
+    assert summary["aggregate_lexical_token_classes"]["E01000"] == {
+        "rows": 1,
+        "integer_tokens": 0,
+        "fractional_tokens": 1,
+        "negative_tokens": 1,
+        "max_token_width": 12,
+    }
+    assert summary["aggregate_rows_are_lexical_only"] is True
+    assert summary["aggregate_typed_sentinel"] == AGGREGATE_SENTINEL
+    assert summary["amount_known_rows"] == len(DEFAULT_MAIN) - 1
+    assert summary["amount_known_rule"] == AMOUNT_KNOWN_RULE
     producer = manifest.nodes[MONETARY_PROJECTION_NODE].receipt[
         "puf_monetary_source_projection"
     ]
@@ -1449,6 +1522,8 @@ def test_cold_run_stores_an_artifact_byte_identical_to_the_direct_decoder(
     )
     assert producer["column_metadata"] == summary["column_metadata"]
     assert producer["column_metadata"] == back.column_metadata
+    assert producer["amount_known_rows"] == len(DEFAULT_MAIN) - 1
+    assert producer["aggregate_typed_sentinel"] == AGGREGATE_SENTINEL
     # Receipts carry aggregates and digests only, never a key or a token.
     text = json.dumps(
         {
@@ -1458,7 +1533,13 @@ def test_cold_run_stores_an_artifact_byte_identical_to_the_direct_decoder(
         sort_keys=True,
         default=dict,
     )
-    for token in ('"50000"', '"-2500"', '"999999999999"', '"11"'):
+    for token in (
+        '"50000"',
+        '"-2500"',
+        '"999999999.12"',
+        '"-99999999.75"',
+        '"11"',
+    ):
         assert token not in text
 
 
@@ -1823,3 +1904,630 @@ def test_the_packaged_document_is_a_runtime_resource_not_a_country_spec():
     )["resources"]
     listed = {row["path"] if isinstance(row, dict) else row for row in declared}
     assert "puf_2015_monetary_source_projection.json" not in listed
+
+
+# --------------------------------------------------------------------------
+# The amount universe: individual returns and the disclosure aggregates
+# --------------------------------------------------------------------------
+
+
+def parse_aggregate(token, field="E00200"):
+    column = next(c for c in PACKAGED_PROJECTION.columns if c.field == field)
+    return money._aggregate_token(token, column)
+
+
+def test_the_aggregate_rows_leave_the_individual_return_amount_universe(decoded):
+    projected, _ = decoded
+    known = projected.amount_known
+    assert list(known) == [True, True, True, True, False]
+    assert np.array_equal(known, projected.typed["disclosure_aggregate"] == 0)
+    assert projected.facts["amount_known_rows"] == len(DEFAULT_MAIN) - 1
+    assert projected.facts["amount_known_rule"] == AMOUNT_KNOWN_RULE
+    # Every typed slot on the aggregate row is the out-of-universe sentinel,
+    # in every projected column, including the one whose delivered token is a
+    # plain integer.
+    for field in PROJECTED:
+        assert int(projected.typed[field][4]) == AGGREGATE_SENTINEL
+        assert AGGREGATE_SENTINEL not in [
+            int(value) for value in projected.typed[field][:4]
+        ]
+    assert AGGREGATE_SENTINEL == -(2**63)
+    assert AGGREGATE_SENTINEL != 0
+
+
+def test_a_fractional_and_a_negative_fractional_aggregate_are_kept_verbatim(decoded):
+    projected, _ = decoded
+    assert projected.lexical["E00200"][4] == "999999999.12"
+    assert projected.lexical["E01000"][4] == "-99999999.75"
+    assert projected.lexical["E00300"][4] == "4200"
+    classes = projected.facts["column_facts"]
+    assert classes["E00200"][AGGREGATE_ROW_CLASS] == {
+        "rows": 1,
+        "integer_tokens": 0,
+        "fractional_tokens": 1,
+        "negative_tokens": 0,
+        "max_token_width": 12,
+    }
+    assert classes["E01000"][AGGREGATE_ROW_CLASS] == {
+        "rows": 1,
+        "integer_tokens": 0,
+        "fractional_tokens": 1,
+        "negative_tokens": 1,
+        "max_token_width": 12,
+    }
+    # An integer token on an aggregate row is valid: the audits classify the
+    # delivered tokens, they do not say an aggregate must be fractional.
+    assert classes["E00300"][AGGREGATE_ROW_CLASS] == {
+        "rows": 1,
+        "integer_tokens": 1,
+        "fractional_tokens": 0,
+        "negative_tokens": 0,
+        "max_token_width": 4,
+    }
+
+
+def test_the_widest_token_the_aggregate_grammar_admits_is_accepted():
+    """Both bounds at once: twelve digits and the full declared width."""
+
+    records = list(DEFAULT_MAIN)
+    records[4] = main_record(
+        recid=str(PUF_AGGREGATE_RECIDS[0]),
+        mars="0",
+        s006="0",
+        amounts={"E00200": "99999999.9999", "E01000": "-99999999.999"},
+    )
+    main, demographic, definition, projection = build_fixture(main_records=records)
+    status = decoded_status(main, demographic, definition)
+    projected = decode_puf_monetary_source(main, status, projection, definition)
+    assert projected.lexical["E00200"][4] == "99999999.9999"
+    assert projected.lexical["E01000"][4] == "-99999999.999"
+    assert (
+        projected.facts["column_facts"]["E00200"][AGGREGATE_ROW_CLASS][
+            "max_token_width"
+        ]
+        == 13
+    )
+    column = next(c for c in projection.columns if c.field == "E00200")
+    assert column.lexical_width == 13
+    assert column.max_digits == 12
+
+
+@pytest.mark.parametrize("index,recid", [(0, "11"), (1, "12")])
+def test_an_ordinary_row_still_refuses_a_decimal_in_either_return_class(index, recid):
+    """The genuine failure, reproduced on both per-return classes.
+
+    Row 11 has a demographic row and row 12 has none. Neither is inside the
+    aggregate universe, so both refuse with the reason code the first genuine
+    monetary run produced, and neither leaves a decoded projection behind.
+    """
+
+    records = list(DEFAULT_MAIN)
+    records[index] = main_record(recid=recid, amounts={"E00200": "50000.5"})
+    main, demographic, definition, projection = build_fixture(main_records=records)
+    status = decoded_status(main, demographic, definition)
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_puf_monetary_source(main, status, projection, definition)
+    assert error.value.reason == "AMOUNT_TOKEN_GRAMMAR"
+
+
+def test_the_aggregate_grammar_is_never_applied_to_an_individual_return():
+    """A token the aggregate grammar would accept still refuses on a return."""
+
+    for token in ("999999999.12", "-99999999.75"):
+        assert parse_aggregate(token) == token
+        with pytest.raises(PufMonetaryRefusalError) as error:
+            parse_amount(token)
+        assert error.value.reason == "AMOUNT_TOKEN_GRAMMAR"
+
+
+@pytest.mark.parametrize(
+    ("token", "value"),
+    [
+        ("0", "0"),
+        ("4200", "4200"),
+        ("-4200", "-4200"),
+        ("999999999.12", "999999999.12"),
+        ("-99999999.75", "-99999999.75"),
+        ("0.5", "0.5"),
+        ("-0.5", "-0.5"),
+        ("0.0001", "0.0001"),
+        ("99999999.9999", "99999999.9999"),
+        ("-99999999.999", "-99999999.999"),
+        ("007.50", "007.50"),
+    ],
+)
+def test_the_aggregate_grammar_accepts_a_bounded_decimal_token(token, value):
+    """Accepted tokens come back byte-identical: nothing is normalised."""
+
+    assert parse_aggregate(token) == value
+
+
+@pytest.mark.parametrize(
+    ("token", "reason"),
+    [
+        ("+1.5", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("1.", "AGGREGATE_TOKEN_GRAMMAR"),
+        (".5", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("1.2.3", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("1e5", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("1E5", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("1.5e2", "AGGREGATE_TOKEN_GRAMMAR"),
+        (" 12.5", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("12.5 ", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("--1.5", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("1.5-", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("-", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("-.", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("1,000.5", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("NA", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("-0", "AGGREGATE_TOKEN_NEGATIVE_ZERO"),
+        ("-0.0", "AGGREGATE_TOKEN_NEGATIVE_ZERO"),
+        ("-0.000", "AGGREGATE_TOKEN_NEGATIVE_ZERO"),
+        ("-000.00", "AGGREGATE_TOKEN_NEGATIVE_ZERO"),
+        ("", "AGGREGATE_TOKEN_EMPTY"),
+        ("1234567890123", "AGGREGATE_TOKEN_OVER_DIGITS"),
+        ("12345678901234", "AGGREGATE_TOKEN_OVER_WIDTH"),
+        ("-1234567890.12", "AGGREGATE_TOKEN_OVER_WIDTH"),
+        ("12.5 ", "AGGREGATE_TOKEN_NON_ASCII"),
+        ("12.5\x00", "AGGREGATE_TOKEN_EMBEDDED_NUL"),
+    ],
+)
+def test_the_aggregate_grammar_refuses_a_malformed_token(token, reason):
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        parse_aggregate(token)
+    assert error.value.reason == reason
+    # Aggregate refusals are their own codes, never the return grammar's.
+    assert reason.startswith("AGGREGATE_TOKEN_")
+
+
+def test_a_malformed_aggregate_token_refuses_the_whole_decode():
+    """The grammar is enforced through the decoder, not only in isolation."""
+
+    for token, reason in (
+        ("1.2.3", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("-0.0", "AGGREGATE_TOKEN_NEGATIVE_ZERO"),
+        ("1234567890123", "AGGREGATE_TOKEN_OVER_DIGITS"),
+        ("", "AGGREGATE_TOKEN_EMPTY"),
+    ):
+        records = list(DEFAULT_MAIN)
+        records[4] = main_record(
+            recid=str(PUF_AGGREGATE_RECIDS[0]),
+            mars="0",
+            s006="0",
+            amounts={"E00200": token},
+        )
+        main, demographic, definition, projection = build_fixture(main_records=records)
+        status = decoded_status(main, demographic, definition)
+        with pytest.raises(PufMonetaryRefusalError) as error:
+            decode_puf_monetary_source(main, status, projection, definition)
+        assert error.value.reason == reason
+
+
+def test_the_status_alignment_runs_before_any_amount_is_interpreted(invented):
+    """Alignment first: a misaligned status refuses before either grammar.
+
+    The aggregate row here carries a fractional token that only the aggregate
+    grammar accepts. With the status artifact disagreeing about the sequence,
+    the refusal is the alignment one, so no row's universe — and so no row's
+    grammar — was chosen from an unauthenticated flag.
+    """
+
+    main, _, definition, projection = invented
+    reordered = status_stub(
+        [12, 11, 13, 14, PUF_AGGREGATE_RECIDS[0]], [0, 0, 0, 0, 1], [0, 1, 1, 0, 0]
+    )
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_puf_monetary_source(main, reordered, projection, definition)
+    assert error.value.reason == "STATUS_RECID_SEQUENCE"
+
+    flags = status_stub(
+        [11, 12, 13, 14, PUF_AGGREGATE_RECIDS[0]], [0, 0, 0, 0, 0], [1, 0, 1, 0, 0]
+    )
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_puf_monetary_source(main, flags, projection, definition)
+    assert error.value.reason == "STATUS_AGGREGATE_FLAGS"
+
+
+def test_the_amount_known_mask_cannot_be_mutated_or_drift_from_the_flags(decoded):
+    projected, _ = decoded
+    known = projected.amount_known
+    assert known.dtype == np.bool_
+    with pytest.raises(ValueError):
+        known[0] = False
+    # A fresh read-only view on every access, derived from the flag:
+    # there is no stored mask for anything to tamper with.
+    again = projected.amount_known
+    assert again is not known
+    assert np.array_equal(again, projected.typed["disclosure_aggregate"] == 0)
+    assert "amount_known" not in projected.facts
+    assert "amount_known" not in projected.typed
+
+
+def test_the_column_metadata_scopes_the_whole_dollar_semantics(decoded):
+    projected, _ = decoded
+    for field in PROJECTED:
+        metadata = projected.column_metadata[field]
+        assert metadata["amount_units"] == "whole_usd_source_year"
+        assert metadata["amount_units_scope"] == "individual_return_rows_only"
+        assert metadata["amount_universe"] == "individual_return_rows_only"
+        assert metadata["amount_known_rule"] == AMOUNT_KNOWN_RULE
+        assert metadata["aggregate_amount_universe"] == (
+            "outside_individual_return_amount_universe"
+        )
+        assert metadata["aggregate_row_treatment"] == (
+            "retained_lexical_only_never_parsed_to_a_number"
+        )
+        assert metadata["aggregate_typed_sentinel"] == AGGREGATE_SENTINEL
+        assert metadata["aggregate_token_grammar"] == (
+            "ascii_decimal_optional_single_fraction_bounded"
+        )
+        assert metadata["aggregate_lexical_authority"] == (
+            "delivered_token_exact_for_every_row"
+        )
+        assert metadata["aggregate_numeric_interpretation"] == "refused"
+
+
+def test_the_aggregate_lexical_accessor_is_local_and_exact(decoded):
+    projected, _ = decoded
+    rows = projected.aggregate_lexical_rows()
+    assert set(rows) == set(PROJECTED)
+    recid = PUF_AGGREGATE_RECIDS[0]
+    assert rows["E00200"] == ((recid, "999999999.12"),)
+    assert rows["E01000"] == ((recid, "-99999999.75"),)
+    assert projected.aggregate_lexical_rows("E00300") == {"E00300": ((recid, "4200"),)}
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        projected.aggregate_lexical_rows("NOT_A_FIELD")
+    assert error.value.reason == "AGGREGATE_LEXICAL_FIELD"
+    with pytest.raises(TypeError):
+        rows["E00200"] = ()
+
+
+def test_the_projection_resource_and_raw_definition_bytes_are_unchanged():
+    """A contract version bump, not a re-pin.
+
+    Version 3 changes this module's amount universe. It does not touch the
+    booklet-derived projection document, the raw source definition or their
+    source pins, so both digests are asserted against the values the first
+    genuine run's preparation recorded at ``ee530cb9``.
+    """
+
+    assert PACKAGED_PROJECTION.sha256 == REVIEWED_PROJECTION_SHA256
+    assert PACKAGED_DEFINITION.sha256 == REVIEWED_RAW_DEFINITION_SHA256
+    document = projection_document_json()
+    assert document["schema_version"] == 1
+    assert document["projection"]["amounts_decoded"] is True
+
+
+# --------------------------------------------------------------------------
+# Sentinel, flag and schema tampering at readback
+# --------------------------------------------------------------------------
+
+
+def rewrite_body(payload: bytes, name: str, mutate) -> bytes:
+    """Replace one column body and re-seal its digest, header otherwise as-is."""
+
+    start = len(money.MONETARY_PROJECTION_MAGIC)
+    length = int.from_bytes(payload[start : start + 4], "big")
+    header = json.loads(payload[start + 4 : start + 4 + length].decode("utf-8"))
+    bodies = payload[start + 4 + length :]
+    cursor = 0
+    pieces = []
+    seen = False
+    for column in header["columns"]:
+        size = column["bytes"]
+        body = bodies[cursor : cursor + size]
+        cursor += size
+        if column["name"] == name:
+            body = mutate(column, body)
+            assert len(body) == size
+            column["sha256"] = hashlib.sha256(body).hexdigest()
+            seen = True
+        pieces.append(body)
+    assert seen, name
+    encoded = canonical_json(header)
+    return b"".join(
+        (
+            money.MONETARY_PROJECTION_MAGIC,
+            len(encoded).to_bytes(4, "big"),
+            encoded,
+            *pieces,
+        )
+    )
+
+
+def typed_cell(index, value):
+    def mutate(column, body):
+        array = np.frombuffer(body, dtype=np.dtype(column["dtype"])).copy()
+        array[index] = value
+        return array.tobytes()
+
+    return mutate
+
+
+def lexical_cell(index, token):
+    def mutate(column, body):
+        width = column["width"]
+        raw = bytearray(body)
+        raw[index * width : (index + 1) * width] = token.encode("ascii").ljust(
+            width, b"\x00"
+        )
+        return bytes(raw)
+
+    return mutate
+
+
+def test_a_fake_known_zero_in_an_aggregate_slot_is_refused(envelope):
+    """The plan's fake-known-zero case, as tamper detection rather than masking.
+
+    Zero is a delivered value in these columns, so a zero parked in an
+    aggregate slot would be a known amount this artifact never observed.
+    """
+
+    payload, projection, _ = envelope
+    forged = rewrite_body(payload, "E00200", typed_cell(4, 0))
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(forged, projection)
+    assert error.value.reason == "READBACK_AGGREGATE_SLOT"
+
+
+def test_any_other_value_in_an_aggregate_slot_is_refused(envelope):
+    payload, projection, _ = envelope
+    for value in (1, -1, 999999999999, -999999999999, AGGREGATE_SENTINEL + 1):
+        forged = rewrite_body(payload, "E01000", typed_cell(4, value))
+        with pytest.raises(PufMonetaryRefusalError) as error:
+            decode_monetary_projection(forged, projection)
+        assert error.value.reason == "READBACK_AGGREGATE_SLOT"
+
+
+def test_the_sentinel_parked_on_an_ordinary_row_is_refused(envelope):
+    """The sentinel is unreachable for the return grammar, so it disagrees."""
+
+    payload, projection, _ = envelope
+    forged = rewrite_body(payload, "E00200", typed_cell(0, AGGREGATE_SENTINEL))
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(forged, projection)
+    assert error.value.reason == "READBACK_LEXICAL_DISAGREEMENT"
+
+
+def test_a_flipped_aggregate_flag_cannot_move_a_row_between_universes(envelope):
+    payload, projection, _ = envelope
+    for index, value in ((4, 0), (0, 1)):
+        forged = rewrite_body(payload, "disclosure_aggregate", typed_cell(index, value))
+        with pytest.raises(PufMonetaryRefusalError) as error:
+            decode_monetary_projection(forged, projection)
+        assert error.value.reason == "READBACK_AGGREGATE_RECID"
+
+
+def test_a_rewritten_recid_is_refused_at_readback(envelope):
+    payload, projection, _ = envelope
+    forged = rewrite_body(payload, "RECID", typed_cell(4, 424242))
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(forged, projection)
+    assert error.value.reason == "READBACK_AGGREGATE_RECID"
+    collided = rewrite_body(payload, "RECID", typed_cell(4, 11))
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(collided, projection)
+    assert error.value.reason == "READBACK_NUMERIC_KEY_COLLISION"
+
+
+def test_a_tampered_aggregate_token_is_refused_at_readback(envelope):
+    payload, projection, _ = envelope
+    for token, reason in (
+        ("1.2.3", "AGGREGATE_TOKEN_GRAMMAR"),
+        ("-0.0", "AGGREGATE_TOKEN_NEGATIVE_ZERO"),
+        ("1234567890123", "AGGREGATE_TOKEN_OVER_DIGITS"),
+        ("", "AGGREGATE_TOKEN_EMPTY"),
+    ):
+        forged = rewrite_body(payload, "E00200_lexical", lexical_cell(4, token))
+        with pytest.raises(PufMonetaryRefusalError) as error:
+            decode_monetary_projection(forged, projection)
+        assert error.value.reason == reason
+
+
+def test_a_rewritten_return_token_is_refused_at_readback(envelope):
+    payload, projection, _ = envelope
+    forged = rewrite_body(payload, "E00200_lexical", lexical_cell(0, "50001"))
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(forged, projection)
+    assert error.value.reason == "READBACK_LEXICAL_DISAGREEMENT"
+
+
+def test_a_superseded_magic_payload_is_refused_by_name(envelope):
+    """An old artifact is named, not reinterpreted under the new universe."""
+
+    payload, projection, _ = envelope
+    assert MONETARY_PROJECTION_TYPE.schema_version == 3
+    assert money.MONETARY_PROJECTION_MAGIC.endswith(b"/3\n")
+    assert money.MONETARY_PROJECTION_MAGIC not in SUPERSEDED_MAGIC
+    for magic in SUPERSEDED_MAGIC:
+        forged = magic + payload[len(money.MONETARY_PROJECTION_MAGIC) :]
+        with pytest.raises(PufMonetaryRefusalError) as error:
+            decode_monetary_projection(forged, projection)
+        assert error.value.reason == "ENVELOPE_SUPERSEDED_MAGIC"
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(b"microcosm.us.puf_2015_other/2\n", projection)
+    assert error.value.reason == "ENVELOPE_MAGIC"
+
+
+def test_a_header_declaring_the_superseded_schema_is_refused(envelope):
+    payload, projection, _ = envelope
+
+    def downgrade(header):
+        header["schema_version"] = 2
+        header["type"] = [MONETARY_PROJECTION_TYPE.name, 2]
+
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(reheader(payload, projection, downgrade), projection)
+    assert error.value.reason == "ENVELOPE_TYPE"
+
+
+def test_a_header_carrying_the_superseded_fact_shape_is_refused(envelope):
+    payload, projection, _ = envelope
+
+    def drop_universe(header):
+        for key in (
+            "amount_known_rule",
+            "amount_known_rows",
+            "amount_units_scope",
+            "aggregate_amount_universe",
+            "aggregate_row_treatment",
+            "aggregate_typed_sentinel",
+            "aggregate_token_grammar",
+            "aggregate_lexical_authority",
+            "aggregate_numeric_interpretation",
+        ):
+            header["facts"].pop(key)
+
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(
+            reheader(payload, projection, drop_universe), projection
+        )
+    assert error.value.reason == "ENVELOPE_SCHEMA"
+
+    def numeric_aggregate(header):
+        for classes in header["facts"]["column_facts"].values():
+            classes[AGGREGATE_ROW_CLASS] = {
+                "rows": 1,
+                "zero": 0,
+                "negative": 0,
+                "positive": 1,
+                "minimum": 999999999,
+                "maximum": 999999999,
+                "sum": 999999999,
+            }
+
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(
+            reheader(payload, projection, numeric_aggregate), projection
+        )
+    assert error.value.reason == "ENVELOPE_SCHEMA"
+
+
+def test_a_forged_aggregate_token_class_is_refused(envelope):
+    payload, projection, _ = envelope
+
+    def forge(header):
+        header["facts"]["column_facts"]["E00200"][AGGREGATE_ROW_CLASS][
+            "fractional_tokens"
+        ] = 0
+
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(reheader(payload, projection, forge), projection)
+    assert error.value.reason == "ENVELOPE_FACTS_INCONSISTENT"
+
+    def forge_rule(header):
+        header["facts"]["amount_known_rule"] = "amount_known == True"
+
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(
+            reheader(payload, projection, forge_rule), projection
+        )
+    assert error.value.reason == "ENVELOPE_FACTS_INCONSISTENT"
+
+
+def test_readback_recomputes_the_mask_metadata_and_aggregate_facts(envelope):
+    payload, projection, projected = envelope
+    back = decode_monetary_projection(payload, projection)
+    assert np.array_equal(back.amount_known, projected.amount_known)
+    assert back.column_metadata == projected.column_metadata
+    assert canonical_json(dict(back.facts)) == canonical_json(dict(projected.facts))
+    assert back.aggregate_lexical_rows() == projected.aggregate_lexical_rows()
+    for field in PROJECTED:
+        assert back.lexical[field] == projected.lexical[field]
+        assert int(back.typed[field][4]) == AGGREGATE_SENTINEL
+
+
+def test_a_fixture_with_no_aggregate_row_reports_an_empty_aggregate_class():
+    main, demographic, definition, projection = build_fixture(
+        main_records=[main_record(recid="11", amounts={"E00200": "50000"})],
+        demographic_records=[],
+    )
+    status = decoded_status(main, demographic, definition)
+    projected = decode_puf_monetary_source(main, status, projection, definition)
+    assert list(projected.amount_known) == [True]
+    entry = projected.facts["column_facts"]["E00200"][AGGREGATE_ROW_CLASS]
+    assert entry == {
+        "rows": 0,
+        "integer_tokens": 0,
+        "fractional_tokens": 0,
+        "negative_tokens": 0,
+        "max_token_width": None,
+    }
+    payload = encode_monetary_projection(
+        projected,
+        projection,
+        definition,
+        status_artifact_sha256=hashlib.sha256(
+            encode_return_status(status, definition)
+        ).hexdigest(),
+    )
+    back = decode_monetary_projection(payload, projection)
+    assert canonical_json(dict(back.facts)) == canonical_json(dict(projected.facts))
+    assert projected.aggregate_lexical_rows()["E00200"] == ()
+
+
+def test_the_same_recids_and_flags_with_another_status_digest_are_refused(
+    envelope, invented
+):
+    """The digest arm, on a status artifact the element-wise checks accept.
+
+    A second delivery whose demographic file matches a different return has
+    the same RECID sequence and the same aggregate flags, so the decoder's
+    element-wise binding accepts it and carries its own ``demographic_status``
+    through. Only the artifact digest separates the two.
+    """
+
+    payload, projection, _ = envelope
+    main, demographic, definition, _ = invented
+    mine = decoded_status(main, demographic, definition)
+    other_main, other_demographic, other_definition, _ = build_fixture(
+        demographic_records=[demographic_record(recid="14")]
+    )
+    other = decoded_status(other_main, other_demographic, other_definition)
+    assert np.array_equal(other.typed["RECID"], mine.typed["RECID"])
+    assert np.array_equal(
+        other.typed["disclosure_aggregate"], mine.typed["disclosure_aggregate"]
+    )
+    assert not np.array_equal(
+        other.typed["demographic_status"], mine.typed["demographic_status"]
+    )
+    accepted = decode_puf_monetary_source(main, other, projection, definition)
+    assert list(accepted.typed["demographic_status"]) == [0, 0, 0, 1, 0]
+    digest = hashlib.sha256(encode_return_status(other, other_definition)).hexdigest()
+    with pytest.raises(PufMonetaryRefusalError) as error:
+        decode_monetary_projection(
+            payload, projection, expected_status_artifact_sha256=digest
+        )
+    assert error.value.reason == "ENVELOPE_STATUS_ARTIFACT_MISMATCH"
+
+
+def test_the_summary_receipt_is_aggregate_only_and_states_no_amount(
+    graph_fixture, tmp_path
+):
+    compiled, registry, sources, definition, projection, _ = graph_fixture
+    store = composed_store(tmp_path / "store", definition)
+    manifest = run_graph(
+        compiled, sources=sources, store=store, kernels=registry, resume="forbid"
+    )
+    summary = manifest.nodes[MONETARY_PROJECTION_SUMMARY_NODE].receipt[
+        "puf_monetary_projection_summary"
+    ]
+    assert summary["aggregate_rows_are_lexical_only"] is True
+    assert summary["aggregate_numeric_interpretation"] == "refused"
+    assert summary["aggregate_lexical_authority"] == (
+        "delivered_token_exact_for_every_row"
+    )
+    for field in PROJECTED:
+        assert set(summary["aggregate_lexical_token_classes"][field]) == (
+            AGGREGATE_FACT_KEYS
+        )
+    text = json.dumps(summary, sort_keys=True, default=dict)
+    # No token, no RECID, and no per-row exposure: the exact pairs live behind
+    # the local accessor on the decoded object, never in a receipt.
+    for forbidden in (
+        '"999999999.12"',
+        '"-99999999.75"',
+        '"4200"',
+        str(PUF_AGGREGATE_RECIDS[0]),
+    ):
+        assert forbidden not in text
