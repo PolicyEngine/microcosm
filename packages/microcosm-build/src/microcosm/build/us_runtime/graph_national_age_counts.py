@@ -7,6 +7,15 @@ no source-channel or spine column, imports no rules engine, calculates nothing
 from a model, and never touches weights: these are unweighted head counts, and
 the graph executor owns every weight in the build.
 
+The graph contract splits that read surface in two, and the declaration follows
+it rather than working around it. ``age`` is an owned cell, so it travels in an
+input :class:`~microcosm.graph.Slice`. Entity ids and person-to-group
+memberships are structural: the executor puts them in every context table and
+no node owns them, so a ``Slice`` cannot name them. They are declared instead
+in the node's normative parameters, where they still enter the node key, and
+the kernel refuses a context whose household view carries anything beyond the
+declared id column.
+
 Every included person is counted exactly once. Group-quarters people are
 included because the activated target universe is the whole resident
 population, and their household membership is preserved rather than dropped.
@@ -78,7 +87,22 @@ _PERSON = US_SCHEMA.person_entity
 _HOUSEHOLD = "household"
 _HOUSEHOLD_ID = US_SCHEMA.entity_id_column(_HOUSEHOLD)
 _PERSON_HOUSEHOLD_ID = US_SCHEMA.membership_column(_HOUSEHOLD)
-_PARAMS = frozenset({"bands", "age_convention", "schema_version"})
+
+#: Every person column the kernel reads: the owned age cell plus the structural
+#: household membership. Declared normatively so the read surface is in the key.
+_PERSON_COLUMNS = (_AGE_COLUMN, _PERSON_HOUSEHOLD_ID)
+#: Every household column the kernel reads: the structural id, and nothing else.
+_HOUSEHOLD_COLUMNS = (_HOUSEHOLD_ID,)
+
+_PARAMS = frozenset(
+    {
+        "bands",
+        "person_columns",
+        "household_columns",
+        "age_convention",
+        "schema_version",
+    }
+)
 
 
 def _canonical(value: object) -> str:
@@ -138,13 +162,12 @@ def _node_from_schema(schema: str, *, population: str, node_id: str) -> Node:
         id=node_id,
         kernel=NationalAgeCountKernel.ref,
         population=population,
-        inputs=(
-            Slice(_PERSON, (_AGE_COLUMN, _PERSON_HOUSEHOLD_ID)),
-            Slice(_HOUSEHOLD, (_HOUSEHOLD_ID,)),
-        ),
+        inputs=(Slice(_PERSON, (_AGE_COLUMN,)),),
         outputs=tuple(Owned(_HOUSEHOLD, column, "int64") for column, _, _ in bands),
         params={
             "bands": schema,
+            "person_columns": _PERSON_COLUMNS,
+            "household_columns": _HOUSEHOLD_COLUMNS,
             "age_convention": SUPPORTED_AGE_CONVENTION,
             "schema_version": AGE_COUNT_SCHEMA_VERSION,
         },
@@ -204,6 +227,15 @@ class NationalAgeCountKernel(KernelBase):
             )
         if params["schema_version"] != AGE_COUNT_SCHEMA_VERSION:
             raise ValueError("Unsupported age-band schema version.")
+        if (
+            params["person_columns"] != _PERSON_COLUMNS
+            or params["household_columns"] != _HOUSEHOLD_COLUMNS
+        ):
+            raise ValueError(
+                "This operator reads exactly "
+                f"{_PERSON_COLUMNS} on {_PERSON!r} and {_HOUSEHOLD_COLUMNS} on "
+                f"{_HOUSEHOLD!r}."
+            )
         bands = _bands_from_param(params["bands"])
         expected = _node_from_schema(
             params["bands"],
@@ -215,6 +247,16 @@ class NationalAgeCountKernel(KernelBase):
 
         household = context.tables[_HOUSEHOLD]
         person = context.tables[_PERSON]
+        # The household view is exactly its id column: no weight, no source
+        # channel, no other attribute is visible to this operator.
+        if tuple(household.columns) != _HOUSEHOLD_COLUMNS:
+            raise ValueError(
+                f"The household view must carry exactly {_HOUSEHOLD_COLUMNS}, "
+                f"got {tuple(household.columns)}."
+            )
+        missing = [column for column in _PERSON_COLUMNS if column not in person]
+        if missing:
+            raise ValueError(f"The person view is missing {missing}.")
         household_ids = _ids(household, _HOUSEHOLD_ID, what="household id")
         index = pd.Index(household_ids, name=_HOUSEHOLD_ID)
         if index.has_duplicates:
