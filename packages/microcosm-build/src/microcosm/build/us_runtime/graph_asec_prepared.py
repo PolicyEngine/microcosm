@@ -1,4 +1,4 @@
-"""The four-node ASEC prepared current-money slice: source, selection, leaves, engine.
+"""The five-node ASEC slice: source, selection, leaves, engine and reported income.
 
 One directory source holds the reviewed restoration inputs. The CREATE kernel
 prepares the whole authenticated population from it; a FILTER kernel draws a
@@ -86,6 +86,14 @@ from .cps_carried_current import (
     cps_carried_current_leaf_contract,
     derive_cps_carried_current_leaves,
 )
+from .graph_asec_income import (
+    REPORTED_INCOME_NODE,
+    RESULT_COLUMNS,
+    US_ASEC_INCOME_OBSERVATIONS_TYPE,
+    US_ASEC_REPORTED_INCOME_TYPE,
+    USAsecReportedIncomeKernel,
+    reported_income_declarations,
+)
 from .graph_context import US_FRAME_CONTEXT_TYPE
 from .graph_housing_universe import (
     HOUSEHOLD_EVIDENCE_COLUMNS,
@@ -100,9 +108,9 @@ from .graph_implementation import (
 )
 from .graph_sources import frame_column_declarations
 
-ASEC_PREPARED_STAGE = "asec_prepared_v2"
+ASEC_PREPARED_STAGE = "asec_prepared_v3"
 ASEC_PREPARED_PHASE = "prepare_asec_current_money_slice"
-ASEC_PREPARED_CODEC = "us-asec-prepared-current-money-v2"
+ASEC_PREPARED_CODEC = "us-asec-prepared-current-money-v3"
 ASEC_PREPARED_SOURCE_NAME = "asec_prepared"
 ASEC_PREPARED_SOURCE = SourceRef(
     ASEC_PREPARED_SOURCE_NAME,
@@ -273,7 +281,7 @@ class _PreparedKernel(KernelBase):
 class USAsecPreparedCreateKernel(_PreparedKernel):
     """Prepare the whole authenticated ASEC population from one source directory."""
 
-    ref = "us.asec_prepared.create@2"
+    ref = "us.asec_prepared.create@3"
     capabilities = Capabilities(
         determinism=Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
@@ -294,6 +302,7 @@ class USAsecPreparedCreateKernel(_PreparedKernel):
                 ArtifactOutput("current_money", US_ASEC_CURRENT_MONEY_BODY_TYPE),
                 ArtifactOutput("prepared_receipt", US_ASEC_PREPARED_RECEIPT_TYPE),
                 ArtifactOutput("housing_universe", US_ASEC_HOUSING_UNIVERSE_TYPE),
+                ArtifactOutput("income_observations", US_ASEC_INCOME_OBSERVATIONS_TYPE),
             ),
             "NODE_ARTIFACT_OUTPUTS",
         )
@@ -315,6 +324,7 @@ class USAsecPreparedCreateKernel(_PreparedKernel):
                 "current_money": prepared.money_payload,
                 "prepared_receipt": prepared.receipt_payload,
                 "housing_universe": prepared.housing_universe_payload,
+                "income_observations": prepared.income_observations_payload,
             },
             receipt={
                 "phase": ASEC_PREPARED_PHASE,
@@ -329,7 +339,7 @@ class USAsecPreparedCreateKernel(_PreparedKernel):
 class USAsecPreparedSelectionKernel(_PreparedKernel):
     """Draw the seeded whole-household sample and slice the money body to it."""
 
-    ref = "us.asec_prepared.select_households@2"
+    ref = "us.asec_prepared.select_households@3"
     capabilities = Capabilities(
         determinism=Determinism.SEEDED,
         numeric=Numeric.PLATFORM_BITWISE,
@@ -581,7 +591,7 @@ def _json(value: object) -> object:
 class USAsecPreparedLeavesKernel(_PreparedKernel):
     """Derive the corrected monetary CPS leaves from the selected money alone."""
 
-    ref = "us.asec_prepared.cps_carried_current@2"
+    ref = "us.asec_prepared.cps_carried_current@3"
     capabilities = Capabilities(
         determinism=Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
@@ -749,7 +759,7 @@ class USAsecPreparedLeavesKernel(_PreparedKernel):
 class USAsecPreparedEngineKernel(_PreparedKernel):
     """Run the real PolicyEngine-US adapter for the admitted formula-owned roots."""
 
-    ref = "us.asec_prepared.engine_current_money@2"
+    ref = "us.asec_prepared.engine_current_money@3"
     capabilities = Capabilities(
         determinism=Determinism.DETERMINISTIC,
         numeric=Numeric.PLATFORM_BITWISE,
@@ -929,7 +939,7 @@ def us_asec_prepared_graph(
     period: int = 2024,
     engine_version: str = "1.819.0",
 ) -> Graph:
-    """Declare the four-node slice over the caller's prepared column inventory."""
+    """Declare the five-node slice over the caller's prepared column inventory."""
     inventory = {(owned.entity, owned.column) for owned in columns}
     _require(len(inventory) == len(tuple(columns)), "COLUMN_INVENTORY_REPEATS")
     _require(
@@ -950,6 +960,9 @@ def us_asec_prepared_graph(
         f"{entity}.{column}"
         for entity, column in _owned_coordinates()
         if (entity, column) in inventory
+    )
+    incumbent.extend(
+        f"person.{name}" for name in RESULT_COLUMNS if ("person", name) in inventory
     )
     _require(not incumbent, f"OWNED_LEAF_INCUMBENT:{incumbent}")
     parent_artifacts = (
@@ -987,6 +1000,7 @@ def us_asec_prepared_graph(
             ArtifactOutput("current_money", US_ASEC_CURRENT_MONEY_BODY_TYPE),
             ArtifactOutput("prepared_receipt", US_ASEC_PREPARED_RECEIPT_TYPE),
             ArtifactOutput("housing_universe", US_ASEC_HOUSING_UNIVERSE_TYPE),
+            ArtifactOutput("income_observations", US_ASEC_INCOME_OBSERVATIONS_TYPE),
         ),
     )
     select = Node(
@@ -1058,20 +1072,43 @@ def us_asec_prepared_graph(
             ArtifactOutput("engine_evaluation", US_ASEC_ENGINE_EVALUATION_TYPE),
         ),
     )
+    reported = Node(
+        id=REPORTED_INCOME_NODE,
+        kernel=USAsecReportedIncomeKernel.ref,
+        population=SELECT_NODE,
+        inputs=(Slice("person", ("source_year",)),),
+        outputs=reported_income_declarations(),
+        params={"phase": ASEC_PREPARED_PHASE},
+        artifact_inputs=(
+            *leaves.artifact_inputs[:3],
+            parent_artifacts[2],
+            ArtifactInput(
+                "income_observations",
+                CREATE_NODE,
+                "income_observations",
+                US_ASEC_INCOME_OBSERVATIONS_TYPE,
+            ),
+        ),
+        artifact_outputs=(
+            ArtifactOutput("reported_income", US_ASEC_REPORTED_INCOME_TYPE),
+            ArtifactOutput("frame_context", US_FRAME_CONTEXT_TYPE),
+        ),
+    )
     return Graph(
         country="us",
         sources=(ASEC_PREPARED_SOURCE,),
-        nodes=(create, select, leaves, engine),
+        nodes=(create, select, leaves, engine, reported),
     )
 
 
 def us_asec_prepared_registry(engine=None) -> KernelRegistry:
-    """Register exactly this slice's four kernels."""
+    """Register exactly this slice's five kernels."""
     registry = KernelRegistry()
     registry.register(USAsecPreparedCreateKernel())
     registry.register(USAsecPreparedSelectionKernel())
     registry.register(USAsecPreparedLeavesKernel())
     registry.register(USAsecPreparedEngineKernel(engine))
+    registry.register(USAsecReportedIncomeKernel())
     return registry
 
 

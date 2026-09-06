@@ -36,6 +36,7 @@ from . import asec_current_money_source as money_source
 from . import asec_housing_status_source as housing_source
 from . import asec_housing_universe as housing_universe
 from . import asec_housing_universe_source as housing_universe_source
+from . import asec_income_observations as income_source
 from . import asec_person_income_source as person_income
 from . import asec_student_controls as student_source
 from ._asec_current_money_codec import (
@@ -65,8 +66,8 @@ from .asec_housing_status_source import (
 from .education_assistance_source import ASEC_EDUCATION_ASSISTANCE_ARCHIVES
 from .operator_boundary import assert_operator_free_source_frame
 
-PREPARED_SOURCE_KIND = "us_asec_prepared_current_money_v2"
-PREPARED_RECEIPT_SCHEMA = "microcosm.us.asec_prepared_receipt.v2"
+PREPARED_SOURCE_KIND = "us_asec_prepared_current_money_v3"
+PREPARED_RECEIPT_SCHEMA = "microcosm.us.asec_prepared_receipt.v3"
 PREPARATION_BOUNDARY = "US graph ASEC prepared source"
 SOURCE_YEARS: tuple[int, ...] = (2022, 2023, 2024)
 PARENT_FILENAME = ASEC_RAW_STAGE_CHECKPOINT_FILENAME
@@ -358,6 +359,7 @@ def prepared_source_implementation_identity() -> str:
         name: _sha(package.joinpath(name).read_bytes())
         for name in (
             "asec_prepared_source.py",
+            "asec_income_observations.py",
             "asec_current_money_selection.py",
             "cps_carried_current.py",
             "graph_housing_universe.py",
@@ -366,12 +368,13 @@ def prepared_source_implementation_identity() -> str:
     return _sha(
         _json(
             {
-                "schema": 2,
+                "schema": 3,
                 "source_kind": PREPARED_SOURCE_KIND,
                 "modules": modules,
                 "money_source_verification": money_source._verification_identity(),
                 "restoration_verification": person_income._implementation(),
                 "student_controls_verification": student_source._implementation(),
+                "income_observations_verification": income_source._implementation(),
                 "housing_verification": housing_source._implementation(),
                 "housing_universe_verification": housing_universe_source._implementation(),
                 "file_roster": list(PREPARED_SOURCE_FILES),
@@ -390,6 +393,7 @@ class PreparedAsecPopulation:
     receipt: dict
     field_entities: tuple[tuple[str, str], ...]
     housing_universe_payload: bytes
+    income_observations_payload: bytes
 
     @property
     def receipt_payload(self) -> bytes:
@@ -419,6 +423,11 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
     )
     ready = source.ready()
     _require(type(ready) is ReadyCurrentMoney, "AUTHENTICATED_READINESS_REQUIRED")
+    income = income_source.load_authenticated_income_observations(
+        source,
+        ready,
+        member_paths={year: paths[name] for year, name in MEMBER_FILENAMES},
+    )
     # S is separate source authority. Its public loader authenticates the same
     # official members against the unchanged T1 and money parents; attachment
     # adds two aliases while retaining original missing controls untouched.
@@ -461,6 +470,7 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
     )
     money_payload = encode_current_money(ready)
     universe_payload = housing_universe.encode_housing_universe(universe)
+    income_payload = income_source.encode_income_observations(income)
     field_entities = tuple(
         (domain.name, domain.entity) for domain in ready.bindings.spec.fields
     )
@@ -472,6 +482,16 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
         "all_current_money_consumers_wired": False,
         "source_evidence_sha256": _sha(source.source.identity),
         "t1_sha256": evidence["person_income_attachment_sha256"],
+        "income_observations": {
+            "parser_profile": income_source.parser_profile(),
+            "header_sha256": _sha(income._header),
+            "content_sha256": income.content_sha256,
+            "payload_sha256": _sha(income_payload),
+            "rows": income.receipt["rows"],
+            "columns": list(income_source.COLUMNS),
+            "kind": income_source.ARTIFACT_KIND,
+            "scope_sha256": income.receipt["scope_sha256"],
+        },
         "student_controls_receipt_sha256": _sha(_json(controls.receipt)),
         "student_controls_content_sha256": controls.content_sha256,
         "student_controls_attachment_receipt_sha256": _sha(
@@ -511,7 +531,7 @@ def prepare_asec_current_money_population(source_dir) -> PreparedAsecPopulation:
         "file_roster": list(PREPARED_SOURCE_FILES),
     }
     return PreparedAsecPopulation(
-        frame, money_payload, receipt, field_entities, universe_payload
+        frame, money_payload, receipt, field_entities, universe_payload, income_payload
     )
 
 
