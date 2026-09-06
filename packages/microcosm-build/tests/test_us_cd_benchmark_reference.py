@@ -1064,10 +1064,17 @@ def test_from_document_refuses_to_state_an_unverified_identity(protocol, bundle)
     """
     document = copy.deepcopy(bundle)
     for forged in ({"sha256": "0" * 64}, {"size_bytes": 38686741}):
-        with pytest.raises(
-            ReferenceProjectionError, match="cannot label an inventory's identity"
-        ):
+        # TypeError, not ReferenceProjectionError: the defect is in the call,
+        # not in the bundle, and a caller that reports every
+        # ReferenceProjectionError as a rejected bundle must not be handed its
+        # own mistake as a statement about the inventory.
+        with pytest.raises(TypeError, match="cannot label an inventory's identity"):
             ReferenceInventory.from_document(document, protocol=protocol, **forged)
+
+    # Only those two are named, so a typo keeps Python's own diagnostic rather
+    # than being accused of forging an identity it never mentioned.
+    with pytest.raises(TypeError, match="unexpected keyword argument 'protocl'"):
+        ReferenceInventory.from_document(document, protocl=protocol)
 
     inventory = ReferenceInventory.from_document(document, protocol=protocol)
     assert inventory.sha256 is None
@@ -1079,6 +1086,41 @@ def test_from_document_refuses_to_state_an_unverified_identity(protocol, bundle)
     assert payload["inventory_sha256"] is None
     assert payload["inventory_size_bytes"] is None
     assert payload["inventory_identity_verified"] is False
+
+
+def test_a_verified_identity_cannot_be_forged_onto_an_inventory(
+    tmp_path, protocol, bundle
+):
+    """The label is not reachable through the constructor or ``replace`` either.
+
+    ``identity_verified`` is only worth reading if nothing but a byte-verifying
+    load can set it. Before ``sha256`` and ``size_bytes`` became ``init=False``,
+    ``dataclasses.replace(inventory, sha256=...)`` produced an inventory built
+    from a three-district invented fixture that reported the real 38.7 MB
+    bundle's pinned digest and byte count under a verified label — review
+    finding 1 re-entering through a second door.
+    """
+    inventory = ReferenceInventory.from_document(
+        copy.deepcopy(bundle), protocol=protocol
+    )
+    assert inventory.identity_verified is False
+
+    with pytest.raises(TypeError, match="init=False"):
+        dataclasses.replace(inventory, sha256=pinned_inventory_sha256(protocol))
+    with pytest.raises(TypeError, match="sha256"):
+        ReferenceInventory(
+            document=inventory.document,
+            tables=inventory.tables,
+            datasets=inventory.datasets,
+            geographies=inventory.geographies,
+            published_geography_ids=inventory.published_geography_ids,
+            cells=inventory.cells,
+            sha256=pinned_inventory_sha256(protocol),
+        )
+
+    # A byte-verifying load is still the one route that sets it.
+    path, sha256 = _write(tmp_path, bundle)
+    assert load_pinned_inventory(path, expected_sha256=sha256).identity_verified
 
 
 def test_only_a_byte_verifying_load_reports_a_verified_identity(
@@ -1345,6 +1387,87 @@ def test_an_empty_projection_stays_empty_and_is_never_roster_complete(
         "5001900US0612",
         DC_CANONICAL,
     ]
+
+
+def test_dc_cannot_be_counted_under_both_of_its_published_identities(
+    protocol, inventory
+):
+    """One real district, two published ids, and only one of them is a district.
+
+    DC is the one district whose canonical id and published GEO_ID differ, and
+    ``…1198`` is exactly what the raw ACS ``GEO_ID`` column carries, so an
+    operator naming both is a natural mistake. Keyed on the identity string
+    alone, that produced ``districts_projected`` 4 against a
+    ``roster_district_count`` of 3 — more districts projected than the roster
+    holds, which is root's counterexample in a second form.
+    """
+    roster = district_roster(inventory, protocol=protocol)
+    canonical = project_block(
+        inventory,
+        block_id="population_total",
+        geography_id=DC_CANONICAL,
+        protocol=protocol,
+    )
+    alias = project_block(
+        inventory,
+        block_id="population_total",
+        geography_id=DC_PUBLISHED,
+        protocol=protocol,
+    )
+    with pytest.raises(ReferenceProjectionError, match="the same district"):
+        projection_completeness(
+            [canonical, alias], protocol=protocol, roster=roster, inventory=inventory
+        )
+
+    # Either identity alone still counts once, and the roster is never exceeded.
+    for single in (canonical, alias):
+        payload = projection_completeness(
+            [single], protocol=protocol, roster=roster, inventory=inventory
+        ).payload()
+        assert payload["blocks"][0]["districts_projected"] == 1
+        assert (
+            payload["blocks"][0]["districts_projected"]
+            <= (payload["roster_district_count"])
+        )
+
+
+def test_the_payload_names_only_reserved_families_it_actually_read(protocol, inventory):
+    """Declared exposure families are not the same as cells read into values.
+
+    ``occupied_household_total`` declares both reserved families but projects a
+    single ``B25003_001`` cell; the same run records ``B19001_001`` in
+    ``duplicate_reference_aliases_not_projected``. Reporting B19001 as projected
+    would have the artifact contradict its own evidence.
+    """
+    projection = project_block(
+        inventory,
+        block_id="occupied_household_total",
+        geography_id="5001900US0101",
+        protocol=protocol,
+    )
+    assert "B19001" in projection.exposure_families
+    assert projection.evidence["duplicate_reference_aliases_not_projected"] == (
+        "B19001_001",
+    )
+    payload = projection_completeness(
+        [projection], protocol=protocol, inventory=inventory
+    ).payload()
+    assert payload["reserved_families_projected_into_values"] == ["B25003"]
+    assert {item.cell.table for item in projection.cells} == {"B25003"}
+
+
+def test_a_payload_with_no_inventory_states_nothing_about_reserved_tables(protocol):
+    """The reserved-indexing sentence is a claim about bytes that were indexed."""
+    payload = projection_completeness([], protocol=protocol).payload()
+    assert payload["inventory_sha256"] is None
+    assert payload["inventory_identity_verified"] is False
+    assert payload["reserved_families_indexed_for_structure"] == []
+    assert "no inventory was indexed" in payload["reserved_table_indexing"]
+
+    with pytest.raises(ReferenceProjectionError, match="non-canonical protocol"):
+        projection_completeness(
+            [], protocol=dataclasses.replace(protocol, sha256="0" * 64)
+        )
 
 
 def test_the_payload_states_that_reserved_tables_were_indexed(protocol, inventory):

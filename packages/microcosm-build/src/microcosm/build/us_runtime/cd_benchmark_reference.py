@@ -57,12 +57,18 @@ appears in this file.
 What a caller cannot state
 --------------------------
 
-Only :func:`load_pinned_inventory` can record an inventory's identity, because
-only it verifies bytes: it enforces the stated digest and the pinned byte count
-against the file before anything is parsed.
-:meth:`ReferenceInventory.from_document` is handed an already-parsed document,
-so it records no digest and no byte count at all and refuses a caller who tries
-to supply either. A parsed document is deep-copied into read-only mappings and
+Only :func:`load_pinned_inventory` records an inventory's identity, because only
+it verifies bytes: it reads the file, matches its SHA-256 against the digest the
+caller stated before anything is parsed, and enforces the pinned byte count from
+the file's size first whenever that digest is the one the protocol pins.
+:meth:`ReferenceInventory.from_document` is handed an already-parsed document, so
+it records no digest and no byte count at all and refuses a caller who tries to
+supply either. ``sha256`` and ``size_bytes`` are not constructor fields: they
+cannot be passed to :class:`ReferenceInventory`, and
+:func:`dataclasses.replace` refuses them, so a validated inventory cannot be
+re-labelled. Overriding the property in a subclass would still do it; that is
+code substitution rather than a caller mistake, and this module does not
+pretend to catch it. A parsed document is deep-copied into read-only mappings and
 tuples, so neither the caller's original object nor the indexed inventory can be
 changed afterwards: a projection is evidence about the bytes that were verified,
 not about whatever the object happens to hold later.
@@ -495,8 +501,10 @@ class DistrictRoster:
 class ReferenceInventory(Mapping):
     """A validated, indexed view of one pinned reference inventory document.
 
-    The document is exposed unchanged (this object *is* a mapping over it), and
-    the indexes exist so a per-district projection does not rescan the bundle.
+    The document is exposed as this module's own read-only deep copy — JSON
+    meaning preserved exactly, objects as mappings and arrays as ordered
+    sequences — and this object is a mapping over that copy. The indexes exist
+    so a per-district projection does not rescan the bundle.
     Construction validates shape and cross-checks the document against the
     compiled protocol; it never repairs anything.
     """
@@ -509,18 +517,23 @@ class ReferenceInventory(Mapping):
     cells: Mapping[tuple[str, str, str], Mapping[str, object]] = field(
         compare=False, repr=False
     )
-    sha256: str | None = None
-    size_bytes: int | None = None
+    #: Set only by :func:`load_pinned_inventory`, through the private indexer,
+    #: and deliberately ``init=False``: an identity is a fact about bytes that
+    #: were read, so it is not something a constructor argument can assert.
+    sha256: str | None = field(default=None, init=False)
+    size_bytes: int | None = field(default=None, init=False)
 
     @property
     def identity_verified(self) -> bool:
         """Whether this inventory's identity was checked, not merely asserted.
 
-        True only when :func:`load_pinned_inventory` read the file, matched its
-        size against the pinned byte count and its SHA-256 against the digest
-        the caller stated, before parsing a byte. There is no other way to make
-        it true, so a false value is an honest "these bytes were never checked",
-        never a missing label on verified bytes.
+        True only when :func:`load_pinned_inventory` read the file and matched
+        its SHA-256 against the digest the caller stated, before parsing a byte;
+        when that digest is the one the protocol pins, the pinned byte count was
+        enforced from the file's size first. Because both fields are
+        ``init=False``, neither the constructor nor :func:`dataclasses.replace`
+        can set them, so a false value is an honest "these bytes were never
+        checked" rather than a missing label on verified bytes.
         """
         return self.sha256 is not None
 
@@ -539,34 +552,48 @@ class ReferenceInventory(Mapping):
         document: Mapping[str, object],
         *,
         protocol: CompiledProtocol | None = None,
-        **unverifiable: object,
+        sha256: None = None,
+        size_bytes: None = None,
     ) -> ReferenceInventory:
         """Validate and index an already-parsed inventory document.
 
         The result carries **no** digest and **no** byte count, because this
         constructor never saw a file and so can verify neither:
         :attr:`identity_verified` is false and the aggregate payload reports a
-        null ``inventory_sha256``. Passing ``sha256=`` or ``size_bytes=`` is
-        refused rather than believed — an identity nothing checked is worse in
-        an evidence artifact than no identity at all. Use
-        :func:`load_pinned_inventory` when the identity has to be established.
+        null ``inventory_sha256``. ``sha256`` and ``size_bytes`` are named here
+        only so that a caller written against the older signature is told why
+        they are gone: passing either is refused rather than believed, because
+        an identity nothing checked is worse in an evidence artifact than no
+        identity at all. Use :func:`load_pinned_inventory` when the identity has
+        to be established. Any other keyword gets Python's own
+        unexpected-keyword diagnostic, so a typo stays a typo.
 
         The document is deep-copied into read-only containers, so a caller that
         keeps its own reference to the object passed in cannot change what this
         inventory was validated as afterwards.
 
         Raises:
-            ReferenceProjectionError: On an attempt to state an unverified
-                identity, on a non-canonical protocol, or on any shape,
-                identity, duplicate or protocol-disagreement defect. Nothing is
-                repaired or defaulted.
+            TypeError: On an attempt to state an unverified identity. That is a
+                defect in the call, not in the bundle, so it is deliberately not
+                a :class:`ReferenceProjectionError` — a caller that reports
+                every ``ReferenceProjectionError`` as a rejected bundle would
+                otherwise turn its own mistake into a false statement about the
+                inventory.
+            ReferenceProjectionError: On a non-canonical protocol, or on any
+                shape, identity, duplicate or protocol-disagreement defect.
+                Nothing is repaired or defaulted.
         """
-        if unverifiable:
-            raise ReferenceProjectionError(
-                "from_document cannot label an inventory's identity: "
-                f"{sorted(unverifiable)} would be recorded without ever being "
-                "checked against a file. Only load_pinned_inventory, which "
-                "verifies the bytes it reads, may state them."
+        stated = [
+            name
+            for name, value in (("sha256", sha256), ("size_bytes", size_bytes))
+            if value is not None
+        ]
+        if stated:
+            raise TypeError(
+                f"from_document cannot label an inventory's identity: {stated} "
+                "would be recorded without ever being checked against a file. "
+                "Only load_pinned_inventory, which verifies the bytes it reads, "
+                "may state them."
             )
         protocol = _canonical_only(protocol or canonical_protocol())
         return _index_inventory(document, protocol, None, None)
@@ -859,16 +886,20 @@ def _index_inventory(
         cells.update(_table_cells(table_document, table))
 
     assert geographies is not None and published is not None
-    return ReferenceInventory(
+    inventory = ReferenceInventory(
         document=document,
         tables=tables,
         datasets=datasets,
         geographies=MappingProxyType(geographies),
         published_geography_ids=MappingProxyType(published),
         cells=MappingProxyType(cells),
-        sha256=sha256,
-        size_bytes=size_bytes,
     )
+    # The identity is written here rather than passed in, because ``init=False``
+    # is what stops a caller from asserting one. ``load_pinned_inventory`` is
+    # the only caller that supplies values, and only ones it read off the file.
+    object.__setattr__(inventory, "sha256", sha256)
+    object.__setattr__(inventory, "size_bytes", size_bytes)
+    return inventory
 
 
 def load_pinned_inventory(
@@ -899,7 +930,9 @@ def load_pinned_inventory(
     Returns:
         A :class:`ReferenceInventory` whose ``sha256`` and ``size_bytes`` are
         the values actually observed on the file, so its ``identity_verified``
-        is true. This is the only constructor that can say that.
+        is true. No other constructor can say that: both fields are
+        ``init=False``, so neither :meth:`ReferenceInventory.from_document`, the
+        dataclass constructor nor :func:`dataclasses.replace` can set them.
 
     Raises:
         ReferenceProjectionError: On a non-canonical protocol, a bad digest
@@ -1354,7 +1387,9 @@ class ProjectionCompleteness:
     roster_district_count: int
     districts_requested: tuple[str, ...]
     blocks: tuple[Mapping[str, object], ...]
+    inventory_indexed: bool
     reserved_families_indexed: tuple[str, ...]
+    reserved_families_projected: tuple[str, ...]
     roster_reasons: tuple[str, ...]
     roster_notes: Mapping[str, object]
     claims_not_established: tuple[str, ...] = PROJECTION_CLAIMS_NOT_ESTABLISHED
@@ -1384,20 +1419,26 @@ class ProjectionCompleteness:
             "reserved_families_indexed_for_structure": list(
                 self.reserved_families_indexed
             ),
-            "reserved_families_projected_into_values": sorted(
-                {
-                    str(family)
-                    for block in self.blocks
-                    for family in block.get("exposure_families", ())
-                    if str(family) in RESERVED_FAMILY_TABLES
-                }
+            # Derived from the cells actually projected, never from the blocks'
+            # declared exposure families: a block may declare a reserved family
+            # whose only cell is a duplicate alias this run recorded as *not*
+            # projected, and the artifact must not contradict its own evidence.
+            "reserved_families_projected_into_values": list(
+                self.reserved_families_projected
             ),
             "reserved_table_indexing": (
-                "indexing validated the structure of every required table, the "
-                "reserved families included, because the protocol's required "
-                "district set must be identical across them; no reserved "
-                "estimate or margin was classified or read into a value unless "
-                "its block is listed above"
+                (
+                    "indexing validated the structure of every required table, "
+                    "the reserved families included, because the protocol's "
+                    "required district set must be identical across them; no "
+                    "reserved estimate or margin was classified or read into a "
+                    "value unless its family is listed above"
+                )
+                if self.inventory_indexed
+                else (
+                    "no inventory was indexed by this call, so nothing is "
+                    "stated here about any table's structure"
+                )
             ),
             "pinned_adapters": list(PINNED_ADAPTER_MODULES),
         }
@@ -1427,36 +1468,59 @@ def projection_completeness(
     districts, cells, validity classes, precision statuses and reasons. It never
     adds an estimate to another estimate.
 
-    The same block at the same district may be supplied only once. Counting one
-    district twice would report more districts projected than were ever
-    requested, which is the one thing a completeness statement must not do.
+    The same block at the same district may be supplied only once, and DC's two
+    published identities are the same district: the canonical id and the ``…1198``
+    alias the raw GEO_ID column carries both name it, so supplying both would
+    report more districts projected than the roster contains. Counting one
+    district twice is the one thing a completeness statement must not do.
+
+    The protocol argument must be the canonical document, as it must be for
+    indexing: the payload mixes canonically derived fields with this protocol's
+    digest, and attributing the former to a different contract is the mixing
+    :func:`_canonical_only` exists to refuse.
 
     Raises:
-        ReferenceProjectionError: If a projection is repeated for the same block
-            and district, or is not a :class:`BlockProjection`.
+        ReferenceProjectionError: On a non-canonical protocol, on a projection
+            repeated for the same block and district — including the same
+            district under both of its published identities — or on an input
+            that is not a :class:`BlockProjection`.
     """
-    protocol = protocol or canonical_protocol()
+    protocol = _canonical_only(protocol or canonical_protocol())
     grouped: dict[str, list[BlockProjection]] = {}
     districts: list[str] = []
-    seen: set[tuple[str, str]] = set()
+    seen: dict[tuple[str, str], str] = {}
     for projection in projections:
         if not isinstance(projection, BlockProjection):
             raise ReferenceProjectionError(
                 "Completeness counts BlockProjection values, not "
                 f"{type(projection).__name__}."
             )
-        key = (projection.block_id, projection.geography_id)
+        # The alias is folded onto the canonical id before the key is formed, so
+        # two identities of one district collide here instead of counting twice.
+        canonical_id = (
+            protocol.scope.dc_canonical_id
+            if projection.geography_id == protocol.scope.dc_published_id
+            else projection.geography_id
+        )
+        key = (projection.block_id, canonical_id)
         if key in seen:
+            already = seen[key]
+            alias = (
+                ""
+                if already == projection.geography_id
+                else f" (already supplied as {already!r}, the same district)"
+            )
             raise ReferenceProjectionError(
                 f"Block {projection.block_id!r} at {projection.geography_id!r} "
-                "was supplied twice; a district counted twice is not a "
+                f"was supplied twice{alias}; a district counted twice is not a "
                 "completeness statement."
             )
-        seen.add(key)
+        seen[key] = projection.geography_id
         grouped.setdefault(projection.block_id, []).append(projection)
         if projection.geography_id not in districts:
             districts.append(projection.geography_id)
     blocks: list[Mapping[str, object]] = []
+    projected_reserved: set[str] = set()
     for block_id in sorted(grouped):
         items = grouped[block_id]
         block = protocol.block(block_id)
@@ -1471,6 +1535,8 @@ def projection_completeness(
             cell_count += len(projection.cells)
             precision_count += len(projection.precision)
             for item in projection.cells:
+                if item.cell.table in RESERVED_FAMILY_TABLES:
+                    projected_reserved.add(item.cell.table)
                 for side in ("estimate", "moe"):
                     label = f"{side}:{getattr(item.cell, side).adapter_class}"
                     validity[label] = validity.get(label, 0) + 1
@@ -1526,9 +1592,13 @@ def projection_completeness(
         roster_district_count=roster_count,
         districts_requested=tuple(districts),
         blocks=tuple(blocks),
-        reserved_families_indexed=tuple(
-            sorted(set(required_tables(protocol)) & set(RESERVED_FAMILY_TABLES))
+        inventory_indexed=inventory is not None,
+        reserved_families_indexed=(
+            tuple(sorted(set(required_tables(protocol)) & set(RESERVED_FAMILY_TABLES)))
+            if inventory is not None
+            else ()
         ),
+        reserved_families_projected=tuple(sorted(projected_reserved)),
         roster_reasons=tuple(str(reason) for reason in reasons_tuple),
         roster_notes=notes,
     )
