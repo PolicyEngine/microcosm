@@ -1,6 +1,6 @@
 # Survey demographic and native-origin integration
 
-State: preparation in progress, invented inputs only (2026-09-06).
+State: preparation complete; final invented proof passed; genuine bindings remain unapproved (2026-09-06).
 
 Done:
 - Read repository instructions and the requested source reviews and decisions.
@@ -102,3 +102,27 @@ Successful integrated replay and final evidence precision:
   for all six unchanged original typed artifacts, opaque edges and receipts.
 - Committed exact prepared commands and required original input/pin metadata.
 Next: final confirmation on these exact helper bytes, then close the report.
+
+Final done:
+- Committed helper head 61883a748 passed r8: 17 compiled nodes, six original
+  cache hits and eleven executions, fresh REQUIRED 17 hits and zero kernels/raw
+  decoders. Cold/warm identities and full stored native/clone verification match.
+- Verified 208 complete carried columns, exact ACS preservation, masked canonical
+  booleans and nullable ASEC states, keyed source/native/generated ID lineage,
+  all memberships/current pair mass, and separate unchanged original anchors.
+- Four targeted refusals pass. Separate seven-node downstream zero-weight graph
+  covers both arms and four zero-weight descendants; missing whole clone refuses.
+- Six unchanged original typed artifacts, opaque edges and receipt bodies match.
+- Lint, formatting, whitespace and CI inventory checks pass. Every process uses
+  explicit fresh absent bytecode prefixes; loaded Git hashes are recorded.
+- Committed compiled graph/proof, original approved input pins, caps and exact
+  prepared commands. No shared production or dependency edits by this task.
+
+Next (outside this preparation):
+- Root reviews the integrated adapter/helper and saved evidence; formal prior
+  demographic Fable follow-up remains capacity-blocked.
+- Verify current remote main when GitHub DNS is available; base fetch was attempted
+  but unavailable, so this work starts at the supplied/local origin/main c1b8324.
+- Root reviews available headroom and binds approved private original household
+  staging, source inputs and cache before any genuine adapter execution.
+- The final Markdown/JSON handoff is written to the two requested R output files.

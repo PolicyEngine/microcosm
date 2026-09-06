@@ -1,3 +1,5 @@
+Historical copy of the inherited c1b8324 journal; preserved on 2026-09-06. Its state statements describe that earlier task. Current integration state is in PROGRESS.md.
+
 # F1 portable worker identity — CI crawl fix
 
 ## State

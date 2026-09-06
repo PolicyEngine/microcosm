@@ -1,0 +1,2780 @@
+{
+  "compiled_order": [
+    "composed_population.prepare",
+    "composed_population",
+    "assign_us_puma_ladder.lookup",
+    "assign_us_puma_ladder.boundary",
+    "assign_us_puma_ladder",
+    "composed_population.asec_demographic_source",
+    "native_household_origins.acs",
+    "native_household_origins.asec",
+    "assign_us_puma_ladder.gate",
+    "composed_population.asec_bind",
+    "composed_population.asec_cps_carried_current",
+    "composed_population.asec_reported_income",
+    "composed_population.asec_demographic_bind",
+    "survey_origins.native",
+    "combined_survey_puf_support_clone",
+    "combined_survey_puf_support_clone.owned",
+    "survey_origins.clones"
+  ],
+  "complete_columns": [
+    [
+      "person",
+      "source_year",
+      "int64"
+    ],
+    [
+      "person",
+      "source_household_id",
+      "int64"
+    ],
+    [
+      "person",
+      "PERIDNUM",
+      "string"
+    ],
+    [
+      "person",
+      "PH_SEQ",
+      "int64"
+    ],
+    [
+      "person",
+      "A_LINENO",
+      "int64"
+    ],
+    [
+      "person",
+      "A_AGE",
+      "int64"
+    ],
+    [
+      "person",
+      "A_MARITL",
+      "int64"
+    ],
+    [
+      "person",
+      "A_SPOUSE",
+      "int64"
+    ],
+    [
+      "person",
+      "PEPAR1",
+      "int64"
+    ],
+    [
+      "person",
+      "PEPAR2",
+      "int64"
+    ],
+    [
+      "person",
+      "A_EXPRRP",
+      "int64"
+    ],
+    [
+      "person",
+      "A_ENRLW",
+      "float64"
+    ],
+    [
+      "person",
+      "A_FTPT",
+      "float64"
+    ],
+    [
+      "person",
+      "A_HSCOL",
+      "Int64"
+    ],
+    [
+      "person",
+      "PEDISDRS",
+      "Int64"
+    ],
+    [
+      "person",
+      "PEDISEAR",
+      "Int64"
+    ],
+    [
+      "person",
+      "PEDISEYE",
+      "Int64"
+    ],
+    [
+      "person",
+      "PEDISOUT",
+      "Int64"
+    ],
+    [
+      "person",
+      "PEDISPHY",
+      "Int64"
+    ],
+    [
+      "person",
+      "PEDISREM",
+      "Int64"
+    ],
+    [
+      "person",
+      "ANN_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "CAP_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "CHSP_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "CSP_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "DIS_VAL1",
+      "float64"
+    ],
+    [
+      "person",
+      "DIS_VAL2",
+      "float64"
+    ],
+    [
+      "person",
+      "DIV_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "DST_VAL1",
+      "float64"
+    ],
+    [
+      "person",
+      "DST_VAL1_YNG",
+      "float64"
+    ],
+    [
+      "person",
+      "DST_VAL2",
+      "float64"
+    ],
+    [
+      "person",
+      "DST_VAL2_YNG",
+      "float64"
+    ],
+    [
+      "person",
+      "ED_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "FRSE_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "INT_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "OI_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "PHIP_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "PMED_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "PNSN_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "POTC_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "PTOTVAL",
+      "float64"
+    ],
+    [
+      "person",
+      "RETCB_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "RNT_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "SEMP_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "SPM_CAPHOUSESUB",
+      "float64"
+    ],
+    [
+      "person",
+      "SPM_CHILDCAREXPNS",
+      "float64"
+    ],
+    [
+      "person",
+      "SPM_ENGVAL",
+      "float64"
+    ],
+    [
+      "person",
+      "SSI_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "SS_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "UC_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "VET_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "WC_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "WSAL_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "LKWEEKS",
+      "Int64"
+    ],
+    [
+      "person",
+      "PAW_TYP",
+      "Int64"
+    ],
+    [
+      "person",
+      "tax_unit_role_input",
+      "string"
+    ],
+    [
+      "person",
+      "is_related_to_head_or_spouse",
+      "bool"
+    ],
+    [
+      "person",
+      "unrelated_raw_observation",
+      "Int64"
+    ],
+    [
+      "person",
+      "NOW_NONM",
+      "Int64"
+    ],
+    [
+      "person",
+      "NOW_MCAID",
+      "Int64"
+    ],
+    [
+      "person",
+      "NOW_CHAMPVA",
+      "Int64"
+    ],
+    [
+      "person",
+      "NOW_MIL",
+      "Int64"
+    ],
+    [
+      "person",
+      "NOW_VACARE",
+      "Int64"
+    ],
+    [
+      "person",
+      "NOW_OTHMT",
+      "Int64"
+    ],
+    [
+      "person",
+      "NOW_IHSFLG",
+      "Int64"
+    ],
+    [
+      "person",
+      "PAW_VAL",
+      "float64"
+    ],
+    [
+      "person",
+      "RESNSS1",
+      "Int64"
+    ],
+    [
+      "person",
+      "RESNSS2",
+      "Int64"
+    ],
+    [
+      "person",
+      "DST_SC1",
+      "Int64"
+    ],
+    [
+      "person",
+      "DST_SC2",
+      "Int64"
+    ],
+    [
+      "person",
+      "DST_SC1_YNG",
+      "Int64"
+    ],
+    [
+      "person",
+      "DST_SC2_YNG",
+      "Int64"
+    ],
+    [
+      "person",
+      "OI_OFF",
+      "Int64"
+    ],
+    [
+      "person",
+      "asec_PTOTVAL",
+      "Int64"
+    ],
+    [
+      "person",
+      "asec_A_ENRLW",
+      "Int64"
+    ],
+    [
+      "person",
+      "asec_A_FTPT",
+      "Int64"
+    ],
+    [
+      "person",
+      "SPORDER",
+      "Int64"
+    ],
+    [
+      "person",
+      "RELSHIPP",
+      "Int64"
+    ],
+    [
+      "person",
+      "AGEP",
+      "Int64"
+    ],
+    [
+      "person",
+      "SEX",
+      "Int64"
+    ],
+    [
+      "person",
+      "MAR",
+      "Int64"
+    ],
+    [
+      "person",
+      "ADJINC",
+      "Int64"
+    ],
+    [
+      "person",
+      "WAGP",
+      "float64"
+    ],
+    [
+      "person",
+      "SEMP",
+      "Int64"
+    ],
+    [
+      "person",
+      "SSP",
+      "Int64"
+    ],
+    [
+      "person",
+      "SSIP",
+      "Int64"
+    ],
+    [
+      "person",
+      "RETP",
+      "Int64"
+    ],
+    [
+      "person",
+      "INTP",
+      "Int64"
+    ],
+    [
+      "person",
+      "PWGTP",
+      "Int64"
+    ],
+    [
+      "person",
+      "source_person_id",
+      "string"
+    ],
+    [
+      "person",
+      "source_row_id",
+      "Int64"
+    ],
+    [
+      "person",
+      "age",
+      "float64"
+    ],
+    [
+      "person",
+      "is_female",
+      "boolean"
+    ],
+    [
+      "person",
+      "is_household_head",
+      "boolean"
+    ],
+    [
+      "person",
+      "employment_income_before_lsr",
+      "float64"
+    ],
+    [
+      "person",
+      "self_employment_income_before_lsr",
+      "float64"
+    ],
+    [
+      "person",
+      "ssi_reported",
+      "float64"
+    ],
+    [
+      "person",
+      "acs_social_security_income",
+      "float64"
+    ],
+    [
+      "person",
+      "acs_retirement_income",
+      "float64"
+    ],
+    [
+      "person",
+      "acs_interest_dividend_rental_income",
+      "float64"
+    ],
+    [
+      "person",
+      "real_estate_taxes",
+      "float64"
+    ],
+    [
+      "person",
+      "person_spine_source_id",
+      "int64"
+    ],
+    [
+      "person",
+      "person_source_id",
+      "int64"
+    ],
+    [
+      "person",
+      "person_support_channel",
+      "string"
+    ],
+    [
+      "person",
+      "person_support_clone_index",
+      "int64"
+    ],
+    [
+      "person",
+      "person_composed_asec_row",
+      "bool"
+    ],
+    [
+      "person",
+      "alimony_income",
+      "float64"
+    ],
+    [
+      "person",
+      "farm_operations_income",
+      "float64"
+    ],
+    [
+      "person",
+      "health_insurance_premiums_without_medicare_part_b",
+      "float64"
+    ],
+    [
+      "person",
+      "long_term_capital_gains_before_response",
+      "float64"
+    ],
+    [
+      "person",
+      "miscellaneous_income",
+      "float64"
+    ],
+    [
+      "person",
+      "non_qualified_dividend_income",
+      "float64"
+    ],
+    [
+      "person",
+      "other_medical_expenses",
+      "float64"
+    ],
+    [
+      "person",
+      "over_the_counter_health_expenses",
+      "float64"
+    ],
+    [
+      "person",
+      "qualified_dividend_income",
+      "float64"
+    ],
+    [
+      "person",
+      "rental_income",
+      "float64"
+    ],
+    [
+      "person",
+      "short_term_capital_gains",
+      "float64"
+    ],
+    [
+      "person",
+      "social_security_dependents",
+      "float64"
+    ],
+    [
+      "person",
+      "social_security_disability",
+      "float64"
+    ],
+    [
+      "person",
+      "social_security_retirement",
+      "float64"
+    ],
+    [
+      "person",
+      "social_security_survivors",
+      "float64"
+    ],
+    [
+      "person",
+      "strike_benefits",
+      "float64"
+    ],
+    [
+      "person",
+      "tax_exempt_private_pension_income",
+      "float64"
+    ],
+    [
+      "person",
+      "taxable_interest_income",
+      "float64"
+    ],
+    [
+      "person",
+      "taxable_ira_distributions",
+      "float64"
+    ],
+    [
+      "person",
+      "taxable_private_pension_income",
+      "float64"
+    ],
+    [
+      "person",
+      "unemployment_compensation",
+      "float64"
+    ],
+    [
+      "person",
+      "asec_reported_wage_income_2024_price",
+      "float64"
+    ],
+    [
+      "person",
+      "asec_reported_net_self_employment_income_2024_price",
+      "float64"
+    ],
+    [
+      "person",
+      "asec_reported_ssi_2024_price",
+      "float64"
+    ],
+    [
+      "person",
+      "asec_reported_cash_public_assistance_2024_price",
+      "float64"
+    ],
+    [
+      "person",
+      "asec_reported_total_income_2024_price",
+      "float64"
+    ],
+    [
+      "person",
+      "asec_reported_income_unallocated_2024_price",
+      "float64"
+    ],
+    [
+      "person",
+      "asec_sex_allocation_state",
+      "Int64"
+    ],
+    [
+      "person",
+      "asec_sex_unbound_reason",
+      "Int64"
+    ],
+    [
+      "person",
+      "asec_household_reference_unbound_reason",
+      "Int64"
+    ],
+    [
+      "household",
+      "state_fips",
+      "int64"
+    ],
+    [
+      "household",
+      "H_TENURE",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_HTOTVAL",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_H_LIVQRT",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_HRHTYPE",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_H_HHTYPE",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_H_SEQ",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_H_TENURE",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_GESTFIPS",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_status",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_route",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_receipt_valid",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_group_quarters",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_conflicts",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_unknown_reasons",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_public_quality",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_lower_quality",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_HPUBLIC_valid",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_HLORENT_valid",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_HPUBLIC_zero_origin",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_HLORENT_zero_origin",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_I_HPUBLI_zero_origin",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_observed_I_HLOREN_zero_origin",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_universe_interview_scope",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_universe_physical_unit",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_universe_household_kind",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_universe_tenure_subtype",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_universe_occupied_hu",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_universe_hu_tenure_class",
+      "Int64"
+    ],
+    [
+      "household",
+      "asec_housing_universe_unresolved_reasons",
+      "Int64"
+    ],
+    [
+      "household",
+      "SERIALNO",
+      "string"
+    ],
+    [
+      "household",
+      "ST",
+      "string"
+    ],
+    [
+      "household",
+      "PUMA",
+      "string"
+    ],
+    [
+      "household",
+      "puma_geoid",
+      "string"
+    ],
+    [
+      "household",
+      "puma",
+      "string"
+    ],
+    [
+      "household",
+      "NP",
+      "Int64"
+    ],
+    [
+      "household",
+      "ADJHSG",
+      "Int64"
+    ],
+    [
+      "household",
+      "TEN",
+      "float64"
+    ],
+    [
+      "household",
+      "RNTP",
+      "float64"
+    ],
+    [
+      "household",
+      "GRNTP",
+      "float64"
+    ],
+    [
+      "household",
+      "TAXAMT",
+      "float64"
+    ],
+    [
+      "household",
+      "TYPEHUGQ",
+      "Int64"
+    ],
+    [
+      "household",
+      "tenure_type",
+      "string"
+    ],
+    [
+      "household",
+      "acs_monthly_contract_rent",
+      "float64"
+    ],
+    [
+      "household",
+      "acs_monthly_gross_rent",
+      "float64"
+    ],
+    [
+      "household",
+      "acs_annual_property_tax",
+      "float64"
+    ],
+    [
+      "household",
+      "household_spine_source_id",
+      "int64"
+    ],
+    [
+      "household",
+      "household_source_id",
+      "int64"
+    ],
+    [
+      "household",
+      "household_support_channel",
+      "string"
+    ],
+    [
+      "household",
+      "household_support_clone_index",
+      "int64"
+    ],
+    [
+      "household",
+      "congressional_district_geoid",
+      "int64"
+    ],
+    [
+      "household",
+      "county_fips",
+      "string"
+    ],
+    [
+      "household",
+      "household_composed_asec_row",
+      "bool"
+    ],
+    [
+      "tax_unit",
+      "filing_status_input",
+      "string"
+    ],
+    [
+      "tax_unit",
+      "tax_unit_spine_source_id",
+      "int64"
+    ],
+    [
+      "tax_unit",
+      "tax_unit_source_id",
+      "int64"
+    ],
+    [
+      "tax_unit",
+      "tax_unit_support_channel",
+      "string"
+    ],
+    [
+      "tax_unit",
+      "tax_unit_support_clone_index",
+      "int64"
+    ],
+    [
+      "spm_unit",
+      "spm_unit_tenure_type",
+      "string"
+    ],
+    [
+      "spm_unit",
+      "spm_unit_spine_source_id",
+      "int64"
+    ],
+    [
+      "spm_unit",
+      "spm_unit_source_id",
+      "int64"
+    ],
+    [
+      "spm_unit",
+      "spm_unit_support_channel",
+      "string"
+    ],
+    [
+      "spm_unit",
+      "spm_unit_support_clone_index",
+      "int64"
+    ],
+    [
+      "spm_unit",
+      "spm_unit_composed_asec_row",
+      "bool"
+    ],
+    [
+      "spm_unit",
+      "spm_unit_pre_subsidy_childcare_expenses",
+      "float64"
+    ],
+    [
+      "family",
+      "family_spine_source_id",
+      "int64"
+    ],
+    [
+      "family",
+      "family_source_id",
+      "int64"
+    ],
+    [
+      "family",
+      "family_support_channel",
+      "string"
+    ],
+    [
+      "family",
+      "family_support_clone_index",
+      "int64"
+    ],
+    [
+      "marital_unit",
+      "marital_unit_spine_source_id",
+      "int64"
+    ],
+    [
+      "marital_unit",
+      "marital_unit_source_id",
+      "int64"
+    ],
+    [
+      "marital_unit",
+      "marital_unit_support_channel",
+      "string"
+    ],
+    [
+      "marital_unit",
+      "marital_unit_support_clone_index",
+      "int64"
+    ]
+  ],
+  "implementation_hashes": {
+    "assign_us_puma_ladder": "d67e70b12865a261013ea9b3222c0265d8c68c67c59fcaec7e4c571838112772",
+    "assign_us_puma_ladder.boundary": "d67e70b12865a261013ea9b3222c0265d8c68c67c59fcaec7e4c571838112772",
+    "assign_us_puma_ladder.gate": "d67e70b12865a261013ea9b3222c0265d8c68c67c59fcaec7e4c571838112772",
+    "assign_us_puma_ladder.lookup": "d67e70b12865a261013ea9b3222c0265d8c68c67c59fcaec7e4c571838112772",
+    "combined_survey_puf_support_clone": "6ce263140d07e2614ad17fb5ac7f6cebe75c2bde22b3fe9ad1d4ddf30096eb51",
+    "combined_survey_puf_support_clone.owned": "e980112ac19f3190d1fbff34393d5f21c1d3a27b57654d6598ee40f6c7372c17",
+    "composed_population": "deec32c19576cd1bef89bedb73abc4b0fd546d70af8c2fa4de4145babe170a31",
+    "composed_population.asec_bind": "3ec79ca7cdc841e21595e32e5812e7899dd27b271a0251f528fb12b3a54b880f",
+    "composed_population.asec_cps_carried_current": "3ec79ca7cdc841e21595e32e5812e7899dd27b271a0251f528fb12b3a54b880f",
+    "composed_population.asec_demographic_bind": "ad7e5d038789aada4f8dec39379d28af85d77665d4a65bfab652a9841507c259",
+    "composed_population.asec_demographic_source": "c7f30b0d3a2094d63fa51e18ac0f57788368a0b728bf38c2d900e4fb5ada28a1",
+    "composed_population.asec_reported_income": "3ec79ca7cdc841e21595e32e5812e7899dd27b271a0251f528fb12b3a54b880f",
+    "composed_population.prepare": "6b082ac205f29110d5346cb6b3557a49b447f535356a46d6cf4a1627311596c5",
+    "native_household_origins.acs": "9ce53b6b61a35698395dc87a2ef863b3460224a89bc6bc96bf151bf4c8b0b073",
+    "native_household_origins.asec": "9ce53b6b61a35698395dc87a2ef863b3460224a89bc6bc96bf151bf4c8b0b073",
+    "survey_origins.clones": "9ce53b6b61a35698395dc87a2ef863b3460224a89bc6bc96bf151bf4c8b0b073",
+    "survey_origins.native": "9ce53b6b61a35698395dc87a2ef863b3460224a89bc6bc96bf151bf4c8b0b073"
+  },
+  "invented_only": true,
+  "kernel_dependencies": {
+    "assign_us_puma_ladder": [
+      "numpy",
+      "pandas"
+    ],
+    "assign_us_puma_ladder.boundary": [
+      "numpy",
+      "pandas"
+    ],
+    "assign_us_puma_ladder.gate": [
+      "numpy",
+      "pandas"
+    ],
+    "assign_us_puma_ladder.lookup": [
+      "numpy",
+      "pandas"
+    ],
+    "combined_survey_puf_support_clone": [
+      "numpy",
+      "pandas"
+    ],
+    "combined_survey_puf_support_clone.owned": [],
+    "composed_population": [
+      "numpy",
+      "pandas"
+    ],
+    "composed_population.asec_bind": [
+      "numpy",
+      "pandas",
+      "microunit",
+      "tables",
+      "h5py",
+      "PyYAML",
+      "pyarrow"
+    ],
+    "composed_population.asec_cps_carried_current": [
+      "numpy",
+      "pandas",
+      "microunit",
+      "tables",
+      "h5py",
+      "PyYAML",
+      "pyarrow"
+    ],
+    "composed_population.asec_demographic_bind": [
+      "numpy",
+      "pandas",
+      "microunit",
+      "tables",
+      "h5py",
+      "PyYAML",
+      "pyarrow"
+    ],
+    "composed_population.asec_demographic_source": [
+      "numpy",
+      "pandas",
+      "microunit",
+      "tables",
+      "h5py",
+      "PyYAML",
+      "pyarrow"
+    ],
+    "composed_population.asec_reported_income": [
+      "numpy",
+      "pandas",
+      "microunit",
+      "tables",
+      "h5py",
+      "PyYAML",
+      "pyarrow"
+    ],
+    "composed_population.prepare": [
+      "numpy",
+      "pandas",
+      "microunit",
+      "tables",
+      "h5py",
+      "PyYAML",
+      "pyarrow"
+    ],
+    "native_household_origins.acs": [
+      "numpy",
+      "pandas",
+      "microunit",
+      "tables",
+      "h5py",
+      "PyYAML",
+      "pyarrow"
+    ],
+    "native_household_origins.asec": [
+      "numpy",
+      "pandas",
+      "microunit",
+      "tables",
+      "h5py",
+      "PyYAML",
+      "pyarrow"
+    ],
+    "survey_origins.clones": [
+      "numpy",
+      "pandas",
+      "microunit",
+      "tables",
+      "h5py",
+      "PyYAML",
+      "pyarrow"
+    ],
+    "survey_origins.native": [
+      "numpy",
+      "pandas",
+      "microunit",
+      "tables",
+      "h5py",
+      "PyYAML",
+      "pyarrow"
+    ]
+  },
+  "node_declarations": {
+    "assign_us_puma_ladder": {
+      "artifact_inputs": [
+        {
+          "artifact": "frame_context",
+          "name": "frame_context",
+          "producer": "composed_population",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "ladder",
+          "name": "ladder",
+          "producer": "assign_us_puma_ladder.lookup",
+          "type": {
+            "name": "microcosm.us.puma_ladder_npz",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "crosswalk",
+          "name": "crosswalk",
+          "producer": "assign_us_puma_ladder.lookup",
+          "type": {
+            "name": "microcosm.us.cd_crosswalk_csv",
+            "schema_version": 1
+          }
+        }
+      ],
+      "kernel": "us.production.geography_assign@2",
+      "population": "assign_us_puma_ladder.boundary",
+      "sources": []
+    },
+    "assign_us_puma_ladder.boundary": {
+      "artifact_inputs": [],
+      "kernel": "us.production.geography_boundary@2",
+      "population": "assign_us_puma_ladder.boundary",
+      "sources": []
+    },
+    "assign_us_puma_ladder.gate": {
+      "artifact_inputs": [],
+      "kernel": "us.production.geography_gate@2",
+      "population": "assign_us_puma_ladder.boundary",
+      "sources": []
+    },
+    "assign_us_puma_ladder.lookup": {
+      "artifact_inputs": [],
+      "kernel": "us.production.geography_lookup@2",
+      "population": "composed_population",
+      "sources": [
+        "us_puma_ladder_2020",
+        "us_cd_crosswalk_117_119"
+      ]
+    },
+    "combined_survey_puf_support_clone": {
+      "artifact_inputs": [],
+      "kernel": "us.combined_survey.puf_support_clone.expand@1",
+      "population": "combined_survey_puf_support_clone",
+      "sources": []
+    },
+    "combined_survey_puf_support_clone.owned": {
+      "artifact_inputs": [],
+      "kernel": "us.combined_survey.puf_support_clone.claim@1",
+      "population": "combined_survey_puf_support_clone",
+      "sources": []
+    },
+    "composed_population": {
+      "artifact_inputs": [
+        {
+          "artifact": "frame_context",
+          "name": "frame_context",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "preparation",
+          "name": "preparation",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.stacked_spine_preparation",
+            "schema_version": 1
+          }
+        }
+      ],
+      "kernel": "us.production.spine_harmonize@2",
+      "population": "composed_population",
+      "sources": []
+    },
+    "composed_population.asec_bind": {
+      "artifact_inputs": [
+        {
+          "artifact": "frame_context",
+          "name": "frame_context",
+          "producer": "assign_us_puma_ladder",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "source_origin",
+          "name": "source_origin",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.composed_population_source_origin",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "asec_frame_context",
+          "name": "asec_frame_context",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "current_money",
+          "name": "current_money",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.asec_current_money_body",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "prepared_receipt",
+          "name": "prepared_receipt",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.asec_prepared_receipt",
+            "schema_version": 3
+          }
+        },
+        {
+          "artifact": "housing_universe",
+          "name": "housing_universe",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.asec_bound_housing_universe",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "income_observations",
+          "name": "income_observations",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.asec_income_observations",
+            "schema_version": 1
+          }
+        }
+      ],
+      "kernel": "us.composed_population.asec_bind@1",
+      "population": "assign_us_puma_ladder.boundary",
+      "sources": []
+    },
+    "composed_population.asec_cps_carried_current": {
+      "artifact_inputs": [
+        {
+          "artifact": "frame_context",
+          "name": "frame_context",
+          "producer": "composed_population.asec_bind",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "asec_binding",
+          "name": "asec_binding",
+          "producer": "composed_population.asec_bind",
+          "type": {
+            "name": "microcosm.us.composed_asec_binding",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "arm_rows",
+          "name": "arm_rows",
+          "producer": "composed_population.asec_bind",
+          "type": {
+            "name": "microcosm.us.composed_asec_arm_rows",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "selected_current_money",
+          "name": "selected_current_money",
+          "producer": "composed_population.asec_bind",
+          "type": {
+            "name": "microcosm.us.asec_selected_current_money",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "prepared_receipt",
+          "name": "prepared_receipt",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.asec_prepared_receipt",
+            "schema_version": 3
+          }
+        }
+      ],
+      "kernel": "us.composed_population.asec_cps_carried_current@1",
+      "population": "assign_us_puma_ladder.boundary",
+      "sources": []
+    },
+    "composed_population.asec_demographic_bind": {
+      "artifact_inputs": [
+        {
+          "artifact": "frame_context",
+          "name": "frame_context",
+          "producer": "composed_population.asec_reported_income",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "asec_binding",
+          "name": "asec_binding",
+          "producer": "composed_population.asec_bind",
+          "type": {
+            "name": "microcosm.us.composed_asec_binding",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "arm_rows",
+          "name": "arm_rows",
+          "producer": "composed_population.asec_bind",
+          "type": {
+            "name": "microcosm.us.composed_asec_arm_rows",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "demographic_projection",
+          "name": "demographic_projection",
+          "producer": "composed_population.asec_demographic_source",
+          "type": {
+            "name": "microcosm.us.asec_demographic_projection",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "demographic_source",
+          "name": "demographic_source",
+          "producer": "composed_population.asec_demographic_source",
+          "type": {
+            "name": "microcosm.us.asec_demographic_source_document",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "income_observations",
+          "name": "income_observations",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.asec_income_observations",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "prepared_receipt",
+          "name": "prepared_receipt",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.asec_prepared_receipt",
+            "schema_version": 3
+          }
+        }
+      ],
+      "kernel": "us.composed_asec_demographic_bind.cache_canonical@1",
+      "population": "assign_us_puma_ladder.boundary",
+      "sources": []
+    },
+    "composed_population.asec_demographic_source": {
+      "artifact_inputs": [],
+      "kernel": "us.composed_population.asec_demographic_source@1",
+      "population": "assign_us_puma_ladder.boundary",
+      "sources": [
+        "us_asec_demographic_projection"
+      ]
+    },
+    "composed_population.asec_reported_income": {
+      "artifact_inputs": [
+        {
+          "artifact": "frame_context",
+          "name": "frame_context",
+          "producer": "composed_population.asec_cps_carried_current",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "asec_binding",
+          "name": "asec_binding",
+          "producer": "composed_population.asec_bind",
+          "type": {
+            "name": "microcosm.us.composed_asec_binding",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "arm_rows",
+          "name": "arm_rows",
+          "producer": "composed_population.asec_bind",
+          "type": {
+            "name": "microcosm.us.composed_asec_arm_rows",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "selected_current_money",
+          "name": "selected_current_money",
+          "producer": "composed_population.asec_bind",
+          "type": {
+            "name": "microcosm.us.asec_selected_current_money",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "prepared_receipt",
+          "name": "prepared_receipt",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.asec_prepared_receipt",
+            "schema_version": 3
+          }
+        },
+        {
+          "artifact": "income_observations",
+          "name": "income_observations",
+          "producer": "composed_population.prepare",
+          "type": {
+            "name": "microcosm.us.asec_income_observations",
+            "schema_version": 1
+          }
+        }
+      ],
+      "kernel": "us.composed_population.asec_reported_income@1",
+      "population": "assign_us_puma_ladder.boundary",
+      "sources": []
+    },
+    "composed_population.prepare": {
+      "artifact_inputs": [],
+      "kernel": "us.composed_population.prepare@1",
+      "population": "composed_population.prepare",
+      "sources": [
+        "asec_prepared",
+        "acs_native"
+      ]
+    },
+    "native_household_origins.acs": {
+      "artifact_inputs": [],
+      "kernel": "us.native_household_origin.acs@1",
+      "population": "assign_us_puma_ladder.boundary",
+      "sources": [
+        "native_origin_acs"
+      ]
+    },
+    "native_household_origins.asec": {
+      "artifact_inputs": [],
+      "kernel": "us.native_household_origin.asec@1",
+      "population": "assign_us_puma_ladder.boundary",
+      "sources": [
+        "native_origin_asec_2022",
+        "native_origin_asec_2023",
+        "native_origin_asec_2024"
+      ]
+    },
+    "survey_origins.clones": {
+      "artifact_inputs": [
+        {
+          "artifact": "origins",
+          "name": "acs",
+          "producer": "native_household_origins.acs",
+          "type": {
+            "name": "microcosm.us.native_household_origins",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "origins",
+          "name": "asec",
+          "producer": "native_household_origins.asec",
+          "type": {
+            "name": "microcosm.us.native_household_origins",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "binding",
+          "name": "parent_binding",
+          "producer": "survey_origins.native",
+          "type": {
+            "name": "microcosm.us.population_household_origins",
+            "schema_version": 1
+          }
+        }
+      ],
+      "kernel": "us.native_household_origin.bind@1",
+      "population": "combined_survey_puf_support_clone",
+      "sources": []
+    },
+    "survey_origins.native": {
+      "artifact_inputs": [
+        {
+          "artifact": "origins",
+          "name": "acs",
+          "producer": "native_household_origins.acs",
+          "type": {
+            "name": "microcosm.us.native_household_origins",
+            "schema_version": 1
+          }
+        },
+        {
+          "artifact": "origins",
+          "name": "asec",
+          "producer": "native_household_origins.asec",
+          "type": {
+            "name": "microcosm.us.native_household_origins",
+            "schema_version": 1
+          }
+        }
+      ],
+      "kernel": "us.native_household_origin.bind@1",
+      "population": "assign_us_puma_ladder.boundary",
+      "sources": []
+    }
+  },
+  "node_keys": {
+    "assign_us_puma_ladder": "b46f80de76fba243ea575de3df93c9859d7235fa0d33013ff1d4f6c135e11879",
+    "assign_us_puma_ladder.boundary": "753dfd5be94142d9c6792e1a41f7757e7a828e77036adcd2d6bf56349a3d4b6a",
+    "assign_us_puma_ladder.gate": "2b302618732076573dae5265317f933d30c45c21ed6dcf192ce00c66218af579",
+    "assign_us_puma_ladder.lookup": "f51a6b723dd41693d66f75ab4f4606de0d3026bf334cf67c45453e9aad4977d1",
+    "combined_survey_puf_support_clone": "8ecb4185a4607a96226148f42ede32aebf39d63b9e48fe799e314cf33e42341f",
+    "combined_survey_puf_support_clone.owned": "74cb768ed4fa68e7880330552ad965edfbd11226e158858b651f46f977698ac7",
+    "composed_population": "f17f9fb6e4a0f284b3a60a8cd0af30a9bf97c56343084acc5c4b650f49c31f93",
+    "composed_population.asec_bind": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+    "composed_population.asec_cps_carried_current": "3c65691f5365c7135347969286b1eb1abe165d11784245b207f62e2562c6188e",
+    "composed_population.asec_demographic_bind": "0a893cbd21deb33815b5e6b0a361a4016c28d788d79ff42e8689d5eaf8d3396c",
+    "composed_population.asec_demographic_source": "fcbe49819620a612fb9559abc870381bfeb3757083a630440bac81c7c3406935",
+    "composed_population.asec_reported_income": "f424184ec4282e30a3aec5dbe107bc143fdb53d5b0a671116094c44f658dc9a8",
+    "composed_population.prepare": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+    "native_household_origins.acs": "feb0b83a0bcd0cf5b2c941f1c07f44104810d2d9f14a928a5ce4463831d25f4c",
+    "native_household_origins.asec": "8727371802765cbcdd37a060e97761fc31307ba388beb54bf2ac048b0a314827",
+    "survey_origins.clones": "a91ab456ccd0e07452cd11651a1a9bf2b03e2759ffeef5a9554378139396e818",
+    "survey_origins.native": "69e85fc022bea97846ca1d0abe7cb501c2ebfbf8c76f0df608c9946283707ccc"
+  },
+  "predecessors": {
+    "assign_us_puma_ladder": [
+      "assign_us_puma_ladder.boundary",
+      "assign_us_puma_ladder.lookup",
+      "composed_population"
+    ],
+    "assign_us_puma_ladder.boundary": [
+      "assign_us_puma_ladder.lookup",
+      "composed_population"
+    ],
+    "assign_us_puma_ladder.gate": [
+      "assign_us_puma_ladder",
+      "assign_us_puma_ladder.boundary"
+    ],
+    "assign_us_puma_ladder.lookup": [
+      "composed_population"
+    ],
+    "combined_survey_puf_support_clone": [
+      "assign_us_puma_ladder",
+      "assign_us_puma_ladder.boundary",
+      "assign_us_puma_ladder.gate",
+      "composed_population.asec_bind",
+      "composed_population.asec_cps_carried_current",
+      "composed_population.asec_demographic_bind",
+      "composed_population.asec_demographic_source",
+      "composed_population.asec_reported_income",
+      "native_household_origins.acs",
+      "native_household_origins.asec",
+      "survey_origins.native"
+    ],
+    "combined_survey_puf_support_clone.owned": [
+      "combined_survey_puf_support_clone"
+    ],
+    "composed_population": [
+      "composed_population.prepare"
+    ],
+    "composed_population.asec_bind": [
+      "assign_us_puma_ladder",
+      "assign_us_puma_ladder.boundary",
+      "composed_population.prepare"
+    ],
+    "composed_population.asec_cps_carried_current": [
+      "assign_us_puma_ladder.boundary",
+      "composed_population.asec_bind",
+      "composed_population.prepare"
+    ],
+    "composed_population.asec_demographic_bind": [
+      "assign_us_puma_ladder.boundary",
+      "composed_population.asec_bind",
+      "composed_population.asec_demographic_source",
+      "composed_population.asec_reported_income",
+      "composed_population.prepare"
+    ],
+    "composed_population.asec_demographic_source": [
+      "assign_us_puma_ladder.boundary"
+    ],
+    "composed_population.asec_reported_income": [
+      "assign_us_puma_ladder.boundary",
+      "composed_population.asec_bind",
+      "composed_population.asec_cps_carried_current",
+      "composed_population.prepare"
+    ],
+    "composed_population.prepare": [],
+    "native_household_origins.acs": [
+      "assign_us_puma_ladder.boundary"
+    ],
+    "native_household_origins.asec": [
+      "assign_us_puma_ladder.boundary"
+    ],
+    "survey_origins.clones": [
+      "combined_survey_puf_support_clone",
+      "combined_survey_puf_support_clone.owned",
+      "native_household_origins.acs",
+      "native_household_origins.asec",
+      "survey_origins.native"
+    ],
+    "survey_origins.native": [
+      "assign_us_puma_ladder",
+      "assign_us_puma_ladder.boundary",
+      "composed_population.asec_bind",
+      "composed_population.asec_cps_carried_current",
+      "composed_population.asec_demographic_bind",
+      "composed_population.asec_reported_income",
+      "native_household_origins.acs",
+      "native_household_origins.asec"
+    ]
+  },
+  "source_codecs": {
+    "acs_native": "us-acs-native-2024-v1",
+    "asec_prepared": "us-asec-prepared-current-money-v3",
+    "native_origin_acs": "us-acs-housing-universe-2024-v1",
+    "native_origin_asec_2022": "raw-bytes-v1",
+    "native_origin_asec_2023": "raw-bytes-v1",
+    "native_origin_asec_2024": "raw-bytes-v1",
+    "us_asec_demographic_projection": "raw-bytes-v1",
+    "us_cd_crosswalk_117_119": "raw-bytes-v1",
+    "us_puma_ladder_2020": "raw-bytes-v1"
+  },
+  "source_directory": "/Users/maxghenis/architecture-reviews/microcosm-20260904/invented-survey-lineage-r8",
+  "source_keys": {
+    "acs_native": "fe7a0671f17143125d0da431d09d54df1f163d61d845688b4c7173773f651c92",
+    "asec_prepared": "6e701e486020fe1801b697033fcbd6d2cb65c26ac9b1f478d31a001de8cd336c",
+    "native_origin_acs": "7bd2c254283f71c3a237eaa8edfe554f29107fb5628935ce6747dcc07e0d226c",
+    "native_origin_asec_2022": "7d6182d071fc11a9350081575e87afd20afc2322f4e21375a39c8c5c00ad91e0",
+    "native_origin_asec_2023": "cf7990cb3a60db531093f539bc17d05c49f53c5b76c10ee37fd3a845feaaa902",
+    "native_origin_asec_2024": "73861318284c32cb880ac59440a9a5d2492abd00fa979e1a9d3434c60770ca38",
+    "us_asec_demographic_projection": "aebf88829bf52348f81944bbffa389b8e8b2f70c01eb4210e2d091338c808b4d",
+    "us_cd_crosswalk_117_119": "55b70ec6f20b37c1b5d0d651d510aaf242a0a4ec51e4362afbd8f254bc500b0a",
+    "us_puma_ladder_2020": "aefd92423cecdd08b2675dc22c1d8bb2b96b08029dea6699342048d591632c22"
+  },
+  "tested_head": "61883a748db0ec8a7fb3796c9abbbcc4c14843dd",
+  "typed_artifacts": {
+    "assign_us_puma_ladder": {
+      "inputs": {
+        "crosswalk": {
+          "artifact": "crosswalk",
+          "key": "d05402413544c3e5ae8f126ca1e65b9b19727abbaa5947672d6a8a90a4e90362",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "assign_us_puma_ladder.lookup",
+          "producer_key": "f51a6b723dd41693d66f75ab4f4606de0d3026bf334cf67c45453e9aad4977d1",
+          "type": {
+            "name": "microcosm.us.cd_crosswalk_csv",
+            "schema_version": 1
+          }
+        },
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "8d6202ae3e738cfeb57ef2be5b69b927ac58d74f0de731a789dad657064e1a13",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population",
+          "producer_key": "f17f9fb6e4a0f284b3a60a8cd0af30a9bf97c56343084acc5c4b650f49c31f93",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        "ladder": {
+          "artifact": "ladder",
+          "key": "4d1b2a3aa72f6d3f93f176634477e06967a27cd086358ecae23917af5c9306c9",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "assign_us_puma_ladder.lookup",
+          "producer_key": "f51a6b723dd41693d66f75ab4f4606de0d3026bf334cf67c45453e9aad4977d1",
+          "type": {
+            "name": "microcosm.us.puma_ladder_npz",
+            "schema_version": 1
+          }
+        }
+      },
+      "outputs": {
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "7bb998ff8c8714ab3bae8061fa2a11e6a30bda1f8b3b19da2f1a7b5bc5c4b15f",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "assign_us_puma_ladder",
+          "producer_key": "b46f80de76fba243ea575de3df93c9859d7235fa0d33013ff1d4f6c135e11879",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    "assign_us_puma_ladder.boundary": {},
+    "assign_us_puma_ladder.gate": {},
+    "assign_us_puma_ladder.lookup": {
+      "inputs": {},
+      "outputs": {
+        "crosswalk": {
+          "artifact": "crosswalk",
+          "key": "d05402413544c3e5ae8f126ca1e65b9b19727abbaa5947672d6a8a90a4e90362",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "assign_us_puma_ladder.lookup",
+          "producer_key": "f51a6b723dd41693d66f75ab4f4606de0d3026bf334cf67c45453e9aad4977d1",
+          "type": {
+            "name": "microcosm.us.cd_crosswalk_csv",
+            "schema_version": 1
+          }
+        },
+        "ladder": {
+          "artifact": "ladder",
+          "key": "4d1b2a3aa72f6d3f93f176634477e06967a27cd086358ecae23917af5c9306c9",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "assign_us_puma_ladder.lookup",
+          "producer_key": "f51a6b723dd41693d66f75ab4f4606de0d3026bf334cf67c45453e9aad4977d1",
+          "type": {
+            "name": "microcosm.us.puma_ladder_npz",
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    "combined_survey_puf_support_clone": {},
+    "combined_survey_puf_support_clone.owned": {},
+    "composed_population": {
+      "inputs": {
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "7e36d655929677668a384a5775555e4b2c6cfcdd3cd222638053c7577c7c7bf6",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        "preparation": {
+          "artifact": "preparation",
+          "key": "a83bff0454b142c5e6ca2bdc67ac191e78a87d9597ddf89b00ef57d60134dcb5",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.stacked_spine_preparation",
+            "schema_version": 1
+          }
+        }
+      },
+      "outputs": {
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "8d6202ae3e738cfeb57ef2be5b69b927ac58d74f0de731a789dad657064e1a13",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population",
+          "producer_key": "f17f9fb6e4a0f284b3a60a8cd0af30a9bf97c56343084acc5c4b650f49c31f93",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    "composed_population.asec_bind": {
+      "inputs": {
+        "asec_frame_context": {
+          "artifact": "asec_frame_context",
+          "key": "0116cf19f80d36290fdf9b724f7154a11062be87b271c1f56224a98d5b12cf4e",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        "current_money": {
+          "artifact": "current_money",
+          "key": "284ea3172894d5fd9a56ab775b6de38284d7be7c5f4dff312605115500af1d2a",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_current_money_body",
+            "schema_version": 1
+          }
+        },
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "7bb998ff8c8714ab3bae8061fa2a11e6a30bda1f8b3b19da2f1a7b5bc5c4b15f",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "assign_us_puma_ladder",
+          "producer_key": "b46f80de76fba243ea575de3df93c9859d7235fa0d33013ff1d4f6c135e11879",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        "housing_universe": {
+          "artifact": "housing_universe",
+          "key": "eaf8aa03d1facec06b3633b68f005421f2aa08f57cc37cd39e300d0ef2fb4fef",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_bound_housing_universe",
+            "schema_version": 1
+          }
+        },
+        "income_observations": {
+          "artifact": "income_observations",
+          "key": "31b7931bae53111a426eb4ea8b290f480bfe1285fae94bf419832610838e8f72",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_income_observations",
+            "schema_version": 1
+          }
+        },
+        "prepared_receipt": {
+          "artifact": "prepared_receipt",
+          "key": "335a1afe18ec221db9878628d0f08734cc03830763299ef4b55cbdeefc4d7a62",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_prepared_receipt",
+            "schema_version": 3
+          }
+        },
+        "source_origin": {
+          "artifact": "source_origin",
+          "key": "4819be5829f432836bfe4f18aa2259b79f5802d32439735d271ccac7925ae6d7",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.composed_population_source_origin",
+            "schema_version": 1
+          }
+        }
+      },
+      "outputs": {
+        "arm_rows": {
+          "artifact": "arm_rows",
+          "key": "8b7507eb81c569bd168c28a363d792e8c24b4b3a003c2047c27116dee23be720",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.composed_asec_arm_rows",
+            "schema_version": 1
+          }
+        },
+        "asec_binding": {
+          "artifact": "asec_binding",
+          "key": "80eebc25d3c36822117abf6713a6af620d48e00ddf89b370028c5c42c68092e7",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.composed_asec_binding",
+            "schema_version": 1
+          }
+        },
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "811e135d097ffce89168c1f12db90dd9c53d58b6bb80b5306aeef8991e6e7044",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        "selected_current_money": {
+          "artifact": "selected_current_money",
+          "key": "8bebcb9082bcaf536c365dafe113280b7b105314593e6381052efae46877c932",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.asec_selected_current_money",
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    "composed_population.asec_cps_carried_current": {
+      "inputs": {
+        "arm_rows": {
+          "artifact": "arm_rows",
+          "key": "8b7507eb81c569bd168c28a363d792e8c24b4b3a003c2047c27116dee23be720",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.composed_asec_arm_rows",
+            "schema_version": 1
+          }
+        },
+        "asec_binding": {
+          "artifact": "asec_binding",
+          "key": "80eebc25d3c36822117abf6713a6af620d48e00ddf89b370028c5c42c68092e7",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.composed_asec_binding",
+            "schema_version": 1
+          }
+        },
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "811e135d097ffce89168c1f12db90dd9c53d58b6bb80b5306aeef8991e6e7044",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        "prepared_receipt": {
+          "artifact": "prepared_receipt",
+          "key": "335a1afe18ec221db9878628d0f08734cc03830763299ef4b55cbdeefc4d7a62",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_prepared_receipt",
+            "schema_version": 3
+          }
+        },
+        "selected_current_money": {
+          "artifact": "selected_current_money",
+          "key": "8bebcb9082bcaf536c365dafe113280b7b105314593e6381052efae46877c932",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.asec_selected_current_money",
+            "schema_version": 1
+          }
+        }
+      },
+      "outputs": {
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "94bf3a32a5a1ce3298b8762c0d0ec633a26f0b4118e1517f920e7cc4b63c18fe",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_cps_carried_current",
+          "producer_key": "3c65691f5365c7135347969286b1eb1abe165d11784245b207f62e2562c6188e",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    "composed_population.asec_demographic_bind": {
+      "inputs": {
+        "arm_rows": {
+          "artifact": "arm_rows",
+          "key": "8b7507eb81c569bd168c28a363d792e8c24b4b3a003c2047c27116dee23be720",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.composed_asec_arm_rows",
+            "schema_version": 1
+          }
+        },
+        "asec_binding": {
+          "artifact": "asec_binding",
+          "key": "80eebc25d3c36822117abf6713a6af620d48e00ddf89b370028c5c42c68092e7",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.composed_asec_binding",
+            "schema_version": 1
+          }
+        },
+        "demographic_projection": {
+          "artifact": "demographic_projection",
+          "key": "efe279cd275d0b066e1dd684711dfd6880b0536f26b5ae0bb364f477e3d86c48",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_demographic_source",
+          "producer_key": "fcbe49819620a612fb9559abc870381bfeb3757083a630440bac81c7c3406935",
+          "type": {
+            "name": "microcosm.us.asec_demographic_projection",
+            "schema_version": 1
+          }
+        },
+        "demographic_source": {
+          "artifact": "demographic_source",
+          "key": "35160afdd6b05bb44502d9f3f134ecc6434a07946b06c4de4d44d93794a51c22",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_demographic_source",
+          "producer_key": "fcbe49819620a612fb9559abc870381bfeb3757083a630440bac81c7c3406935",
+          "type": {
+            "name": "microcosm.us.asec_demographic_source_document",
+            "schema_version": 1
+          }
+        },
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "b8a4b3e6c2dd569629fc56e4af83d207ec8389ac5305b8a33bfbfc45f8c42ca1",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_reported_income",
+          "producer_key": "f424184ec4282e30a3aec5dbe107bc143fdb53d5b0a671116094c44f658dc9a8",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        "income_observations": {
+          "artifact": "income_observations",
+          "key": "31b7931bae53111a426eb4ea8b290f480bfe1285fae94bf419832610838e8f72",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_income_observations",
+            "schema_version": 1
+          }
+        },
+        "prepared_receipt": {
+          "artifact": "prepared_receipt",
+          "key": "335a1afe18ec221db9878628d0f08734cc03830763299ef4b55cbdeefc4d7a62",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_prepared_receipt",
+            "schema_version": 3
+          }
+        }
+      },
+      "outputs": {
+        "asec_demographic_binding": {
+          "artifact": "asec_demographic_binding",
+          "key": "43b154d6dee25efccde9580cedf74604c38c50f0cbbcc9f2c2b66f8935b183eb",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_demographic_bind",
+          "producer_key": "0a893cbd21deb33815b5e6b0a361a4016c28d788d79ff42e8689d5eaf8d3396c",
+          "type": {
+            "name": "microcosm.us.composed_asec_demographic_binding",
+            "schema_version": 1
+          }
+        },
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "9b513bf8f36f26babf38478b9b1d96a9b5ecc0f315b9fdfa68eb545a70512af9",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_demographic_bind",
+          "producer_key": "0a893cbd21deb33815b5e6b0a361a4016c28d788d79ff42e8689d5eaf8d3396c",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    "composed_population.asec_demographic_source": {
+      "inputs": {},
+      "outputs": {
+        "demographic_projection": {
+          "artifact": "demographic_projection",
+          "key": "efe279cd275d0b066e1dd684711dfd6880b0536f26b5ae0bb364f477e3d86c48",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_demographic_source",
+          "producer_key": "fcbe49819620a612fb9559abc870381bfeb3757083a630440bac81c7c3406935",
+          "type": {
+            "name": "microcosm.us.asec_demographic_projection",
+            "schema_version": 1
+          }
+        },
+        "demographic_source": {
+          "artifact": "demographic_source",
+          "key": "35160afdd6b05bb44502d9f3f134ecc6434a07946b06c4de4d44d93794a51c22",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_demographic_source",
+          "producer_key": "fcbe49819620a612fb9559abc870381bfeb3757083a630440bac81c7c3406935",
+          "type": {
+            "name": "microcosm.us.asec_demographic_source_document",
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    "composed_population.asec_reported_income": {
+      "inputs": {
+        "arm_rows": {
+          "artifact": "arm_rows",
+          "key": "8b7507eb81c569bd168c28a363d792e8c24b4b3a003c2047c27116dee23be720",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.composed_asec_arm_rows",
+            "schema_version": 1
+          }
+        },
+        "asec_binding": {
+          "artifact": "asec_binding",
+          "key": "80eebc25d3c36822117abf6713a6af620d48e00ddf89b370028c5c42c68092e7",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.composed_asec_binding",
+            "schema_version": 1
+          }
+        },
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "94bf3a32a5a1ce3298b8762c0d0ec633a26f0b4118e1517f920e7cc4b63c18fe",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_cps_carried_current",
+          "producer_key": "3c65691f5365c7135347969286b1eb1abe165d11784245b207f62e2562c6188e",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        "income_observations": {
+          "artifact": "income_observations",
+          "key": "31b7931bae53111a426eb4ea8b290f480bfe1285fae94bf419832610838e8f72",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_income_observations",
+            "schema_version": 1
+          }
+        },
+        "prepared_receipt": {
+          "artifact": "prepared_receipt",
+          "key": "335a1afe18ec221db9878628d0f08734cc03830763299ef4b55cbdeefc4d7a62",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_prepared_receipt",
+            "schema_version": 3
+          }
+        },
+        "selected_current_money": {
+          "artifact": "selected_current_money",
+          "key": "8bebcb9082bcaf536c365dafe113280b7b105314593e6381052efae46877c932",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_bind",
+          "producer_key": "52c844dd443524192a98cadfdba638d067dab5f368a51148db950a48f321cf94",
+          "type": {
+            "name": "microcosm.us.asec_selected_current_money",
+            "schema_version": 1
+          }
+        }
+      },
+      "outputs": {
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "b8a4b3e6c2dd569629fc56e4af83d207ec8389ac5305b8a33bfbfc45f8c42ca1",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_reported_income",
+          "producer_key": "f424184ec4282e30a3aec5dbe107bc143fdb53d5b0a671116094c44f658dc9a8",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        "reported_income": {
+          "artifact": "reported_income",
+          "key": "a26a6c0c9fb64adb0d9abc82b11e3ef985e57d8d903d428e801432d021abb1b9",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.asec_reported_income",
+          "producer_key": "f424184ec4282e30a3aec5dbe107bc143fdb53d5b0a671116094c44f658dc9a8",
+          "type": {
+            "name": "microcosm.us.asec_reported_income",
+            "schema_version": 3
+          }
+        }
+      }
+    },
+    "composed_population.prepare": {
+      "inputs": {},
+      "outputs": {
+        "asec_frame_context": {
+          "artifact": "asec_frame_context",
+          "key": "0116cf19f80d36290fdf9b724f7154a11062be87b271c1f56224a98d5b12cf4e",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        "current_money": {
+          "artifact": "current_money",
+          "key": "284ea3172894d5fd9a56ab775b6de38284d7be7c5f4dff312605115500af1d2a",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_current_money_body",
+            "schema_version": 1
+          }
+        },
+        "frame_context": {
+          "artifact": "frame_context",
+          "key": "7e36d655929677668a384a5775555e4b2c6cfcdd3cd222638053c7577c7c7bf6",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.frame_context",
+            "schema_version": 1
+          }
+        },
+        "housing_universe": {
+          "artifact": "housing_universe",
+          "key": "eaf8aa03d1facec06b3633b68f005421f2aa08f57cc37cd39e300d0ef2fb4fef",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_bound_housing_universe",
+            "schema_version": 1
+          }
+        },
+        "income_observations": {
+          "artifact": "income_observations",
+          "key": "31b7931bae53111a426eb4ea8b290f480bfe1285fae94bf419832610838e8f72",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_income_observations",
+            "schema_version": 1
+          }
+        },
+        "preparation": {
+          "artifact": "preparation",
+          "key": "a83bff0454b142c5e6ca2bdc67ac191e78a87d9597ddf89b00ef57d60134dcb5",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.stacked_spine_preparation",
+            "schema_version": 1
+          }
+        },
+        "prepared_receipt": {
+          "artifact": "prepared_receipt",
+          "key": "335a1afe18ec221db9878628d0f08734cc03830763299ef4b55cbdeefc4d7a62",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.asec_prepared_receipt",
+            "schema_version": 3
+          }
+        },
+        "source_origin": {
+          "artifact": "source_origin",
+          "key": "4819be5829f432836bfe4f18aa2259b79f5802d32439735d271ccac7925ae6d7",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "composed_population.prepare",
+          "producer_key": "2af375c4e2d8418e2e1d9de367792768f862613e122aab021e235afae5145046",
+          "type": {
+            "name": "microcosm.us.composed_population_source_origin",
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    "native_household_origins.acs": {
+      "inputs": {},
+      "outputs": {
+        "origins": {
+          "artifact": "origins",
+          "key": "5715f3fa699ed5d562c19dd47fb63c217bf9841d34cb59cd45b11c3b51343c49",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "native_household_origins.acs",
+          "producer_key": "feb0b83a0bcd0cf5b2c941f1c07f44104810d2d9f14a928a5ce4463831d25f4c",
+          "type": {
+            "name": "microcosm.us.native_household_origins",
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    "native_household_origins.asec": {
+      "inputs": {},
+      "outputs": {
+        "origins": {
+          "artifact": "origins",
+          "key": "0549d73a4b34f1704be91b00f93d6f975d5a0068af039245987dcfcf4963c234",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "native_household_origins.asec",
+          "producer_key": "8727371802765cbcdd37a060e97761fc31307ba388beb54bf2ac048b0a314827",
+          "type": {
+            "name": "microcosm.us.native_household_origins",
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    "survey_origins.clones": {
+      "inputs": {
+        "acs": {
+          "artifact": "origins",
+          "key": "5715f3fa699ed5d562c19dd47fb63c217bf9841d34cb59cd45b11c3b51343c49",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "native_household_origins.acs",
+          "producer_key": "feb0b83a0bcd0cf5b2c941f1c07f44104810d2d9f14a928a5ce4463831d25f4c",
+          "type": {
+            "name": "microcosm.us.native_household_origins",
+            "schema_version": 1
+          }
+        },
+        "asec": {
+          "artifact": "origins",
+          "key": "0549d73a4b34f1704be91b00f93d6f975d5a0068af039245987dcfcf4963c234",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "native_household_origins.asec",
+          "producer_key": "8727371802765cbcdd37a060e97761fc31307ba388beb54bf2ac048b0a314827",
+          "type": {
+            "name": "microcosm.us.native_household_origins",
+            "schema_version": 1
+          }
+        },
+        "parent_binding": {
+          "artifact": "binding",
+          "key": "a1ea1f5c4ea9a0dd7bc02dd9ccbe26b581ae9ad62d3402da44f0f704a05c46e0",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "survey_origins.native",
+          "producer_key": "69e85fc022bea97846ca1d0abe7cb501c2ebfbf8c76f0df608c9946283707ccc",
+          "type": {
+            "name": "microcosm.us.population_household_origins",
+            "schema_version": 1
+          }
+        }
+      },
+      "outputs": {
+        "binding": {
+          "artifact": "binding",
+          "key": "af4daeec8d32daab0d5807c6176dbd590cac80e2225a077ceb9ee34b5b8fdfd2",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "survey_origins.clones",
+          "producer_key": "a91ab456ccd0e07452cd11651a1a9bf2b03e2759ffeef5a9554378139396e818",
+          "type": {
+            "name": "microcosm.us.population_household_origins",
+            "schema_version": 1
+          }
+        }
+      }
+    },
+    "survey_origins.native": {
+      "inputs": {
+        "acs": {
+          "artifact": "origins",
+          "key": "5715f3fa699ed5d562c19dd47fb63c217bf9841d34cb59cd45b11c3b51343c49",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "native_household_origins.acs",
+          "producer_key": "feb0b83a0bcd0cf5b2c941f1c07f44104810d2d9f14a928a5ce4463831d25f4c",
+          "type": {
+            "name": "microcosm.us.native_household_origins",
+            "schema_version": 1
+          }
+        },
+        "asec": {
+          "artifact": "origins",
+          "key": "0549d73a4b34f1704be91b00f93d6f975d5a0068af039245987dcfcf4963c234",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "native_household_origins.asec",
+          "producer_key": "8727371802765cbcdd37a060e97761fc31307ba388beb54bf2ac048b0a314827",
+          "type": {
+            "name": "microcosm.us.native_household_origins",
+            "schema_version": 1
+          }
+        }
+      },
+      "outputs": {
+        "binding": {
+          "artifact": "binding",
+          "key": "a1ea1f5c4ea9a0dd7bc02dd9ccbe26b581ae9ad62d3402da44f0f704a05c46e0",
+          "numerics": {
+            "numeric": "platform_bitwise",
+            "platform": "arm64/darwin/py3.14",
+            "tolerance": null
+          },
+          "producer": "survey_origins.native",
+          "producer_key": "69e85fc022bea97846ca1d0abe7cb501c2ebfbf8c76f0df608c9946283707ccc",
+          "type": {
+            "name": "microcosm.us.population_household_origins",
+            "schema_version": 1
+          }
+        }
+      }
+    }
+  }
+}

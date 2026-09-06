@@ -1,0 +1,295 @@
+{
+  "binding_sha256": "0012cbdeb0135a0244d71192e6401959269025d7ea743d14c25a23b12cabf40b",
+  "checkpoint_sha256": "d84249d9787f734bae3246ddf1339d1416580f8b2d383f5bdcf9b73ecf534789",
+  "clone_verification": {
+    "all_memberships_and_strata_preserved": true,
+    "entities": {
+      "family": {
+        "after_rows": 12,
+        "before_rows": 6,
+        "keyed_columns_preserved": true,
+        "source_arms": {
+          "acs": 3,
+          "asec": 3
+        }
+      },
+      "household": {
+        "after_rows": 12,
+        "before_rows": 6,
+        "keyed_columns_preserved": true,
+        "source_arms": {
+          "acs": 3,
+          "asec": 3
+        }
+      },
+      "marital_unit": {
+        "after_rows": 16,
+        "before_rows": 8,
+        "keyed_columns_preserved": true,
+        "source_arms": {
+          "acs": 5,
+          "asec": 3
+        }
+      },
+      "person": {
+        "after_rows": 24,
+        "before_rows": 12,
+        "keyed_columns_preserved": true,
+        "source_arms": {
+          "acs": 6,
+          "asec": 6
+        }
+      },
+      "spm_unit": {
+        "after_rows": 12,
+        "before_rows": 6,
+        "keyed_columns_preserved": true,
+        "source_arms": {
+          "acs": 3,
+          "asec": 3
+        }
+      },
+      "tax_unit": {
+        "after_rows": 14,
+        "before_rows": 7,
+        "keyed_columns_preserved": true,
+        "source_arms": {
+          "acs": 4,
+          "asec": 3
+        }
+      }
+    },
+    "pair_weight_bits_preserved": true,
+    "person_mass_preserved": true,
+    "prior_wage_stage": false,
+    "release_eligible": false
+  },
+  "completion": {
+    "bytecode_parent_finish": {
+      "dont_write_bytecode": true,
+      "isolated": 0,
+      "orig_argv": [
+        "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-current-main-20260905/.venv/bin/python",
+        "-B",
+        "-X",
+        "pycache_prefix=/private/tmp/survey-parent-absent-20260906-r8",
+        "tools/us_survey_lineage_cached_prep.py",
+        "--selfcheck",
+        "--output",
+        "/Users/maxghenis/architecture-reviews/microcosm-20260904/invented-survey-lineage-r8",
+        "--baseline-checkout",
+        "/Users/maxghenis/architecture-reviews/microcosm-20260904/us-survey-demographic-lineage-baseline"
+      ],
+      "prefix_absent": true,
+      "pycache_prefix": "/private/tmp/survey-parent-absent-20260906-r8"
+    },
+    "bytecode_parent_start": {
+      "dont_write_bytecode": true,
+      "isolated": 0,
+      "orig_argv": [
+        "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-current-main-20260905/.venv/bin/python",
+        "-B",
+        "-X",
+        "pycache_prefix=/private/tmp/survey-parent-absent-20260906-r8",
+        "tools/us_survey_lineage_cached_prep.py",
+        "--selfcheck",
+        "--output",
+        "/Users/maxghenis/architecture-reviews/microcosm-20260904/invented-survey-lineage-r8",
+        "--baseline-checkout",
+        "/Users/maxghenis/architecture-reviews/microcosm-20260904/us-survey-demographic-lineage-baseline"
+      ],
+      "prefix_absent": true,
+      "pycache_prefix": "/private/tmp/survey-parent-absent-20260906-r8"
+    },
+    "caps": {
+      "concurrent_workers": 1,
+      "cpu_seconds": 360,
+      "expanded_households": 12,
+      "households": 6,
+      "input_bytes": 33554432,
+      "persons": 12,
+      "rss_bytes": 3221225472,
+      "wall_seconds": 420
+    },
+    "cold_calls": 11,
+    "cold_hits": 6,
+    "compiled_nodes": 17,
+    "integration_head": "61883a748db0ec8a7fb3796c9abbbcc4c14843dd",
+    "invented_only": true,
+    "phases": {
+      "baseline": {
+        "command": [
+          "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-current-main-20260905/.venv/bin/python",
+          "-I",
+          "-B",
+          "-X",
+          "pycache_prefix=/Users/maxghenis/architecture-reviews/microcosm-20260904/absent-bytecode-7e90f2424409439088d726acef718fa4",
+          "/Users/maxghenis/architecture-reviews/microcosm-20260904/us-survey-demographic-lineage-integration/tools/us_survey_lineage_cached_prep.py",
+          "--worker",
+          "baseline",
+          "--output",
+          "/Users/maxghenis/architecture-reviews/microcosm-20260904/invented-survey-lineage-r8",
+          "--checkout",
+          "/Users/maxghenis/architecture-reviews/microcosm-20260904/us-survey-demographic-lineage-baseline",
+          "--head",
+          "1f6ffa7b441701cb2b1254e4bb48241e1e2895de"
+        ],
+        "elapsed_seconds": 49.15293237500009,
+        "returncode": 0
+      },
+      "cold": {
+        "command": [
+          "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-current-main-20260905/.venv/bin/python",
+          "-I",
+          "-B",
+          "-X",
+          "pycache_prefix=/Users/maxghenis/architecture-reviews/microcosm-20260904/absent-bytecode-56bcd423bcd44a9ab4ea0649ecf46e3b",
+          "/Users/maxghenis/architecture-reviews/microcosm-20260904/us-survey-demographic-lineage-integration/tools/us_survey_lineage_cached_prep.py",
+          "--worker",
+          "cold",
+          "--output",
+          "/Users/maxghenis/architecture-reviews/microcosm-20260904/invented-survey-lineage-r8",
+          "--checkout",
+          "/Users/maxghenis/architecture-reviews/microcosm-20260904/us-survey-demographic-lineage-integration",
+          "--head",
+          "61883a748db0ec8a7fb3796c9abbbcc4c14843dd"
+        ],
+        "elapsed_seconds": 47.347293167000316,
+        "returncode": 0
+      },
+      "stage": {
+        "command": [
+          "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-current-main-20260905/.venv/bin/python",
+          "-I",
+          "-B",
+          "-X",
+          "pycache_prefix=/Users/maxghenis/architecture-reviews/microcosm-20260904/absent-bytecode-6939c20c8a3a49a8856837521a1270c5",
+          "/Users/maxghenis/architecture-reviews/microcosm-20260904/us-survey-demographic-lineage-integration/tools/us_survey_lineage_cached_prep.py",
+          "--worker",
+          "stage",
+          "--output",
+          "/Users/maxghenis/architecture-reviews/microcosm-20260904/invented-survey-lineage-r8",
+          "--checkout",
+          "/Users/maxghenis/architecture-reviews/microcosm-20260904/us-survey-demographic-lineage-integration",
+          "--head",
+          "61883a748db0ec8a7fb3796c9abbbcc4c14843dd"
+        ],
+        "elapsed_seconds": 41.13507791600023,
+        "returncode": 0
+      },
+      "warm": {
+        "command": [
+          "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-current-main-20260905/.venv/bin/python",
+          "-I",
+          "-B",
+          "-X",
+          "pycache_prefix=/Users/maxghenis/architecture-reviews/microcosm-20260904/absent-bytecode-e92eb89dd2e04eeeaacf08e4136b22ea",
+          "/Users/maxghenis/architecture-reviews/microcosm-20260904/us-survey-demographic-lineage-integration/tools/us_survey_lineage_cached_prep.py",
+          "--worker",
+          "warm",
+          "--output",
+          "/Users/maxghenis/architecture-reviews/microcosm-20260904/invented-survey-lineage-r8",
+          "--checkout",
+          "/Users/maxghenis/architecture-reviews/microcosm-20260904/us-survey-demographic-lineage-integration",
+          "--head",
+          "61883a748db0ec8a7fb3796c9abbbcc4c14843dd"
+        ],
+        "elapsed_seconds": 40.207500208000056,
+        "returncode": 0
+      }
+    },
+    "receipts": {
+      "baseline": "9591d2bea8fb6bf799a8c073a55a49fdbf24e79fa4983d7c2652066e1bea01f5",
+      "cold": "24f2ce3c7ef76daed46e356a1022fb8d9058f9d145071b1b4fd170956ad04dc6",
+      "stage": "1050659f7404738b9fe786f8e612adbc270738e58e133afd01c50a613e736695",
+      "warm": "01da48b200b4dfd9fa775a6e446989fa6716b9d49d33a907cc9ae7fe57a60467"
+    },
+    "status": "PASS",
+    "warm_calls": 0,
+    "warm_hits": 17
+  },
+  "demographic_preservation": {
+    "acs_every_cell_unchanged": true,
+    "all_incumbent_source_columns_checked": true,
+    "native_ids_memberships_weights_unchanged": true,
+    "unknown_reference_rows": 2,
+    "unknown_sex_rows": 1
+  },
+  "design_anchors": {
+    "household": {
+      "after_rows": 12,
+      "after_sha256": "850b9ff352758e4d4cac5a54e453a75ed496e922a81029c459e06abc578db407",
+      "before_rows": 6,
+      "before_sha256": "1e0be398d73fcd3f6e0372eeb840258e16bd9063f5c43d351eb91376432e852a",
+      "future_calibration_caps_validated": false,
+      "source_anchor_copied_unhalved": true,
+      "total_after": 116.0,
+      "total_before": 58.0,
+      "total_ratio": 2.0
+    }
+  },
+  "full_materialized_verification": {
+    "design_anchors": "not_in_frame_context_not_evaluated",
+    "entity_rows": {
+      "family": 12,
+      "household": 12,
+      "marital_unit": 16,
+      "person": 24,
+      "spm_unit": 12,
+      "tax_unit": 14
+    },
+    "households": 12,
+    "original_household_origins": 6,
+    "parent_pair_mass_conserved": true,
+    "population_content_sha256": "86e6af1f653eef543714e531ffe909593d7e0dc4209ef9842883f8cfb5063706",
+    "release_eligible": false,
+    "zero_weight_households_with_lineage": 0
+  },
+  "manifest_key": "06fb77be835eb52c28c619969293530ba197e8501625ecf5ea4a7459e6bb2d63",
+  "refusals": {
+    "changed_acs_cell": {
+      "reason": "POPULATION_CONTENT",
+      "status": "REFUSED"
+    },
+    "omitted_carried_source_column": {
+      "reason": "POPULATION_CONTENT",
+      "status": "REFUSED"
+    },
+    "stale_demographic_source_binding": {
+      "reason": "DEMOGRAPHIC_DECLARED_PROJECTION_DIGEST",
+      "status": "REFUSED"
+    },
+    "zero_weight_clone_household_omission": {
+      "reason": "CLONE_PAIR_COVERAGE",
+      "status": "REFUSED"
+    },
+    "zero_weight_graph": {
+      "boundary": "invented downstream zero weights in both arms",
+      "nodes": 7,
+      "status": "PASS",
+      "summary": {
+        "design_anchors": "not_in_frame_context_not_evaluated",
+        "entity_rows": {
+          "family": 12,
+          "household": 12,
+          "marital_unit": 16,
+          "person": 24,
+          "spm_unit": 12,
+          "tax_unit": 14
+        },
+        "households": 12,
+        "original_household_origins": 6,
+        "parent_pair_mass_conserved": true,
+        "population_content_sha256": "b6020cc49c71f3caa9becaaac2155314080cfba95134d7e952fa6c8e201c578b",
+        "release_eligible": false,
+        "zero_weight_households_with_lineage": 4
+      }
+    }
+  },
+  "storage_regression_red_log": {
+    "path": "/Users/maxghenis/architecture-reviews/microcosm-20260904/invented-survey-lineage-r6/warm.log",
+    "sha256": "6138654797feef7b57cc17bf52b11bd750b7b2a35349de0e9c40112a4224b63f"
+  },
+  "unchanged_old_typed_artifacts_and_receipts_preserved": true,
+  "warm_receipt_sha256": "01da48b200b4dfd9fa775a6e446989fa6716b9d49d33a907cc9ae7fe57a60467"
+}
