@@ -42,6 +42,11 @@ AGENTS.md and CLAUDE.md, and the executable CI inventory.
   Microcosm import. Runtime was Python 3.14.4, NumPy 2.4.6, Torch 2.12.0,
   `arm64/darwin/py3.14`, CPU, Torch intra-op/inter-op 1/1. Parent and child
   pycache prefixes remained absent.
+- The first complete solver test run exposed an inventory omission: package
+  `tests/conftest.py` was loaded but excluded from the before/after snapshot.
+  The harness correctly failed its source audit despite 42 passing tests.
+  Source-only snapshot coverage now includes those configuration modules and
+  Python helpers in this task's history directory; prior failed evidence remains.
 
 Evidence SHA-256 values (files live in the architecture review directory):
 

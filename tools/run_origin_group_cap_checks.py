@@ -99,7 +99,9 @@ def _source_inventory() -> tuple[str, dict[str, dict]]:
     for name in sorted(set(names)):
         if not (
             name == "conftest.py"
+            or name.endswith("/tests/conftest.py")
             or name.startswith("tools/")
+            or name.startswith("docs/history/origin-group-cap/")
             or (name.startswith("packages/") and "/src/" in name)
             or (name.startswith("packages/") and "/tests/test_" in name)
         ):
