@@ -46,6 +46,7 @@ def _registry():
                 entity="household",
                 measure=support_clone_index_column("household"),
                 value=1e8,
+                source="invented role-indicator redistribution fixture",
                 period="2024",
                 family="acs.S0101",
                 metadata={
@@ -62,7 +63,9 @@ def _registry():
     )
 
 
-def _run(root, *, warm=False, observe=False):
+def _run(
+    root, *, warm=False, observe=False, design_multiplier=4.0, incoming_multiplier=2.0
+):
     invented = _load("origin_cap_invented", "tools/survey_lineage_prep/invented.py")
     factory = _load("origin_cap_factory", "tools/us_survey_lineage_graph.py")
     invented.restore(root, CHECKOUT)
@@ -112,8 +115,8 @@ def _run(root, *, warm=False, observe=False):
         budget_path=root / "frozen-budget.json",
         epochs=25,
         learning_rate=0.2,
-        design_multiplier=4.0,
-        incoming_multiplier=2.0,
+        design_multiplier=design_multiplier,
+        incoming_multiplier=incoming_multiplier,
         resume="require" if warm else "auto",
     )
     frame = result.manifest.population(stage.CALIBRATION_NODE)

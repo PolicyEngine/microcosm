@@ -127,6 +127,9 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # population/clone lineage; it applies no population treatment.
         "native_household_origin.py",
         "graph_native_household_origin.py",
+        # The reviewed cap-root verifier authenticates source/native/clone
+        # identities and preserves every source cell; it applies no treatment.
+        "origin_group_budget.py",
         # Production pre-operator graph owner: declares source-channel views
         # for actual source DESIGN preparation and importance harmonization.
         # It applies no post-assembly population treatment; those graph
@@ -194,6 +197,7 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "child_support.py",
     "childcare.py",
     "demographic_calibration_graph.py",
+    "origin_group_calibration_graph.py",
     "disability_benefits.py",
     "domestic_production.py",
     "education_inputs.py",
@@ -369,6 +373,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "graph_native_origin_implementation.py",
         "native_household_origin.py",
         "graph_native_household_origin.py",
+        "origin_group_budget.py",
         "graph_geography.py",
         # Measured-hours adapter; still subject to the all-runtime AST scan.
         "graph_early_preparation.py",

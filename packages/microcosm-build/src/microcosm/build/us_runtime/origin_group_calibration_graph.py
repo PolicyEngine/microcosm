@@ -9,6 +9,7 @@ a refitted checkpoint as a replacement budget root.
 from __future__ import annotations
 
 import hashlib
+import json
 import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -309,7 +310,10 @@ class GroupedDemographicCalibrationKernel(KernelBase):
             "executor_weight_anchor": "original_design",
             "executor_max_weight_ratio": params["max_weight_ratio"],
             "accepted_weight_sha256": _sha(final_weights.values.tobytes()),
-            **result.options["grouped_upper_bounds"],
+            **budget.diagnostics(
+                final_weights.values,
+                result.options["grouped_upper_bounds"]["last_corrected_group_count"],
+            ),
         }
         payload = canonical_json(
             diagnostics_payload(result, target_registry=registry, build=anchors)
@@ -420,9 +424,9 @@ def run_origin_group_calibration(
         live[node] = population
         if node == CALIBRATION_NODE:
             # Independent of solver execution: also called on cached restoration.
-            budget.grouped_bounds.check(
-                population.frame.weights_for("household").values, positive=True
-            )
+            values = population.frame.weights_for("household").values
+            budget.grouped_bounds.check(values, positive=True)
+            budget.diagnostics(values)
 
     manifest = run_graph(
         compile_graph(graph),
@@ -453,11 +457,34 @@ def run_origin_group_calibration(
     )
     final_weights = current.frame.weights_for("household").values
     corrected = receipt.receipt["last_corrected_group_count"]
-    diagnostics = budget.grouped_bounds.diagnostics(final_weights, corrected)
+    diagnostics = budget.diagnostics(final_weights, corrected)
     _require(
         all(receipt.receipt[name] == value for name, value in diagnostics.items())
         and receipt.receipt["accepted_weight_sha256"] == _sha(final_weights.tobytes()),
         "GROUPED_MATERIALIZED_DIAGNOSTICS",
+    )
+    diagnostic_payload = store.load_bytes(receipt.opaque_artifacts["diagnostics"])
+    diagnostic_value = value_from_descriptor(
+        diagnostic_payload, receipt.typed_artifacts["outputs"]["diagnostics"]
+    )
+    diagnostic_document = json.loads(diagnostic_payload)
+    anchors = diagnostic_document.get("build", {})
+    _require(
+        diagnostic_value.type == demographic.DIAGNOSTICS_TYPE
+        and diagnostic_value.producer_key == receipt.key
+        and diagnostic_value.key == opaque_artifact_key(receipt.key, "diagnostics")
+        and _sha(diagnostic_payload) == receipt.receipt["diagnostics_sha256"]
+        and canonical_json(diagnostic_document) == diagnostic_payload
+        and all(anchors.get(name) == actual for name, actual in diagnostics.items())
+        and anchors.get("budget_sha256") == budget.digest
+        and anchors.get("budget_artifact_key") == value.key
+        and anchors.get("accepted_weight_sha256") == _sha(final_weights.tobytes()),
+        "GROUPED_MATERIALIZED_DIAGNOSTIC_ARTIFACT",
+    )
+    _require(
+        diagnostic_document.get("options", {}).get("grouped_upper_bounds")
+        == budget.grouped_bounds.diagnostics(final_weights, corrected),
+        "GROUPED_MATERIALIZED_DIAGNOSTIC_OPTIONS",
     )
     # Runner-authored successor identity is distinct from all kernel artifacts.
     successor_key = sha256_domain(
@@ -466,9 +493,7 @@ def run_origin_group_calibration(
             {
                 "calibration_node_key": receipt.key,
                 "budget_artifact_key": value.key,
-                "type": budgets.SUCCESSOR_TYPE.normative()
-                if hasattr(budgets.SUCCESSOR_TYPE, "normative")
-                else {
+                "type": {
                     "name": budgets.SUCCESSOR_TYPE.name,
                     "schema_version": budgets.SUCCESSOR_TYPE.schema_version,
                 },

@@ -1,0 +1,1 @@
+Add an opt-in grouped free-mass Adam path with frozen original-origin budgets, typed clone-aware calibration inputs, complete cold and cached admission checks, and weight-only successor lineage. The first profile refuses unsupported sparse-selection and conserved-mass modes and preserves exact accepted float64 weights.
