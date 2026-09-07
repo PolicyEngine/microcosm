@@ -16,7 +16,21 @@ os.environ.pop("MICROCOSM_US_NATIONAL_ACS_BUNDLE", None)
 @pytest.fixture(scope="module", autouse=True)
 def invented_only_guard():
     """Deny known genuine trees/network and all policy-engine calculations."""
+    import resource
+    import threading
+
     denials = []
+    stop = threading.Event()
+
+    def memory_watch():
+        while not stop.wait(0.1):
+            # On the pinned Darwin runtime ru_maxrss is bytes. This worker
+            # cap supplements the launcher's enforced CPU/wall limits.
+            if resource.getrusage(resource.RUSAGE_SELF).ru_maxrss > 4 * 1024**3:
+                os._exit(86)
+
+    monitor = threading.Thread(target=memory_watch, daemon=True)
+    monitor.start()
 
     def guard(path):
         if isinstance(path, (str, bytes, os.PathLike)):
@@ -78,6 +92,8 @@ def invented_only_guard():
     for item in patches:
         item.start()
     yield denials
+    stop.set()
+    monitor.join(timeout=1)
     for item in reversed(patches):
         item.stop()
     assert denials == []
