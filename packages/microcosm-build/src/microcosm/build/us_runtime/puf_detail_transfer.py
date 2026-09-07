@@ -102,12 +102,15 @@ def fixture_sources(definition_text: str, projection_text: str):
     return definition, projection
 
 
-def decode_price_arrays(payload: bytes, *, expected: Mapping, expected_sha256: str):
+def decode_price_arrays(
+    payload: bytes, *, expected: Mapping, expected_sha256: str, max_rows=MAX_ROWS
+):
     """Read the exact reviewed local helper envelope, with external identity pins.
 
     This parser does not create a GrownPufTable, repeat growth, or admit a fit.
     The returned arrays are read-only views of the authenticated body bytes.
     """
+    require(type(max_rows) is int and 0 < max_rows <= 250_000, "PRICE_ROW_BOUND")
     require(
         isinstance(payload, bytes)
         and len(payload) <= MAX_BYTES
@@ -158,7 +161,7 @@ def decode_price_arrays(payload: bytes, *, expected: Mapping, expected_sha256: s
         require(
             entry["dtype"] == ARRAY_DTYPES[name]
             and type(entry["rows"]) is int
-            and 0 < entry["rows"] <= MAX_ROWS,
+            and 0 < entry["rows"] <= max_rows,
             "PRICE_COLUMN_TYPE_ROWS",
         )
         rows = entry["rows"] if rows is None else rows
@@ -178,6 +181,11 @@ def decode_price_arrays(payload: bytes, *, expected: Mapping, expected_sha256: s
 def donor_frame(arrays: Mapping, status, decoded, projection) -> Frame:
     """One computational person/return wrapper, with explicit raw S006 DESIGN weights."""
     require(projection.route == "test_fixture", "GENUINE_FIT_NOT_ADMITTED")
+    return _donor_frame(arrays, status, decoded, projection, scope=SCOPE)
+
+
+def _donor_frame(arrays, status, decoded, projection, *, scope):
+    """Shared mechanical checks; the entry point must qualify its source/recipe."""
     known = np.asarray(decoded.amount_known, dtype=bool)
     require(
         np.array_equal(status.typed["RECID"], decoded.typed["RECID"]),
@@ -247,7 +255,7 @@ def donor_frame(arrays: Mapping, status, decoded, projection) -> Frame:
         EntitySchema(group_entities=("tax_unit",)),
         {"tax_unit": Weights(weights, WeightKind.DESIGN)},
         metadata={
-            "scope": SCOPE,
+            "scope": scope,
             "source_projection_sha256": projection.sha256,
             "source_projection_document": projection.canonical.decode("utf-8"),
             "carrier": "one technical person per return; not a taxpayer count",

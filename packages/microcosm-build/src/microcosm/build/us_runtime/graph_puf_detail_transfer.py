@@ -423,19 +423,20 @@ def verify_host_scope(context, frame):
 
 class DetailMatrixKernel(_Kernel):
     ref = "us.fixture_puf_detail.matrix@1"
+    scope = detail.SCOPE
+    host_binding_name = "fixture_host"
+    verify_host = staticmethod(verify_host_scope)
 
     def run(self, context):
-        require(
-            context.params["scope"] == detail.SCOPE, "GENUINE_TRANSFER_NOT_ADMITTED"
-        )
+        require(context.params["scope"] == self.scope, "GENUINE_TRANSFER_NOT_ADMITTED")
         frame = context_frame(context)
-        scope = verify_host_scope(context, frame)
+        scope = self.verify_host(context, frame)
         payload, mask = detail.recipient_matrix(frame)
         binding = {
-            "scope": detail.SCOPE,
+            "scope": self.scope,
             "population": context.node.population,
             "host_content_sha256": detail.population_content(frame),
-            "fixture_host": scope,
+            self.host_binding_name: scope,
             "matrix_sha256": codec.sha(payload),
             "features": list(detail.FEATURES),
             "targets": [detail.TARGET],
@@ -452,7 +453,7 @@ class DetailMatrixKernel(_Kernel):
             },
             artifacts={"matrix": payload, "placement": codec.encode_json(binding)},
             receipt={
-                "scope": detail.SCOPE,
+                "scope": self.scope,
                 "recipient_rows": int(mask.sum()),
                 "zero_weight_rows_retained": True,
                 "source_admission": detail.SOURCE_ADMISSION,
@@ -463,18 +464,22 @@ class DetailMatrixKernel(_Kernel):
 
 class DetailAttachKernel(_Kernel):
     ref = "us.fixture_puf_detail.attach@1"
+    scope = detail.SCOPE
+    host_binding_name = "fixture_host"
+    placement_type = PLACEMENT_TYPE
+    verify_host = staticmethod(verify_host_scope)
 
     def run(self, context):
         require(
-            context.params["scope"] == detail.SCOPE
+            context.params["scope"] == self.scope
             and context.node.outputs
             == (Owned("tax_unit", detail.OUTPUT, "float64", rows=detail.MASK),),
             "DETAIL_OWNERSHIP",
         )
         frame = context_frame(context)
-        scope = verify_host_scope(context, frame)
+        scope = self.verify_host(context, frame)
         matrix = artifact(context, "matrix", model_input.RECIPIENT_MATRIX_TYPE)
-        placement = artifact(context, "placement", PLACEMENT_TYPE)
+        placement = artifact(context, "placement", self.placement_type)
         raw_draw = artifact(context, "raw_draw", codec.RAW_TARGET_TYPE)
         state = artifact(context, "apply_state", MATRIX_APPLY_STATE_TYPE)
         siblings(context, ("matrix", "placement"))
@@ -489,10 +494,10 @@ class DetailAttachKernel(_Kernel):
             matrix.payload == expected
             and binding
             == {
-                "scope": detail.SCOPE,
+                "scope": self.scope,
                 "population": context.node.population,
                 "host_content_sha256": detail.population_content(frame),
-                "fixture_host": scope,
+                self.host_binding_name: scope,
                 "matrix_sha256": codec.sha(expected),
                 "features": list(detail.FEATURES),
                 "targets": [detail.TARGET],
@@ -537,7 +542,7 @@ class DetailAttachKernel(_Kernel):
                 )
             },
             receipt={
-                "scope": detail.SCOPE,
+                "scope": self.scope,
                 "raw_sha256": codec.sha(raw_draw.payload),
                 "matrix_producer_key": matrix.producer_key,
                 "application_producer_key": state.producer_key,
@@ -690,7 +695,7 @@ def verify_materialized_transfer(
         "design_anchors_preserved": True,
         "design_anchor_entities": len(before_design),
         "graph_ledger_preserved": True,
-        "scope": detail.SCOPE,
+        "scope": binding["scope"],
     }
 
 
