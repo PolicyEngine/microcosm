@@ -2,88 +2,67 @@
 
 ## State
 
-2026-09-06: implementation committed; final audited invented validation underway. Gate
-`20260906-200530-plan-61907ef5` is completed, round 8 approved by root and
-Fable, authorized action proceed. The entire 24,373-byte plan matches
-SHA-256 `986752556045f743b18ef95f5bb70f4db623eb1a2d4e64ae34cf3397384e00ab`.
-Gate JSON SHA-256: `58cbc5e23f9758341840036022d96b3c121392723d84a7050eecf15ca13af6e6`.
+Bounded local invented-data implementation is complete. Final evidence packaging
+is in progress; genuine launch calibration is not complete or authorized here.
+The exact agreed plan is SHA-256
+`986752556045f743b18ef95f5bb70f4db623eb1a2d4e64ae34cf3397384e00ab`.
+Durable gate `20260906-200530-plan-61907ef5` remains completed, round 8 approved
+by root and Fable, action authorized proceed. Its saved fingerprint was checked
+before coding and again after implementation.
 
 ## Done
 
-- Read global/repository instructions and full reviewed plan; verified durable
-  gate fingerprint before coding. All four accepted worktrees are clean and
-  match the requested commits.
-- Created fresh branch/worktree `us-origin-group-cap-implementation-20260906`
-  from observed origin/main `c1b8324183819cf91511c002bf724a2676524e87`.
-- Attempted current upstream fetch: blocked by DNS (`Could not resolve host:
-  github.com`). Base is explicitly not claimed freshly verified.
-- Imported accepted factory Git objects locally without modifying source.
-- Verified pinned Python binary SHA-256
-  `bf4ea26231212e330b8e9b6f24969a30f894fec88665bf42754070d114ac7fc6`.
-- Preserved inherited upstream journal in docs/history/origin-group-cap/.
-- Integrated all four accepted heads as actual ancestry; captured legacy bytes
-  before editing the solver. Implemented grouped Adam, immutable budget,
-  clone-aware adapter, mandatory cold/warm admission, and weight-only lineage.
-- Invented core suite passed 99 tests; final source audit rerun is required after
-  adding the real `_toy.py` helper to the audit inventory. Six independent
-  admission tests passed with all 304 loaded sources matching Git before/after.
-- Fresh REQUIRED replay reached successful admission with zero calls; its
-  source audit now distinguishes Torch virtual filenames from repository files.
+- Read the full canonical plan and repository instructions. Created fresh branch
+  `us-origin-group-cap-implementation-20260906`; merged accepted factory
+  `74f711382029619cdd9f2e8b01330628da0c228b` and age/Adam
+  `a4e69c0a1e7b5e953922d6d0a0d0283890c3c329`, retaining native-origin
+  `2c092b69ca2253ca39718bca97beaf5e84c8d4fd` and clone
+  `1f6ffa7b441701cb2b1254e4bb48241e1e2895de` as actual ancestors.
+- Preserved frozen checkouts and six reviewed plan revisions. Preserved inherited
+  progress bytes under docs/history/origin-group-cap; implementation history is
+  committed after coherent steps with hooks disabled and messages checked.
+- Captured invented prepatch legacy weights and trajectory before solver edits
+  in c4718356686b9c8a62088fe09a2db100271b6184. The patched no-group path reproduces
+  both exact digests under the fixed recorded source/runtime/options.
+- Implemented immutable full-materialized origin budget, opt-in grouped positive
+  free-mass Adam, clone-aware typed adapter, mandatory cold/warm admission, and
+  durable weight-only successor lineage. All effective entity weights derive
+  from updated household weights; original cells and anchors remain strict.
+- Fixed real Frame-store metadata loss with format v2 and v1 refusal; no frozen
+  store was migrated. Preserved saved source kernel capabilities.
+- Passed 612 invented tests: 99 solver/budget/store, 6 integrated graph/replay,
+  6 independent admission, 3 wrapper preflight, and 498 source-blindness checks.
+  Fresh isolated REQUIRED replay executed zero kernels with raising/counting
+  stubs and identical keys, final weights, budget, and successor bytes.
+- Final core/replay/preflight/admission/source audits verify loaded repository
+  files against Git before/after. The final replay witness is preserved under
+  the task-specific invented directory and in the review evidence directory.
+- Checked 20,000 invented households/10,000 origins: median strict group check
+  5.06 ms, three single-thread repetitions, before integration testing.
+- Required CI file partition and graph acceptance burndown inventories passed.
+  Independent final review found no remaining implementation defect; its report
+  integrity finding was fixed by requiring clean Git and matching file blobs.
 
 ## Next
 
-- Complete corrected committed-source core and fresh warm replay audits,
-  final preflight, formatting, and required CI inventory checks.
-- Resolve any independent final review findings.
-- Write R/us-origin-group-cap-implementation-REPORT.md and .json.
+- Finish audit packaging for repository lint and changed-file formatting.
+- Emit and commit the requested Markdown/JSON report in the review directory,
+  binding its exact implementation head, files, evidence hashes, and limitations.
+- No real fit, publication, push, deployment, or package operation is in scope.
 
-No genuine data, targets, checkpoints or runtime stores may be read or statted;
-no real fits, heldouts, uncertainty, prior wages, installs, push or publication.
-Every Python process uses the pinned interpreter, -B, a fresh absolute absent
--X pycache_prefix, and child processes also use -I. No hooks. Commit coherent
-steps and verify actual messages. Launch calibration is not complete.
+## Constraints and limitations
 
-Integration: accepted factory and age heads merged; only journal conflicts,
-resolved by retaining each incoming journal byte-for-byte in docs/history/.
-Native origin and clone polish are retained as actual ancestors. Both source
-branches descend from 84e7a011f7bc4d8cb5a7cbd2599b4d893558b1e0.
-
-Prepatch baseline captured and committed before any solver edit (c4718356):
-four invented households, seven epochs, one thread; all 37 loaded Microcosm
-files matched pinned a4e69c0 Git source before/after. Exact weight SHA-256
-260f8beb3154aab82e1484e41f2b8d0cf33e45478b2b106deb66f97b64cbe11a;
-trajectory 01943d29ea7d5e727cf88b02fb37416640471509212cd59181e6b1af6b9b4459.
-Solver, budget/lineage, and runtime audit tasks are independently underway.
-
-Graph implementation now exposes live admitted Populations through a private
-observer on both cold and cached paths. The new adapter independently binds
-frozen typed budget/origin edges, omits scalar incoming row caps, captures exact
-accepted observer weights, and requires complete materialized admission before
-returning a result. Verification and integration tests are still pending.
-
-Verification state:
-- Solver: 49 tests passed with zero skips, including exact stored prepatch
-  no-group weights/trajectory and dense/sparse gradient/observer contracts.
-- Budget and lineage: 27 invented tests passed, including full materialized
-  refusals, same-number native cohort distinctions, original support invariance,
-  direct two-bound diagnostics, and all-entity weight-only propagation.
-- Strict group-check benchmark: 20,000 invented rows/10,000 origins, median
-  5.06 ms per check across three single-thread repetitions.
-- Full integrated factory exposed existing ContentStore loss of Frame metadata
-  on cached restoration. Mandatory budget verification caught it; do not weaken
-  metadata identity. A metadata-preserving frame format with old-format refusal
-  is being implemented and tested. Frozen stores remain untouched.
-- Independent tests cover solver-bypass cold/warm refusal, changed-map rekey,
-  and stale typed diagnostic payload refusal. Full committed-source reruns and
-  fresh REQUIRED zero-call witness remain next.
-
-Runtime integration fixes are committed and source-stable:
-- Frame v2 preserves nested source metadata; 17 store checks pass, and old v1
-  frames refuse without migration.
-- Weight-only lineage records the actual structural computational-owner change;
-  all original source cells, metadata, IDs, memberships and anchors stay strict.
-- 31 budget/preflight checks pass. Wrapper zero initial, zero DESIGN with
-  positive incoming importance, and overbudget inputs all refuse with zero
-  grouped-kernel and optimizer calls.
-- Final artifact diagnostics and persisted successor bytes receive independent
-  semantic checks. Stable final graph/admission/core/inventory checks are next.
+The upstream fetch failed DNS. The observed cached origin/main was
+`c1b8324183819cf91511c002bf724a2676524e87`; it is not claimed freshly verified.
+An initial review-directory listing enumerated entry sizes/timestamps before
+search scope narrowed; no data payload was opened. No genuine microdata,
+reference target, store, checkpoint, heldout, uncertainty, or prior-wage analysis
+was performed. Runtime was the prescribed Python 3.14.4 binary, SHA-256
+`bf4ea26231212e330b8e9b6f24969a30f894fec88665bf42754070d114ac7fc6`, with
+explicit parent/child -B, fresh absent absolute pycache prefixes, and child -I.
+The legacy byte regression uses the recorded 18 Torch inter-op threads; other
+runs use one. CPU/wall limits are enforced; macOS RSS limits are advisory.
+The first runner supports the complete initial positive two-role clone only.
+Old Frame v1 caches refuse. Full remote CI and wheel/install lanes were not run.
+Repository format checking found 101 unchanged inherited files; those bytes are
+preserved. Earlier detailed progress remains in Git and the component journals.
