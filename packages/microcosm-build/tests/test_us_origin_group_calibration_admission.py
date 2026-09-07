@@ -1,9 +1,11 @@
 """Invented solver-bypass admission and actual typed-artifact rekey probes."""
 
+import hashlib
 import importlib.util
 import json
 import math
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -220,6 +222,80 @@ def test_only_group_map_typed_artifact_rekeys_actual_graph_and_refuses_authority
                 "original_constraint_digest": original.grouped_bounds.digest,
                 "changed_constraint_digest": groups.digest,
                 "fabricated_authority_refused": True,
+            },
+            sort_keys=True,
+        )
+    )
+
+
+@pytest.mark.parametrize("field", ["build_count", "options_digest"])
+def test_cold_and_required_warm_refuse_semantically_stale_diagnostics(
+    tmp_path, monkeypatch, field
+):
+    helper = _peer()
+    root = tmp_path / "invented"
+    helper._fixture(root)
+    original_run = stage.GroupedDemographicCalibrationKernel.run
+    solver_calls = []
+
+    def stale(self, context):
+        solver_calls.append(context.node.id)
+        result = original_run(self, context)
+        document = json.loads(result.artifacts["diagnostics"])
+        if field == "build_count":
+            document["build"]["group_count"] += 1
+        else:
+            document["options"]["grouped_upper_bounds"]["constraint_digest"] = "f" * 64
+        payload = canonical_json(document)
+        # Preserve valid solver weights and every receipt diagnostic, while
+        # updating the byte hash so semantic admission must detect this mismatch.
+        return replace(
+            result,
+            artifacts={**result.artifacts, "diagnostics": payload},
+            receipt={
+                **result.receipt,
+                "diagnostics_sha256": hashlib.sha256(payload).hexdigest(),
+            },
+        )
+
+    monkeypatch.setattr(stage.GroupedDemographicCalibrationKernel, "run", stale)
+    message = (
+        "GROUPED_MATERIALIZED_DIAGNOSTIC_ARTIFACT"
+        if field == "build_count"
+        else "GROUPED_MATERIALIZED_DIAGNOSTIC_OPTIONS"
+    )
+    with pytest.raises(budgets.OriginBudgetError, match=message):
+        helper._run(root)
+    assert solver_calls == [stage.CALIBRATION_NODE]
+
+    real_run_graph = stage.run_graph
+    warm_calls = []
+
+    def guarded_warm(compiled, **kwargs):
+        registry = kwargs["kernels"]
+        for ref in {n.kernel for n in compiled.graph.nodes}:
+            kernel = registry.get(ref)
+
+            def forbidden(context, ref=ref):
+                warm_calls.append(ref)
+                raise AssertionError("REQUIRED diagnostics admission executed " + ref)
+
+            kernel.run = forbidden
+        return real_run_graph(compiled, **kwargs)
+
+    monkeypatch.setattr(stage, "run_graph", guarded_warm)
+    with pytest.raises(budgets.OriginBudgetError, match=message):
+        helper._run(root, warm=True)
+    assert warm_calls == []
+    assert solver_calls == [stage.CALIBRATION_NODE]
+    print(
+        json.dumps(
+            {
+                "probe": "stale_diagnostic_artifact",
+                "field": field,
+                "cold_refused": True,
+                "warm_refused": True,
+                "actual_warm_kernel_call_count": len(warm_calls),
             },
             sort_keys=True,
         )
