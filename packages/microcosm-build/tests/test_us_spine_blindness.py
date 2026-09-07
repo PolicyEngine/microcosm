@@ -211,6 +211,9 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "childcare.py",
     "demographic_calibration_graph.py",
     "origin_group_calibration_graph.py",
+    # Enriched runner and count dependency adapter use the ordinary operator
+    # scan; provenance is authenticated by the reviewed upstream consumers.
+    "enriched_origin_calibration.py",
     "disability_benefits.py",
     "domestic_production.py",
     "education_inputs.py",

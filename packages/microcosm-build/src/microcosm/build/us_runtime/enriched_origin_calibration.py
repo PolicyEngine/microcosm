@@ -29,11 +29,12 @@ from microcosm.graph import (
     source_hash,
 )
 from microcosm.graph.artifact_edges import value_from_descriptor
-from microcosm.graph.canonical import canonical_json, sha256_domain
+from microcosm.graph.canonical import canonical_json, normative, sha256_domain
 from microcosm.graph.keys import opaque_artifact_key
 from microcosm.graph.population import _mass_policy, _mass_record, storage_equal
 from microcosm.graph.store import _encode_frame_metadata, _encode_object_scalar
 
+from . import graph_composed_asec_demographics as source_demographics
 from . import graph_national_age_counts as ages
 from . import graph_puf_detail_transfer as transfer
 from . import graph_puf_diagnostic_consumer as puf
@@ -80,6 +81,7 @@ def implementation_hash() -> str:
                     budgets,
                     caps,
                     ages,
+                    source_demographics,
                     dependencies=("numpy", "pandas"),
                 ),
                 "puf": puf.DiagnosticAttachKernel().implementation_hash(),
@@ -112,11 +114,21 @@ class EnrichedAgeCountKernel(ages.NationalAgeCountKernel):
 
     def run(self, context):
         require(
-            context.node.normative() == enriched_age_count_node().normative(),
+            canonical_json(normative(context.node))
+            == canonical_json(normative(enriched_age_count_node())),
             "COUNT_DEPENDENCY_DECLARATION",
         )
         require(
+            canonical_json(dict(context.params))
+            == canonical_json(dict(context.node.params)),
+            "COUNT_DEPENDENCY_PARAMS",
+        )
+        require(
             not context.artifacts and not context.sources, "COUNT_DEPENDENCY_CONTEXT"
+        )
+        require(
+            set(context.tables) == {"person", "household", "tax_unit"},
+            "COUNT_DEPENDENCY_TABLES",
         )
         require(
             context.tables["tax_unit"][detail.OUTPUT].dtype == np.dtype("float64"),
@@ -186,6 +198,16 @@ def _same_frame(a, b, *, additions=None, reweight=False, replay=False) -> None:
     additions = additions or {}
     a.revalidate()
     b.revalidate()
+    for frame in (a, b):
+        person = frame.table("person")
+        for column, _ in source_demographics._RETAINED_STATES:
+            if column in person:
+                cell = person[column]
+                require(
+                    str(cell.dtype) == "Int64"
+                    and not np.any(cell.array._data[cell.array._mask]),
+                    "EXPLICIT_NULL_BACKING",
+                )
     require(a.schema == b.schema and a.entities == b.entities, "SCHEMA")
     require(_physical_metadata(a) == _physical_metadata(b), "FRAME_METADATA")
     require(_frame_log(a) == _frame_log(b), "FRAME_MASS_LOG")
@@ -231,7 +253,9 @@ def _physical_axis_name(axis):
     return canonical_json(_encode_frame_metadata({"name": axis.name}))
 
 
-def same_carried(before, after, *, additions=None, reweight=False) -> None:
+def same_carried(
+    before, after, *, additions=None, reweight=False, writer=None, structural=False
+) -> None:
     """Strict physical comparison within one actual runtime phase."""
     require(before.frame.weighted_entities == ("household",), "WEIGHT_ROSTER")
     _same_frame(before.frame, after.frame, additions=additions, reweight=reweight)
@@ -243,6 +267,21 @@ def same_carried(before, after, *, additions=None, reweight=False) -> None:
                 "CARRIED_WEIGHT",
             )
     require(budgets._anchors(before) == budgets._anchors(after), "ORIGINAL_ANCHORS")
+    if reweight or structural:
+        require(
+            before.version != after.version
+            and all(owner == after.version for owner in after.owners.values()),
+            "STRUCTURAL_OWNERSHIP",
+        )
+    else:
+        expected = dict(before.owners)
+        for entity, columns in (additions or {}).items():
+            require(type(writer) is str and bool(writer), "WRITER_REQUIRED")
+            expected.update({(entity, column): writer for column in columns})
+        require(
+            before.version == after.version and expected == after.owners,
+            "CARRIED_OWNERSHIP",
+        )
 
 
 def verify_cache_replay(before, after):
@@ -290,6 +329,7 @@ def verify_donor(manifest, store, materialized, expected_frame, expected_payload
 
 def check_ledger_append(before, after, node, *, partition) -> None:
     """Recompute the one actual structural record and preserve its whole prefix."""
+    require(after.version == node.id, "STRUCTURAL_VERSION")
     expected = _mass_record(
         before.frame,
         after.frame,
@@ -341,7 +381,9 @@ def host_values(manifest, store, *, native_binding, clone_binding, expected):
 
 def verify_matrix(manifest, store, boundary, materialized, *, values, host_pins, route):
     """Rebuild exact mask, matrix and placement without calling a graph kernel."""
-    same_carried(boundary, materialized, additions={"tax_unit": (detail.MASK,)})
+    same_carried(
+        boundary, materialized, additions={"tax_unit": (detail.MASK,)}, writer=MATRIX
+    )
     require(_log(boundary) == _log(materialized), "MATRIX_LEDGER")
     scope = consumer.qualify_host_population(boundary.frame, values)
     scope.update(route=route, actual_producer_edges=host_pins)
@@ -444,7 +486,12 @@ def verify_draw(manifest, store, matrix, placement, mask, attached):
 def verify_counts(before, after) -> None:
     """Recount each observed person by membership independently of cached output."""
     bands = ages.NATIONAL_AGE_ACTIVATION.bands
-    same_carried(before, after, additions={"household": tuple(b.column for b in bands)})
+    same_carried(
+        before,
+        after,
+        additions={"household": tuple(b.column for b in bands)},
+        writer=COUNT,
+    )
     require(_log(before) == _log(after), "COUNT_LEDGER")
     p, h = before.frame.table("person"), after.frame.table("household")
     age = ages._ages(p)
@@ -507,7 +554,7 @@ def enriched_binding(
         == budget.document["expanded_population_content_sha256"],
         "ORIGINAL_CLONE",
     )
-    same_carried(clone, boundary)
+    same_carried(clone, boundary, structural=True)
     check_ledger_append(
         clone, boundary, graph.node(BOUNDARY), partition=graph.mass_partition
     )
@@ -520,7 +567,9 @@ def enriched_binding(
         host_pins=host_pins,
         route=route,
     )
-    same_carried(matrix_pop, attached, additions={"tax_unit": (detail.OUTPUT,)})
+    same_carried(
+        matrix_pop, attached, additions={"tax_unit": (detail.OUTPUT,)}, writer=ATTACH
+    )
     require(_log(matrix_pop) == _log(attached), "ATTACH_LEDGER")
     transfer.verify_materialized_transfer(
         boundary.frame,
@@ -543,7 +592,8 @@ def enriched_binding(
         counted.frame.weights_for("household").values, positive=True
     )
     require(
-        graph.node(COUNT).normative() == enriched_age_count_node().normative(),
+        canonical_json(normative(graph.node(COUNT)))
+        == canonical_json(normative(enriched_age_count_node())),
         "COUNT_DECLARATION",
     )
     return EnrichedBinding(
@@ -815,7 +865,7 @@ def run_enriched_calibration(
     # transition checks below use this phase's actual clone, not cold buffers.
     clone = live[clone_binding]
     boundary, matrix_pop = live[BOUNDARY], live[MATRIX]
-    same_carried(clone, boundary)
+    same_carried(clone, boundary, structural=True)
     check_ledger_append(
         clone, boundary, full.node(BOUNDARY), partition=full.mass_partition
     )

@@ -53,6 +53,12 @@ own implementation inventory; do not change the shared v1 inventory to register
 it. Original ASEC household-member pins require a separate source audit; neither
 the derived household HDF nor the original person member substitutes for them.
 
+The bounded PUF-before-count/calibration integration is documented in
+`docs/us-puf-enriched-origin-calibration.md`. It preserves original group caps
+and requires distinct enriched-parent/successor bindings. Keep the explicit
+attachment dependency and materialized replay checks; a matching content
+digest alone cannot authenticate attached draws, metadata or graph ledgers.
+
 IRS fiscal targets require explicit supported return universes and actual model
 filer decisions before household aggregation. Target-frame materializer version
 13 invalidates older SOI measurements; its compilation receipt records filing

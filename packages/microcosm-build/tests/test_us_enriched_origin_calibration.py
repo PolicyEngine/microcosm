@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.requires_us
+
 # The accepted target helper has an optional genuine aggregate test fixture.
 # This file uses only its explicit invented constructors, with no ambient path.
 os.environ.pop("MICROCOSM_US_NATIONAL_ACS_BUNDLE", None)
@@ -212,6 +214,32 @@ def test_typed_index_name_refuses_int_to_boolean(implementation):
             check(before, after)
 
 
+def test_source_owned_zero_backing_is_not_a_replay_exception(implementation):
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.graph.population import Population
+
+    stage = implementation
+    frame = tiny_population().frame
+    for column, _ in stage.source_demographics._RETAINED_STATES:
+        frame.person[column] = pd.Series(
+            pd.arrays.IntegerArray(
+                np.zeros(2, dtype="int64"),
+                np.ones(2, dtype=bool),
+            )
+        )
+    before = Population.from_frame(frame, version="invented")
+    after = changed_population(before)
+    first = stage.source_demographics._RETAINED_STATES[0][0]
+    after.frame.person[first].array._data[1] = 1
+    for check in (stage.verify_cache_replay, stage.same_carried):
+        with pytest.raises(
+            stage.budgets.OriginBudgetError, match="EXPLICIT_NULL_BACKING"
+        ):
+            check(before, after)
+
+
 def test_object_strata_replay_uses_real_scalar_codec(implementation):
     import pandas as pd
 
@@ -240,6 +268,83 @@ def implementation():
     from microcosm.build.us_runtime import enriched_origin_calibration
 
     return enriched_origin_calibration
+
+
+def count_context(stage):
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.graph import KernelContext
+
+    node = stage.enriched_age_count_node()
+    return KernelContext(
+        node=node,
+        tables={
+            "person": pd.DataFrame({"person_household_id": [1, 2], "age": [7, 63]}),
+            "household": pd.DataFrame({"household_id": [1, 2]}),
+            "tax_unit": pd.DataFrame({stage.detail.OUTPUT: [float("nan"), 11.0]}),
+        },
+        weights={},
+        strata=pd.Series(["invented", "invented"]),
+        params=node.params,
+        rng=np.random.default_rng(0),
+    )
+
+
+def test_scoped_count_uses_unchanged_calculation(implementation):
+    from dataclasses import replace
+
+    stage = implementation
+    context = count_context(stage)
+    actual = stage.EnrichedAgeCountKernel().run(context)
+    expected = stage.ages.NationalAgeCountKernel().run(
+        replace(
+            context,
+            node=stage.ages.national_age_count_node(population=stage.BOUNDARY),
+            tables={e: context.tables[e] for e in ("person", "household")},
+        )
+    )
+    assert actual.receipt == expected.receipt
+    assert actual.columns.keys() == expected.columns.keys()
+    assert all(
+        stage.storage_equal(actual.columns[c], expected.columns[c])
+        for c in expected.columns
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["dependency", "dtype", "table", "params", "schema_bool", "schema_float"],
+)
+def test_scoped_count_dependency_refusals(implementation, mutation):
+    from dataclasses import replace
+
+    stage = implementation
+    context = count_context(stage)
+    if mutation == "dependency":
+        context = replace(
+            context, node=replace(context.node, inputs=context.node.inputs[:-1])
+        )
+    elif mutation == "dtype":
+        tables = dict(context.tables)
+        tables["tax_unit"] = tables["tax_unit"].astype("float32")
+        context = replace(context, tables=tables)
+    elif mutation == "table":
+        context = replace(
+            context, tables={e: t for e, t in context.tables.items() if e != "tax_unit"}
+        )
+    elif mutation in ("schema_bool", "schema_float"):
+        params = {
+            **context.params,
+            "schema_version": True if mutation == "schema_bool" else 1.0,
+        }
+        context = replace(
+            context, node=replace(context.node, params=params), params=params
+        )
+    else:
+        context = replace(context, params={**context.params, "maximum_age": 121})
+    with pytest.raises(ValueError):
+        stage.EnrichedAgeCountKernel().run(context)
 
 
 def prepare(root):
@@ -413,3 +518,218 @@ def test_actual_26_node_staged_pipeline(cold_run):
         "weight_hex"
     ]
     assert (root / "cold.json").is_file()
+
+
+def changed_population(population, mutate=None, **frame_changes):
+    from dataclasses import replace
+
+    from microcosm.frame import Frame
+
+    frame = population.frame
+    tables = {e: frame.table(e).copy(deep=True) for e in frame.entities}
+    if mutate:
+        mutate(tables)
+    parameters = dict(metadata=frame.metadata, mass_log=frame.mass_log)
+    parameters.update(frame_changes)
+    changed = Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+        **parameters,
+    )
+    return replace(population, frame=changed)
+
+
+@pytest.mark.parametrize(
+    "mutation", ["columns", "metadata", "frame_log", "owner", "anchor"]
+)
+def test_materialized_nonowned_properties_refuse(cold_run, implementation, mutation):
+    from dataclasses import replace
+
+    from microcosm.frame import MassChangeRecord
+
+    _, result = cold_run
+    before = result["populations"][implementation.ATTACH]
+    after = changed_population(before)
+    if mutation == "columns":
+        after = changed_population(
+            before,
+            lambda t: t.update(person=t["person"][list(t["person"].columns)[::-1]]),
+        )
+    elif mutation == "metadata":
+        after = changed_population(
+            before, metadata={**before.frame.metadata, "invented_new": True}
+        )
+    elif mutation == "frame_log":
+        after = changed_population(
+            before,
+            mass_log=(
+                *before.frame.mass_log,
+                MassChangeRecord("household", 1.0, 1.0, 1.0, "invented"),
+            ),
+        )
+    elif mutation == "owner":
+        owners = dict(after.owners)
+        owners[next(iter(owners))] = "invented_wrong_writer"
+        after = replace(after, owners=owners)
+    else:
+        anchors = {e: v.copy() for e, v in after.design_weights.items()}
+        anchors["household"][0] += 1
+        after = replace(after, design_weights=anchors)
+    with pytest.raises(implementation.budgets.OriginBudgetError):
+        implementation.same_carried(before, after)
+
+
+@pytest.mark.parametrize("mutation", ["output", "native_null", "mask_same_count"])
+def test_materialized_puf_values_bound_to_real_draw(cold_run, implementation, mutation):
+    import numpy as np
+
+    _, result = cold_run
+    stage = implementation
+    manifest, store = result["manifest"], result["store"]
+    matrix = stage.edge_value(
+        manifest, store, stage.MATRIX, "matrix", stage.model_input.RECIPIENT_MATRIX_TYPE
+    )
+    placement = stage.edge_value(
+        manifest, store, stage.MATRIX, "placement", stage.puf.PLACEMENT_TYPE
+    )
+    before = result["populations"][stage.ATTACH]
+    mask = before.frame.table("tax_unit")[stage.detail.MASK].to_numpy().copy()
+    selected, native = np.flatnonzero(mask)[0], np.flatnonzero(~mask)[0]
+
+    def mutate(tables):
+        table = tables["tax_unit"]
+        if mutation == "output":
+            table.loc[table.index[selected], stage.detail.OUTPUT] += 1.0
+        elif mutation == "native_null":
+            table.loc[table.index[native], stage.detail.OUTPUT] = 0.0
+        else:
+            table.loc[table.index[[selected, native]], stage.detail.MASK] = [
+                False,
+                True,
+            ]
+            assert int(table[stage.detail.MASK].sum()) == int(mask.sum())
+
+    after = changed_population(before, mutate)
+    with pytest.raises(stage.budgets.OriginBudgetError):
+        stage.verify_draw(manifest, store, matrix, placement, mask, after)
+
+
+@pytest.mark.parametrize("mutation", ["count", "ledger_prefix", "owner"])
+def test_materialized_counts_and_full_ledger_refuse(cold_run, implementation, mutation):
+    from dataclasses import replace
+
+    _, result = cold_run
+    stage = implementation
+    before, after = (result["populations"][n] for n in (stage.ATTACH, stage.COUNT))
+    if mutation == "count":
+        column = stage.ages.NATIONAL_AGE_ACTIVATION.bands[0].column
+
+        def mutate(t):
+            t["household"].loc[t["household"].index[0], column] += 1
+
+        after = changed_population(after, mutate)
+    elif mutation == "ledger_prefix":
+        assert len(after.mass_ledger) > 1
+        after = replace(after, mass_ledger=after.mass_ledger[1:])
+    else:
+        owners = dict(after.owners)
+        owners[("household", stage.ages.NATIONAL_AGE_ACTIVATION.bands[0].column)] = (
+            stage.ATTACH
+        )
+        after = replace(after, owners=owners)
+    with pytest.raises(stage.budgets.OriginBudgetError):
+        stage.verify_counts(before, after)
+
+
+class PayloadView:
+    """Invented in-memory corruption; never rewrite the accepted cache."""
+
+    def __init__(self, store, changes):
+        self.store, self.changes = store, changes
+
+    def load_bytes(self, key):
+        return self.changes[key] if key in self.changes else self.store.load_bytes(key)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "budget",
+        "receipt_sha",
+        "budget_sha256",
+        "budget_artifact_key",
+        "accepted_weight_sha256",
+    ],
+)
+def test_materialized_diagnostic_identities_refuse(cold_run, implementation, mutation):
+    from dataclasses import replace
+
+    _, result = cold_run
+    stage = implementation
+    manifest, store = result["manifest"], result["store"]
+    receipt = manifest.node(stage.caps.CALIBRATION_NODE)
+    updated = dict(receipt.receipt)
+    changes = {}
+    if mutation == "budget":
+        key = manifest.node(stage.caps.BUDGET_NODE).opaque_artifacts["budget"]
+        changes[key] = b"{}"
+    elif mutation == "receipt_sha":
+        updated["diagnostics_sha256"] = "0" * 64
+    else:
+        key = receipt.opaque_artifacts["diagnostics"]
+        document = json.loads(store.load_bytes(key))
+        document["build"][mutation] = "0" * 64
+        changes[key] = stage.canonical_json(document)
+        updated["diagnostics_sha256"] = stage.sha(changes[key])
+    receipts = dict(manifest.nodes)
+    receipts[stage.caps.CALIBRATION_NODE] = replace(receipt, receipt=updated)
+    manifest = replace(manifest, nodes=receipts)
+    with pytest.raises(stage.budgets.OriginBudgetError):
+        stage.verify_final_diagnostics(
+            manifest,
+            PayloadView(store, changes),
+            result["budget"],
+            result["populations"][stage.caps.CALIBRATION_NODE],
+        )
+
+
+@pytest.mark.parametrize("mutation", ["frame", "transport", "receipt"])
+def test_materialized_donor_refuses_before_fit_boundary(
+    cold_run, implementation, mutation
+):
+    from dataclasses import replace
+
+    root, result = cold_run
+    stage = implementation
+    data = json.loads((root / "inputs.json").read_text())
+    payloads = {
+        role: (root / "transport" / (role + ".bin")).read_bytes()
+        for role in stage.consumer.ROLES
+    }
+    expected, payload = stage.consumer.qualify_price_transport(
+        payloads,
+        data["price_pins"],
+        route="test_fixture",
+        recipe=stage.consumer.recipe_document(),
+    )
+    manifest, store = result["manifest"], result["store"]
+    donor = result["populations"][stage.puf.PREFIX + ".donor"]
+    receipt = manifest.node(stage.puf.PREFIX + ".donor")
+    if mutation == "frame":
+
+        def mutate(t):
+            t["tax_unit"].loc[t["tax_unit"].index[0], stage.detail.FEATURES[0]] += 1
+
+        donor = changed_population(donor, mutate)
+    elif mutation == "transport":
+        store = PayloadView(store, {receipt.opaque_artifacts["transport"]: b"{}"})
+    else:
+        receipts = dict(manifest.nodes)
+        receipts[stage.puf.PREFIX + ".donor"] = replace(
+            receipt, receipt={**receipt.receipt, "transport_sha256": "0" * 64}
+        )
+        manifest = replace(manifest, nodes=receipts)
+    with pytest.raises(stage.budgets.OriginBudgetError):
+        stage.verify_donor(manifest, store, donor, expected, payload)
