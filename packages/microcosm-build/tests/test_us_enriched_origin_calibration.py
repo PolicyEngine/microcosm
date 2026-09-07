@@ -201,6 +201,40 @@ def test_typed_metadata_refuses_int_to_boolean(implementation):
             check(before, after)
 
 
+def test_typed_index_name_refuses_int_to_boolean(implementation):
+    before, after = tiny_population(), tiny_population()
+    before.frame.person.index.name = 1
+    after.frame.person.index.name = True
+    for check in (implementation.verify_cache_replay, implementation.same_carried):
+        with pytest.raises(
+            implementation.budgets.OriginBudgetError, match="ORDERED_COLUMNS_OR_AXIS"
+        ):
+            check(before, after)
+
+
+def test_object_strata_replay_uses_real_scalar_codec(implementation):
+    import pandas as pd
+
+    before = pd.Series(["".join(["invented", " stratum ", "one"])], dtype=object)
+    after = pd.Series([bytes(before.iloc[0], "utf8").decode("utf8")], dtype=object)
+    assert before.iloc[0] is not after.iloc[0]
+    assert not implementation.storage_equal(before, after)
+    assert implementation.cache_strata_equal(before, after)
+    assert not implementation.cache_canonical_storage_equal(before, after)
+
+
+@pytest.mark.parametrize(
+    "left,right",
+    [(1, True), (1, 1.0), (0.0, -0.0), (None, ""), ("a", b"a"), ("a", "b")],
+)
+def test_object_strata_tags_and_bits_remain_exact(implementation, left, right):
+    import pandas as pd
+
+    assert not implementation.cache_strata_equal(
+        pd.Series([left], dtype=object), pd.Series([right], dtype=object)
+    )
+
+
 @pytest.fixture(scope="module")
 def implementation():
     from microcosm.build.us_runtime import enriched_origin_calibration
@@ -343,6 +377,13 @@ def run_fixture(root, *, warm=False):
 
 @pytest.fixture(scope="module")
 def cold_run(tmp_path_factory):
+    prepared = os.environ.get("MICROCOSM_ENRICHED_INVENTED_PREPARED")
+    if prepared:
+        root = Path(prepared)
+        assert root.is_absolute() and root.name.startswith("invented-enriched-")
+        assert not (root / "integration-store").exists()
+        assert not (root / "admission").exists()
+        return root, run_fixture(root)
     root = tmp_path_factory.mktemp("enriched-literals") / "invented"
     prepare(root)
     return root, run_fixture(root)

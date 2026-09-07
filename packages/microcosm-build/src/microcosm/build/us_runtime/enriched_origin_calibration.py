@@ -30,7 +30,7 @@ from microcosm.graph.artifact_edges import value_from_descriptor
 from microcosm.graph.canonical import canonical_json, sha256_domain
 from microcosm.graph.keys import opaque_artifact_key
 from microcosm.graph.population import _mass_policy, _mass_record, storage_equal
-from microcosm.graph.store import _encode_frame_metadata
+from microcosm.graph.store import _encode_frame_metadata, _encode_object_scalar
 
 from . import graph_national_age_counts as ages
 from . import graph_puf_detail_transfer as transfer
@@ -118,9 +118,24 @@ def cache_canonical_storage_equal(left, right) -> bool:
 
 
 def _same_axis(left, right):
-    return _encode_frame_metadata({"name": left.name}) == _encode_frame_metadata(
-        {"name": right.name}
-    ) and storage_equal(pd.Series(left.array), pd.Series(right.array))
+    return _physical_axis_name(left) == _physical_axis_name(right) and storage_equal(
+        pd.Series(left.array), pd.Series(right.array)
+    )
+
+
+def cache_strata_equal(left, right):
+    """Compare replayed object strata by the accepted store's scalar tags.
+
+    Object ndarray bytes are memory addresses. This rule is limited to strata;
+    it never replaces the physical comparator for Frame data columns.
+    """
+    if left.dtype != right.dtype or not _same_axis(left.index, right.index):
+        return False
+    if left.dtype != np.dtype("object"):
+        return cache_canonical_storage_equal(left, right)
+    return np.array_equal(left.isna().to_numpy(), right.isna().to_numpy()) and tuple(
+        _encode_object_scalar(v) for v in left.to_numpy(object)
+    ) == tuple(_encode_object_scalar(v) for v in right.to_numpy(object))
 
 
 def _same_frame(a, b, *, additions=None, reweight=False, replay=False) -> None:
@@ -158,7 +173,11 @@ def _same_frame(a, b, *, additions=None, reweight=False, replay=False) -> None:
             a.strata is not None
             and b.strata is not None
             and _same_axis(a.strata.index, b.strata.index)
-            and equal(a.strata, b.strata)
+            and (
+                cache_strata_equal(a.strata, b.strata)
+                if replay
+                else storage_equal(a.strata, b.strata)
+            )
         ),
         "STRATA",
     )
@@ -573,6 +592,44 @@ def weight_successor(parent, budget, before, after, *, node, partition):
     )
 
 
+def verify_final_diagnostics(final, store, budget, current):
+    """Reconcile budget, receipts, accepted float64 weights and diagnostics."""
+    receipt = final.node(caps.CALIBRATION_NODE)
+    values = current.frame.weights_for("household").values
+    corrected = receipt.receipt["last_corrected_group_count"]
+    diagnostic = edge_value(
+        final,
+        store,
+        caps.CALIBRATION_NODE,
+        "diagnostics",
+        caps.demographic.DIAGNOSTICS_TYPE,
+    )
+    document = json.loads(diagnostic.payload)
+    materialized_budget = edge_value(
+        final, store, caps.BUDGET_NODE, "budget", budgets.BUDGET_TYPE
+    )
+    require(materialized_budget.payload == budget.payload, "MATERIALIZED_BUDGET")
+    expected = budget.diagnostics(values, corrected)
+    require(
+        canonical_json(document) == diagnostic.payload
+        and sha(values.tobytes()) == receipt.receipt["accepted_weight_sha256"]
+        and sha(diagnostic.payload) == receipt.receipt["diagnostics_sha256"]
+        and document["build"].get("budget_sha256") == budget.digest
+        and document["build"].get("budget_artifact_key") == materialized_budget.key
+        and document["build"].get("accepted_weight_sha256") == sha(values.tobytes()),
+        "FINAL_DIAGNOSTICS",
+    )
+    require(
+        canonical_json({n: receipt.receipt.get(n) for n in expected})
+        == canonical_json(expected)
+        and canonical_json({n: document["build"].get(n) for n in expected})
+        == canonical_json(expected)
+        and canonical_json(document["options"]["grouped_upper_bounds"])
+        == canonical_json(budget.grouped_bounds.diagnostics(values, corrected)),
+        "DIAGNOSTIC_RECONSTRUCTION",
+    )
+
+
 def _persist(path, payload, *, warm):
     path = Path(path)
     if path.exists():
@@ -622,11 +679,22 @@ def run_enriched_calibration(
     evidence_directory = Path(evidence_directory)
     evidence_directory.mkdir(exist_ok=True)
     live, phases = {}, []
+    replay_boundaries = {
+        native_binding,
+        clone_binding,
+        BOUNDARY,
+        MATRIX,
+        ATTACH,
+        COUNT,
+        caps.CALIBRATION_NODE,
+    }
 
     def run(graph, additional_sources=None):
         used = {s.name for s in graph.sources}
         actual = {**sources, **(additional_sources or {})}
-        previous = dict(live)
+        previous = {
+            name: pop for name, pop in live.items() if name in replay_boundaries
+        }
         manifest = run_graph(
             compile_graph(graph),
             sources={n: actual[n] for n in used},
@@ -804,39 +872,7 @@ def run_enriched_calibration(
         partition=final_graph.mass_partition,
     )
     receipt = final.node(caps.CALIBRATION_NODE)
-    values = current.frame.weights_for("household").values
-    corrected = receipt.receipt["last_corrected_group_count"]
-    diagnostic = edge_value(
-        final,
-        store,
-        caps.CALIBRATION_NODE,
-        "diagnostics",
-        caps.demographic.DIAGNOSTICS_TYPE,
-    )
-    document = json.loads(diagnostic.payload)
-    materialized_budget = edge_value(
-        final, store, caps.BUDGET_NODE, "budget", budgets.BUDGET_TYPE
-    )
-    require(materialized_budget.payload == budget.payload, "MATERIALIZED_BUDGET")
-    expected = budget.diagnostics(values, corrected)
-    require(
-        canonical_json(document) == diagnostic.payload
-        and sha(values.tobytes()) == receipt.receipt["accepted_weight_sha256"]
-        and sha(diagnostic.payload) == receipt.receipt["diagnostics_sha256"]
-        and document["build"].get("budget_sha256") == budget.digest
-        and document["build"].get("budget_artifact_key") == materialized_budget.key
-        and document["build"].get("accepted_weight_sha256") == sha(values.tobytes()),
-        "FINAL_DIAGNOSTICS",
-    )
-    require(
-        canonical_json({n: receipt.receipt.get(n) for n in expected})
-        == canonical_json(expected)
-        and canonical_json({n: document["build"].get(n) for n in expected})
-        == canonical_json(expected)
-        and canonical_json(document["options"]["grouped_upper_bounds"])
-        == canonical_json(budget.grouped_bounds.diagnostics(values, corrected)),
-        "DIAGNOSTIC_RECONSTRUCTION",
-    )
+    verify_final_diagnostics(final, store, budget, current)
     _persist(evidence_directory / "weight-successor.json", successor.payload, warm=warm)
     key = sha256_domain(
         "puf-age-enriched-weight-successor",
