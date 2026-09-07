@@ -35,14 +35,17 @@ def main():
     assert certificate["artifact_revision"]["sha256"] == PLAN_SHA
     assert certificate["peer_verdict"]["verdict"] == "approve"
     assert certificate["main_approval"]["approved"] is True
+    assert not git("status", "--porcelain"), "Implementation worktree must be clean"
     head = git("rev-parse", "HEAD")
     files = {}
     for name in git("diff", "--name-only", INTEGRATION, head).splitlines():
         path = ROOT / name
         if path.is_file():
+            blob = git("rev-parse", f"{head}:{name}")
+            assert git("hash-object", "--", name) == blob, name
             files[name] = {
                 "sha256": digest(path),
-                "git_blob": git("rev-parse", f"{head}:{name}"),
+                "git_blob": blob,
             }
     pins = [
         (
@@ -97,6 +100,7 @@ def main():
         "us-origin-group-cap-final-admission.json",
         "us-origin-group-cap-final-preflight.json",
         "us-origin-group-cap-final-inventory.json",
+        "us-origin-group-cap-final-burndown.json",
         "us-origin-group-cap-final-lint.json",
         "us-origin-group-cap-final-format.json",
         "us-origin-group-cap-spine-001.json",
@@ -137,6 +141,16 @@ def main():
     )
     assert observed["warm"]["calls"] == []
     assert observed["cold"]["keys"] == observed["warm"]["keys"]
+    inherited_format = REPORTS / "us-origin-group-cap-inherited-format.log"
+    inherited_paths = re.findall(
+        r"^Would reformat: (.+)$", inherited_format.read_text(), re.MULTILINE
+    )
+    assert not set(inherited_paths) & set(files), "Changed files must be formatted"
+    evidence[inherited_format.name] = {
+        "path": str(inherited_format),
+        "sha256": digest(inherited_format),
+        "unchanged_inherited_paths": inherited_paths,
+    }
     notes = [
         "GitHub fetch was attempted and failed: Could not resolve host github.com. The observed origin/main c1b8324183819cf91511c002bf724a2676524e87 was used; current upstream main is not claimed freshly verified.",
         "Frame-store format v2 was necessary because v1 silently omitted source Frame metadata. Existing v1 Frame artifacts now refuse; no frozen or genuine store was migrated or opened.",
@@ -145,6 +159,7 @@ def main():
         "The matching prepatch byte regression uses one Torch intra-op/BLAS thread and the recorded 18 inter-op threads. Other bounded runs use one intra-op/inter-op thread. CPU and wall limits are enforced; macOS RSS limits are advisory.",
         "Preflight scope exception: an initial review-directory listing enumerated entry sizes/timestamps before discovery was narrowed. No data payload was opened. A strict no-metadata-stat claim for that initial listing is therefore not made.",
         "Local checks are the explicit invented test and source inventories listed here; no remote PR CI, wheel build/install lane, or genuine release certification was run.",
+        f"Repository-wide ruff check passed. Formatting passed for every changed Python source/test/tool; repository-wide format checking identified {len(inherited_paths)} unchanged inherited files. Those files were preserved and are listed in the evidence.",
     ]
     result = {
         "status": "bounded_local_implementation",
