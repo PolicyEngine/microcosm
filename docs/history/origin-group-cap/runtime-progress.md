@@ -86,6 +86,15 @@ during a check or importing Microcosm from a different checkout fails its audit.
 
 ## Next
 
+- Independent admission probes were added in
+  `test_us_origin_group_calibration_admission.py` (commit `6a0141e52`), covering
+  real cold/warm solver-bypass refusal for both inequalities and actual typed
+  group-map cache rekeying. The first audited run preserved in
+  `us-origin-group-cap-admission-001.json` reached and passed both cold refusal
+  assertions, then failed replay at complete budget identity checks. The root
+  investigation identified cached population metadata loss; those tests remain
+  red until the real storage path preserves the complete identity. The audit
+  recorded no loaded-source mutation during this run.
 - The implementing agents run the selected invented solver, budget, lineage,
   and adapter tests through this launcher. Each additional Python subprocess
   created by a test must also use explicit `-I -B -X` and its own fresh absent
