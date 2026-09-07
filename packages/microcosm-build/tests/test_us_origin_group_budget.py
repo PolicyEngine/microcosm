@@ -64,15 +64,23 @@ class _Importance(KernelBase):
     )
 
     def run(self, context):
-        return KernelResult(
-            weights=Weights(
-                context.weights["household"].values * 0.5, WeightKind.IMPORTANCE
-            )
+        values = (
+            np.asarray(context.params["incoming_weights"], dtype=np.float64)
+            if "incoming_weights" in context.params
+            else context.weights["household"].values * 0.5
         )
+        return KernelResult(weights=Weights(values, WeightKind.IMPORTANCE))
 
 
 def invented_budget_graph(
-    tmp_path, monkeypatch, *, positive=False, omit_column=False, duplicate_root=False
+    tmp_path,
+    monkeypatch,
+    *,
+    positive=False,
+    omit_column=False,
+    duplicate_root=False,
+    positive_incoming_zero_design=False,
+    return_execution_args=False,
 ):
     """Real source producer, CREATE/IMPORTANCE/EXPAND and typed origin graph."""
     peer = _peer("test_us_graph_native_household_origin")
@@ -90,10 +98,13 @@ def invented_budget_graph(
         [pd.NA if i % 3 == 0 else i % 2 == 0 for i in range(source.n("person"))],
         dtype="boolean",
     )
+    design_weights = weights * 2
+    if positive_incoming_zero_design:
+        design_weights[0] = 0.0
     source = Frame(
         {e: source.table(e) for e in source.entities},
         source.schema,
-        {"household": Weights(weights * 2, WeightKind.DESIGN)},
+        {"household": Weights(design_weights, WeightKind.DESIGN)},
         source.strata,
     )
     source_path = ContentStore(root / "design-input").put_frame("d" * 64, source)
@@ -126,6 +137,9 @@ def invented_budget_graph(
                 structural=StructuralDelta.REWEIGHT,
                 weights=WeightTransition("household", "importance", mass="free"),
                 mass="free",
+                params={"incoming_weights": tuple(weights.tolist())}
+                if positive_incoming_zero_design
+                else {},
             ),
             *origins.native_origin_source_nodes(population="importance"),
             origins.native_origin_binding_node(
@@ -180,6 +194,13 @@ def invented_budget_graph(
         design_multiplier=2.0,
         incoming_multiplier=3.0,
     )
+    if return_execution_args:
+        return (
+            manifest,
+            store,
+            kwargs,
+            dict(prefix_graph=graph, sources=sources, kernels=registry),
+        )
     return manifest, store, kwargs
 
 
@@ -556,3 +577,48 @@ def test_v4_source_number_cohort_and_lexical_identity_are_not_role_ids():
     asec_2024 = origin_key(AsecHouseholdOrigin(member, 2024, 11))
     assert len({acs_leading, acs_plain, asec_2023, asec_2024}) == 4
     assert acs_leading == origin_key(AcsHouseholdOrigin(member, 2024, "0011"))
+
+
+def test_successor_accepts_exact_real_reweight_ownership_and_rejects_mixed(
+    materialized,
+):
+    from microcosm.graph.population import patch
+
+    budget = _budget(materialized)
+    previous = materialized[2]["expanded_population"]
+    node = Node(
+        "invented_complete_reweight",
+        "test.origin_budget.reweight@1",
+        base=previous.version,
+        structural=StructuralDelta.REWEIGHT,
+        weights=WeightTransition("household", "calibrated", mass="free"),
+        mass="free",
+        params={"max_weight_ratio": 2.0, "weight_anchor": "design"},
+    )
+    current = patch(
+        previous,
+        node,
+        KernelResult(
+            weights=Weights(
+                previous.frame.weights_for("household").values.copy(),
+                WeightKind.CALIBRATED,
+            )
+        ),
+    )
+    assert set(current.owners.values()) == {current.version}
+    assert current.owners != previous.owners
+    binding = budget_module.bind_weight_only_successor(
+        budget, previous=previous, current=current
+    )
+    assert (
+        binding.document["old_computational_ownership_sha256"]
+        != binding.document["new_computational_ownership_sha256"]
+    )
+    mixed = dict(current.owners)
+    mixed[next(iter(mixed))] = "fabricated_mixed_owner"
+    with pytest.raises(
+        budget_module.OriginBudgetError, match="SUCCESSOR_COMPUTATIONAL_OWNERSHIP"
+    ):
+        budget_module.bind_weight_only_successor(
+            budget, previous=previous, current=replace(current, owners=mixed)
+        )

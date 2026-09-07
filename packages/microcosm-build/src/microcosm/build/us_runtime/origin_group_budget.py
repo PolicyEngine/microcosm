@@ -75,6 +75,17 @@ def _anchors(population):
     }
 
 
+def _ownership_identity(population):
+    return _sha(
+        canonical_json(
+            [
+                [entity, column, owner]
+                for (entity, column), owner in sorted(population.owners.items())
+            ]
+        )
+    )
+
+
 def _derived_weights(frame):
     _require(frame.weighted_entities == ("household",), "HOUSEHOLD_ONLY_WEIGHTS")
     _require(
@@ -478,10 +489,17 @@ def bind_weight_only_successor(budget, *, previous, current, previous_binding=No
     _require(
         before.schema == after.schema
         and before.entities == after.entities
-        and previous.owners == current.owners
         and canonical_json(dict(before.metadata))
         == canonical_json(dict(after.metadata)),
         "SUCCESSOR_POPULATION_SHAPE",
+    )
+    # A structural graph REWEIGHT intentionally assigns computational ownership
+    # of every cell to the new version. This is distinct from immutable survey
+    # source evidence, all of whose cells/metadata are compared below.
+    _require(
+        previous.owners == current.owners
+        or all(owner == current.version for owner in current.owners.values()),
+        "SUCCESSOR_COMPUTATIONAL_OWNERSHIP",
     )
     for entity in before.entities:
         left, right = before.table(entity), after.table(entity)
@@ -520,6 +538,8 @@ def bind_weight_only_successor(budget, *, previous, current, previous_binding=No
         "new_population_content_sha256": new_identity,
         "old_population_version": previous.version,
         "new_population_version": current.version,
+        "old_computational_ownership_sha256": _ownership_identity(previous),
+        "new_computational_ownership_sha256": _ownership_identity(current),
         "previous_binding_sha256": doc["expanded_binding_sha256"]
         if previous_binding is None
         else previous_binding.digest,
