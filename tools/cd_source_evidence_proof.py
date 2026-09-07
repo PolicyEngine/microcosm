@@ -36,7 +36,7 @@ PREFIX = Path(sys.pycache_prefix)
 assert PREFIX.is_absolute() and not PREFIX.exists()
 assert hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest() == PYTHON_SHA
 parser = argparse.ArgumentParser()
-parser.add_argument("mode", choices=("inventory", "smoke", "cold", "warm", "checks"))
+parser.add_argument("mode", choices=("inventory", "smoke", "cold", "warm", "checks", "successor"))
 parser.add_argument("--root", type=Path, required=True)
 parser.add_argument("--dev", action="store_true")
 parser.add_argument("--label", default="")
@@ -194,6 +194,23 @@ if args.mode == "inventory":
     }
 elif args.mode == "smoke":
     result = {"implementation_sha256": identity.implementation_hash()}
+elif args.mode == "successor":
+    from survey_lineage_prep.invented import peer
+
+    fixture = peer(W, "test_us_enriched_origin_calibration")
+    restored = fixture.run_fixture(ROOT / "replay", warm=True)
+    fixture.test_cd_adapter_authenticates_issued_successor_frame_log((ROOT / "replay", restored))
+    assert not restored["kernel_calls"] and not restored["source_calls"]
+    assert [phase["hits"] for phase in restored["phases"]] == [17, 20, 23, 24, 26]
+    result = {
+        "checks": ["real669_successor_unchanged_pass", "current_frame_mass_log_only_refused"],
+        "kernel_calls": restored["kernel_calls"],
+        "source_codec_calls": restored["source_calls"],
+        "phase_hits": [phase["hits"] for phase in restored["phases"]],
+        "parent_sha256": restored["parent"].digest,
+        "successor_sha256": restored["successor"].digest,
+        "keys": {name: value.key for name, value in restored["manifest"].nodes.items()},
+    }
 else:
     from cd_source_evidence_checks import run
 
