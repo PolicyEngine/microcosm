@@ -21,6 +21,8 @@ from microcosm.frame import WeightKind
 from microcosm.graph import (
     ArtifactType,
     KernelResult,
+    Numeric,
+    Slice,
     SourceRef,
     compile_graph,
     run_graph,
@@ -85,6 +87,48 @@ def implementation_hash() -> str:
             }
         )
     )
+
+
+def enriched_age_count_node():
+    """The exact accepted count schema, downstream of the real PUF output."""
+    original = ages.national_age_count_node(population=BOUNDARY)
+    return replace(
+        original,
+        kernel=EnrichedAgeCountKernel.ref,
+        inputs=(*original.inputs, Slice("tax_unit", (detail.OUTPUT,))),
+    )
+
+
+class EnrichedAgeCountKernel(ages.NationalAgeCountKernel):
+    """Validate one dependency projection, then execute the unchanged count code."""
+
+    ref = "us.puf_age_enriched_counts@1"
+    capabilities = replace(
+        ages.NationalAgeCountKernel.capabilities, numeric=Numeric.PLATFORM_BITWISE
+    )
+
+    def implementation_hash(self):
+        return implementation_hash()
+
+    def run(self, context):
+        require(
+            context.node.normative() == enriched_age_count_node().normative(),
+            "COUNT_DEPENDENCY_DECLARATION",
+        )
+        require(
+            not context.artifacts and not context.sources, "COUNT_DEPENDENCY_CONTEXT"
+        )
+        require(
+            context.tables["tax_unit"][detail.OUTPUT].dtype == np.dtype("float64"),
+            "COUNT_DEPENDENCY_DTYPE",
+        )
+        original = ages.national_age_count_node(population=BOUNDARY)
+        projected = replace(
+            context,
+            node=original,
+            tables={e: context.tables[e] for e in ("person", "household")},
+        )
+        return super().run(projected)
 
 
 def _physical_metadata(frame) -> bytes:
@@ -499,8 +543,7 @@ def enriched_binding(
         counted.frame.weights_for("household").values, positive=True
     )
     require(
-        graph.node(COUNT).normative()
-        == ages.national_age_count_node(population=BOUNDARY).normative(),
+        graph.node(COUNT).normative() == enriched_age_count_node().normative(),
         "COUNT_DECLARATION",
     )
     return EnrichedBinding(
@@ -695,8 +738,9 @@ def run_enriched_calibration(
         previous = {
             name: pop for name, pop in live.items() if name in replay_boundaries
         }
+        compiled = compile_graph(graph)
         manifest = run_graph(
-            compile_graph(graph),
+            compiled,
             sources={n: actual[n] for n in used},
             store=store,
             kernels=kernels,
@@ -708,6 +752,7 @@ def run_enriched_calibration(
         phases.append(
             {
                 "nodes": len(graph.nodes),
+                "order": list(compiled.order),
                 "hits": sum(r.hit for r in manifest.nodes.values()),
                 "keys": {n: r.key for n, r in manifest.nodes.items()},
             }
@@ -786,9 +831,7 @@ def run_enriched_calibration(
     # No fit/apply/attach node exists in the preceding compiled graph.
     run(full)
     attached = live[ATTACH]
-    counted_graph = replace(
-        full, nodes=(*full.nodes, ages.national_age_count_node(population=BOUNDARY))
-    )
+    counted_graph = replace(full, nodes=(*full.nodes, enriched_age_count_node()))
     counted_manifest = run(counted_graph)
     # Capture these immutable historical boundaries before later version updates.
     boundary, matrix_pop, attached, counted = (

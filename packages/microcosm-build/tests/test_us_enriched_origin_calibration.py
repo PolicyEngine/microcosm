@@ -292,7 +292,7 @@ def run_fixture(root, *, warm=False):
         old.shared.DetailBoundaryKernel(),
         LegacyQRFTrainKernel(),
         LegacyQRFApplyMatrixKernel(),
-        stage.ages.NationalAgeCountKernel(),
+        stage.EnrichedAgeCountKernel(),
         stage.caps.FrozenOriginBudgetKernel(),
         stage.caps.GroupedDemographicCalibrationKernel(),
     ):
@@ -395,6 +395,20 @@ def test_actual_26_node_staged_pipeline(cold_run):
     assert [p["nodes"] for p in result["phases"]] == [17, 20, 23, 24, 26]
     assert [p["hits"] for p in result["phases"]] == [0, 17, 20, 23, 24]
     assert sum(p["nodes"] for p in result["phases"]) == 110
+    from microcosm.build.us_runtime import enriched_origin_calibration as stage
+
+    for phase in result["phases"]:
+        if stage.COUNT in phase["order"]:
+            assert phase["order"].index(stage.ATTACH) < phase["order"].index(
+                stage.COUNT
+            )
+        if stage.caps.CALIBRATION_NODE in phase["order"]:
+            assert phase["order"].index(stage.COUNT) < phase["order"].index(
+                stage.caps.CALIBRATION_NODE
+            )
+        assert all(
+            result["phases"][-1]["keys"][n] == k for n, k in phase["keys"].items()
+        )
     assert result["budget"].document["expanded_original_design_anchors"]["household"][
         "weight_hex"
     ]
