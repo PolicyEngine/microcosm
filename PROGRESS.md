@@ -38,3 +38,8 @@ no real fits, heldouts, uncertainty, prior wages, installs, push or publication.
 Every Python process uses the pinned interpreter, -B, a fresh absolute absent
 -X pycache_prefix, and child processes also use -I. No hooks. Commit coherent
 steps and verify actual messages. Launch calibration is not complete.
+
+Integration: accepted factory and age heads merged; only journal conflicts,
+resolved by retaining each incoming journal byte-for-byte in docs/history/.
+Native origin and clone polish are retained as actual ancestors. Both source
+branches descend from 84e7a011f7bc4d8cb5a7cbd2599b4d893558b1e0.

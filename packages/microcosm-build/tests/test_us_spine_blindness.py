@@ -201,6 +201,7 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "energy_subsidy.py",
     "farm_business_income.py",
     "form_4952.py",
+    "graph_national_age_counts.py",
     "housing_inputs.py",
     "medicare_take_up.py",
     "multispine_pool.py",
@@ -471,6 +472,12 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Pure publisher household-total measurement for both arms. Runs on
         # supplied projections; constructs no Frame and treats no population.
         "household_reported_income.py",
+        # Authenticates the pinned public national ACS aggregate bundle and
+        # mints a target registry from an immutable activation declaration. It
+        # constructs no Frame, reads no population and applies no treatment;
+        # the operator that answers those targets is
+        # graph_national_age_counts.py, which stays under the guard above.
+        "national_age_activation.py",
     }
 )
 _CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(
