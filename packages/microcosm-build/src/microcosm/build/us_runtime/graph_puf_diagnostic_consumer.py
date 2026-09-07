@@ -31,14 +31,14 @@ from microcosm.graph import (
     source_hash,
 )
 
-from . import puf_diagnostic_consumer as consumer
-from . import graph_puf_detail_transfer as shared
-from . import graph_native_household_origin as origins
-from . import graph_composed_asec_measures as measures
-from . import graph_composed_asec_binding as binding
-from . import graph_composed_population as composed
 from . import graph_asec_income as income
+from . import graph_composed_asec_binding as binding
+from . import graph_composed_asec_measures as measures
+from . import graph_composed_population as composed
 from . import graph_context
+from . import graph_native_household_origin as origins
+from . import graph_puf_detail_transfer as shared
+from . import puf_diagnostic_consumer as consumer
 from .asec_current_money_selection import (
     US_ASEC_PREPARED_RECEIPT_TYPE,
     US_ASEC_SELECTED_MONEY_TYPE,
@@ -190,7 +190,7 @@ def verify_host(context, frame):
     edges = {e.name: e for e in context.node.artifact_inputs if e.name in expected}
     require(set(expected) == set(edges) == set(types), "DIAGNOSTIC_HOST_EDGE_ROSTER")
     values = {}
-    for name, edge in edges.items():
+    for name in edges:
         value = shared.artifact(context, name, types[name])
         require(
             expected[name]

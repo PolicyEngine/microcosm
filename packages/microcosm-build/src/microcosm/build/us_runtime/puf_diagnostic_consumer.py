@@ -15,14 +15,14 @@ import pandas as pd
 from microcosm.fit import _graph_legacy_qrf as codec
 from microcosm.fit import model_input
 
+from . import graph_asec_income as asec_income
+from . import graph_composed_asec_binding as asec_binding
+from . import graph_composed_asec_measures as measures
+from . import native_household_origin as origin
 from . import puf_detail_transfer as detail
 from . import puf_monetary_agi_projection as agi
 from . import puf_raw_source as raw
-from . import graph_composed_asec_measures as measures
-from . import graph_composed_asec_binding as asec_binding
-from . import graph_asec_income as asec_income
 from . import support_provenance as provenance
-from . import native_household_origin as origin
 from .graph_context import _row_identity
 
 require = detail.require
@@ -388,7 +388,10 @@ def qualify_price_transport(payloads, expected_pins, *, route, recipe):
 
 def donor_model_input_sha256(frame):
     """Exact donor IDs/features/target and DESIGN resampling weights."""
-    table = frame.table("tax_unit").set_index("tax_unit_id")
+    table = frame.table("tax_unit").loc[:, [*detail.FEATURES, detail.TARGET]].copy()
+    table.index = pd.Index(
+        frame.table("tax_unit").tax_unit_id.to_numpy(dtype="int64"), name="tax_unit_id"
+    )
     payload = model_input.encode_recipient_matrix(
         table.loc[:, [*detail.FEATURES, detail.TARGET]],
         entity="tax_unit",
@@ -494,9 +497,10 @@ def asec_wage_evidence(person, values):
         values["arm_rows"].payload, binding_document=binding
     )
     original = rows.array("person", "original_ids")
-    integer = lambda name: asec_binding._int64_view(
-        person[name], reason="ASEC_HOST:" + name
-    )
+
+    def integer(name):
+        return asec_binding._int64_view(person[name], reason="ASEC_HOST:" + name)
+
     require(
         np.array_equal(integer(provenance.spine_source_id_column("person")), original),
         "ASEC_HOST_NATIVE_PERSON_ROSTER",

@@ -6,7 +6,6 @@ The external proof may supply the reviewed DEA encoder through a source-only
 module import; ordinary tests use the exact same documented binary layout.
 """
 
-import copy
 import importlib.util
 import json
 import sys
@@ -17,15 +16,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.us_runtime import puf_diagnostic_consumer as consumer
-from microcosm.build.us_runtime import graph_puf_diagnostic_consumer as stage
 from microcosm.build.us_runtime import graph_puf_detail_transfer as shared
+from microcosm.build.us_runtime import graph_puf_diagnostic_consumer as stage
+from microcosm.build.us_runtime import puf_diagnostic_consumer as consumer
 from microcosm.build.us_runtime.graph_sources import (
     frame_column_declarations,
     us_source_codecs,
 )
-from microcosm.fit.graph_legacy_qrf import LegacyQRFTrainKernel
 from microcosm.fit.graph_legacy_apply_matrix import LegacyQRFApplyMatrixKernel
+from microcosm.fit.graph_legacy_qrf import LegacyQRFTrainKernel
 from microcosm.frame import Frame
 from microcosm.graph import (
     ArtifactValue,
@@ -52,8 +51,8 @@ def peer(name):
 
 
 sys.path.insert(0, str(CHECKOUT / "tools"))
-from survey_lineage_prep import invented
-import us_survey_lineage_graph as survey
+import us_survey_lineage_graph as survey  # noqa: E402
+from survey_lineage_prep import invented  # noqa: E402
 
 
 def encode_price(arrays, config, compiled):
@@ -368,7 +367,12 @@ def test_full_host_binding_refuses(source_bundle, kind):
         {e: frame.weights_for(e) for e in frame.weighted_entities},
         frame.strata,
     )
-    with pytest.raises(ValueError, match="HOST_FULL_ORIGIN_BINDING"):
+    with pytest.raises(
+        ValueError,
+        match="HOUSEHOLD_COHORT_AMBIGUOUS"
+        if kind == "cohort"
+        else "HOST_FULL_ORIGIN_BINDING",
+    ):
         consumer.qualify_host_population(changed, host[5])
 
 
