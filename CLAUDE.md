@@ -148,3 +148,8 @@ with the journal pointing to them.
 Update this guide in the same PR whenever the workspace layout, test
 commands, or release flow change. If you find it contradicting the repo,
 trust the repo and fix this file.
+
+The separate, explicit CD v4 metadata/ledger I/O boundary is documented in
+`docs/us-cd-durable-boundary.md`. It supplies no genuine producer adapters or
+approvals, reads no reference values, and keeps the frozen pure benchmark
+package unchanged. Genuine scoring still requires complete external admission.

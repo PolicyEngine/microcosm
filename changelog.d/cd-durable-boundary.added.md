@@ -1,0 +1,1 @@
+Add an explicit CD v4 metadata and durable exposure-ledger I/O adapter with pinned approvals, mandatory producer admissions, interrupted-attempt recovery, and snapshot-bound result attachments. Genuine scoring and scientific producer adapters remain unprovided.

@@ -38,6 +38,8 @@ EXPLICIT_SHARED_SPEC = (
     # nor us_runtime; adapter tests do import us_runtime without an engine.
     "packages/microcosm-build/tests/test_cd_benchmark_axis_identity.py",
     "packages/microcosm-build/tests/test_cd_benchmark_ledger.py",
+    # Separate explicit metadata/ledger I/O boundary, invented files only.
+    "packages/microcosm-build/tests/test_cd_benchmark_io.py",
     "packages/microcosm-build/tests/test_cd_benchmark_metrics.py",
     "packages/microcosm-build/tests/test_cd_benchmark_protocol.py",
     "packages/microcosm-build/tests/test_cd_benchmark_review_auxiliary.py",
