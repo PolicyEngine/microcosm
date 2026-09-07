@@ -40,7 +40,9 @@ against the retired enhanced-CPS repo @ 42ed5d45c5; nothing is imputed):
 - ``parent_1_id`` / ``parent_2_id`` ← the ``person_id`` of the household
   member the person's PEPAR1/PEPAR2 pointer resolves to within the same
   PH_SEQ, and ``0`` when the pointer is absent (<= 0), does not resolve
-  to a co-resident line, or points at the person themselves. These are
+  to a co-resident line. A person recorded as their own parent is left
+  as the data says and reported by the gate, never quietly rewritten.
+  These are
   the same resolution ``own_children_in_household`` counts, kept as the
   relation rather than only its cardinality, so downstream rules can ask
   *whose* child a person is (microcosm#884,
@@ -50,6 +52,17 @@ against the retired enhanced-CPS repo @ 42ed5d45c5; nothing is imputed):
   later id-mapping pass is needed. Stored as int64, never float: the PUF
   support clone remaps person ids up to ``10**16``, past the 2**53 bound
   where float64 stops representing integers exactly.
+
+  Sentinel note: ``assign_us_unit_structure`` mints ``person_id`` as a
+  0-based ``arange``, so exactly one person in a frame carries id 0 and
+  cannot be named by a 0-means-unknown pointer. Their co-resident
+  children therefore read 0 and fall back to PolicyEngine-US's
+  count-based proxy; :func:`us_eligibility_inputs_summary` reports how
+  many pointers that costs (``pointers_unnameable_at_person_id_zero``)
+  so it stays visible rather than silent, and the identity check
+  excludes that one person for the same reason. Widening the sentinel is
+  a contract change on the PolicyEngine-US side (policyengine-us#9404
+  specifies 0), not something this stage decides.
 - ``veterans_benefits`` ← VET_VAL (veterans' payments received).
 
 Ownership note: ``is_veteran`` is formula-owned in PolicyEngine-US
@@ -513,7 +526,30 @@ def us_eligibility_inputs_summary(frame: Frame) -> dict[str, object]:
         # exact identities, so this stage does not guess an empirical band
         # for a surface no published build has measured yet.
         summary["any_parent_id_resolved_share"] = _share(pointed_at_any)
+        summary["pointers_unnameable_at_person_id_zero"] = (
+            _pointers_unnameable_at_person_id_zero(person)
+        )
     return summary
+
+
+def _pointers_unnameable_at_person_id_zero(person: pd.DataFrame) -> int:
+    """Pointers lost because the parent they name is the person holding id 0.
+
+    ``person_id`` is 0-based and ``0`` is the "unknown parent" sentinel, so
+    one person per frame cannot be named. Their children read 0 and fall back
+    to the count-based proxy; this reports how many that is.
+    """
+
+    if _PERSON_ID_COLUMN not in person.columns:
+        return 0
+    identifiers = pd.to_numeric(person[_PERSON_ID_COLUMN], errors="coerce")
+    at_zero = identifiers == 0
+    if not bool(at_zero.any()):
+        return 0
+    children = pd.to_numeric(
+        person.loc[at_zero, "own_children_in_household"], errors="coerce"
+    )
+    return int(children.fillna(0.0).sum())
 
 
 def _parent_id_invariant_failures(person: pd.DataFrame) -> list[str]:
@@ -617,7 +653,10 @@ def _parent_id_invariant_failures(person: pd.DataFrame) -> list[str]:
         .fillna(-1.0)
         .to_numpy(dtype=np.float64)
     )
-    mismatched = observed != expected
+    # The person holding id 0 cannot be named by a 0-means-unknown pointer,
+    # so their count is unverifiable here by construction. It is reported as
+    # ``pointers_unnameable_at_person_id_zero`` rather than silently passing.
+    mismatched = (observed != expected) & (person_id != 0)
     if mismatched.any():
         examples = [
             {
