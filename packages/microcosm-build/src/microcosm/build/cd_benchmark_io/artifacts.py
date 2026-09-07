@@ -365,7 +365,8 @@ def load_candidate(
             "candidate_artifact_fields",
         )
         require(
-            declaration["sha256"] == files[name].sha256
+            type(declaration["bytes"]) is int
+            and declaration["sha256"] == files[name].sha256
             and declaration["bytes"] == files[name].size,
             "candidate_artifact_pin",
         )
@@ -457,6 +458,14 @@ def load_candidate(
         )
         for key in exposure:
             strings(exposure[key], "history_exposure_ids", nonempty=True)
+    require(
+        all(
+            is_sha256_hex(p)
+            for e in history["external_exposures"]
+            for p in e["populations"]
+        ),
+        "history_external_population_digest",
+    )
     pins = dict(files)
     allowed_families = {f for b in protocol.blocks for f in b.exposure_families}
     require(

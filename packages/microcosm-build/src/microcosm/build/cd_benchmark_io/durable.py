@@ -291,7 +291,11 @@ class DurableLedger:
             self._open(create=True)
         ledger = self.read()
         if expected_snapshot is not None:
-            require(_snapshot(ledger) == expected_snapshot, "ledger_snapshot_mismatch")
+            require(
+                canonical_bytes(_snapshot(ledger))
+                == canonical_bytes(expected_snapshot),
+                "ledger_snapshot_mismatch",
+            )
         existing = [
             r for r in ledger.records if r.event_type is EventType.PROTOCOL_REGISTERED
         ]
@@ -390,7 +394,8 @@ class DurableLedger:
         ledger = self.read()
         self._registered(ledger)
         require(
-            candidate.history["expected_snapshot"] == _snapshot(ledger),
+            canonical_bytes(candidate.history["expected_snapshot"])
+            == canonical_bytes(_snapshot(ledger)),
             "ledger_snapshot_mismatch",
         )
         for state in ledger.attempts.values():
@@ -523,7 +528,8 @@ class DurableLedger:
         )
         actual_before = verify_ledger(before_raw, protocol=self.protocol).ledger
         require(
-            p["ledger_snapshot_before_attempt"] == _snapshot(actual_before),
+            canonical_bytes(p["ledger_snapshot_before_attempt"])
+            == canonical_bytes(_snapshot(actual_before)),
             "attempt_snapshot_mismatch",
         )
         result_path = self.directory / (c["result_payload_sha256"] + ".result.json")
@@ -534,13 +540,18 @@ class DurableLedger:
             FilePin(result_path, result_path.stat().st_size, c["result_payload_sha256"])
         )
         result = strict_load(result_raw)
+        require(canonical_bytes(result) == result_raw, "result_canonical")
         expected = _result_identity(p, state.attempt.sha256)
         require(
             set(result)
             == set(expected) | {"block_verdicts_and_scope_reasons", "terminal_state"},
             "result_fields",
         )
-        require(all(result[k] == v for k, v in expected.items()), "result_identity")
+        require(
+            canonical_bytes({k: result[k] for k in expected})
+            == canonical_bytes(expected),
+            "result_identity",
+        )
         require(
             result["block_verdicts_and_scope_reasons"]
             == c["block_verdicts_and_scope_reasons"]

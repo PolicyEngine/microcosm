@@ -938,7 +938,12 @@ def test_loaded_dependency_roster_cannot_be_dropped(tmp_path):
             pytest.fail("comparison reached")
 
 
-def test_attachment_checks_declared_pre_snapshot_against_actual_prefix(tmp_path):
+@pytest.mark.parametrize(
+    "change", [{"prefix_bytes": 1}, {"record_count": True}, {"record_count": 1.0}]
+)
+def test_attachment_checks_declared_pre_snapshot_against_actual_prefix(
+    tmp_path, change
+):
     from dataclasses import replace
 
     from microcosm.build.cd_benchmark.ledger import build_records, verify_ledger
@@ -950,7 +955,7 @@ def test_attachment_checks_declared_pre_snapshot_against_actual_prefix(tmp_path)
         records = list(verified.records)
         attempt = records[1]
         payload = dict(attempt.payload)
-        payload["ledger_snapshot_before_attempt"] = {**before, "prefix_bytes": 1}
+        payload["ledger_snapshot_before_attempt"] = {**before, **change}
         records[1] = replace(attempt, payload=payload)
         completion_payload = dict(records[2].payload)
         completion_payload["attempt_record_sha256"] = records[1].sha256
@@ -967,3 +972,51 @@ def test_attachment_checks_declared_pre_snapshot_against_actual_prefix(tmp_path)
         pytest.raises(BoundaryError, match="attempt_snapshot_mismatch"),
     ):
         ledger.attach(payload["evaluation_id"])
+
+
+@pytest.mark.parametrize("value", [True, 1.0])
+@pytest.mark.parametrize("boundary", ["registration", "attempt"])
+def test_snapshot_counts_require_exact_json_types(tmp_path, value, boundary):
+    ledger, before = make_ledger(tmp_path)
+    wrong = {**before, "record_count": value}
+    assert wrong == before  # The Python equality trap this regression closes.
+    with ledger.locked(), pytest.raises(BoundaryError, match="snapshot_mismatch"):
+        if boundary == "registration":
+            ledger.register(expected_snapshot=wrong)
+        else:
+            item = candidate(tmp_path, ledger, wrong)
+            with ledger.attempt(item, planned_scope="invented"):
+                pass
+
+
+def test_external_population_history_requires_content_digest(tmp_path):
+    ledger, before = make_ledger(tmp_path)
+    with pytest.raises(BoundaryError, match="history_external_population_digest"):
+        candidate(
+            tmp_path,
+            ledger,
+            before,
+            external=[
+                {
+                    "families": ["B19001"],
+                    "tuning_roots": ["invented:unrelated"],
+                    "populations": ["not-a-content-digest"],
+                }
+            ],
+        )
+
+
+def test_declared_artifact_byte_count_is_an_integer(tmp_path):
+    ledger, before = make_ledger(tmp_path)
+    item = candidate(tmp_path, ledger, before)
+    doc = strict_load(read_pinned(item.manifest_pin))
+    doc["artifacts"]["source"]["bytes"] = float(doc["artifacts"]["source"]["bytes"])
+    pin = pin_document(tmp_path / "float-byte-count.json", doc)
+    with pytest.raises(BoundaryError, match="candidate_artifact_pin"):
+        load_candidate(
+            ledger.protocol,
+            manifest=pin,
+            expected_identity=item.identity,
+            files=item.artifact_pins,
+            adapters={s: fixture_adapter for s in item.binding.slots},
+        )

@@ -120,3 +120,7 @@ First-time registration cannot reuse any already-open ledger. The loader stores
 its manifest pin separately from producer artifact IDs, rejects the reserved
 historical `__manifest__` name, and rechecks the complete dependency roster.
 Attachment also compares the declared pre-attempt snapshot to its actual prefix.
+Exact snapshot comparisons use canonical bytes: Python's equality between
+`true`, `1` and `1.0` cannot satisfy a typed count. External exposure population
+identities must be content SHA-256 digests; malformed identifiers cannot be
+silently classified as unrelated history.
