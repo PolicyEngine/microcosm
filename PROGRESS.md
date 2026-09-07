@@ -43,3 +43,10 @@ Integration: accepted factory and age heads merged; only journal conflicts,
 resolved by retaining each incoming journal byte-for-byte in docs/history/.
 Native origin and clone polish are retained as actual ancestors. Both source
 branches descend from 84e7a011f7bc4d8cb5a7cbd2599b4d893558b1e0.
+
+Prepatch baseline captured and committed before any solver edit (c4718356):
+four invented households, seven epochs, one thread; all 37 loaded Microcosm
+files matched pinned a4e69c0 Git source before/after. Exact weight SHA-256
+260f8beb3154aab82e1484e41f2b8d0cf33e45478b2b106deb66f97b64cbe11a;
+trajectory 01943d29ea7d5e727cf88b02fb37416640471509212cd59181e6b1af6b9b4459.
+Solver, budget/lineage, and runtime audit tasks are independently underway.

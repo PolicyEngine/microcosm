@@ -6,7 +6,7 @@ import hashlib
 import json
 import socket
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -2164,6 +2164,7 @@ def run_graph(
     resume: ResumePolicy = "auto",
     decisions: tuple[Decision, ...] = (),
     population_retention: str = "eager",
+    _population_observer: Callable[[str, Population], None] | None = None,
 ) -> RunManifest:
     """Execute a compiled graph with content-addressed reuse and receipts.
 
@@ -2172,6 +2173,12 @@ def run_graph(
     It requires a writable store, including for missing auxiliary attachments
     under ``resume="require"``. The default ``"eager"`` retains all Frames.
     Node identities and portable manifest provenance are unchanged.
+
+    The private population observer exposes the actual admitted population,
+    including its original design anchors, to integrating verifiers. It runs
+    for both cold execution and restored cache hits, before persistence and
+    retention. It must not mutate the population; raising refuses the run.
+    It is never a kernel capability or part of a cached kernel's execution.
     """
 
     if resume not in ("auto", "require", "forbid"):
@@ -2465,6 +2472,9 @@ def run_graph(
             populations[compiled.versions[node_id]] = updated
         else:
             populations[node.id] = updated
+
+        if _population_observer is not None:
+            _population_observer(node_id, updated)
 
         structural_collision = (
             retention is not None
