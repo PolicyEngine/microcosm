@@ -686,6 +686,46 @@ class PayloadView:
         return self.changes[key] if key in self.changes else self.store.load_bytes(key)
 
 
+def test_successor_preserves_validated_nonzero_correction_counter(cold_run):
+    """Self-consistent invented diagnostic metadata, not a claimed solver trace."""
+    from dataclasses import replace
+
+    from microcosm.build.us_runtime import enriched_origin_calibration as stage
+
+    _, result = cold_run
+    manifest, store, budget = result["manifest"], result["store"], result["budget"]
+    after = result["populations"][stage.caps.CALIBRATION_NODE]
+    values = after.frame.weights_for("household").values
+    receipt = manifest.node(stage.caps.CALIBRATION_NODE)
+    key = receipt.opaque_artifacts["diagnostics"]
+    document = json.loads(store.load_bytes(key))
+    expected = budget.diagnostics(values, 1)
+    document["build"].update(expected)
+    document["options"]["grouped_upper_bounds"] = budget.grouped_bounds.diagnostics(
+        values, 1
+    )
+    payload = stage.canonical_json(document)
+    updated = {**receipt.receipt, **expected, "diagnostics_sha256": stage.sha(payload)}
+    receipts = dict(manifest.nodes)
+    receipts[stage.caps.CALIBRATION_NODE] = replace(receipt, receipt=updated)
+    manifest = replace(manifest, nodes=receipts)
+    successor = stage.weight_successor(
+        result["parent"],
+        budget,
+        result["populations"][stage.COUNT],
+        after,
+        node=result["graph"].node(stage.caps.CALIBRATION_NODE),
+        partition=result["graph"].mass_partition,
+        manifest=manifest,
+        store=PayloadView(store, {key: payload}),
+    )
+    assert successor.document["diagnostics"] == expected
+    assert successor.document["diagnostics"]["last_corrected_group_count"] == 1
+    assert successor.document["diagnostics_artifact"]["payload_sha256"] == stage.sha(
+        payload
+    )
+
+
 @pytest.mark.parametrize(
     "mutation",
     [

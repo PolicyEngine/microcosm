@@ -686,7 +686,12 @@ def weight_successor(
                 "accepted_weight_sha256": sha(values.tobytes()),
                 "calibration_node_key": manifest.node(caps.CALIBRATION_NODE).key,
                 "diagnostics_artifact": diagnostics_identity,
-                "diagnostics": budget.diagnostics(values),
+                "diagnostics": budget.diagnostics(
+                    values,
+                    manifest.node(caps.CALIBRATION_NODE).receipt[
+                        "last_corrected_group_count"
+                    ],
+                ),
                 "release_eligible": False,
             }
         ),
