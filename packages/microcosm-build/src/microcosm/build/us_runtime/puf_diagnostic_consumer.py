@@ -59,6 +59,7 @@ def recipe_document():
         "zero_atol": 0.0,
         "donor_weight": "delivered_S006_integer_hundredths_DESIGN",
         "wage_proxy": "head_and_actual_JOINT_spouse_only_dependents_excluded",
+        "host_role_source": "microunit_tax_unit_role_input",
         "filing_mapping": detail.MARS,
         "missing_wage": "refuse_selected_earner_no_age_only_zero",
         "prices": "2015_file_CPI_U_to_2024_development_prices",
@@ -114,7 +115,10 @@ def qualify_price_transport(payloads, expected_pins, *, route, recipe):
     production route accepts only the packaged original source definitions;
     tests use a visibly different acceptance/mode with actual fixture codecs.
     """
-    require(recipe == recipe_document(), "DIAGNOSTIC_RECIPE")
+    require(
+        codec.encode_json(recipe) == codec.encode_json(recipe_document()),
+        "DIAGNOSTIC_RECIPE",
+    )
     require(route in ("packaged", "test_fixture"), "DIAGNOSTIC_SOURCE_ROUTE")
     require(set(payloads) == set(expected_pins) == set(ROLES), "PRICE_TRANSPORT_ROSTER")
     for name in ROLES:
@@ -368,6 +372,10 @@ def qualify_price_transport(payloads, expected_pins, *, route, recipe):
         projection,
         expected_status_artifact_sha256=codec.sha(payloads["status"]),
     )
+    require(
+        metadata == agi._thawed(decoded.column_metadata),
+        "PRICE_ORIGINAL_METADATA_BINDING",
+    )
     frame = detail._donor_frame(arrays, status, decoded, projection, scope=SCOPE)
     binding = {
         "schema": "microcosm.us.puf_diagnostic_price_transport.v1",
@@ -566,6 +574,11 @@ def asec_wage_evidence(person, values):
     }
 
 
+def recipient_matrix(frame):
+    """Read the actual microunit role carrier; do not calculate policy roles."""
+    return detail.recipient_matrix(frame, role_column="tax_unit_role_input")
+
+
 def qualify_host_population(frame, values):
     """Bind the complete untouched clone pool before selecting model features.
 
@@ -626,7 +639,7 @@ def qualify_host_population(frame, values):
     )
     # Exact pair checks include every carried cell, linked entity and weight,
     # including zero-weight rows. This also refuses incomplete selected wages.
-    matrix, mask = detail.recipient_matrix(frame)
+    matrix, mask = recipient_matrix(frame)
     native = frame.person.loc[
         frame.person[provenance.support_clone_index_column("person")].eq(0)
     ]

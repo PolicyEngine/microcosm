@@ -426,12 +426,13 @@ class DetailMatrixKernel(_Kernel):
     scope = detail.SCOPE
     host_binding_name = "fixture_host"
     verify_host = staticmethod(verify_host_scope)
+    make_matrix = staticmethod(detail.recipient_matrix)
 
     def run(self, context):
         require(context.params["scope"] == self.scope, "GENUINE_TRANSFER_NOT_ADMITTED")
         frame = context_frame(context)
         scope = self.verify_host(context, frame)
-        payload, mask = detail.recipient_matrix(frame)
+        payload, mask = self.make_matrix(frame)
         binding = {
             "scope": self.scope,
             "population": context.node.population,
@@ -468,6 +469,7 @@ class DetailAttachKernel(_Kernel):
     host_binding_name = "fixture_host"
     placement_type = PLACEMENT_TYPE
     verify_host = staticmethod(verify_host_scope)
+    make_matrix = staticmethod(detail.recipient_matrix)
 
     def run(self, context):
         require(
@@ -485,7 +487,7 @@ class DetailAttachKernel(_Kernel):
         siblings(context, ("matrix", "placement"))
         siblings(context, ("raw_draw", "apply_state"))
         binding = codec.decode_json(placement.payload)
-        expected, mask = detail.recipient_matrix(frame)
+        expected, mask = self.make_matrix(frame)
         require(
             np.array_equal(context.tables["tax_unit"][detail.MASK], mask),
             "DETAIL_MASK_CHANGED",

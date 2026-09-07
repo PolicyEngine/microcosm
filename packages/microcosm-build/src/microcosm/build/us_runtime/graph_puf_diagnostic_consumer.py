@@ -178,7 +178,8 @@ def verify_host(context, frame):
     """Typed actual producer edges plus externally pinned accepted host evidence."""
     require(
         context.params["scope"] == consumer.SCOPE
-        and shared.plain(context.params["recipe"]) == consumer.recipe_document()
+        and codec.encode_json(shared.plain(context.params["recipe"]))
+        == codec.encode_json(consumer.recipe_document())
         and context.params["route"] in ("packaged", "test_fixture"),
         "DIAGNOSTIC_HOST_RECIPE",
     )
@@ -215,6 +216,7 @@ class DiagnosticMatrixKernel(shared.DetailMatrixKernel, _Kernel):
     scope = consumer.SCOPE
     host_binding_name = "source_qualified_host"
     verify_host = staticmethod(verify_host)
+    make_matrix = staticmethod(consumer.recipient_matrix)
     implementation_hash = _Kernel.implementation_hash
 
 
@@ -224,6 +226,7 @@ class DiagnosticAttachKernel(shared.DetailAttachKernel, _Kernel):
     host_binding_name = "source_qualified_host"
     placement_type = PLACEMENT_TYPE
     verify_host = staticmethod(verify_host)
+    make_matrix = staticmethod(consumer.recipient_matrix)
     implementation_hash = _Kernel.implementation_hash
 
 

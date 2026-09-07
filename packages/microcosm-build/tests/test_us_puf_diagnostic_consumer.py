@@ -561,3 +561,82 @@ def test_actual_diagnostic_append(source_bundle):
         result.loc[prepared.entity_ids, detail.OUTPUT].to_numpy().view("uint64"),
         values.view("uint64"),
     )
+
+
+@pytest.mark.parametrize("kind", ("unknown", "null", "duplicate_head", "joint_spouse"))
+def test_actual_source_role_refusals(source_bundle, kind):
+    frame = source_bundle[-1][4].population(survey.CLONE_POPULATION)
+    tables = {e: frame.table(e).copy(deep=True) for e in frame.entities}
+    person, units = tables["person"], tables["tax_unit"]
+    role = "tax_unit_role_input"
+    source_id = detail.origin.support_source_id_column("person")
+    if kind in ("unknown", "null"):
+        selected = person[source_id].eq(person[source_id].iloc[0])
+        person.loc[selected, role] = "UNSUPPORTED" if kind == "unknown" else None
+    else:
+        joint = units.loc[units.filing_status_input.eq("JOINT")].iloc[0]
+        spouse = person.loc[
+            person.person_tax_unit_id.eq(joint.tax_unit_id) & person[role].eq("SPOUSE")
+        ].iloc[0]
+        selected = person[source_id].eq(spouse[source_id])
+        person.loc[selected, role] = "HEAD" if kind == "duplicate_head" else "DEPENDENT"
+    changed = Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+    )
+    with pytest.raises(
+        ValueError,
+        match="HOST_ROLE_INPUT_VALUES"
+        if kind in ("unknown", "null")
+        else "HOST_FILING_STRUCTURE",
+    ):
+        consumer.recipient_matrix(changed)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ("cohort", "age", "wage", "native_id", "reported_payload", "prepared_producer"),
+)
+def test_asec_actual_evidence_refusals(source_bundle, kind):
+    host = source_bundle[-1]
+    frame = host[4].population(survey.CLONE_POPULATION)
+    person = (
+        frame.person.loc[
+            frame.person.person_support_clone_index.eq(0)
+            & frame.person.person_support_channel.eq("asec")
+        ]
+        .copy(deep=True)
+        .reset_index(drop=True)
+    )
+    values = dict(host[5])
+    if kind == "reported_payload":
+        old = values["reported_income"]
+        values["reported_income"] = replace(
+            old, payload=old.payload[:-1] + bytes([old.payload[-1] ^ 1])
+        )
+        reason = "ACCOUNTING_RECONSTRUCTION"
+    elif kind == "prepared_producer":
+        values["prepared_receipt"] = replace(
+            values["prepared_receipt"], producer_key="f" * 64
+        )
+        reason = "BINDING_SOURCE_PRODUCER"
+    else:
+        column, value, reason = {
+            "cohort": ("source_year", 2024, "ACCOUNTING_SOURCE_COHORTS"),
+            "age": ("A_AGE", 99, "ASEC_HOST_NATIVE_AGE"),
+            "wage": (
+                "asec_reported_wage_income_2024_price",
+                123.0,
+                "ASEC_HOST_WAGE_BINDING",
+            ),
+            "native_id": (
+                "person_spine_source_id",
+                999999,
+                "ASEC_HOST_NATIVE_PERSON_ROSTER",
+            ),
+        }[kind]
+        person.loc[0, column] = value
+    with pytest.raises(ValueError, match=reason):
+        consumer.asec_wage_evidence(person, values)

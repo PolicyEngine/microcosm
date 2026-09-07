@@ -269,7 +269,7 @@ def population_content(frame: Frame) -> str:
     return origin._population_content(frame)
 
 
-def recipient_matrix(frame: Frame):
+def recipient_matrix(frame: Frame, *, role_column=None):
     """Use every detail unit, including zero-weight rows, and actual filing roles."""
     require(frame.schema == US_SCHEMA, "HOST_SCHEMA")
     # Build a manifest from the current native roster only for validation. The
@@ -361,21 +361,42 @@ def recipient_matrix(frame: Frame):
         members = person.loc[person.person_tax_unit_id.eq(row.tax_unit_id)]
         status = row.filing_status_input
         require(status in MARS, "HOST_FILING_STATUS")
-        for name in ("is_tax_unit_head", "is_tax_unit_spouse", "is_tax_unit_dependent"):
-            require(
-                name in members
-                and members[name].dtype == np.dtype("bool")
-                and not members[name].isna().any(),
-                "HOST_FILING_ROLE",
-            )
-        head, spouse, dependent = (
-            members[name].to_numpy()
+        if role_column is None:
             for name in (
                 "is_tax_unit_head",
                 "is_tax_unit_spouse",
                 "is_tax_unit_dependent",
+            ):
+                require(
+                    name in members
+                    and members[name].dtype == np.dtype("bool")
+                    and not members[name].isna().any(),
+                    "HOST_FILING_ROLE",
+                )
+            head, spouse, dependent = (
+                members[name].to_numpy()
+                for name in (
+                    "is_tax_unit_head",
+                    "is_tax_unit_spouse",
+                    "is_tax_unit_dependent",
+                )
             )
-        )
+        else:
+            require(
+                role_column == "tax_unit_role_input" and role_column in members,
+                "HOST_ROLE_INPUT_COLUMN",
+            )
+            roles = members[role_column]
+            require(
+                pd.api.types.is_string_dtype(roles.dtype)
+                and not roles.isna().any()
+                and roles.isin(("HEAD", "SPOUSE", "DEPENDENT")).all(),
+                "HOST_ROLE_INPUT_VALUES",
+            )
+            head, spouse, dependent = (
+                roles.eq(name).to_numpy(dtype=bool)
+                for name in ("HEAD", "SPOUSE", "DEPENDENT")
+            )
         require(
             np.all(head.astype(int) + spouse.astype(int) + dependent.astype(int) == 1)
             and head.sum() == 1
