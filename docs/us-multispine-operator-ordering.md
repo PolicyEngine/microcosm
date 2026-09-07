@@ -1066,7 +1066,7 @@ runs:
 | Relationships | pre | Household-head status is a rent-recipient predictor. |
 | Medicare take-up | post | Rowwise carry/completion is clone-safe. |
 | Housing inputs | pre | Rent is drawn once per source household and then cloned unchanged. |
-| Eligibility inputs | pre | Raw `PH_SEQ`/`A_LINENO` parent pointers would count every cloned child twice. |
+| Eligibility inputs | pre | Raw `PH_SEQ`/`A_LINENO` parent pointers would count every cloned child twice, and `PH_SEQ` collides between the ASEC and ACS spines, so the stage runs on the CPS-evidence projection. Its `parent_1_id`/`parent_2_id` outputs name a `person_id`, so the support clone shifts them with the rest of the person id surface ([microcosm#884](https://github.com/PolicyEngine/microcosm/issues/884)). |
 | Pregnancy | post | Stable source-identity hashes share draws across clones. |
 | WIC | post | Remapped family grouping and source-identity draws are clone-safe. |
 | Housing assistance | post | The QRF intentionally replaces only the PUF support role. |
