@@ -2,7 +2,7 @@
 
 ## State
 
-2026-09-06: bounded local invented-data implementation started. Gate
+2026-09-06: implementation committed; final audited invented validation underway. Gate
 `20260906-200530-plan-61907ef5` is completed, round 8 approved by root and
 Fable, authorized action proceed. The entire 24,373-byte plan matches
 SHA-256 `986752556045f743b18ef95f5bb70f4db623eb1a2d4e64ae34cf3397384e00ab`.
@@ -21,16 +21,20 @@ Gate JSON SHA-256: `58cbc5e23f9758341840036022d96b3c121392723d84a7050eecf15ca13a
 - Verified pinned Python binary SHA-256
   `bf4ea26231212e330b8e9b6f24969a30f894fec88665bf42754070d114ac7fc6`.
 - Preserved inherited upstream journal in docs/history/origin-group-cap/.
+- Integrated all four accepted heads as actual ancestry; captured legacy bytes
+  before editing the solver. Implemented grouped Adam, immutable budget,
+  clone-aware adapter, mandatory cold/warm admission, and weight-only lineage.
+- Invented core suite passed 99 tests; final source audit rerun is required after
+  adding the real `_toy.py` helper to the audit inventory. Six independent
+  admission tests passed with all 304 loaded sources matching Git before/after.
+- Fresh REQUIRED replay reached successful admission with zero calls; its
+  source audit now distinguishes Torch virtual filenames from repository files.
 
 ## Next
 
-- Integrate factory 74f711382029619cdd9f2e8b01330628da0c228b (contains native
-  origin 2c092b69 and clone 1f6ffa7b) and age/Adam a4e69c0a.
-- Capture prepatch invented legacy bytes/trajectory with runtime/source proof.
-- Add exact opt-in grouped Adam path, authenticated frozen budget, typed
-  adapter, mandatory cold/warm admission, and weight-only successor.
-- Execute bounded invented regressions, negative tests, warm call counts,
-  group-check performance, source/format/CI inventory checks, independent review.
+- Complete corrected committed-source core and fresh warm replay audits,
+  final preflight, formatting, and required CI inventory checks.
+- Resolve any independent final review findings.
 - Write R/us-origin-group-cap-implementation-REPORT.md and .json.
 
 No genuine data, targets, checkpoints or runtime stores may be read or statted;
