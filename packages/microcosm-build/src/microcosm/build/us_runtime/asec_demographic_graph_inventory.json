@@ -1,0 +1,85 @@
+{
+  "base_stage": "composed_asec_binding_v1",
+  "contracts": {
+    "microcosm.build/us_runtime/asec_demographic_source.py": {
+      "imports": [
+        "microcosm.build.us_runtime",
+        "microcosm.build.us_runtime.asec_student_controls",
+        "microcosm.build.us_runtime.education_assistance_source",
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "1953c784b34a172757932534db60feb6a5c6175946bad88b2a88c9d8c7b73c9f",
+      "unbound_uses_sha256": "161edb4742c8d4ef765f6e935fac20e5d69510bd45c57ab1bddd1a2f8fbb3fdc"
+    },
+    "microcosm.build/us_runtime/graph_composed_asec_demographic_implementation.py": {
+      "imports": [
+        "microcosm.build.us_runtime.asec_demographic_source",
+        "microcosm.build.us_runtime.graph_implementation"
+      ],
+      "resource_accesses_sha256": "3e2f5085e8c32eaf0f7de5660492a6bbd687c47c67215fd8efd07539ab9fd16e",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/graph_composed_asec_demographics.py": {
+      "imports": [
+        "microcosm.build.us_runtime",
+        "microcosm.build.us_runtime.asec_current_money_selection",
+        "microcosm.build.us_runtime.graph_asec_income",
+        "microcosm.build.us_runtime.graph_asec_prepared",
+        "microcosm.build.us_runtime.graph_composed_asec_binding",
+        "microcosm.build.us_runtime.graph_composed_asec_demographic_implementation",
+        "microcosm.build.us_runtime.graph_composed_asec_measures",
+        "microcosm.build.us_runtime.graph_composed_population",
+        "microcosm.build.us_runtime.graph_context",
+        "microcosm.build.us_runtime.graph_geography",
+        "microcosm.frame",
+        "microcosm.graph",
+        "microcosm.graph.canonical",
+        "microcosm.graph.codecs",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "15fcd4751c12e19661537f003ec844e176395844136ae0abaa58ba509ffa0654"
+    }
+  },
+  "dependencies": [
+    "numpy",
+    "pandas",
+    "microunit",
+    "tables",
+    "h5py",
+    "PyYAML",
+    "pyarrow"
+  ],
+  "extra_modules": [
+    "microcosm.build/us_runtime/asec_demographic_source.py",
+    "microcosm.build/us_runtime/graph_composed_asec_demographic_implementation.py",
+    "microcosm.build/us_runtime/graph_composed_asec_demographics.py"
+  ],
+  "import_classifications": {
+    "microcosm.build.us_runtime": "package-relative live aliases for original money/schema/checkpoint/household/person-income/housing verifiers, separate student controls and graph context are explicitly module-bound in asec_prepared_v3; other shared-module or optional routes remain inactive with scoped-use tripwires; v2 adds package-relative HU definition/source aliases and non-authoritative transport, each explicitly whole-module bound.",
+    "microcosm.build.us_runtime.asec_current_money_selection": "whole-module in asec_prepared_v3; selected body has provenance but no full-source authority",
+    "microcosm.build.us_runtime.asec_demographic_source": "Whole module attested only in the separately classified demographic extension.",
+    "microcosm.build.us_runtime.asec_student_controls": "whole-module in asec_prepared_v3; separate S authority before tax units, never part of original T1 verifier",
+    "microcosm.build.us_runtime.education_assistance_source": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.graph_asec_income": "Whole-module in asec_prepared_v3; PAW source evidence, bound reported-income accounting or shared typed graph declarations. No source authority is minted from graph transport.",
+    "microcosm.build.us_runtime.graph_asec_prepared": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.graph_composed_asec_binding": "whole-module in composed_asec_binding_v1; composed-arm resolution, its typed binding/arm-row transport and the declared row mask. Reads source provenance by charter and mints no source authority.",
+    "microcosm.build.us_runtime.graph_composed_asec_demographic_implementation": "Whole module attested only in the separately classified demographic extension.",
+    "microcosm.build.us_runtime.graph_composed_asec_measures": "Whole module attested by the unchanged composed_asec_binding_v1 base inventory and inherited by this extension.",
+    "microcosm.build.us_runtime.graph_composed_population": "whole-module in composed_population_v1 and composed_asec_binding_v1; the composing CREATE's declarations, node ids and typed origin binder. Adds no source route of its own.",
+    "microcosm.build.us_runtime.graph_context": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.graph_geography": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.graph_implementation": "whole-module in explicit stages",
+    "microcosm.frame": "whole-module in explicit stages",
+    "microcosm.graph": "whole-module in explicit stages",
+    "microcosm.graph.canonical": "whole-module in explicit stages",
+    "microcosm.graph.codecs": "whole-module in explicit stages",
+    "numpy": "versioned dependency in explicit stages",
+    "pandas": "versioned dependency in explicit stages"
+  },
+  "schema": "microcosm.us.demographic-extension-inventory.v1",
+  "stage": "composed_asec_demographic_binding_v1"
+}

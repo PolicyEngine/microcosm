@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "source_kind": "microcosm.acs_housing_universe_source.v1",
+  "vintage": 2024,
+  "dictionary": {
+    "url": "https://www2.census.gov/programs-surveys/acs/tech_docs/pums/data_dict/PUMS_Data_Dictionary_2024.pdf",
+    "sha256": "929c2752995b0af1c16d5c64de8cdc43b4aa7d388ee2d45b4b4df90fecce1dff",
+    "pages": [1, 2, 3, 8, 32, 33]
+  },
+  "vacancy_definition": "acs_2024_source_vacancy_v1",
+  "vacancy": "TYPEHUGQ=1, NP=0, no linked persons, WGTP=1..9999, blank TEN; separate source vacancy evidence, not a change to the pure classifier",
+  "gq_definition": "acs_2024_gq_person_placeholder_design_v1",
+  "gq": "TYPEHUGQ=2/3, NP=1, WGTP=0, blank TEN, one linked person with PWGTP=1..9999; one source person placeholder at DESIGN weight, not a physical facility or calibrated descendant",
+  "occupied_unknown_tenure": "Retained in occupied HU total with explicitly unclassified tenure; never infer from model tenure_type",
+  "origin": "CD source household origin: ACS arm, original household member name and SHA256, vintage integer2024, raw SERIALNO string; person additionally retains original person member and normalized SPORDER",
+  "parser": "UTF8/noBOM, strict comma QUOTE_MINIMAL, lexical projected fields, no trimming/NA inference; same ordered full role headers; every physical record full width",
+  "encoding": "acs-housing-lexical-projection/1",
+  "classifier_columns": ["interview_scope", "physical_unit", "household_kind", "tenure_subtype", "occupied_hu", "hu_tenure_class", "unresolved_reasons", "TEN_valid"],
+  "us_archive_scope_assumption": "50 US states and DC; observed Puerto Rico refuses rather than silently changing scope",
+  "release_eligible": false,
+  "calibrated_descendants_approved": false,
+  "B19001_B25003_activation": false
+}

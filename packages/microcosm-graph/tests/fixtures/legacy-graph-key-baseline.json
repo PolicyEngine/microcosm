@@ -1,0 +1,107 @@
+{
+  "baseline_version": 1,
+  "base_commit": "96faa5d53748316c940d91b8210d25c6aacc245f",
+  "source_worktree": "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-model-graph-20260904",
+  "source_fixture": "packages/microcosm-graph/tests/_toy.py::small_graph",
+  "acceptance_usage": "packages/microcosm-graph/tests/test_acceptance_a_identity.py::test_a1_determinism_across_processes_and_a_reloaded_store",
+  "source_fixture_sha256": "b8feedc576266929836e239cd3014707ab0980db45d4337136a0cc3b7b71beda",
+  "source_fixture_files_sha256": {
+    "household.csv": "a142233699a5477c29c371cef8db888cfc21b00e81ab8d9b6c0dd511874468c2",
+    "person.csv": "a1a9781284d8994fa00dd90440bfddf8f28ff39c5b5bfd2c534b87fb8b34b239",
+    "release.csv": "a3163198f1182cfbd46d9cb25341650292c2360c0e4bf67cf550af3c686e2053",
+    "schema.json": "4317d883e16984aa908bd0b4133a7c50fdc668815d3886d7240577d870ce8763",
+    "weights.csv": "af4f4b6ae364770ff4166eaa38005c141aa83cbf669e91caeb6758d1e2f30a09"
+  },
+  "capture_command": "/Users/maxghenis/PolicyEngine/microcosm/.venv/bin/python /Users/maxghenis/architecture-reviews/microcosm-20260904/capture_legacy_graph_key_baseline.py",
+  "identity_isolation": "Recorded kernel hashes are fixed SHA256(\"legacy-graph-key-baseline-v1\\0\" + kernel_ref) sent directly to node_key; implementation_hash/source_hash is never called. Tests must use these recorded hash literals and source keys.",
+  "imported_key_module": "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-model-graph-20260904/packages/microcosm-graph/src/microcosm/graph/keys.py",
+  "graph_json": "{\"country\":\"toy\",\"nodes\":[{\"base\":null,\"citation\":\"\",\"description\":\"load the toy country\",\"id\":\"survey\",\"inputs\":[],\"kernel\":\"source.csv@1\",\"mass\":\"conserve\",\"outputs\":[{\"column\":\"age\",\"dtype\":\"int64\",\"entity\":\"person\",\"ownership\":\"produced\",\"rows\":\"all\"},{\"column\":\"income\",\"dtype\":\"float64\",\"entity\":\"person\",\"ownership\":\"produced\",\"rows\":\"all\"},{\"column\":\"is_adult\",\"dtype\":\"boolean\",\"entity\":\"person\",\"ownership\":\"produced\",\"rows\":\"all\"},{\"column\":\"receives_x\",\"dtype\":\"boolean\",\"entity\":\"person\",\"ownership\":\"produced\",\"rows\":\"all\"},{\"column\":\"household_size\",\"dtype\":\"int64\",\"entity\":\"household\",\"ownership\":\"produced\",\"rows\":\"all\"}],\"params\":{},\"population\":null,\"sources\":[\"survey\"],\"structural\":\"create\",\"weights\":null},{\"base\":null,\"citation\":\"\",\"description\":\"\",\"id\":\"resources\",\"inputs\":[{\"columns\":[\"age\",\"income\"],\"entity\":\"person\",\"rows\":\"all\"}],\"kernel\":\"derive.add@1\",\"mass\":\"conserve\",\"outputs\":[{\"column\":\"resources\",\"dtype\":\"float64\",\"entity\":\"person\",\"ownership\":\"produced\",\"rows\":\"all\"}],\"params\":{\"columns\":[\"age\",\"income\"],\"entity\":\"person\",\"scale\":1.5,\"target\":\"resources\"},\"population\":\"survey\",\"sources\":[],\"structural\":\"none\",\"weights\":null},{\"base\":null,\"citation\":\"\",\"description\":\"\",\"id\":\"draw_a\",\"inputs\":[{\"columns\":[\"age\"],\"entity\":\"person\",\"rows\":\"all\"}],\"kernel\":\"draw.uniform@1\",\"mass\":\"conserve\",\"outputs\":[{\"column\":\"noise_a\",\"dtype\":\"float64\",\"entity\":\"person\",\"ownership\":\"produced\",\"rows\":\"all\"}],\"params\":{\"entity\":\"person\",\"target\":\"noise_a\"},\"population\":\"survey\",\"sources\":[],\"structural\":\"none\",\"weights\":null},{\"base\":null,\"citation\":\"\",\"description\":\"\",\"id\":\"target_a\",\"inputs\":[{\"columns\":[\"age\",\"income\"],\"entity\":\"person\",\"rows\":\"all\"}],\"kernel\":\"impute.chain@1\",\"mass\":\"conserve\",\"outputs\":[{\"column\":\"target_a\",\"dtype\":\"float64\",\"entity\":\"person\",\"ownership\":\"produced\",\"rows\":\"all\"}],\"params\":{\"entity\":\"person\",\"noise\":0.5,\"predictors\":[\"age\",\"income\"],\"target\":\"target_a\"},\"population\":\"survey\",\"sources\":[],\"structural\":\"none\",\"weights\":null},{\"base\":null,\"citation\":\"\",\"description\":\"\",\"id\":\"target_b\",\"inputs\":[{\"columns\":[\"age\",\"target_a\"],\"entity\":\"person\",\"rows\":\"all\"}],\"kernel\":\"impute.chain@1\",\"mass\":\"conserve\",\"outputs\":[{\"column\":\"target_b\",\"dtype\":\"float64\",\"entity\":\"person\",\"ownership\":\"produced\",\"rows\":\"all\"}],\"params\":{\"entity\":\"person\",\"noise\":0.5,\"predictors\":[\"age\",\"target_a\"],\"target\":\"target_b\"},\"population\":\"survey\",\"sources\":[],\"structural\":\"none\",\"weights\":null}],\"sources\":[{\"codec\":\"csv-tables\",\"description\":\"the toy country's tables\",\"name\":\"survey\"}]}",
+  "kernel_implementation_hashes": {
+    "derive.add@1": "9c2df73423cfafb817f2986dd1af1866172a7817fb9731a5dd2143f777f3a8e3",
+    "draw.uniform@1": "6af02411c041ea1a021d6963c589e3b79af7556193b199402d8f0da27b88c396",
+    "impute.chain@1": "ce6ee14d3e3107486b0827f314a1c28b7c5aaaf43cf6b46b69e1be9d5149f58d",
+    "source.csv@1": "67df998f8afb82646051a44c96bcb9370b3119281d8e1c59e2722428c597218c"
+  },
+  "kernel_capabilities": {
+    "derive.add@1": {
+      "determinism": "deterministic",
+      "numeric": "bitwise",
+      "seed_source": "none",
+      "structural": "none",
+      "role": "compute",
+      "consumes_se": false,
+      "dependencies": [],
+      "tolerance": null
+    },
+    "draw.uniform@1": {
+      "determinism": "seeded",
+      "numeric": "bitwise",
+      "seed_source": "executor",
+      "structural": "none",
+      "role": "compute",
+      "consumes_se": false,
+      "dependencies": [],
+      "tolerance": null
+    },
+    "impute.chain@1": {
+      "determinism": "seeded",
+      "numeric": "bitwise",
+      "seed_source": "executor",
+      "structural": "none",
+      "role": "compute",
+      "consumes_se": false,
+      "dependencies": [],
+      "tolerance": null
+    },
+    "source.csv@1": {
+      "determinism": "deterministic",
+      "numeric": "bitwise",
+      "seed_source": "none",
+      "structural": "create",
+      "role": "compute",
+      "consumes_se": false,
+      "dependencies": [],
+      "tolerance": null
+    }
+  },
+  "source_keys": {
+    "survey": "4fcb5d84ed4e4de1802dd503208e1199c4307948f0abae9d50936158b2ea377b"
+  },
+  "compiled_order": [
+    "survey",
+    "draw_a",
+    "resources",
+    "target_a",
+    "target_b"
+  ],
+  "predecessors": {
+    "survey": [],
+    "resources": [
+      "survey"
+    ],
+    "draw_a": [
+      "survey"
+    ],
+    "target_a": [
+      "survey"
+    ],
+    "target_b": [
+      "survey",
+      "target_a"
+    ]
+  },
+  "node_keys": {
+    "survey": "f8e33d6cddc6c2c86ce9364d81fc6ebc5427fb1c869aad6b3a54525a876be1b9",
+    "draw_a": "14961b908e77336f5bd7a963cbabf71443e3634fcfbf7cc0bc7a65b4d6b3a3ae",
+    "resources": "756ef685a1329346b0bce608aa27945c5fa2a291d4a818238813db0738bf85a7",
+    "target_a": "259de014b0b972fe6de6d6ecb28aa66efa6a6de8c13319e0e6c8f8b1f986ad14",
+    "target_b": "5ff8a0b08a2f9b7f54ebc81c336465fb6109210d86764ed924ecdcc10c27453c"
+  },
+  "node_seeds": {
+    "survey": 8555589241223682503,
+    "draw_a": 8325377662925372478,
+    "resources": 514626482650024594,
+    "target_a": 14508388850083053968,
+    "target_b": 17049535455440935095
+  }
+}

@@ -1,0 +1,1 @@
+Bind the carried prepared-ASEC evidence to the ASEC rows of the composed prepared-ASEC/native-ACS population by source arm, original identifier and income-year cohort, and expose the reviewed corrected monetary leaves, the six reported-income observations and the `A_AGE`-mapped `age` over those rows alone, leaving the native ACS arm byte-for-byte unchanged.

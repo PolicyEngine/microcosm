@@ -69,6 +69,9 @@ _US_RUNTIME = (
 )
 _US_RUNTIME_IMPORT_PREFIX = "microcosm.build.us_runtime"
 _SPINE_BLIND_BUILD_TOOLS = (_REPOSITORY_ROOT / "tools" / "build_us_multispine_pool.py",)
+# Shared diagnostic producers get the ordinary non-owner/source-channel scans;
+# their placement outside us_runtime does not create a provenance exemption.
+_SPINE_BLIND_SHARED_MODULES = (_US_RUNTIME.parent / "quality_aggregates.py",)
 _REQUIRED_POOL_RUNTIME_MODULES = frozenset(
     {
         "late_producer_dag.py",
@@ -94,6 +97,7 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
     {
         # Declares and receipts exact ACS source universes; never mutates rows.
         "acs_income_universe.py",
+        "acs_housing_donor.py",  # Source-only reported housing projection; no recipient treatment.
         # Owner-approved release boundary: exact raw ACS join and receipt.
         "acs_release_predictors.py",
         "base_pool.py",  # Legacy late-spine assembly.
@@ -101,6 +105,33 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # stage validators can inspect them; no graph kernel reads or mutates
         # them, and the stage kernels stay under the operator guard below.
         "graph.py",
+        # Composed prepared-ASEC/native-ACS population owner: declares the
+        # source-channel views its CREATE and the reused harmonization node
+        # need, and reads the assembled provenance columns to receipt the exact
+        # source-to-output mapping. It applies no population treatment.
+        "graph_composed_population.py",
+        # Composed-arm binding owner: resolving which arm a composed row came
+        # from, and which source row it is, is this module's whole operation, so
+        # it reads the support-channel and raw spine-source-ID columns by
+        # charter. It writes one boolean arm-membership cell per bound entity
+        # and no measurement; the measurements live in
+        # graph_composed_asec_measures.py, which consumes this module's typed
+        # artifact and declared row mask and stays under the guard below.
+        "graph_composed_asec_binding.py",
+        # Clone source-channel reads declare/preserve lineage, validate the
+        # live source roster and report arm mass. Every row receives the same
+        # two-role clone and half weight; channels never select treatment or
+        # determine the weight split. This is a provenance-owner boundary.
+        "graph_combined_clone.py",
+        # Resolves original native household identities and their exact
+        # population/clone lineage; it applies no population treatment.
+        "native_household_origin.py",
+        "graph_native_household_origin.py",
+        # Production pre-operator graph owner: declares source-channel views
+        # for actual source DESIGN preparation and importance harmonization.
+        # It applies no post-assembly population treatment; those graph
+        # operators remain subject to the source-blind guard.
+        "graph_sources.py",
         # Enumerates provenance columns only to reject preassembled source frames.
         "operator_boundary.py",
         "puf_qrf_chain.py",  # Carries provenance into resumable checkpoints.
@@ -148,12 +179,21 @@ _PUF_CLONE_OPERATOR_MODULES = (
     "puf_support.py",
 )
 _SPINE_BLIND_OPERATOR_MODULES = (
+    "_graph_acs_rent_artifacts.py",
+    "graph_acs_rent.py",
+    "graph_acs_rent_source.py",
+    # The pre-clone housing recipe and its strict artifact codec name no
+    # source-spine column: selection comes from the registered pool helpers.
+    "_graph_housing_source_artifacts.py",
+    "graph_housing_source.py",
+    "graph_preclone.py",
     "acs_transfer.py",
     "adult_care.py",
     "alimony.py",
     "capital_gain_details.py",
     "child_support.py",
     "childcare.py",
+    "demographic_calibration_graph.py",
     "disability_benefits.py",
     "domestic_production.py",
     "education_inputs.py",
@@ -217,8 +257,11 @@ _GATE_SOURCE_SCOPE_HELPER_CALLERS = {
 _OTHER_US_RUNTIME_MODULES = frozenset(
     {
         "__init__.py",
+        # Closed summary-policy validator; no source reads or population treatment.
+        "_person_signal_summary.py",
         # Exact source-universe validator/receipt owner; no population treatment.
         "acs_income_universe.py",
+        "acs_housing_donor.py",  # Source-only reported housing projection; no recipient treatment.
         "acs_inputs.py",
         "acs_multispine.py",
         "acs_pums.py",
@@ -226,11 +269,17 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "acs_sources.py",
         "acs_transfer_bank.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_checkpoint.py",  # Bounded checkpoint I/O; no population treatment.
+        "asec_household_observations.py",  # Authenticated source-only exact-key join.
+        "asec_raw_stage_v4.py",  # Authenticated source restoration; no treatment.
         "asec_pool.py",
         "base_pool.py",
         "block_ladder_sources.py",
         "capital_gain_distributions.py",
         "casualty_losses.py",
+        # Public reference aggregates and pinned acquisition; no population treatment.
+        "cd_benchmark_reference.py",
+        "cd_reference.py",
+        "cd_reference_sources.py",
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",
@@ -257,6 +306,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "pregnancy.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
+        "reported_coverage_source.py",  # Exact observed-source join; no treatment.
         "puf_aggregate_records.py",
         "puf_capital_gains_tail.py",
         "puf_donor_io.py",  # Bounded donor artifact I/O; no population treatment.
@@ -308,6 +358,119 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "graph.py",
         "graph_kernels.py",
         "worker_identity.py",  # Portable primary-QRF worker identity; no population treatment.
+        # Typed metadata codec and source-blind geography graph adapter.
+        "graph_context.py",
+        "graph_implementation.py",
+        # Separate downstream identity inventory; validates source/code bytes,
+        # imports and resources without reading or treating population rows.
+        "graph_composed_asec_demographic_implementation.py",
+        "graph_combined_clone.py",
+        "graph_native_origin_implementation.py",
+        "native_household_origin.py",
+        "graph_native_household_origin.py",
+        "graph_geography.py",
+        # Measured-hours adapter; still subject to the all-runtime AST scan.
+        "graph_early_preparation.py",
+        "graph_cps_carried.py",
+        "graph_prior_year.py",
+        # Relationship/eligibility person-preparation adapter; declares views
+        # and kernels only. Selection, role stripping and the merge stay in the
+        # pool owner, and it remains subject to the all-runtime AST scan.
+        "graph_person_preparation.py",
+        # Pure synthetic current-money contracts; ordinary, no source exemption.
+        "asec_current_money.py",
+        "_asec_current_money_codec.py",
+        "asec_current_money_resources.py",
+        "asec_current_money_source.py",  # Closed byte-authenticated source scope.
+        "asec_current_money_units.py",  # Verified current-money tax-only boundary.
+        # Source import/assembly/harmonization owner, classified above.
+        "graph_sources.py",
+        # Composed prepared-ASEC/native-ACS population seam, classified above.
+        # It declares one CREATE over two authenticated sources and reuses the
+        # existing harmonization and geography nodes; it treats no population.
+        "graph_composed_population.py",
+        # ASEC current-money graph slice: full-source preparation, the typed
+        # body/selection artifacts it emits, the corrected CPS leaf derivation
+        # over that subset, and the closure-admitted engine evaluation. Every
+        # stage runs on authenticated ASEC source bytes before pool assembly,
+        # so none is a post-assembly population treatment, and the engine
+        # outputs stay in an evaluation artifact rather than population cells.
+        "asec_prepared_source.py",
+        "asec_current_money_selection.py",
+        "asec_current_money_graph_resources.py",
+        "cps_carried_current.py",
+        "asec_engine_evaluation.py",
+        "graph_asec_prepared.py",
+        "graph_asec_income.py",
+        # Composed-arm binding seam, classified as a provenance owner above:
+        # it resolves arms and source rows and writes only the boolean
+        # arm-membership cell, never a measurement.
+        "graph_composed_asec_binding.py",
+        # Corrected ASEC leaves and reported observations over the composed
+        # ASEC rows. Source-blind: the arm arrives as a declared boolean row
+        # mask and its source coordinates as a typed artifact, both already
+        # resolved by the reviewed binding owner, so no source-channel or
+        # spine-source-ID column is read here.
+        "graph_composed_asec_measures.py",
+        # Canonical sex and household-reference cells over the composed ASEC
+        # rows, bound from the accepted demographic projection. Source-blind on
+        # the same terms as the measurement module: the arm arrives as the
+        # declared boolean row mask and its native identifiers inside the typed
+        # arm-rows artifact, so no support-channel or spine-source-ID column is
+        # read. Reading one pinned projection artifact through the generic byte
+        # codec is not source-spine provenance and mints no source authority.
+        "graph_composed_asec_demographics.py",
+        # Closed ASEC source restorations and their evidence codecs. Each
+        # authenticates pinned Census members by canonical byte replay and
+        # issues typed observations; none applies a population treatment.
+        "asec_income_observations.py",
+        "asec_person_income_source.py",
+        "asec_student_controls.py",
+        # Explicit ASEC demographic source contract: the printed sex, sex
+        # allocation and household reference-person entries, their reader and
+        # their per-person binding states. It authenticates pinned members and
+        # issues typed observations; it applies no population treatment, and it
+        # reads no support channel or spine-source-ID column.
+        "asec_demographic_source.py",
+        # ASEC housing observation and occupied-HU evidence, their source
+        # authentication, and the non-authoritative graph transport. These are
+        # interview-time observations: no participation, eligibility, rent or
+        # subsidy dollars are derived, and parsing mints no Frame authority.
+        "asec_housing_status.py",
+        "asec_housing_status_source.py",
+        "asec_housing_universe.py",
+        "asec_housing_universe_source.py",
+        "graph_housing_universe.py",
+        # Reads the validated status/occupied-HU artifacts and attachments above
+        # and states which SPM units that evidence can place. It opens no source
+        # file, derives no new source semantics and treats no population.
+        "asec_housing_receipt_consumer.py",
+        # Builds invented households and measures the installed engine through
+        # the real export gate; it reads no source and treats no population.
+        "housing_charge_probes.py",
+        # Pure ACS housing-unit semantics, the closed two-archive source
+        # reconstruction behind them, and the CREATE/SELECT graph transport.
+        # Only CREATE authenticates bytes; selection emits identities and
+        # positions and asserts no calibrated representation.
+        "acs_housing_universe.py",
+        "acs_housing_universe_source.py",
+        "graph_acs_housing_universe.py",
+        # PUF raw-source aging: a pure per-field growth contract and transform
+        # plus the source-stage graph adapter that runs it, in the same shape
+        # graph_prior_year.py already uses. Source-stage uprating of a raw PUF
+        # successor, not a post-assembly population treatment.
+        "puf_growth.py",
+        "puf_growth_graph.py",
+        # Measures the actual engine filer predicate for IRS return-based
+        # target design rows; reads no source spine and treats no population.
+        "soi_return_universe.py",
+        # Explicitly versioned ACS household source-column contract and its
+        # additive version 2 read. Declares rosters and reads native columns;
+        # applies no adjustment, universe policy or population treatment.
+        "acs_household_source_columns.py",
+        # Pure publisher household-total measurement for both arms. Runs on
+        # supplied projections; constructs no Frame and treats no population.
+        "household_reported_income.py",
     }
 )
 _CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(
@@ -3348,6 +3511,15 @@ def test_registered_population_operators_do_not_read_any_source_channel() -> Non
     )
 
 
+def test_shared_quality_producers_are_source_spine_blind() -> None:
+    for path in _SPINE_BLIND_SHARED_MODULES:
+        assert path.is_file(), f"shared producer module is missing: {path.name}"
+        source = path.read_text()
+        assert not _non_owner_source_spine_accesses(path.name, source)
+        assert not _operator_source_channel_reads(source)
+        assert not _frame_metadata_drops(source)
+
+
 def test_physical_source_accessor_is_confined_to_reviewed_gates() -> None:
     """Origin-aware diagnostics must not become population treatments."""
 
@@ -3403,8 +3575,9 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 70, (
-            f"{tool.name} must reach the pinned 70-module runtime graph; "
+        # Includes the shared person-signal validator and portable worker identity.
+        assert len(runtime_graph) == 72, (
+            f"{tool.name} must reach the pinned 72-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

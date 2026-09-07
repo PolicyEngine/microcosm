@@ -1,0 +1,1 @@
+Measure comparable publisher-reported household total money income on the native ACS (`HINCP`) and prepared ASEC (`asec_HTOTVAL`) arms, with an explicitly versioned ACS household source-column contract.

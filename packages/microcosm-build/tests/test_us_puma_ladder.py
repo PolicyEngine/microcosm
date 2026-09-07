@@ -15,6 +15,7 @@ from microcosm.build.us_runtime import (
     us_puma_ladder_gate,
     with_household_us_puma_ladder,
 )
+from microcosm.build.us_runtime.puma_ladder import decode_us_puma_ladder
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -465,3 +466,32 @@ def _minimal_us_frame() -> Frame:
     }
     strata = pd.Series(["acs_2023", "acs_2023"], name="stratum")
     return Frame(tables, US_SCHEMA, weights, strata)
+
+
+def test_puma_artifact_bytes_equal_validated_file(tmp_path):
+    source = _write_ladder(tmp_path / "ladder.npz")
+    file = load_us_puma_ladder(source)
+    decoded = decode_us_puma_ladder(source.read_bytes())
+    assert decoded.metadata == file.metadata
+    for name in (
+        "puma",
+        "puma_population",
+        "cd_overlap_puma",
+        "cd_overlap_cd",
+        "cd_overlap_population",
+        "county_overlap_puma",
+        "county_overlap_county",
+        "county_overlap_population",
+        "tract_overlap_puma",
+        "tract_overlap_tract",
+        "tract_overlap_population",
+    ):
+        np.testing.assert_array_equal(getattr(decoded, name), getattr(file, name))
+
+
+def test_puma_artifact_bytes_refuse_nonconserving_overlaps(tmp_path):
+    source = _write_ladder(
+        tmp_path / "bad.npz", cd_overlap_population=[899.0, 100.0, 500.0, 400.0]
+    )
+    with pytest.raises(ValueError, match="conserv"):
+        decode_us_puma_ladder(source.read_bytes())

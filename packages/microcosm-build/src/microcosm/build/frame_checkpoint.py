@@ -41,10 +41,15 @@ __all__ = [
     "write_frame_checkpoint",
 ]
 
-FRAME_CHECKPOINT_SCHEMA_VERSION = 3
+FRAME_CHECKPOINT_SCHEMA_VERSION = 4
+_NULLABLE_BOOLEAN_SCHEMA_VERSION = 3
 _LEGACY_FRAME_CHECKPOINT_SCHEMA_VERSION = 2
 _SUPPORTED_FRAME_CHECKPOINT_SCHEMA_VERSIONS = frozenset(
-    {_LEGACY_FRAME_CHECKPOINT_SCHEMA_VERSION, FRAME_CHECKPOINT_SCHEMA_VERSION}
+    {
+        _LEGACY_FRAME_CHECKPOINT_SCHEMA_VERSION,
+        _NULLABLE_BOOLEAN_SCHEMA_VERSION,
+        FRAME_CHECKPOINT_SCHEMA_VERSION,
+    }
 )
 
 _ARTIFACT_KIND = "populace_frame_checkpoint"
@@ -56,6 +61,20 @@ _ENCODING_DATETIME = "datetime64"
 _ENCODING_TIMEDELTA = "timedelta64"
 _ENCODING_OBJECT = "object_scalars_v1"
 _ENCODING_NULLABLE_BOOLEAN = "nullable_boolean_v1"
+_ENCODING_NULLABLE_INTEGER = "nullable_integer_v1"
+_NULLABLE_INTEGER_DTYPES = {
+    str(dtype): dtype
+    for dtype in (
+        pd.Int8Dtype(),
+        pd.Int16Dtype(),
+        pd.Int32Dtype(),
+        pd.Int64Dtype(),
+        pd.UInt8Dtype(),
+        pd.UInt16Dtype(),
+        pd.UInt32Dtype(),
+        pd.UInt64Dtype(),
+    )
+}
 
 _TAG_NONE = 0
 _TAG_PD_NA = 1
@@ -346,25 +365,21 @@ def _checkpoint_metadata(
         )
 
     strata_spec = _series_spec(frame.strata, label="strata")
-    uses_nullable_boolean = any(
-        column.get("encoding") == _ENCODING_NULLABLE_BOOLEAN
+    encodings = {
+        spec.get("encoding")
         for table in table_specs
-        for column in table["columns"]
-    ) or any(
-        table["index"].get("encoding") == _ENCODING_NULLABLE_BOOLEAN
-        for table in table_specs
-    )
-    uses_nullable_boolean = uses_nullable_boolean or (
-        strata_spec.get("encoding") == _ENCODING_NULLABLE_BOOLEAN
-    )
+        for spec in [*table["columns"], table["index"]]
+    } | {strata_spec.get("encoding")}
+    if _ENCODING_NULLABLE_INTEGER in encodings:
+        version = FRAME_CHECKPOINT_SCHEMA_VERSION
+    elif _ENCODING_NULLABLE_BOOLEAN in encodings:
+        version = _NULLABLE_BOOLEAN_SCHEMA_VERSION
+    else:
+        version = _LEGACY_FRAME_CHECKPOINT_SCHEMA_VERSION
     schema = frame.schema
     return {
         "artifact_kind": _ARTIFACT_KIND,
-        "schema_version": (
-            FRAME_CHECKPOINT_SCHEMA_VERSION
-            if uses_nullable_boolean
-            else _LEGACY_FRAME_CHECKPOINT_SCHEMA_VERSION
-        ),
+        "schema_version": version,
         "schema": {
             "person_entity": schema.person_entity,
             "group_entities": list(schema.group_entities),
@@ -418,6 +433,15 @@ def _series_spec(series: pd.Series, *, label: str) -> dict[str, object]:
         return {
             "dtype": "boolean",
             "encoding": _ENCODING_NULLABLE_BOOLEAN,
+            "has_null_mask": bool(series.isna().any()),
+        }
+    if (
+        str(dtype) in _NULLABLE_INTEGER_DTYPES
+        and dtype == (_NULLABLE_INTEGER_DTYPES[str(dtype)])
+    ):
+        return {
+            "dtype": str(dtype),
+            "encoding": _ENCODING_NULLABLE_INTEGER,
             "has_null_mask": bool(series.isna().any()),
         }
     if isinstance(dtype, pd.api.extensions.ExtensionDtype) and not isinstance(
@@ -561,6 +585,19 @@ def _write_series(group: Any, series: pd.Series, spec: Mapping[str, object]) -> 
                 null_mask.astype(np.uint8, copy=False),
             )
         return
+    if encoding == _ENCODING_NULLABLE_INTEGER:
+        dtype = _NULLABLE_INTEGER_DTYPES[str(spec["dtype"])]
+        null_mask = series.isna().to_numpy(dtype=np.bool_, copy=False)
+        # Keep exact integer width and observed values, including UInt64 IDs.
+        # Hidden extension-array storage is not part of the logical payload.
+        values = series.to_numpy(dtype=dtype.numpy_dtype, na_value=0, copy=True)
+        values[null_mask] = 0
+        _write_numpy_dataset(group, "values", values)
+        if spec.get("has_null_mask") is True:
+            _write_numpy_dataset(
+                group, "null_mask", null_mask.astype(np.uint8, copy=False)
+            )
+        return
     raise RuntimeError(f"Unknown checkpoint series encoding {encoding!r}.")
 
 
@@ -641,6 +678,55 @@ def _read_series(
             pd.arrays.BooleanArray(values, mask, copy=False),
             copy=False,
         )
+    elif encoding == _ENCODING_NULLABLE_INTEGER:
+        integer_dtype = _NULLABLE_INTEGER_DTYPES.get(dtype)
+        if integer_dtype is None:
+            raise ValueError(
+                f"Frame checkpoint {path} {label!r} nullable integer encoding "
+                f"has unsupported declared dtype {dtype!r}."
+            )
+        has_null_mask = spec.get("has_null_mask")
+        if type(has_null_mask) is not bool:
+            raise ValueError(
+                f"Frame checkpoint {path} {label!r} nullable integer "
+                "has_null_mask must be a boolean."
+            )
+        values = _read_numpy_dataset(group, "values", path)
+        if values.ndim != 1 or values.dtype != integer_dtype.numpy_dtype:
+            raise ValueError(
+                f"Frame checkpoint {path} {label!r} nullable integer values "
+                f"must be a one-dimensional {integer_dtype.numpy_dtype} array."
+            )
+        if has_null_mask:
+            if "null_mask" not in group:
+                raise ValueError(
+                    f"Frame checkpoint {path} {label!r} is missing its null mask."
+                )
+            null_mask = _read_numpy_dataset(group, "null_mask", path)
+            if (
+                null_mask.ndim != 1
+                or null_mask.dtype != np.dtype(np.uint8)
+                or len(null_mask) != len(values)
+                or ((null_mask != 0) & (null_mask != 1)).any()
+                or not null_mask.any()
+            ):
+                raise ValueError(
+                    f"Frame checkpoint {path} {label!r} null mask must be a "
+                    "one-dimensional uint8 0/1 array aligned to its values."
+                )
+            mask = null_mask.astype(np.bool_, copy=False)
+            if (values[mask] != 0).any():
+                raise ValueError(
+                    f"Frame checkpoint {path} {label!r} null mask covers "
+                    "noncanonical nonzero integer storage."
+                )
+        else:
+            if "null_mask" in group:
+                raise ValueError(
+                    f"Frame checkpoint {path} {label!r} has an unexpected null mask."
+                )
+            mask = np.zeros(len(values), dtype=np.bool_)
+        series = pd.Series(pd.arrays.IntegerArray(values, mask, copy=False), copy=False)
     else:
         raise ValueError(
             f"Frame checkpoint {path} has unknown encoding {encoding!r} for {label!r}."
@@ -838,38 +924,61 @@ def _read_metadata(root: Any, path: Path) -> dict[str, Any]:
             f"Frame checkpoint {path} schema version is {version!r}; expected "
             f"one of {sorted(_SUPPORTED_FRAME_CHECKPOINT_SCHEMA_VERSIONS)}."
         )
-    nullable_spec_count = 0
+    boolean_spec_count = 0
+    integer_spec_count = 0
     for label, spec in _checkpoint_series_specs(metadata):
         dtype = spec.get("dtype")
         encoding = spec.get("encoding")
-        declares_nullable = dtype == "boolean"
-        uses_nullable_encoding = encoding == _ENCODING_NULLABLE_BOOLEAN
+        declares_boolean = dtype == "boolean"
+        uses_boolean_encoding = encoding == _ENCODING_NULLABLE_BOOLEAN
+        declares_integer = isinstance(dtype, str) and dtype in _NULLABLE_INTEGER_DTYPES
+        uses_integer_encoding = encoding == _ENCODING_NULLABLE_INTEGER
+        if version < FRAME_CHECKPOINT_SCHEMA_VERSION and (
+            declares_integer or uses_integer_encoding
+        ):
+            raise ValueError(
+                f"Frame checkpoint {path} schema version {version} cannot carry "
+                f"nullable integer spec {label!r}."
+            )
         if version == _LEGACY_FRAME_CHECKPOINT_SCHEMA_VERSION and (
-            declares_nullable or uses_nullable_encoding
+            declares_boolean or uses_boolean_encoding
         ):
             raise ValueError(
                 f"Frame checkpoint {path} schema version 2 cannot carry nullable "
                 f"boolean spec {label!r}."
             )
-        if version == FRAME_CHECKPOINT_SCHEMA_VERSION and (
-            declares_nullable != uses_nullable_encoding
+        if version >= _NULLABLE_BOOLEAN_SCHEMA_VERSION and (
+            declares_boolean != uses_boolean_encoding
         ):
             raise ValueError(
-                f"Frame checkpoint {path} schema version 3 nullable boolean spec "
-                f"{label!r} must pair declared dtype 'boolean' with encoding "
+                f"Frame checkpoint {path} schema version {version} nullable boolean "
+                f"spec {label!r} must pair declared dtype 'boolean' with encoding "
                 f"{_ENCODING_NULLABLE_BOOLEAN!r}."
             )
-        if uses_nullable_encoding:
-            nullable_spec_count += 1
+        if declares_integer != uses_integer_encoding:
+            raise ValueError(
+                f"Frame checkpoint {path} schema version {version} nullable integer "
+                f"spec {label!r} must pair a supported pandas integer dtype "
+                f"with encoding {_ENCODING_NULLABLE_INTEGER!r}."
+            )
+        if uses_boolean_encoding or uses_integer_encoding:
+            family = "boolean" if uses_boolean_encoding else "integer"
             if type(spec.get("has_null_mask")) is not bool:
                 raise ValueError(
-                    f"Frame checkpoint {path} {label!r} nullable boolean "
+                    f"Frame checkpoint {path} {label!r} nullable {family} "
                     "has_null_mask must be a boolean."
                 )
-    if version == FRAME_CHECKPOINT_SCHEMA_VERSION and nullable_spec_count == 0:
+        boolean_spec_count += uses_boolean_encoding
+        integer_spec_count += uses_integer_encoding
+    if version == _NULLABLE_BOOLEAN_SCHEMA_VERSION and boolean_spec_count == 0:
         raise ValueError(
             f"Frame checkpoint {path} schema version 3 requires at least one "
             "nullable boolean spec."
+        )
+    if version == FRAME_CHECKPOINT_SCHEMA_VERSION and integer_spec_count == 0:
+        raise ValueError(
+            f"Frame checkpoint {path} schema version 4 requires at least one "
+            "nullable integer spec."
         )
     return metadata
 

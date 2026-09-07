@@ -1,0 +1,1 @@
+Detach tax and housing result axes and weight buffers from their authenticated ASEC parents, including cached range indexes. Bind strata alignment in source/result signatures and sanitize malformed tax-result refusals.

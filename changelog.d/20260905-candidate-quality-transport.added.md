@@ -1,0 +1,1 @@
+Add a local content-addressed candidate evidence transport that seals existing aggregate JSON under separate execution and release-eligibility attestations, with explicit population, model and run attachment scopes, and no release or staging pointer writes.

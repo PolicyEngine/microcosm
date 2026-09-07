@@ -292,9 +292,97 @@ Amendments so far (each re-locked):
     `hit` forced to false) and `load_certified` refuses it. Raised by the
     #847 gate review; adopted 2026-09-03.
 
+19. **Typed artifacts and stable draw coordinates.** Nodes may declare
+    `artifact_outputs` (named nominal type/version contracts) and
+    `artifact_inputs` (consumer aliases referencing a producer output). Edges
+    may cross population versions and participate in compilation, identity,
+    cache validation and gate ancestry. The executor supplies immutable
+    `ArtifactValue` bytes and producer numeric scopes; consumers validate
+    decoded payloads. Legacy opaque diagnostics remain legal. Only the two
+    newly added empty artifact fields are omitted from old declarations and
+    keys; the base-96faa5d acceptance graph is pinned in
+    `tests/fixtures/legacy-graph-key-baseline.json`. Typed cache records use
+    schema 2 and typed manifests schema 3; legacy runs retain their formats.
+    Numeric scope weakening is refused: platform-bitwise requires a
+    platform-bitwise consumer, tolerance-bound requires a tolerance-bound
+    consumer with its own output tolerance, and mixed platform/tolerance
+    inputs are unsupported. `SeedSource.KEYED` opts into the versioned
+    `keyed_uniform` helper over normative stream params and stable coordinates;
+    the default executor RNG remains unchanged. Tests in
+    `test_artifact_edges.py` and `test_keyed_randomness.py` cover these additions.
+    The existing B2/context shape assertions include the appended immutable
+    artifact field. Implemented after the 2026-09-04 Fable plan gate; this
+    records the interface amendment for owner review, not a claim of code
+    approval or release certification.
+
+20. **Failed typed evidence remains a failed gate, not invented bytes.**
+    A population-bound ordinary gate that raises keeps the existing failed
+    string-verdict columns and exception evidence. Its declared typed byte
+    outputs are unavailable: executor-owned `receipt.execution` records
+    `schema="microcosm.graph.execution.v1"`, `state="gate_exception"`, and
+    their names. Other historical `execution` diagnostics remain free-form
+    and retain their existing behavior. A direct consumer of those bytes
+    is recorded `unreached`, with `blocked_by` binding the producer IDs and
+    keys; unavailability propagates through causal descendants. Such a node
+    executes no kernel and creates no columns, weights, frame, or byte
+    artifacts. Independent nodes and consumers of the available failed
+    verdict columns still run. An unreached release remains evidence-tier.
+    No model-typed exception payload is fabricated.
+
+    The executor caches these exceptional outcomes under node keys, so warm
+    and `resume="require"` runs execute no kernels. Preflight validates every
+    required receipt and artifact before execution and rederives blockers
+    from the compiled graph; manifests validate failure roots, producer keys,
+    typed availability, and acyclic blocker ancestry. Kernels may not author
+    the namespaced executor metadata: an invalid returned receipt rejects
+    the node, including a gate, rather than becoming exception evidence.
+    Only an exception raised by the gate computation is converted to a
+    failed gate. Exceptional cache records use schema
+    3 and manifests containing them use schema 4: older readers must refuse,
+    because they cannot represent declared outputs that were never created.
+    Healthy typed cache/manifest schemas remain 2/3, legacy schemas and node
+    keys remain unchanged, and no field in the frozen declaration/context
+    interface changes. `test_gate_artifact_failures.py` covers this amendment.
+    This closes the typed-output interaction with F4/amendment 7 identified
+    in the independent review of PR #873.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.
+
+## Optional execution retention policy
+
+`population_retention="lazy"` is an opt-in physical execution policy; the
+existing eager default and frozen declarations remain unchanged. A version
+must stay live through its last scheduled population use, including late
+branches. All realized versions remain available through the normal
+`PopulationView` API, loaded on demand and weakly memoized. Unreached versions
+remain absent. Listing attachments, membership, manifest identity and portable
+serialization must not hydrate populations.
+
+Before retirement, ordinary patches must be present in a verified final-Frame
+snapshot. Auxiliary identity binds producing receipts without run-only fields
+and actual codec payload hashes; receipt-only identity is insufficient for
+valid tolerance-bound recomputations. Unpatched structural artifacts may be
+reused only after its signature is bound to the actual live Frame. Snapshot
+publication uses the
+existing atomic store format, and lazy access refuses changed payloads or
+producer binding. The expected payload signature must bind the actual decoded
+Frame, including a valid concurrent replacement between metadata validation
+and decoding; a metadata-only precheck is insufficient. Temporary canonical
+re-encoding may be used for this bounded-memory read verification. A frozen
+in-memory metadata descriptor preserves Frame
+metadata on the same eager/lazy execution path. This does not amend the
+existing Frame codec's metadata omission or portable manifest attachments.
+
+`require` retains preflight and zero-kernel behavior, but lazy attachment
+materialization needs a writable store. No node key, published node artifact,
+portable schema, or manifest key changes. Source hashing retains the legacy
+byte formula and mutation checks with bounded reads. Structural writes retain
+artifact bytes and order while copying only one Series at a time. The new
+`test_population_retention.py` and `test_source_streaming.py` verify this policy;
+the frozen acceptance suite is unchanged. This policy bounds historical Frame
+retention by the live frontier, not arbitrary kernel or caller memory.
 
 ## Ownership
 

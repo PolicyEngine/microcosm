@@ -1,0 +1,96 @@
+{
+  "asec_prepared": {
+    "codec": "us-asec-prepared-current-money-v3",
+    "required_files": [
+      "asec_raw_stage.checkpoint.h5",
+      "asec_household_observations.checkpoint.h5",
+      "asec_person_income_source.checkpoint.h5",
+      "restoration.receipt.json",
+      "asec_household_cohort_2022.h5",
+      "asec_household_cohort_2023.h5",
+      "asec_household_cohort_2024.h5",
+      "pppub23.csv",
+      "pppub24.csv",
+      "pppub25.csv"
+    ],
+    "binding_status": "UNAPPROVED_PATHS"
+  },
+  "acs_original_archive_pins": [
+    {
+      "role": "household",
+      "filename": "csv_hus.zip",
+      "url": "https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/csv_hus.zip",
+      "sha256": "8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0",
+      "size_bytes": 251500587
+    },
+    {
+      "role": "person",
+      "filename": "csv_pus.zip",
+      "url": "https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/csv_pus.zip",
+      "sha256": "afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894",
+      "size_bytes": 602847146
+    }
+  ],
+  "asec_original_household_pins": [
+    {
+      "income_year": 2022,
+      "survey_year": 2023,
+      "canonical_member_id": "census/cps/asec/2023/household/hhpub23.csv",
+      "member_name": "hhpub23.csv",
+      "archive_sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+      "member_sha256": "c88192cb3c963a90ea98022606112a01ade0eb8e2c17df4149052970a5d5246f",
+      "size_bytes": 30259450,
+      "rows": 88978
+    },
+    {
+      "income_year": 2023,
+      "survey_year": 2024,
+      "canonical_member_id": "census/cps/asec/2024/household/hhpub24.csv",
+      "member_name": "hhpub24.csv",
+      "archive_sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09",
+      "member_sha256": "b12c1078e02766a4033ba1a031abdd6b9ef9df546aee5886dc8439a35abaa2ac",
+      "size_bytes": 30448089,
+      "rows": 89473
+    },
+    {
+      "income_year": 2024,
+      "survey_year": 2025,
+      "canonical_member_id": "census/cps/asec/2025/household/hhpub25.csv",
+      "member_name": "hhpub25.csv",
+      "archive_sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+      "member_sha256": "b5b7351d5d4e5d79ff189f1d90096b16b2d4749671c14328ec6474cfe83ce116",
+      "size_bytes": 33298479,
+      "rows": 88932
+    }
+  ],
+  "original_asec_household_extraction": "OUTSTANDING; prepared command only",
+  "cache_expectations_conditional_on_matching_approved_input_bindings": {
+    "from_original_clone_11": {
+      "unchanged_old": 6,
+      "rekeyed_old": 5,
+      "new": 6,
+      "executions": 11
+    },
+    "from_demographic_11": {
+      "unchanged": 10,
+      "rekeyed": 1,
+      "new": 6,
+      "executions": 7,
+      "reason": "Integrated nullable storage adapter replaces the demographic binding with an explicit new implementation/declaration identity."
+    },
+    "required_warm": {
+      "all_compiled_nodes_hit": true,
+      "kernel_calls": 0,
+      "raw_decoder_calls": 0
+    }
+  },
+  "production_source_pin_modules": {
+    "asec_current_money_source.py": "84b1b5f083c77058b88bdaea6c9ae34c2d285c9e9da6374a9bc3f7c22709b2cb",
+    "asec_person_income_source.py": "f6a2134115f86ef0c75eb9d35b0311cdba450479d4c2e2f45589b725890a429d",
+    "asec_demographic_source.py": "3c9f1bc1f35e61ad18165497275a01888dcc3a3604e1a2714feae0b0ebf5618d",
+    "asec_prepared_source.py": "b46c974c39c6b5f66d5c5fe25a4f91bb4d855d0071b60fe801c79f1e894dd6cc",
+    "native_household_origin.py": "0ead606a041a93aa27b06a013ca3482b3f5a410c4a047c50b1b20d29b0e252c4",
+    "acs_sources.py": "2eaa15989df0bef3603766767d126f569b31111bc9c0193ffc7f1e36160a6e15",
+    "acs_2024_1yr_sources.json": "41701024bf2b6461cb264878243adb4c4b4d1b8ebcf4ae8953fb22872f0debd5"
+  }
+}
