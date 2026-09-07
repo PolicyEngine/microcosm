@@ -133,6 +133,43 @@ class FrozenOriginBudget:
             [float.fromhex(v) for v in doc["absolute_bound_hex"]],
         )
 
+    def diagnostics(self, weights, last_corrected_count=0):
+        """Strict shared and separate inequalities, with plainly labelled counts."""
+        constraint = self.grouped_bounds
+        totals = constraint.check(weights)
+        origins = self.document["origins"]
+        design_ratios, incoming_ratios = [], []
+        for total, origin in zip(totals, origins, strict=True):
+            _require(
+                total <= float.fromhex(origin["design_bound_hex"])
+                and total <= float.fromhex(origin["incoming_bound_hex"]),
+                "ORIGIN_DESIGN_OR_INCOMING_BOUND",
+            )
+            for values, key in (
+                (design_ratios, "prepared_design_hex"),
+                (incoming_ratios, "frozen_incoming_hex"),
+            ):
+                anchor = float.fromhex(origin[key])
+                values.append(0.0 if anchor == 0 else float(total) / anchor)
+        values = np.asarray(weights, dtype=np.float64)
+        maximum = float(np.max(values))
+        scaled = values / maximum if maximum else values
+        mass = math.fsum(float(v) for v in scaled)
+        squares = math.fsum(float(v) ** 2 for v in scaled)
+        return {
+            **constraint.diagnostics(weights, last_corrected_count),
+            "budget_sha256": self.digest,
+            "actual_household_rows": len(values),
+            "positive_weight_household_rows": int(np.count_nonzero(values > 0)),
+            "authenticated_original_origins": len(origins),
+            "positive_household_contribution_origins": int(
+                np.count_nonzero(totals > 0)
+            ),
+            "max_origin_design_ratio": max(design_ratios),
+            "max_origin_incoming_ratio": max(incoming_ratios),
+            "row_kish_ess_computational": mass * mass / squares if squares else None,
+        }
+
     @classmethod
     def from_payload(cls, payload):
         """Decode untrusted typed transport; this does not admit any population."""
@@ -503,6 +540,7 @@ def bind_weight_only_successor(budget, *, previous, current, previous_binding=No
         "derived_entity_weight_sha256": {
             e: _sha(after.resolve_weights(e).values.tobytes()) for e in after.entities
         },
+        "diagnostics": budget.diagnostics(after.resolve_weights("household").values),
         "release_eligible": False,
     }
     return WeightOnlySuccessor(canonical_json(result), _token=_TOKEN)

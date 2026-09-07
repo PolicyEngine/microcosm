@@ -71,12 +71,18 @@ class _Importance(KernelBase):
         )
 
 
-def invented_budget_graph(tmp_path, monkeypatch, *, positive=False, omit_column=False):
+def invented_budget_graph(
+    tmp_path, monkeypatch, *, positive=False, omit_column=False, duplicate_root=False
+):
     """Real source producer, CREATE/IMPORTANCE/EXPAND and typed origin graph."""
     peer = _peer("test_us_graph_native_household_origin")
     root = peer._fixture_graph(tmp_path, monkeypatch)
     meta = peer._restore(root)
     source = load_frame_store(Path(meta["population"]))
+    if duplicate_root:
+        table = source.table("household")
+        acs_rows = table.household_support_channel == "acs"
+        table.loc[acs_rows, "SERIALNO"] = table.loc[acs_rows, "SERIALNO"].iloc[0]
     weights = source.weights_for("household").values.copy()
     if positive:
         weights[weights == 0] = 16.0
@@ -327,6 +333,14 @@ def test_complete_materialization_refuses_dropped_unknown_column(tmp_path, monke
         _budget(fixture)
 
 
+def test_duplicate_native_root_cannot_mint_two_budgets(tmp_path, monkeypatch):
+    fixture = invented_budget_graph(tmp_path, monkeypatch, duplicate_root=True)
+    with pytest.raises(
+        budget_module.OriginBudgetError, match="ONE_NATIVE_ROOT_PER_ORIGIN"
+    ):
+        _budget(fixture)
+
+
 def test_weight_only_successor_preserves_unknowns_multitaxunit_and_all_entities(
     materialized,
 ):
@@ -411,24 +425,26 @@ def test_refits_retain_first_budget_and_cannot_ratchet(materialized):
 def test_successor_rejects_every_nonweight_change(materialized, mutation):
     budget = _budget(materialized)
     previous = materialized[2]["expanded_population"]
-    transforms = {
-        "cell": lambda t: t["person"].__setitem__(
-            "invented_unknown_boolean",
-            pd.Series([True] * len(t["person"]), dtype="boolean"),
-        ),
-        "column": lambda t: t["person"].drop(
-            columns="invented_unknown_boolean", inplace=True
-        ),
-        "membership": lambda t: t["person"].__setitem__(
-            "person_marital_unit_id",
-            t["person"].person_marital_unit_id.iloc[::-1].to_numpy(),
-        ),
-        "source": lambda t: t["person"].__setitem__("source_record_note", "changed"),
-    }
+
+    def transform(tables):
+        people = tables["person"]
+        if mutation == "cell":
+            people["invented_unknown_boolean"] = pd.Series(
+                [True] * len(people), dtype="boolean"
+            )
+        elif mutation == "column":
+            people.drop(columns="invented_unknown_boolean", inplace=True)
+        elif mutation == "membership":
+            people["person_marital_unit_id"] = people.person_marital_unit_id.iloc[
+                ::-1
+            ].to_numpy()
+        elif mutation == "source":
+            people["source_record_note"] = "changed"
+
     with pytest.raises((ValueError, budget_module.OriginBudgetError)):
         current = _changed(
             previous,
-            transform=transforms.get(mutation),
+            transform=transform,
             design={"household": previous.design_weights["household"] * 2}
             if mutation == "anchor"
             else None,
@@ -446,3 +462,97 @@ def test_invalid_multiplier_or_overflow_refuses(materialized, value):
         budget_module.freeze_origin_group_budget(
             manifest, store, **{**kwargs, "design_multiplier": value}
         )
+
+
+def test_diagnostics_report_direct_inequalities_and_separate_counts(materialized):
+    budget = _budget(materialized)
+    values = (
+        materialized[2]["expanded_population"].frame.weights_for("household").values
+    )
+    result = budget.diagnostics(values)
+    assert result["actual_household_rows"] == 10
+    assert result["positive_weight_household_rows"] == 8
+    assert result["authenticated_original_origins"] == 5
+    assert result["positive_household_contribution_origins"] == 4
+    assert result["max_origin_design_ratio"] == 0.5
+    assert result["max_origin_incoming_ratio"] == 1.0
+    assert result["row_kish_ess_computational"] > 0
+    assert result["budget_sha256"] == budget.digest
+
+
+def test_origin_support_neutral_clone_role_labels_and_person_contributions(
+    materialized,
+):
+    from decimal import Decimal
+
+    from microcosm.build.cd_benchmark.protocol import canonical_protocol
+    from microcosm.build.cd_benchmark.support import (
+        SourceRecord,
+        SupportMeasure,
+        aggregate_origins,
+        denominator_support,
+    )
+
+    keys = [r["origin_key"] for r in _budget(materialized).document["origins"][:2]]
+    native_records = [SourceRecord(key, 100, 100) for key in keys]
+    clones = [SourceRecord(key, 50, 50) for key in keys for _ in ("native", "detail")]
+    redistributed = [
+        SourceRecord(key, value, value) for key in keys for value in (90, 10)
+    ]
+
+    def reading(records, measure):
+        return denominator_support(
+            canonical_protocol().support,
+            records,
+            block_id="invented-origin-cap-support",
+            geography_id="invented",
+            measure_kind=measure,
+        )
+
+    results = [
+        reading(records, SupportMeasure.OCCUPIED_HOUSING_UNITS)
+        for records in (native_records, clones, redistributed)
+    ]
+    assert all(result.effective_sample_size == Decimal(2) for result in results)
+    assert all(result.largest_origin_share == Decimal("0.5") for result in results)
+    assert [result.counts.actual_records for result in results] == [2, 4, 4]
+    assert all(result.counts.authenticated_original_origins == 2 for result in results)
+    assert dict(aggregate_origins(clones).totals) == dict(
+        aggregate_origins(reversed(redistributed)).totals
+    )
+    row_ess = [
+        sum(r.weight for r in records) ** 2 / sum(r.weight**2 for r in records)
+        for records in (native_records, clones, redistributed)
+    ]
+    assert row_ess[:2] == [2, 4]
+    assert row_ess[2] == pytest.approx(2.4390243902439024)
+    # An eligible-person contribution multiplies by the eligible persons per
+    # household; substituting the HH weight would give the wrong person mass.
+    people = [
+        SourceRecord(keys[0], 50, 150),
+        SourceRecord(keys[0], 50, 150),
+        SourceRecord(keys[1], 50, 50),
+        SourceRecord(keys[1], 50, 50),
+    ]
+    person_result = reading(people, SupportMeasure.PERSONS)
+    assert person_result.contribution_total == 400
+    assert person_result.effective_sample_size == Decimal("1.6")
+    assert person_result.largest_origin_share == Decimal("0.75")
+    assert person_result.measure is SupportMeasure.PERSONS
+
+
+def test_v4_source_number_cohort_and_lexical_identity_are_not_role_ids():
+    from microcosm.build.cd_benchmark.origin import (
+        AcsHouseholdOrigin,
+        AsecHouseholdOrigin,
+        SourceMember,
+        origin_key,
+    )
+
+    member = SourceMember("invented/original/member", "a" * 64)
+    acs_leading = origin_key(AcsHouseholdOrigin(member, 2024, "0011"))
+    acs_plain = origin_key(AcsHouseholdOrigin(member, 2024, "11"))
+    asec_2023 = origin_key(AsecHouseholdOrigin(member, 2023, 11))
+    asec_2024 = origin_key(AsecHouseholdOrigin(member, 2024, 11))
+    assert len({acs_leading, acs_plain, asec_2023, asec_2024}) == 4
+    assert acs_leading == origin_key(AcsHouseholdOrigin(member, 2024, "0011"))
