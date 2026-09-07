@@ -1,0 +1,288 @@
+{
+  "contracts": {
+    "microcosm.build/cd_benchmark/__init__.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.protocol",
+        "microcosm.build.cd_benchmark.reasons"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark/approval.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.canonical",
+        "microcosm.build.cd_benchmark.protocol",
+        "microcosm.build.cd_benchmark.reasons"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark/binding.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.canonical",
+        "microcosm.build.cd_benchmark.protocol",
+        "microcosm.build.cd_benchmark.reasons"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark/canonical.py": {
+      "imports": [],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark/evaluation.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.approval",
+        "microcosm.build.cd_benchmark.binding",
+        "microcosm.build.cd_benchmark.metrics",
+        "microcosm.build.cd_benchmark.protocol",
+        "microcosm.build.cd_benchmark.reasons",
+        "microcosm.build.cd_benchmark.reference",
+        "microcosm.build.cd_benchmark.support"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark/ledger.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.approval",
+        "microcosm.build.cd_benchmark.canonical",
+        "microcosm.build.cd_benchmark.protocol",
+        "microcosm.build.cd_benchmark.reasons"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark/metrics.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.protocol",
+        "microcosm.build.cd_benchmark.reasons"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark/origin.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.canonical"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark/protocol.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.canonical",
+        "microcosm.build.cd_benchmark.reasons"
+      ],
+      "resource_accesses_sha256": "20872287769653501892fbb9ff123b3e7e9bdde03f382e59d2601c9cbaa5cae3",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark/reasons.py": {
+      "imports": [],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark/reference.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.metrics",
+        "microcosm.build.cd_benchmark.reasons",
+        "microcosm.build.us_runtime.cd_reference"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "f89dbae98329b5e7a2bc0b873eb17c3d8bfabec988c0e6e39c63e2ff43a94d37"
+    },
+    "microcosm.build/cd_benchmark/support.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.metrics",
+        "microcosm.build.cd_benchmark.protocol",
+        "microcosm.build.cd_benchmark.reasons"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark/universe.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.canonical",
+        "microcosm.build.cd_benchmark.protocol",
+        "microcosm.build.cd_benchmark.reasons",
+        "microcosm.build.us_runtime.acs_housing_universe",
+        "microcosm.build.us_runtime.asec_housing_universe"
+      ],
+      "resource_accesses_sha256": "0240df4982fb3e038da812d6c10a62444a0e3cd0c2bef82863e58ac8cb34fb47",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark_io/__init__.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark_io.artifacts",
+        "microcosm.build.cd_benchmark_io.durable"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark_io/artifacts.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.approval",
+        "microcosm.build.cd_benchmark.binding",
+        "microcosm.build.cd_benchmark.canonical",
+        "microcosm.build.cd_benchmark.protocol",
+        "microcosm.build.cd_benchmark.reasons"
+      ],
+      "resource_accesses_sha256": "e519f47c73e933f2df68b9bbd0fc755df51c3f9440f362cd3018319b6a5b0459",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark_io/durable.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.approval",
+        "microcosm.build.cd_benchmark.binding",
+        "microcosm.build.cd_benchmark.canonical",
+        "microcosm.build.cd_benchmark.ledger",
+        "microcosm.build.cd_benchmark.protocol",
+        "microcosm.build.cd_benchmark.reasons",
+        "microcosm.build.cd_benchmark_io.artifacts"
+      ],
+      "resource_accesses_sha256": "82f66543cfea19e91ff96386573c8466ed443e3e309a567c78b7df2a61494fa3",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark_io/source_adapters.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.canonical",
+        "microcosm.build.cd_benchmark_io.artifacts"
+      ],
+      "resource_accesses_sha256": "3131e2b1e3457e497fc384fa9ad15fdcc34880428de8641564e276322f586ad2",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/acs_hu_source_transport.py": {
+      "imports": [
+        "microcosm.build.us_runtime",
+        "microcosm.graph",
+        "microcosm.graph.canonical",
+        "microcosm.graph.keys"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "cdf27bc33c75f7526b4b74c44e4c8b9d350c60c8ad6f9b3975731ae6747c7fd8"
+    },
+    "microcosm.build/us_runtime/cd_current_source_evidence.py": {
+      "imports": [
+        "microcosm.build.us_runtime",
+        "microcosm.build.us_runtime.congressional_district_vintage",
+        "microcosm.build.us_runtime.graph_housing_universe",
+        "microcosm.build.us_runtime.support_provenance",
+        "microcosm.graph.canonical",
+        "microcosm.graph.population",
+        "numpy"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "332c84beed4ad0845aed891dd88da2874b4bce23de845fc7c5c43438b30291dd"
+    },
+    "microcosm.build/us_runtime/enriched_origin_calibration.py": {
+      "imports": [
+        "microcosm.build.us_runtime",
+        "microcosm.fit",
+        "microcosm.frame",
+        "microcosm.graph",
+        "microcosm.graph.artifact_edges",
+        "microcosm.graph.canonical",
+        "microcosm.graph.keys",
+        "microcosm.graph.population",
+        "microcosm.graph.store",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "9e0234d9c47ab105bfa162aa1b79d91742ff8d5c778382782ab402a523241eda",
+      "unbound_uses_sha256": "d16caf3ee7ef8bd8f9484da81f157125ea286446058edd42a46b2d9f75392b9d"
+    },
+    "microcosm.build/us_runtime/graph_cd_source_evidence.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark_io",
+        "microcosm.build.us_runtime",
+        "microcosm.build.us_runtime.graph_cd_source_implementation",
+        "microcosm.build.us_runtime.graph_housing_universe",
+        "microcosm.build.us_runtime.graph_native_origin_implementation",
+        "microcosm.build.us_runtime.support_provenance",
+        "microcosm.frame",
+        "microcosm.graph",
+        "microcosm.graph.canonical",
+        "microcosm.graph.keys"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "ec737c0b63885e7facf3d81b594aa36acc9f144f8882a7b59ee9ff6d7d6539d7"
+    },
+    "microcosm.build/us_runtime/graph_cd_source_implementation.py": {
+      "imports": [
+        "microcosm.build.us_runtime",
+        "microcosm.build.us_runtime.graph_implementation"
+      ],
+      "resource_accesses_sha256": "479f39a598f763715fe16d7183cd923f79481570d9f54ba1b4d723cb77980a5f",
+      "unbound_uses_sha256": "aaf0bae4dbda1b115c1d3166a58a28cabe8f7521c8e431431c00d60f5e7d2753"
+    }
+  },
+  "dependencies": [
+    "numpy",
+    "pandas",
+    "microunit",
+    "tables",
+    "h5py",
+    "PyYAML",
+    "pyarrow"
+  ],
+  "extra_modules": [
+    "microcosm.build/us_runtime/acs_hu_source_transport.py",
+    "microcosm.build/us_runtime/cd_current_source_evidence.py",
+    "microcosm.build/us_runtime/graph_cd_source_evidence.py",
+    "microcosm.build/us_runtime/graph_cd_source_implementation.py",
+    "microcosm.build/cd_benchmark_io/source_adapters.py",
+    "microcosm.build/cd_benchmark_io/artifacts.py",
+    "microcosm.build/cd_benchmark_io/__init__.py",
+    "microcosm.build/cd_benchmark_io/durable.py",
+    "microcosm.build/cd_benchmark/__init__.py",
+    "microcosm.build/cd_benchmark/approval.py",
+    "microcosm.build/cd_benchmark/binding.py",
+    "microcosm.build/cd_benchmark/canonical.py",
+    "microcosm.build/cd_benchmark/evaluation.py",
+    "microcosm.build/cd_benchmark/ledger.py",
+    "microcosm.build/cd_benchmark/metrics.py",
+    "microcosm.build/cd_benchmark/origin.py",
+    "microcosm.build/cd_benchmark/protocol.py",
+    "microcosm.build/cd_benchmark/reasons.py",
+    "microcosm.build/cd_benchmark/reference.py",
+    "microcosm.build/cd_benchmark/support.py",
+    "microcosm.build/cd_benchmark/universe.py",
+    "microcosm.build/us_runtime/enriched_origin_calibration.py"
+  ],
+  "import_classifications": {
+    "microcosm.build.cd_benchmark.approval": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.cd_benchmark.binding": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.cd_benchmark.canonical": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.cd_benchmark.ledger": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.cd_benchmark.metrics": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.cd_benchmark.protocol": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.cd_benchmark.reasons": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.cd_benchmark.reference": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.cd_benchmark.support": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.cd_benchmark_io": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.cd_benchmark_io.artifacts": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.cd_benchmark_io.durable": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.us_runtime": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.us_runtime.acs_housing_universe": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.us_runtime.asec_housing_universe": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.us_runtime.cd_reference": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.us_runtime.congressional_district_vintage": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.us_runtime.graph_cd_source_implementation": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.us_runtime.graph_housing_universe": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.us_runtime.graph_implementation": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.us_runtime.graph_native_origin_implementation": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.build.us_runtime.support_provenance": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.fit": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.frame": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.graph": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.graph.artifact_edges": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.graph.canonical": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.graph.keys": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.graph.population": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "microcosm.graph.store": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "numpy": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision.",
+    "pandas": "Explicit CD source/verifier, immutable protocol, graph transport or standard-library dependency; no population treatment/weight decision."
+  },
+  "schema": "microcosm.us.cd-source-extension-inventory.v1",
+  "stage": "cd_source_evidence_v1"
+}

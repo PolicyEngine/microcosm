@@ -140,6 +140,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # population/clone lineage; it applies no population treatment.
         "native_household_origin.py",
         "graph_native_household_origin.py",
+        # CD artifacts resolve native source classes and carry the actual
+        # preclone assignment through both roles. No row or weight treatment.
+        "cd_current_source_evidence.py",
+        "graph_cd_source_evidence.py",
         # The reviewed cap-root verifier authenticates source/native/clone
         # identities and preserves every source cell; it applies no treatment.
         "origin_group_budget.py",
@@ -278,6 +282,12 @@ _GATE_SOURCE_SCOPE_HELPER_CALLERS = {
 _OTHER_US_RUNTIME_MODULES = frozenset(
     {
         "__init__.py",
+        # Separately classified Frame-less source transport and CD evidence
+        # verifiers; the old source/graph implementation inventory is fixed.
+        "acs_hu_source_transport.py",
+        "cd_current_source_evidence.py",
+        "graph_cd_source_evidence.py",
+        "graph_cd_source_implementation.py",
         # Closed summary-policy validator; no source reads or population treatment.
         "_person_signal_summary.py",
         # Exact source-universe validator/receipt owner; no population treatment.
