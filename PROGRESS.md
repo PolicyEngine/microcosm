@@ -34,3 +34,10 @@ Dependency integration: retained the exact predecessor merge history at
 `141ddd0e5980a33c2c3e40264b1e6d7cf13f7a86` (annual `02e7b29`, housing `bed98d5`).
 Only the journal conflicted; this recovery journal supersedes that historical
 state, whose original bytes remain available in its original Git commit.
+
+Reused the committed annual extraction via cherry-pick (`1daab5cd1`, original
+`87a4034217af8112e5de91b7ecd21bf0747656b9`). It remains under independent
+semantic/parity review. Copied the preserved untracked codec into this new
+worktree for repair; the original and root snapshot remain untouched. Static
+review found writer/decoder asymmetry and missing strict row validation;
+these must be fixed before any acceptance claim.
