@@ -285,6 +285,7 @@ class DurableLedger:
         """Explicit registration; None permits a new empty ledger, never recovery."""
         require(self._lock_fd is not None, "ledger_lock_required")
         if expected_snapshot is None:
+            require(self._ledger_fd is None, "registration_new_file_required")
             # O_EXCL refuses existing/empty/recreated-path ambiguity. Callers
             # must supply a pinned existing snapshot for all repeated calls.
             self._open(create=True)
@@ -478,13 +479,26 @@ class DurableLedger:
                 read_pinned(FilePin(path, len(raw), digest(raw))) == raw,
                 "immutable_mismatch",
             )
+            # An earlier crash/fsync failure may leave identical bytes without
+            # durable data or a durable directory entry. Repair both on reuse.
+            fd = os.open(path, os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK)
+            try:
+                held, located = os.fstat(fd), path.stat(follow_symlinks=False)
+                require(
+                    stat.S_ISREG(held.st_mode)
+                    and (held.st_dev, held.st_ino) == (located.st_dev, located.st_ino),
+                    "immutable_path_changed",
+                )
+                os.fsync(fd)
+            finally:
+                os.close(fd)
         else:
             try:
                 _write_all(fd, raw)
                 os.fsync(fd)
             finally:
                 os.close(fd)
-            _sync_directory(self.directory)
+        _sync_directory(self.directory)
         self._stable()
         require(
             read_pinned(FilePin(path, len(raw), digest(raw))) == raw,
@@ -504,6 +518,14 @@ class DurableLedger:
             "evaluation_not_completed",
         )
         p, c = state.attempt.payload, state.terminal.payload
+        before_raw = b"".join(
+            r.canonical_line + b"\n" for r in ledger.records[: state.attempt.sequence]
+        )
+        actual_before = verify_ledger(before_raw, protocol=self.protocol).ledger
+        require(
+            p["ledger_snapshot_before_attempt"] == _snapshot(actual_before),
+            "attempt_snapshot_mismatch",
+        )
         result_path = self.directory / (c["result_payload_sha256"] + ".result.json")
         stable_path(result_path)
         # The completion digest is authority; bounded size is read from regular
@@ -556,7 +578,7 @@ class DurableLedger:
 def candidate_history_id(candidate):
     # Manifest was already decoded and pinned; reading it again also refuses
     # mutation between admission and attempt. This returns identity metadata only.
-    pin = candidate.artifact_pins["__manifest__"]
+    pin = candidate.manifest_pin
     return strict_load(read_pinned(pin))["history_artifact_id"]
 
 

@@ -775,7 +775,7 @@ def test_wrong_external_expected_identity_refuses(tmp_path):
     with pytest.raises(BoundaryError, match="candidate_expected_identity"):
         load_candidate(
             ledger.protocol,
-            manifest=item.artifact_pins["__manifest__"],
+            manifest=item.manifest_pin,
             expected_identity={**item.identity, "producer_git_head": "e" * 40},
             files=files,
             adapters={s: fixture_adapter for s in item.binding.slots},
@@ -787,7 +787,7 @@ def test_missing_dependency_and_wrong_slot_pins_refuse(tmp_path):
     item = candidate(tmp_path, ledger, before)
     files = {k: v for k, v in item.artifact_pins.items() if k != "__manifest__"}
     for variant in ("dependency", "slot"):
-        doc = strict_load(read_pinned(item.artifact_pins["__manifest__"]))
+        doc = strict_load(read_pinned(item.manifest_pin))
         if variant == "dependency":
             doc["artifacts"]["proof"]["dependencies"]["source"] = "e" * 64
         else:
@@ -830,3 +830,140 @@ def test_repeated_none_registration_does_not_reset_ledger(tmp_path):
     with ledger.locked(), pytest.raises(FileExistsError):
         ledger.register(expected_snapshot=None)
     assert snapshot(ledger) == before
+
+
+@pytest.mark.parametrize("suffix", ["result.json", "snapshot.ndjson", "quality.json"])
+def test_retry_repairs_retained_file_and_directory_durability(
+    tmp_path, monkeypatch, suffix
+):
+    ledger, before = make_ledger(tmp_path)
+    target = ledger.directory / ("invented." + suffix)
+    original = os.fsync
+    failed = False
+    observed = []
+
+    def witness(fd):
+        nonlocal failed
+        st = os.fstat(fd)
+        if target.exists() and st.st_ino == target.stat().st_ino:
+            if not failed:
+                failed = True
+                raise OSError("invented first file fsync")
+            observed.append("file")
+        import stat
+
+        if stat.S_ISDIR(st.st_mode):
+            observed.append("directory")
+        original(fd)
+
+    with ledger.locked():
+        monkeypatch.setattr(os, "fsync", witness)
+        with pytest.raises(OSError, match="first file fsync"):
+            ledger._immutable(target.name, b"{}")
+        observed.clear()
+        ledger._immutable(target.name, b"{}")
+        assert observed == ["file", "directory"]
+
+
+def test_retry_repairs_retained_entry_after_directory_fsync_failure(
+    tmp_path, monkeypatch
+):
+    ledger, before = make_ledger(tmp_path)
+    real = durable._sync_directory
+    calls = []
+
+    def fail_once(path):
+        calls.append(path)
+        if len(calls) == 1:
+            raise OSError("invented directory fsync")
+        real(path)
+
+    with ledger.locked():
+        monkeypatch.setattr(durable, "_sync_directory", fail_once)
+        with pytest.raises(OSError):
+            ledger._immutable("invented.result.json", b"{}")
+        ledger._immutable("invented.result.json", b"{}")
+        assert len(calls) == 2
+
+
+@pytest.mark.parametrize("existing", ["registered", "empty"])
+def test_registration_none_after_read_never_reuses_an_open_file(tmp_path, existing):
+    ledger, before = make_ledger(tmp_path)
+    path = ledger.directory / "ledger.ndjson"
+    if existing == "empty":
+        path.write_bytes(b"")
+    original = path.read_bytes()
+    with ledger.locked():
+        ledger.read()
+        with pytest.raises(BoundaryError, match="registration_new_file_required"):
+            ledger.register(expected_snapshot=None)
+    assert path.read_bytes() == original
+
+
+def test_reserved_artifact_cannot_replace_internal_manifest_pin(tmp_path):
+    ledger, before = make_ledger(tmp_path)
+    item = candidate(tmp_path, ledger, before)
+    doc = strict_load(read_pinned(item.manifest_pin))
+    doc["artifacts"]["__manifest__"] = doc["artifacts"].pop("source")
+    doc["artifacts"]["proof"]["dependencies"]["__manifest__"] = doc["artifacts"][
+        "proof"
+    ]["dependencies"].pop("source")
+    files = dict(item.artifact_pins)
+    files["__manifest__"] = files.pop("source")
+    pin = pin_document(tmp_path / "reserved.json", doc)
+    with pytest.raises(BoundaryError, match="candidate_reserved_artifact_id"):
+        load_candidate(
+            ledger.protocol,
+            manifest=pin,
+            expected_identity=item.identity,
+            files=files,
+            adapters={s: fixture_adapter for s in item.binding.slots},
+        )
+    assert item.manifest_pin not in item.artifact_pins.values()
+
+
+def test_loaded_dependency_roster_cannot_be_dropped(tmp_path):
+    from dataclasses import replace
+
+    ledger, before = make_ledger(tmp_path)
+    item = candidate(tmp_path, ledger, before)
+    pins = dict(item.artifact_pins)
+    del pins["source"]
+    forged = replace(item, artifact_pins=pins)
+    with (
+        ledger.locked(),
+        pytest.raises(BoundaryError, match="candidate_loaded_roster_changed"),
+    ):
+        with ledger.attempt(forged, planned_scope="invented"):
+            pytest.fail("comparison reached")
+
+
+def test_attachment_checks_declared_pre_snapshot_against_actual_prefix(tmp_path):
+    from dataclasses import replace
+
+    from microcosm.build.cd_benchmark.ledger import build_records, verify_ledger
+
+    ledger, before = make_ledger(tmp_path)
+    finish_failed(ledger, candidate(tmp_path, ledger, before))
+    with ledger.locked():
+        verified = ledger.read()
+        records = list(verified.records)
+        attempt = records[1]
+        payload = dict(attempt.payload)
+        payload["ledger_snapshot_before_attempt"] = {**before, "prefix_bytes": 1}
+        records[1] = replace(attempt, payload=payload)
+        completion_payload = dict(records[2].payload)
+        completion_payload["attempt_record_sha256"] = records[1].sha256
+        records[2] = replace(
+            records[2],
+            payload=completion_payload,
+            previous_record_sha256=records[1].sha256,
+        )
+        rewritten = build_records(records)
+        assert verify_ledger(rewritten, protocol=ledger.protocol).ok
+    (ledger.directory / "ledger.ndjson").write_bytes(rewritten)
+    with (
+        ledger.locked(),
+        pytest.raises(BoundaryError, match="attempt_snapshot_mismatch"),
+    ):
+        ledger.attach(payload["evaluation_id"])

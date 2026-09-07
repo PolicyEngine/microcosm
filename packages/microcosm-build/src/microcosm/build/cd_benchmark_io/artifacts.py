@@ -246,6 +246,7 @@ ProducerAdapter = Callable[[str, dict, Mapping[str, dict]], ProducerEvidence]
 @dataclass(frozen=True)
 class ResolvedCandidate:
     manifest_sha256: str
+    manifest_pin: FilePin
     identity_bytes: bytes
     binding: CandidateBinding
     history_bytes: bytes
@@ -264,9 +265,19 @@ class ResolvedCandidate:
         require(self._token is _ADMISSION_TOKEN, "candidate_loader_required")
         for pin in self.artifact_pins.values():
             read_pinned(pin)
-        manifest = document(self.artifact_pins["__manifest__"])
+        manifest = document(self.manifest_pin)
         require(
-            self.manifest_sha256 == self.artifact_pins["__manifest__"].sha256,
+            set(self.artifact_pins) == set(manifest["artifacts"]),
+            "candidate_loaded_roster_changed",
+        )
+        for name, pin in self.artifact_pins.items():
+            require(
+                pin.sha256 == manifest["artifacts"][name]["sha256"]
+                and pin.size == manifest["artifacts"][name]["bytes"],
+                "candidate_loaded_pin_changed",
+            )
+        require(
+            self.manifest_sha256 == self.manifest_pin.sha256,
             "candidate_loaded_manifest_changed",
         )
         require(
@@ -344,6 +355,7 @@ def load_candidate(
         "candidate_rosters",
     )
     require(set(files) == set(doc["artifacts"]), "candidate_artifact_roster")
+    require("__manifest__" not in files, "candidate_reserved_artifact_id")
     artifacts = {}
     dependencies = {}
     for name, declaration in doc["artifacts"].items():
@@ -446,7 +458,6 @@ def load_candidate(
         for key in exposure:
             strings(exposure[key], "history_exposure_ids", nonempty=True)
     pins = dict(files)
-    pins["__manifest__"] = manifest
     allowed_families = {f for b in protocol.blocks for f in b.exposure_families}
     require(
         all(
@@ -457,6 +468,7 @@ def load_candidate(
     )
     return ResolvedCandidate(
         manifest.sha256,
+        manifest,
         canonical_bytes(identity),
         binding,
         canonical_bytes(history),

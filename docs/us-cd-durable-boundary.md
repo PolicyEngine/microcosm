@@ -113,3 +113,10 @@ scoring approval, genuine evaluation, national-reference claim or launch verdict
 is created by this source change. B19001/B25003 and their derivatives remain
 reserved. Protocol f7574a2a00734ce64ceb9c101ebc52469a176d37ee32b02c140d3ea2e6c568ea
 and every threshold are unchanged.
+
+Retries fsync retained identical files and their directory again; their
+presence alone proves no prior fsync.
+First-time registration cannot reuse any already-open ledger. The loader stores
+its manifest pin separately from producer artifact IDs, rejects the reserved
+historical `__manifest__` name, and rechecks the complete dependency roster.
+Attachment also compares the declared pre-attempt snapshot to its actual prefix.
