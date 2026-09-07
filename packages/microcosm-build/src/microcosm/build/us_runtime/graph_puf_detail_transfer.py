@@ -370,6 +370,8 @@ class DetailBoundaryKernel(_Kernel):
 def context_frame(context):
     tables = {
         e: context.tables[e].drop(columns=[detail.MASK, detail.OUTPUT], errors="ignore")
+        if e == "tax_unit"
+        else context.tables[e]
         for e in US_SCHEMA.entities
     }
     return Frame(tables, US_SCHEMA, dict(context.weights), context.strata)
@@ -645,6 +647,8 @@ def verify_materialized_transfer(
     )
     tables = {
         e: after.table(e).drop(columns=[detail.MASK, detail.OUTPUT], errors="ignore")
+        if e == "tax_unit"
+        else after.table(e)
         for e in after.entities
     }
     restored = Frame(

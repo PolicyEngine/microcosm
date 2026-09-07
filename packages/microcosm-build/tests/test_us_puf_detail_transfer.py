@@ -984,3 +984,43 @@ def test_negative_donor_wage_refuses_before_fit(cold):
     arrays["E00200"] = np.full_like(arrays["E00200"], -1.0)
     with pytest.raises(ValueError, match="DONOR_WAGE_FEATURE"):
         detail.donor_frame(arrays, status, decoded, projection)
+
+
+def test_materialized_mask_cannot_move_to_person(cold):
+    manifest, store, _, anchors, _ = cold[1]
+    before = manifest.population(clone.COMBINED_CLONE_NODE)
+    after = manifest.population(BOUNDARY)
+
+    def move_mask(tables):
+        tables["tax_unit"].drop(columns=detail.MASK, inplace=True)
+        tables["person"][detail.MASK] = False
+
+    # This is a valid Frame: the name exists once, on the wrong entity. Merely
+    # adding a duplicate name would be rejected by Frame before this boundary.
+    moved = altered(after, move_mask)
+    placement = store.load_bytes(
+        manifest.node("fixture_puf_detail.matrix").opaque_artifacts["placement"]
+    )
+    ledger = manifest.mass_ledger(BOUNDARY)
+    with pytest.raises(ValueError, match="MATERIALIZED_NONOWNED_CHANGED"):
+        graph_detail.verify_materialized_transfer(
+            before,
+            moved,
+            placement,
+            before_design=anchors[BOUNDARY],
+            after_design=anchors[BOUNDARY],
+            before_ledger=ledger,
+            after_ledger=ledger,
+            boundary_node=BOUNDARY,
+        )
+
+
+def test_context_strips_only_tax_unit_owned_names(cold):
+    context = attach_context(cold)
+    tables = {e: table.copy(deep=True) for e, table in context.tables.items()}
+    tables["tax_unit"].drop(columns=detail.MASK, inplace=True)
+    tables["person"][detail.MASK] = False
+    restored = graph_detail.context_frame(replace(context, tables=tables))
+    assert detail.MASK in restored.person and detail.MASK not in restored.table(
+        "tax_unit"
+    )
