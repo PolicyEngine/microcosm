@@ -603,7 +603,7 @@ def exercise(root, checkout, manifest, store, graph, observed, result, keys):
     )
 
     # Separate real source codec with all eight source classes. This is not a
-    # claim that the five-origin graph fixture contains GQ or vacant records.
+    # claim that the six-origin graph fixture contains GQ or vacant records.
     source_tests = peer(checkout, "test_us_acs_housing_source")
     with pytest.MonkeyPatch.context() as patch:
         fixture = source_tests.build_fixture(root / "source-classes", patch)
@@ -714,7 +714,7 @@ def exercise(root, checkout, manifest, store, graph, observed, result, keys):
         "anchor_roster": sorted(population.design_weights),
         "limits": [
             "zero weights/anchors are separate materialized comparator witnesses",
-            "eight-class source transport is distinct from the five-origin composed fixture",
+            "eight-class source transport is distinct from the six-origin composed fixture",
             "no genuine or scientific definition admission",
         ],
     }
