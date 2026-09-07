@@ -1020,3 +1020,48 @@ def test_declared_artifact_byte_count_is_an_integer(tmp_path):
             files=item.artifact_pins,
             adapters={s: fixture_adapter for s in item.binding.slots},
         )
+
+
+def _padded_registration(ledger, target_size):
+    from dataclasses import replace
+
+    from microcosm.build.cd_benchmark.ledger import build_records, verify_ledger
+
+    with ledger.locked():
+        original = ledger.read()
+        record = original.records[0]
+    pad = target_size - len(original.raw)
+    assert pad > 0
+    padded = replace(record, actor_id=record.actor_id + "x" * pad)
+    raw = build_records([padded])
+    assert len(raw) == target_size
+    assert verify_ledger(raw, protocol=ledger.protocol).ok
+    (ledger.directory / "ledger.ndjson").write_bytes(raw)
+    return raw
+
+
+def test_near_limit_completion_snapshot_is_read_back_and_reattached(tmp_path):
+    from microcosm.build.cd_benchmark_io.artifacts import MAX_METADATA_BYTES
+
+    ledger, _ = make_ledger(tmp_path)
+    assert durable.MAX_LEDGER_BYTES == MAX_METADATA_BYTES
+    _padded_registration(ledger, MAX_METADATA_BYTES - 32768)
+    before = snapshot(ledger)
+    result = finish_failed(ledger, candidate(tmp_path, ledger, before))
+    size = result["ledger_snapshot_through_completion"]["prefix_bytes"]
+    assert MAX_METADATA_BYTES - 32768 < size <= durable.MAX_LEDGER_BYTES
+    path = next(ledger.directory.glob("*.snapshot.ndjson"))
+    assert path.stat().st_size == size
+    with ledger.locked():
+        evaluation_id = next(iter(ledger.read().attempts))
+        assert ledger.attach(evaluation_id) == result
+
+
+def test_canonical_ledger_one_byte_over_limit_refuses_before_attempt(tmp_path):
+    from microcosm.build.cd_benchmark_io.artifacts import MAX_METADATA_BYTES
+
+    ledger, _ = make_ledger(tmp_path)
+    original = _padded_registration(ledger, MAX_METADATA_BYTES + 1)
+    with ledger.locked(), pytest.raises(BoundaryError, match="ledger_size"):
+        ledger.read()
+    assert (ledger.directory / "ledger.ndjson").read_bytes() == original

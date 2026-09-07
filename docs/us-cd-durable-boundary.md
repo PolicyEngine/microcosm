@@ -124,3 +124,8 @@ Exact snapshot comparisons use canonical bytes: Python's equality between
 `true`, `1` and `1.0` cannot satisfy a typed count. External exposure population
 identities must be content SHA-256 digests; malformed identifiers cannot be
 silently classified as unrelated history.
+
+The complete local ledger is limited to 8 MiB, using the same bound as immutable
+metadata/snapshot reads. A supported completion prefix therefore cannot exceed
+its attachment reader's capacity. An oversized canonical ledger refuses without
+truncation; larger or linked history requires a separately reviewed extension.

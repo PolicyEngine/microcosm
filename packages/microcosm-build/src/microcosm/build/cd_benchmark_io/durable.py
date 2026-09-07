@@ -34,6 +34,7 @@ from microcosm.build.cd_benchmark.protocol import (
 from microcosm.build.cd_benchmark.reasons import BenchmarkVerdict, Reason
 
 from .artifacts import (
+    MAX_METADATA_BYTES,
     BoundaryError,
     FilePin,
     ResolvedAuthority,
@@ -45,7 +46,8 @@ from .artifacts import (
     strings,
 )
 
-MAX_LEDGER_BYTES = 16 * 1024 * 1024
+# Every supported completion prefix must also fit the immutable snapshot reader.
+MAX_LEDGER_BYTES = MAX_METADATA_BYTES
 
 
 def _now():
