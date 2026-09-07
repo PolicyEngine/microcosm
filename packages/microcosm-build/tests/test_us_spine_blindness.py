@@ -123,6 +123,11 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # two-role clone and half weight; channels never select treatment or
         # determine the weight split. This is a provenance-owner boundary.
         "graph_combined_clone.py",
+        # Fixture-only source feature definitions choose the declared ACS or
+        # ASEC wage measure and validate copied lineage. Placement uses the
+        # same detail role in both arms; source channels never set weights.
+        "puf_detail_transfer.py",
+        "graph_puf_detail_transfer.py",
         # Resolves original native household identities and their exact
         # population/clone lineage; it applies no population treatment.
         "native_household_origin.py",
@@ -364,6 +369,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Separate downstream identity inventory; validates source/code bytes,
         # imports and resources without reading or treating population rows.
         "graph_composed_asec_demographic_implementation.py",
+        "puf_detail_transfer.py",
+        "graph_puf_detail_transfer.py",
         "graph_combined_clone.py",
         "graph_native_origin_implementation.py",
         "native_household_origin.py",
