@@ -261,6 +261,7 @@ def host_fixture(root):
     invented.restore(root, CHECKOUT)
     columns = tuple(Owned(*c) for c in json.loads((root / "columns.json").read_text()))
     ident = json.loads((root / "projection-identity.json").read_text())
+    ident["cohort_rows"] = tuple(tuple(item) for item in ident["cohort_rows"])
     graph = survey.integrated_graph(
         columns, sample_fraction=1.0, sample_seed=17, **ident
     )
