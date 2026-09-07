@@ -41,3 +41,16 @@ semantic/parity review. Copied the preserved untracked codec into this new
 worktree for repair; the original and root snapshot remain untouched. Static
 review found writer/decoder asymmetry and missing strict row validation;
 these must be fixed before any acceptance claim.
+
+## Implementation review checkpoint
+
+Independent static review found the annual extraction preserves the frozen
+calculation. Added invented record behavior/parity tests and documentation.
+The recovered codec now shares strict row validation between writer and replay,
+recomputes the unchanged housing projector on creation, refuses incomplete
+December rosters, externally binds index counters/selection/parent receipt,
+and bounds JSON parsing. Declared-source digest mismatch is permitted only when
+explicitly labeled invented evidence; source authentication remains external.
+A controlled verification runner and explicit isolated cold housing test are
+being prepared. No tests are yet accepted; codec and recipe pins remain subject
+to the pending tests and final independent review.

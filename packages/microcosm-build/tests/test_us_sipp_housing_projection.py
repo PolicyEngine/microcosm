@@ -11,10 +11,12 @@ import dataclasses
 import hashlib
 import inspect
 import json
+import os
 import pathlib
 import subprocess
 import sys
 import types
+import uuid
 from decimal import Decimal
 
 import pytest
@@ -1956,7 +1958,7 @@ def test_predictor_diagnostics_refuse_households_they_were_not_measured_against(
         predictors.predictor_diagnostics(computed, other)
 
 
-def test_the_receipt_is_byte_identical_cold_and_on_a_fresh_warm_replay():
+def test_the_receipt_is_byte_identical_cold_and_on_a_fresh_warm_replay(tmp_path):
     # Fresh-warm: the modules are already imported and have been used by every
     # test above, so a second projection over the same rows must reproduce the
     # first exactly.
@@ -1968,12 +1970,21 @@ def test_the_receipt_is_byte_identical_cold_and_on_a_fresh_warm_replay():
     # same bytes, so nothing in the receipt depends on import order or on state
     # this session accumulated.
     script = """
-import hashlib, json, sys
+import hashlib, json, os, pathlib, resource, signal, subprocess, sys
+root = pathlib.Path(sys.argv[1])
+assert sys.flags.isolated and sys.dont_write_bytecode
+assert "-I" in sys.orig_argv and "-B" in sys.orig_argv and "-X" in sys.orig_argv
+assert pathlib.Path(sys.pycache_prefix).is_absolute()
+assert not os.path.lexists(sys.pycache_prefix)
+resource.setrlimit(resource.RLIMIT_CPU, (30, 30))
+signal.alarm(45)
+for directory in sorted((root / "packages").glob("microcosm-*/src")):
+    sys.path.insert(0, str(directory))
 from microcosm.build import sipp_december_source as source
 from microcosm.build import sipp_housing_projection as hp
 from microcosm.build import sipp_measurements as m
 
-payload = json.loads(sys.argv[1])
+payload = json.load(sys.stdin)
 rows = [m.SippRow(values) for values in payload]
 result = hp.project(
     rows,
@@ -1982,20 +1993,56 @@ result = hp.project(
     ),
     selection="first_32_ssuids",
 )
-print(hashlib.sha256(result.receipt_json).hexdigest())
+head = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
+loaded = {}
+for name, module in list(sys.modules.items()):
+    if not name.startswith("microcosm.") or not getattr(module, "__file__", None):
+        continue
+    path = pathlib.Path(module.__file__).resolve()
+    assert path.is_relative_to(root)
+    relative = str(path.relative_to(root))
+    current = hashlib.sha256(path.read_bytes()).hexdigest()
+    blob = subprocess.check_output(["git", "-C", str(root), "show", head + ":" + relative])
+    loaded[relative] = {"loaded_sha256": current, "git_sha256": hashlib.sha256(blob).hexdigest()}
+proof = {"receipt_sha256": hashlib.sha256(result.receipt_json).hexdigest(),
+         "head": head, "loaded_files": loaded, "python": sys.version,
+         "executable_sha256": hashlib.sha256(pathlib.Path(sys.executable).read_bytes()).hexdigest(),
+         "isolated": sys.flags.isolated, "dont_write_bytecode": sys.dont_write_bytecode,
+         "pycache_prefix": sys.pycache_prefix, "prefix_absent_after": not os.path.lexists(sys.pycache_prefix)}
+print(json.dumps(proof))
 """
     rows = [
         dict(_row(pnum=101).values),
         dict(_row(pnum=102, TAGE_EHC="9").values),
     ]
     cold = subprocess.run(
-        [sys.executable, "-c", script, json.dumps(rows)],
+        [
+            sys.executable,
+            "-I",
+            "-B",
+            "-X",
+            "pycache_prefix=" + str(tmp_path / ("absent-cold-" + uuid.uuid4().hex)),
+            "-c",
+            script,
+            str(pathlib.Path(__file__).resolve().parents[3]),
+        ],
+        input=json.dumps(rows),
         check=True,
         capture_output=True,
         text=True,
         timeout=180,
     )
-    assert cold.stdout.strip() == warm_first.receipt_sha256
+    proof = json.loads(cold.stdout)
+    assert proof["receipt_sha256"] == warm_first.receipt_sha256
+    assert proof["prefix_absent_after"]
+    if os.environ.get("SIPP_REQUIRE_GIT_BYTES") == "1":
+        assert all(
+            v["loaded_sha256"] == v["git_sha256"]
+            for v in proof["loaded_files"].values()
+        )
+    if directory := os.environ.get("SIPP_INVENTED_PROOF_DIR"):
+        with (pathlib.Path(directory) / "housing-cold-child.json").open("x") as stream:
+            json.dump(proof, stream, sort_keys=True, indent=2)
 
 
 # --- version 3 non-claims ----------------------------------------------------
