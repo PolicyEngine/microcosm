@@ -38,6 +38,22 @@ INDEX_FIELDS = (
 SELECTION = (
     "first32_by_canonical_14_digit_lexical_SSUID_from_eligible_December_ID_index"
 )
+SELECTION_LIMIT = 32
+DIAGNOSTICS_SCHEMA = "sipp-annual-panel-diagnostics/1"
+# Version 1 is the accepted module at commit 02e7b2933035ae609187d1c715531ca300ed50d7.
+# Version 2 lifts the annual December calculation out of ``diagnostics`` into
+# ``annual_december_households`` so that a second consumer cannot grow a second
+# income definition; every aggregate value ``diagnostics`` returns is unchanged
+# and ``DIAGNOSTICS_SCHEMA`` therefore does not move. The module bytes did move,
+# so an artifact that binds these records must bind version 2, not version 1.
+# The version 1 receipt already recorded under 02e7b293 remains valid for the
+# bytes it names.
+ANNUAL_PANEL_VERSION = "sipp-annual-panel/2"
+SUPERSEDED_ANNUAL_PANEL_VERSIONS = ("sipp-annual-panel/1",)
+VERSION_1_MODULE_SHA256 = (
+    "65c47fed0bd54ff856f432a9c8797f128324849663dc842f75d734e9c8f0cc21"
+)
+ANNUAL_RECORDS_VERSION = "sipp-annual-december-households/1"
 MAX_SOURCE_BYTES = 16 * 1024**3
 MAX_ROWS = 10_000_000
 MAX_INDEX = 1_000_000
@@ -309,7 +325,27 @@ def membership(rows: list[dict]) -> set[str]:
     return reasons
 
 
-def diagnostics(panel: Panel, sha256: str) -> dict:
+@dataclass(frozen=True)
+class PanelState:
+    """Every structure the aggregate reduction and the record builder both read.
+
+    Built exactly once per panel by :func:`panel_state`, whose loop is the
+    module's only place that validates a row and decides monthly membership.
+    """
+
+    people: dict[tuple[str, int], dict[int, dict]]
+    groups: dict[tuple[str, int, int], list[dict]]
+    membership_reasons: dict[tuple[str, int, int], set[str]]
+    masks: Counter
+    native: dict[str, Counter]
+    statuses: dict[str, Counter]
+    type2_rows: int
+    type2_slots: int
+    type2_roster_slots: int
+
+
+def panel_state(panel: Panel) -> PanelState:
+    """Validate every projected field and group the panel, once."""
     groups, people = defaultdict(list), defaultdict(dict)
     masks, native = Counter(), defaultdict(Counter)
     statuses = {
@@ -367,11 +403,196 @@ def diagnostics(panel: Panel, sha256: str) -> dict:
             (number(row[f"RREL_PNUM{i}"], f"RREL_PNUM{i}") or 100) < 70
             for i in range(1, 17)
         )
+    return PanelState(
+        people,
+        groups,
+        {h: membership(rows) for h, rows in sorted(groups.items())},
+        masks,
+        native,
+        statuses,
+        type2_rows,
+        type2_slots,
+        type2_roster_slots,
+    )
+
+
+@dataclass(frozen=True)
+class AnnualContributorMonth:
+    """One adult contributor month, with the codes that decided its usability."""
+
+    person: tuple[str, int]
+    month: int
+    household_status: int | None
+    frame: int | None
+    residence: int | None
+    residence_state: str
+    age: int | None
+    scope: str
+    income_status_code: int | None
+    income_state: str
+    amount: Decimal | None
+
+
+@dataclass(frozen=True)
+class AnnualDecemberHousehold:
+    """One December residence's annual adult-contributor measurement.
+
+    ``amount`` is present only when no reason blocked the measure. A blocked
+    household keeps every reason and every month it read; nothing here is filled
+    with a monetary zero, and no reason is a fit or release admission.
+    """
+
+    key: tuple[str, int]
+    members: tuple[tuple[str, int], ...]
+    december_person_months: tuple[tuple[str, int, int], ...]
+    contributors: tuple[tuple[str, int], ...]
+    children_under15: tuple[tuple[str, int], ...]
+    unknown_age_members: tuple[tuple[str, int], ...]
+    contributor_months: tuple[AnnualContributorMonth, ...]
+    contributor_months_present: dict[tuple[str, int], tuple[int, ...]]
+    membership_reasons: tuple[str, ...]
+    reasons: tuple[str, ...]
+    amount: Decimal | None
+    weight: measurements.Measurement
+    source: measurements.SippSource
+
+    @property
+    def weight_state(self) -> str:
+        if self.weight.value is None:
+            return "unknown"
+        return "zero" if self.weight.value == 0 else "positive"
+
+
+def annual_identity() -> dict:
+    """The annual identity a downstream artifact must bind, recomputed from bytes."""
+    return {
+        "module_version": ANNUAL_PANEL_VERSION,
+        "superseded_module_versions": list(SUPERSEDED_ANNUAL_PANEL_VERSIONS),
+        "version_1_module_sha256": VERSION_1_MODULE_SHA256,
+        "records_version": ANNUAL_RECORDS_VERSION,
+        "module_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "contract_sha256": CONTRACT_SHA256,
+        "diagnostics_schema": DIAGNOSTICS_SCHEMA,
+        "selection": SELECTION,
+        "selection_limit": SELECTION_LIMIT,
+        "fields": list(FIELDS),
+        "money_basis": CONTRACT["money_basis"],
+        "survey_year": CONTRACT["survey_year"],
+        "income_year": CONTRACT["income_year"],
+    }
+
+
+def annual_december_households(
+    panel: Panel, source_sha256: str, *, state: PanelState | None = None
+) -> tuple[AnnualDecemberHousehold, ...]:
+    """The annual December-residence measurement, as reusable per-household records.
+
+    This is the module's only implementation of that measure: ``diagnostics``
+    reduces exactly these records, so an aggregate count and a per-household
+    record cannot drift into different income definitions. Nothing is opened and
+    ``source_sha256`` is a declaration the caller owns, not proof that this
+    panel's rows came from those bytes.
+    """
+    if state is None:
+        state = panel_state(panel)
+    source = measurements.SippSource(
+        source_sha256, measurements.SIPP_2023_MASTER_SHA256, 2023, 2022
+    )
+    with localcontext(measurements._ARITHMETIC_CONTEXT):
+        return _annual_records(state, source)
+
+
+def _annual_records(
+    state: PanelState, source: measurements.SippSource
+) -> tuple[AnnualDecemberHousehold, ...]:
+    records = []
+    for household, rows in sorted(state.groups.items()):
+        if household[2] != 12:
+            continue
+        contributors = [
+            r for r in rows if (number(r["TAGE_EHC"], "TAGE_EHC") or 0) >= 15
+        ]
+        children = [
+            r
+            for r in rows
+            if number(r["TAGE_EHC"], "TAGE_EHC") is not None
+            and number(r["TAGE_EHC"], "TAGE_EHC") < 15
+        ]
+        unknown_age = [r for r in rows if number(r["TAGE_EHC"], "TAGE_EHC") is None]
+        reasons = {"december_" + r for r in state.membership_reasons[household]}
+        if unknown_age:
+            reasons.add("unknown_december_age")
+        terms, months, present = [], [], {}
+        for row in contributors:
+            person = key(row)[:2]
+            present[person] = tuple(state.people[person])
+            if set(present[person]) != set(range(1, 13)):
+                reasons.add("missing_contributor_months")
+            for month, monthly_row in state.people[person].items():
+                scope = income_scope(monthly_row)
+                value, income_state = usable(monthly_row, "TPTOTINC")
+                if scope != "in":
+                    reasons.add(scope)
+                if value is None:
+                    reasons.add(income_state)
+                if scope == "in" and value is not None:
+                    terms.append(value)
+                residence, residence_state = usable(monthly_row, "ERESIDENCEID")
+                status = number(monthly_row["THHLDSTATUS"], "THHLDSTATUS")
+                frame = number(monthly_row["RIN_UNIV"], "RIN_UNIV")
+                age = number(monthly_row["TAGE_EHC"], "TAGE_EHC")
+                code = number(monthly_row["APTOTINC"], "APTOTINC")
+                months.append(
+                    AnnualContributorMonth(
+                        person,
+                        month,
+                        None if status is None else int(status),
+                        None if frame is None else int(frame),
+                        None if residence is None else int(residence),
+                        residence_state,
+                        None if age is None else int(age),
+                        scope,
+                        None if code is None else int(code),
+                        income_state,
+                        value,
+                    )
+                )
+        if not contributors:
+            reasons.add("no_adult_contributors")
+        # The accepted production implementation includes every live December
+        # member in the mean, including children and zero weights; no rent gate.
+        hh = measurements.december_households(
+            [measurements.SippRow(r) for r in rows],
+            source=source,
+            complete_membership=True,
+        )[0]
+        records.append(
+            AnnualDecemberHousehold(
+                (household[0], household[1]),
+                tuple(key(r)[:2] for r in rows),
+                tuple(key(r) for r in rows),
+                tuple(key(r)[:2] for r in contributors),
+                tuple(key(r)[:2] for r in children),
+                tuple(key(r)[:2] for r in unknown_age),
+                tuple(months),
+                present,
+                tuple(sorted(state.membership_reasons[household])),
+                tuple(sorted(reasons)),
+                None if reasons else sum(terms, Decimal(0)),
+                hh.weight,
+                source,
+            )
+        )
+    return tuple(records)
+
+
+def diagnostics(panel: Panel, sha256: str) -> dict:
+    state = panel_state(panel)
+    groups, people = state.groups, state.people
+    masks, native, statuses = state.masks, state.native, state.statuses
     monthly = {str(m): Counter() for m in range(1, 13)}
-    membership_reasons = {}
     for household, rows in sorted(groups.items()):
-        reasons = membership(rows)
-        membership_reasons[household] = reasons
+        reasons = state.membership_reasons[household]
         counts = monthly[str(household[2])]
         counts["groups"] += 1
         for reason in reasons:
@@ -402,62 +623,26 @@ def diagnostics(panel: Panel, sha256: str) -> dict:
                 if abs(delta) <= len(terms) + 1
                 else "identity_discrepant"
             ] += 1
+    # One shared calculation: the aggregate below is a reduction of exactly the
+    # records a downstream artifact consumes, never a second income definition.
     annual = Counter()
     sums, weighted = [], []
     excluded = Counter()
     contributor_count = child_count = 0
-    source = measurements.SippSource(
-        sha256, measurements.SIPP_2023_MASTER_SHA256, 2023, 2022
-    )
-    for household, rows in sorted(groups.items()):
-        if household[2] != 12:
-            continue
+    for record in annual_december_households(panel, sha256, state=state):
         annual["december_households"] += 1
-        contributors = [
-            r for r in rows if (number(r["TAGE_EHC"], "TAGE_EHC") or 0) >= 15
-        ]
-        contributor_count += len(contributors)
-        child_count += sum(
-            number(r["TAGE_EHC"], "TAGE_EHC") is not None
-            and number(r["TAGE_EHC"], "TAGE_EHC") < 15
-            for r in rows
-        )
-        reasons = {"december_" + r for r in membership_reasons[household]}
-        if any(number(r["TAGE_EHC"], "TAGE_EHC") is None for r in rows):
-            reasons.add("unknown_december_age")
-        terms = []
-        for row in contributors:
-            person = key(row)[:2]
-            if set(people[person]) != set(range(1, 13)):
-                reasons.add("missing_contributor_months")
-            for monthly_row in people[person].values():
-                scope = income_scope(monthly_row)
-                value, state = usable(monthly_row, "TPTOTINC")
-                if scope != "in":
-                    reasons.add(scope)
-                if value is None:
-                    reasons.add(state)
-                if scope == "in" and value is not None:
-                    terms.append(value)
-        if not contributors:
-            reasons.add("no_adult_contributors")
-        # The accepted production implementation includes every live December
-        # member in the mean, including children and zero weights; no rent gate.
-        hh = measurements.december_households(
-            [measurements.SippRow(r) for r in rows],
-            source=source,
-            complete_membership=True,
-        )[0]
-        weight = hh.weight.value
+        contributor_count += len(record.contributors)
+        child_count += len(record.children_under15)
+        weight = record.weight.value
         if weight is None:
             annual["unknown_weight_households"] += 1
         elif weight == 0:
             annual["zero_weight_households"] += 1
-        if reasons:
+        if record.reasons:
             annual["incomplete_households"] += 1
-            excluded.update(reasons)
+            excluded.update(record.reasons)
         else:
-            value = sum(terms, Decimal(0))
+            value = record.amount
             sums.append(value)
             annual["complete_households"] += 1
             annual[
@@ -470,8 +655,8 @@ def diagnostics(panel: Panel, sha256: str) -> dict:
     for field in ("TLMPAMT", "TROLLAMT"):
         values, reasons = [], Counter()
         for months in people.values():
-            value, state = usable(next(iter(months.values())), field)
-            reasons[state] += 1
+            value, state_name = usable(next(iter(months.values())), field)
+            reasons[state_name] += 1
             if value is not None:
                 values.append(value)
         annual_once[field] = {
@@ -487,11 +672,11 @@ def diagnostics(panel: Panel, sha256: str) -> dict:
         roll, _ = usable(row, "TROLLAMT")
         rollover += gross is not None and roll is not None and roll > gross
     return {
-        "schema": "sipp-annual-panel-diagnostics/1",
+        "schema": DIAGNOSTICS_SCHEMA,
         "money_basis": "nominal_USD_2022",
         "selection": {
             "rule": SELECTION,
-            "limit": 32,
+            "limit": SELECTION_LIMIT,
             "selected_ssuid_count": len(panel.selected),
             "amounts_used_for_selection": False,
         },
@@ -537,9 +722,9 @@ def diagnostics(panel: Panel, sha256: str) -> dict:
         "annual_person_fields": annual_once,
         "rollover_greater_than_gross_persons": rollover,
         "type2": {
-            "respondent_month_rows_with_references": type2_rows,
-            "respondent_month_slot_occurrences": type2_slots,
-            "roster_slot_occurrences": type2_roster_slots,
+            "respondent_month_rows_with_references": state.type2_rows,
+            "respondent_month_slot_occurrences": state.type2_slots,
+            "roster_slot_occurrences": state.type2_roster_slots,
             "unique_person_count": None,
             "annual_income_sum": None,
             "reason": "ownership_across_informants_unresolved; TT2INC_not_read",
