@@ -365,6 +365,11 @@ def _verify_source_binding(binding: SourceBinding, panel: ap.Panel) -> dict:
     if not isinstance(binding, SourceBinding):
         raise AnnualHousingSourceError("ANNUAL_HOUSING_SOURCE_BINDING_TYPE")
     hp.verify_source(binding.declared)
+    if (
+        type(binding.declared.survey_year) is not int
+        or type(binding.declared.reference_year) is not int
+    ):
+        raise AnnualHousingSourceError("ANNUAL_HOUSING_SOURCE_VINTAGE_TYPE")
     index_counts = {
         "december_person_rows": binding.index_december_person_rows,
         "eligible_households": binding.index_eligible_households,
@@ -404,6 +409,16 @@ def _verify_source_binding(binding: SourceBinding, panel: ap.Panel) -> dict:
             or audit.get("rows") != binding.panel_stream_rows
         ):
             raise AnnualHousingSourceError("ANNUAL_HOUSING_PANEL_STREAM_DISAGREEMENT")
+    retained_december = [r for k, r in panel.rows.items() if k[2] == 12]
+    retained_eligible_households = {
+        (r["SSUID"], int(ap.usable(r, "ERESIDENCEID")[0]))
+        for r in retained_december
+        if ap.eligible_id(r)
+    }
+    if binding.index_december_person_rows < len(
+        retained_december
+    ) or binding.index_eligible_households < len(retained_eligible_households):
+        raise AnnualHousingSourceError("ANNUAL_HOUSING_PANEL_INDEX_COVERAGE")
     if any(panel.index_audit.get(k) != v for k, v in index_counts.items()):
         raise AnnualHousingSourceError("ANNUAL_HOUSING_PANEL_INDEX_DISAGREEMENT")
     return {
@@ -455,6 +470,15 @@ def _verify_selection(
         or any(not re.fullmatch(r"[0-9]{14}", value) for value in selected)
     ):
         raise AnnualHousingSourceError("ANNUAL_HOUSING_SELECTION_IDENTITY")
+    if len(selected) != min(ap.SELECTION_LIMIT, panel.index_audit["eligible_ssuids"]):
+        raise AnnualHousingSourceError("ANNUAL_HOUSING_SELECTION_INDEX_COUNT")
+    eligible = {
+        identity[0]
+        for identity, row in panel.rows.items()
+        if identity[2] == 12 and ap.eligible_id(row)
+    }
+    if set(selected) != eligible:
+        raise AnnualHousingSourceError("ANNUAL_HOUSING_SELECTION_ELIGIBILITY")
     if set(selected) != {k[0] for k in panel.rows}:
         raise AnnualHousingSourceError("ANNUAL_HOUSING_SELECTION_IDENTITY")
     if set(selected) != {h.key[0] for h in parent.households}:
@@ -491,12 +515,16 @@ def _verify_housing_parent(
         raise AnnualHousingSourceError("ANNUAL_HOUSING_PARENT_TYPE")
     if type(expected) is not str or not re.fullmatch(r"[0-9a-f]{64}", expected):
         raise AnnualHousingSourceError("ANNUAL_HOUSING_PARENT_RECEIPT_SHA")
+    if (
+        type(parent.receipt_json) is not bytes
+        or len(parent.receipt_json) > MAX_ARTIFACT_BYTES
+    ):
+        raise AnnualHousingSourceError("ANNUAL_HOUSING_PARENT_JSON")
     if s._sha(parent.receipt_json) != expected or parent.receipt_sha256 != expected:
         raise AnnualHousingSourceError("ANNUAL_HOUSING_PARENT_RECEIPT_SHA")
-    try:
-        document = json.loads(parent.receipt_json)
-    except (ValueError, TypeError) as exc:
-        raise AnnualHousingSourceError("ANNUAL_HOUSING_PARENT_JSON") from exc
+    document = _bounded_json(parent.receipt_json)
+    if type(document) is not dict:
+        raise AnnualHousingSourceError("ANNUAL_HOUSING_PARENT_JSON")
     diagnostics = dict(hp.housing_diagnostics(parent.households))
     diagnostics["prospective_predictors"] = hpred.predictor_diagnostics(
         parent.predictors, parent.households
@@ -816,7 +844,7 @@ def _quality(
             "assistance_classes": parent_diagnostics["assistance_classes"],
             "voucher_evidence_states": parent_diagnostics["voucher_evidence_states"],
             "predictor_status": parent_diagnostics["prospective_predictors"][
-                "status_classes"
+                "predictor_status_exclusive"
             ],
             "receipt_unchanged_by_this_lane": True,
         },
@@ -881,6 +909,13 @@ def project(
     verify_recipe()
     if not isinstance(panel, ap.Panel):
         raise AnnualHousingSourceError("ANNUAL_HOUSING_PANEL_TYPE")
+    if type(panel.rows) is not dict or type(panel.selected) is not tuple:
+        raise AnnualHousingSourceError("ANNUAL_HOUSING_PANEL_TYPE")
+    if type(housing_rows) not in (list, tuple) or any(
+        not isinstance(r, m.SippRow) or type(r.contradictions) is not tuple
+        for r in housing_rows
+    ):
+        raise AnnualHousingSourceError("ANNUAL_HOUSING_ROW_TYPE")
     if len(panel.rows) > MAX_ANNUAL_ROWS:
         raise AnnualHousingSourceError("ANNUAL_HOUSING_ANNUAL_ROW_CEILING")
     if len(housing_rows) > MAX_HOUSING_ROWS:

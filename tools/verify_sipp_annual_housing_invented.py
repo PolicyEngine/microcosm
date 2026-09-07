@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import resource
@@ -14,6 +15,7 @@ import threading
 import time
 import uuid
 import xml.etree.ElementTree as ET
+from decimal import localcontext
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -77,6 +79,74 @@ def write(path, value):
     path.chmod(0o600)
 
 
+def frozen_annual_parity(fixture, output_dir):
+    """Execute exact frozen Git source against invented panels; compare all diagnostics."""
+    commit = "02e7b2933035ae609187d1c715531ca300ed50d7"
+    relative = "packages/microcosm-build/src/microcosm/build/sipp_annual_panel.py"
+    contract = relative.replace(".py", "_contract.json")
+    source = git("show", commit + ":" + relative)
+    contract_bytes = git("show", commit + ":" + contract)
+    assert sha(source) == fixture["annual"].VERSION_1_MODULE_SHA256
+    assert sha(contract_bytes) == fixture["annual"].CONTRACT_SHA256
+    directory = output_dir / "frozen-annual-reference"
+    directory.mkdir(mode=0o700)
+    for name, data in (
+        ("sipp_annual_panel.py", source),
+        ("sipp_annual_panel_contract.json", contract_bytes),
+    ):
+        with (directory / name).open("xb") as stream:
+            stream.write(data)
+    path = directory / "sipp_annual_panel.py"
+    name = "microcosm.build._sipp_annual_frozen_reference"
+    spec = importlib.util.spec_from_file_location(name, path)
+    reference = importlib.util.module_from_spec(spec)
+    sys.modules[name] = reference
+    try:
+        spec.loader.exec_module(reference)
+        cases = {"mover_child_unavailable": fixture["invented_rows"]()}
+        for label, field, value in (
+            ("signed", "TPTOTINC", "-5"),
+            ("genuine_zero", "TPTOTINC", "0"),
+            ("missing", "TPTOTINC", ""),
+            ("flag_zero", "APTOTINC", "0"),
+            ("flag_unknown", "APTOTINC", ""),
+            ("flag_nine", "APTOTINC", "9"),
+            ("allocated", "APTOTINC", "2"),
+            ("zero_weight", "WPFINWGT", "0"),
+            ("unknown_weight", "WPFINWGT", ""),
+        ):
+            rows = fixture["invented_rows"]()
+            for row in rows:
+                if row["SSUID"] == fixture["SSUID1"] and row["PNUM"] == "101":
+                    row[field] = value
+            cases[label] = rows
+        compared = []
+        for label, rows in cases.items():
+            supplied = fixture["supplied_fixture"](rows)
+            with localcontext(fixture["measurements"]._ARITHMETIC_CONTEXT):
+                old = reference.diagnostics(
+                    supplied.panel, supplied.source.declared.data_sha256
+                )
+                new = fixture["annual"].diagnostics(
+                    supplied.panel, supplied.source.declared.data_sha256
+                )
+            assert old == new, "FROZEN_ANNUAL_DIAGNOSTIC_PARITY"
+            compared.append(label)
+        return {
+            "all_diagnostics_equal": True,
+            "cases": compared,
+            "reference_commit": commit,
+            "reference_git_path": relative,
+            "executed_reference_path": str(path),
+            "executed_reference_sha256": sha(path.read_bytes()),
+            "reference_git_sha256": sha(source),
+            "contract_sha256": sha(contract_bytes),
+            "amounts_reported_here": False,
+        }
+    finally:
+        del sys.modules[name]
+
+
 def worker(args):
     flags = runtime()
     if not sys.flags.isolated:
@@ -132,6 +202,7 @@ def worker(args):
     # Execute the real creator and decoder once more, writing only invented
     # private bytes plus their count receipt. Test helpers contain no data IO.
     artifact_proof = {}
+    annual_parity = {}
     if code == 0:
         import runpy
 
@@ -142,6 +213,7 @@ def worker(args):
             )
         )
         artifact_proof = fixture["write_invented_artifacts"](args.output_dir)
+        annual_parity = frozen_annual_parity(fixture, args.output_dir)
     head = git("rev-parse", "HEAD").decode().strip()
     loaded = {}
     for name, module in list(sys.modules.items()):
@@ -203,6 +275,7 @@ def worker(args):
         "all_executed_source_matches_git": all(v["match"] for v in proof.values()),
         "contract": contract_proof,
         "invented_artifacts": artifact_proof,
+        "frozen_annual_diagnostic_parity": annual_parity,
         "genuine_source_access": False,
     }
     write(args.output_dir / "verification.json", result)

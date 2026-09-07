@@ -54,3 +54,18 @@ explicitly labeled invented evidence; source authentication remains external.
 A controlled verification runner and explicit isolated cold housing test are
 being prepared. No tests are yet accepted; codec and recipe pins remain subject
 to the pending tests and final independent review.
+
+## Invented validation checkpoint
+
+The second bounded precommit run passed 538 tests with no failures or skips,
+used 349,470,720 bytes peak RSS, and completed in 12.64 seconds. It wrote the
+invented private artifact and count-only receipt. The first run's 49 failures
+all exposed one partial-code field-name error in predictor quality; corrected
+against the actual frozen diagnostic API. Both attempts remain preserved.
+
+Independent review prompted additional refusals for malformed parent receipts,
+selection count/eligible-row contradictions and understated retained index
+coverage. Added direct full-diagnostic comparison against exact frozen annual
+Git source over ten invented cases, plus explicit vintage-type checks.
+Next: run these final additions, bind independent review to source hashes,
+commit the final journal and execute final loaded-Git proof on that clean head.
