@@ -631,7 +631,10 @@ def enriched_binding(
     )
 
 
-def weight_successor(parent, budget, before, after, *, node, partition):
+def weight_successor(
+    parent, budget, before, after, *, node, partition, manifest, store
+):
+    diagnostics_identity = verify_final_diagnostics(manifest, store, budget, after)
     require(
         type(parent) is EnrichedBinding
         and parent.document["schema"] == ENRICHED_SCHEMA,
@@ -681,6 +684,8 @@ def weight_successor(parent, budget, before, after, *, node, partition):
                 "graph_ledger_sha256": sha(_log(after)),
                 "original_anchors": budgets._anchors(after),
                 "accepted_weight_sha256": sha(values.tobytes()),
+                "calibration_node_key": manifest.node(caps.CALIBRATION_NODE).key,
+                "diagnostics_artifact": diagnostics_identity,
                 "diagnostics": budget.diagnostics(values),
                 "release_eligible": False,
             }
@@ -725,6 +730,7 @@ def verify_final_diagnostics(final, store, budget, current):
         == canonical_json(budget.grouped_bounds.diagnostics(values, corrected)),
         "DIAGNOSTIC_RECONSTRUCTION",
     )
+    return {"type": normative(diagnostic.type), **edge_pin(diagnostic)}
 
 
 def _persist(path, payload, *, warm):
@@ -974,9 +980,10 @@ def run_enriched_calibration(
         current,
         node=final_graph.node(caps.CALIBRATION_NODE),
         partition=final_graph.mass_partition,
+        manifest=final,
+        store=store,
     )
     receipt = final.node(caps.CALIBRATION_NODE)
-    verify_final_diagnostics(final, store, budget, current)
     _persist(evidence_directory / "weight-successor.json", successor.payload, warm=warm)
     key = sha256_domain(
         "puf-age-enriched-weight-successor",

@@ -520,6 +520,39 @@ def test_actual_26_node_staged_pipeline(cold_run):
     assert (root / "cold.json").is_file()
 
 
+def test_successor_binds_actual_calibration_and_diagnostic_edge(cold_run):
+    from microcosm.build.us_runtime import enriched_origin_calibration as stage
+
+    _, result = cold_run
+    receipt = result["manifest"].node(stage.caps.CALIBRATION_NODE)
+    diagnostic = stage.edge_value(
+        result["manifest"],
+        result["store"],
+        stage.caps.CALIBRATION_NODE,
+        "diagnostics",
+        stage.caps.demographic.DIAGNOSTICS_TYPE,
+    )
+    successor = result["successor"]
+    assert successor.document["calibration_node_key"] == receipt.key
+    assert successor.document["diagnostics_artifact"] == {
+        "type": stage.normative(diagnostic.type),
+        **stage.edge_pin(diagnostic),
+    }
+    expected_key = stage.sha256_domain(
+        "puf-age-enriched-weight-successor",
+        stage.canonical_json(
+            {
+                "calibration_node": receipt.key,
+                "parent": result["parent"].digest,
+                "payload": successor.digest,
+                "type": stage.SUCCESSOR_SCHEMA,
+            }
+        ),
+    )
+    assert result["successor_key"] == expected_key
+    assert result["store"].load_bytes(expected_key) == successor.payload
+
+
 def changed_population(population, mutate=None, **frame_changes):
     from dataclasses import replace
 

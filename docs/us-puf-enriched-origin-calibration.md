@@ -56,6 +56,10 @@ that bound; 24+24 is not. The repeated stored DESIGN references do not create
 two independent budgets. The accepted final weights are the solver's checked
 float64 vector, without an additional exp/log conversion.
 
+The issued weight successor includes the actual calibration node key and the
+validated diagnostic artifact's type, producer key, artifact key and payload
+digest. Its outer storage key also binds that complete successor payload.
+
 The original clone receipt continues to describe the original clone content.
 It is not relabelled after adding PUF values or count columns. A separate issued
 enriched-parent binding authenticates the exact original budget, source and
