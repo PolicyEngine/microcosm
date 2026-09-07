@@ -43,9 +43,32 @@ from `origin/main` @ 5ab1b056f. Implementation complete; full
 - Changelog fragment `changelog.d/884-parent-ids-export.added.md`.
 - `docs/us-multispine-operator-ordering.md` eligibility row updated.
 
+## Verification (this session, 2026-09-07)
+- Environment: `uv sync --all-packages --extra us` exit 0; policyengine-us **1.819.0**
+  installed. `parent_1_id` / `parent_2_id` are **not** variables in that version
+  (checked against `policyengine_us.system.system.variables`), so the consumer
+  contract in [policyengine-us#9404](https://github.com/PolicyEngine/policyengine-us/issues/9404)
+  is still open.
+- `uv run ruff check .` exit 0 ("All checks passed!").
+- `uv run ruff format --check .` reports 91 pre-existing files repo-wide; **none**
+  of them are files this branch touches, and the CI `lint` lane runs only
+  `ruff check .` (`.github/workflows/test.yml`), so the repo does not gate on
+  `ruff format`. This branch does not reformat unrelated files.
+- `packages/microcosm-build/tests/test_release_target_parity.py::TestRegeneration`
+  fails **locally on `origin/main` too** — verified in a disposable detached
+  worktree at 5ab1b056f: same `ValueError: Ledger target reference
+  'cbo.revenue_projection.ty2024...adjusted_gross_income.projected_amount'
+  assertion_policy='observed_only' does not allow resolved fact assertion
+  'source_projection'`. The test guards on
+  `~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl`, a
+  machine-local path, so it **skips in CI** (main's Tests run for 5ab1b056f is
+  green). Pre-existing, unrelated, out of scope.
+
 ## Next
-- Finish the full `packages/microcosm-build` run; fix anything it turns up.
-- `uv run pytest` (whole workspace) and `uv run ruff check .`.
-- Draft PR, marked blocked on
-  [policyengine-us#9404](https://github.com/PolicyEngine/policyengine-us/issues/9404):
-  `parent_1_id`/`parent_2_id` do not exist in the locked policyengine-us 1.819.0.
+- Finish the full `uv run pytest packages/microcosm-build` run (no `-x`) and the
+  whole-workspace `uv run pytest`; record exit codes.
+- Resolve the surface audit findings (catalogs.yaml, release input coverage
+  manifest, engine ABI lock, pool/transfer, ACS consistency, H5 round-trip).
+- Draft PR against `main`, marked blocked on
+  [policyengine-us#9404](https://github.com/PolicyEngine/policyengine-us/issues/9404).
+  No data release, no calibration, no promotion.
