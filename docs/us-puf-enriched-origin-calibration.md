@@ -9,8 +9,9 @@ The source composition preserves the reviewed cap branch `0e5c73e8` and PUF
 consumer `4c700ed6`. Their common survey ancestor is `74f71138`. The new runner
 and count adapter have their own implementation identity. Upstream source,
 PUF, count computation, solver, thresholds and store implementations are
-unchanged. Acceptance of this composition also requires the PUF consumer's
-pending final review; a source transport never upgrades its fit-admission flag.
+unchanged. The PUF consumer's source review was accepted on 2026-09-07; that
+verdict does not approve this integration or a genuine run. A source transport
+never upgrades its fit-admission flag.
 
 ## Execution and the prefit boundary
 
