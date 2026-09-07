@@ -166,6 +166,14 @@ class GroupedUpperBounds:
     def diagnostics(
         self, weights: np.ndarray, last_corrected_count: int = 0
     ) -> dict[str, object]:
+        if (
+            isinstance(last_corrected_count, bool)
+            or not isinstance(last_corrected_count, Integral)
+            or not 0 <= last_corrected_count <= self.group_count
+        ):
+            raise ValueError(
+                "last corrected group count must be an integer from zero to group count"
+            )
         totals = self.check(weights)
         return {
             "constraint_digest": self.constraint_digest,

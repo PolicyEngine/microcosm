@@ -229,7 +229,19 @@ def test_only_group_map_typed_artifact_rekeys_actual_graph_and_refuses_authority
     )
 
 
-@pytest.mark.parametrize("field", ["build_count", "options_digest"])
+@pytest.mark.parametrize(
+    "field",
+    [
+        "build_count",
+        "options_digest",
+        "coherent_negative_count",
+        "coherent_excess_count",
+        "coherent_bool_count",
+        "receipt_float_count",
+        "build_float_count",
+        "options_float_count",
+    ],
+)
 def test_cold_and_required_warm_refuse_semantically_stale_diagnostics(
     tmp_path, monkeypatch, field
 ):
@@ -243,29 +255,52 @@ def test_cold_and_required_warm_refuse_semantically_stale_diagnostics(
         solver_calls.append(context.node.id)
         result = original_run(self, context)
         document = json.loads(result.artifacts["diagnostics"])
+        receipt = dict(result.receipt)
         if field == "build_count":
             document["build"]["group_count"] += 1
-        else:
+        elif field == "options_digest":
             document["options"]["grouped_upper_bounds"]["constraint_digest"] = "f" * 64
+        elif field.startswith("coherent_"):
+            count = {
+                "coherent_negative_count": -1,
+                "coherent_excess_count": receipt["group_count"] + 1,
+                "coherent_bool_count": True,
+            }[field]
+            receipt["last_corrected_group_count"] = count
+            document["build"]["last_corrected_group_count"] = count
+            document["options"]["grouped_upper_bounds"][
+                "last_corrected_group_count"
+            ] = count
+        else:
+            # Python considers 6.0 == 6; the typed evidence must preserve integers.
+            target = {
+                "receipt_float_count": receipt,
+                "build_float_count": document["build"],
+                "options_float_count": document["options"]["grouped_upper_bounds"],
+            }[field]
+            target["group_count"] = float(target["group_count"])
         payload = canonical_json(document)
-        # Preserve valid solver weights and every receipt diagnostic, while
-        # updating the byte hash so semantic admission must detect this mismatch.
+        # Preserve valid solver weights and seal the modified payload, so
+        # semantic admission must detect the impossible or mistyped diagnostic.
         return replace(
             result,
             artifacts={**result.artifacts, "diagnostics": payload},
             receipt={
-                **result.receipt,
+                **receipt,
                 "diagnostics_sha256": hashlib.sha256(payload).hexdigest(),
             },
         )
 
     monkeypatch.setattr(stage.GroupedDemographicCalibrationKernel, "run", stale)
-    message = (
-        "GROUPED_MATERIALIZED_DIAGNOSTIC_ARTIFACT"
-        if field == "build_count"
-        else "GROUPED_MATERIALIZED_DIAGNOSTIC_OPTIONS"
-    )
-    with pytest.raises(budgets.OriginBudgetError, match=message):
+    if field.startswith("coherent_"):
+        message = "last corrected group count"
+    elif field.startswith("receipt_"):
+        message = "GROUPED_MATERIALIZED_DIAGNOSTICS"
+    elif field.startswith("build_"):
+        message = "GROUPED_MATERIALIZED_DIAGNOSTIC_ARTIFACT"
+    else:
+        message = "GROUPED_MATERIALIZED_DIAGNOSTIC_OPTIONS"
+    with pytest.raises(ValueError, match=message):
         helper._run(root)
     assert solver_calls == [stage.CALIBRATION_NODE]
 
@@ -285,7 +320,7 @@ def test_cold_and_required_warm_refuse_semantically_stale_diagnostics(
         return real_run_graph(compiled, **kwargs)
 
     monkeypatch.setattr(stage, "run_graph", guarded_warm)
-    with pytest.raises(budgets.OriginBudgetError, match=message):
+    with pytest.raises(ValueError, match=message):
         helper._run(root, warm=True)
     assert warm_calls == []
     assert solver_calls == [stage.CALIBRATION_NODE]

@@ -459,7 +459,8 @@ def run_origin_group_calibration(
     corrected = receipt.receipt["last_corrected_group_count"]
     diagnostics = budget.diagnostics(final_weights, corrected)
     _require(
-        all(receipt.receipt[name] == value for name, value in diagnostics.items())
+        canonical_json({name: receipt.receipt.get(name) for name in diagnostics})
+        == canonical_json(diagnostics)
         and receipt.receipt["accepted_weight_sha256"] == _sha(final_weights.tobytes()),
         "GROUPED_MATERIALIZED_DIAGNOSTICS",
     )
@@ -475,15 +476,18 @@ def run_origin_group_calibration(
         and diagnostic_value.key == opaque_artifact_key(receipt.key, "diagnostics")
         and _sha(diagnostic_payload) == receipt.receipt["diagnostics_sha256"]
         and canonical_json(diagnostic_document) == diagnostic_payload
-        and all(anchors.get(name) == actual for name, actual in diagnostics.items())
+        and canonical_json({name: anchors.get(name) for name in diagnostics})
+        == canonical_json(diagnostics)
         and anchors.get("budget_sha256") == budget.digest
         and anchors.get("budget_artifact_key") == value.key
         and anchors.get("accepted_weight_sha256") == _sha(final_weights.tobytes()),
         "GROUPED_MATERIALIZED_DIAGNOSTIC_ARTIFACT",
     )
     _require(
-        diagnostic_document.get("options", {}).get("grouped_upper_bounds")
-        == budget.grouped_bounds.diagnostics(final_weights, corrected),
+        canonical_json(
+            diagnostic_document.get("options", {}).get("grouped_upper_bounds")
+        )
+        == canonical_json(budget.grouped_bounds.diagnostics(final_weights, corrected)),
         "GROUPED_MATERIALIZED_DIAGNOSTIC_OPTIONS",
     )
     # Runner-authored successor identity is distinct from all kernel artifacts.

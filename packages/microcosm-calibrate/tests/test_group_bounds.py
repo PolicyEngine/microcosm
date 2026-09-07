@@ -116,6 +116,21 @@ def test_groups_are_immutable_and_complete_even_with_zero_rows():
 
 
 @pytest.mark.parametrize(
+    "count", [-1, 3, True, False, np.bool_(True), 1.0, 0.5, np.nan, np.inf, "1", None]
+)
+def test_diagnostic_corrected_count_refuses_invalid_domain(count):
+    with pytest.raises(ValueError, match="last corrected group count"):
+        _groups().diagnostics(np.full(4, 40.0), count)
+
+
+@pytest.mark.parametrize("count", [0, 1, 2, np.int64(2)])
+def test_diagnostic_corrected_count_retains_integer_domain(count):
+    recorded = _groups().diagnostics(np.full(4, 40.0), count)
+    assert recorded["last_corrected_group_count"] == int(count)
+    assert type(recorded["last_corrected_group_count"]) is int
+
+
+@pytest.mark.parametrize(
     "ids,indices,bounds",
     [
         ((1, 1), [0, 0], [1.0]),
