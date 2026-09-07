@@ -97,15 +97,8 @@ def _source_inventory() -> tuple[str, dict[str, dict]]:
     ).splitlines()
     snapshot = {}
     for name in sorted(set(names)):
-        if not (
-            name == "conftest.py"
-            or name.endswith("/tests/conftest.py")
-            or name.startswith("tools/")
-            or name.startswith("docs/history/origin-group-cap/")
-            or (name.startswith("packages/") and "/src/" in name)
-            or (name.startswith("packages/") and "/tests/test_" in name)
-        ):
-            continue
+        # Helpers such as graph/tests/_toy.py are real loaded sources too.
+        # Git supplies only *.py paths here; do not narrow by test-file name.
         path = ROOT / name
         if not path.is_file():
             continue
@@ -122,15 +115,34 @@ def _source_inventory() -> tuple[str, dict[str, dict]]:
     return head, snapshot
 
 
-def _loaded_sources(before: dict, after: dict, executed: list[Path]) -> list[dict]:
+def _loaded_sources(
+    before: dict, after: dict, executed: list[Path]
+) -> tuple[list[dict], list[dict]]:
     paths = {Path(__file__).resolve(), *executed}
-    paths.update(
-        Path(module.__file__).resolve()
-        for module in tuple(sys.modules.values())
-        if getattr(module, "__file__", None)
-        and str(module.__file__).endswith(".py")
-        and Path(module.__file__).is_relative_to(ROOT)
-    )
+    virtual = []
+    for module_name, module in tuple(sys.modules.items()):
+        filename = getattr(module, "__file__", None)
+        if not filename or not str(filename).endswith(".py"):
+            continue
+        path = Path(filename)
+        if not path.is_absolute():
+            candidate = ROOT / path
+            # Torch's generated operator/class namespace objects expose these
+            # relative labels as __file__. They are not repository source files.
+            # Log only these known labels; never suppress an absolute missing
+            # file or another relative path which could be real source.
+            if (
+                module_name.startswith("torch.")
+                and str(path) in {"_ops.py", "_classes.py"}
+                and str(path) not in before
+                and str(path) not in after
+                and not candidate.exists()
+            ):
+                virtual.append({"module": module_name, "filename": str(path)})
+                continue
+            path = candidate
+        if path.is_relative_to(ROOT):
+            paths.add(path)
     result = []
     for path in sorted(paths):
         name = str(path.relative_to(ROOT))
@@ -145,7 +157,7 @@ def _loaded_sources(before: dict, after: dict, executed: list[Path]) -> list[dic
                 and initial["sha256"] == final["sha256"],
             }
         )
-    return result
+    return result, sorted(virtual, key=lambda item: item["module"])
 
 
 def _child(output: Path, command: list[str], seconds: int, interop_threads: int) -> int:
@@ -226,7 +238,9 @@ def _child(output: Path, command: list[str], seconds: int, interop_threads: int)
     finally:
         audit["elapsed_seconds"] = time.monotonic() - started
         audit["head_after"], after = _source_inventory()
-        audit["loaded_sources"] = _loaded_sources(before, after, executed)
+        audit["loaded_sources"], audit["virtual_module_filenames"] = _loaded_sources(
+            before, after, executed
+        )
         audit["foreign_microcosm_modules"] = {
             name: str(module.__file__)
             for name, module in tuple(sys.modules.items())
@@ -235,8 +249,16 @@ def _child(output: Path, command: list[str], seconds: int, interop_threads: int)
             and not Path(module.__file__).resolve().is_relative_to(ROOT)
         }
         audit["pycache_prefix_absent_at_end"] = not Path(sys.pycache_prefix).exists()
+        audit["loaded_sources_git_matched"] = all(
+            item["before"] is not None
+            and item["after"] is not None
+            and item["before"]["matches_git"]
+            and item["after"]["matches_git"]
+            for item in audit["loaded_sources"]
+        )
         audit["source_integrity_passed"] = (
             all(item["unchanged"] for item in audit["loaded_sources"])
+            and audit["loaded_sources_git_matched"]
             and not audit["foreign_microcosm_modules"]
             and audit["pycache_prefix_absent_at_end"]
         )

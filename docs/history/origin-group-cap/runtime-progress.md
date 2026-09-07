@@ -84,6 +84,18 @@ the default is 1, BLAS and intra-op remain 1, and actual settings are recorded.
 Dirty and new source bytes are reported honestly; changing any loaded source
 during a check or importing Microcosm from a different checkout fails its audit.
 
+Final source-audit tightening: the 99 passing cases in
+`us-origin-group-cap-final-core.json` correctly received audit exit 1 because the
+real graph test helper `packages/microcosm-graph/tests/_toy.py` was absent from
+the initial filename-filtered snapshot. The snapshot now covers every Python
+source path returned by Git's `*.py` inventory, including helpers. It explicitly
+records Torch's known nonexistent relative `_ops.py` and `_classes.py` runtime
+labels separately; absolute missing repository files and other missing relative
+source paths remain audit failures. Loaded source bytes must now match Git both
+before and after, as well as remain unchanged. Dirty/untracked loaded source is
+reported and makes the audit fail. Native Ruff formatting/lint are checked before
+the coherent commit; the root agent owns the subsequent final test reruns.
+
 ## Next
 
 - Independent admission probes were added in
