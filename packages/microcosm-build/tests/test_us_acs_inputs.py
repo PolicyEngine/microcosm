@@ -27,6 +27,10 @@ def _acs_frame() -> Frame:
             "SSIP": [200.0, np.nan],
             "RETP": [300.0, np.nan],
             "INTP": [-100.0, np.nan],
+            # acs_pums synthesizes these: the child (RELSHIPP 25) is pointed
+            # at the reference person's line.
+            "PEPAR1": [0, 1],
+            "PEPAR2": [0, 0],
         }
     )
     tables = {
@@ -214,3 +218,50 @@ def test_acs_unmapped_missing_source_columns_stay_absent() -> None:
     assert "acs_interest_dividend_rental_income" not in result.frame.table("person")
     assert "acs_retirement_income" not in result.native_inputs
     assert "acs_interest_dividend_rental_income" not in result.native_inputs
+
+
+def test_acs_parent_pointers_map_to_the_declared_unknown_sentinel() -> None:
+    # microcosm#884: the ACS PEPAR values are a synthesized reference-person
+    # link, and an ACS-minted person_id is renumbered by the assembly offset
+    # after this mapping runs. The spine therefore declares the pointer
+    # unknown rather than exporting either construct as a parent id.
+    result = map_acs_native_inputs(_acs_frame())
+    person = result.frame.table("person")
+    assert person["parent_1_id"].tolist() == [0, 0]
+    assert person["parent_2_id"].tolist() == [0, 0]
+    assert person["parent_1_id"].dtype == np.int64
+    for output, source in (("parent_1_id", "PEPAR1"), ("parent_2_id", "PEPAR2")):
+        receipt = result.native_inputs[output]
+        assert receipt["entity"] == "person"
+        assert receipt["source_columns"] == [source]
+        assert receipt["missing_rows"] == 0
+        assert receipt["observed_rows"] == 2
+
+
+def test_acs_parent_pointer_receipt_satisfies_the_operator_boundary() -> None:
+    from microcosm.build.us_runtime.operator_boundary import (
+        assert_operator_free_source_frame,
+    )
+
+    result = map_acs_native_inputs(_acs_frame())
+    assert_operator_free_source_frame(
+        result.frame,
+        label="ACS native-mapped pool input",
+        native_inputs=result.native_inputs,
+    )
+
+
+def test_acs_parent_pointers_stay_absent_without_the_raw_pointers() -> None:
+    frame = _acs_frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = tables["person"].drop(columns=["PEPAR1", "PEPAR2"])
+    stripped = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+    )
+    result = map_acs_native_inputs(stripped)
+    person = result.frame.table("person")
+    assert "parent_1_id" not in person.columns
+    assert "parent_2_id" not in person.columns

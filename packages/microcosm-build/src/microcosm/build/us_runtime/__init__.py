@@ -243,6 +243,7 @@ from microcosm.build.us_runtime.educator_expenses import (
 from microcosm.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS,
     US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
     US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS,
     US_ELIGIBILITY_INPUTS_STAGE_NAME,
     derive_us_eligibility_inputs_from_manifest,
@@ -1231,6 +1232,7 @@ __all__ = [
     "us_pregnancy_summary",
     "with_us_pregnancy_inputs",
     "US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS",
+    "US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS",
     "US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS",
     "US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_ELIGIBILITY_INPUTS_STAGE_NAME",
