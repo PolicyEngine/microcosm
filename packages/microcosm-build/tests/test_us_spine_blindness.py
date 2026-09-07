@@ -128,6 +128,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # same detail role in both arms; source channels never set weights.
         "puf_detail_transfer.py",
         "graph_puf_detail_transfer.py",
+        # Source-grain diagnostic only: _violations reads the fixed monetary
+        # PAIRWISE_OBSERVATIONS pairs before/after growth. It never selects
+        # survey channels, clone treatment, or host weights.
+        "puf_price_baseline.py",
         # Resolves original native household identities and their exact
         # population/clone lineage; it applies no population treatment.
         "native_household_origin.py",
@@ -371,6 +375,12 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "graph_composed_asec_demographic_implementation.py",
         "puf_detail_transfer.py",
         "graph_puf_detail_transfer.py",
+        # Reviewed original PUF source/price codecs, imported byte-identically
+        # from the accepted source branch; no population operator registration.
+        "puf_raw_source.py",
+        "puf_monetary_source.py",
+        "puf_monetary_agi_projection.py",
+        "puf_price_baseline.py",
         "graph_combined_clone.py",
         "graph_native_origin_implementation.py",
         "native_household_origin.py",
