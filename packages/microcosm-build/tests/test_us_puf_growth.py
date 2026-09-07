@@ -19,10 +19,13 @@ import pytest
 
 from microcosm.build.us_runtime import puf_growth
 from microcosm.build.us_runtime.puf_growth import (
+    DEVELOPMENTAL_PROVENANCE_KEYS,
+    DEVELOPMENTAL_PROVENANCE_LITERALS,
     MAX_EXACT_AMOUNT,
     PROPOSED_TY2015_FIELD_ROSTER,
     PROVENANCE_RECID_COLUMN,
     PROVENANCE_SOURCE_AGI_COLUMN,
+    RELEASE_ELIGIBLE_AUTHORITIES,
     REVIEWED_FACTOR_TABLE_DIGESTS,
     REVIEWED_PROVENANCE_KEYS,
     UNDOCUMENTED_SOURCE_FIELDS,
@@ -46,6 +49,9 @@ from microcosm.build.us_runtime.puf_growth import (
     puf_growth_monetary_metadata,
     require_transformable,
     roster_role,
+)
+from microcosm.build.us_runtime.puf_growth import (
+    _resolve_factors as _resolved_for,
 )
 
 SOURCE_YEAR = 2021
@@ -91,18 +97,56 @@ def canonical(value):
 
 
 def factor_document(
-    series=None, *, authority="invented_fixture_nonauthority", years=None
+    series=None,
+    *,
+    authority="invented_fixture_nonauthority",
+    years=None,
+    provenance=None,
 ):
     return canonical(
         {
             "authority": authority,
-            "provenance": {"note": "invented fixture levels; no IRS or SOI value"},
+            "provenance": (
+                {"note": "invented fixture levels; no IRS or SOI value"}
+                if provenance is None
+                else provenance
+            ),
             "schema_version": 1,
             "series": FIXTURE_SERIES if series is None else series,
             "table_id": "puf_growth_fixture_v1",
             "years": [SOURCE_YEAR, TARGET_YEAR] if years is None else years,
         }
     )
+
+
+#: A developmental table's provenance, in the shape the authority requires.
+#: The levels these accompany are still the invented fixture levels: the URL
+#: is a reserved non-resolvable domain and the text says so, because these
+#: tests exercise the authority gate, not a real publisher's numbers.
+DEVELOPMENTAL_PROVENANCE = {
+    "dependency_versions": {"python": "invented"},
+    "generated_by": "invented developmental fixture; not a publisher retrieval",
+    "generator_code_sha256": "0" * 64,
+    "index_or_total": "index",
+    "parameter_paths": [],
+    "population_divisor": "none",
+    "resource_sha256": "1" * 64,
+    "retrieved_utc": "2026-09-06T00:00:00+00:00",
+    "rounding": "none",
+    "source_url": "https://example.invalid/invented-developmental-index",
+}
+
+
+def developmental(**overrides):
+    """A compilable developmental table, with named provenance overrides."""
+    provenance = {**DEVELOPMENTAL_PROVENANCE, **overrides}
+    for key, value in list(provenance.items()):
+        if value is _DROP:
+            del provenance[key]
+    return factors(authority="developmental_public_resource", provenance=provenance)
+
+
+_DROP = object()
 
 
 def factors(**kwargs):
@@ -469,6 +513,98 @@ def test_a_reviewed_authority_cannot_be_claimed_while_none_is_reviewed():
     with pytest.raises(PufGrowthRefusalError) as error:
         compiled(authority="reviewed_resource")
     assert error.value.reason == "UNREVIEWED_FACTOR_TABLE"
+
+
+def test_a_developmental_public_resource_is_never_release_eligible():
+    """The third authority exists so a public table need not lie about itself."""
+    assert RELEASE_ELIGIBLE_AUTHORITIES == frozenset(
+        {FactorAuthority.REVIEWED_RESOURCE}
+    )
+    contract = compile_puf_growth(recipe(), developmental())
+    assert contract.factors.authority is FactorAuthority.DEVELOPMENTAL_PUBLIC_RESOURCE
+    assert contract.release_eligible is False
+    receipt = apply_puf_growth(money_view(), contract).receipt
+    assert receipt["release_eligible"] is False
+    assert receipt["factor_authority"] == "developmental_public_resource"
+
+
+def test_an_allowlist_entry_cannot_promote_a_developmental_table(monkeypatch):
+    """Adding the digest is the reviewed act; it must not launder this one."""
+    table = developmental()
+    monkeypatch.setattr(puf_growth, "REVIEWED_FACTOR_TABLE_DIGESTS", (table.sha256,))
+    with pytest.raises(PufGrowthRefusalError) as error:
+        compile_puf_growth(recipe(), table)
+    assert error.value.reason == "DEVELOPMENTAL_TABLE_IN_REVIEWED_ALLOWLIST"
+
+
+def test_a_developmental_table_owes_the_reviewed_receipt_and_its_retrieval():
+    assert DEVELOPMENTAL_PROVENANCE_KEYS > REVIEWED_PROVENANCE_KEYS
+    assert DEVELOPMENTAL_PROVENANCE_KEYS - REVIEWED_PROVENANCE_KEYS == {
+        "resource_sha256",
+        "retrieved_utc",
+    }
+    for missing in sorted(DEVELOPMENTAL_PROVENANCE_KEYS):
+        with pytest.raises(PufGrowthRefusalError) as error:
+            compile_puf_growth(recipe(), developmental(**{missing: _DROP}))
+        assert error.value.reason == "DEVELOPMENTAL_PROVENANCE_SHAPE", missing
+    with pytest.raises(PufGrowthRefusalError) as error:
+        compile_puf_growth(recipe(), developmental(extra_key="anything"))
+    assert error.value.reason == "DEVELOPMENTAL_PROVENANCE_SHAPE"
+
+
+def test_a_developmental_price_index_may_not_claim_a_population_divisor():
+    """A per-return ratio and a price index are different quantities."""
+    assert dict(DEVELOPMENTAL_PROVENANCE_LITERALS) == {
+        "index_or_total": "index",
+        "population_divisor": "none",
+    }
+    for key, wrong in (
+        ("population_divisor", "all_returns"),
+        ("index_or_total", "total"),
+    ):
+        with pytest.raises(PufGrowthRefusalError) as error:
+            compile_puf_growth(recipe(), developmental(**{key: wrong}))
+        assert error.value.reason == "DEVELOPMENTAL_PROVENANCE_VALUE", key
+
+
+def test_a_developmental_table_must_name_the_exact_bytes_it_read():
+    cases = (
+        ({"resource_sha256": "not-a-digest"}, "DEVELOPMENTAL_RESOURCE_DIGEST"),
+        ({"resource_sha256": "A" * 64}, "DEVELOPMENTAL_RESOURCE_DIGEST"),
+        ({"source_url": "http://example.invalid/x"}, "DEVELOPMENTAL_SOURCE_URL"),
+        ({"source_url": "https://"}, "DEVELOPMENTAL_SOURCE_URL"),
+        ({"retrieved_utc": "2026-09-06"}, "DEVELOPMENTAL_RETRIEVED_UTC"),
+        ({"retrieved_utc": "2026-09-06T00:00:00"}, "DEVELOPMENTAL_RETRIEVED_UTC"),
+        ({"retrieved_utc": "2026-09-06T00:00:00-04:00"}, "DEVELOPMENTAL_RETRIEVED_UTC"),
+        ({"retrieved_utc": "yesterday"}, "DEVELOPMENTAL_RETRIEVED_UTC"),
+    )
+    for overrides, reason in cases:
+        with pytest.raises(PufGrowthRefusalError) as error:
+            compile_puf_growth(recipe(), developmental(**overrides))
+        assert error.value.reason == reason, overrides
+    # ``+00:00`` and ``Z`` are the same instant, and both are accepted.
+    assert (
+        compile_puf_growth(
+            recipe(), developmental(retrieved_utc="2026-09-06T00:00:00Z")
+        ).release_eligible
+        is False
+    )
+
+
+def test_a_forged_developmental_contract_cannot_be_constructed_either():
+    """The developmental gate is on the type, not only on the compile function."""
+    forged = developmental(population_divisor="all_returns")
+    honest = compiled()
+    with pytest.raises(PufGrowthRefusalError) as error:
+        CompiledPufGrowth(
+            honest.recipe,
+            forged,
+            _resolved_for(honest.recipe, forged),
+            _contract_identity(
+                honest.recipe, forged, _resolved_for(honest.recipe, forged)
+            ),
+        )
+    assert error.value.reason == "DEVELOPMENTAL_PROVENANCE_VALUE"
 
 
 def test_a_factor_table_document_is_bound_to_its_own_bytes():

@@ -1,0 +1,1 @@
+Add an invented-only graph path from authenticated PUF price arrays through one-target QRF fitting to exact raw tax-unit placement on combined ACS/ASEC clones, with full materialized preservation and required-cache checks. Genuine source and fit admission remain closed.

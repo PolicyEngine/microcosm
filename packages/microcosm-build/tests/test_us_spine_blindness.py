@@ -123,6 +123,19 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # two-role clone and half weight; channels never select treatment or
         # determine the weight split. This is a provenance-owner boundary.
         "graph_combined_clone.py",
+        # Fixture-only source feature definitions choose the declared ACS or
+        # ASEC wage measure and validate copied lineage. Placement uses the
+        # same detail role in both arms; source channels never set weights.
+        "puf_detail_transfer.py",
+        "graph_puf_detail_transfer.py",
+        # Qualified source-specific wage evidence; role-only placement and no
+        # source-dependent host weight decisions. These are explicit consumers.
+        "puf_diagnostic_consumer.py",
+        "graph_puf_diagnostic_consumer.py",
+        # Source-grain diagnostic only: _violations reads the fixed monetary
+        # PAIRWISE_OBSERVATIONS pairs before/after growth. It never selects
+        # survey channels, clone treatment, or host weights.
+        "puf_price_baseline.py",
         # Resolves original native household identities and their exact
         # population/clone lineage; it applies no population treatment.
         "native_household_origin.py",
@@ -369,6 +382,16 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Separate downstream identity inventory; validates source/code bytes,
         # imports and resources without reading or treating population rows.
         "graph_composed_asec_demographic_implementation.py",
+        "puf_detail_transfer.py",
+        "graph_puf_detail_transfer.py",
+        "puf_diagnostic_consumer.py",
+        "graph_puf_diagnostic_consumer.py",
+        # Reviewed original PUF source/price codecs, imported byte-identically
+        # from the accepted source branch; no population operator registration.
+        "puf_raw_source.py",
+        "puf_monetary_source.py",
+        "puf_monetary_agi_projection.py",
+        "puf_price_baseline.py",
         "graph_combined_clone.py",
         "graph_native_origin_implementation.py",
         "native_household_origin.py",

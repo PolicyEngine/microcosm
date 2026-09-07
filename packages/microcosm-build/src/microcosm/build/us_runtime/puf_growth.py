@@ -32,13 +32,23 @@ disjoint before any array is touched.
 
 Authority
 ---------
-A factor table declares its own authority. ``invented_fixture_nonauthority`` is
-the only authority this slice can compile: it is sufficient to prove the
-contract and the transform, and :attr:`CompiledPufGrowth.release_eligible` is
-``False`` for it. ``reviewed_resource`` is refused until a reviewed table is
-generated, pinned, and added to :data:`REVIEWED_FACTOR_TABLE_DIGESTS`, which is
-deliberately empty. An invented fixture can never be promoted into a release
-recipe by passing a flag.
+A factor table declares its own authority, and only
+:data:`RELEASE_ELIGIBLE_AUTHORITIES` — ``reviewed_resource`` alone — can stand
+behind a release. ``invented_fixture_nonauthority`` proves the contract and the
+transform on invented levels. ``developmental_public_resource`` is for a
+bounded experiment on levels that really were read from a public publisher: it
+must carry the same receipt a reviewed table owes, plus the digest and
+retrieval time of the exact resource bytes, and it must declare its own divisor
+and index/total shape. Labelling such a table an invented fixture would be a
+misdescription, so it gets its own authority rather than a lie.
+
+What it does **not** get is a promotion path. Release eligibility is keyed on
+``reviewed_resource`` and nothing else, and a developmental table whose digest
+appears in :data:`REVIEWED_FACTOR_TABLE_DIGESTS` is refused outright, so an
+allowlist entry cannot launder a developmental resource into a release recipe.
+``reviewed_resource`` is itself refused until a reviewed table is generated,
+pinned, and added to that deliberately empty tuple. No authority can be
+promoted by passing a flag.
 
 Scope
 -----
@@ -54,6 +64,7 @@ opaque legacy input, outside this contract.
 
 from __future__ import annotations
 
+import datetime
 import json
 import struct
 from collections.abc import Mapping, Sequence
@@ -76,7 +87,10 @@ __all__ = [
     "PROVENANCE_RECID_COLUMN",
     "PROVENANCE_SOURCE_AGI_COLUMN",
     "ARCHIVED_PRODUCER_COMMIT",
+    "DEVELOPMENTAL_PROVENANCE_KEYS",
+    "DEVELOPMENTAL_PROVENANCE_LITERALS",
     "PROPOSED_TY2015_FIELD_ROSTER",
+    "RELEASE_ELIGIBLE_AUTHORITIES",
     "ROSTER_CITATION",
     "ROSTER_SOURCE_REFERENCE_YEAR",
     "REVIEWED_FACTOR_TABLE_DIGESTS",
@@ -155,6 +169,23 @@ REVIEWED_PROVENANCE_KEYS = frozenset(
         "rounding",
         "source_url",
     }
+)
+
+#: What a ``developmental_public_resource`` factor table must state about
+#: itself: everything a reviewed table owes, plus the digest of the exact
+#: resource bytes its levels were read from and when they were retrieved. A
+#: public resource is a moving distribution, so "which bytes, read when" is
+#: part of the claim rather than a footnote.
+DEVELOPMENTAL_PROVENANCE_KEYS = frozenset(
+    REVIEWED_PROVENANCE_KEYS | {"resource_sha256", "retrieved_utc"}
+)
+
+#: Provenance values a developmental table must spell out rather than leave to
+#: a reader's inference. A price index has no return or population divisor and
+#: is an index, not a total; a table that says otherwise is describing a
+#: different quantity and is refused here rather than downstream.
+DEVELOPMENTAL_PROVENANCE_LITERALS = MappingProxyType(
+    {"index_or_total": "index", "population_divisor": "none"}
 )
 
 #: Largest integer amount float64 represents exactly. A larger integer money
@@ -282,7 +313,17 @@ class FactorAuthority(StrEnum):
     """What a factor table claims about itself."""
 
     INVENTED_FIXTURE = "invented_fixture_nonauthority"
+    #: Levels really read from a named public publisher, for a bounded
+    #: developmental experiment. Never release-eligible; see
+    #: :data:`RELEASE_ELIGIBLE_AUTHORITIES`.
+    DEVELOPMENTAL_PUBLIC_RESOURCE = "developmental_public_resource"
     REVIEWED_RESOURCE = "reviewed_resource"
+
+
+#: The only authority a release recipe may stand behind. Written as a set so
+#: the invariant is one readable membership test rather than a comparison
+#: repeated at each site, and so a test can assert its contents directly.
+RELEASE_ELIGIBLE_AUTHORITIES = frozenset({FactorAuthority.REVIEWED_RESOURCE})
 
 
 _MONEY_KINDS = frozenset(
@@ -784,6 +825,45 @@ class GrowthFactorTable:
         return _sha(self.document)
 
 
+def _check_developmental_provenance(factors: GrowthFactorTable) -> None:
+    """Close what a ``developmental_public_resource`` table must state.
+
+    Everything the reviewed shape owes, plus the digest and retrieval time of
+    the exact resource bytes, plus the two literals that keep a price index
+    from being read as a per-return total. The reviewed allowlist is checked
+    negatively here: a developmental digest listed there is a refusal, so the
+    one act that promotes a reviewed table cannot promote this one.
+    """
+    _require(
+        set(factors.provenance) == DEVELOPMENTAL_PROVENANCE_KEYS,
+        "DEVELOPMENTAL_PROVENANCE_SHAPE",
+    )
+    _require(
+        factors.sha256 not in REVIEWED_FACTOR_TABLE_DIGESTS,
+        "DEVELOPMENTAL_TABLE_IN_REVIEWED_ALLOWLIST",
+    )
+    for key, expected in DEVELOPMENTAL_PROVENANCE_LITERALS.items():
+        _require(factors.provenance[key] == expected, "DEVELOPMENTAL_PROVENANCE_VALUE")
+    _require(
+        _digest(factors.provenance["resource_sha256"]), "DEVELOPMENTAL_RESOURCE_DIGEST"
+    )
+    url = factors.provenance["source_url"]
+    _require(
+        type(url) is str and url.startswith("https://") and len(url) > len("https://"),
+        "DEVELOPMENTAL_SOURCE_URL",
+    )
+    retrieved = factors.provenance["retrieved_utc"]
+    _require(type(retrieved) is str, "DEVELOPMENTAL_RETRIEVED_UTC")
+    try:
+        stamp = datetime.datetime.fromisoformat(retrieved)
+    except ValueError as error:
+        raise PufGrowthRefusalError("DEVELOPMENTAL_RETRIEVED_UTC") from error
+    _require(
+        stamp.tzinfo is not None and stamp.utcoffset() == datetime.timedelta(0),
+        "DEVELOPMENTAL_RETRIEVED_UTC",
+    )
+
+
 @dataclass(frozen=True)
 class ResolvedFactor:
     """One rule's factor, resolved once from two named year columns."""
@@ -858,6 +938,8 @@ class CompiledPufGrowth:
                 set(self.factors.provenance) == REVIEWED_PROVENANCE_KEYS,
                 "REVIEWED_PROVENANCE_SHAPE",
             )
+        elif self.factors.authority is FactorAuthority.DEVELOPMENTAL_PUBLIC_RESOURCE:
+            _check_developmental_provenance(self.factors)
         _require(
             type(self.resolved) is tuple
             and all(type(item) is ResolvedFactor for item in self.resolved),
@@ -909,9 +991,12 @@ class CompiledPufGrowth:
     def release_eligible(self) -> bool:
         """Whether this contract may stand behind a release recipe.
 
-        ``False`` for every invented fixture, and there is no override.
+        ``False`` for every invented fixture and every developmental public
+        resource, and there is no override: the answer is membership of
+        :data:`RELEASE_ELIGIBLE_AUTHORITIES`, which no caller, flag or
+        allowlist entry can widen.
         """
-        return self.factors.authority is FactorAuthority.REVIEWED_RESOURCE
+        return self.factors.authority in RELEASE_ELIGIBLE_AUTHORITIES
 
     @property
     def money_fields(self) -> tuple[str, ...]:
