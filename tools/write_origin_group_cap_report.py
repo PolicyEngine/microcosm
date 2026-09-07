@@ -35,6 +35,12 @@ def main():
     assert certificate["artifact_revision"]["sha256"] == PLAN_SHA
     assert certificate["peer_verdict"]["verdict"] == "approve"
     assert certificate["main_approval"]["approved"] is True
+    assert digest(GATE / "gate.json") == (
+        "58cbc5e23f9758341840036022d96b3c121392723d84a7050eecf15ca13af6e6"
+    )
+    assert digest(GATE / "certificate.json") == (
+        "15013e046f59c33e14cc52f0f831b16c78b1ba4efd9f6592ae8b765320a1849f"
+    )
     assert not git("status", "--porcelain"), "Implementation worktree must be clean"
     head = git("rev-parse", "HEAD")
     files = {}
@@ -110,6 +116,7 @@ def main():
         "us-origin-group-cap-store-summary.json",
         "us-origin-group-cap-budget-REPORT.json",
         "us-origin-group-cap-observed-replay.json",
+        "us-origin-group-cap-independent-review.json",
     ]
     evidence = {}
     for name in selections:
@@ -187,6 +194,14 @@ def main():
         "evidence": evidence,
         "observed_replay": observed,
         "actual_warm_kernel_call_count": len(observed["warm"]["calls"]),
+        "local_test_scope": {
+            "core_solver_budget_store": {"passed": 99, "skipped": 0},
+            "integrated_factory_fresh_replay": {"passed": 6, "skipped": 0},
+            "independent_cold_warm_admission": {"passed": 6, "skipped": 0},
+            "wrapper_initial_preflight": {"passed": 3, "skipped": 0},
+            "source_blindness_inventory": {"passed": 498, "skipped": 0},
+            "total": 612,
+        },
         "typed_identity": [
             "native and expanded original-origin binding artifact types/keys/payloads",
             "full verified population plus live prepared DESIGN anchors",
@@ -270,7 +285,11 @@ The JSON enumerates the final passing test/format/inventory audits and their exa
 source/evidence hashes, including negative tests for stale/fabricated artifacts,
 both cold/warm solver-bypass inequalities, stale diagnostics, persisted successor
 bytes, zero/infeasible starts and budget ratcheting. Source-spine guards passed
-498 tests. Full remote CI and publication remain outside this local scope.
+498 tests. The final suites passed 612 tests in total: 99 solver/budget/store,
+6 integrated graph/replay, 6 independent admission, 3 wrapper preflight, and
+498 source-blindness tests. No tests skipped in these suites. Required CI file
+partition and graph acceptance burndown inventories passed. Full remote CI and
+publication remain outside this local scope.
 
 ## Necessary integration fixes
 
