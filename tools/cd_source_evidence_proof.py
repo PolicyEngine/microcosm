@@ -221,6 +221,7 @@ elif args.mode == "successor":
     # Compile only: compare the previously proved CD graph under its old and
     # current implementation identities without executing any CD kernel.
     from cd_source_evidence_checks import setup
+
     from microcosm.build.us_runtime import graph_cd_source_evidence as cd_stage
     from microcosm.graph import compile_graph
     from microcosm.graph.keys import node_key, source_content_key

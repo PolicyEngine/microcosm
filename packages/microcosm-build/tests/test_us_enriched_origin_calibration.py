@@ -524,11 +524,12 @@ def test_cd_adapter_authenticates_issued_successor_frame_log(cold_run):
     """Real669-issued bindings must authenticate the later current Frame log."""
     from dataclasses import replace
 
+    from us_survey_lineage_graph import CLONE_BINDING, CLONE_POPULATION, NATIVE_BINDING
+
     from microcosm.build.us_runtime import cd_current_source_evidence as cd
     from microcosm.build.us_runtime import enriched_origin_calibration as stage
     from microcosm.build.us_runtime import graph_native_household_origin as origins
     from microcosm.frame import Frame, MassChangeRecord
-    from us_survey_lineage_graph import CLONE_BINDING, CLONE_POPULATION, NATIVE_BINDING
 
     _, result = cold_run
     clone = result["populations"][CLONE_POPULATION]
