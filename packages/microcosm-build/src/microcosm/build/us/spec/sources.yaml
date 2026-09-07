@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: dc58a0d700f0add7b658cec774df6e9587303beb58a1f432a35a18dcd1ac4097
+  sha256: bbfa9c0922ffb0ec1fc5202ce94c8edd765a8a35c2c61e7d992062f116bd65a4
 stage_manifest:
   version: 1
   country: us
@@ -2196,9 +2196,13 @@ stages:
   - is_blind
   - is_full_time_college_student
   - own_children_in_household
+  - parent_1_id
+  - parent_2_id
   - veterans_benefits
   nonnegative_outputs:
   - own_children_in_household
+  - parent_1_id
+  - parent_2_id
   - veterans_benefits
   notes: 'Direct mappings of measured ASEC demographic variables reproducing the retired enhanced-CPS
     pipeline''s constructions (each cited to the retired pipeline''s source files in the stage module):
@@ -2208,10 +2212,12 @@ stages:
     A_FTPT == 1 (the retired primary branch; census_cps.py loads A_FTPT, so the published surface ran
     the strict form — the A_HSCOL-only fallback for loads without A_FTPT is not reproduced); own_children_in_household
     <- count of household members whose PEPAR1/PEPAR2 parent pointers resolve to the person within PH_SEQ;
-    veterans_benefits <- VET_VAL. Nothing is imputed. Without this stage every input takes its engine
-    default (False/0), erasing SNAP disability, student, parent/child, and veteran exemption channels
-    (microcosm #244/#248). is_veteran is formula-owned in PolicyEngine-US (derived from veterans_benefits)
-    and is deliberately not exported (microcosm #24).'
+    parent_1_id/parent_2_id <- the person_id of the co-resident member the person''s PEPAR1/PEPAR2 pointer
+    names within PH_SEQ, 0 when the pointer is absent or resolves to no co-resident line (microcosm#884;
+    the relation behind the count, consumed by policyengine-us#9404); veterans_benefits <- VET_VAL. Nothing
+    is imputed. Without this stage every input takes its engine default (False/0), erasing SNAP disability,
+    student, parent/child, and veteran exemption channels (microcosm #244/#248). is_veteran is formula-owned
+    in PolicyEngine-US (derived from veterans_benefits) and is deliberately not exported (microcosm #24).'
 - stage: pregnancy
   survey: Census CPS ASEC + CDC natality-derived national pregnancy rate
   source: https://www.cdc.gov/nchs/nvss/births.htm

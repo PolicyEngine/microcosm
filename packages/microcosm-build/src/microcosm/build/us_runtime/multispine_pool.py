@@ -44,6 +44,7 @@ from microcosm.build.us_runtime.disability_benefits import (
 )
 from microcosm.build.us_runtime.education_inputs import with_us_education_inputs
 from microcosm.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
     with_us_eligibility_inputs,
 )
 from microcosm.build.us_runtime.energy_subsidy import (
@@ -638,6 +639,15 @@ _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
             "age",
             "is_female",
             "is_household_head",
+            # The parent ids are complete on both arms without a transfer:
+            # the eligibility operator resolves them on the CPS projection
+            # and ``map_acs_native_inputs`` writes the ACS spine's declared
+            # 0. They must never enter the QRF plan — parent_1_id is not a
+            # PolicyEngine-US variable, so ``_target_encoding`` would treat
+            # it as continuous and hand an ACS child a fractional
+            # interpolation between two unrelated ASEC person ids
+            # (microcosm#884).
+            *US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
         }
     ),
     "household": frozenset({"tenure_type"}),
@@ -861,9 +871,8 @@ def _resolve_take_up_program_bindings(
             for program in load_take_up_contract().programs
         )
     for index, binding in enumerate(bindings):
-        if (
-            len(binding) != 3
-            or not all(isinstance(value, str) and value for value in binding)
+        if len(binding) != 3 or not all(
+            isinstance(value, str) and value for value in binding
         ):
             raise ValueError(
                 "Take-up manifest program binding must contain three non-empty "
@@ -1333,9 +1342,7 @@ def pool_remaining_stage_input_manifest(
             variable,
             execution_scope="whole_pool",
             provision=provision,
-            available_by=(
-                "transferred" if variable in transfer_owned else "seeded"
-            ),
+            available_by=("transferred" if variable in transfer_owned else "seeded"),
             fallback=fallback,
         )
 

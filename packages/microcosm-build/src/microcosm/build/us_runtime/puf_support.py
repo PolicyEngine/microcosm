@@ -24,6 +24,9 @@ from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
     resolve_acs_pums_earnings_universe,
 )
+from microcosm.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
+)
 from microcosm.build.us_runtime.puf_e01000_reconciliation import (
     PUF_SCHEDULE_D_JOINT_COLUMNS,
     puf_capital_gains_joint_metrics,
@@ -56,6 +59,15 @@ from microcosm.frame.schema import EntitySchema
 
 QRF: Any | None = None
 
+#: Person columns whose *values* are ``person_id``s rather than payload.
+#: The support clone renumbers ``person_id``, so these move with it; 0 is the
+#: "no such person" sentinel and is left alone. Source identities
+#: (``source_person_id`` and friends) are deliberately not here — several
+#: operators key clone-stable draws on them precisely because they do not move.
+US_PERSON_REFERENCE_ID_COLUMNS: tuple[str, ...] = (
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+)
+
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
     "PufTaxDetailChainInputs",
@@ -68,6 +80,7 @@ __all__ = [
     "PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN",
     "US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS",
     "US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING",
+    "US_PERSON_REFERENCE_ID_COLUMNS",
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
@@ -2091,6 +2104,7 @@ def _clone_entity_table(
     id_multiplier: int,
 ) -> pd.DataFrame:
     id_columns = _entity_id_columns(schema, entity)
+    reference_columns = _person_reference_columns(table, schema=schema, entity=entity)
     source_id = support_source_id_column(entity)
     channel_column = support_channel_column(entity)
     clone_index_column = support_clone_index_column(entity)
@@ -2104,6 +2118,12 @@ def _clone_entity_table(
         clone[clone_index_column] = clone_index
         for column in id_columns:
             clone[column] = _remap_ids(
+                clone[column].to_numpy(),
+                clone_index=clone_index,
+                id_multiplier=id_multiplier,
+            )
+        for column in reference_columns:
+            clone[column] = _remap_person_reference_ids(
                 clone[column].to_numpy(),
                 clone_index=clone_index,
                 id_multiplier=id_multiplier,
@@ -2130,6 +2150,7 @@ def _clone_preassembled_entity_table(
     """Clone one preassembled entity table while preserving source provenance."""
 
     id_columns = _entity_id_columns(schema, entity)
+    reference_columns = _person_reference_columns(table, schema=schema, entity=entity)
     clone_index_column = support_clone_index_column(entity)
     primary_id = schema.entity_id_column(entity)
 
@@ -2138,6 +2159,12 @@ def _clone_preassembled_entity_table(
     detail[clone_index_column] = PUF_TAX_DETAIL_CLONE_INDEX
     for column in id_columns:
         detail[column] = _remap_ids(
+            detail[column].to_numpy(),
+            clone_index=PUF_TAX_DETAIL_CLONE_INDEX,
+            id_multiplier=id_multiplier,
+        )
+    for column in reference_columns:
+        detail[column] = _remap_person_reference_ids(
             detail[column].to_numpy(),
             clone_index=PUF_TAX_DETAIL_CLONE_INDEX,
             id_multiplier=id_multiplier,
@@ -2193,6 +2220,48 @@ def _entity_id_columns(schema: EntitySchema, entity: str) -> tuple[str, ...]:
             *(schema.membership_column(group) for group in schema.group_entities),
         )
     return (schema.entity_id_column(entity),)
+
+
+def _person_reference_columns(
+    table: pd.DataFrame, *, schema: EntitySchema, entity: str
+) -> tuple[str, ...]:
+    """Non-structural person columns whose values are ``person_id``s.
+
+    The clone renumbers ``person_id``, so a column that *names* a person has
+    to move with it or it silently points into the other support arm. These
+    are the only such columns on the US person table
+    (:data:`US_PERSON_REFERENCE_ID_COLUMNS`); ``source_person_id`` and its
+    siblings are deliberately excluded — a source identity is the
+    clone-stable key several operators draw on.
+    """
+
+    if entity != schema.person_entity:
+        return ()
+    return tuple(
+        column for column in US_PERSON_REFERENCE_ID_COLUMNS if column in table.columns
+    )
+
+
+def _remap_person_reference_ids(
+    values: Sequence[Any],
+    *,
+    clone_index: int,
+    id_multiplier: int,
+) -> np.ndarray:
+    """Shift a person-referencing column, leaving the 0 sentinel alone.
+
+    ``0`` means "no such person" on these columns, so it must not be shifted
+    into ``clone_index * id_multiplier`` — a valid-looking id naming a
+    stranger.
+    """
+
+    shifted = _remap_ids(
+        values,
+        clone_index=clone_index,
+        id_multiplier=id_multiplier,
+    )
+    original = _validated_integral_ids(values, label="PUF support person references")
+    return np.where(original == 0, 0, shifted)
 
 
 def _validate_channels(channels: Sequence[str]) -> tuple[str, ...]:

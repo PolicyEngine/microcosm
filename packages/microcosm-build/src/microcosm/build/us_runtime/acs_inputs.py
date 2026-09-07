@@ -20,7 +20,11 @@ import pandas as pd
 
 from microcosm.frame import US_SCHEMA, Frame
 
-__all__ = ["AcsNativeInputResult", "map_acs_native_inputs"]
+__all__ = [
+    "ACS_UNRESOLVED_PARENT_ID_MAPPINGS",
+    "AcsNativeInputResult",
+    "map_acs_native_inputs",
+]
 
 _INFLATION_FACTOR_DENOMINATOR = 1_000_000.0
 
@@ -36,6 +40,28 @@ _SPM_TENURE = {
     3: "RENTER",
     4: "RENTER",  # occupied without payment: non-owner housing tenure
 }
+
+#: The ACS spine's value for the ASEC parent pointers, and why.
+#:
+#: ``acs_pums._with_structural_columns`` synthesizes PEPAR1/PEPAR2 from
+#: RELSHIPP: for a biological/adopted/step child of the reference person
+#: (25/26/27) PEPAR1 is always the reference person's line and PEPAR2 always
+#: the spouse's, and every other record — grandchild, foster child, child of a
+#: non-reference adult — gets nothing. That is a reference-person link, not the
+#: ASEC's measured parent pointer, so exporting it under the same name would
+#: conflate two constructions; and an ACS-minted ``person_id`` is renumbered by
+#: the assembly offset after this mapping runs, so a resolved id would be stale
+#: before it reached the pool. The ACS spine therefore reports the pointer as
+#: unknown (0), which is exactly the value PolicyEngine-US reads as "fall back
+#: to the count-based proxy" (microcosm#884, policyengine-us#9404).
+_ACS_UNRESOLVED_PARENT_POINTER_TRANSFORMATION = (
+    "0 (unknown): the ACS pointer is a synthesized reference-person link, "
+    "not the ASEC measured parent pointer"
+)
+ACS_UNRESOLVED_PARENT_ID_MAPPINGS: tuple[tuple[str, str], ...] = (
+    ("parent_1_id", "PEPAR1"),
+    ("parent_2_id", "PEPAR2"),
+)
 
 _FORMULA_OWNED_AGGREGATES = frozenset(
     {
@@ -148,6 +174,18 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
         output="acs_interest_dividend_rental_income",
         register=native,
     )
+
+    for output, pointer_column in ACS_UNRESOLVED_PARENT_ID_MAPPINGS:
+        if pointer_column in person:
+            _add_native(
+                person,
+                output,
+                np.zeros(len(person), dtype=np.int64),
+                entity="person",
+                source_columns=(pointer_column,),
+                transformation=_ACS_UNRESOLVED_PARENT_POINTER_TRANSFORMATION,
+                register=native,
+            )
 
     _map_tenure(person, household, spm_unit, register=native)
     _map_housing_amounts(person, household, register=native)
