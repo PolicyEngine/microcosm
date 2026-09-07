@@ -77,3 +77,32 @@ remain byte-identical. Independent static review closed substantive findings;
 its final minor malformed-Panel-key guard is now added with three refusal cases.
 The original frozen checkout and copied partial codec still match the recovery
 snapshot exactly. No original worker files, logs or partial snapshots changed.
+
+## Final recovery state (2026-09-07)
+
+Implementation and independent source review are complete; all findings have
+been addressed. The final clean-head verification is intentionally emitted
+immediately after this journal commit, so its loaded-file proof names the
+actual final committed head. Its count-only authority will be
+`/private/tmp/sipp-annual-housing-recovery-evidence-20260907-final/verification.json`
+and the independent review at
+`/private/tmp/sipp-annual-housing-independent-review-20260907.json`.
+The preceding committed run passed 554 tests with ten exact frozen annual
+comparisons; the last source step added three malformed-key cases. Affected
+lint, format, CI test grouping and diff checks pass.
+
+Final reports will be written to
+`/private/tmp/us-sipp-annual-housing-evidence-recovery-REPORT.md` and `.json`.
+The requested R destination and sibling worktree directory are outside this
+session's writable roots; the source recovery lives in the linked worktree
+`/private/tmp/microcosm-us-sipp-annual-housing-evidence-recovery-20260907`.
+Upstream refresh remains unverified because the authorized fetch failed DNS.
+These environmental limitations are separate from invented-code validation.
+
+Done: strict canonical creator/recompute decoder, distinct external identities,
+95-field future union, exact complete-member/person-month joins, unavailable
+coverage preservation, private artifacts/count quality, actual frozen annual
+and housing parity, and committed recovery steps. Original files are intact.
+Next: inspect the final emitted proof/report. Root alone owns any subsequent
+scientific contract or genuine execution decision. No genuine proposal, source
+extraction, fit, transfer, publication or remote action follows from this work.
