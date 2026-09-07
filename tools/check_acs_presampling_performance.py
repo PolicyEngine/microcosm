@@ -11,6 +11,9 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import importlib.util
+import inspect
+import itertools
 import json
 import os
 import resource
@@ -158,21 +161,58 @@ def main():
     old = scoped(old_raw, "_acs_performance_baseline")
     import pytest
 
-    code = pytest.main(
-        [
-            str(w / TEST),
-            "-q",
-            "--noconftest",
-            "-c",
-            "/dev/null",
-            f"--rootdir={w}",
-            "-p",
-            "no:cacheprovider",
-            "--import-mode=importlib",
-            f"--basetemp={output / 'pytest'}",
-            f"--junitxml={output / 'junit.xml'}",
-        ]
-    )
+    # Directly execute the named source-owned pytest bodies/parametrizations.
+    # Pytest's path discovery otherwise probes unrelated ancestor directories.
+    spec = importlib.util.spec_from_file_location("_acs_performance_tests", w / TEST)
+    tests = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = tests
+    spec.loader.exec_module(tests)
+    checks = []
+    for name, test in vars(tests).items():
+        if not name.startswith("test_") or not callable(test):
+            continue
+        groups = []
+        for mark in getattr(test, "pytestmark", []):
+            assert mark.name == "parametrize"
+            keys, values = mark.args
+            keys = (
+                tuple(k.strip() for k in keys.split(","))
+                if isinstance(keys, str)
+                else keys
+            )
+            groups.append(
+                [
+                    dict(zip(keys, (v,) if len(keys) == 1 else v, strict=True))
+                    for v in values
+                ]
+            )
+        for variant, combination in enumerate(itertools.product(*groups)):
+            params = {k: v for group in combination for k, v in group.items()}
+            tmp = output / f"case-{len(checks)}"
+            tmp.mkdir()
+            with pytest.MonkeyPatch.context() as monkeypatch:
+                available = {
+                    "acs": current,
+                    "tmp_path": tmp,
+                    "monkeypatch": monkeypatch,
+                    **params,
+                }
+                try:
+                    test(
+                        **{k: available[k] for k in inspect.signature(test).parameters}
+                    )
+                    checks.append({"name": name, "variant": variant, "passed": True})
+                except Exception as error:
+                    checks.append(
+                        {
+                            "name": name,
+                            "variant": variant,
+                            "passed": False,
+                            "error": type(error).__name__,
+                            "message": str(error),
+                        }
+                    )
+    code = int(any(not c["passed"] for c in checks))
     parity = []
     # Compare the same actual bodies independently of the expected-value tests.
     import numpy as np
@@ -269,6 +309,7 @@ def main():
         "head": args.expect_head,
         "baseline_head": BASE,
         "exit_code": int(code),
+        "checks": checks,
         "loading_scope": "Exact AST-selected seven loader/relationship bodies, AcsPumsSource, constants and real imports; not whole module/package/Frame/graph execution.",
         "source_sha256": hashlib.sha256(current_raw).hexdigest(),
         "baseline_source_sha256": hashlib.sha256(old_raw).hexdigest(),
