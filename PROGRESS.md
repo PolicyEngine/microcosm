@@ -19,6 +19,16 @@ with companion JSON. Only public documents, code and permitted metadata may
 be read or hashed. No genuine payload, target, private monetary output or
 scientific execution is authorized.
 
+Research checkpoint: Primary SIPP documentation distinguishes interviewed-member
+counts from counts including Type-2 residents, and amounts paid from contractual
+charges. The user guide describes both mean-member and reference-person household
+weight constructions without choosing between them. ASEC pooling spans income
+years 2022–2024 and interview years 2023–2025; its age tail is grouped. HUD's
+published definitions separate family rent, total rent to owner, utility allowance
+and FMR. Exact code/public-document notes are being assembled independently for
+each survey. Official web browsing works; direct public-PDF download failed DNS,
+so byte pins will distinguish retained documents from web-only verification.
+
 Historical recovery journal, started 2026-09-07. Prior journals remain in Git
 and the preserved checkouts; their status claims are not current evidence.
 
