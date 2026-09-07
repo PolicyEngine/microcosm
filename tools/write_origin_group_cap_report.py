@@ -103,7 +103,7 @@ def main():
         "us-origin-group-cap-final-burndown.json",
         "us-origin-group-cap-final-lint.json",
         "us-origin-group-cap-final-format.json",
-        "us-origin-group-cap-spine-001.json",
+        "us-origin-group-cap-final-spine.json",
         "us-origin-group-cap-solver-legacy.json",
         "us-origin-group-cap-solver-benchmark.json",
         "us-origin-group-cap-solver-summary.json",
