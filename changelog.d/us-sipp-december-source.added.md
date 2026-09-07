@@ -1,0 +1,1 @@
+Add an authenticated local SIPP December source producer and reconstructing reader with bounded lexical parsing, complete-residence selection, immutable content-store evidence, and a separate bank-asset measurement rule. Existing SIPP consumers remain unchanged; verification uses invented fixtures and does not certify fitting or launch readiness.

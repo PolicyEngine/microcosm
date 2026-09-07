@@ -1,0 +1,1 @@
+Add the approved US congressional-district published-benchmark contract as executable rules over invented fixtures: exact protocol compilation from packaged canonical bytes, point and categorical checks, reference precision, origin support, typed origin keys, in-memory exposure-ledger validation, and injected approval. No candidate scoring, no production ledger.

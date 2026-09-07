@@ -12,6 +12,34 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 `data`. There is no top-level `microcosm` package directory — never add an
 `__init__.py` to the namespace root.
 
+The separate local ASEC v3-to-v4 restoration producer is documented in
+`docs/us-asec-raw-stage-v4.md`; it requires explicit pinned local inputs and writes
+a new bundle. Keep the historical v3 loader and producer behavior unchanged.
+
+US source/geography graph implementation scopes and their reviewed dependency
+inventory are documented in `docs/us-production-graph-development.md`. New
+dependency/resource failures require a scope review, not an automatic pin refresh.
+
+The December SIPP housing projection is additive and lives beside the frozen
+sixteen-field producer, not inside it: `sipp_december_source.py` and
+`sipp_measurements.py` must keep every byte, because their module hashes are
+inside the producer binding that already-published receipts carry. Housing work
+goes in `sipp_housing_measurements.py`, `sipp_housing_predictors.py` and
+`sipp_housing_projection.py`, which import those internals. The predictor pass
+runs after admission and takes the classified households as an input, so
+`EXCLUSION_ORDER` cannot be reached from it; keep it that way, and report
+prospective predictor validity on its own status ladder rather than as new
+exclusion rungs. See `docs/us-sipp-december-housing-projection.md`.
+
+IRS fiscal targets require explicit supported return universes and actual model
+filer decisions before household aggregation. Target-frame materializer version
+13 invalidates older SOI measurements; its compilation receipt records filing
+inputs/defaults and modeled-universe limits. Unsupported dependent-return targets
+remain visibly dropped in diagnostic materialization. Release builds refuse
+them immediately after Ledger compilation, before base-population loading.
+Warm reuse binds the full live base-input Frame. See
+`docs/us-soi-modeled-return-universes.md` for the source and checkpoint boundaries.
+
 ## Commands
 
 ```bash

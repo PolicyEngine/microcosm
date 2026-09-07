@@ -17,6 +17,15 @@ import pandas as pd
 from microcosm.frame import Frame, WeightKind, Weights
 
 from . import keys as graph_keys
+from .artifact_edges import scope_payload, typed_contracts, value_from_descriptor
+from .attachments import _PopulationRetention
+from .availability import (
+    EXECUTION_SCHEMA,
+    execution_state,
+    has_execution,
+    unavailable_artifacts,
+    validate_execution,
+)
 from .canonical import canonical_json, sha256_domain
 from .codecs import SOURCE_CODECS, SourceCodecRegistry
 from .decl import (
@@ -30,6 +39,7 @@ from .decl import (
 )
 from .errors import NodeRejectedError
 from .kernel import (
+    ArtifactValue,
     Capabilities,
     KernelContext,
     KernelRegistry,
@@ -134,6 +144,19 @@ def _failed_gate_result(
         columns=MappingProxyType(columns),
         receipt={
             "outcome": "fail",
+            **(
+                {
+                    "execution": {
+                        "schema": EXECUTION_SCHEMA,
+                        "state": "gate_exception",
+                        "unavailable_artifacts": sorted(
+                            output.name for output in node.artifact_outputs
+                        ),
+                    }
+                }
+                if node.artifact_outputs
+                else {}
+            ),
             "evidence": {
                 "exception_type": type(error).__name__,
                 "message": str(error),
@@ -386,6 +409,21 @@ def _context_digest(context: KernelContext) -> bytes:
         digest.update(weights.kind.value.encode("ascii") + b"\0")
         _update_array(digest, weights.values)
     _update_series(digest, context.strata)
+    for name, value in sorted(context.artifacts.items()):
+        digest.update(
+            canonical_json(
+                (
+                    name,
+                    value.key,
+                    value.producer_key,
+                    value.type.name,
+                    value.type.schema_version,
+                    scope_payload(value.numerics),
+                )
+            )
+        )
+        digest.update(len(value.payload).to_bytes(8, "little"))
+        digest.update(value.payload)
     return digest.digest()
 
 
@@ -461,6 +499,7 @@ def _project_context(
     sources: Mapping[str, Path],
     tolerances: Mapping[tuple[str, str], Tolerance | None],
     numerics: Mapping[tuple[str, str], NumericScope],
+    artifacts: Mapping[str, ArtifactValue] | None = None,
 ) -> KernelContext:
     if population is None:
         return KernelContext(
@@ -473,6 +512,7 @@ def _project_context(
             sources=MappingProxyType({name: sources[name] for name in node.sources}),
             tolerances=tolerances,
             numerics=numerics,
+            artifacts={} if artifacts is None else artifacts,
         )
 
     frame = population.frame
@@ -564,6 +604,7 @@ def _project_context(
         sources=MappingProxyType({name: sources[name] for name in node.sources}),
         tolerances=tolerances,
         numerics=numerics,
+        artifacts={} if artifacts is None else artifacts,
     )
 
 
@@ -1126,7 +1167,30 @@ def _validate_result(
         if not isinstance(payload, bytes):
             raise NodeRejected(f"Node {node.id!r} artifact {name!r} is not bytes.")
         artifacts[name] = payload
+    for output in node.artifact_outputs:
+        if (
+            output.name not in artifacts
+            and execution_state(result.receipt) != "gate_exception"
+        ):
+            error = StoreMiss if cache_hit else NodeRejected
+            raise error(
+                f"Node {node.id!r} is missing declared artifact {output.name!r}."
+            )
     receipt = _normal_json_mapping(result.receipt, f"Node {node.id!r} receipt")
+    try:
+        validate_execution(
+            receipt,
+            kernel_capabilities,
+            {output.name: output for output in node.artifact_outputs},
+            artifacts,
+            has_products=bool(
+                result.columns or result.frame is not None or result.weights is not None
+            ),
+        )
+    except ValueError as error:
+        raise NodeRejected(
+            f"Node {node.id!r} execution evidence rejected: {error}"
+        ) from error
     if node.structural is StructuralDelta.EXPAND:
         if cache_hit:
             if not isinstance(receipt.get("expand"), dict):
@@ -1378,21 +1442,27 @@ def _write_node(
     receipt: Mapping[str, object],
     opaque_artifacts: Mapping[str, bytes],
     verify_existing: bool,
+    typed_artifacts: Mapping[str, object] | None = None,
 ) -> tuple[dict[tuple[str, str], str], dict[str, object]]:
-    columns: dict[tuple[str, str], tuple[pd.Series, str]] = {}
     if node.structural is StructuralDelta.NONE:
         declared = {(owned.entity, owned.column): owned for owned in node.outputs}
-        for coordinate, series in result.columns.items():
-            columns[coordinate] = (series, declared[coordinate].dtype)
+        coordinates = sorted(result.columns)
     else:
-        for entity in population.frame.entities:
-            for column in population.frame.table(entity).columns:
-                series = _series_for_column(population.frame, entity, column)
-                columns[(entity, column)] = (series, _dtype_token(series))
+        coordinates = sorted(
+            (entity, column)
+            for entity in population.frame.entities
+            for column in population.frame.table(entity).columns
+        )
 
     column_entries: list[dict[str, str]] = []
     manifest_artifacts: dict[tuple[str, str], str] = {}
-    for (entity, column), (series, token) in sorted(columns.items()):
+    for entity, column in coordinates:
+        if node.structural is StructuralDelta.NONE:
+            series = result.columns[(entity, column)]
+            token = declared[(entity, column)].dtype
+        else:
+            series = _series_for_column(population.frame, entity, column)
+            token = _dtype_token(series)
         output_key = artifact_key(key, entity, column)
         store.put_column(
             output_key,
@@ -1404,6 +1474,7 @@ def _write_node(
         )
         column_entries.append({"entity": entity, "column": column, "key": output_key})
         manifest_artifacts[(entity, column)] = output_key
+        del series
 
     stored_frame_key: str | None = None
     if node.structural is not StructuralDelta.NONE:
@@ -1462,7 +1533,12 @@ def _write_node(
         opaque_entries.append({"name": name, "key": output_key})
 
     record: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 3
+        if execution_state(receipt)
+        else 2
+        if typed_artifacts
+        else 1,
+        **({"typed_artifacts": dict(typed_artifacts)} if typed_artifacts else {}),
         "node_id": node.id,
         "node_key": key,
         "kernel_ref": node.kernel,
@@ -1490,6 +1566,7 @@ def _require_record_shape(
     key: str,
     kernel_impl_hash: str,
     capabilities: Capabilities,
+    typed_artifacts: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     if not isinstance(raw, dict):
         raise StoreCorrupt(f"Cached receipt for node {node.id!r} is not an object.")
@@ -1506,16 +1583,62 @@ def _require_record_shape(
         "weight",
         "opaque",
     }
+    if typed_artifacts:
+        required.add("typed_artifacts")
     if set(raw) != required:
         raise StoreCorrupt(
             f"Cached receipt for node {node.id!r} has fields {sorted(raw)}, "
             f"not {sorted(required)}."
         )
-    if raw["schema_version"] != 1:
+    raw_receipt = raw["receipt"]
+    if not isinstance(raw_receipt, Mapping):
+        raise StoreCorrupt(f"Cached node {node.id!r} receipt is malformed.")
+    exceptional = execution_state(raw_receipt)
+    if raw["schema_version"] != (3 if exceptional else 2 if typed_artifacts else 1):
         raise StoreUnavailable(
             f"Cached receipt for node {node.id!r} uses unsupported schema "
             f"{raw['schema_version']!r}."
         )
+    if typed_artifacts and raw.get("typed_artifacts") != dict(typed_artifacts):
+        raise StoreCorrupt(
+            f"Cached node {node.id!r} typed artifact contracts disagree with the graph."
+        )
+    try:
+        validate_execution(
+            raw_receipt,
+            capabilities,
+            (typed_artifacts or {}).get("outputs", {}),
+            {
+                entry.get("name"): entry.get("key")
+                for entry in _record_entries(raw, "opaque")
+            },
+            has_products=bool(
+                raw["columns"]
+                or raw["frame_key"] is not None
+                or raw["weight"] is not None
+            ),
+        )
+    except ValueError as error:
+        raise StoreCorrupt(
+            f"Cached node {node.id!r} execution evidence rejected: {error}"
+        ) from error
+    if typed_artifacts:
+        opaque = _record_entries(raw, "opaque")
+        names = [entry.get("name") for entry in opaque]
+        if len(set(names)) != len(names):
+            raise StoreCorrupt(f"Cached node {node.id!r} repeats an opaque artifact.")
+        actual_outputs = {entry.get("name"): entry.get("key") for entry in opaque}
+        for output in node.artifact_outputs:
+            if exceptional:
+                continue
+            if output.name not in actual_outputs:
+                raise StoreMiss(
+                    f"Cached node {node.id!r} is missing declared artifact {output.name!r}."
+                )
+            if actual_outputs[output.name] != _opaque_artifact_key(key, output.name):
+                raise StoreCorrupt(
+                    f"Cached node {node.id!r} artifact identity mismatch."
+                )
     expected = (node.id, key, node.kernel, kernel_impl_hash)
     actual = (
         raw["node_id"],
@@ -1543,7 +1666,7 @@ def _require_record_shape(
             f"Cached receipt capabilities for node {node.id!r} disagree with "
             "the registered kernel contract."
         )
-    if node.structural is StructuralDelta.EXPAND:
+    if node.structural is StructuralDelta.EXPAND and exceptional != "unreached":
         raw_receipt = raw["receipt"]
         if not isinstance(raw_receipt, Mapping):
             raise StoreCorrupt(f"Cached node {node.id!r} receipt is malformed.")
@@ -1581,6 +1704,7 @@ def _load_record(
     key: str,
     kernel_impl_hash: str,
     capabilities: Capabilities,
+    typed_artifacts: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     raw = store.load_json(_cache_record_key(key))
     return _require_record_shape(
@@ -1589,6 +1713,7 @@ def _load_record(
         key=key,
         kernel_impl_hash=kernel_impl_hash,
         capabilities=capabilities,
+        typed_artifacts=typed_artifacts,
     )
 
 
@@ -1850,6 +1975,115 @@ def _all_node_keys(
     return keys, implementations
 
 
+def _blocked_by(
+    compiled: CompiledGraph,
+    node: Node,
+    keys: Mapping[str, str],
+    receipts: Mapping[str, Mapping[str, object]],
+) -> dict[str, str]:
+    """Unavailable byte inputs block consumers; unreached causal parents propagate."""
+    blocked = {
+        parent: keys[parent]
+        for parent in compiled.predecessors[node.id]
+        if execution_state(receipts.get(parent, {})) == "unreached"
+    }
+    for binding in node.artifact_inputs:
+        producer = compiled.graph.node(binding.producer)
+        if binding.artifact in unavailable_artifacts(
+            receipts.get(binding.producer, {}),
+            {output.name: output for output in producer.artifact_outputs},
+        ):
+            blocked[binding.producer] = keys[binding.producer]
+    return dict(sorted(blocked.items()))
+
+
+def _unreached_node(
+    compiled: CompiledGraph,
+    node: Node,
+    *,
+    blockers: Mapping[str, str],
+    receipts: Mapping[str, NodeReceipt],
+    store: ContentStore,
+    key: str,
+    implementation: str,
+    capabilities: Capabilities,
+    typed: Mapping[str, object],
+    resume: ResumePolicy,
+) -> NodeReceipt:
+    """Cache a proven lack of inputs, without running or fabricating products."""
+    receipt: dict[str, object] = {
+        "outcome": "unreached",
+        "execution": {
+            "schema": EXECUTION_SCHEMA,
+            "state": "unreached",
+            "blocked_by": dict(blockers),
+        },
+        "evidence": {"reason": "Required graph inputs are unavailable."},
+        "capabilities": _capabilities_projection(capabilities),
+    }
+    if capabilities.role is KernelRole.RELEASE:
+        tier, gate_ids = _release_tier(compiled, node.id, receipts)
+        if tier != "evidence":
+            raise NodeRejected("An unavailable release has no failing gate ancestor.")
+        receipt.update(
+            tier=tier,
+            gate_ancestry=list(gate_ids),
+            requires_decisions=list(_required_decision_names(node)),
+        )
+    hit = False
+    replace_stale_record = False
+    if resume != "forbid":
+        try:
+            record = _load_record(
+                store,
+                node,
+                key=key,
+                kernel_impl_hash=implementation,
+                capabilities=capabilities,
+                typed_artifacts=typed,
+            )
+            if record["receipt"] != receipt:
+                raise StoreCorrupt(
+                    f"Cached node {node.id!r} blocked provenance disagrees with its inputs."
+                )
+            hit = True
+        except StoreMiss:
+            replace_stale_record = store.has(_cache_record_key(key))
+            if resume == "require":
+                raise
+    if not hit:
+        record = {
+            "schema_version": 3,
+            **({"typed_artifacts": dict(typed)} if typed else {}),
+            "node_id": node.id,
+            "node_key": key,
+            "kernel_ref": node.kernel,
+            "kernel_impl_hash": implementation,
+            "capabilities": _capabilities_projection(capabilities),
+            "receipt": receipt,
+            "columns": [],
+            "frame_key": None,
+            "weight": None,
+            "opaque": [],
+        }
+        store.put_json(
+            _cache_record_key(key),
+            record,
+            node_key=key,
+            verify_existing=resume != "forbid" and not replace_stale_record,
+        )
+    return NodeReceipt(
+        key=key,
+        hit=hit,
+        seed=seed(key),
+        kernel_ref=node.kernel,
+        kernel_impl_hash=implementation,
+        capabilities=capabilities,
+        receipt=receipt,
+        typed_artifacts=typed,
+    )
+
+
 def _preflight_require(
     compiled: CompiledGraph,
     store: ContentStore,
@@ -1858,6 +2092,7 @@ def _preflight_require(
     kernels: KernelRegistry,
 ) -> None:
     missing: list[str] = []
+    receipts: dict[str, Mapping[str, object]] = {}
     for node_id in compiled.order:
         node = compiled.graph.node(node_id)
         try:
@@ -1867,14 +2102,35 @@ def _preflight_require(
                 key=keys[node_id],
                 kernel_impl_hash=implementations[node_id],
                 capabilities=kernels.get(node.kernel).capabilities,
+                typed_artifacts=typed_contracts(compiled, node, keys, kernels),
             )
-            _require_tolerance_writer_receipt(
-                node,
-                record,
-                _input_writers(compiled, node_id),
-                exact=False,
-            )
+            if any(parent not in receipts for parent in compiled.predecessors[node_id]):
+                missing.append(node_id)
+                continue
+            blockers = _blocked_by(compiled, node, keys, receipts)
+            expected_execution = {
+                "schema": EXECUTION_SCHEMA,
+                "state": "unreached",
+                "blocked_by": blockers,
+            }
+            if blockers:
+                if record["receipt"].get("execution") != expected_execution:
+                    raise StoreCorrupt(
+                        f"Cached node {node_id!r} blocked provenance disagrees with its inputs."
+                    )
+            elif execution_state(record["receipt"]) == "unreached":
+                raise StoreCorrupt(
+                    f"Cached node {node_id!r} has no unavailable input blocker."
+                )
+            else:
+                _require_tolerance_writer_receipt(
+                    node,
+                    record,
+                    _input_writers(compiled, node_id),
+                    exact=False,
+                )
             _preflight_record(store, record)
+            receipts[node_id] = record["receipt"]
         except StoreMiss:
             missing.append(node_id)
     if missing:
@@ -1907,11 +2163,21 @@ def run_graph(
     kernels: KernelRegistry,
     resume: ResumePolicy = "auto",
     decisions: tuple[Decision, ...] = (),
+    population_retention: str = "eager",
 ) -> RunManifest:
-    """Execute a compiled graph with content-addressed reuse and receipts."""
+    """Execute a compiled graph with content-addressed reuse and receipts.
+
+    ``population_retention="lazy"`` retires each population after its final
+    scheduled use and loads historical manifest views from verified storage.
+    It requires a writable store, including for missing auxiliary attachments
+    under ``resume="require"``. The default ``"eager"`` retains all Frames.
+    Node identities and portable manifest provenance are unchanged.
+    """
 
     if resume not in ("auto", "require", "forbid"):
         raise ValueError("resume must be 'auto', 'require', or 'forbid'.")
+    if population_retention not in ("eager", "lazy"):
+        raise ValueError("population_retention must be 'eager' or 'lazy'.")
     normalized_decisions: list[Decision] = []
     for decision in decisions:
         if isinstance(decision, Decision):
@@ -1926,11 +2192,21 @@ def run_graph(
     started_at = _now()
     source_paths, source_keys = _source_paths_and_keys(compiled, sources, store)
     keys, implementations = _all_node_keys(compiled, kernels, source_keys)
+    contracts = {
+        node_id: typed_contracts(compiled, compiled.graph.node(node_id), keys, kernels)
+        for node_id in compiled.order
+    }
     if resume == "require":
         _preflight_require(compiled, store, keys, implementations, kernels)
 
+    retention = (
+        _PopulationRetention(compiled, store, verify_existing=resume != "forbid")
+        if population_retention == "lazy"
+        else None
+    )
     populations: dict[str, Population] = {}
     receipts: dict[str, NodeReceipt] = {}
+    receipt_payloads: dict[str, Mapping[str, object]] = {}
     for node_id in compiled.order:
         node_started = time.perf_counter()
         node = compiled.graph.node(node_id)
@@ -1942,6 +2218,30 @@ def run_graph(
                 f"Node {node.id!r} structural declaration does not match kernel "
                 "capabilities."
             )
+
+        blockers = _blocked_by(
+            compiled,
+            node,
+            keys,
+            receipt_payloads,
+        )
+        if blockers:
+            receipts[node_id] = _unreached_node(
+                compiled,
+                node,
+                blockers=blockers,
+                receipts=receipts,
+                store=store,
+                key=key,
+                implementation=implementation,
+                capabilities=kernel.capabilities,
+                typed=contracts[node_id],
+                resume=resume,
+            )
+            receipt_payloads[node_id] = receipts[node_id].receipt
+            if retention is not None:
+                retention.finish(node_id, populations, receipts)
+            continue
 
         if node.structural is StructuralDelta.CREATE:
             incumbent: Population | None = None
@@ -1965,6 +2265,18 @@ def run_graph(
         )
         tolerance_writers = _tolerance_writer_payload(input_writers)
 
+        typed = contracts[node_id]
+        artifact_values = {}
+        for binding in node.artifact_inputs:
+            entry = typed["inputs"][binding.name]
+            producer_receipt = receipts[binding.producer]
+            if producer_receipt.opaque_artifacts.get(binding.artifact) != entry["key"]:
+                raise StoreCorrupt(
+                    f"Node {node.id!r} artifact producer receipt disagrees with its declaration."
+                )
+            artifact_values[binding.name] = value_from_descriptor(
+                store.load_bytes(entry["key"]), entry
+            )
         hit = False
         replace_stale_record = False
         result: KernelResult | None = None
@@ -1978,7 +2290,12 @@ def run_graph(
                     key=key,
                     kernel_impl_hash=implementation,
                     capabilities=kernel.capabilities,
+                    typed_artifacts=typed,
                 )
+                if execution_state(record["receipt"]) == "unreached":
+                    raise StoreCorrupt(
+                        f"Cached node {node_id!r} has no unavailable input blocker."
+                    )
                 try:
                     _require_tolerance_writer_receipt(
                         node, record, input_writers, exact=True
@@ -2005,6 +2322,7 @@ def run_graph(
                 sources=source_paths,
                 tolerances=input_tolerances,
                 numerics=input_numerics,
+                artifacts=artifact_values,
             )
             before = _context_digest(context)
             try:
@@ -2018,6 +2336,17 @@ def run_graph(
                     raise NodeRejected(
                         f"Node {node.id!r} kernel {node.kernel!r} failed: {error}"
                     ) from error
+            else:
+                # Invalid returned metadata is a contract rejection, not an
+                # exception raised while a gate was computing its evidence.
+                if (
+                    isinstance(result, KernelResult)
+                    and isinstance(result.receipt, Mapping)
+                    and has_execution(result.receipt)
+                ):
+                    raise NodeRejected(
+                        "Kernel receipts may not author executor execution metadata."
+                    )
             after = _context_digest(context)
             if before != after:
                 raise NodeRejected(f"Node {node.id!r} mutated its input context.")
@@ -2137,6 +2466,13 @@ def run_graph(
         else:
             populations[node.id] = updated
 
+        structural_collision = (
+            retention is not None
+            and not hit
+            and resume != "forbid"
+            and node.structural is not StructuralDelta.NONE
+            and store.has(frame_key(key))
+        )
         if not hit:
             manifest_artifacts, record = _write_node(
                 store,
@@ -2149,6 +2485,7 @@ def run_graph(
                 receipt=cache_receipt,
                 opaque_artifacts=opaque,
                 verify_existing=(resume != "forbid" and not replace_stale_record),
+                typed_artifacts=typed,
             )
 
         assert record is not None
@@ -2172,6 +2509,7 @@ def run_graph(
             receipt_opaque[name] = artifact_identity
 
         receipts[node_id] = NodeReceipt(
+            typed_artifacts=typed,
             key=key,
             hit=hit,
             seed=seed(key),
@@ -2185,6 +2523,14 @@ def run_graph(
             weight_key=receipt_weight_key,
             opaque_artifacts=MappingProxyType(receipt_opaque),
         )
+        receipt_payloads[node_id] = receipts[node_id].receipt
+        if retention is not None:
+            retention.finish(
+                node_id,
+                populations,
+                receipts,
+                structural_collision=structural_collision,
+            )
 
     return RunManifest(
         country=compiled.graph.country,
@@ -2193,13 +2539,24 @@ def run_graph(
         started_at=started_at,
         finished_at=_now(),
         host=socket.gethostname(),
-        populations=MappingProxyType(
-            {version: population.frame for version, population in populations.items()}
+        populations=(
+            retention.views()
+            if retention is not None
+            else MappingProxyType(
+                {
+                    version: population.frame
+                    for version, population in populations.items()
+                }
+            )
         ),
-        mass_ledgers=MappingProxyType(
-            {
-                version: population.mass_ledger
-                for version, population in populations.items()
-            }
+        mass_ledgers=(
+            retention.ledgers()
+            if retention is not None
+            else MappingProxyType(
+                {
+                    version: population.mass_ledger
+                    for version, population in populations.items()
+                }
+            )
         ),
     )

@@ -64,11 +64,13 @@ from microcosm.build.us_runtime.alimony import (
 from microcosm.build.us_runtime.asec_checkpoint import (
     ASEC_RAW_STAGE_ARTIFACT_KIND,
     ASEC_RAW_STAGE_CHECKPOINT_FILENAME,
+    ASEC_RAW_STAGE_COVERAGE_SCHEMA_VERSION,
     ASEC_RAW_STAGE_OPERATOR_STATUS,
     ASEC_RAW_STAGE_SCHEMA_VERSION,
     ASEC_RAW_STAGE_STAGE,
     load_asec_pre_clone_checkpoint,
     load_asec_raw_stage_checkpoint,
+    load_asec_raw_stage_checkpoint_v4,
 )
 from microcosm.build.us_runtime.asec_pool import (
     AsecSource,
@@ -1089,6 +1091,7 @@ from microcosm.frame import Frame
 __all__ = [
     "ASEC_RAW_STAGE_ARTIFACT_KIND",
     "ASEC_RAW_STAGE_CHECKPOINT_FILENAME",
+    "ASEC_RAW_STAGE_COVERAGE_SCHEMA_VERSION",
     "ASEC_RAW_STAGE_OPERATOR_STATUS",
     "ASEC_RAW_STAGE_SCHEMA_VERSION",
     "ASEC_RAW_STAGE_STAGE",
@@ -1873,6 +1876,7 @@ __all__ = [
     "load_default_congressional_district_vintage_crosswalk",
     "load_asec_pre_clone_checkpoint",
     "load_asec_raw_stage_checkpoint",
+    "load_asec_raw_stage_checkpoint_v4",
     "load_puf_tax_unit_donor",
     "normalize_district_code",
     "parse_baf_cd_layer",

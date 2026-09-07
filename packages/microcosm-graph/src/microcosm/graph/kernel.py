@@ -59,9 +59,10 @@ import pandas as pd
 
 from microcosm.frame import Frame, Weights
 
-from .decl import Node, Param, StructuralDelta
+from .decl import ArtifactType, Node, Param, StructuralDelta
 
 __all__ = [
+    "ArtifactValue",
     "Capabilities",
     "Determinism",
     "Kernel",
@@ -151,6 +152,7 @@ class SeedSource(StrEnum):
 
     EXECUTOR = "executor"  # ``KernelContext.rng``, derived from the node key
     PARAM = "param"  # a literal ``seed`` parameter (legacy parity kernels)
+    KEYED = "keyed"  # normative stream params and stable draw coordinates
     NONE = "none"
 
 
@@ -271,6 +273,33 @@ class NumericScope:
 
 
 @dataclass(frozen=True)
+class ArtifactValue:
+    """Verified immutable bytes and the executor's typed producer provenance."""
+
+    payload: bytes
+    type: ArtifactType
+    key: str
+    producer_key: str
+    numerics: NumericScope
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.payload, bytes):
+            raise TypeError("ArtifactValue.payload must be immutable bytes.")
+        if not isinstance(self.type, ArtifactType) or not isinstance(
+            self.numerics, NumericScope
+        ):
+            raise TypeError("ArtifactValue requires an ArtifactType and NumericScope.")
+        for name in ("key", "producer_key"):
+            value = getattr(self, name)
+            if (
+                not isinstance(value, str)
+                or len(value) != 64
+                or any(c not in "0123456789abcdef" for c in value)
+            ):
+                raise ValueError(f"ArtifactValue.{name} must be a SHA-256 identity.")
+
+
+@dataclass(frozen=True)
 class KernelContext:
     """Everything a kernel may read. Nothing here is writable.
 
@@ -286,8 +315,12 @@ class KernelContext:
             in the node's inputs or outputs.
         strata: Read-only per-person strata of the population version.
         params: The node's parameters.
-        rng: A generator seeded from the node key. The only randomness a
-            kernel may use.
+        rng: The default generator seeded from the node key. KEYED kernels
+            instead use normative stream params and stable coordinates through
+            keyed_uniform; PARAM kernels use their declared literal seed.
+        artifacts: Immutable typed bytes for declared artifact aliases only.
+            Consumers validate versioned payloads before using them; nominal
+            types do not themselves verify arbitrary serialized data.
         sources: Source name to a content-verified path, for declared
             sources only.
         tolerances: ``(entity, column)`` of each declared input column to
@@ -309,6 +342,20 @@ class KernelContext:
     sources: Mapping[str, Path] = field(default_factory=dict)
     tolerances: Mapping[tuple[str, str], Tolerance | None] = field(default_factory=dict)
     numerics: Mapping[tuple[str, str], NumericScope] = field(default_factory=dict)
+    artifacts: Mapping[str, ArtifactValue] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        values = dict(self.artifacts)
+        if any(
+            not isinstance(name, str)
+            or not name
+            or not isinstance(value, ArtifactValue)
+            for name, value in values.items()
+        ):
+            raise TypeError(
+                "KernelContext.artifacts must map non-empty aliases to ArtifactValue."
+            )
+        object.__setattr__(self, "artifacts", MappingProxyType(values))
 
 
 @dataclass(frozen=True)

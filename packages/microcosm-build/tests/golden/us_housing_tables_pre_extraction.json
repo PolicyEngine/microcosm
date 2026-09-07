@@ -1,0 +1,244 @@
+{
+  "schema_version": 1,
+  "source_commit": "9aac31c67def0733bb5e6f3acc6e26c734c2781a",
+  "function_sha256": "03ab2776e98ccf062757029fd587f6a1488304087c40c3eabc3e5e7c1c3c9962",
+  "module_sha256": "d26a8c6a9b75a571ed7763af1e910c5f5222f67d04dd919744426ec7a869d449",
+  "outputs": {
+    "false": {
+      "household": {
+        "columns": [
+          "household_id",
+          "H_TENURE",
+          "household_marker",
+          "tenure_type"
+        ],
+        "dtypes": [
+          "int64",
+          "float64",
+          "int64",
+          "str"
+        ],
+        "index": {
+          "class": "Index",
+          "dtype": "int64",
+          "name": "household_row",
+          "values": [
+            51,
+            52,
+            58
+          ]
+        },
+        "values": [
+          [
+            11,
+            1.0,
+            3,
+            "OWNED_WITH_MORTGAGE"
+          ],
+          [
+            20,
+            2.0,
+            4,
+            "RENTED"
+          ],
+          [
+            30,
+            3.0,
+            5,
+            "NONE"
+          ]
+        ]
+      },
+      "spm_unit": {
+        "columns": [
+          "spm_unit_id",
+          "spm_marker",
+          "receives_housing_assistance",
+          "takes_up_housing_assistance_if_eligible",
+          "spm_unit_tenure_type"
+        ],
+        "dtypes": [
+          "int64",
+          "int64",
+          "bool",
+          "bool",
+          "str"
+        ],
+        "index": {
+          "class": "Index",
+          "dtype": "str",
+          "name": "spm_row",
+          "values": [
+            "c",
+            "a",
+            "b"
+          ]
+        },
+        "values": [
+          [
+            201,
+            8,
+            false,
+            false,
+            "RENTER"
+          ],
+          [
+            205,
+            9,
+            false,
+            false,
+            "OWNER_WITH_MORTGAGE"
+          ],
+          [
+            209,
+            10,
+            true,
+            true,
+            "OWNER_WITHOUT_MORTGAGE"
+          ]
+        ]
+      }
+    },
+    "true": {
+      "household": {
+        "columns": [
+          "household_id",
+          "tenure_type",
+          "H_TENURE",
+          "household_marker"
+        ],
+        "dtypes": [
+          "int64",
+          "str",
+          "float64",
+          "int64"
+        ],
+        "index": {
+          "class": "Index",
+          "dtype": "int64",
+          "name": "household_row",
+          "values": [
+            51,
+            52,
+            58
+          ]
+        },
+        "values": [
+          [
+            11,
+            "OWNED_WITH_MORTGAGE",
+            1.0,
+            3
+          ],
+          [
+            20,
+            "RENTED",
+            2.0,
+            4
+          ],
+          [
+            30,
+            "NONE",
+            3.0,
+            5
+          ]
+        ]
+      },
+      "spm_unit": {
+        "columns": [
+          "spm_unit_id",
+          "receives_housing_assistance",
+          "takes_up_housing_assistance_if_eligible",
+          "spm_unit_tenure_type",
+          "spm_marker"
+        ],
+        "dtypes": [
+          "int64",
+          "bool",
+          "bool",
+          "str",
+          "int64"
+        ],
+        "index": {
+          "class": "Index",
+          "dtype": "str",
+          "name": "spm_row",
+          "values": [
+            "c",
+            "a",
+            "b"
+          ]
+        },
+        "values": [
+          [
+            201,
+            false,
+            false,
+            "RENTER",
+            8
+          ],
+          [
+            205,
+            false,
+            false,
+            "OWNER_WITH_MORTGAGE",
+            9
+          ],
+          [
+            209,
+            true,
+            true,
+            "OWNER_WITHOUT_MORTGAGE",
+            10
+          ]
+        ]
+      }
+    }
+  },
+  "refusals": {
+    "household_unknown": {
+      "type": "ValueError",
+      "message": "US housing source H_TENURE contains unknown code(s): [np.int64(9)]."
+    },
+    "household_fraction": {
+      "type": "ValueError",
+      "message": "US housing source H_TENURE contains non-integer codes."
+    },
+    "household_missing": {
+      "type": "ValueError",
+      "message": "US housing source H_TENURE contains nonfinite values."
+    },
+    "household_infinite": {
+      "type": "ValueError",
+      "message": "US housing source H_TENURE contains nonfinite values."
+    },
+    "spm_unknown": {
+      "type": "ValueError",
+      "message": "US housing source SPM_TENMORTSTATUS contains unknown code(s): [np.int64(0)]."
+    },
+    "spm_fraction": {
+      "type": "ValueError",
+      "message": "US housing source SPM_TENMORTSTATUS has non-integer codes."
+    },
+    "spm_missing": {
+      "type": "ValueError",
+      "message": "US housing source 'SPM_TENMORTSTATUS' contains missing values."
+    },
+    "subsidy_negative": {
+      "type": "ValueError",
+      "message": "US housing source SPM_CAPHOUSESUB contains negative values."
+    },
+    "subsidy_missing": {
+      "type": "ValueError",
+      "message": "US housing source 'SPM_CAPHOUSESUB' contains missing values."
+    },
+    "subsidy_disagrees": {
+      "type": "ValueError",
+      "message": "US housing source 'SPM_CAPHOUSESUB' must be constant within its SPM unit; unit id(s) [205] disagree."
+    },
+    "spm_disagrees": {
+      "type": "ValueError",
+      "message": "US housing source 'SPM_TENMORTSTATUS' must be constant within its SPM unit; unit id(s) [205] disagree."
+    }
+  }
+}

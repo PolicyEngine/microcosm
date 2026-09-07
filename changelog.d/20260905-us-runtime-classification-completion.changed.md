@@ -1,0 +1,1 @@
+Classify the twenty-one ACS/ASEC source, preparation, evidence, PUF-growth and SOI return-universe runtime modules as reviewed non-registry modules in the US spine-blindness inventory, with grouped role explanations, so an added us_runtime module keeps failing until it is reviewed. The list grants no source-spine column access and no scanning exemption.

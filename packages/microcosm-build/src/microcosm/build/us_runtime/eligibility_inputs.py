@@ -52,6 +52,7 @@ default — is recomputed from the raw columns rather than trusted.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from importlib.resources import files
 
 import numpy as np
@@ -69,6 +70,9 @@ from microcosm.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from microcosm.build.us_runtime._person_signal_summary import (
+    validate_person_signal_summary,
+)
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
@@ -78,6 +82,11 @@ __all__ = [
     "US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_ELIGIBILITY_INPUTS_STAGE_NAME",
     "derive_us_eligibility_inputs_from_manifest",
+    "prepare_us_eligibility_person",
+    "us_eligibility_inputs_person_carries_signal",
+    "us_eligibility_inputs_gate_from_summary",
+    "us_eligibility_inputs_person_gate",
+    "us_eligibility_inputs_person_summary",
     "us_eligibility_inputs_signal_gate",
     "us_eligibility_inputs_stage_spec",
     "us_eligibility_inputs_summary",
@@ -273,6 +282,108 @@ def _disabled_carries_signal(person: pd.DataFrame) -> bool:
     return values.nunique() > 1
 
 
+def us_eligibility_inputs_person_carries_signal(person: pd.DataFrame) -> bool:
+    """Return the complete legacy pass-through decision on the real person table.
+
+    All five outputs must exist, and observed disability must vary. Preserve
+    the current partial-null rule; other output variation, raw source columns
+    and weight resolution belong to separate operations and are not inferred.
+    """
+    have_all = all(
+        column in person.columns for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
+    )
+    return have_all and _disabled_carries_signal(person)
+
+
+def _validated_eligibility_weights(
+    person: pd.DataFrame, weights: np.ndarray
+) -> np.ndarray:
+    """Return ``weights`` as a float64 array aligned 1:1 with ``person``."""
+
+    array = np.asarray(weights, dtype=np.float64)
+    if array.ndim != 1 or len(array) != len(person):
+        raise ValueError(
+            "US eligibility-inputs weights must be a 1-D array aligned 1:1 "
+            f"with the person table ({len(person)} row(s)); got shape "
+            f"{array.shape}."
+        )
+    if not np.isfinite(array).all():
+        raise ValueError("US eligibility-inputs weights must be finite.")
+    if (array < 0.0).any():
+        raise ValueError("US eligibility-inputs weights must be nonnegative.")
+    return array
+
+
+def prepare_us_eligibility_person(
+    person: pd.DataFrame,
+    weights: np.ndarray,
+    *,
+    seed: int,
+    time_period: int,
+) -> pd.DataFrame:
+    """Derive measured ASEC eligibility inputs onto a copy of ``person``.
+
+    The deterministic table-helper behind :func:`with_us_eligibility_inputs`:
+    it always runs the ``eligibility_inputs`` source-manifest stage over
+    ``person`` and ``weights`` and returns the aligned result. It does not
+    decide whether the surface already carries signal — that
+    idempotence/pass-through decision belongs to the Frame wrapper.
+
+    Args:
+        person: The actual person table, carrying the raw ASEC source
+            columns this stage reads (see
+            ``US_ELIGIBILITY_INPUTS_REQUIRED_SOURCE_COLUMNS``), in its own
+            index and row order.
+        weights: Person weights aligned 1:1 with ``person``'s rows (same
+            length and row order; need not be reindexed by ``person_id``).
+        seed: Build-wide imputation seed threaded to the source-stage
+            runtime (the derivation itself is deterministic).
+        time_period: The dataset's time period.
+
+    Returns:
+        A copy of ``person`` with all five eligibility columns attached
+        (``is_disabled``, ``is_blind``, and
+        ``is_full_time_college_student`` as ``bool``;
+        ``own_children_in_household`` and ``veterans_benefits`` as
+        ``float64``), in ``person``'s original index and row order.
+
+    Raises:
+        ValueError: If ``weights`` does not align 1:1 with ``person``, is
+            not finite/nonnegative, or the stage output does not cover
+            every person.
+        SourceRuntimeError: If required raw ASEC column(s) are missing or
+            malformed.
+    """
+
+    weight_values = _validated_eligibility_weights(person, weights)
+    stage_person = person.copy(deep=True)
+    stage_person[_PERSON_WEIGHT_COLUMN] = weight_values
+    output = run_source_stage(
+        us_eligibility_inputs_stage_spec(),
+        tables={"person": stage_person},
+        operation_handlers={
+            "derive_eligibility_inputs": derive_us_eligibility_inputs_from_manifest,
+        },
+        config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
+    )
+    aligned = output.set_index("person_id").reindex(person["person_id"])
+    for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS:
+        if aligned[column].isna().any():
+            raise ValueError(
+                f"US eligibility-inputs stage output does not cover every "
+                f"person for {column!r}."
+            )
+
+    result = person.copy(deep=True)
+    bool_columns = ("is_disabled", "is_blind", "is_full_time_college_student")
+    for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS:
+        if column in bool_columns:
+            result[column] = aligned[column].to_numpy(dtype=bool)
+        else:
+            result[column] = aligned[column].to_numpy(dtype=np.float64)
+    return result
+
+
 def with_us_eligibility_inputs(frame: Frame, *, seed: int, time_period: int) -> Frame:
     """Run the ``eligibility_inputs`` manifest stage over a US frame.
 
@@ -302,37 +413,17 @@ def with_us_eligibility_inputs(frame: Frame, *, seed: int, time_period: int) -> 
     if frame.schema != US_SCHEMA:
         raise ValueError("US eligibility inputs require the US schema.")
     person = frame.table("person")
-    have_all = all(
-        column in person.columns for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
-    )
-    if have_all and _disabled_carries_signal(person):
+    if us_eligibility_inputs_person_carries_signal(person):
         return frame
 
-    stage_person = person.copy(deep=True)
-    stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
-    output = run_source_stage(
-        us_eligibility_inputs_stage_spec(),
-        tables={"person": stage_person},
-        operation_handlers={
-            "derive_eligibility_inputs": derive_us_eligibility_inputs_from_manifest,
-        },
-        config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
+    new_person = prepare_us_eligibility_person(
+        person,
+        frame.resolve_weights("person").values,
+        seed=seed,
+        time_period=time_period,
     )
-    aligned = output.set_index("person_id").reindex(person["person_id"])
-    for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS:
-        if aligned[column].isna().any():
-            raise ValueError(
-                f"US eligibility-inputs stage output does not cover every "
-                f"person for {column!r}."
-            )
-
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    bool_columns = ("is_disabled", "is_blind", "is_full_time_college_student")
-    for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS:
-        if column in bool_columns:
-            tables["person"][column] = aligned[column].to_numpy(dtype=bool)
-        else:
-            tables["person"][column] = aligned[column].to_numpy(dtype=np.float64)
+    tables["person"] = new_person
     return Frame(
         tables,
         frame.schema,
@@ -343,15 +434,31 @@ def with_us_eligibility_inputs(frame: Frame, *, seed: int, time_period: int) -> 
     )
 
 
-def us_eligibility_inputs_summary(frame: Frame) -> dict[str, object]:
-    """Weighted eligibility-share summary for gates and release manifests."""
+def us_eligibility_inputs_person_summary(
+    person: pd.DataFrame, weights: np.ndarray
+) -> dict[str, object]:
+    """Weighted eligibility-share summary for gates and release manifests.
 
-    person = frame.table("person")
-    weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
-    total_weight = float(weights.sum())
+    The real-person-table counterpart of :func:`us_eligibility_inputs_summary`,
+    for callers (e.g. graph adapters) that hold a person table and an
+    explicit weight vector without a :class:`~microcosm.frame.Frame`.
+
+    Args:
+        person: The actual person table, already carrying the five
+            eligibility columns.
+        weights: Person weights aligned 1:1 with ``person``'s rows.
+
+    Returns:
+        The same summary payload as :func:`us_eligibility_inputs_summary`.
+    """
+
+    weight_values = _validated_eligibility_weights(person, weights)
+    total_weight = float(weight_values.sum())
 
     def _share(mask: np.ndarray) -> float:
-        return float(weights[mask].sum()) / total_weight if total_weight > 0 else 0.0
+        return (
+            float(weight_values[mask].sum()) / total_weight if total_weight > 0 else 0.0
+        )
 
     disabled = person["is_disabled"].astype(bool).to_numpy()
     student = person["is_full_time_college_student"].astype(bool).to_numpy()
@@ -377,31 +484,51 @@ def us_eligibility_inputs_summary(frame: Frame) -> dict[str, object]:
     }
 
 
-def us_eligibility_inputs_signal_gate(frame: Frame) -> GateResult:
-    """Require the eligibility surface to carry plausible distributions.
+def us_eligibility_inputs_summary(frame: Frame) -> dict[str, object]:
+    """Weighted eligibility-share summary for gates and release manifests."""
 
-    Fails when a column is missing or constant, or when the weighted
-    disabled, full-time-student, parent, or veterans'-payment shares leave
-    their plausibility bands — each of which reproduces (or inverts) the
-    everyone-defaults failure of microcosm #244.
+    return us_eligibility_inputs_person_summary(
+        frame.table("person"), frame.resolve_weights("person").values
+    )
+
+
+def us_eligibility_inputs_gate_from_summary(
+    summary: Mapping[str, object],
+) -> GateResult:
+    """Check eligibility-input plausibility bands and signal from a summary.
+
+    The pure decision core of :func:`us_eligibility_inputs_signal_gate`,
+    factored out so graph adapters can reuse the incumbent checks — same
+    bands, order, and meaning — against a summary computed off the real
+    person table (see :func:`us_eligibility_inputs_person_summary`)
+    without a :class:`~microcosm.frame.Frame`. Assumes the caller has
+    already confirmed the five output columns are present; missing columns
+    are a separate failure mode (see
+    :func:`us_eligibility_inputs_person_gate`).
+
+    Raises:
+        ValueError: If required fields/counts are missing, measurements are
+            malformed, or supplied bands differ from the registered policy.
     """
 
-    person = frame.table("person")
+    validate_person_signal_summary(
+        summary,
+        family="eligibility",
+        outputs=US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
+        share_bands={
+            "disabled_share": ("disabled_share_band", _DISABLED_SHARE_BAND),
+            "full_time_college_student_share": (
+                "full_time_student_share_band",
+                _FULL_TIME_STUDENT_SHARE_BAND,
+            ),
+            "parent_share": ("parent_share_band", _PARENT_SHARE_BAND),
+            "veterans_benefits_share": (
+                "veterans_benefits_share_band",
+                _VETERANS_BENEFITS_SHARE_BAND,
+            ),
+        },
+    )
     failures: list[str] = []
-    missing = [
-        column
-        for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
-        if column not in person.columns
-    ]
-    if missing:
-        return GateResult(
-            name="eligibility_inputs_signal",
-            passed=False,
-            failures=(f"person columns missing: {missing}.",),
-            details={"missing": missing},
-        )
-
-    summary = us_eligibility_inputs_summary(frame)
     for column, count in summary["unique_counts"].items():
         if count < 2:
             failures.append(
@@ -434,3 +561,58 @@ def us_eligibility_inputs_signal_gate(frame: Frame) -> GateResult:
         failures=tuple(failures),
         details=summary,
     )
+
+
+def us_eligibility_inputs_person_gate(
+    person: pd.DataFrame, weights: np.ndarray
+) -> GateResult:
+    """Require the eligibility surface to carry plausible distributions.
+
+    The real-person-table counterpart of
+    :func:`us_eligibility_inputs_signal_gate`, composing
+    :func:`us_eligibility_inputs_person_summary` and
+    :func:`us_eligibility_inputs_gate_from_summary` exactly as the Frame
+    wrapper does.
+    """
+
+    missing = [
+        column
+        for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
+        if column not in person.columns
+    ]
+    if missing:
+        return GateResult(
+            name="eligibility_inputs_signal",
+            passed=False,
+            failures=(f"person columns missing: {missing}.",),
+            details={"missing": missing},
+        )
+    summary = us_eligibility_inputs_person_summary(person, weights)
+    return us_eligibility_inputs_gate_from_summary(summary)
+
+
+def us_eligibility_inputs_signal_gate(frame: Frame) -> GateResult:
+    """Require the eligibility surface to carry plausible distributions.
+
+    Fails when a column is missing or constant, or when the weighted
+    disabled, full-time-student, parent, or veterans'-payment shares leave
+    their plausibility bands — each of which reproduces (or inverts) the
+    everyone-defaults failure of microcosm #244.
+    """
+
+    person = frame.table("person")
+    missing = [
+        column
+        for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
+        if column not in person.columns
+    ]
+    if missing:
+        return GateResult(
+            name="eligibility_inputs_signal",
+            passed=False,
+            failures=(f"person columns missing: {missing}.",),
+            details={"missing": missing},
+        )
+
+    summary = us_eligibility_inputs_summary(frame)
+    return us_eligibility_inputs_gate_from_summary(summary)
