@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import math
+import shutil
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -14,7 +15,7 @@ from microcosm.build.us_runtime import origin_group_budget as budgets
 from microcosm.build.us_runtime import origin_group_calibration_graph as stage
 from microcosm.calibrate import GroupedUpperBounds
 from microcosm.frame import WeightKind, Weights
-from microcosm.graph import KernelResult
+from microcosm.graph import ContentStore, KernelResult
 from microcosm.graph.canonical import canonical_json
 
 
@@ -296,6 +297,60 @@ def test_cold_and_required_warm_refuse_semantically_stale_diagnostics(
                 "cold_refused": True,
                 "warm_refused": True,
                 "actual_warm_kernel_call_count": len(warm_calls),
+            },
+            sort_keys=True,
+        )
+    )
+
+
+def test_required_warm_refuses_coherent_but_fabricated_stored_successor(
+    tmp_path, monkeypatch
+):
+    helper = _peer()
+    root = tmp_path / "invented"
+    helper._fixture(root)
+    cold = helper._run(root)
+    store = ContentStore(root / "calibration-store")
+    key = cold["successor_key"]
+    original = store.load_bytes(key)
+    assert hashlib.sha256(original).hexdigest() == cold["successor_sha256"]
+    object_path = store.object_path(key)
+    assert object_path.resolve().is_relative_to(tmp_path.resolve())
+    # Only this newly created invented object is replaced. The real writer
+    # supplies a valid payload inventory/SHA, so semantic lineage must refuse.
+    shutil.rmtree(object_path)
+    store.put_bytes(key, b"fabricated-invented-successor")
+    assert store.load_bytes(key) == b"fabricated-invented-successor"
+
+    real_run_graph = stage.run_graph
+    warm_calls = []
+
+    def guarded_warm(compiled, **kwargs):
+        registry = kwargs["kernels"]
+        for ref in {n.kernel for n in compiled.graph.nodes}:
+            kernel = registry.get(ref)
+
+            def forbidden(context, ref=ref):
+                warm_calls.append(ref)
+                raise AssertionError("REQUIRED successor admission executed " + ref)
+
+            kernel.run = forbidden
+        return real_run_graph(compiled, **kwargs)
+
+    monkeypatch.setattr(stage, "run_graph", guarded_warm)
+    with pytest.raises(
+        budgets.OriginBudgetError, match="GROUPED_STORED_SUCCESSOR_BYTES"
+    ):
+        helper._run(root, warm=True)
+    assert warm_calls == []
+    assert store.load_bytes(key) == b"fabricated-invented-successor"
+    print(
+        json.dumps(
+            {
+                "probe": "fabricated_stored_successor",
+                "warm_refused": True,
+                "actual_warm_kernel_call_count": len(warm_calls),
+                "successor_key": key,
             },
             sort_keys=True,
         )
