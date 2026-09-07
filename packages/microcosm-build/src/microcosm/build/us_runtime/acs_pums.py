@@ -333,6 +333,18 @@ def _read_archive(
 ) -> tuple[pd.DataFrame, list[str]]:
     if not path.is_file():
         raise FileNotFoundError(f"ACS PUMS archive not found: {path}")
+    # Reuse each lexical household index across chunks. Series.isin(frozenset)
+    # converts the complete inventory to a list on every call.
+    valid_lookup = (
+        pd.Index(list(valid_serials), dtype=object)
+        if valid_serials is not None
+        else None
+    )
+    retained_lookup = (
+        pd.Index(list(retained_serials), dtype=object)
+        if retained_serials is not None
+        else None
+    )
     pieces: list[pd.DataFrame] = []
     with ZipFile(path) as archive:
         members = sorted(
@@ -369,8 +381,8 @@ def _read_archive(
                     low_memory=False,
                 )
                 for chunk in reader:
-                    if valid_serials is not None:
-                        orphan = ~chunk["SERIALNO"].isin(valid_serials)
+                    if valid_lookup is not None:
+                        orphan = valid_lookup.get_indexer(chunk["SERIALNO"]) < 0
                         if orphan.any():
                             examples = (
                                 chunk.loc[orphan, "SERIALNO"]
@@ -382,8 +394,10 @@ def _read_archive(
                                 "ACS person SERIALNO value(s) missing from the "
                                 f"household archive: {examples}."
                             )
-                    if retained_serials is not None:
-                        chunk = chunk.loc[chunk["SERIALNO"].isin(retained_serials)]
+                    if retained_lookup is not None:
+                        chunk = chunk.loc[
+                            retained_lookup.get_indexer(chunk["SERIALNO"]) >= 0
+                        ]
                     if not chunk.empty:
                         pieces.append(chunk)
     if not pieces:
