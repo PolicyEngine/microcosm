@@ -72,3 +72,14 @@ Verification state:
 - Independent tests cover solver-bypass cold/warm refusal, changed-map rekey,
   and stale typed diagnostic payload refusal. Full committed-source reruns and
   fresh REQUIRED zero-call witness remain next.
+
+Runtime integration fixes are committed and source-stable:
+- Frame v2 preserves nested source metadata; 17 store checks pass, and old v1
+  frames refuse without migration.
+- Weight-only lineage records the actual structural computational-owner change;
+  all original source cells, metadata, IDs, memberships and anchors stay strict.
+- 31 budget/preflight checks pass. Wrapper zero initial, zero DESIGN with
+  positive incoming importance, and overbudget inputs all refuse with zero
+  grouped-kernel and optimizer calls.
+- Final artifact diagnostics and persisted successor bytes receive independent
+  semantic checks. Stable final graph/admission/core/inventory checks are next.
