@@ -25,7 +25,7 @@ EXPECTED_RESOURCES = {
     "spine",
     "vintages",
 }
-AM_SPEC_SHA256 = "b128d14f8e6351d745a16ef4537d5c1b8d71d11b9d96cb8a65f1a4fb953f13ed"
+AM_SPEC_SHA256 = "f88170f34c600b19014aa7e091552fac029ba80775b4aea27c9b1ff2c732cc69"
 
 
 @pytest.mark.parametrize(
@@ -45,7 +45,7 @@ AM_SPEC_SHA256 = "b128d14f8e6351d745a16ef4537d5c1b8d71d11b9d96cb8a65f1a4fb953f13
         ),
         (
             "be",
-            "8c6018eaf518b239a5625f8df8bf783ce4723a03704d100f3dbf4c2bb7765772",
+            "98f0cf7bbe87a74fef3cce847be1cd1bb9923340328dfcc0e6e79f493e858abe",
             {
                 "household.household_id",
                 "person.person_id",
@@ -55,7 +55,7 @@ AM_SPEC_SHA256 = "b128d14f8e6351d745a16ef4537d5c1b8d71d11b9d96cb8a65f1a4fb953f13
         ),
         (
             "uk",
-            "5751a2b7b6ea771c6c885f62438927603e6acec3d1bdacbbbced2a1088b69175",
+            "37c651bf10e9fe1f1564f12e02f1434d8e79632566970b866ae7244526b7cf68",
             {
                 "benunit.benunit_id",
                 "household.household_id",

@@ -29,3 +29,8 @@ publication, push, PR, or deployment is authorized or performed.
   bytecode flags, obtain independent review, commit and prove loaded source.
 - Write recovery report and JSON. Requested R directory is outside writable
   roots; retain complete reports under `/private/tmp` if it remains denied.
+
+Dependency integration: retained the exact predecessor merge history at
+`141ddd0e5980a33c2c3e40264b1e6d7cf13f7a86` (annual `02e7b29`, housing `bed98d5`).
+Only the journal conflicted; this recovery journal supersedes that historical
+state, whose original bytes remain available in its original Git commit.

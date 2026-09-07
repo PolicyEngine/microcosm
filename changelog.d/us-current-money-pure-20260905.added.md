@@ -1,0 +1,1 @@
+Add a synthetic-only ASEC current-money decoder and C-CPI-U restater with pinned field domains, explicit NIU/zero provenance, immutable target-only artifacts, and strict replay and resource verification. Production source authentication and corrected recipe integration remain unavailable.

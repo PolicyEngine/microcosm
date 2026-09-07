@@ -45,6 +45,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -186,6 +187,17 @@ def load_us_puma_ladder(path: str | Path) -> UsPumaLadder:
     source = Path(path)
     if not source.exists():
         raise FileNotFoundError(f"US PUMA ladder artifact not found: {source}")
+    return _decode_us_puma_ladder_archive(source)
+
+
+def decode_us_puma_ladder(payload: bytes) -> UsPumaLadder:
+    """Validate the same NPZ contract from immutable graph artifact bytes."""
+    if not isinstance(payload, bytes):
+        raise TypeError("US PUMA ladder payload must be immutable bytes.")
+    return _decode_us_puma_ladder_archive(BytesIO(payload))
+
+
+def _decode_us_puma_ladder_archive(source: Path | BytesIO) -> UsPumaLadder:
     with np.load(source, allow_pickle=False) as payload:
         missing = [key for key in _REQUIRED_ARRAY_KEYS if key not in payload.files]
         if missing:
