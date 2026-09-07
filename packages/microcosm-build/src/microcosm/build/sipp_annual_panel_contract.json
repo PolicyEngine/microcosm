@@ -1,0 +1,743 @@
+{
+  "decisions": {
+    "T2": "Deferred. Any future gross-lump-sum discrepancy is conditional on nonnegative suppressed components plus recode and rounding assumptions; diagnostic only, no unconditional falsification.",
+    "acs_child_ssi": "Unknown scope match: absence of the token behalf does not resolve interpretation. HTOTVAL and HINCP recipient totals unchanged.",
+    "missing_tokens": "Only blank is an absent token in this prototype. Public NIU lexical convention remains unbound; numeric sentinels and unrecognized tokens refuse. Flag0 remains structural absence, never monetary zero.",
+    "self_membership": "RREL includes current person; require exactly one paired PNUM=self/RREL=99. Never insert a missing self.",
+    "status_partition": "Six groups: 0/1/2-6/7/8/9. Retain codes0..9 for each associated field. Code9 leaves component allocation quality unknown; finite published recodes may be measured without asserting reported/component-complete quality.",
+    "suppressed_slots": "Slots17..30 suppressed; the generic higher-numbered example does not bind each slot to an empty universe. Occupied slot16 means uncertain tail; do not test identity for that group. Unsaturated live-vector agreement is a published-file diagnostic only, never proof of physical household completeness.",
+    "type2": "Coverage counts of references only. No TT2INC amounts read, summed, multiplied by months or deduplicated across informants as persons."
+  },
+  "fields": {
+    "AHNUMPER": {
+      "codes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "dictionary_page": 891,
+      "flag_for": "RHNUMPER",
+      "grain": "Person-month",
+      "semantics_dictionary_page": 8,
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "AHNUMPERWT2": {
+      "codes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "dictionary_page": 899,
+      "flag_for": "RHNUMPERWT2",
+      "grain": "Person-month",
+      "semantics_dictionary_page": 8,
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "AHTOTINC": {
+      "codes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "dictionary_page": 2866,
+      "flag_for": "THTOTINC",
+      "grain": "Person-month",
+      "semantics_dictionary_page": 8,
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "ALMPAMT": {
+      "codes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "dictionary_page": 2999,
+      "flag_for": "TLMPAMT",
+      "grain": "Person",
+      "semantics_dictionary_page": 8,
+      "universe": "(ELMPTYP1YN = 1 or ELMPTYP2YN = 1 or ELMPTYP4YN = 1)"
+    },
+    "AMOVER": {
+      "codes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "dictionary_page": 3303,
+      "flag_for": "TMOVER",
+      "grain": "Person-month",
+      "semantics_dictionary_page": 8,
+      "universe": "TEHC_ST (current month) in (1:56) and TEHC_ST (previous month) in (1:56)"
+    },
+    "APTOTINC": {
+      "codes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "dictionary_page": 2872,
+      "flag_for": "TPTOTINC",
+      "grain": "Person-month",
+      "semantics_dictionary_page": 8,
+      "universe": "TAGE_EHC >= 15 or (TAGE_EHC < 15 and RSSI_MNYN = 1)"
+    },
+    "ARESIDENCEID": {
+      "codes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "dictionary_page": 1285,
+      "flag_for": "ERESIDENCEID",
+      "grain": "Person-month",
+      "semantics_dictionary_page": 8,
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "AROLLAMT": {
+      "codes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "dictionary_page": 3002,
+      "flag_for": "TROLLAMT",
+      "grain": "Person",
+      "semantics_dictionary_page": 8,
+      "universe": "EROLLOVR1 = 1 or EROLLOVR2 = 1"
+    },
+    "ASSI_MNYN": {
+      "codes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "dictionary_page": 3150,
+      "flag_for": "RSSI_MNYN",
+      "grain": "Person-month",
+      "semantics_dictionary_page": 8,
+      "universe": "THHLDSTATUS in (1,2,3,4) and (TAGE_EHC >= 0 when MONTHCODE = 1)"
+    },
+    "ERESIDENCEID": {
+      "dictionary_page": 1285,
+      "flag": "ARESIDENCEID",
+      "grain": "Person-month",
+      "page_sha256": "d7c68724602ac12f9359ef3189dbdd3a0371719a0aecfa82a4220956e3689361",
+      "page_text": "Topic: ID Variables Subtopic: ID Variables ERESIDENCEID Name: ERESIDENCEID Description: This field stores a six-digit identifier for residence addresses, unique within SSUID. Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons Length: 6 Status Flag: ARESIDENCEID File: Person-month Possible Values Minimum: Maximum: 100001 400999 1285",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "ET2_LNO1": {
+      "dictionary_page": 3320,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "8f48712175ec41f623e0ad7bfb82bee0cbc12aa20c0a98750a70e2445d60c5ae",
+      "page_text": "Topic: Type 2 People Subtopic: Type 2 People ET2_LNO1 Name: ET2_LNO1 Description: Person number of the first Type 2 person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons with a first Type 2 person present in the household this month Length: 2 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 60 60 3320",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "ET2_LNO10": {
+      "dictionary_page": 3329,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "edccc6e11a9305f027aeaf2cd81b65b209819cb9970b2d31c30426073cbca111",
+      "page_text": "Topic: Type 2 People Subtopic: Type 2 People ET2_LNO10 Name: ET2_LNO10 Description: Person number of the tenth Type 2 person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons with a tenth Type 2 person present in the household this month Length: 2 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 69 69 3329",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "ET2_LNO2": {
+      "dictionary_page": 3321,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "c9fb47a8944d695b755e8c7e2cbe4da73b6c4e9bcfb004194511cd63449c9877",
+      "page_text": "Topic: Type 2 People Subtopic: Type 2 People ET2_LNO2 Name: ET2_LNO2 Description: Person number of the second Type 2 person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons with a second Type 2 person present in the household this month Length: 2 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 61 61 3321",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "ET2_LNO3": {
+      "dictionary_page": 3322,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "a1ffb48be736df6c1afc3720836ec4d4e8cf50a26de2d24ebb528074d7b0e373",
+      "page_text": "Topic: Type 2 People Subtopic: Type 2 People ET2_LNO3 Name: ET2_LNO3 Description: Person number of the third Type 2 person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons with a third Type 2 person present in the household this month Length: 2 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 62 62 3322",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "ET2_LNO4": {
+      "dictionary_page": 3323,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "232261727c18f919090f007d35c74b34f6b119f31d345aed1da3f099e7475288",
+      "page_text": "Topic: Type 2 People Subtopic: Type 2 People ET2_LNO4 Name: ET2_LNO4 Description: Person number of the fourth Type 2 person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons with a fourth Type 2 person present in the household this month Length: 2 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 63 63 3323",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "ET2_LNO5": {
+      "dictionary_page": 3324,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "905f15731b2bfc0daeb8fe8eb3d80d4d85bbb1e16f2408ce258128cf3526fdd6",
+      "page_text": "Topic: Type 2 People Subtopic: Type 2 People ET2_LNO5 Name: ET2_LNO5 Description: Person number of the fifth Type 2 person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons with a fifth Type 2 person present in the household this month Length: 2 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 64 64 3324",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "ET2_LNO6": {
+      "dictionary_page": 3325,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "686194cf7728c120ec1a35cd2501128de30bebc494e08cf68b07e1e6d7bc1585",
+      "page_text": "Topic: Type 2 People Subtopic: Type 2 People ET2_LNO6 Name: ET2_LNO6 Description: Person number of the sixth Type 2 person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons with a sixth Type 2 person present in the household this month Length: 2 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 65 65 3325",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "ET2_LNO7": {
+      "dictionary_page": 3326,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "b640f4f1eb3569a667cb67c1e131ad7bb0cd8ecb3cedc26adc8e0393a9a6acef",
+      "page_text": "Topic: Type 2 People Subtopic: Type 2 People ET2_LNO7 Name: ET2_LNO7 Description: Person number of the seventh Type 2 person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons with a seventh Type 2 person present in the household this month Length: 2 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 66 66 3326",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "ET2_LNO8": {
+      "dictionary_page": 3327,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "69a09de8c77fcd758117f2245a90325b89956ffe7f948e4c77452a5cb59aef7c",
+      "page_text": "Topic: Type 2 People Subtopic: Type 2 People ET2_LNO8 Name: ET2_LNO8 Description: Person number of the eighth Type 2 person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons with a eighth Type 2 person present in the household this month Length: 2 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 67 67 3327",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "ET2_LNO9": {
+      "dictionary_page": 3328,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "7a0ff31055aa36faaabe856581158b3b9f2956eedc5a37d41a199d4392499065",
+      "page_text": "Topic: Type 2 People Subtopic: Type 2 People ET2_LNO9 Name: ET2_LNO9 Description: Person number of the ninth Type 2 person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons with a ninth Type 2 person present in the household this month Length: 2 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 68 68 3328",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "MONTHCODE": {
+      "dictionary_page": 1297,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "43d29dd777868d187b024047c22ea8e1c5a397d7c154b1a519e748e2378dc9fd",
+      "page_text": "Topic: ID Variables Subtopic: ID Variables MONTHCODE Name: MONTHCODE Description: Value of reference month Universe: All persons Universe Description: NA Length: 2 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 1 12 1297",
+      "universe": "All persons"
+    },
+    "PNUM": {
+      "dictionary_page": 1290,
+      "flag": null,
+      "grain": "Person",
+      "page_sha256": "b7d9e948d74ca5ca09458007b0fc3a0a0d7295b2b96fb6b142ae3ad6c5f8622b",
+      "page_text": "Topic: ID Variables Subtopic: ID Variables PNUM Name: PNUM Description: Person number Universe: All persons Universe Description: All persons Length: 3 Status Flag: NA File: Person Possible Values Minimum: Maximum: 101 499 1290",
+      "universe": "All persons"
+    },
+    "RHNUMPER": {
+      "dictionary_page": 891,
+      "flag": "AHNUMPER",
+      "grain": "Person-month",
+      "page_sha256": "f278298db794cc23800b64da145f632f0bffe66ce2e9ff189950718854c72cb8",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RHNUMPER Name: RHNUMPER Description: Number of persons in household this month Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: AHNUMPER File: Person-month Possible Values Minimum: Maximum: 1 20 891",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RHNUMPERWT2": {
+      "dictionary_page": 899,
+      "flag": "AHNUMPERWT2",
+      "grain": "Person-month",
+      "page_sha256": "5519cf37673da9243b651ba230e2f25a4de362f35a4a0a650a4f7213676ddb0b",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RHNUMPERWT2 Name: RHNUMPERWT2 Description: Number of persons in household this month (with Type 2 persons) Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: AHNUMPERWT2 File: Person-month Possible Values Minimum: Maximum: 1 20 899",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RIN_UNIV": {
+      "dictionary_page": 1294,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "78ec9998d29fdc5e3baa07ac0684f252e501a2675a3613f95671e034f6bb6db6",
+      "page_text": "Topic: ID Variables Subtopic: ID Variables RIN_UNIV Name: RIN_UNIV Description: Monthly indicator that respondent is in survey frame universe Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons Length: 1 Status Flag: NA File: Person-month Possible Values 1. In survey frame universe 2. Not in survey frame universe 1294",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL1": {
+      "dictionary_page": 923,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "95037604803cc1d05a13f1e1a3fe37663e5d4f9c97267454e407243bd3e2779c",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL1 Name: RREL1 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 923",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL10": {
+      "dictionary_page": 902,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "2eb73dab80ce39f4204af52fb00fd40ef33cd46736b1427195c6ad5ee42e601b",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL10 Name: RREL10 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 902",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL11": {
+      "dictionary_page": 903,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "b0cb6f54396efeae52b0fda8c49f36e15cb72ac693e7e6ce14d64d1e077f6dc2",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL11 Name: RREL11 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 903",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL12": {
+      "dictionary_page": 904,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "6903c8970ff001b4810bbef4f2aa508553b873b76586113a3f4bf006cba33e57",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL12 Name: RREL12 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 904",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL13": {
+      "dictionary_page": 905,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "640a641a7df63e98610eef0484db7e1c29dac61295438ec73182531dfa94e19d",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL13 Name: RREL13 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 905",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL14": {
+      "dictionary_page": 906,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "2efa31b8473bbe493ace91c08f8b6d030c979b704814eca428834754a0ea3682",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL14 Name: RREL14 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 906",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL15": {
+      "dictionary_page": 907,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "c4299b2561325a7460acad702345ad668fe288d17c2b119185251c14449b5fae",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL15 Name: RREL15 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 907",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL16": {
+      "dictionary_page": 908,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "3f56e86e4442c1988dad685dc3ddb79ac648121648eb1c8c653647ccf481694d",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL16 Name: RREL16 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 908",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL2": {
+      "dictionary_page": 924,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "0fdbadf0c407af8bb49d9563c9cd6fbf2d9bdffbe4ecfff284a54e389603e3ee",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL2 Name: RREL2 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 924",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL3": {
+      "dictionary_page": 925,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "6e0679dd596bcbaba05da1fac37fcbb6fd3d6b83b5a5866c1c40b042df19e851",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL3 Name: RREL3 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 925",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL4": {
+      "dictionary_page": 926,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "cfeff63d867035282bb2aa47b2d485947a9886adeb3aa98463c6a893c4e476ab",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL4 Name: RREL4 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 926",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL5": {
+      "dictionary_page": 927,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "1a60a003eefddb07711b1d188606c0416e402db85267b3ed09b1224b40f0049d",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL5 Name: RREL5 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 927",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL6": {
+      "dictionary_page": 928,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "69c5406975f9a4e473ce14027b64a47679c7855355836e458db9586d5188fb4b",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL6 Name: RREL6 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 928",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL7": {
+      "dictionary_page": 929,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "59543bbc3b68bfa48181b75f744e8a6a7118e4d240501b2b10ceba43bf4ede2d",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL7 Name: RREL7 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 929",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL8": {
+      "dictionary_page": 930,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "b0c099decafde8d4ee7107514fa343d88a86088e88c2d19aeea2644ab4d8807e",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL8 Name: RREL8 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 930",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL9": {
+      "dictionary_page": 931,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "981ff3fe4d08b72fa8d4eb825e1806d9e0e08d34d32c428a30a0df0be2ee52eb",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL9 Name: RREL9 Description: Monthly household relationship to person Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values 1. Opposite sex husband/wife/spouse 2. Opposite sex unmarried partner 3. Same sex husband/wife/spouse 4. Same sex unmarried partner 5. Biological parent/child 6. Stepparent/child 7. Adoptive parent/child 8. Grandparent/Grandchild 9. Biological siblings 10. Half siblings 11. Stepsiblings 12. Adopted siblings 13. Other siblings 14. Parent/Child-in-law 15. Brother/Sister-in-law 16. Aunt, Uncle, Niece, Nephew 17. Other relative 18. Foster parent/child 19. Other nonrelative 99. Self 931",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM1": {
+      "dictionary_page": 848,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "5b51d5467dc7344c4c12a0ec3bee15ce5e486b9cdeb18c2cf0559ad1a07e45bc",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM1 Name: RREL_PNUM1 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 848",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM10": {
+      "dictionary_page": 857,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "358906bc73041902c3504e2384ad40b91a8b89855f568a23d6209f1b1bc85308",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM10 Name: RREL_PNUM10 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 857",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM11": {
+      "dictionary_page": 858,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "c30bc9f241adcf17cf22a2d870932d32aaa31103f3fa49e93fcd5d7edf6427fa",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM11 Name: RREL_PNUM11 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 858",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM12": {
+      "dictionary_page": 859,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "35f295f6d028cedf20c20aa41a032c4e7542d7ff65e478d78fab592cbab01259",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM12 Name: RREL_PNUM12 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 859",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM13": {
+      "dictionary_page": 860,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "28521b2e2d677107a65bef3612a4df2d8263168170fd187f138c37f205d7baa3",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM13 Name: RREL_PNUM13 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 860",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM14": {
+      "dictionary_page": 861,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "f54ca8278b373bee4ce6136bf2e1c56ad105383cd04a92267e761ed52d596b89",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM14 Name: RREL_PNUM14 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 861",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM15": {
+      "dictionary_page": 862,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "9dd59d2da9ec2535e3ee4bebc119e54cb828a8f1a0ebbda05c06145a16b4afd0",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM15 Name: RREL_PNUM15 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 862",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM16": {
+      "dictionary_page": 863,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "3a3b85742e7bd079ba4f7122f03308f038ca9537edba74ea635535c8a227bb44",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM16 Name: RREL_PNUM16 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 863",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM2": {
+      "dictionary_page": 849,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "5e44aa0997ddb48b3fddded04352d4594c81c4d1526b4f9d054e5648d5125afc",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM2 Name: RREL_PNUM2 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 849",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM3": {
+      "dictionary_page": 850,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "5b5cb2aa87bea31d03a19ac0d19f44a339c1aef9f8484fca1ea14cc13ec25e53",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM3 Name: RREL_PNUM3 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 850",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM4": {
+      "dictionary_page": 851,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "ba54438361dff93b87e00e5195cb3933fe7ad149d5828b14e51295352ffdbd74",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM4 Name: RREL_PNUM4 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 851",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM5": {
+      "dictionary_page": 852,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "90c656152e84c30fb513b434f9eb7997f4ee24979cf18afad344e7eaf785b9b6",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM5 Name: RREL_PNUM5 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 852",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM6": {
+      "dictionary_page": 853,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "5c69af60bb0974155d239eea2f86235cca6d315f7de744a42bcad7af7f70bd18",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM6 Name: RREL_PNUM6 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 853",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM7": {
+      "dictionary_page": 854,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "26f8b25e1cbcd65f18331b2b15499035892551e92f851c8cab46cb6ddd2a72da",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM7 Name: RREL_PNUM7 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 854",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM8": {
+      "dictionary_page": 855,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "c813dca966963250487a9cb7de3e8e59e4fac263193a7ac521919087574d5569",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM8 Name: RREL_PNUM8 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 855",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RREL_PNUM9": {
+      "dictionary_page": 856,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "fe41607ddbf3cb701c55766ac3b5ecbd106acba036f6373a3d64142654ed2774",
+      "page_text": "Topic: Demographics Subtopic: Demographics Recodes RREL_PNUM9 Name: RREL_PNUM9 Description: Person number for monthly relationship Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 3 Status Flag: NA File: Person-month Possible Values 60:499. Person number 856",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "RSSI_MNYN": {
+      "dictionary_page": 3150,
+      "flag": "ASSI_MNYN",
+      "grain": "Person-month",
+      "page_sha256": "896e796b55cc6f18776a0f8abadb34cd4887d90c5b6eeb50febd9669e6ae75fc",
+      "page_text": "Topic: Programs Subtopic: SSI RSSI_MNYN Name: RSSI_MNYN Description: Received SSI benefits this month Universe: THHLDSTATUS in (1,2,3,4) and (TAGE_EHC >= 0 when MONTHCODE = 1) Universe Description: All people present this month who were born in or before the first month of the reference period Length: 1 Status Flag: ASSI_MNYN File: Person-month Possible Values 1. Yes 2. No 3150",
+      "universe": "THHLDSTATUS in (1,2,3,4) and (TAGE_EHC >= 0 when MONTHCODE = 1)"
+    },
+    "SSUID": {
+      "dictionary_page": 1296,
+      "flag": null,
+      "grain": "Household",
+      "page_sha256": "7642319832cd8246ce34a0e557cd627d954bf4c0ea03589ab9c648126dbaf664",
+      "page_text": "Topic: ID Variables Subtopic: ID Variables SSUID Name: SSUID Description: Sample unit identifier. This identifier is created by scrambling together PSU, Sequence #1, Sequence #2, and the Frame Indicator for a case. It may be used in matching sample units from different waves. Universe: All persons Universe Description: NA Length: 14 Status Flag: NA File: Household Possible Values Minimum: Maximum: 00000000000000 99999999999999 1296",
+      "universe": "All persons"
+    },
+    "TAGE_EHC": {
+      "dictionary_page": 797,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "bb27118f941a56eb12b4be65356ea1259bc4ef263184be07f5e8ea35832fb49e",
+      "page_text": "Topic: Demographics Subtopic: Age TAGE_EHC Name: TAGE_EHC Description: Monthly age during the reference period. Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All persons present at this month Length: 2 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 0 90 797",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "THHLDSTATUS": {
+      "dictionary_page": 1293,
+      "flag": null,
+      "grain": "Person",
+      "page_sha256": "1f2ed21361dbf3f81029e581c271ba60bab3ad565aec47daa9c828c64e066f89",
+      "page_text": "Topic: ID Variables Subtopic: ID Variables THHLDSTATUS Name: THHLDSTATUS Description: Household status Universe: All persons Universe Description: All persons Length: 1 Status Flag: NA File: Person Possible Values 1. Returning HHLD Member 2. New HHLD Member 3. Partial Reference Year HHLD Member (e.g., Deceased, Institutionalized, Active Duty or Moved Outside of U.S.) 4. Mover 5. Listed in Error in the Prior Wave 6. Inactive in this household 1293",
+      "universe": "All persons"
+    },
+    "THTOTINC": {
+      "dictionary_page": 2866,
+      "flag": "AHTOTINC",
+      "grain": "Person-month",
+      "page_sha256": "8bffd3236c8f01b453ace4c1be3308a419acb80cfa02760867e437168227c9a9",
+      "page_text": "Topic: Poverty and Income Subtopic: Poverty and Income THTOTINC Name: THTOTINC Description: Sum of monthly earnings and income received by household members age 15 and older, as well as SSI payments received by children under age 15 Universe: THHLDSTATUS in (1,2,3,4) Universe Description: All people Length: 12 Status Flag: AHTOTINC File: Person-month Possible Values Minimum: Maximum: -$10,000,000,000 $10,000,000,000 2866",
+      "universe": "THHLDSTATUS in (1,2,3,4)"
+    },
+    "TLMPAMT": {
+      "dictionary_page": 2999,
+      "flag": "ALMPAMT",
+      "grain": "Person",
+      "page_sha256": "e8786380e5e7dc398f50cf6a33d414bae6b9f3361f1c9e77a8cd252a5f3475b5",
+      "page_text": "Topic: Programs Subtopic: Lump Sum Payments TLMPAMT Name: TLMPAMT Description: What was the total amount of lump sum payments ... received during the reference period from a pension or retirement plan, or severance pay, or some other type of lump sum payment? Universe: (ELMPTYP1YN = 1 or ELMPTYP2YN = 1 or ELMPTYP4YN = 1) Universe Description: All people who indicated that they received a lump sum payment from a pension, retirement plan, severance pay, or some other type of lump sum payment during the reference period. Length: 8 Status Flag: ALMPAMT File: Person Possible Values Minimum: Maximum: $1 $10,000,000 2999",
+      "universe": "(ELMPTYP1YN = 1 or ELMPTYP2YN = 1 or ELMPTYP4YN = 1)"
+    },
+    "TMOVER": {
+      "dictionary_page": 3303,
+      "flag": "AMOVER",
+      "grain": "Person-month",
+      "page_sha256": "c2df86cf3e50eed8a1adc842a9b69b9526ecf05b9bde1d49bb0f6c0b3190d87a",
+      "page_text": "Topic: Residences Subtopic: Residence Recodes TMOVER Name: TMOVER Description: Recoded variable indicating mover status Universe: TEHC_ST (current month) in (1:56) and TEHC_ST (previous month) in (1:56) Universe Description: All persons born before the current month living in the 50 states or District of Columbia who are either nonmovers or moved from within the 50 states or District of Columbia. Length: 1 Status Flag: AMOVER File: Person-month Possible Values 1. Same house in the U.S. (non-mover) 2. Different house in the U.S., same state and county 3. Different house in the U.S., same state, different county 4. Different house in the U.S., different state in the Northeast 5. Different house in the U.S., different state in the Midwest 6. Different house in the U.S., different state in the South 7. Different house in the U.S., different state in the West 3303",
+      "universe": "TEHC_ST (current month) in (1:56) and TEHC_ST (previous month) in (1:56)"
+    },
+    "TPTOTINC": {
+      "dictionary_page": 2872,
+      "flag": "APTOTINC",
+      "grain": "Person-month",
+      "page_sha256": "a1792c9bae4587911ffe51e2ba01d03750ac2e9af2a868f6e3ac0067f3a50816",
+      "page_text": "Topic: Poverty and Income Subtopic: Poverty and Income TPTOTINC Name: TPTOTINC Description: Sum of personal monthly earnings and income for people age 15 and older, as well as children under age 15 who received SSI payments Universe: TAGE_EHC >= 15 or (TAGE_EHC < 15 and RSSI_MNYN = 1) Universe Description: People age 15 and older and children under age 15 who received SSI payments Length: 12 Status Flag: APTOTINC File: Person-month Possible Values Minimum: Maximum: -$10,000,000,000 $10,000,000,000 2872",
+      "universe": "TAGE_EHC >= 15 or (TAGE_EHC < 15 and RSSI_MNYN = 1)"
+    },
+    "TROLLAMT": {
+      "dictionary_page": 3002,
+      "flag": "AROLLAMT",
+      "grain": "Person",
+      "page_sha256": "1d028b5c3d8e56ad341346fd0b85388dd7cfa097aacb3763f99c589369712cee",
+      "page_text": "Topic: Programs Subtopic: Lump Sum Payments TROLLAMT Name: TROLLAMT Description: How much did ... roll over or plan to roll over into another retirement account? Universe: EROLLOVR1 = 1 or EROLLOVR2 = 1 Universe Description: All people who indicated that they are re-investing or rolling over a lump sum payment into an IRA or other retirement plan. Length: 8 Status Flag: AROLLAMT File: Person Possible Values Minimum: Maximum: $1 $10,000,000 3002",
+      "universe": "EROLLOVR1 = 1 or EROLLOVR2 = 1"
+    },
+    "WPFINWGT": {
+      "dictionary_page": 1284,
+      "flag": null,
+      "grain": "Person-month",
+      "page_sha256": "69a6d429f87ecc99e5e4a389867ef8264b18edd8ecab661feb078c6e84592402",
+      "page_text": "Topic: ID Variables Subtopic: ID Variables WPFINWGT Name: WPFINWGT Description: Final person weight Universe: All persons Universe Description: NA Length: 14 Status Flag: NA File: Person-month Possible Values Minimum: Maximum: 0000000.000000 9999999.999999 1284",
+      "universe": "All persons"
+    }
+  },
+  "guide_pages": {
+    "121": {
+      "physical_pdf_page": 122,
+      "sha256": "6dc68eaf4581d481de4b65bd348371cce50fd82dc453a3f3ab55c4e1e85b8424",
+      "text": "EIRA_INC_YN). If respondents reported receiving income from their retirement account(s), they were then asked to report the total amount received during the reference year (TTHR_INC_AMT and TIRA_INC_AMT). Level of information on the Retirement Account Withdrawals data provide Data on retirement account withdrawals are collected at the person level for all household members who owned at least one of the following account types: (1) 401(k), 403(b), and Thrift Savings plan or (2) Individual Retirement Account (IRA) and Keogh account. Other concepts related to the Retirement Account Withdrawals data 401(k), 403(b), and Thrift Savings plans: A 401(k) is a personal retirement plan which allows employees or self-employed individuals to set aside an amount of money each year for retirement. These plans are established through employers, and employers may offer matching contributions up to a specific limit. A 403(b) plan is a retirement plan for certain employees of public schools, employees of certain tax-exempt organizations, and certain ministries. Individual Retirement Accounts (IRAs): An IRA is a personal retirement plan which allows individuals to set aside an amount of money each year for retirement. Earnings on all amounts contributed to any IRA accumulate on a tax-deferred, and potentially tax-free, basis. These plans are often established by individuals, but may also be established by employers and can include traditional IRAs, IRA annuities, SEP-IRA (Simplified Employee Pension Plan IRA), Roth IRA, Education IRA, SIMPLE IRA (Savings Incentive Match Plans for Employees), or self-directed retirement accounts (IRAs held by brokerages). Keogh Plans: A Keogh (or H.R. 10 plan) refers to a qualified retirement plan maintained by a self-employed individual, either a sole proprietor or a partner. The self-employed individual may take a tax deduction for annual contributions to the plan made on behalf of the individual and on behalf of any eligible employees. 4.5.5 Retirement Income Recode The SIPP includes a retirement income recode, TRETINCAMT, which sums income from pensions, retirement accounts, life insurance and annuities, and lump sum withdrawals from pensions and retirement accounts. TRETINCAMT is a person-month level variable. Income from paid-up life insurance policies and annuities, and lump sum withdrawals from pensions and retirement accounts are reported at the year-level in SIPP. To construct TRETINCAMT, these year-level variables are divided by 12 and added to the monthly pension income variables. Lump sum withdrawals that are rolled over (or that respondents plan to roll over) are not treated as income and therefore are not included in the recode. Respondents may also report income received from disability or survivor provisions of a pension or other retirement plan. This income is captured by TDIS1AMT-TDIS10AMT and TSUR1AMT-TSUR13AMT, and is not included in TRETINCAMT. Because TRETINCAMT aggregates fields already captured in other income recodes, it does not flow directly into the total personal income recode (see section 4.7 for more information on fields that flow into this recode). 121"
+    },
+    "133": {
+      "physical_pdf_page": 134,
+      "sha256": "c9263e47bc1b3c2d78013c722592f4b957dc2bc6fb6139b67b26e7ce97b59b01",
+      "text": "TSSSAMT Amount received in Social Security benefit payments TSSCAMT Amount received in Social Security benefit payments on behalf of a child(ren) Total Other Income (TPOTHINC) is created from: TSUR1AMT Amount received in survivor benefits from a pension from a company or union including income from a profit-sharing plan TSUR2AMT Amount received in survivor benefits from Veterans' compensation or pension TSUR3AMT Amount received in survivor benefits from a Federal civil service or other Federal civilian employee pension TSUR4AMT Amount received in survivor benefits from U.S. Government Railroad Retirement in month TSUR5AMT Amount received in survivor benefits from a state government pension TSUR6AMT Amount received in survivor benefits from a local government pension TSUR7AMT Amount received in survivor benefits from income from a paid-up life insurance TSUR8AMT Amount received in survivor benefits from military retirement pay TSUR9AMT Amount received in survivor benefits from Black Lung Benefits TSUR10AMT Amount received in survivor benefits from workers' compensation TSUR11AMT Amount received in survivor benefits from payments from an estate or trust TSUR12AMT Amount received in survivor benefits from National Guard or Reserve Forces retirement TSUR13AMT Amount received in survivor benefits from other survivor income TRET1AMT Amount received in retirement income from a pension from a company or union including income from a profit-sharing plan TRET2AMT Amount received in retirement income from Federal civil service or other Federal civilian employee pension TRET3AMT Amount received in retirement income from State government pension TRET4AMT Amount received in retirement income from local government pension TRET5AMT Amount received in retirement income from military retirement pay 133"
+    },
+    "134": {
+      "physical_pdf_page": 135,
+      "sha256": "a4d1e5fe92e480f24bb5d09015371f394ebfcc36eb857f9eb15febe4c85ca216",
+      "text": "TRET6AMT Amount received in retirement income from U.S. Government Railroad Retirement TRET7AMT Amount received in retirement income from National Guard or reserve forces retirement TRET8AMT Amount received in retirement income from other retirement income TDIS1AMT Amount received in payments from a sickness, accident, or disability insurance policy TDIS2AMT Amount received in payments from employer disability payments TDIS3AMT Amount received in pension from a company or union including income from a profit-sharing plan TDIS4AMT Amount received in payments from Federal civil service or other federal civilian employee pension TDIS5AMT Amount received from a state government pension TDIS6AMT Amount received from a local government pension TDIS7AMT Amount received from U.S. military retirement pay TDIS8AMT Amount received from U.S. government railroad retirement TDIS9AMT Amount received in payments from Black Lung Benefits TDIS10AMT Amount received from other disability income TFCCAMT Amount of foster child care payments received TCSAMT Amount of child support payments received TALIAMT Amount of alimony payments received TLMPAMT Amount of lump sum payment received (excluding income rolled over) TDEFERAMT Amount received as a deferred payment or final paycheck from a job or business that ended during the reference period TLIFEAMT Amount received from a paid up life insurance policy or annuity TMINC_AMT Amount of miscellaneous income received TIRA_INC_AMT Amount of income or withdrawals received during the reference period from any IRA or Keogh account(s). 134"
+    },
+    "135": {
+      "physical_pdf_page": 136,
+      "sha256": "94a70f50743d86ca606ad9d9376761d96f63be61a80da172bd91c8f8a5f8d5dc",
+      "text": "TTHR_INC_AMT Amount of income or withdrawals received during the reference period from any 401(k), 403(b), or Thrift Savings Plan account(s). Level of information the Income Recodes data provide The income recodes are calculated for each month by summing income sources. For income sources reported annually, reported income is allocated evenly across the months of the reference year by dividing by 12. To avoid double counting, transfer payment amounts that are family or household based are only placed on the record of the family member identified as the benefit owner. Additional guidance for using Income Recodes data The SIPP instrument creates aggregate monthly income recodes at the person, family, and household levels. Additional recodes are created at the person level based on income source.Table 4-4 lists these recodes. 135"
+    },
+    "30": {
+      "physical_pdf_page": 31,
+      "sha256": "2a8ec09983f5e90ccba71ab2703258c34fb7c47347e9f9f449e2ccad11df5563",
+      "text": "Although income is the primary variable that is topcoded, other variables that may disclose a respondent's identity, such as age, are also topcoded. Others, such as occupation, may be aggregated into broader categories. A few variables, such as starting dates for employment and variables with negative values may be bottomcoded if they pose a disclosure risk.6 3.2.2 Perturbation Perturbation is used to hide very unusual characteristics of a person or household at a given point in time. For example, consider a 55-year-old first-time mom or a household with a set of sextuplets in it. Census Bureau's editing procedures capture and alter these types of unusual circumstances. The dates for events that may be associated with a public record are also perturbed. SIPP is a longitudinal survey and changes in personal or household characteristics can often be found in public records. For example, a birth, death, marriage, or divorce could be reflected in the SIPP while a given household is in sample. Data users should be aware of such disclosure avoidance procedures when using demographic information. 3.2.3 Suppression of Geographic Information Geographic information that can be used to identify survey respondents, such as household address, are not included in SIPP's public-use files. In addition, individual metropolitan areas and specific non-metropolitan areas (such as counties outside of metropolitan areas) are not included. SIPP does identify metropolitan and nonmetropolitan status for respondents in states where (1) both the metropolitan and non-metropolitan populations are over 250,000 or (2) the state's population is entirely metropolitan. Respondents living in states that do not fit these criteria are coded as non-identified on metropolitan status. 3.2.4 Suppression of Other Variables Variables that do not have a sufficient number of records with in-universe values have all records set to missing. These variables are also given a description of \"Suppressed\" in their metadata. Note that variables with no in-universe values are also given the \"Suppressed\" label (e.g., higher-numbered RREL_PNUM array variables). 3.3 Status Flags Nearly all variables on the SIPP data file have a corresponding \"status flag\" variable prefixed with an \"A\". These variables detail whether the corresponding variable's value for a given record was reported, 6 In the case of bottomcoded earnings and asset variables, the set of outliers is replaced with the threshold value to minimize the difference between the SIPP's internal and public-use poverty rates. The mean and median values below the bottomcode are also provided to users wishing to implement a different procedure. 30"
+    },
+    "31": {
+      "physical_pdf_page": 32,
+      "sha256": "e839108ff9c782acd7834c23607184ad960f656dabe2eab3e11108836b117ad1",
+      "text": "imputed, or assigned. Possible status flag values are listed in Table 3-2. A value of 0 indicates that the item is \"Not in universe\" for that record, which means that item did not meet the criteria to get data. Items where the data are as reported by the respondent have a value of 1 for the status flag. Status flags values between 2 and 6 indicate the item underwent some type of imputation. Status flag values of 7 and 8 are most common among recoded variables and indicate that an item underwent a combination of imputation methods either with reported data (values of 7) or without (values of 8). Finally, some status flag values for recodes have a value of 9 meaning that data users need to look at the status flags of the individual components. TABLE 3-2. S TATUS F LAG VALUES Status Flag Value Meaning Description The item is not imputed, and no data was reported by the 0 Not in universe respondents. The item is not imputed, and data was reported by the 1 In universe, as reported respondents. Statistical imputation (hot- 2 The item is imputed a value from hot-deck imputation. deck) 3 Logical imputation The item is imputed logically. The item has gone through a model-based imputation 4 Model-based imputation procedure. The item is imputed to a cold-deck value. This cold-deck value is what each cell in the hot-deck matrix gets initialized Cold-deck value to. It is the most common reported value a respondent would 5 imputation be likely to report for that particular cell. So, if an item could not get a hot-deck value, this initialized value is used to set the value for that item. 6 Imputed from a range The item is imputed based on a range. The item is imputed using reported value and any Combination of 1 and 7 combination of imputation method values 2, 3, 5, and 6 2/3/5/6 (described above). The item is imputed using any combination of imputation 8 Combination of 2/3/5/6 method value 2, 3, 5, and 6 (described above). Can be determined from The item is a recoded variable created using other variables 9 the status flags for the in the data. components of this recode 3.4 Understanding the Identification (ID) Variables in SIPP Because SIPP is a longitudinal survey, it's important to understand how to identify and link persons, families, and households over time. Table 3-3 describes 2023 SIPP's highest-level identification (ID) 31"
+    },
+    "37": {
+      "physical_pdf_page": 38,
+      "sha256": "33735cfda3bbcb6288e7a648aa686e1d5032984b3b7e9593086c54b2b551d5ba",
+      "text": "3.5.4 Monthly Household Relationships SIPP data include several recoded variables that denote the monthly relationship of each household member to each other. Because the survey allows for a possible 30 persons on the roster (up to 20 interviewed household members plus up to 10 Type-2 people), there are 30 RREL variables (RREL1- RREL30) and 30 corresponding PNUM identifiers (RREL_PNUM1-RREL_PNUM30) on each person-month record. The vector of monthly relationships (RREL[x]) must be used in conjunction with the vector of person numbers (RREL_PNUM[x]) in that month to determine monthly household relationships. The possible household relationship values are listed in Table 3-6. TABLE 3-6. MONTHLY HOUSEHOLD RELATIONSHIP V ALUES 99 = self 10 = half siblings 1 = opposite-sex spouse 11 = stepsiblings 2 = opposite-sex unmarried partner 12 = adoptive siblings 3 = same-sex spouse 13 = other siblings 4 = same-sex unmarried partner 14 = parent-/child-in-law 5 = biological parent/child 15 = brother-/sister-in-law 6 = stepparent/stepchild 16 = aunt/uncle/niece/nephew 7 = adoptive parent/child 17 = other relative 8 = grandparent/grandchild 18 = foster parent/ child 9 = biological siblings 19 = other nonrelative Table 3-7 shows an example of the RREL values as they would appear on the public-use file for a household containing a couple and their child for months 1 and 2. All three individuals live together at month 1, while PNUM=102 moves to a different residence at month 2. This residence change is reflected in the RREL and RREL_PNUM vectors. TABLE 3-7. MONTHLY HOUSEHOLD RELATIONSHIP M ATRIX ERESID MONTH RREL_ RREL_ RREL_ SSUID PNUM RREL1 RREL2 RREL3 ENCEID CODE PNUM1 PNUM2 PNUM3 12345... 101 (Husband) 100001 1 99 1 5 101 102 103 12345... 102 (Wife) 100001 1 1 99 5 101 102 103 12345... 103 (Child) 100001 1 5 5 99 101 102 103 12345... 101 (Husband) 100001 2 99 5 missing 101 103 missing 12345... 102 (Wife) 100002 2 99 missing missing 102 missing missing 12345... 103 (Child) 100001 2 5 99 missing 101 103 missing 37"
+    },
+    "40": {
+      "physical_pdf_page": 41,
+      "sha256": "e7e2e2ecf044e52fea524dd72715e1e455df2b3fc71a18e085be77f745803aaa",
+      "text": "3.5.7 Type-2 Persons As discussed in Section 2.5, a \"Type 2\" person is someone who lived with a respondent at any address (not just the interview address) during the reference year but not at the time of interview. While Type-2 people are never interviewed, and as such do not have a person-record in the data, SIPP respondents are asked to provide certain information about Type-2 people. The SIPP data files provide the following information for each Type-2 person: sex, age, whether he/she worked for pay during the time lived together, annual income, and relationship to interviewed household members in a given month. This information is available on the records of interviewed respondents. For example, the variables ET2_SEX1, TT2_AGE1, ET2_WORK1, and TT2INC1 show the sex, age, employment status, and income for the first Type-2 person reported for a SIPP respondent. Relationship to Type 2 people is available in the monthly household relationships (RRELs). This information will only be populated for the months in which the SIPP respondent resided with the Type-2 person. Type-2 people are also eligible to be selected as recipients of respondents' programs, such as health insurance or TANF. Additionally, a version of monthly household poverty and income estimates include Type-2 people. Each SIPP respondent may report up to 10 Type-2 persons. Though Type-2 people do not have a person-record in the data, they are given PNUM values of 60-69. If you see values of 60-69 in variables that reference PNUMs (e.g., RREL_PNUM), know that Type-2 people are being pointed to. 3.6 Identifying Program Participation in Government Transfer Programs SIPP collects data on several government transfer programs, including the following: \u2022 Disability benefits \u2022 Energy assistance \u2022 Food assistance \u2022 Foster/child/spousal support \u2022 General Assistance (GA) \u2022 Retirement income \u2022 School breakfast/lunch \u2022 Social Security (adult) \u2022 Social Security (on behalf of a child) \u2022 Special Supplemental Nutrition Program for Women, Infants, and Children (WIC) \u2022 Supplemental Nutrition Assistance Program (SNAP), formerly known as Food Stamps Program \u2022 Supplemental Security Income (SSI) \u2022 Survivor benefits \u2022 Temporary Assistance for Needy Families (TANF) \u2022 Transportation assistance \u2022 Unemployment/workers' compensation \u2022 Veterans benefits 40"
+    }
+  },
+  "income_year": 2022,
+  "money_basis": "nominal_USD_2022",
+  "public_documents": {
+    "acs_quest": {
+      "page_locator_kind": "pdf_page_1based",
+      "pdf": "../acs-rent-source-authority/quest24.pdf",
+      "pdf_sha256": "de57122d329683e66d4cc03bc6daa8504e039ed27fd22d9ea0ac7e17bd17e45b",
+      "physical_pdf_page_of_cited_page": "cited_page + -1 + 1",
+      "text_index_offset": -1
+    },
+    "asec2023": {
+      "layout_text_sha256": "e71b181d8165f80af6c555cad1df40d2292b45a86e831bd293abfcf49e3bb124",
+      "page_locator_kind": "pdf_page_1based",
+      "pdf": "asec2023_ddl_pub_full.pdf",
+      "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+      "physical_pdf_page_of_cited_page": "cited_page + -1 + 1",
+      "reading_order_text": "asec2023_ddl_pub_full.raw.txt",
+      "reading_order_text_sha256": "320d12d4b71862d92d1a0e99b6ad11859794c74ea0b38e2cd096a117e9892c2a",
+      "text_index_offset": -1
+    },
+    "cpsmar23": {
+      "layout_text_sha256": "3abf2d8b22d31ec37abefaaf256c6a513af21b0796c7a6420bb4c318be10c34b",
+      "page_locator_kind": "pdf_page_1based",
+      "pdf": "cpsmar23.pdf",
+      "pdf_sha256": "54750c1c5257947f08a0941abac76803dd72e7db5a15b9883d64ffdd2278b42d",
+      "physical_pdf_page_of_cited_page": "cited_page + -1 + 1",
+      "reading_order_text": "cpsmar23.raw.txt",
+      "reading_order_text_sha256": "9118c7f453361a4f45d7c2b53fc9ca32c28b8980c3c46bd635323e7d4cca4e02",
+      "text_index_offset": -1
+    },
+    "sipp_dict": {
+      "layout_text_sha256": "80277dd9b1d37ef49d37a7e7a404331d86d147e0543ec127068ac7dd3ee9c8cc",
+      "page_locator_kind": "printed",
+      "pdf": "2023_SIPP_Data_Dictionary.pdf",
+      "pdf_sha256": "0f1c5fbd29b24d3f1c18e7168a0f6d9fdfa7578b58d247fa9f475093a6db894f",
+      "physical_pdf_page_of_cited_page": "cited_page + -1 + 1",
+      "reading_order_text": "2023_SIPP_Data_Dictionary.raw.txt",
+      "reading_order_text_sha256": "1fc7dc07fd5994d02d0f2be8e09dd0efa04fe0babccdc090477ed2fb4cf258d3",
+      "text_index_offset": -1
+    },
+    "sipp_guide": {
+      "layout_text_sha256": "b831e142a5c32809f53a41f6c84dd576db2d278653d7dc4659752f3cd06299a4",
+      "page_locator_kind": "printed",
+      "pdf": "2023_SIPP_Users_Guide_OCT24.pdf",
+      "pdf_sha256": "37a20da6ac81d5dea28f744f02b96975f846f44b53c23588abd88bea7d985d86",
+      "physical_pdf_page_of_cited_page": "cited_page + 0 + 1",
+      "reading_order_text": "2023_SIPP_Users_Guide_OCT24.raw.txt",
+      "reading_order_text_sha256": "1152f48b6fb9f6ea1d2038561f0b2c8bf80ac23c899b33a27628773b5282bba6",
+      "text_index_offset": 0
+    }
+  },
+  "schema": "sipp-annual-panel-contract/1",
+  "survey_year": 2023
+}
