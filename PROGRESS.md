@@ -84,7 +84,7 @@ Implementation and independent source review are complete; all findings have
 been addressed. The final clean-head verification is intentionally emitted
 immediately after this journal commit, so its loaded-file proof names the
 actual final committed head. Its count-only authority will be
-`/private/tmp/sipp-annual-housing-recovery-evidence-20260907-final/verification.json`
+`/private/tmp/sipp-annual-housing-recovery-evidence-20260907-final-2/verification.json`
 and the independent review at
 `/private/tmp/sipp-annual-housing-independent-review-20260907.json`.
 The preceding committed run passed 554 tests with ten exact frozen annual
@@ -106,3 +106,9 @@ and housing parity, and committed recovery steps. Original files are intact.
 Next: inspect the final emitted proof/report. Root alone owns any subsequent
 scientific contract or genuine execution decision. No genuine proposal, source
 extraction, fit, transfer, publication or remote action follows from this work.
+
+Final evidence review identified relative virtual `torch` module `__file__`
+attributes in the descriptive loaded-module inventory. They were never in the
+executed Git-source proof; the harness now excludes nonabsolute virtual paths.
+The first final attempt passed 557 tests and is preserved. Final-2 reruns the
+same bounded suite under the corrected, committed evidence inventory.

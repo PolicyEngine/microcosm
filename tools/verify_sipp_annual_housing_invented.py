@@ -220,6 +220,10 @@ def worker(args):
         location = getattr(module, "__file__", None)
         if not location:
             continue
+        # Some libraries expose relative virtual __file__ names; those are
+        # not files loaded from this checkout and must not enter its inventory.
+        if not Path(location).is_absolute():
+            continue
         path = Path(location).resolve()
         if name.startswith("microcosm.") and not path.is_relative_to(REPO):
             raise ValueError("NONLOCAL_MICROCOSM_MODULE")
