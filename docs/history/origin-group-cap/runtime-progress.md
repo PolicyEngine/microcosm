@@ -36,6 +36,23 @@ AGENTS.md and CLAUDE.md, and the executable CI inventory.
   preserves that limitation. The launcher now invokes Ruff's native binary
   as a subprocess and refuses any absent/incomplete child audit even when a
   command returned zero. Final audit validation follows in a fresh evidence file.
+- Final audited Ruff check passed at commit
+  `1a5c4c4cd5071173640252f696eb0fa07581f148`. All 27 loaded repository Python
+  sources matched Git both before and after, with no source mutation or foreign
+  Microcosm import. Runtime was Python 3.14.4, NumPy 2.4.6, Torch 2.12.0,
+  `arm64/darwin/py3.14`, CPU, Torch intra-op/inter-op 1/1. Parent and child
+  pycache prefixes remained absent.
+
+Evidence SHA-256 values (files live in the architecture review directory):
+
+- `us-origin-group-cap-runtime-inventory-003.json`:
+  `51bfd5b654ebd78aa93157ae7107228f488b3a8c3324f1b2bcb49d08fb0fe560`
+- `us-origin-group-cap-runtime-burndown-001.json`:
+  `a35be3e30e121a3bae3f91c33547c2cc57fbcb0877559ffe5bb30eef2f13ada0`
+- `us-origin-group-cap-runtime-lint-final-002.json`:
+  `91ad374761703cfc08c84df0ca849732aea396f2c44054ac250b84a8141f337d`
+- `tools/run_origin_group_cap_checks.py`:
+  `22c6c74303ed18d9bbe3845119b67ada9327fcee9af806d0739210bfeadbb40e`
 
 ## Invocation
 
@@ -64,6 +81,9 @@ during a check or importing Microcosm from a different checkout fails its audit.
 
 ## Next
 
-- Run the source-only graph burndown and repeat final lint on the committed
-  launcher. The implementing agents run the selected invented solver, budget,
-  lineage, and adapter tests through this launcher.
+- The implementing agents run the selected invented solver, budget, lineage,
+  and adapter tests through this launcher. Each additional Python subprocess
+  created by a test must also use explicit `-I -B -X` and its own fresh absent
+  absolute pycache prefix; the launcher's direct child flags do not propagate
+  implicitly to new Python processes. No full test suites, wheel installation,
+  engine certification, genuine fit, or launch calibration was performed here.
