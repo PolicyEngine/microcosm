@@ -36,7 +36,9 @@ PREFIX = Path(sys.pycache_prefix)
 assert PREFIX.is_absolute() and not PREFIX.exists()
 assert hashlib.sha256(Path(sys.executable).read_bytes()).hexdigest() == PYTHON_SHA
 parser = argparse.ArgumentParser()
-parser.add_argument("mode", choices=("inventory", "smoke", "cold", "warm", "checks", "successor"))
+parser.add_argument(
+    "mode", choices=("inventory", "smoke", "cold", "warm", "checks", "successor")
+)
 parser.add_argument("--root", type=Path, required=True)
 parser.add_argument("--dev", action="store_true")
 parser.add_argument("--label", default="")
@@ -199,17 +201,75 @@ elif args.mode == "successor":
 
     fixture = peer(W, "test_us_enriched_origin_calibration")
     restored = fixture.run_fixture(ROOT / "replay", warm=True)
-    fixture.test_cd_adapter_authenticates_issued_successor_frame_log((ROOT / "replay", restored))
+    fixture.test_cd_adapter_authenticates_issued_successor_frame_log(
+        (ROOT / "replay", restored)
+    )
     assert not restored["kernel_calls"] and not restored["source_calls"]
     assert [phase["hits"] for phase in restored["phases"]] == [17, 20, 23, 24, 26]
     result = {
-        "checks": ["real669_successor_unchanged_pass", "current_frame_mass_log_only_refused"],
+        "checks": [
+            "real669_successor_unchanged_pass",
+            "current_frame_mass_log_only_refused",
+        ],
         "kernel_calls": restored["kernel_calls"],
         "source_codec_calls": restored["source_calls"],
         "phase_hits": [phase["hits"] for phase in restored["phases"]],
         "parent_sha256": restored["parent"].digest,
         "successor_sha256": restored["successor"].digest,
         "keys": {name: value.key for name, value in restored["manifest"].nodes.items()},
+    }
+    # Compile only: compare the previously proved CD graph under its old and
+    # current implementation identities without executing any CD kernel.
+    from cd_source_evidence_checks import setup
+    from microcosm.build.us_runtime import graph_cd_source_evidence as cd_stage
+    from microcosm.graph import compile_graph
+    from microcosm.graph.keys import node_key, source_content_key
+
+    _, graph, registry, _, sources = setup(ROOT / "cd_keys", W, create=False)
+    previous = json.loads((ROOT / "cd_keys" / "previous-keys.json").read_text())
+    source_keys = {
+        name: source_content_key(name, path) for name, path in sources.items()
+    }
+    compiled = compile_graph(graph)
+    old_keys, new_keys, implementations, cached_implementations = {}, {}, {}, {}
+    for name in compiled.order:
+        kernel = registry.get(graph.node(name).kernel)
+        if kernel.ref not in cached_implementations:
+            cached_implementations[kernel.ref] = kernel.implementation_hash()
+        implementations[name] = cached_implementations[kernel.ref]
+        for target, implementation in (
+            (old_keys, previous["implementation_hashes"][name]),
+            (new_keys, implementations[name]),
+        ):
+            target[name] = node_key(
+                compiled,
+                name,
+                target,
+                implementation,
+                source_keys,
+                kernel_capabilities=kernel.capabilities,
+            )
+    assert old_keys == previous["keys"]
+    changed = sorted(name for name in old_keys if old_keys[name] != new_keys[name])
+    assert changed == sorted(
+        (cd_stage.ACS_NODE, cd_stage.UNIVERSE_NODE, cd_stage.GEOGRAPHY_NODE)
+    )
+    assert (
+        sorted(
+            name
+            for name in implementations
+            if implementations[name] != previous["implementation_hashes"][name]
+        )
+        == changed
+    )
+    result["compiled_cd_key_comparison"] = {
+        "old_keys": old_keys,
+        "new_keys": new_keys,
+        "old_implementation_hashes": previous["implementation_hashes"],
+        "new_implementation_hashes": implementations,
+        "changed_nodes": changed,
+        "unchanged_upstream_nodes": len(old_keys) - len(changed),
+        "kernel_calls": 0,
     }
 else:
     from cd_source_evidence_checks import run

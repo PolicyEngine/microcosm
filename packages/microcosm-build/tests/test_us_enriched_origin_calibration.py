@@ -534,8 +534,11 @@ def test_cd_adapter_authenticates_issued_successor_frame_log(cold_run):
     clone = result["populations"][CLONE_POPULATION]
     current = result["populations"][stage.caps.CALIBRATION_NODE]
     binding = origins.verify_materialized_population_origins(
-        result["manifest"], result["store"], population_node=CLONE_POPULATION,
-        binding_node=CLONE_BINDING, parent_binding_node=NATIVE_BINDING,
+        result["manifest"],
+        result["store"],
+        population_node=CLONE_POPULATION,
+        binding_node=CLONE_BINDING,
+        parent_binding_node=NATIVE_BINDING,
     )
     kwargs = {"parent": result["parent"], "successor": result["successor"]}
     valid = cd.authenticate_current_lineage(clone, current, binding, **kwargs)
@@ -543,15 +546,23 @@ def test_cd_adapter_authenticates_issued_successor_frame_log(cold_run):
     assert current.design_weights
     f = current.frame
     modified = Frame(
-        {e: f.table(e) for e in f.entities}, f.schema,
-        {e: f.weights_for(e) for e in f.weighted_entities}, f.strata,
+        {e: f.table(e) for e in f.entities},
+        f.schema,
+        {e: f.weights_for(e) for e in f.weighted_entities},
+        f.strata,
         metadata=f.metadata,
-        mass_log=(*f.mass_log, MassChangeRecord("household", 0.0, 0.0, 1.0, "invented log-only mutation")),
+        mass_log=(
+            *f.mass_log,
+            MassChangeRecord("household", 0.0, 0.0, 1.0, "invented log-only mutation"),
+        ),
     )
     changed = replace(current, frame=modified)
     # This is precisely the omitted boundary: all other authenticated identities
     # agree, including the independently recorded Population ledger and weights.
-    before_id, after_id = cd.current_population_identity(current), cd.current_population_identity(changed)
+    before_id, after_id = (
+        cd.current_population_identity(current),
+        cd.current_population_identity(changed),
+    )
     assert {k: v for k, v in before_id.items() if k != "frame_mass_log_sha256"} == {
         k: v for k, v in after_id.items() if k != "frame_mass_log_sha256"
     }

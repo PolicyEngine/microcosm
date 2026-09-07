@@ -103,6 +103,8 @@ def authenticate_current_lineage(
         and s["old_content_sha256"] == p["enriched_content_sha256"]
         and s["new_content_sha256"] == budgets._frame_identity(current.frame)
         and s["graph_ledger_sha256"] == sha(enriched._log(current))
+        and p["enriched_frame_mass_log_sha256"]
+        == sha(enriched._frame_log(current.frame))
         and canonical_json(s["original_anchors"])
         == canonical_json(budgets._anchors(current))
         and s["accepted_weight_sha256"]
