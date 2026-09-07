@@ -478,14 +478,18 @@ def _with_structural_columns(person: pd.DataFrame) -> pd.DataFrame:
     unknown_marital = sorted(set(marital_status) - set(_ACS_TO_CPS_MARITAL_STATUS))
     if unknown_marital:
         raise ValueError(f"ACS MAR contains unsupported code(s): {unknown_marital}.")
-    result["A_MARITL"] = np.asarray(
+    cps_marital_status = np.asarray(
         [_ACS_TO_CPS_MARITAL_STATUS[value] for value in marital_status],
         dtype=np.int64,
     )
-    result["A_SPOUSE"] = np.zeros(len(result), dtype=np.int64)
-    result["PEPAR1"] = np.zeros(len(result), dtype=np.int64)
-    result["PEPAR2"] = np.zeros(len(result), dtype=np.int64)
-    result["A_EXPRRP"] = np.zeros(len(result), dtype=np.int64)
+    spouse_lines = np.zeros(len(result), dtype=np.int64)
+    parent_one = np.zeros(len(result), dtype=np.int64)
+    parent_two = np.zeros(len(result), dtype=np.int64)
+    cps_relationships = np.zeros(len(result), dtype=np.int64)
+    line_numbers = result["A_LINENO"].to_numpy()
+    # Keep label-based writes equivalent to the previous .loc assignments,
+    # including when an otherwise supported integer index is reordered.
+    row_for_label = result.index.get_loc
 
     relationships = _required_integer(result, "RELSHIPP")
     sexes = _required_integer(result, "SEX")
@@ -510,7 +514,8 @@ def _with_structural_columns(person: pd.DataFrame) -> pd.DataFrame:
         ]
         gq_only = np.isin(household_relationships, [37, 38]).all()
         if gq_only:
-            result.loc[positions, "A_EXPRRP"] = 14
+            for position in positions:
+                cps_relationships[row_for_label(position)] = 14
             continue
         if len(reference_positions) != 1:
             raise ValueError(
@@ -519,7 +524,8 @@ def _with_structural_columns(person: pd.DataFrame) -> pd.DataFrame:
                 f"contains {len(reference_positions)}."
             )
         reference_position = int(reference_positions[0])
-        reference_line = int(result.loc[reference_position, "A_LINENO"])
+        reference_row = row_for_label(reference_position)
+        reference_line = int(line_numbers[reference_row])
         spouse_positions = positions[
             np.isin(household_relationships, list(_ACS_SPOUSE_CODES))
         ]
@@ -539,26 +545,37 @@ def _with_structural_columns(person: pd.DataFrame) -> pd.DataFrame:
                     "ACS RELSHIPP spouse pair must have MAR=1 for both people; "
                     f"household id {_household_id!r}."
                 )
-            spouse_line = int(result.loc[spouse_position, "A_LINENO"])
-            result.loc[reference_position, "A_SPOUSE"] = spouse_line
-            result.loc[spouse_position, "A_SPOUSE"] = reference_line
-            result.loc[[reference_position, spouse_position], "A_MARITL"] = 1
+            spouse_row = row_for_label(spouse_position)
+            spouse_line = int(line_numbers[spouse_row])
+            spouse_lines[reference_row] = spouse_line
+            spouse_lines[spouse_row] = reference_line
+            cps_marital_status[reference_row] = 1
+            cps_marital_status[spouse_row] = 1
 
         has_relatives = bool(
             np.isin(household_relationships, list(_ACS_RELATED_CODES)).any()
         )
-        result.loc[reference_position, "A_EXPRRP"] = 1 if has_relatives else 2
+        cps_relationships[reference_row] = 1 if has_relatives else 2
         for position in positions:
             relationship = int(relationships[position])
             if relationship == _ACS_REFERENCE_PERSON:
                 continue
             if relationship in _ACS_SPOUSE_CODES:
-                result.loc[position, "A_EXPRRP"] = 3 if sexes[position] == 1 else 4
+                cps_relationships[row_for_label(position)] = (
+                    3 if sexes[position] == 1 else 4
+                )
                 continue
-            result.loc[position, "A_EXPRRP"] = _ACS_TO_CPS_RELATIONSHIP[relationship]
+            row = row_for_label(position)
+            cps_relationships[row] = _ACS_TO_CPS_RELATIONSHIP[relationship]
             if relationship in _ACS_CHILD_CODES:
-                result.loc[position, "PEPAR1"] = reference_line
-                result.loc[position, "PEPAR2"] = spouse_line
+                parent_one[row] = reference_line
+                parent_two[row] = spouse_line
+    # Install each int64 result once, retaining the original column order.
+    result["A_MARITL"] = cps_marital_status
+    result["A_SPOUSE"] = spouse_lines
+    result["PEPAR1"] = parent_one
+    result["PEPAR2"] = parent_two
+    result["A_EXPRRP"] = cps_relationships
     return result
 
 
