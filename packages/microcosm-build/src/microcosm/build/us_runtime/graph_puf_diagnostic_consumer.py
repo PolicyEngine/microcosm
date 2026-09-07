@@ -87,7 +87,7 @@ class DiagnosticDonorKernel(_Kernel):
             and set(context.sources) == set(SOURCE_NAMES.values()),
             "DIAGNOSTIC_DONOR_DECLARATION",
         )
-        pins = shared.plain(context.params["expected_pins"])
+        pins = codec.decode_json(context.params["expected_pins"].encode())
         require(set(pins) == set(consumer.ROLES), "PRICE_TRANSPORT_ROSTER")
         payloads = {}
         for role, name in SOURCE_NAMES.items():
@@ -105,7 +105,7 @@ class DiagnosticDonorKernel(_Kernel):
             payloads,
             pins,
             route=context.params["route"],
-            recipe=shared.plain(context.params["recipe"]),
+            recipe=codec.decode_json(context.params["recipe"].encode()),
         )
         return KernelResult(
             frame=frame,
@@ -178,12 +178,12 @@ def verify_host(context, frame):
     """Typed actual producer edges plus externally pinned accepted host evidence."""
     require(
         context.params["scope"] == consumer.SCOPE
-        and codec.encode_json(shared.plain(context.params["recipe"]))
+        and context.params["recipe"].encode()
         == codec.encode_json(consumer.recipe_document())
         and context.params["route"] in ("packaged", "test_fixture"),
         "DIAGNOSTIC_HOST_RECIPE",
     )
-    expected = shared.plain(context.params["host_edges"])
+    expected = codec.decode_json(context.params["host_edges"].encode())
     types = {
         e.name: e.type
         for e in host_edges(native_binding="native", clone_binding="clones")
@@ -266,8 +266,8 @@ def diagnostic_nodes(
     params = {
         "scope": consumer.SCOPE,
         "route": route,
-        "recipe": recipe,
-        "host_edges": host_pins,
+        "recipe": codec.encode_json(recipe).decode(),
+        "host_edges": codec.encode_json(host_pins).decode(),
     }
     return (
         Node(
@@ -279,7 +279,11 @@ def diagnostic_nodes(
                 Owned("tax_unit", n, "float64")
                 for n in (*detail.FEATURES, detail.TARGET)
             ),
-            params={"route": route, "recipe": recipe, "expected_pins": price_pins},
+            params={
+                "route": route,
+                "recipe": codec.encode_json(recipe).decode(),
+                "expected_pins": codec.encode_json(price_pins).decode(),
+            },
             artifact_outputs=(ArtifactOutput("transport", TRANSPORT_TYPE),),
         ),
         Node(
