@@ -502,6 +502,10 @@ def run_origin_group_calibration(
         ),
     )
     store.put_bytes(successor_key, successor.payload)
+    _require(
+        store.load_bytes(successor_key) == successor.payload,
+        "GROUPED_STORED_SUCCESSOR_BYTES",
+    )
     return AdmittedOriginCalibration(
         manifest, budget, successor, successor_key, diagnostics
     )

@@ -56,3 +56,19 @@ observer on both cold and cached paths. The new adapter independently binds
 frozen typed budget/origin edges, omits scalar incoming row caps, captures exact
 accepted observer weights, and requires complete materialized admission before
 returning a result. Verification and integration tests are still pending.
+
+Verification state:
+- Solver: 49 tests passed with zero skips, including exact stored prepatch
+  no-group weights/trajectory and dense/sparse gradient/observer contracts.
+- Budget and lineage: 27 invented tests passed, including full materialized
+  refusals, same-number native cohort distinctions, original support invariance,
+  direct two-bound diagnostics, and all-entity weight-only propagation.
+- Strict group-check benchmark: 20,000 invented rows/10,000 origins, median
+  5.06 ms per check across three single-thread repetitions.
+- Full integrated factory exposed existing ContentStore loss of Frame metadata
+  on cached restoration. Mandatory budget verification caught it; do not weaken
+  metadata identity. A metadata-preserving frame format with old-format refusal
+  is being implemented and tested. Frozen stores remain untouched.
+- Independent tests cover solver-bypass cold/warm refusal, changed-map rekey,
+  and stale typed diagnostic payload refusal. Full committed-source reruns and
+  fresh REQUIRED zero-call witness remain next.

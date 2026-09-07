@@ -123,6 +123,7 @@ def _run(
     weights = frame.weights_for("household").values
     if observe:
         assert len(observations) == 26
+        assert any(o["corrected_group_count"] > 0 for o in observations[1:])
         assert observations[-1]["weights"].tobytes() == weights.tobytes()
         for observation in observations:
             assert observation["weights"].dtype == np.float64
@@ -147,6 +148,7 @@ def _run(
         "successor_sha256": result.successor.digest,
         "successor_key": result.successor_key,
         "diagnostics": result.diagnostics,
+        "corrected_updates": sum(o["corrected_group_count"] > 0 for o in observations),
         "redistributed": redistributed,
         "households": frame.n("household"),
         "persons": frame.n("person"),
@@ -218,6 +220,9 @@ pathlib.Path(sys.argv[4]).write_text(json.dumps(result,sort_keys=True))
         "diagnostics",
     ):
         assert warm[key] == cold[key], key
+    evidence = root / "observed-evidence.json"
+    evidence.write_text(json.dumps({"cold": cold, "warm": warm}, sort_keys=True))
+    print("ORIGIN_CAP_OBSERVED_EVIDENCE=" + str(evidence))
 
 
 def test_scalar_row_cap_is_not_forwarded_in_grouped_adapter():

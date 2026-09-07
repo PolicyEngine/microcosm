@@ -51,7 +51,9 @@ contributing origins and label row Kish ESS as computational concentration.
 
 The runner creates a distinct content-addressed weight-only successor. It
 preserves all nonweight cells, IDs, memberships, roles, source metadata, strata,
-original anchors and owners. Every entity's effective weights must resolve from
+original anchors. Computational column ownership follows the real graph's
+declared structural version transition, with both ownership identities recorded.
+Every entity's effective weights must resolve from
 the new household weights. Only household weights are explicitly stored; the
 real graph transition is IMPORTANCE to CALIBRATED. The lineage verifier supports
 subsequent weight-only successors against the same cap root; this first runner
