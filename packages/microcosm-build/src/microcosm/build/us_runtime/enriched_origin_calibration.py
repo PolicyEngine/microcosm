@@ -487,6 +487,60 @@ def verify_draw(manifest, store, matrix, placement, mask, attached):
     }
 
 
+def _exact_ids(series, reason: str) -> np.ndarray:
+    """Whole-number entity ids as exact int64, never widened through float64.
+
+    float64 merges distinct integers above ``2**53``, so an integer column is
+    read at its own width and only ``uint64`` needs a range check. A real
+    column is accepted only when every value is finite, whole and inside
+    int64, at the precision it is already stored with.
+    """
+    dtype = getattr(series.dtype, "numpy_dtype", series.dtype)
+    require(
+        not pd.api.types.is_bool_dtype(series.dtype)
+        and not pd.api.types.is_complex_dtype(series.dtype)
+        and pd.api.types.is_numeric_dtype(series.dtype)
+        and not bool(series.isna().any()),
+        reason,
+    )
+    if np.issubdtype(dtype, np.integer):
+        values = series.to_numpy(dtype=dtype)
+        require(
+            values.dtype != np.dtype("uint64")
+            or not bool(np.any(values > np.uint64(2**63 - 1))),
+            reason,
+        )
+        return values.astype("int64", copy=False)
+    values = series.to_numpy(dtype="float64")
+    require(
+        bool(np.all(np.isfinite(values) & (values == np.floor(values))))
+        and bool(np.all((values >= -(2.0**63)) & (values < 2.0**63))),
+        reason,
+    )
+    return values.astype("int64")
+
+
+def _membership_rows(memberships: np.ndarray, ids: np.ndarray) -> np.ndarray:
+    """Each person's household row, matched by exact integer identity.
+
+    The households are indexed once and the person side is one binary search,
+    so the recount no longer costs a full person scan per household. The
+    returned rows address the household table as it actually stands, so a
+    shuffled or nonconsecutive id column keeps its own row order. A duplicated
+    household id or a membership naming no household row is refused here
+    rather than counted twice or silently dropped.
+    """
+    order = np.argsort(ids, kind="stable")
+    ordered = ids[order]
+    require(not bool(np.any(ordered[1:] == ordered[:-1])), "COUNT_HOUSEHOLD_UNIQUE")
+    if not memberships.size:
+        return np.empty(0, dtype=np.intp)
+    slots = np.searchsorted(ordered, memberships)
+    require(bool(np.all(slots < ordered.size)), "COUNT_MEMBERSHIP")
+    require(bool(np.all(ordered[slots] == memberships)), "COUNT_MEMBERSHIP")
+    return order[slots]
+
+
 def verify_counts(before, after) -> None:
     """Recount each observed person by membership independently of cached output."""
     bands = ages.NATIONAL_AGE_ACTIVATION.bands
@@ -499,12 +553,12 @@ def verify_counts(before, after) -> None:
     require(_log(before) == _log(after), "COUNT_LEDGER")
     p, h = before.frame.table("person"), after.frame.table("household")
     age = ages._ages(p)
-    memberships = p.person_household_id.to_numpy()
-    ids = h.household_id.to_numpy()
+    ids = _exact_ids(h.household_id, "COUNT_HOUSEHOLD_ID")
+    rows = _membership_rows(_exact_ids(p.person_household_id, "COUNT_MEMBER_ID"), ids)
     for band in bands:
         inside = (age >= band.low) & (True if band.high is None else age <= band.high)
-        expected = np.asarray(
-            [np.count_nonzero(inside & (memberships == i)) for i in ids], dtype="int64"
+        expected = np.bincount(rows[inside], minlength=ids.size).astype(
+            "int64", copy=False
         )
         column = h[band.column]
         require(
