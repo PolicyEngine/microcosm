@@ -1,5 +1,24 @@
 # SIPP annual / December housing evidence recovery
 
+## Housing common-feature research — 2026-09-07
+
+State: Active bounded source/document research. The recovery entries below are
+historical; this assignment starts from clean scientific source
+`a593f777cf75fb0867177fe084db67b62bb4b7c4`. No model recipe or weight is selected.
+
+Done: Read CLAUDE.md, contextual dispatch, historical integration report, root
+boundaries and the explicitly allowed acceptance metadata. Verified clean named
+SIPP and combined-host checkouts. The failed Fable planning result remains at
+its original path: API 429, weekly limit, zero input/output tokens, no research
+or review performed. Its original files will remain unchanged.
+
+Next: Verify Census/HUD semantics and exact prepared-host source lines; write
+the evidence report and source/primary-document pins, commit each coherent
+documentation step, and deliver `/private/tmp/us-sipp-housing-common-feature-research-20260907.md`
+with companion JSON. Only public documents, code and permitted metadata may
+be read or hashed. No genuine payload, target, private monetary output or
+scientific execution is authorized.
+
 Historical recovery journal, started 2026-09-07. Prior journals remain in Git
 and the preserved checkouts; their status claims are not current evidence.
 
