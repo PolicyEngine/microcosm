@@ -50,3 +50,9 @@ files matched pinned a4e69c0 Git source before/after. Exact weight SHA-256
 260f8beb3154aab82e1484e41f2b8d0cf33e45478b2b106deb66f97b64cbe11a;
 trajectory 01943d29ea7d5e727cf88b02fb37416640471509212cd59181e6b1af6b9b4459.
 Solver, budget/lineage, and runtime audit tasks are independently underway.
+
+Graph implementation now exposes live admitted Populations through a private
+observer on both cold and cached paths. The new adapter independently binds
+frozen typed budget/origin edges, omits scalar incoming row caps, captures exact
+accepted observer weights, and requires complete materialized admission before
+returning a result. Verification and integration tests are still pending.
