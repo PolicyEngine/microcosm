@@ -911,6 +911,14 @@ def project(
         raise AnnualHousingSourceError("ANNUAL_HOUSING_PANEL_TYPE")
     if type(panel.rows) is not dict or type(panel.selected) is not tuple:
         raise AnnualHousingSourceError("ANNUAL_HOUSING_PANEL_TYPE")
+    if any(
+        type(k) is not tuple
+        or len(k) != 3
+        or type(k[0]) is not str
+        or any(type(v) is not int for v in k[1:])
+        for k in panel.rows
+    ):
+        raise AnnualHousingSourceError("ANNUAL_HOUSING_ANNUAL_ROW_KEY")
     if type(housing_rows) not in (list, tuple) or any(
         not isinstance(r, m.SippRow) or type(r.contradictions) is not tuple
         for r in housing_rows

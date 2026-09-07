@@ -69,3 +69,11 @@ coverage. Added direct full-diagnostic comparison against exact frozen annual
 Git source over ten invented cases, plus explicit vintage-type checks.
 Next: run these final additions, bind independent review to source hashes,
 commit the final journal and execute final loaded-Git proof on that clean head.
+
+The committed-source validation at `30c8fc358f00eae627c37d7ae0901128e8d4022e`
+passed 554 tests, all ten full diagnostic comparisons with frozen 02e source,
+and all loaded/executed Git-byte checks. All five frozen bed housing modules
+remain byte-identical. Independent static review closed substantive findings;
+its final minor malformed-Panel-key guard is now added with three refusal cases.
+The original frozen checkout and copied partial codec still match the recovery
+snapshot exactly. No original worker files, logs or partial snapshots changed.

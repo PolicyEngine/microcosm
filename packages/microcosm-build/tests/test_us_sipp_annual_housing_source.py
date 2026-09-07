@@ -964,3 +964,12 @@ def test_declared_vintage_is_a_strict_integer(field):
     )
     with pytest.raises(evidence.AnnualHousingSourceError, match="VINTAGE_TYPE"):
         project(fixture, source=dataclasses.replace(fixture.source, declared=declared))
+
+
+@pytest.mark.parametrize("invalid_key", [1, "invalid", ("00000000000001", True, 12)])
+def test_writer_refuses_malformed_panel_keys_without_typeerror(invalid_key):
+    fixture = supplied_fixture()
+    row = next(iter(fixture.panel.rows.values()))
+    fixture.panel.rows = {invalid_key: row}
+    with pytest.raises(evidence.AnnualHousingSourceError, match="ANNUAL_ROW_KEY"):
+        project(fixture)
