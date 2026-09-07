@@ -28,6 +28,14 @@ AGENTS.md and CLAUDE.md, and the executable CI inventory.
   enforced memory isolation. CPU and wall bounds remain enforced.
 - Ruff formatting and lint passed using the already-installed Mach-O native
   Ruff executable; it does not spawn a Python interpreter.
+- The source-only graph burndown passed against the fetched `origin/main` with
+  zero red or missing properties and 41 green properties. Its evidence is
+  `us-origin-group-cap-runtime-burndown-001.json` and `.json.log`.
+- Inspection found that Ruff's module entrypoint uses `execvp` on macOS, losing
+  the check child's final audit. The initial `runtime-lint-final-001` evidence
+  preserves that limitation. The launcher now invokes Ruff's native binary
+  as a subprocess and refuses any absent/incomplete child audit even when a
+  command returned zero. Final audit validation follows in a fresh evidence file.
 
 ## Invocation
 

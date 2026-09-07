@@ -203,9 +203,13 @@ def _child(output: Path, command: list[str], seconds: int, interop_threads: int)
             runpy.run_path(str(path), run_name="__main__")
             result = 0
         elif command[:2] == ["module", "ruff"]:
-            sys.argv = ["ruff", *command[2:]]
-            runpy.run_module("ruff", run_name="__main__")
-            result = 0
+            from ruff import find_ruff_bin
+
+            # Ruff's __main__ uses execvp on macOS and would erase this audit
+            # process before the finally block. Invoke its native binary.
+            result = subprocess.run(
+                [find_ruff_bin(), *command[2:]], check=False
+            ).returncode
         else:
             raise ValueError(
                 "Use pytest <explicit files>, script <source.py>, or module ruff"
@@ -325,7 +329,11 @@ def main() -> int:
         if child_output.exists()
         else None,
     }
-    if not evidence["parent_pycache_prefix_absent_at_end"]:
+    if (
+        not evidence["parent_pycache_prefix_absent_at_end"]
+        or evidence["child"] is None
+        or not evidence["child"].get("source_integrity_passed", False)
+    ):
         returncode = evidence["returncode"] = 1
     output.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
     lines = log.read_text().splitlines()
