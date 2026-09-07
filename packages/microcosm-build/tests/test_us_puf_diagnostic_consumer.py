@@ -519,7 +519,8 @@ def execute(root, *, forbid=False):
     return manifest, store, calls, contexts, preservation
 
 
-def test_actual_diagnostic_append(source_bundle):
+@pytest.fixture(scope="module")
+def diagnostic_run(source_bundle):
     root, payloads, pins, _, host = source_bundle
     # Bounded reader and complete feature qualification precede fit explicitly.
     consumer.qualify_price_transport(
@@ -542,7 +543,11 @@ def test_actual_diagnostic_append(source_bundle):
             }
         )
     )
-    manifest, store, calls, contexts, proof = execute(root)
+    return execute(root)
+
+
+def test_actual_diagnostic_append(diagnostic_run):
+    manifest, store, calls, contexts, proof = diagnostic_run
     assert len(manifest.nodes) == 23 and len(calls) == 6
     assert sum(r.hit for r in manifest.nodes.values()) == 17
     assert proof["all_nonowned_preserved"] and proof["scope"] == consumer.SCOPE
@@ -640,3 +645,213 @@ def test_asec_actual_evidence_refusals(source_bundle, kind):
         person.loc[0, column] = value
     with pytest.raises(ValueError, match=reason):
         consumer.asec_wage_evidence(person, values)
+
+
+def reseal_control_fixture(payloads, config, cold, warm):
+    """Change invented internal claims and external pins to reach deeper checks."""
+    result = dict(payloads)
+    bound_sha = codec.sha(codec.encode_json(config["bound_source"]))
+    config["binding_sha256"] = bound_sha
+    result["config"] = codec.encode_json(config)
+    proposal = consumer.parse_document(payloads["proposal"])
+    proposal["config"] = config
+    result["proposal"] = codec.encode_json(proposal)
+    for name, document in (("cold", cold), ("required", warm)):
+        document["bound_source_identity"] = bound_sha
+        document["source_column_metadata_preserved"] = config["bound_source"][
+            "source_column_metadata"
+        ]
+        result[name] = codec.encode_json(document)
+    completed = consumer.parse_document(payloads["completion"])
+    completed.update(
+        bound_source_identity=bound_sha,
+        config_pin=consumer.content_pin(result["config"]),
+    )
+    for name in ("cold", "required"):
+        completed[name]["sha256"] = codec.sha(result[name])
+    result["completion"] = codec.encode_json(completed)
+    accepted = consumer.parse_document(payloads["acceptance"])
+    accepted["reviewed_proposal"] = consumer.content_pin(result["proposal"])
+    accepted["saved_file_pins_checked"] = [
+        consumer.content_pin(p) for n, p in result.items() if n != "acceptance"
+    ]
+    result["acceptance"] = codec.encode_json(accepted)
+    return result, {n: consumer.content_pin(p) for n, p in result.items()}
+
+
+@pytest.mark.parametrize(
+    "kind",
+    (
+        "admission",
+        "extra_source_meaning",
+        "source_identity",
+        "source_runtime",
+        "price_basis",
+        "same_prefix",
+    ),
+)
+def test_resealed_control_claims_refuse(source_bundle, kind):
+    payloads = source_bundle[1]
+    config, cold, warm = (
+        consumer.parse_document(payloads[n]) for n in ("config", "cold", "required")
+    )
+    source = config["bound_source"]
+    if kind == "admission":
+        source["source_column_metadata"]["E00900"]["fit_admission"] = "admitted"
+        reason = "PRICE_SOURCE_MEANING"
+    elif kind == "extra_source_meaning":
+        source["source_column_metadata"]["E00900"]["target_year_use"] = (
+            "new_unsupported_meaning"
+        )
+        reason = "PRICE_ORIGINAL_METADATA_BINDING"
+    elif kind == "source_identity":
+        source["source"]["projection_canonical_sha256"] = "f" * 64
+        reason = "PRICE_DECLARED_SOURCE_IDENTITY"
+    elif kind == "source_runtime":
+        source["runtime"]["executable_sha256"] = "f" * 64
+        reason = "PRICE_SOURCE_RUNTIME"
+    elif kind == "price_basis":
+        for document in (source, cold, warm):
+            document["contract"]["ratio"] = [1, 1]
+        reason = "PRICE_BASIS"
+    else:
+        warm["runtime"]["bytecode_isolation"] = cold["runtime"]["bytecode_isolation"]
+        reason = "PRICE_FRESH_PROCESS_PREFIX"
+    source["source_basis_sha256"] = codec.sha(
+        codec.encode_json(source["source_column_metadata"])
+    )
+    changed, pins = reseal_control_fixture(payloads, config, cold, warm)
+    with pytest.raises(ValueError, match=reason):
+        consumer.qualify_price_transport(
+            changed, pins, route="test_fixture", recipe=consumer.recipe_document()
+        )
+
+
+@pytest.mark.parametrize("alias", ("prepared_receipt", "acs", "matrix", "raw_draw"))
+def test_actual_edge_producer_refusal(diagnostic_run, alias):
+    context = diagnostic_run[3][stage.PREFIX + ".attach"]
+    values = dict(context.artifacts)
+    value = values[alias]
+    edge = next(e for e in context.node.artifact_inputs if e.name == alias)
+    from microcosm.graph.keys import opaque_artifact_key
+
+    values[alias] = replace(
+        value, producer_key="f" * 64, key=opaque_artifact_key("f" * 64, edge.artifact)
+    )
+    with pytest.raises(
+        ValueError, match="DIAGNOSTIC_HOST_EDGE_PIN|DETAIL_SIBLING_PRODUCER"
+    ):
+        stage.DiagnosticAttachKernel().run(replace(context, artifacts=values))
+
+
+def test_dependency_keys_separate_host_and_donor(source_bundle, diagnostic_run):
+    """Perturb source identities in the real node-key formula; execute no fit."""
+    from microcosm.graph.keys import node_key
+
+    graph, registry, _, _ = diagnostic_setup(source_bundle[0])
+    implementations = {
+        n: k.implementation_hash() for n, k in registry.as_mapping().items()
+    }
+    source_keys = {
+        s.name: codec.sha(("invented-key:" + s.name).encode())
+        for s in graph.graph.sources
+    }
+
+    def keys(sources):
+        result = {}
+        for name in graph.order:
+            node = graph.graph.node(name)
+            kernel = registry.as_mapping()[node.kernel]
+            result[name] = node_key(
+                graph,
+                name,
+                result,
+                implementations[node.kernel],
+                sources,
+                kernel_capabilities=kernel.capabilities,
+            )
+        return result
+
+    original = keys(source_keys)
+    host = keys({**source_keys, stage.composed.ACS_NATIVE_SOURCE_NAME: "e" * 64})
+    donor = keys({**source_keys, stage.SOURCE_NAMES["arrays"]: "e" * 64})
+    fit = stage.PREFIX + ".fit.000"
+    matrix = stage.PREFIX + ".matrix"
+    assert original[fit] == host[fit] and original[matrix] != host[matrix]
+    assert original[fit] != donor[fit] and original[matrix] == donor[matrix]
+
+
+def test_materialized_zero_weight_omission_refuses(tmp_path):
+    """A valid materialized zero clone is required even when mass is unchanged."""
+    old = peer("test_us_puf_detail_transfer")
+    graph, store, registry, sources, _ = old.setup(tmp_path)
+    # Use the actual accepted whole-household clone kernels over literal cells.
+    selected = tuple(
+        n
+        for n in graph.graph.nodes
+        if n.id == "fixture_host" or n.id.startswith(old.clone.COMBINED_CLONE_PREFIX)
+    )
+    assert len(selected) == 3
+    graph = replace(
+        graph.graph,
+        nodes=selected,
+        sources=tuple(s for s in graph.graph.sources if s.name == "literal_host"),
+    )
+    manifest = run_graph(
+        compile_graph(graph),
+        store=store,
+        kernels=registry,
+        sources={"literal_host": sources["literal_host"]},
+        resume="forbid",
+    )
+    frame = manifest.population(old.clone.COMBINED_CLONE_NODE)
+    tables = {e: frame.table(e).copy(deep=True) for e in frame.entities}
+    person = tables["person"]
+    person["tax_unit_role_input"] = pd.Series(
+        np.select(
+            [person.is_tax_unit_head, person.is_tax_unit_spouse],
+            ["HEAD", "SPOUSE"],
+            default="DEPENDENT",
+        ),
+        dtype="string",
+    )
+    base = Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        frame.strata,
+    )
+    consumer.recipient_matrix(base)
+    hh = tables["household"]
+    omitted = hh.loc[
+        (base.weights_for("household").values == 0)
+        & hh.household_support_clone_index.eq(1),
+        "household_id",
+    ].iloc[0]
+    kept_person = person.loc[~person.person_household_id.eq(omitted)]
+    kept = {"person": kept_person.reset_index(drop=True)}
+    weight_masks = {}
+    for e in frame.schema.group_entities:
+        retained = set(kept_person[frame.schema.membership_column(e)])
+        mask = tables[e][frame.schema.entity_id_column(e)].isin(retained).to_numpy()
+        kept[e] = tables[e].loc[mask].reset_index(drop=True)
+        weight_masks[e] = mask
+    from microcosm.frame import Weights
+
+    changed = Frame(
+        kept,
+        base.schema,
+        {
+            "household": Weights(
+                base.weights_for("household").values[weight_masks["household"]],
+                base.weights_for("household").kind,
+            )
+        },
+        base.strata.loc[~person.person_household_id.eq(omitted)].reset_index(drop=True),
+    )
+    assert (
+        changed.weights_for("household").values.sum()
+        == base.weights_for("household").values.sum()
+    )
+    with pytest.raises(ValueError, match="HOST_ROLE_PAIR_COVERAGE"):
+        consumer.recipient_matrix(changed)
