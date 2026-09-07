@@ -206,3 +206,86 @@ def test_missing_structural_value_refuses(acs, field):
     source[field] = pd.array([None], dtype="Int64")
     with pytest.raises(ValueError, match=f"{field!r} contains blanks"):
         acs._with_structural_columns(source)
+
+
+def survey_archives(acs, root, *, mutation=None):
+    """Small unsorted housing/GQ/vacant source, split across real ZIP members."""
+    root.mkdir(exist_ok=True)
+    serials = ["HU1", "0001", "1", "GQ37", "GQ38", "VAC"]
+    counts = [3, 2, 1, 1, 1, 0]
+    housing = pd.DataFrame({name: [0] * 6 for name in acs._HOUSEHOLD_REQUIRED})
+    housing["SERIALNO"] = serials
+    housing["ST"] = "06"
+    housing["PUMA"] = "00100"
+    housing["NP"] = counts
+    housing["WGTP"] = [10, 20, 30, 0, 0, 40]
+    housing["TYPEHUGQ"] = [1, 1, 1, 2, 3, 1]
+    housing["RNTP"] = [None] * 6
+    roles = [[20, 21, 25], [20, 24], [20], [37], [38], []]
+    rows = []
+    for serial, group in zip(serials, roles, strict=True):
+        for line, role in enumerate(group, 1):
+            row = {name: 0 for name in acs._PERSON_REQUIRED}
+            row.update(
+                SERIALNO=serial,
+                SPORDER=line,
+                RELSHIPP=role,
+                AGEP=40,
+                SEX=1,
+                MAR=1,
+                PWGTP=10,
+            )
+            rows.append(row)
+    person = pd.DataFrame(rows).iloc[::-1].reset_index(drop=True)
+    if mutation:
+        housing, person = mutation(housing, person)
+    paths = []
+    for name, prefix, table in (
+        ("h.zip", "psam_hus", housing),
+        ("p.zip", "psam_pus", person),
+    ):
+        path = root / name
+        with ZipFile(path, "w", compression=ZIP_DEFLATED) as z:
+            split = len(table) // 2
+            # Deliberately insert b before a; the reader sorts member names.
+            z.writestr(prefix + "b.csv", table.iloc[split:].to_csv(index=False))
+            z.writestr(prefix + "a.csv", table.iloc[:split].to_csv(index=False))
+        paths.append(path)
+    return paths
+
+
+@pytest.mark.parametrize("chunksize", [1, 3, 100])
+def test_public_loader_selection_and_metadata(acs, tmp_path, chunksize):
+    h, p = survey_archives(acs, tmp_path)
+    frames, metadata = acs.load_acs_pums_tables(
+        acs.AcsPumsSource(h, p), chunksize=chunksize
+    )
+    assert frames["household"]["SERIALNO"].tolist() == [
+        "0001",
+        "1",
+        "GQ37",
+        "GQ38",
+        "HU1",
+    ]
+    assert metadata["household_rows"] == 5 and metadata["person_rows"] == 8
+    assert metadata["vacant_household_rows_dropped"] == 1
+    assert frames["household"]["RNTP"].isna().all()
+    selected, selected_metadata = acs.load_acs_pums_tables(
+        acs.AcsPumsSource(h, p, max_households=2), chunksize=chunksize
+    )
+    assert selected_metadata["max_households"] == 2
+    assert len(selected["household"]) == 2
+    assert selected["household"]["TYPEHUGQ"].eq(1).all()
+    assert set(selected["person"]["SERIALNO"]) == set(selected["household"]["SERIALNO"])
+
+
+@pytest.mark.parametrize("index", [[2, 0, 1], [0.0, 1.0, 2.0]])
+def test_supported_reordered_index_preserves_label_based_outputs(acs, index):
+    source = people([20, 21, 25])
+    source.index = pd.Index(index, name="source_row")
+    result = acs._with_structural_columns(source)
+    # Existing implementation uses integer labels for its relationship lookup;
+    # this optimization preserves that behavior rather than changing its scope.
+    expected = {0: 1, 1: 3, 2: 5}
+    assert result["A_EXPRRP"].to_dict() == expected
+    assert result.index.identical(source.index)

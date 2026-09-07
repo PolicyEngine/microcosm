@@ -1,0 +1,1 @@
+Reuse lexical household indexes across ACS person chunks and build relationship pointers in preallocated integer arrays. Preserve source selection, validation and returned table semantics; no sampling, tax-unit rules, model or calibration change.

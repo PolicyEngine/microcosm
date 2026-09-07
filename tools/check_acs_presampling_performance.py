@@ -127,8 +127,9 @@ def main():
 
     sys.addaudithook(audit)
 
-    def scoped(raw, name):
-        tree = ast.parse(raw, filename=str(w / SOURCE))
+    def scoped(raw, name, head):
+        filename = f"git:{head}:{SOURCE}" if head == BASE else str(w / SOURCE)
+        tree = ast.parse(raw, filename=filename)
         selected = []
         for node in tree.body:
             if isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -144,12 +145,10 @@ def main():
                 selected.append(node)
         assert {n.name for n in selected if isinstance(n, ast.FunctionDef)} == FUNCTIONS
         module = types.ModuleType(name)
-        module.__file__ = str(w / SOURCE)
+        module.__file__ = filename
         sys.modules[name] = module
         exec(
-            compile(
-                ast.Module(body=selected, type_ignores=[]), str(w / SOURCE), "exec"
-            ),
+            compile(ast.Module(body=selected, type_ignores=[]), filename, "exec"),
             module.__dict__,
         )
         return module
@@ -157,8 +156,28 @@ def main():
     current_raw = (w / SOURCE).read_bytes()
     assert current_raw == git("show", f"{args.expect_head}:{SOURCE}")
     old_raw = git("show", f"{BASE}:{SOURCE}")
-    current = scoped(current_raw, "_acs_performance_scope")
-    old = scoped(old_raw, "_acs_performance_baseline")
+    current = scoped(current_raw, "_acs_performance_scope", args.expect_head)
+    old = scoped(old_raw, "_acs_performance_baseline", BASE)
+    identity_path = w / SOURCE.replace("acs_pums.py", "graph_implementation.py")
+    identity_spec = importlib.util.spec_from_file_location(
+        "_acs_implementation_inventory", identity_path
+    )
+    identity = importlib.util.module_from_spec(identity_spec)
+    sys.modules[identity_spec.name] = identity
+    identity_spec.loader.exec_module(identity)
+    inventory_path = identity_path.with_name("graph_implementation_inventory.json")
+    inventory_raw = inventory_path.read_bytes()
+    assert inventory_raw == git("show", f"{BASE}:{inventory_path.relative_to(w)}")
+    inventory = json.loads(inventory_raw)
+    inventory_name = "microcosm.build/us_runtime/acs_pums.py"
+    covered = identity._covered_imports(inventory_name, inventory)
+    contract = identity._dependency_contract(current_raw, inventory_name, covered)
+    assert contract == inventory["contracts"][inventory_name]
+    affected_scopes = sorted(
+        name
+        for name, spec in inventory["stages"].items()
+        if inventory_name in spec["modules"]
+    )
     import pytest
 
     # Directly execute the named source-owned pytest bodies/parametrizations.
@@ -260,6 +279,115 @@ def main():
             }
         )
 
+    # Check actual old/new loader results and failures against the same ZIP bytes.
+    loader_parity = []
+    mutations = {
+        "none": None,
+        "orphan": lambda h, p: (
+            h,
+            p.assign(SERIALNO=["orphan"] + p.SERIALNO.tolist()[1:]),
+        ),
+        "duplicate_household": lambda h, p: (
+            pd.concat([h, h.iloc[:1]], ignore_index=True),
+            p,
+        ),
+        "duplicate_person": lambda h, p: (
+            h,
+            pd.concat([p, p.iloc[:1]], ignore_index=True),
+        ),
+        "count_mismatch": lambda h, p: (h.assign(NP=[4, 2, 1, 1, 1, 0]), p),
+        "gq_weight": lambda h, p: (h.assign(WGTP=[10, 20, 30, 1, 0, 40]), p),
+        "gq_count": lambda h, p: (h.assign(NP=[3, 2, 1, 2, 1, 0]), p),
+        "missing_state": lambda h, p: (h.drop(columns="ST"), p),
+        "missing_column": lambda h, p: (h, p.drop(columns="SEX")),
+        "empty_people": lambda h, p: (h, p.iloc[:0]),
+    }
+    for label, mutation in mutations.items():
+        h, p = tests.survey_archives(
+            current, output / f"loader-{label}", mutation=mutation
+        )
+        for limit in (None, 2):
+            for chunksize in (1, 3, 100):
+                outcomes = []
+                for module in (old, current):
+                    try:
+                        outcomes.append(
+                            module.load_acs_pums_tables(
+                                module.AcsPumsSource(h, p, max_households=limit),
+                                chunksize=chunksize,
+                            )
+                        )
+                    except (ValueError, KeyError) as error:
+                        outcomes.append((type(error).__name__, str(error)))
+                if isinstance(outcomes[0][0], str):
+                    assert outcomes[0] == outcomes[1], (label, limit, chunksize)
+                    outcome = "equal_refusal"
+                else:
+                    assert outcomes[0][1] == outcomes[1][1]
+                    for entity in ("household", "person"):
+                        pd.testing.assert_frame_equal(
+                            outcomes[0][0][entity],
+                            outcomes[1][0][entity],
+                            check_exact=True,
+                        )
+                    outcome = "exact_tables_and_metadata"
+                loader_parity.append(
+                    dict(
+                        case=label,
+                        max_households=limit,
+                        chunksize=chunksize,
+                        outcome=outcome,
+                    )
+                )
+
+    extra_relationship_parity = []
+    for label, frame in (
+        (
+            "reordered_index",
+            tests.people([20, 21, 25]).set_axis(pd.Index([2, 0, 1], name="source_row")),
+        ),
+        (
+            "float_index",
+            tests.people([20, 21, 25]).set_axis(
+                pd.Index([0.0, 1.0, 2.0], name="source_row")
+            ),
+        ),
+        (
+            "unsorted_households",
+            tests.people([20, 20, 21, 25], households=[9, 3, 9, 3]),
+        ),
+        ("marital_before_relationship", tests.people([20, 99], marital=[6, 1])),
+        ("household_error_order", tests.people([25, 20, 20], households=[9, 3, 3])),
+        (
+            "preexisting_outputs",
+            tests.people([20, 21, 25]).assign(
+                A_MARITL=-1, A_SPOUSE=-1, PEPAR1=-1, PEPAR2=-1, A_EXPRRP=-1
+            ),
+        ),
+        *(
+            (
+                "missing_" + field,
+                tests.people([20]).assign(**{field: pd.array([None], dtype="Int64")}),
+            )
+            for field in ("SPORDER", "AGEP", "MAR", "RELSHIPP", "SEX")
+        ),
+    ):
+        before = frame.copy(deep=True)
+        outcomes = []
+        for module in (old, current):
+            try:
+                outcomes.append(module._with_structural_columns(frame))
+            except (ValueError, IndexError, KeyError) as error:
+                outcomes.append((type(error).__name__, str(error)))
+        if isinstance(outcomes[0], tuple):
+            assert outcomes[0] == outcomes[1]
+            outcome = "equal_refusal"
+        else:
+            pd.testing.assert_frame_equal(*outcomes, check_exact=True)
+            outcome = "exact_frame_equal"
+        pd.testing.assert_frame_equal(frame, before, check_exact=True)
+        extra_relationship_parity.append(dict(case=label, outcome=outcome))
+
     timings = []
     if args.timing and code == 0:
         for households in (1000, 10000):
@@ -283,7 +411,24 @@ def main():
             pd.testing.assert_frame_equal(*outputs, check_exact=True)
             timings.append(row)
 
+        # Modest multichunk inventory witness, separate from relationship timing.
+        serials = [f"HU{i:05d}" for i in range(10000)]
+        path = tests.archive(output / "timing-persons.zip", serials * 3)
+        valid, retained = frozenset(serials), frozenset(serials[::2])
+        row = dict(
+            kind="archive_inventory", households=10000, people=30000, chunksize=1000
+        )
+        outcomes = []
+        for label, module in (("old", old), ("new", current)):
+            at = time.perf_counter()
+            outcomes.append(tests.read(module, path, valid, retained, chunksize=1000))
+            row[label + "_wall_seconds"] = time.perf_counter() - at
+        assert outcomes[0][1] == outcomes[1][1]
+        pd.testing.assert_frame_equal(outcomes[0][0], outcomes[1][0], check_exact=True)
+        timings.append(row)
+
     loaded = []
+    runtime_imports = []
     for name, module in sorted(sys.modules.items()):
         path = getattr(module, "__file__", None)
         if path and Path(path).is_relative_to(w):
@@ -300,6 +445,17 @@ def main():
                     "bytes": len(raw),
                 }
             )
+        elif path and Path(path).is_absolute() and Path(path).is_relative_to(SITE):
+            p = Path(path)
+            raw = p.read_bytes()
+            runtime_imports.append(
+                dict(
+                    module=name,
+                    path=str(p),
+                    sha256=hashlib.sha256(raw).hexdigest(),
+                    bytes=len(raw),
+                )
+            )
     assert (
         (w / SOURCE).read_bytes() == current_raw and not denials and not prefix.exists()
     )
@@ -314,8 +470,31 @@ def main():
         "source_sha256": hashlib.sha256(current_raw).hexdigest(),
         "baseline_source_sha256": hashlib.sha256(old_raw).hexdigest(),
         "functions": sorted(FUNCTIONS),
+        "inventory": dict(
+            sha256=hashlib.sha256(inventory_raw).hexdigest(),
+            unchanged_from_baseline=True,
+            actual_dependency_contract=contract,
+            direct_whole_module_scopes=affected_scopes,
+            actual_graph_keys_measured=False,
+        ),
         "loaded_source": loaded,
+        "ast_executions": [
+            dict(
+                module=name,
+                head=head,
+                path=SOURCE,
+                sha256=hashlib.sha256(raw).hexdigest(),
+                functions=sorted(FUNCTIONS),
+            )
+            for name, head, raw in (
+                ("_acs_performance_scope", args.expect_head, current_raw),
+                ("_acs_performance_baseline", BASE, old_raw),
+            )
+        ],
+        "runtime_imports": runtime_imports,
         "parity": parity,
+        "loader_parity": loader_parity,
+        "extra_relationship_parity": extra_relationship_parity,
         "timings": timings,
         "denials": denials,
         "runtime": {
