@@ -122,6 +122,85 @@ def test_enriched_integration_module_has_separate_contract():
     }
 
 
+@pytest.mark.parametrize("dtype", ["Int64", "boolean"])
+def test_masked_integer_boolean_change_is_replay_only(implementation, dtype):
+    import pandas as pd
+
+    from microcosm.graph.population import storage_equal
+
+    original = pd.Series([1, None], dtype=dtype)
+    restored = original.copy(deep=True)
+    original.array._data[1] = 1
+    restored.array._data[1] = 0
+    assert implementation.cache_canonical_storage_equal(original, restored)
+    assert not storage_equal(original, restored)
+
+
+@pytest.mark.parametrize("dtype", ["Int64", "boolean", "Float64"])
+@pytest.mark.parametrize("mutation", ["observed", "mask", "dtype"])
+def test_replay_still_rejects_changed_cells(implementation, dtype, mutation):
+    import pandas as pd
+
+    before = pd.Series([1, None], dtype=dtype)
+    after = before.copy(deep=True)
+    if mutation == "observed":
+        after.array._data[0] = 0
+    elif mutation == "mask":
+        after.array._mask[1] = False
+    else:
+        after = after.astype("Float64" if dtype != "Float64" else "Int64")
+    assert not implementation.cache_canonical_storage_equal(before, after)
+
+
+def test_hidden_float_backing_is_never_normalized(implementation):
+    import pandas as pd
+
+    before = pd.Series([1, None], dtype="Float64")
+    after = before.copy(deep=True)
+    after.array._data[1] = 17.0
+    assert not implementation.cache_canonical_storage_equal(before, after)
+
+
+def tiny_population(*, dtype="Int64", hidden=0, metadata=None):
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+    from microcosm.graph.population import Population
+
+    tables = {e: pd.DataFrame({e + "_id": [1, 2]}) for e in US_SCHEMA.entities}
+    for entity in US_SCHEMA.group_entities:
+        tables["person"]["person_" + entity + "_id"] = [1, 2]
+    tables["person"]["invented_unknown"] = pd.Series([1, None], dtype=dtype)
+    tables["person"]["invented_unknown"].array._data[1] = hidden
+    frame = Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(np.array([2.0, 3.0]), WeightKind.DESIGN)},
+        metadata=metadata or {"typed": 1},
+    )
+    return Population.from_frame(frame, version="invented")
+
+
+@pytest.mark.parametrize("dtype", ["Int64", "boolean"])
+def test_actual_population_replay_is_distinct_from_patch(implementation, dtype):
+    before = tiny_population(dtype=dtype, hidden=1)
+    restored = tiny_population(dtype=dtype, hidden=0)
+    implementation.verify_cache_replay(before, restored)
+    with pytest.raises(implementation.budgets.OriginBudgetError, match="CARRIED_CELL"):
+        implementation.same_carried(before, restored)
+
+
+def test_typed_metadata_refuses_int_to_boolean(implementation):
+    before = tiny_population(metadata={"typed": 1})
+    after = tiny_population(metadata={"typed": True})
+    for check in (implementation.verify_cache_replay, implementation.same_carried):
+        with pytest.raises(
+            implementation.budgets.OriginBudgetError, match="FRAME_METADATA"
+        ):
+            check(before, after)
+
+
 @pytest.fixture(scope="module")
 def implementation():
     from microcosm.build.us_runtime import enriched_origin_calibration

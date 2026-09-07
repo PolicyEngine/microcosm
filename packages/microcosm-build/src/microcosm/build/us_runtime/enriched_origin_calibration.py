@@ -14,6 +14,7 @@ from dataclasses import InitVar, asdict, dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from microcosm.fit import model_input
 from microcosm.frame import WeightKind
@@ -94,29 +95,58 @@ def _log(population) -> bytes:
     return canonical_json([asdict(record) for record in population.mass_ledger])
 
 
-def same_carried(before, after, *, additions=None, reweight=False) -> None:
-    """Compare every excluded property, not just the sorted-cell PUF digest."""
+def _frame_log(frame) -> bytes:
+    return canonical_json([asdict(record) for record in frame.mass_log])
+
+
+def cache_canonical_storage_equal(left, right) -> bool:
+    """Only a replay boundary may canonicalize masked integer/boolean slots.
+
+    The accepted nullable-integer-v1 / nullable-boolean-v1 store encodings
+    require zero backing in missing slots. Dtype, mask and observed bits are
+    still exact. Other dtypes, including nullable Float64, remain physical.
+    This function is never used for an in-phase kernel transition.
+    """
+    if left.dtype != right.dtype or len(left) != len(right):
+        return False
+    if isinstance(left.array, (pd.arrays.IntegerArray, pd.arrays.BooleanArray)):
+        mask = left.isna().to_numpy(dtype=bool)
+        return np.array_equal(
+            mask, right.isna().to_numpy(dtype=bool)
+        ) and storage_equal(left, right, ~mask)
+    return storage_equal(left, right)
+
+
+def _same_axis(left, right):
+    return _encode_frame_metadata({"name": left.name}) == _encode_frame_metadata(
+        {"name": right.name}
+    ) and storage_equal(pd.Series(left.array), pd.Series(right.array))
+
+
+def _same_frame(a, b, *, additions=None, reweight=False, replay=False) -> None:
     additions = additions or {}
-    a, b = before.frame, after.frame
     a.revalidate()
     b.revalidate()
     require(a.schema == b.schema and a.entities == b.entities, "SCHEMA")
     require(_physical_metadata(a) == _physical_metadata(b), "FRAME_METADATA")
-    require(a.mass_log == b.mass_log, "FRAME_MASS_LOG")
-    require(
-        a.weighted_entities == b.weighted_entities == ("household",), "WEIGHT_ROSTER"
-    )
+    require(_frame_log(a) == _frame_log(b), "FRAME_MASS_LOG")
+    require(a.weighted_entities == b.weighted_entities, "WEIGHT_ROSTER")
+    equal = cache_canonical_storage_equal if replay else storage_equal
     for entity in a.entities:
         left, right = a.table(entity), b.table(entity)
         extra = tuple(additions.get(entity, ()))
         require(not set(extra) & set(left.columns), "ADDITION_COLLISION")
         require(
             list(right.columns) == [*left.columns, *extra]
-            and left.index.equals(right.index),
+            and _physical_axis_name(left.columns) == _physical_axis_name(right.columns)
+            and _same_axis(left.index, right.index),
             "ORDERED_COLUMNS_OR_AXIS",
         )
-        require(all(storage_equal(left[c], right[c]) for c in left), "CARRIED_CELL")
+        require(all(equal(left[c], right[c]) for c in left), "CARRIED_CELL")
         if not reweight:
+            # Donor/source Frames need not define effective weights on all tables.
+            if entity not in a.weighted_entities:
+                continue
             old, new = a.resolve_weights(entity), b.resolve_weights(entity)
             require(
                 old.kind is new.kind and old.values.tobytes() == new.values.tobytes(),
@@ -127,12 +157,72 @@ def same_carried(before, after, *, additions=None, reweight=False) -> None:
         or (
             a.strata is not None
             and b.strata is not None
-            and a.strata.index.equals(b.strata.index)
-            and storage_equal(a.strata, b.strata)
+            and _same_axis(a.strata.index, b.strata.index)
+            and equal(a.strata, b.strata)
         ),
         "STRATA",
     )
+
+
+def _physical_axis_name(axis):
+    return canonical_json(_encode_frame_metadata({"name": axis.name}))
+
+
+def same_carried(before, after, *, additions=None, reweight=False) -> None:
+    """Strict physical comparison within one actual runtime phase."""
+    require(before.frame.weighted_entities == ("household",), "WEIGHT_ROSTER")
+    _same_frame(before.frame, after.frame, additions=additions, reweight=reweight)
+    if not reweight:
+        for entity in before.frame.entities:
+            old, new = (p.frame.resolve_weights(entity) for p in (before, after))
+            require(
+                old.kind is new.kind and old.values.tobytes() == new.values.tobytes(),
+                "CARRIED_WEIGHT",
+            )
     require(budgets._anchors(before) == budgets._anchors(after), "ORIGINAL_ANCHORS")
+
+
+def verify_cache_replay(before, after):
+    """Check a prior phase against the current replay, never an ordinary patch."""
+    _same_frame(before.frame, after.frame, replay=True)
+    require(
+        before.version == after.version and before.owners == after.owners,
+        "REPLAY_OWNERSHIP",
+    )
+    require(_log(before) == _log(after), "REPLAY_LEDGER")
+    require(
+        tuple(before.design_weights) == tuple(after.design_weights)
+        and all(
+            old.dtype == after.design_weights[e].dtype
+            and old.tobytes() == after.design_weights[e].tobytes()
+            for e, old in before.design_weights.items()
+        ),
+        "REPLAY_ORIGINAL_ANCHORS",
+    )
+
+
+def verify_donor(manifest, store, materialized, expected_frame, expected_payload):
+    """Reconcile the actual complete20 donor before any fit can execute."""
+    _same_frame(expected_frame, materialized.frame, replay=True)
+    require(materialized.frame.weighted_entities == ("tax_unit",), "DONOR_WEIGHTS")
+    weights = materialized.frame.weights_for("tax_unit")
+    require(weights.kind is WeightKind.DESIGN, "DONOR_DESIGN")
+    require(
+        tuple(materialized.design_weights) == ("tax_unit",)
+        and materialized.design_weights["tax_unit"].tobytes()
+        == weights.values.tobytes()
+        and materialized.mass_ledger == (),
+        "DONOR_ORIGINAL_ANCHOR",
+    )
+    value = edge_value(
+        manifest, store, puf.PREFIX + ".donor", "transport", puf.TRANSPORT_TYPE
+    )
+    require(value.payload == expected_payload, "DONOR_TRANSPORT")
+    require(
+        manifest.node(puf.PREFIX + ".donor").receipt["transport_sha256"]
+        == sha(expected_payload),
+        "DONOR_TRANSPORT_RECEIPT",
+    )
 
 
 def check_ledger_append(before, after, node, *, partition) -> None:
@@ -405,6 +495,7 @@ def enriched_binding(
                 "enriched_content_sha256": budgets._frame_identity(counted.frame),
                 "enriched_metadata_sha256": sha(_physical_metadata(counted.frame)),
                 "enriched_graph_ledger_sha256": sha(_log(counted)),
+                "enriched_frame_mass_log_sha256": sha(_frame_log(counted.frame)),
                 "enriched_population_version": counted.version,
                 "puf_host_cells_sha256": detail.population_content(boundary.frame),
                 "puf_edges": edges,
@@ -437,7 +528,9 @@ def weight_successor(parent, budget, before, after, *, node, partition):
         "PARENT_CONTENT",
     )
     require(
-        parent.document["enriched_graph_ledger_sha256"] == sha(_log(before)),
+        parent.document["enriched_graph_ledger_sha256"] == sha(_log(before))
+        and parent.document["enriched_frame_mass_log_sha256"]
+        == sha(_frame_log(before.frame)),
         "PARENT_LEDGER",
     )
     same_carried(before, after, reweight=True)
@@ -533,6 +626,7 @@ def run_enriched_calibration(
     def run(graph, additional_sources=None):
         used = {s.name for s in graph.sources}
         actual = {**sources, **(additional_sources or {})}
+        previous = dict(live)
         manifest = run_graph(
             compile_graph(graph),
             sources={n: actual[n] for n in used},
@@ -541,6 +635,8 @@ def run_enriched_calibration(
             resume=resume,
             _population_observer=lambda name, pop: live.__setitem__(name, pop),
         )
+        for name in previous.keys() & live.keys():
+            verify_cache_replay(previous[name], live[name])
         phases.append(
             {
                 "nodes": len(graph.nodes),
@@ -576,7 +672,7 @@ def run_enriched_calibration(
         role: Path(sources[name]).read_bytes()
         for role, name in puf.SOURCE_NAMES.items()
     }
-    consumer.qualify_price_transport(
+    expected_donor, expected_transport = consumer.qualify_price_transport(
         payloads, price_pins, route=route, recipe=consumer.recipe_document()
     )
     extra = puf.diagnostic_nodes(
@@ -599,6 +695,12 @@ def run_enriched_calibration(
         MATRIX,
     }
     prefit = run(_subset(full, prefit_ids))
+    verify_donor(
+        prefit, store, live[puf.PREFIX + ".donor"], expected_donor, expected_transport
+    )
+    # Prefix replay uses the store's specified null canonicalization. Strict
+    # transition checks below use this phase's actual clone, not cold buffers.
+    clone = live[clone_binding]
     boundary, matrix_pop = live[BOUNDARY], live[MATRIX]
     same_carried(clone, boundary)
     check_ledger_append(
@@ -626,7 +728,7 @@ def run_enriched_calibration(
     )
     parent = enriched_binding(
         budget,
-        clone,
+        live[clone_binding],
         boundary,
         matrix_pop,
         attached,
@@ -664,6 +766,9 @@ def run_enriched_calibration(
     )
     require(len(final_graph.nodes) == 26, "FINAL_NODE_COUNT")
     final = run(final_graph, {caps.BUDGET_SOURCE: budget_path})
+    verify_donor(
+        final, store, live[puf.PREFIX + ".donor"], expected_donor, expected_transport
+    )
     budgets.verify_origin_group_budget(
         budget,
         final,
@@ -709,10 +814,18 @@ def run_enriched_calibration(
         caps.demographic.DIAGNOSTICS_TYPE,
     )
     document = json.loads(diagnostic.payload)
+    materialized_budget = edge_value(
+        final, store, caps.BUDGET_NODE, "budget", budgets.BUDGET_TYPE
+    )
+    require(materialized_budget.payload == budget.payload, "MATERIALIZED_BUDGET")
     expected = budget.diagnostics(values, corrected)
     require(
         canonical_json(document) == diagnostic.payload
-        and sha(values.tobytes()) == receipt.receipt["accepted_weight_sha256"],
+        and sha(values.tobytes()) == receipt.receipt["accepted_weight_sha256"]
+        and sha(diagnostic.payload) == receipt.receipt["diagnostics_sha256"]
+        and document["build"].get("budget_sha256") == budget.digest
+        and document["build"].get("budget_artifact_key") == materialized_budget.key
+        and document["build"].get("accepted_weight_sha256") == sha(values.tobytes()),
         "FINAL_DIAGNOSTICS",
     )
     require(
