@@ -62,7 +62,7 @@ __all__ = [
 type ResumePolicy = Literal["auto", "require", "forbid"]
 
 _STORE_FORMAT = "microcosm-graph-content-store-v1"
-_FRAME_FORMAT = "microcosm-graph-frame-v1"
+_FRAME_FORMAT = "microcosm-graph-frame-v2"
 _KEY = re.compile(r"[0-9a-f]{64}\Z")
 
 _ENCODING_NUMPY = "numpy-v1"
@@ -697,11 +697,14 @@ class ContentStore:
         build: Callable[[Path], Mapping[str, object]],
         *,
         verify_existing: bool = True,
+        validate_existing: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> Path:
         key = _require_key(key)
         destination = self.object_path(key)
         if verify_existing and destination.exists():
-            _verified_meta(destination, expected_kind=kind)
+            existing = _verified_meta(destination, expected_kind=kind)
+            if validate_existing is not None:
+                validate_existing(existing)
             return destination
         staging = self.tmp / uuid.uuid4().hex
         staging.mkdir(parents=False, exist_ok=False)
@@ -729,7 +732,9 @@ class ContentStore:
                 if verify_existing:
                     if not destination.exists():
                         raise
-                    _verified_meta(destination, expected_kind=kind)
+                    existing = _verified_meta(destination, expected_kind=kind)
+                    if validate_existing is not None:
+                        validate_existing(existing)
                 else:
                     self._replace_write_only_collision(staging, destination)
             _fsync_directory(destination.parent)
@@ -895,12 +900,35 @@ class ContentStore:
             raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
         frame.revalidate()
         bound_node_key = key if node_key is None else node_key
+        metadata_sha256 = hashlib.sha256(
+            _canonical_json(_encode_frame_metadata(frame.metadata))
+        ).hexdigest()
+
+        def validate_existing(metadata: Mapping[str, Any]) -> None:
+            if metadata.get("frame_format") != _FRAME_FORMAT:
+                raise StoreUnavailable(
+                    "Stored frame predates complete metadata storage."
+                )
+            if metadata.get("frame_metadata_sha256") != metadata_sha256:
+                raise StoreCorrupt(
+                    "The same frame key cannot carry different metadata."
+                )
 
         def build(root: Path) -> Mapping[str, object]:
             _write_frame(root, frame)
-            return {"frame_format": _FRAME_FORMAT, "node_key": bound_node_key}
+            return {
+                "frame_format": _FRAME_FORMAT,
+                "node_key": bound_node_key,
+                "frame_metadata_sha256": metadata_sha256,
+            }
 
-        return self._put(key, "frame", build, verify_existing=verify_existing)
+        return self._put(
+            key,
+            "frame",
+            build,
+            verify_existing=verify_existing,
+            validate_existing=validate_existing,
+        )
 
     write_frame = put_frame
 
@@ -999,6 +1027,61 @@ def _schema_payload(schema: EntitySchema) -> dict[str, object]:
     }
 
 
+def _encode_frame_metadata(value: object) -> object:
+    """Preserve Frame metadata kinds without pickle or lossy scalar coercion."""
+    if isinstance(value, Mapping):
+        return [
+            "mapping",
+            [[key, _encode_frame_metadata(item)] for key, item in value.items()],
+        ]
+    if isinstance(value, tuple):
+        return ["tuple", [_encode_frame_metadata(item) for item in value]]
+    if isinstance(value, frozenset):
+        return [
+            "frozenset",
+            sorted(
+                (_encode_frame_metadata(item) for item in value), key=_canonical_json
+            ),
+        ]
+    if isinstance(value, float):
+        # Binary float bytes preserve signed zero and any allowed NaN payload.
+        return ["float64", struct.pack(">d", value).hex()]
+    if value is None or isinstance(value, (str, int, bool)):
+        return ["scalar", value]
+    raise TypeError(f"Unsupported Frame metadata value {type(value).__name__}.")
+
+
+def _decode_frame_metadata(encoded: object) -> object:
+    try:
+        if not isinstance(encoded, list) or len(encoded) != 2:
+            raise ValueError
+        kind, value = encoded
+        if kind == "mapping" and isinstance(value, list):
+            result = {}
+            for pair in value:
+                if not isinstance(pair, list) or len(pair) != 2:
+                    raise ValueError
+                key, item = pair
+                if not isinstance(key, str) or not key or key in result:
+                    raise ValueError
+                result[key] = _decode_frame_metadata(item)
+            return result
+        if kind in ("tuple", "frozenset") and isinstance(value, list):
+            items = [_decode_frame_metadata(item) for item in value]
+            return tuple(items) if kind == "tuple" else frozenset(items)
+        if (
+            kind == "float64"
+            and isinstance(value, str)
+            and re.fullmatch(r"[0-9a-f]{16}", value)
+        ):
+            return struct.unpack(">d", bytes.fromhex(value))[0]
+        if kind == "scalar" and (value is None or type(value) in (str, int, bool)):
+            return value
+        raise ValueError
+    except (ValueError, TypeError, KeyError, struct.error) as error:
+        raise StoreCorrupt("Stored Frame metadata is malformed.") from error
+
+
 def _write_frame(root: Path, frame: Frame) -> None:
     _write_json(root / "schema.json", _schema_payload(frame.schema))
     table_specs: list[dict[str, object]] = []
@@ -1053,6 +1136,7 @@ def _write_frame(root: Path, frame: Frame) -> None:
             "weights": weight_specs,
             "strata": strata_spec,
             "mass_log": mass_log,
+            "metadata": _encode_frame_metadata(frame.metadata),
         },
     )
 
@@ -1099,6 +1183,14 @@ def _read_frame(path: Path, metadata: Mapping[str, Any]) -> Frame:
     raw_weights = manifest.get("weights")
     strata_spec = manifest.get("strata")
     raw_mass_log = manifest.get("mass_log")
+    raw_metadata = manifest.get("metadata")
+    if hashlib.sha256(_canonical_json(raw_metadata)).hexdigest() != metadata.get(
+        "frame_metadata_sha256"
+    ):
+        raise StoreCorrupt("Stored Frame metadata identity is missing or incorrect.")
+    frame_metadata = _decode_frame_metadata(raw_metadata)
+    if not isinstance(frame_metadata, Mapping):
+        raise StoreCorrupt("Stored Frame metadata must be a mapping.")
     if not all(
         (
             isinstance(raw_tables, list),
@@ -1238,6 +1330,7 @@ def _read_frame(path: Path, metadata: Mapping[str, Any]) -> Frame:
             weights,
             strata,
             mass_log=tuple(mass_log),
+            metadata=frame_metadata,
         )
     except ImportError as error:
         raise StoreUnavailable(
