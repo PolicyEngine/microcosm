@@ -375,7 +375,11 @@ def host_values(manifest, store, *, native_binding, clone_binding, expected):
     result = {}
     for e in edges:
         result[e.name] = edge_value(manifest, store, e.producer, e.artifact, e.type)
-        require(edge_pin(result[e.name]) == expected[e.name], "HOST_PIN")
+    require(
+        canonical_json({name: edge_pin(value) for name, value in result.items()})
+        == canonical_json(expected),
+        "HOST_PIN",
+    )
     return result
 
 
@@ -831,10 +835,17 @@ def run_enriched_calibration(
         expected=host_pins,
     )
     consumer.qualify_host_population(clone.frame, host)
-    payloads = {
-        role: Path(sources[name]).read_bytes()
-        for role, name in puf.SOURCE_NAMES.items()
-    }
+    # These are transport mappings, not Frame column containers. Materialize
+    # them as owned dictionaries and bound each read by its exact expected pin.
+    source_paths, transport_pins = dict(sources), dict(price_pins)
+    require(set(transport_pins) == set(consumer.ROLES), "PRICE_PIN_ROSTER")
+    payloads = {}
+    for role, name in puf.SOURCE_NAMES.items():
+        size = transport_pins[role]["bytes"]
+        require(type(size) is int and 0 < size <= detail.MAX_BYTES, "PRICE_PIN_SIZE")
+        with Path(source_paths[name]).open("rb") as handle:
+            payloads[role] = handle.read(size + 1)
+        consumer.check_pin(payloads[role], transport_pins[role], "ENRICHED_PRICE_PIN")
     expected_donor, expected_transport = consumer.qualify_price_transport(
         payloads, price_pins, route=route, recipe=consumer.recipe_document()
     )
