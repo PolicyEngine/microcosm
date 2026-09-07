@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -118,6 +119,16 @@ def main():
         if name.startswith("us-origin-group-cap-final-"):
             assert body["returncode"] == 0, name
             assert body["child"]["source_integrity_passed"], name
+            assert all(
+                item["before"]["matches_git"] and item["after"]["matches_git"]
+                for item in body["child"]["loaded_sources"]
+            ), name
+            evidence[name]["command"] = body["child"]["command"]
+            evidence[name]["check_summaries"] = (
+                re.findall(r"^.*\d+ passed.*$", log.read_text(), re.MULTILINE)
+                if log.is_file()
+                else []
+            )
             evidence[name]["head_before"] = body["child"]["head_before"]
             evidence[name]["head_after"] = body["child"]["head_after"]
             evidence[name]["loaded_source_count"] = len(body["child"]["loaded_sources"])

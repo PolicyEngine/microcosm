@@ -167,6 +167,12 @@ def test_integrated_factory_real_unequal_adam_and_fresh_required_replay(tmp_path
     script = """
 import hashlib, importlib.util, json, pathlib, subprocess, sys
 checkout=pathlib.Path(sys.argv[1]); source=pathlib.Path(sys.argv[2])
+assert sys.flags.isolated and sys.flags.dont_write_bytecode
+cache=pathlib.Path(sys.pycache_prefix)
+assert cache.is_absolute() and not cache.exists()
+binary_sha=hashlib.sha256(pathlib.Path(sys.executable).read_bytes()).hexdigest()
+assert binary_sha=='bf4ea26231212e330b8e9b6f24969a30f894fec88665bf42754070d114ac7fc6'
+head_before=subprocess.check_output(['git','rev-parse','HEAD'],cwd=checkout,text=True).strip()
 sys.path[:0]=[str(p) for p in sorted((checkout/'packages').glob('*/src'))]
 before={}
 for rel in subprocess.check_output(['git','ls-files','*.py'],cwd=checkout,text=True).splitlines():
@@ -175,17 +181,31 @@ for rel in subprocess.check_output(['git','ls-files','*.py'],cwd=checkout,text=T
 spec=importlib.util.spec_from_file_location('origin_cap_fresh',source)
 module=importlib.util.module_from_spec(spec);sys.modules[spec.name]=module;spec.loader.exec_module(module)
 result=module._run(pathlib.Path(sys.argv[3]),warm=True)
-loaded=[]
-for m in list(sys.modules.values()):
+loaded=[]; virtual=[]
+for name,m in list(sys.modules.items()):
  p=getattr(m,'__file__',None)
  if not p:continue
- p=pathlib.Path(p).resolve()
+ p=pathlib.Path(p)
+ if not p.is_absolute() and not p.exists():
+  assert name.startswith('torch.'),(name,str(p))
+  virtual.append({'module':name,'virtual_filename':str(p)});continue
+ p=p.resolve()
+ if name.startswith('microcosm.'):
+  assert p.is_relative_to(checkout),(name,str(p))
  if not p.is_relative_to(checkout) or p.suffix!='.py':continue
  digest=hashlib.sha256(p.read_bytes()).hexdigest(); rel=str(p.relative_to(checkout))
  committed=subprocess.check_output(['git','show','HEAD:'+rel],cwd=checkout)
  assert digest==before[str(p)]==hashlib.sha256(committed).hexdigest(),rel
  loaded.append({'path':rel,'sha256':digest})
 result['loaded_sources']=loaded
+assert not cache.exists()
+result['runtime']={'executable':sys.executable,'binary_sha256':binary_sha,
+ 'orig_argv':sys.orig_argv,'isolated':bool(sys.flags.isolated),
+ 'dont_write_bytecode':bool(sys.flags.dont_write_bytecode),
+ 'pycache_prefix':str(cache),'pycache_prefix_absent_before_after':True,
+ 'head_before':head_before,
+ 'head_after':subprocess.check_output(['git','rev-parse','HEAD'],cwd=checkout,text=True).strip(),
+ 'virtual_torch_modules':virtual}
 pathlib.Path(sys.argv[4]).write_text(json.dumps(result,sort_keys=True))
 """
     subprocess.run(
