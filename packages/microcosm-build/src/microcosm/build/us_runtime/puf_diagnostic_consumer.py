@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.fit import _graph_legacy_qrf as codec
+from microcosm.fit import model_input
 
 from . import puf_detail_transfer as detail
 from . import puf_monetary_agi_projection as agi
@@ -379,10 +380,30 @@ def qualify_price_transport(payloads, expected_pins, *, route, recipe):
         "contract": contract,
         "source_binding_sha256": source_sha,
         "ordinary_rows": rows,
-        "donor_content_sha256": detail.population_content(frame),
+        "donor_model_input_sha256": donor_model_input_sha256(frame),
         "release_eligible": False,
     }
     return frame, codec.encode_json(binding)
+
+
+def donor_model_input_sha256(frame):
+    """Exact donor IDs/features/target and DESIGN resampling weights."""
+    table = frame.table("tax_unit").set_index("tax_unit_id")
+    payload = model_input.encode_recipient_matrix(
+        table.loc[:, [*detail.FEATURES, detail.TARGET]],
+        entity="tax_unit",
+        entity_ids=table.index.to_numpy(dtype="int64"),
+    )
+    weight = frame.weights_for("tax_unit")
+    return codec.sha(
+        codec.encode_json(
+            {
+                "matrix_sha256": codec.sha(payload),
+                "weight_kind": weight.kind.value,
+                "weight_sha256": codec.sha(weight.values.astype("<f8").tobytes()),
+            }
+        )
+    )
 
 
 def _numeric(series, reason, *, nullable=False):

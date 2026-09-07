@@ -26,6 +26,7 @@ from microcosm.build.us_runtime.graph_sources import (
 )
 from microcosm.fit.graph_legacy_qrf import LegacyQRFTrainKernel
 from microcosm.fit.graph_legacy_apply_matrix import LegacyQRFApplyMatrixKernel
+from microcosm.frame import Frame
 from microcosm.graph import (
     ArtifactValue,
     ContentStore,
@@ -360,8 +361,8 @@ def test_full_host_binding_refuses(source_bundle, kind):
             "age": "age",
             "cohort": "source_year",
         }[kind]
-        person.loc[person.index[0], name] = "2030" if kind == "cohort" else 99999.0
-    changed = type(frame)(
+        person.loc[person.index[0], name] = 2030 if kind == "cohort" else 99999.0
+    changed = Frame(
         tables,
         frame.schema,
         {e: frame.weights_for(e) for e in frame.weighted_entities},
@@ -388,3 +389,171 @@ def test_missing_acs_earner_never_age_zero():
     person["employment_income_before_lsr"] = 0.0
     with pytest.raises(ValueError, match="ACS_WAGE_ADJUSTED_BINDING"):
         consumer.acs_wage_evidence(person)
+
+
+def diagnostic_setup(root):
+    invented.restore(root / "host", CHECKOUT)
+    meta = json.loads((root / "diagnostic-inputs.json").read_text())
+    identity = json.loads((root / "host/projection-identity.json").read_text())
+    identity["cohort_rows"] = tuple(tuple(item) for item in identity["cohort_rows"])
+    graph = survey.integrated_graph(
+        tuple(Owned(*c) for c in json.loads((root / "host/columns.json").read_text())),
+        sample_fraction=1.0,
+        sample_seed=17,
+        **identity,
+    )
+    extra = stage.diagnostic_nodes(
+        tuple(Owned(*c) for c in meta["columns"]),
+        base=survey.CLONE_POPULATION,
+        native_binding=survey.NATIVE_BINDING,
+        clone_binding=survey.CLONE_BINDING,
+        price_pins=meta["price_pins"],
+        host_pins=meta["host_pins"],
+        route="test_fixture",
+    )
+    graph = replace(
+        graph, sources=(*graph.sources, *stage.SOURCES), nodes=(*graph.nodes, *extra)
+    )
+    registry = survey.integrated_registry()
+    stage.register_diagnostic_kernels(registry)
+    for kernel in (
+        shared.DetailBoundaryKernel(),
+        LegacyQRFTrainKernel(),
+        LegacyQRFApplyMatrixKernel(),
+    ):
+        registry.register(kernel)
+    codecs = us_source_codecs()
+    codecs.register_bytes("raw-bytes-v1", load_raw_bytes)
+    store = ContentStore(root / "host/store", codecs=codecs)
+    sources = {
+        **invented.sources(root / "host"),
+        **{
+            name: root / "transport" / (role + ".bin")
+            for role, name in stage.SOURCE_NAMES.items()
+        },
+    }
+    return compile_graph(graph), registry, store, sources
+
+
+def execute(root, *, forbid=False):
+    """Actual six-node diagnostic append; fresh required replay reads no source codec."""
+    graph, registry, store, sources = diagnostic_setup(root)
+    calls = []
+    contexts = {}
+    source_calls = []
+    for kernel in registry.as_mapping().values():
+        fn = kernel.run
+
+        def counted(context, fn=fn):
+            calls.append(context.node.id)
+            contexts[context.node.id] = context
+            if forbid:
+                raise AssertionError("REQUIRED_KERNEL_CALLED")
+            return fn(context)
+
+        kernel.run = counted
+    if forbid:
+
+        def no_source(*args, **kwargs):
+            source_calls.append(1)
+            raise AssertionError("REQUIRED_SOURCE_CODEC_CALLED")
+
+        store.codecs.load = no_source
+        store.codecs.load_bytes = no_source
+    snapshots = []
+    original = Population.__post_init__
+    boundary = stage.PREFIX + ".population"
+
+    def observe(self):
+        original(self)
+        if self.version == boundary:
+            snapshots.append(self)
+
+    Population.__post_init__ = observe
+    try:
+        manifest = run_graph(
+            graph,
+            store=store,
+            kernels=registry,
+            sources=sources,
+            resume="require" if forbid else "auto",
+        )
+    finally:
+        Population.__post_init__ = original
+    assert snapshots
+    before, after = snapshots[0], snapshots[-1]
+    placement = store.load_bytes(
+        manifest.node(stage.PREFIX + ".matrix").opaque_artifacts["placement"]
+    )
+    preservation = shared.verify_materialized_transfer(
+        before.frame,
+        after.frame,
+        placement,
+        before_design=before.design_weights,
+        after_design=after.design_weights,
+        before_ledger=before.mass_ledger,
+        after_ledger=after.mass_ledger,
+        boundary_node=boundary,
+    )
+    evidence = {
+        "scope": consumer.SCOPE,
+        "nodes": {n: {"key": r.key, "hit": r.hit} for n, r in manifest.nodes.items()},
+        "kernel_calls": calls,
+        "source_codec_calls_during_required_graph": source_calls,
+        "opaque_payload_sha256": {
+            n + "/" + a: codec.sha(store.load_bytes(k))
+            for n, r in manifest.nodes.items()
+            for a, k in r.opaque_artifacts.items()
+        },
+        "materialized_content_sha256": detail.population_content(after.frame),
+        "preservation": preservation,
+        "setup_note": "Only saved invented declaration/pin metadata is parsed before required run_graph; no price/source numeric decoding or fit in setup.",
+    }
+    (
+        root / ("diagnostic-required.json" if forbid else "diagnostic-cold.json")
+    ).write_text(json.dumps(evidence, indent=2) + "\n")
+    return manifest, store, calls, contexts, preservation
+
+
+def test_actual_diagnostic_append(source_bundle):
+    root, payloads, pins, _, host = source_bundle
+    # Bounded reader and complete feature qualification precede fit explicitly.
+    consumer.qualify_price_transport(
+        payloads, pins, route="test_fixture", recipe=consumer.recipe_document()
+    )
+    frame = host[4].population(survey.CLONE_POPULATION)
+    consumer.qualify_host_population(frame, host[5])
+    (root / "transport").mkdir()
+    for n, payload in payloads.items():
+        (root / "transport" / (n + ".bin")).write_bytes(payload)
+    (root / "diagnostic-inputs.json").write_text(
+        json.dumps(
+            {
+                "price_pins": pins,
+                "host_pins": host[6],
+                "columns": [
+                    [c.entity, c.column, c.dtype]
+                    for c in frame_column_declarations(frame)
+                ],
+            }
+        )
+    )
+    manifest, store, calls, contexts, proof = execute(root)
+    assert len(manifest.nodes) == 23 and len(calls) == 6
+    assert sum(r.hit for r in manifest.nodes.values()) == 17
+    assert proof["all_nonowned_preserved"] and proof["scope"] == consumer.SCOPE
+    draw = contexts[stage.PREFIX + ".attach"].artifacts["raw_draw"].payload
+    matrix = contexts[stage.PREFIX + ".attach"].artifacts["matrix"].payload
+    prepared = shared.model_input.decode_recipient_matrix(matrix)
+    values = codec.read_raw_target(
+        draw, target=detail.TARGET, index=prepared.features.index
+    )
+    result = (
+        manifest.population(stage.PREFIX + ".population")
+        .table("tax_unit")
+        .set_index("tax_unit_id")
+    )
+    assert np.array_equal(
+        result.loc[prepared.entity_ids, detail.OUTPUT].to_numpy().view("uint64"),
+        values.view("uint64"),
+    )
