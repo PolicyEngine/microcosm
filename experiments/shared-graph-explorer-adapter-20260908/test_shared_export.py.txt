@@ -1,0 +1,30 @@
+"""Reuse already exported metadata only; no microdata or runtime execution."""
+import hashlib
+import json
+from pathlib import Path
+
+from microcosm.graph.explorer import graph_explorer_document, graph_explorer_json
+
+RUN = Path('/private/tmp/us-shared-explorer-adapter-20260908')
+
+
+def test_actual_compiler_metadata_to_shared_document():
+    raw = (RUN / 'actual-four-node-schema.json').read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == 'd8f2e0c977024814d7b68ec9d02ce9d40ddf7ee0edd9e65589a1f46dc84c51da'
+    schema = json.loads(raw)
+    doc = graph_explorer_document(schema)
+    assert len(schema['schema']) == 423
+    assert len(schema['input_bindings']) == 54
+    assert len([n for n in doc['nodes'] if n['kind'] == 'operation']) == 4
+    identities = {tuple(row[key] for key in ('population', 'entity', 'column', 'producer', 'declared_in')) for row in schema['schema'] + schema['input_bindings']}
+    assert len([n for n in doc['nodes'] if n['kind'] == 'field']) == len(identities)
+    encoded = graph_explorer_json(schema)
+    assert json.loads(encoded) == doc
+    (RUN / 'actual-four-node.graph-explorer.json').write_text(encoded)
+    (RUN / 'export-summary.json').write_text(json.dumps({
+        'schema_sha256': hashlib.sha256(raw).hexdigest(),
+        'document_sha256': hashlib.sha256(encoded.encode()).hexdigest(),
+        'document_bytes': len(encoded.encode()),
+        'nodes': len(doc['nodes']), 'edges': len(doc['edges']),
+        'fields': len(identities), 'scope': doc['metadata']['scope'],
+    }, indent=2) + '\n')

@@ -1,0 +1,17 @@
+"""Prepare the source-inventory check with two narrowly allowed read-only Git calls."""
+from pathlib import Path
+root = Path('/private/tmp/us-shared-explorer-adapter-20260908')
+source = (root/'run.py').read_text()
+source = source.replace('BLOCKED, READS = [], set()', 'BLOCKED, READS = [], set()\nGIT_CALLS = []\nos.environ["PATH"] = "/usr/bin:/bin"')
+source = source.replace('def audit(event, args):', '''def audit(event, args):
+    if event == "subprocess.Popen":
+        executable, argv, cwd, _environment = args
+        allowed = (["git", "ls-files", "--", "packages/*/tests/test_*.py"], ["git", "ls-files", "--", "packages"])
+        if executable == "git" and argv in allowed and pathlib.Path(cwd) == BASE and len(GIT_CALLS) < 2:
+            GIT_CALLS.append(argv); return''')
+source = source.replace("if p.name == 'RECORD' and p not in ALLOW: return False", '''if p.name == 'RECORD' and p not in ALLOW: return False
+    if any(token in str(p).lower() for token in ("b19001", "b25003", "occupied-hu", "occupied_hu")): return False
+    if p.is_relative_to(BASE/'packages') and 'tests' in p.relative_to(BASE/'packages').parts: return True''')
+source = source.replace('test_shared_export.py', 'test_ci_inventory.py')
+source = source.replace("'children':0", "'children':len(GIT_CALLS),'read_only_git_calls':GIT_CALLS")
+(root/'run-ci.py').write_text(source)

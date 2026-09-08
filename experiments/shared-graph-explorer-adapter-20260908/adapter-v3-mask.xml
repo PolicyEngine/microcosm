@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="0.670" timestamp="2026-09-08T13:51:38.855903+00:00" hostname="MacBook-Pro-10.local"><testcase classname="test_explorer" name="test_named_mask_read_is_preserved_separately_from_compiler_predecessors" time="0.000"><failure message="microcosm.graph.decl.GraphError: Node 'z_consumer': row mask 'mask' on 'person' must be one of the node's input columns.">def test_named_mask_read_is_preserved_separately_from_compiler_predecessors():
+        graph = Graph(
+            "invented",
+            sources=(SourceRef("survey", "unused@1"),),
+            nodes=(
+                Node(
+                    "base",
+                    "unused.create@1",
+                    structural=StructuralDelta.CREATE,
+                    sources=("survey",),
+                    outputs=(Owned("person", "age", "int64"),),
+                ),
+                Node(
+                    "a_mask",
+                    "unused.mask@1",
+                    population="base",
+                    inputs=(Slice("person", ("age",)),),
+                    outputs=(Owned("person", "mask", "boolean"),),
+                ),
+&gt;               Node(
+                    "z_consumer",
+                    "unused.consume@1",
+                    population="base",
+                    inputs=(Slice("person", ("age",), rows="mask"),),
+                ),
+            ),
+        )
+
+test_explorer.py:279: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+&lt;string&gt;:17: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = Node(id='z_consumer', kernel='unused.consume@1', inputs=(Slice(entity='person', columns=('age',), rows='mask'),), outp...Delta.NONE: 'none'&gt;, base=None, sources=(), weights=None, mass='conserve', description='', citation='', entrants=False)
+
+    def __post_init__(self) -&gt; None:
+        _nonempty("Node.id", self.id)
+        _nonempty("Node.kernel", self.kernel)
+        if not isinstance(self.structural, StructuralDelta):
+            raise GraphError(f"Node {self.id!r}: structural must be a StructuralDelta.")
+        if self.mass not in MASS_POLICIES:
+            raise GraphError(f"Node {self.id!r}: mass {self.mass!r} is not legal.")
+        for name in sorted(self.params):
+            _nonempty("Node.params key", name)
+            _check_param(name, self.params[name])
+        object.__setattr__(self, "params", MappingProxyType(dict(self.params)))
+        if len({(o.entity, o.column) for o in self.outputs}) != len(self.outputs):
+            raise GraphError(f"Node {self.id!r} declares the same owned cell twice.")
+        if len(set(self.sources)) != len(self.sources):
+            raise GraphError(f"Node {self.id!r} repeats a source.")
+        if self.structural is StructuralDelta.CREATE:
+            if self.base is not None or self.population is not None:
+                raise GraphError(
+                    f"Node {self.id!r}: a CREATE node has no base or population."
+                )
+            if not self.sources:
+                raise GraphError(f"Node {self.id!r}: a CREATE node needs sources.")
+            if self.inputs:
+                raise GraphError(f"Node {self.id!r}: a CREATE node has no inputs.")
+            if not self.outputs:
+                raise GraphError(
+                    f"Node {self.id!r}: a CREATE node must declare every column "
+                    "it loads, so ownership is total from the first node."
+                )
+        elif self.structural is not StructuralDelta.NONE:
+            if self.base is None:
+                raise GraphError(
+                    f"Node {self.id!r}: a {self.structural.value} node needs a base."
+                )
+            if self.population is not None:
+                raise GraphError(
+                    f"Node {self.id!r}: a structural node declares base, not "
+                    "population."
+                )
+            if self.outputs:
+                raise GraphError(
+                    f"Node {self.id!r}: a {self.structural.value} node carries its "
+                    "base's columns and owns none of its own."
+                )
+        elif self.base is not None:
+            raise GraphError(f"Node {self.id!r}: only structural nodes have a base.")
+        if not isinstance(self.entrants, bool):
+            raise GraphError(f"Node {self.id!r}: entrants must be a boolean.")
+        if self.entrants and self.structural is not StructuralDelta.EXPAND:
+            raise GraphError(
+                f"Node {self.id!r}: only an EXPAND node may admit entrants."
+            )
+        if self.entrants and self.mass == "conserve":
+            raise GraphError(
+                f"Node {self.id!r}: entrants add mass, so an entrant-admitting "
+                "node cannot declare mass='conserve'."
+            )
+        if self.weights is not None and self.structural is not StructuralDelta.REWEIGHT:
+            raise GraphError(
+                f"Node {self.id!r}: a weight transition changes the population "
+                "every later node reads, so it is a REWEIGHT node with a base."
+            )
+        if self.structural is StructuralDelta.REWEIGHT:
+            if self.weights is None:
+                raise GraphError(
+                    f"Node {self.id!r}: a REWEIGHT node declares its WeightTransition."
+                )
+            if self.mass != self.weights.mass:
+                raise GraphError(
+                    f"Node {self.id!r}: mass policy {self.mass!r} disagrees with its "
+                    f"weight transition's {self.weights.mass!r}."
+                )
+        declared_inputs = {(s.entity, c) for s in self.inputs for c in s.columns}
+        for s in self.inputs:
+            if s.rows != ROWS_ALL and (s.entity, s.rows) not in declared_inputs:
+&gt;               raise GraphError(
+                    f"Node {self.id!r}: row mask {s.rows!r} on {s.entity!r} must be "
+                    "one of the node's input columns."
+                )
+E               microcosm.graph.decl.GraphError: Node 'z_consumer': row mask 'mask' on 'person' must be one of the node's input columns.
+
+/Users/maxghenis/PolicyEngine/_worktrees/microcosm-graph-explorer-adapter-20260908/packages/microcosm-graph/src/microcosm/graph/decl.py:397: GraphError</failure></testcase></testsuite></testsuites>

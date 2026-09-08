@@ -1,0 +1,90 @@
+{
+  "label": "adapter-v4",
+  "argv": [
+    "/private/tmp/us-shared-explorer-adapter-20260908/run.py",
+    "adapter-v4",
+    "pytest",
+    "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-graph-explorer-adapter-20260908/packages/microcosm-graph/tests/test_explorer.py",
+    "/private/tmp/us-shared-explorer-adapter-20260908/test_shared_export.py"
+  ],
+  "executable": "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-current-main-20260905/.venv/bin/python",
+  "python": "3.14.4 (main, Apr 14 2026, 14:46:33) [Clang 22.1.3 ]",
+  "result": 0,
+  "wall_seconds": 2.9899346670135856,
+  "cpu_seconds": 2.082542,
+  "peak_rss_bytes": 323010560,
+  "blocked": [
+    "/System/Library/CoreServices/SystemVersion.plist",
+    "/Users/maxghenis/.local/share/uv/python/cpython-3.14.4-macos-aarch64-none/lib/python314.zip",
+    "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-current-main-20260905/.venv/lib/python3.14/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz",
+    "/proc/self/maps",
+    "lstat:/Users/maxghenis/.local/share/uv/python/cpython-3.14-macos-aarch64-none",
+    "lstat:/Users/maxghenis/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin",
+    "lstat:/Users/maxghenis/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/python3.14",
+    "lstat:/Users/maxghenis/.local/share/uv/python/cpython-3.14.4-macos-aarch64-none/lib/python3.14/config-3.14-darwin",
+    "stat:/Users/maxghenis/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/Modules/Setup",
+    "stat:/Users/maxghenis/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/Modules/Setup.local",
+    "stat:/Users/maxghenis/.local/share/uv/python/cpython-3.14.4-macos-aarch64-none/lib/python314.zip",
+    "stat:/Users/maxghenis/.local/share/uv/python/cpython-3.14.4-macos-aarch64-none/share/locale/C.UTF-8/LC_MESSAGES/messages.mo",
+    "stat:/etc/zoneinfo/UTC",
+    "stat:/usr/lib/zoneinfo/UTC",
+    "stat:/usr/share/lib/zoneinfo/UTC",
+    "stat:/usr/share/zoneinfo/UTC"
+  ],
+  "refusal_counts": {
+    "/System/Library/CoreServices/SystemVersion.plist": 1,
+    "/Users/maxghenis/.local/share/uv/python/cpython-3.14.4-macos-aarch64-none/lib/python314.zip": 2,
+    "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-current-main-20260905/.venv/lib/python3.14/site-packages/dateutil/zoneinfo/dateutil-zoneinfo.tar.gz": 1,
+    "/proc/self/maps": 1,
+    "lstat:/Users/maxghenis/.local/share/uv/python/cpython-3.14-macos-aarch64-none": 1,
+    "lstat:/Users/maxghenis/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin": 1,
+    "lstat:/Users/maxghenis/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/python3.14": 1,
+    "lstat:/Users/maxghenis/.local/share/uv/python/cpython-3.14.4-macos-aarch64-none/lib/python3.14/config-3.14-darwin": 1,
+    "stat:/Users/maxghenis/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/Modules/Setup": 1,
+    "stat:/Users/maxghenis/.local/share/uv/python/cpython-3.14-macos-aarch64-none/bin/Modules/Setup.local": 1,
+    "stat:/Users/maxghenis/.local/share/uv/python/cpython-3.14.4-macos-aarch64-none/lib/python314.zip": 2,
+    "stat:/Users/maxghenis/.local/share/uv/python/cpython-3.14.4-macos-aarch64-none/share/locale/C.UTF-8/LC_MESSAGES/messages.mo": 12,
+    "stat:/etc/zoneinfo/UTC": 2,
+    "stat:/usr/lib/zoneinfo/UTC": 2,
+    "stat:/usr/share/lib/zoneinfo/UTC": 2,
+    "stat:/usr/share/zoneinfo/UTC": 2
+  },
+  "allowed_resources": {},
+  "limits": {
+    "cpu_seconds": 120,
+    "wall_seconds": 180,
+    "native_threads": 1
+  },
+  "guard_before_pytest_project_imports": true,
+  "ordinary_imports": true,
+  "children": 0,
+  "torch_loaded": true,
+  "torch_threads": [
+    1,
+    1
+  ],
+  "executable_sha256": "bf4ea26231212e330b8e9b6f24969a30f894fec88665bf42754070d114ac7fc6",
+  "head": "e07a47351242fea7e182cad9a2dd68a80dbf4080",
+  "before_hashes": {
+    "packages/microcosm-graph/src/microcosm/graph/explorer.py": "261d4847b773d14d5d8626feaf996e792649c32f5f24a5c1eb407d692f6cfc17",
+    "packages/microcosm-graph/src/microcosm/graph/decl.py": "635fef92c599c298e7f19ca0badfa85aa040bf8e81eafed59f37c48db1fcff06",
+    "packages/microcosm-graph/src/microcosm/graph/serialize.py": "b63c05c28a87105e9bc7ded73da04a860cb68b90e9f5e72fbd70547725ca3f69",
+    "packages/microcosm-graph/src/microcosm/graph/canonical.py": "001b4a58439a1703df69c42cb1c355cd51f409f301984b70b141c5671217e79d",
+    "packages/microcosm-graph/src/microcosm/graph/__init__.py": "177188a55578dbabbc1705fd2aa9bf2f3aeb2ec998cf2eab21c3e42fc0c2ab11",
+    "packages/microcosm-graph/tests/test_explorer.py": "c60eebac232ef949f874994634ae3e9a5be80c59866c2837b3f80e8a09abfc06",
+    "tools/ci_test_groups.py": "d5e69d8d3f08ad779bf2646c3cddb915d27eec64fe2b3b839e0a62ec6e5ebb92",
+    "owned/test_shared_export.py": "ee7f0481f1f09b7b78e30029b98e8c257979c447c61ca0d143e568c0d70f0641",
+    "owned/actual-four-node-schema.json": "d8f2e0c977024814d7b68ec9d02ce9d40ddf7ee0edd9e65589a1f46dc84c51da"
+  },
+  "after_hashes": {
+    "packages/microcosm-graph/src/microcosm/graph/explorer.py": "261d4847b773d14d5d8626feaf996e792649c32f5f24a5c1eb407d692f6cfc17",
+    "packages/microcosm-graph/src/microcosm/graph/decl.py": "635fef92c599c298e7f19ca0badfa85aa040bf8e81eafed59f37c48db1fcff06",
+    "packages/microcosm-graph/src/microcosm/graph/serialize.py": "b63c05c28a87105e9bc7ded73da04a860cb68b90e9f5e72fbd70547725ca3f69",
+    "packages/microcosm-graph/src/microcosm/graph/canonical.py": "001b4a58439a1703df69c42cb1c355cd51f409f301984b70b141c5671217e79d",
+    "packages/microcosm-graph/src/microcosm/graph/__init__.py": "177188a55578dbabbc1705fd2aa9bf2f3aeb2ec998cf2eab21c3e42fc0c2ab11",
+    "packages/microcosm-graph/tests/test_explorer.py": "c60eebac232ef949f874994634ae3e9a5be80c59866c2837b3f80e8a09abfc06",
+    "tools/ci_test_groups.py": "d5e69d8d3f08ad779bf2646c3cddb915d27eec64fe2b3b839e0a62ec6e5ebb92",
+    "owned/test_shared_export.py": "ee7f0481f1f09b7b78e30029b98e8c257979c447c61ca0d143e568c0d70f0641",
+    "owned/actual-four-node-schema.json": "d8f2e0c977024814d7b68ec9d02ce9d40ddf7ee0edd9e65589a1f46dc84c51da"
+  }
+}

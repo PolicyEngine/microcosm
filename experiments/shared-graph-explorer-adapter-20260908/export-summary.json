@@ -1,0 +1,9 @@
+{
+  "schema_sha256": "d8f2e0c977024814d7b68ec9d02ce9d40ddf7ee0edd9e65589a1f46dc84c51da",
+  "document_sha256": "9322a64fc6a3bd6b8f6d3f1885af64cfe3bc7d1761bebe7844e9121de3cb08e3",
+  "document_bytes": 883714,
+  "nodes": 434,
+  "edges": 771,
+  "fields": 429,
+  "scope": "complete_supplied_schema"
+}

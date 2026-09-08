@@ -1,0 +1,131 @@
+import os, sys, time, resource, signal, pathlib, importlib.abc, json, hashlib, traceback
+BASE = pathlib.Path('/Users/maxghenis/PolicyEngine/_worktrees/microcosm-graph-explorer-adapter-20260908')
+RUN = pathlib.Path('/private/tmp/us-shared-explorer-adapter-20260908')
+ENV = pathlib.Path('/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-launch-current-main-20260905/.venv')
+SITE = ENV / 'lib/python3.14/site-packages'
+START = time.monotonic()
+resource.setrlimit(resource.RLIMIT_CPU, (120, 120))
+signal.alarm(180)
+assert sys.version_info[:3] == (3, 14, 4)
+assert sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode
+for name in ('OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','VECLIB_MAXIMUM_THREADS','NUMEXPR_NUM_THREADS','BLIS_NUM_THREADS'):
+    os.environ[name] = '1'
+os.environ['PYTEST_DISABLE_PLUGIN_AUTOLOAD'] = '1'
+os.environ['TZ'] = 'UTC'
+os.environ['TMPDIR'] = str(RUN)
+CODE_ROOTS = (BASE, SITE, pathlib.Path(sys.base_prefix), pathlib.Path('/Library/Frameworks/Python.framework/Versions/3.14'))
+ALLOW = set()
+os.chdir(RUN)
+EXECUTABLE = pathlib.Path(sys.executable)
+BLOCKED, READS = [], set()
+class NoEngine(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.startswith('policyengine_') or fullname.startswith('microcosm.build.uk_runtime'):
+            BLOCKED.append('engine:' + fullname)
+            raise RuntimeError('Country engine import forbidden: ' + fullname)
+sys.meta_path.insert(0, NoEngine())
+def audit(event, args):
+    if event in ('os.listdir', 'os.scandir') and args and isinstance(args[0], (str, bytes)) and not any(pathlib.Path(os.path.abspath(os.fsdecode(args[0]))).is_relative_to(root) for root in (*CODE_ROOTS, RUN)):
+        BLOCKED.append('directory:' + str(args[0])); raise PermissionError('Unrelated scratch enumeration refused')
+    if (event.startswith('socket.') and event != 'socket.gethostname') or event in {'subprocess.Popen','os.system','os.posix_spawn','os.exec','os.fork','pty.spawn'}:
+        BLOCKED.append(event)
+        raise PermissionError('External operation blocked: ' + event)
+    if event == 'open' and isinstance(args[0], (str, bytes)):
+        p = pathlib.Path(os.path.abspath(os.fsdecode(args[0])))
+        if str(p).endswith(('.err','.lane.log')):
+            BLOCKED.append(str(p)); raise RuntimeError('Forbidden log')
+        if p.is_relative_to(RUN): return
+        if p == EXECUTABLE: return
+        if p in ALLOW:
+            READS.add(str(p)); return
+        if p == pathlib.Path('/dev/null'): return
+        if any(p.is_relative_to(root) for root in CODE_ROOTS):
+            if p.suffix in {'.py','.pyc','.so','.dylib','.css','.js','.html','.md','.toml'}: return
+            if p.name in {'METADATA','WHEEL','entry_points.txt','top_level.txt','py.typed'} and any(part.endswith('.dist-info') for part in p.parts): return
+        BLOCKED.append(str(p))
+        raise PermissionError('Read blocked before open: ' + str(p))
+# Metadata calls do not emit Python audit events. Deny non-code paths before stat.
+_STAT, _LSTAT = os.stat, os.lstat
+def metadata_allowed(value):
+    if isinstance(value, int): return True
+    p = pathlib.Path(os.path.abspath(os.fsdecode(value)))
+    if str(p).endswith(('.err', '.lane.log')): return False
+    if p.name == 'RECORD' and p not in ALLOW: return False
+    if p == EXECUTABLE or EXECUTABLE.is_relative_to(p): return True
+    if p.is_relative_to(RUN) or p in ALLOW or p == pathlib.Path(sys.base_prefix)/'lib/python3.14': return True
+    if any(root.is_relative_to(p) for root in (*CODE_ROOTS, RUN)): return True
+    if any(p.is_relative_to(root) for root in CODE_ROOTS):
+        return (p.suffix in {'', '.py', '.pyc', '.so', '.dylib', '.css', '.js', '.html', '.md', '.toml', '.dist-info', '.git'}
+                or p.name in {'METADATA', 'WHEEL', 'entry_points.txt', 'top_level.txt', 'py.typed'})
+    return False
+def guarded_stat(path, *args, **kwargs):
+    if not metadata_allowed(path):
+        BLOCKED.append('stat:' + os.fsdecode(path))
+        raise PermissionError('Metadata blocked before stat')
+    return _STAT(path, *args, **kwargs)
+def guarded_lstat(path, *args, **kwargs):
+    if not metadata_allowed(path):
+        BLOCKED.append('lstat:' + os.fsdecode(path))
+        raise PermissionError('Metadata blocked before lstat')
+    return _LSTAT(path, *args, **kwargs)
+os.stat, os.lstat = guarded_stat, guarded_lstat
+sys.addaudithook(audit)
+sys.path[:0] = [str(p) for p in (BASE/'packages').glob('*/src')] + [str(SITE), str(BASE/'packages/microcosm-graph/tests')]
+sys.path.insert(0, str(RUN))
+label, mode, *args = sys.argv[1:]
+HASH_FILES = [BASE / name for name in ['packages/microcosm-graph/src/microcosm/graph/explorer.py', 'packages/microcosm-graph/src/microcosm/graph/decl.py', 'packages/microcosm-graph/src/microcosm/graph/serialize.py', 'packages/microcosm-graph/src/microcosm/graph/canonical.py', 'packages/microcosm-graph/src/microcosm/graph/__init__.py', 'packages/microcosm-graph/tests/test_explorer.py', 'tools/ci_test_groups.py']]
+assert all(p.is_file() for p in HASH_FILES), "Every explicit code pin must exist"
+EXTRA = RUN / "test_shared_export.py"
+BEFORE_HASHES = {str(p.relative_to(BASE)):hashlib.sha256(p.read_bytes()).hexdigest() for p in HASH_FILES}
+BEFORE_HASHES["owned/test_shared_export.py"] = hashlib.sha256(EXTRA.read_bytes()).hexdigest()
+BEFORE_HASHES["owned/actual-four-node-schema.json"] = hashlib.sha256((RUN/"actual-four-node-schema.json").read_bytes()).hexdigest()
+assert BEFORE_HASHES["owned/actual-four-node-schema.json"] == "d8f2e0c977024814d7b68ec9d02ce9d40ddf7ee0edd9e65589a1f46dc84c51da"
+
+result = 1
+try:
+    if mode == 'exec':
+        raise RuntimeError('Only ordinary pytest imports authorized')
+    else:
+        import torch
+        torch.set_num_threads(1)
+        torch.set_num_interop_threads(1)
+        assert torch.get_num_threads() == torch.get_num_interop_threads() == 1
+        import tempfile, platform
+        platform._Processor.from_subprocess = staticmethod(lambda: os.uname().machine)
+        tempfile.tempdir = str(RUN)
+        import pytest, h5py, tables
+        def require_owned_hdf(value):
+            if not isinstance(value, (str, bytes, os.PathLike)) or not pathlib.Path(os.path.abspath(os.fsdecode(value))).is_relative_to(RUN):
+                BLOCKED.append('HDF:' + str(value)); raise PermissionError('HDF outside invented scratch refused')
+        original_h5 = h5py.File.__init__
+        def guarded_h5(self, name, *arguments, **keywords):
+            if not isinstance(name, h5py._objects.ObjectID):
+                require_owned_hdf(name.name if hasattr(name, 'read') else name)
+            return original_h5(self, name, *arguments, **keywords)
+        h5py.File.__init__ = guarded_h5
+        original_tables_open = tables.open_file
+        def guarded_tables(filename, *arguments, **keywords):
+            require_owned_hdf(filename)
+            return original_tables_open(filename, *arguments, **keywords)
+        tables.open_file = guarded_tables
+        # Collect byte-identical test copies inside owned root; source helpers import normally.
+        collected = []
+        for value in args:
+            if value.endswith('.py') and pathlib.Path(value).is_relative_to(BASE/'packages/microcosm-graph/tests'):
+                target = RUN/pathlib.Path(value).name
+                target.write_bytes(pathlib.Path(value).read_bytes())
+                collected.append(str(target))
+            else:
+                collected.append(value)
+        result = int(pytest.main(['--noconftest','--rootdir='+str(RUN),'--confcutdir='+str(RUN),'--import-mode=importlib','-c',str(BASE/'pyproject.toml'),'-q','-p','no:cacheprovider','--basetemp='+str(RUN/(label+'-invented')), '--junitxml='+str(RUN/(label+'.xml')), *collected]))
+except SystemExit as error:
+    result = int(error.code or 0)
+except BaseException:
+    traceback.print_exc()
+finally:
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    receipt = {'label':label,'argv':sys.argv,'executable':sys.executable,'python':sys.version,'result':result,'wall_seconds':time.monotonic()-START,'cpu_seconds':usage.ru_utime+usage.ru_stime,'peak_rss_bytes':usage.ru_maxrss,'blocked':sorted(set(BLOCKED)), 'refusal_counts':{v:BLOCKED.count(v) for v in sorted(set(BLOCKED))},'allowed_resources':{p:hashlib.sha256(pathlib.Path(p).read_bytes()).hexdigest() for p in sorted(READS)},'limits':{'cpu_seconds':120,'wall_seconds':180,'native_threads':1},'guard_before_pytest_project_imports':True,'ordinary_imports':True,'children':0,'torch_loaded':'torch' in sys.modules,'torch_threads':None if 'torch' not in sys.modules else [sys.modules['torch'].get_num_threads(),sys.modules['torch'].get_num_interop_threads()],'executable_sha256':hashlib.sha256(EXECUTABLE.read_bytes()).hexdigest(),'head':(RUN/'head.txt').read_text().strip(),'before_hashes':BEFORE_HASHES,'after_hashes':{**{str(p.relative_to(BASE)):hashlib.sha256(p.read_bytes()).hexdigest() for p in HASH_FILES}, 'owned/test_shared_export.py':hashlib.sha256(EXTRA.read_bytes()).hexdigest(), 'owned/actual-four-node-schema.json':hashlib.sha256((RUN/'actual-four-node-schema.json').read_bytes()).hexdigest()}}
+    (RUN/(label+'-runner.py')).write_bytes(pathlib.Path(__file__).read_bytes())
+    (RUN/(label+'.json')).write_text(json.dumps(receipt,indent=2)+'\n')
+    print(json.dumps({k:receipt[k] for k in ('label','result','wall_seconds','cpu_seconds','peak_rss_bytes')}))
+raise SystemExit(result)

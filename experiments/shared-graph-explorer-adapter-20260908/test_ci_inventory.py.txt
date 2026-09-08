@@ -1,0 +1,19 @@
+"""Execute the real tracked inventory verifier, never a test/data build."""
+import contextlib
+import io
+import sys
+from pathlib import Path
+
+def test_real_ci_inventory_verifier():
+    base = Path('/Users/maxghenis/PolicyEngine/_worktrees/microcosm-graph-explorer-adapter-20260908')
+    sys.path.insert(0, str(base/'tools'))
+    import ci_test_groups
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        ci_test_groups.verify()
+    text = output.getvalue()
+    Path('/private/tmp/us-shared-explorer-adapter-20260908/ci-verify.txt').write_text(text)
+    path = 'packages/microcosm-graph/tests/test_explorer.py'
+    assert ci_test_groups.fast_group(path) == 'rest'
+    assert ci_test_groups.engine_group(path) == 'us-am'
+    assert ci_test_groups.process_for('us-am', path) == 'other-shards'
