@@ -428,6 +428,20 @@ def _compare_amount(ready, positions, name, literals):
     expected = np.array(
         [np.nan if v is None else v for v, _ in pairs], dtype=np.float64
     )
+    if name in REFERENCE_FIELDS:
+        routing.amount_observations(field, positions, literals)
+    # ANN's published -1 is retained as +0 with DECLARED_NIU by the money owner.
+    # Normalize only that declared non-dollar code for this comparison; the
+    # separate literal/published projection below keeps the original -1.
+    niu = valid & np.isin(expected, entry.nonmoney_codes)
+    require(
+        np.array_equal(
+            field.statuses[positions] == routing.money.CodebookStatus.DECLARED_NIU,
+            niu,
+        ),
+        "AMOUNT_NIU_STATUS",
+    )
+    expected[niu] = 0.0
     require(
         np.array_equal(
             field.amounts[positions][valid].view("uint64"),

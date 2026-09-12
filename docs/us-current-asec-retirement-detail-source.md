@@ -89,6 +89,13 @@ checks source identity and retained money, and requalifies the parent after
 the last source I/O. Its last checks include actual owner identity and a full
 physical result seal.
 
+The retained-money comparison follows the existing owner's annuity encoding:
+published `ANN_VAL=-1` matches normalized positive zero with `DECLARED_NIU`,
+while the descriptive literal and published amount remain `-1`. A dollar-zero
+literal cannot substitute for that NIU/status pair. Other valid dollar amounts
+retain exact float64 comparison. This distinction is tested through actual
+invented source preparation, as well as direct mismatched-status controls.
+
 `retirement_detail_values_seal(values)` covers table axes, dtypes, exact values,
 nullable Float64 backing storage and masks, literals and detached evidence.
 The returned frozen dataclass contains mutable descriptive tables and grants no

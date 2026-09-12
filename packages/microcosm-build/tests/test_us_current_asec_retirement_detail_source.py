@@ -199,7 +199,7 @@ def test_live_money_roster_is_exact_for_existing_fields_only(owner, change):
         )
 
 
-def retirement_arguments(owner, tmp_path, monkeypatch):
+def retirement_arguments(owner, tmp_path, monkeypatch, *, annuity_niu=False):
     from test_us_asec_coverage_authentication import _changed_parent
     from test_us_survey_population_preparation import fixture
 
@@ -220,7 +220,7 @@ def retirement_arguments(owner, tmp_path, monkeypatch):
         )
     }
     literals = {
-        105: row(owner, I_PENVAL1="4"),
+        105: row(owner, I_PENVAL1="4", ANN_VAL="-1" if annuity_niu else "0"),
         106: row(owner, **zeros, A_AGE="14"),
         107: row(
             owner,
@@ -280,6 +280,63 @@ def prepared(owner, tmp_path, monkeypatch):
     return owner.routing.source.prepare_authenticated_survey_population(
         **retirement_arguments(owner, tmp_path, monkeypatch)
     )
+
+
+def test_actual_annuity_niu_preserves_literal_and_normalized_owner(
+    owner, tmp_path, monkeypatch
+):
+    parent = owner.routing.source.prepare_authenticated_survey_population(
+        **retirement_arguments(owner, tmp_path, monkeypatch, annuity_niu=True)
+    )
+    result = owner.qualify_current_asec_retirement_detail(parent)
+    values = result.person.set_index("native_person_id")
+    money = owner.routing.money
+    assert values.loc[105, "ANN_VAL_literal"] == "-1"
+    assert values.loc[105, "ANN_VAL_published_amount"] == -1
+    assert values.loc[105, "ANN_VAL_parent_validity"] == 1
+    assert (
+        values.loc[105, "ANN_VAL_parent_statuses"] == money.CodebookStatus.DECLARED_NIU
+    )
+    assert values.loc[105, "ANN_VAL_parent_zero_origin"] == money.ZeroOrigin.NOT_ZERO
+    assert values.loc[107, "ANN_VAL_literal"] == "0"
+    assert (
+        values.loc[107, "ANN_VAL_parent_statuses"] != money.CodebookStatus.DECLARED_NIU
+    )
+    literals = result.asec_literals
+    assert literals.loc[literals.ANN_VAL.eq("-1")].shape[0] == 1
+
+    capture = owner._capture_member
+
+    def substitute_dollar_zero(*args):
+        raw = capture(*args)
+        raw.loc[raw.ANN_VAL.eq("-1"), "ANN_VAL"] = "0"
+        return raw
+
+    monkeypatch.setattr(owner, "_capture_member", substitute_dollar_zero)
+    with pytest.raises(ValueError):
+        owner.qualify_current_asec_retirement_detail(parent)
+
+
+@pytest.mark.parametrize("literal,niu_status", [("-1", False), ("0", True)])
+def test_annuity_literal_and_owner_niu_status_must_agree(owner, literal, niu_status):
+    money = owner.routing.money
+    status = (
+        money.CodebookStatus.DECLARED_NIU
+        if niu_status
+        else money.CodebookStatus.ZERO_NONE_OR_NIU
+    )
+    field = money.MoneyField(
+        "ANN_VAL",
+        np.array([0.0], dtype=np.float64).tobytes(),
+        np.array([status], dtype="u1").tobytes(),
+        np.array([1], dtype="u1").tobytes(),
+        np.array([0], dtype="u1").tobytes(),
+    )
+    ready = SimpleNamespace(field=lambda name: field)
+    with pytest.raises(ValueError):
+        owner._compare_amount(
+            ready, np.array([0], dtype=np.int64), "ANN_VAL", [literal]
+        )
 
 
 def test_actual_owner_qualifies_new_literals_without_fabricating_money_fields(
