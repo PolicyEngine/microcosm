@@ -14,9 +14,17 @@ written; see "Root journals are history, not state" in `CLAUDE.md`.
 
 ## State
 
-Merge resolved. Neither solver path was replaced. Grouped instrumentation,
-identity recomputation and the cross-product tests follow in later commits on
-this branch.
+Complete and local. Four commits: the merge, the grouped instrumentation, the
+identity recomputation, and the cross-product controls. Nothing pushed, no PR,
+no release action. Root reviews and integrates.
+
+Scope is the shared solver seam only. `graph_fiscal_dense_calibration.py` still
+calls `calibrate` without an observer, so this branch emits no snapshot for the
+real US fiscal path; that host wiring is a separate step, and no observer
+registry, `Node.params` callback or replay-reruns-the-optimizer claim was
+invented here. See
+[the lane experiment](experiments/grouped-target-snapshot-integration-20260912.md)
+for scope, evidence and residual risks.
 
 ## Done
 
@@ -44,14 +52,30 @@ this branch.
   tree, and neither describes the merged one. They are recomputed against the
   final merged sources in a later commit on this branch.
 
+## Done (continued)
+
+- Instrumented `_optimize_grouped`: the grouped early return in `_optimize`
+  bypassed every hook S added, so grouped runs emitted only a closing snapshot.
+  The in-loop emission sits after the progress callback and before `backward()`
+  and reads the exact float32 estimate tensor the epoch's loss was computed
+  from. Returned weights, trajectory and RNG state are bit-identical with the
+  observer on and off, and no evaluation is added.
+- Separated retain-best detection from the receipt for grouped runs, so a later
+  change that populated a grouped receipt cannot make the reused final emitter
+  claim a retained best. The receipt stays empty.
+- Recomputed six source-derived identity artifacts against this checkout (the
+  five conflicted ones plus the country-bundle digests, which were not
+  conflicted because only G had touched them but which move for the same
+  reason). No value equals either branch's. The simulate and fit.qrf pins were
+  deliberately left alone.
+- Added the checklist's cross product to the three existing grouped test files
+  rather than a new one, so every case reuses fixtures already there.
+
 ## Next
 
-1. Instrument `_optimize_grouped` so grouped runs emit snapshots (the grouped
-   early return in `_optimize` otherwise bypasses every hook S added).
-2. Recompute the five source-derived identities against the final merged
-   checkout and the isolated interpreter.
-3. Add the bounded cross-product tests from checklist section 7.
-4. Record the lane's scope and evidence under `experiments/`.
+Root's independent review and integration. Open follow-ups, none owned here:
+the host observer seam for the US fiscal dense calibration path, a country-scale
+cadence choice backed by a real measurement, and the dashboard consumer.
 
 ---
 
