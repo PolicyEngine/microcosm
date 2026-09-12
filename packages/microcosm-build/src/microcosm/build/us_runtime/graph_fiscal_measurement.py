@@ -528,6 +528,9 @@ class FiscalMeasurementKernel(KernelBase):
                         TargetSpec,
                         Frame,
                         policyengine_us,
+                        # The adapter delegates table/weight materialization
+                        # to this helper's separate defining module.
+                        policyengine_us.engine_tables,
                         runtime,
                         _context_digest,
                         dependencies=self.capabilities.dependencies,
