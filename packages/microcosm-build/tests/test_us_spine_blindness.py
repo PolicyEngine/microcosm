@@ -144,6 +144,8 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "current_asec_interest_source.py",  # ASEC interest -> original money owner.
         # Composes qualified original source axes and DESIGN branches; no fit.
         "current_property_income_sources.py",
+        # Original ASEC pension/disability/survivor details; no population model.
+        "current_asec_retirement_detail_source.py",
         "current_asec_unemployment_source.py",  # UC literal -> original ASEC ids.
         "current_survey_amounts.py",  # Validate origin join; fan out to both clones.
         "current_survey_health_source.py",  # Qualify exact ACS/ASEC source rosters.
@@ -387,6 +389,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         # Pure supplied-table property donor basis and exclusion diagnostics;
         # no source owner or source-spine access exemption
         "current_asec_property_basis.py",
+        # Qualified ASEC retirement details and raw aggregate/slot comparisons
+        "current_asec_retirement_detail_source.py",
         # Qualified UC receipt/amount observations, preserving unknown zeros
         "current_asec_unemployment_source.py",
         # Qualified original property donor/recipient branch composition
