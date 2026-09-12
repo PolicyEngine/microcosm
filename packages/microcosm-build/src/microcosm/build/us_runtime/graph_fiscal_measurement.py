@@ -24,6 +24,7 @@ from scipy import sparse
 
 from microcosm.build import target_materialization
 from microcosm.calibrate import TargetRegistry, TargetSpec, matrix
+from microcosm.calibrate import target as target_math
 from microcosm.calibrate.hierarchy import CalibrationHierarchy, HierarchyGeography
 from microcosm.frame import US_SCHEMA, Frame
 from microcosm.frame.adapters import policyengine_us
@@ -306,6 +307,14 @@ class _Adapter:
     def has_column(self, entity, variable):
         return variable in self.tables[entity]
 
+    def require_known_predicate(self, entity, variable):
+        # A missing comparison input is unknown, even when NumPy would turn
+        # the comparison into False or treat NaN as a nonzero target mask.
+        _require(
+            not pd.isna(self.column(entity, variable)).any(),
+            "MISSING_PREDICATE_INPUT:" + entity + "." + variable,
+        )
+
     def set_column(self, entity, variable, values):
         _require(variable not in self.tables[entity], "MEASUREMENT_COLUMN_COLLISION")
         array = np.asarray(values)
@@ -515,6 +524,7 @@ class FiscalMeasurementKernel(KernelBase):
                         sys.modules[__name__],
                         target_materialization,
                         matrix,
+                        target_math,
                         TargetSpec,
                         Frame,
                         policyengine_us,
@@ -588,15 +598,31 @@ class FiscalMeasurementKernel(KernelBase):
                     contract["closure"]["root"],
                     outputs[contract["closure"]["root"]],
                 )
+        bindings = json.loads(params["contract_targets"])
+        predicates = {
+            (spec.entity, predicate["variable"])
+            for spec in registry
+            for predicate in bindings[spec.metadata["contract_target_id"]]["bindings"][
+                "policyengine"
+            ].get("filters", ())
+        }
+        for entity, variable in sorted(predicates):
+            adapter.require_known_predicate(entity, variable)
         prepared = target_materialization.materialize_target_bindings(
             adapter,
             registry,
-            json.loads(params["contract_targets"]),
+            bindings,
             period=params["period"],
         )
         _require(
             not prepared.skipped, "UNMATERIALIZED_TARGETS:" + str(prepared.skipped)
         )
+        # TargetSpec.filter is evaluated by the CSR compiler, independently
+        # of contract binding predicates, and may use a prepared measure.
+        for entity, variable in sorted(
+            {(s.entity, s.filter) for s in registry if s.filter is not None}
+        ):
+            adapter.require_known_predicate(entity, variable)
         work = Frame(
             adapter.tables, US_SCHEMA, {"household": context.weights["household"]}
         )

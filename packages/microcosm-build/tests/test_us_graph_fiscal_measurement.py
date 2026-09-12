@@ -11,6 +11,7 @@ import pytest
 
 from microcosm.build.us_runtime import graph_fiscal_measurement as stage
 from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import target as target_math
 from microcosm.calibrate.hierarchy import (
     CalibrationHierarchy,
     HierarchyCategory,
@@ -204,6 +205,81 @@ def test_actual_shared_interpreter_sum_and_filter():
         stage.FiscalMeasurementKernel().run(context(arguments)).artifacts["measurement"]
     )
     np.testing.assert_array_equal(measured.matrix.toarray()[0], [60, 60, 80])
+
+
+def test_boolean_indicator_expression_is_an_arithmetic_sum():
+    arguments = declaration()
+    for target in arguments["contract_targets"].values():
+        target["bindings"]["policyengine"] = {"value_expression": "keep + keep"}
+    value = frame()
+    value.person["keep"] = [True, False, True, True]
+    measured = stage.decode_fiscal_measurement(
+        stage.FiscalMeasurementKernel()
+        .run(context(arguments, value))
+        .artifacts["measurement"]
+    )
+    np.testing.assert_array_equal(measured.matrix.toarray()[0], [2, 2, 2])
+
+
+@pytest.mark.parametrize("kind", ["float", "nullable_boolean"])
+@pytest.mark.parametrize("location", ["binding", "target_filter"])
+def test_missing_consumed_predicate_is_refused(kind, location):
+    arguments, value = declaration(), frame()
+    variable = "amount" if kind == "float" else "keep"
+    if kind == "float":
+        value.person.loc[1, variable] = np.nan
+        predicate = {"variable": variable, "operator": ">", "value": 5}
+    else:
+        value.person[variable] = pd.Series([True, pd.NA, True, True], dtype="boolean")
+        predicate = {"variable": variable, "equals": True}
+    if location == "binding":
+        for binding in arguments["contract_targets"].values():
+            binding["bindings"]["policyengine"]["filters"] = [predicate]
+    else:
+        arguments["registry"] = TargetRegistry(
+            [replace(s, filter=variable) for s in arguments["registry"]], country="us"
+        )
+    with pytest.raises(
+        ValueError, match="MISSING_PREDICATE_INPUT:person\\." + variable
+    ):
+        stage.FiscalMeasurementKernel().run(context(arguments, value))
+
+
+@pytest.mark.parametrize("location", ["binding", "target_filter"])
+def test_known_false_predicates_and_unconsumed_missing_inputs_are_preserved(location):
+    arguments, value = declaration(), frame()
+    value.person["keep"] = [True, False, True, True]
+    value.person.loc[0, "amount"] = np.nan  # This measure does not read amount.
+    if location == "binding":
+        for binding in arguments["contract_targets"].values():
+            binding["bindings"]["policyengine"]["filters"] = [
+                {"variable": "keep", "equals": True}
+            ]
+    else:
+        arguments["registry"] = TargetRegistry(
+            [replace(s, filter="keep") for s in arguments["registry"]], country="us"
+        )
+    measured = stage.decode_fiscal_measurement(
+        stage.FiscalMeasurementKernel()
+        .run(context(arguments, value))
+        .artifacts["measurement"]
+    )
+    np.testing.assert_array_equal(measured.matrix.toarray()[0], [1, 1, 1])
+
+
+def test_implementation_identity_includes_target_arithmetic_source(
+    tmp_path, monkeypatch
+):
+    before = stage.FiscalMeasurementKernel().implementation_hash()
+    changed = tmp_path / "changed_target.py"
+    source = Path(target_math.__file__).read_text()
+    original = "        return values * filter_mask\n"
+    assert source.count(original) == 1
+    changed.write_text(
+        source.replace(original, "        return 2.0 * values * filter_mask\n")
+    )
+    monkeypatch.setattr(target_math, "__file__", str(changed))
+    assert stage.FiscalMeasurementKernel().implementation_hash() != before
 
 
 @pytest.mark.parametrize(
