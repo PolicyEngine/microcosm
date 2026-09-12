@@ -19,6 +19,7 @@ from microcosm.calibrate.hierarchy import (
     HierarchyNode,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from microcosm.frame import materialize as frame_materialize
 from microcosm.graph import (
     Capabilities,
     ContentStore,
@@ -279,6 +280,18 @@ def test_implementation_identity_includes_target_arithmetic_source(
         source.replace(original, "        return 2.0 * values * filter_mask\n")
     )
     monkeypatch.setattr(target_math, "__file__", str(changed))
+    assert stage.FiscalMeasurementKernel().implementation_hash() != before
+
+
+def test_implementation_identity_includes_engine_table_transform(tmp_path, monkeypatch):
+    assert stage.policyengine_us.engine_tables is frame_materialize.engine_tables
+    before = stage.FiscalMeasurementKernel().implementation_hash()
+    changed = tmp_path / "changed_engine_tables.py"
+    source = Path(frame_materialize.__file__).read_text()
+    original = "        ).values\n"
+    assert source.count(original) == 1
+    changed.write_text(source.replace(original, "        ).values * 2.0\n"))
+    monkeypatch.setattr(frame_materialize, "__file__", str(changed))
     assert stage.FiscalMeasurementKernel().implementation_hash() != before
 
 
