@@ -29,6 +29,14 @@ no operator ever re-derives structure or silently corrupts weights:
   support installs via `microcosm-frame[axiom]`; the engine itself currently
   installs from an `axiom-rules-engine` checkout.
 
+Shallow copy, deep copy and pickle round trips of base `Weights` objects
+reconstruct through the validated constructor. They preserve exact float64
+values and weight kind, create independent read-only storage, and leave the
+class namespace unchanged, including Python 3.14's deferred annotation state.
+Subclass instances retain their existing default or custom copy protocol so
+extra state and different constructors keep working; subclasses remain
+responsible for validation and read-only storage during reconstruction.
+
 The Axiom adapter requires callers to declare the exact RuleSpec authority
 roots used for compilation. It does not infer them from the module path,
 environment, current directory, or sibling checkouts:
