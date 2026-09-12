@@ -38,3 +38,21 @@ only; no tracked file is edited; commits land on the local ref
   #532<-#534<-#535<-{#536,#537}; #536<-#538; #893<-#901; #904<-#906.
 - Next: per-PR judgment fan-out (workflow), adversarial verification of every
   close-class disposition, then the report.
+
+## 2026-09-12 ~08:25 ET — judgment fan-out running; owner spot checks
+
+- Workflow `wf_5af23347-412`: 43 evidence agents → lens-specific refuters
+  (close-class PRs get unique-work, superseder and dependents refuters;
+  keep-class get a supersession hunter; MERGE-READY gets a readiness check)
+  → one coherence critic.
+- Owner spot checks so far: #752 is superseded (main merged #756
+  "Bump policyengine-us to 1.819.0", commit 05d254aa2, 2026-08-24; uv.lock and
+  the pin test on main both read 1.819.0). #817's `requires_us` markers are
+  absent on main. #642 (SLD), #718 (campaign naming), #888 (explorer.py),
+  #629 (`reform_dict`) symbols are absent on main. #339's commit is not on
+  main although its base branch merged as #334. Current aggregate `ci-ok`
+  job dates from 404e45777 (2026-08-25); PRs showing only
+  `test (3.13/3.14)` + `wheels (3.13/3.14)` ran under the old workflow.
+- Note: the sibling issue-triage lane checked out `issue-triage-20260912` in
+  this shared worktree (HEAD moved 0c3f4f651 → 3e56e503b); this lane's
+  commits stay on `triage/journal-20260912` via plumbing and are unaffected.
