@@ -56,22 +56,51 @@ the same float64 `problem.estimates` the final diagnostics use. Enabling the
 observer on a grouped run adds no matrix evaluation, no model evaluation and no
 RNG advance, and returns bit-identical weights and trajectory.
 
-Two grouped specifics a consumer must read correctly:
+Four grouped specifics a consumer must read correctly:
 
 - Grouped Adam is a **closing-state** algorithm. It never runs the retain-best
   rule, so every grouped snapshot carries
   `best_retained = {"available": false, "epoch": null, "loss": null}` and the
   closing snapshot is stamped `epoch == epochs`. That is not the same as an
   ordinary run whose retain-best rule was switched off, so grouped snapshots
-  also carry bounded `selection` labels — `rule: "closing_state"`,
-  `constraint_mode: "grouped_upper_bounds"` and `grouped_preserve_zeros` —
-  which mirror the run's `options["iterate_selection"]`.
+  also carry bounded `selection` labels: `rule`, `constraint_mode`,
+  `grouped_preserve_zeros` and `epoch_convention`. Only `rule` mirrors a value
+  in the result — it is exactly `options["iterate_selection"]`, i.e.
+  `"closing_state"`. `constraint_mode` has no `options` counterpart of that
+  name, and the snapshot's `grouped_preserve_zeros` is a bare boolean while
+  `options["grouped_preserve_zeros"]` is a dict that is present only when the
+  option is on.
+- **`selection` is populated in two shapes and absent in a third**, so read it
+  defensively. `rule: "best_feasible_loss"` is the ordinary retain-best receipt
+  (with `selected_epoch`, `epochs_executed`, `epoch_convention`,
+  `selected_loss_float32`, `closing_iterate_loss_float32`), attached to the
+  closing row only. `rule: "closing_state"` is the grouped mode label set,
+  attached to every grouped row including the in-loop ones. But an **ungrouped**
+  closing-state run — gated, mass-conserving, or `l2_lambda > 0`, where
+  `retain_best` is off — leaves `selection` `null` on every row even though its
+  `options["iterate_selection"]` is also `"closing_state"`. So `selection` tells
+  you the selection rule on a grouped or retain-best run and nothing at all on
+  an ungrouped closing-state run, and `selection is not None` does not identify
+  the returned fit — `iterate == "selected"` does. The schema version stays `1`
+  because no envelope field was added, removed or retyped: `selection` has
+  always been an open bounded scalar mapping that may be `null`, and the codec
+  accepts all three cases by construction.
 - In-loop snapshots are **pre-update loss evaluations**, the same convention the
-  ungrouped Adam loop uses. They are deliberately not the post-update projected
-  accepted vector that the private `_post_projection_observer` proof seam
-  reports at the same epoch number: those are different vectors, and producing
-  target totals for the accepted one would require an extra matrix evaluation.
-  That private seam carries record-length weights, household IDs, the group map
+  ungrouped Adam loop uses, and the relationship to the private
+  `_post_projection_observer` proof seam is a **systematic one-epoch lag**, not
+  merely a different vector. At the top of loop iteration `e` the log
+  parameters are the ones that iteration `e-1`'s single overwrite wrote from
+  the accepted state the proof seam reported at `epoch e`; the row built from
+  them is stamped `epoch = e + 1`. So grouped snapshot `epoch = k` is the fit
+  of accepted state `k - 1`, up to an `exp(log(x))` round trip and the float32
+  cast — **not** of the accepted state the proof seam stamps `epoch = k`. Two
+  consequences at full cadence: accepted state 0 gets no snapshot of its own
+  (synthesizing one from the weight-only callback would need an extra matrix
+  evaluation, so it is deliberately not done), and `epoch == epochs` is stamped
+  twice for two states one update apart — the `current` row (state
+  `epochs - 1`) and the `selected` row (state `epochs`). `iterate` and
+  `epoch_convention` are what separate them.
+- The private seam carries record-length weights, household IDs, the group map
   and the absolute-bound vector; none of it reaches a snapshot, and the public
   codec rejects record-level key names outright.
 
@@ -81,6 +110,15 @@ still run *after* the closing snapshot sink, and the unsupported grouped modes
 (scalar cap, conserved mass, prox, L0/exact-k, gate initialization) are still
 refused before the optimizer is constructed. Snapshot support does not turn any
 of them into a permitted numeric path.
+
+**A `selected` snapshot is not proof that the run finished.** That guard order
+is deliberate — emitting after the checks would open a late window in which a
+sink could mutate the returned weights without anything revalidating them — but
+it means the sink is handed the closing payload *before* the admission checks
+run. A grouped run that then trips one of them raises and returns no
+`CalibrationResult`, while a `TargetSnapshotWriter` sink has already written
+that `selected` payload into `latest.json`. A consumer must take completion from
+the run's own exit, not from the presence of a `selected` snapshot.
 
 This implements the solver and local storage portion of
 [issue 908](https://github.com/PolicyEngine/microcosm/issues/908). Country-host

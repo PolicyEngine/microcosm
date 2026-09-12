@@ -214,6 +214,7 @@ def test_grouped_closing_state_and_ordinary_best_iterate_remain_distinct(
         rebuild(grouped, grouped_frame)
 
 
+@pytest.mark.parametrize("sparse", [False, True], ids=["dense", "csr"])
 @pytest.mark.parametrize("fixed_zeros", [False, True], ids=["positive", "fixed-zeros"])
 @pytest.mark.parametrize(
     "target,warm,epochs,selected_epoch",
@@ -223,7 +224,7 @@ def test_grouped_closing_state_and_ordinary_best_iterate_remain_distinct(
     ],
 )
 def test_snapshots_describe_each_solver_s_own_selection_on_the_same_oscillation(
-    fixed_zeros, target, warm, epochs, selected_epoch
+    monkeypatch, sparse, fixed_zeros, target, warm, epochs, selected_epoch
 ) -> None:
     """The same oscillating example, now observed by both solvers.
 
@@ -233,6 +234,16 @@ def test_snapshots_describe_each_solver_s_own_selection_on_the_same_oscillation(
     that inferred retain-best from an empty receipt would look right here only
     by accident, which is why the grouped label is asserted too.
     """
+    monkeypatch.setattr(solve_module, "_SPARSE_MIN_CELLS", 1 if sparse else 1000)
+    monkeypatch.setattr(solve_module, "_SPARSE_DENSITY_CUTOFF", 1.0)
+    layouts = []
+    apply_constraint = solve_module._apply_constraint
+
+    def observe_layout(matrix, weights):
+        layouts.append(matrix.layout)
+        return apply_constraint(matrix, weights)
+
+    monkeypatch.setattr(solve_module, "_apply_constraint", observe_layout)
     targets = TargetSet(
         (
             Target(
@@ -277,6 +288,9 @@ def test_snapshots_describe_each_solver_s_own_selection_on_the_same_oscillation(
         **common,
     )
 
+    expected_layout = torch.sparse_csr if sparse else torch.strided
+    assert layouts and all(layout == expected_layout for layout in layouts)
+
     # The example is still an oscillation the two rules resolve differently.
     assert grouped.final_loss > ordinary.final_loss + 0.01
 
@@ -290,11 +304,22 @@ def test_snapshots_describe_each_solver_s_own_selection_on_the_same_oscillation(
     ordinary_selected = ordinary_selected[0]
     grouped_selected = grouped_selected[0]
 
+    # NOTE, pinning existing behaviour rather than endorsing it: the ordinary
+    # closing row stamps the receipt's selected_epoch, which counts completed
+    # optimizer updates from zero, while in-loop rows are stamped 1-based. So
+    # this epoch is one less than the in-loop row for the same iterate, and for
+    # the warm-start case it is 0, which no in-loop row carries. That asymmetry
+    # comes from the reviewed snapshot head and the checklist requires ordinary
+    # selected-epoch behaviour to stay unchanged here; the receipt's own
+    # epoch_convention field is what disambiguates it.
     assert ordinary_selected["epoch"] == selected_epoch
     assert ordinary_selected["epoch"] < epochs
     assert ordinary_selected["best_retained"]["available"] is True
     assert ordinary_selected["selection"]["rule"] == "best_feasible_loss"
     assert ordinary_selected["selection"]["selected_epoch"] == selected_epoch
+    assert ordinary_selected["selection"]["epoch_convention"] == (
+        "completed_optimizer_updates; zero is start"
+    )
 
     assert grouped_selected["epoch"] == epochs
     assert grouped_selected["best_retained"] == {
@@ -306,6 +331,7 @@ def test_snapshots_describe_each_solver_s_own_selection_on_the_same_oscillation(
         "rule": "closing_state",
         "constraint_mode": "grouped_upper_bounds",
         "grouped_preserve_zeros": fixed_zeros,
+        "epoch_convention": solve_module.GROUPED_CLOSING_EPOCH_CONVENTION,
     }
 
     # Both closing snapshots are the float64 estimates their result returned.

@@ -539,6 +539,15 @@ def test_observer_payload_cannot_mutate_the_accepted_state():
     assert actual.tobytes() == expected.tobytes()
 
 
+def _snapshot_observer(seen, **kwargs):
+    return TargetSnapshotObserver(
+        sink=seen.append,
+        run_id="grouped-bounds",
+        cadence=TargetSnapshotCadence(every=EVERY_EPOCH),
+        **kwargs,
+    )
+
+
 def _grouped_run(**overrides):
     options = dict(epochs=6, learning_rate=0.05, grouped_upper_bounds=_groups())
     options.update(overrides)
@@ -608,28 +617,32 @@ def test_public_grouped_unknown_method_is_reported_as_method(monkeypatch, method
     ],
 )
 def test_grouped_mode_constraints_survive_the_reordering(monkeypatch, kwargs, expected):
-    """Valid-valued but unsupported grouped modes still refuse as before."""
+    """Valid-valued but unsupported grouped modes still refuse as before.
+
+    With an observer attached, because snapshot support must not turn any of
+    these into a permitted numeric path: the refusal precedes the bind, so a
+    refused run emits nothing at all.
+    """
     calls = []
+    seen = []
     monkeypatch.setattr(torch.optim, "Adam", lambda *a, **k: calls.append(1))
     with pytest.raises(ValueError, match=expected):
-        _grouped_run(epochs=2, **kwargs)
+        _grouped_run(epochs=2, target_snapshots=_snapshot_observer(seen), **kwargs)
     assert not calls
+    assert seen == []
 
 
-def _snapshot_observer(seen, **kwargs):
-    return TargetSnapshotObserver(
-        sink=seen.append,
-        run_id="grouped-bounds",
-        cadence=TargetSnapshotCadence(every=EVERY_EPOCH),
-        **kwargs,
-    )
+def test_zero_epochs_through_the_internal_grouped_path_synthesizes_nothing(
+    monkeypatch,
+):
+    """No snapshot is synthesized outside the epoch loop.
 
-
-def test_zero_epochs_through_the_internal_grouped_path_adds_no_evaluation(monkeypatch):
-    """A bound observer on a no-update run neither emits nor evaluates.
-
-    ``calibrate`` refuses zero epochs publicly, so the internal seam is the
-    only way to reach this state; it must stay a pure admission path.
+    Both the forward pass and the emission live inside ``for epoch in
+    range(epochs)``, so with zero epochs neither can run. What this actually
+    guards is the tempting alternative the design forbids: an initial aggregate
+    snapshot built from ``observe(0)``'s weight-only payload, which would need a
+    matrix evaluation the observer is not allowed to add. ``calibrate`` refuses
+    zero epochs publicly, so the internal seam is the only way in.
     """
     applications = []
     apply_constraint = solve._apply_constraint
@@ -651,6 +664,9 @@ def test_zero_epochs_through_the_internal_grouped_path_adds_no_evaluation(monkey
     assert final.tobytes() == initial.tobytes()
     assert applications == []
     assert seen == []
+    # The observer is admitted and bound -- it just has nothing to report -- so
+    # this is a statement about the emission sites, not about a disabled path.
+    assert bound.emits(1, 1)
 
 
 @pytest.mark.parametrize("sparse", [False, True], ids=["dense", "csr"])
@@ -661,8 +677,9 @@ def test_a_binding_bound_that_actually_corrects_is_unchanged_by_snapshots(
 
     Caps of 81 sit just above the initial per-group total of 80, so the very
     first Adam step overshoots them and the projection has to pull each group
-    back on every epoch — the case where an observer could plausibly disturb
-    the accepted state.
+    back on every epoch -- the case where an observer could plausibly disturb
+    the accepted state. This is the strictly positive arm: no fixed zeros, no
+    warm start, no L2, which the fixed-support file covers in combination.
     """
     if sparse:
         monkeypatch.setattr(solve, "_SPARSE_MIN_CELLS", 1)
@@ -677,9 +694,21 @@ def test_a_binding_bound_that_actually_corrects_is_unchanged_by_snapshots(
         )
         return result, observations
 
+    layouts = []
+    apply_constraint = solve._apply_constraint
+
+    def observe_layout(matrix, weights):
+        layouts.append(matrix.layout)
+        return apply_constraint(matrix, weights)
+
+    monkeypatch.setattr(solve, "_apply_constraint", observe_layout)
+
     off, observed_off = run()
     seen = []
     on, observed_on = run(target_snapshots=_snapshot_observer(seen))
+
+    # The case really took the layout its id claims.
+    assert set(layouts) == {torch.sparse_csr if sparse else torch.strided}
 
     # The bound really binds on this fixture, or the test proves nothing.
     assert sum(item["corrected_group_count"] for item in observed_off) > 0
@@ -687,7 +716,6 @@ def test_a_binding_bound_that_actually_corrects_is_unchanged_by_snapshots(
     assert on.weights.tobytes() == off.weights.tobytes()
     assert on.loss_trajectory.tobytes() == off.loss_trajectory.tobytes()
     assert on.options == off.options
-    assert on.options["grouped_upper_bounds"] == off.options["grouped_upper_bounds"]
     for payload_on, payload_off in zip(observed_on, observed_off, strict=True):
         assert payload_on["weights"].tobytes() == payload_off["weights"].tobytes()
         assert (
@@ -703,17 +731,22 @@ def test_a_binding_bound_that_actually_corrects_is_unchanged_by_snapshots(
     assert all(item["iterate"] == ITERATE_CURRENT for item in in_loop)
     assert all(item["precision"] == "float32" for item in in_loop)
     assert all(
-        item["selection"]
-        == {
-            "rule": "closing_state",
-            "constraint_mode": "grouped_upper_bounds",
-            "grouped_preserve_zeros": False,
-        }
+        item["selection"]["rule"] == "closing_state"
+        and item["selection"]["constraint_mode"] == "grouped_upper_bounds"
+        and item["selection"]["grouped_preserve_zeros"] is False
         for item in seen
+    )
+    assert all(
+        item["selection"]["epoch_convention"] == solve.GROUPED_IN_LOOP_EPOCH_CONVENTION
+        for item in in_loop
     )
     selected = [item for item in seen if item["iterate"] == ITERATE_SELECTED]
     assert len(selected) == 1
     assert selected[0]["epoch"] == 6 and selected[0]["precision"] == "float64"
+    assert (
+        selected[0]["selection"]["epoch_convention"]
+        == solve.GROUPED_CLOSING_EPOCH_CONVENTION
+    )
     assert [row["estimate"] for row in selected[0]["targets"]] == [
         diagnostic.final_estimate for diagnostic in on.diagnostics
     ]

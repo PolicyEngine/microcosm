@@ -20,29 +20,100 @@
     "all_four_matched_the_pin_file": true
   },
   "commits": [
-    {"sha": "fff20fca56f41060db55742b884a6df2693e139f", "what": "merge of the two reviewed heads; neither solver replaced"},
-    {"sha": "e64d5a8850ab301b7e819a6b972f235c51688568", "what": "grouped Adam snapshot emission and retain-best separation"},
-    {"sha": "7ac2b864a93977ffa98fa86674c09e04ea6b20b5", "what": "source-derived identity recomputation"},
-    {"sha": "2f62bb8448010bcc9b9e1419ea24aafcb85917d1", "what": "grouped x snapshot cross-product controls"}
+    {
+      "sha": "fff20fca56f41060db55742b884a6df2693e139f",
+      "what": "merge of the two reviewed heads; neither solver replaced"
+    },
+    {
+      "sha": "e64d5a8850ab301b7e819a6b972f235c51688568",
+      "what": "grouped Adam snapshot emission and retain-best separation"
+    },
+    {
+      "sha": "7ac2b864a93977ffa98fa86674c09e04ea6b20b5",
+      "what": "source-derived identity recomputation"
+    },
+    {
+      "sha": "2f62bb8448010bcc9b9e1419ea24aafcb85917d1",
+      "what": "grouped x snapshot cross-product controls"
+    },
+    {
+      "sha": "this commit (the fifth on the branch)",
+      "what": "review-round corrections: epoch_convention label, docs/codec contract corrections, hardened and extended controls, second identity recomputation"
+    }
   ],
   "final_source_hashes": {
-    "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py": "e031ab5823d0f7bff43642e6ebb160ad867ec387e88658534ccd1e6ef62b273d",
+    "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py": "6dc40e372ce58c3fa689024d7c99748d63d8f812442c38ac9203513d978405bc",
     "packages/microcosm-calibrate/src/microcosm/calibrate/__init__.py": "1841264fe0c09a96ccf6aacf467cfa201de92ee67185b00cd378456fc7631a78",
-    "packages/microcosm-calibrate/src/microcosm/calibrate/target_snapshots.py": "a86958e3e94ca2454d997567883e2223e832f7edb5d994f689f0a64ddad1a88a",
-    "packages/microcosm-calibrate/src/microcosm/calibrate/group_bounds.py": "19a440a31d164832f61c84b2c1277a7a8798681f6830700bf03511dce7524557"
+    "packages/microcosm-calibrate/src/microcosm/calibrate/target_snapshots.py": "6971f8fbbe1fc6d537cd6f0a9f961cce84ebef0ced3c37d98b4448f11288deb5",
+    "packages/microcosm-calibrate/src/microcosm/calibrate/group_bounds.py": "19a440a31d164832f61c84b2c1277a7a8798681f6830700bf03511dce7524557",
+    "note": "__init__.py and group_bounds.py are unchanged from the merge; solve.py and target_snapshots.py moved again in the review round"
   },
   "identity_recomputation": {
     "rule": "recomputed against the merged checkout and the isolated interpreter; no value equals either branch's, so none is an ours/theirs choice",
     "values": [
-      {"artifact": "spec_engine/inventory_coverage.py EXPECTED_HASHES.seed_protocol", "grouped": "7c67a5a315a615b152d7de106ae10b1828c166bb11c67a713c8a52d65ae9db47", "snapshots": "d052fd875d014f6fa28d6f5b052735912f464d4efb2c98ecf373346b8cc454d3", "recomputed": "57e21b6522cfccc9b2d5e725503d9d39255abe5d5c9b391563d08ee664dea988"},
-      {"artifact": "spec_engine/inventory_coverage.py EXPECTED_HASHES.seed_map", "grouped": "be2d24ad74bdc6339dfa073d01469074baee4e3a691eaa350451d36fa17d13dc", "snapshots": "d5a9694aac3e351f987b4f08ef8add0c25fcd3390d6bb2a851246da03adde516", "recomputed": "4ae2a0634e3a92061beba5bf5059db7c30b4ff6f1898e639697d246cb7e73878"},
-      {"artifact": "us resolved spec_sha256 (us-f0-coverage.json and test_us_multispine_pool_tool.py)", "grouped": "f03e4d08d0ba4e15da53aab86bd2fbf50286e19e248657ac859b760103af2405", "snapshots": "ff2c97039853e18bfc0eb5388eb08c688cae33068b742f232d4c06a18b8efd88", "recomputed": "15e61194b4077de58272b14d83af95f7f54427aeab251429ada3cda01d93cbc8"},
-      {"artifact": "test_spec_engine_loader.py minimal-loader golden", "grouped": "77f043a13853bbc109b6aa8cb42635ab1b2ebea69a1997b5bdb4c78a3726aeb3", "snapshots": "8a24089831b3a8f0cfe1be094769af7a30b7b74dbc7d4009e26e9f56444cba4c", "recomputed": "3868d14d5df04b5ab10ed4f0a56c2d9652c15c219840ed88d437f847fa481de7"},
-      {"artifact": "parity kernels/calibrate/pins.json implementation_hash", "grouped": "59ca046b7c26bd872e56bd4cf3dd6170748fbe04e5a5da7b711e94aea8d3cc74", "snapshots": "46b52a20a7a5fac27d354c735a09ae5ba171d62bd9010fbc3079b06614cc2a32", "recomputed": "f2dd92eaaebba782e100cb92d90524d3ae6e2bab9ffedbacbe8df0257d5cae3d"},
-      {"artifact": "parity kernels/calibrate/pins.json node_key", "grouped": "faaccb273d0aedeb1cca2e1b52c3e27678867512493f3c0379f596890c258cd1", "snapshots": "970720b71cb2579a5e2f714ca47deabc28c9249a83007ebfda83e2e7446d9311", "recomputed": "ae92142a3bf0934ac6b6751aca904c1847cdff3ca8533af83141d2cbf1ccf102"},
-      {"artifact": "test_spec_engine_country_bundles.py am", "grouped": "c15bd12508731eb11fe061df810d9047b4c62c2887645cb19d3c54c7a104aa1c", "snapshots": "untouched-by-S", "recomputed": "258b940476e9f611d5e12d471dead7427479f36267eb40ed459fcd2f3dbd18ae"},
-      {"artifact": "test_spec_engine_country_bundles.py be", "grouped": "5285b530974a9b8f7c21497fb140fdbd6060c3f1cc983987f35e9f244e71ee62", "snapshots": "untouched-by-S", "recomputed": "a61b65f7a1424c090081632fb1ddacdb85dae1b85920faff5dd7cb144cb1b5a1"},
-      {"artifact": "test_spec_engine_country_bundles.py uk", "grouped": "1ac642230eb3166dd9ea2a113536985e35bf2898f914e289f5564ac8fde6e0b4", "snapshots": "untouched-by-S", "recomputed": "66837fd0fad4956566655f558d10f8d39e83523ad873b17e9f37ce0cb5012724"}
+      {
+        "artifact": "spec_engine/inventory_coverage.py EXPECTED_HASHES.seed_protocol",
+        "grouped": "7c67a5a315a615b152d7de106ae10b1828c166bb11c67a713c8a52d65ae9db47",
+        "snapshots": "d052fd875d014f6fa28d6f5b052735912f464d4efb2c98ecf373346b8cc454d3",
+        "superseded_intermediate": "57e21b6522cfccc9b2d5e725503d9d39255abe5d5c9b391563d08ee664dea988",
+        "recomputed": "ad1fb8059cefa34ef030bd3445240291f23aec2973efa04334c8ff4541b0580b"
+      },
+      {
+        "artifact": "spec_engine/inventory_coverage.py EXPECTED_HASHES.seed_map",
+        "grouped": "be2d24ad74bdc6339dfa073d01469074baee4e3a691eaa350451d36fa17d13dc",
+        "snapshots": "d5a9694aac3e351f987b4f08ef8add0c25fcd3390d6bb2a851246da03adde516",
+        "superseded_intermediate": "4ae2a0634e3a92061beba5bf5059db7c30b4ff6f1898e639697d246cb7e73878",
+        "recomputed": "655c8c1dd338a793db3dff66161ed6f38572e53e76343fecb6e7959d70ea97d9"
+      },
+      {
+        "artifact": "us resolved spec_sha256 (us-f0-coverage.json and test_us_multispine_pool_tool.py)",
+        "grouped": "f03e4d08d0ba4e15da53aab86bd2fbf50286e19e248657ac859b760103af2405",
+        "snapshots": "ff2c97039853e18bfc0eb5388eb08c688cae33068b742f232d4c06a18b8efd88",
+        "superseded_intermediate": "15e61194b4077de58272b14d83af95f7f54427aeab251429ada3cda01d93cbc8",
+        "recomputed": "4fe23cc8b5440e7993a12b8026d5633c94c7b44934ebbb6d6630f19a03863af7"
+      },
+      {
+        "artifact": "test_spec_engine_loader.py minimal-loader golden",
+        "grouped": "77f043a13853bbc109b6aa8cb42635ab1b2ebea69a1997b5bdb4c78a3726aeb3",
+        "snapshots": "8a24089831b3a8f0cfe1be094769af7a30b7b74dbc7d4009e26e9f56444cba4c",
+        "superseded_intermediate": "3868d14d5df04b5ab10ed4f0a56c2d9652c15c219840ed88d437f847fa481de7",
+        "recomputed": "74aa3b66e740862ba3534f37af155fcd57e493ef9bb0e1633c5b17d50ceb9d65"
+      },
+      {
+        "artifact": "parity kernels/calibrate/pins.json implementation_hash",
+        "grouped": "59ca046b7c26bd872e56bd4cf3dd6170748fbe04e5a5da7b711e94aea8d3cc74",
+        "snapshots": "46b52a20a7a5fac27d354c735a09ae5ba171d62bd9010fbc3079b06614cc2a32",
+        "superseded_intermediate": "f2dd92eaaebba782e100cb92d90524d3ae6e2bab9ffedbacbe8df0257d5cae3d",
+        "recomputed": "cf21bc080180c2c537048f27b2f30f9f3151c7ad998bf2b5d8519003840a28ac"
+      },
+      {
+        "artifact": "parity kernels/calibrate/pins.json node_key",
+        "grouped": "faaccb273d0aedeb1cca2e1b52c3e27678867512493f3c0379f596890c258cd1",
+        "snapshots": "970720b71cb2579a5e2f714ca47deabc28c9249a83007ebfda83e2e7446d9311",
+        "superseded_intermediate": "ae92142a3bf0934ac6b6751aca904c1847cdff3ca8533af83141d2cbf1ccf102",
+        "recomputed": "c5a53ecea61bb155a40a62022e48911974016ac616301d0ae48e7eb36a4014ea"
+      },
+      {
+        "artifact": "test_spec_engine_country_bundles.py am",
+        "grouped": "c15bd12508731eb11fe061df810d9047b4c62c2887645cb19d3c54c7a104aa1c",
+        "snapshots": "untouched-by-S",
+        "superseded_intermediate": "258b940476e9f611d5e12d471dead7427479f36267eb40ed459fcd2f3dbd18ae",
+        "recomputed": "50ebce88574ae2223bd006f2305985da6cedaf7f16e8b325350589a29f031a62"
+      },
+      {
+        "artifact": "test_spec_engine_country_bundles.py be",
+        "grouped": "5285b530974a9b8f7c21497fb140fdbd6060c3f1cc983987f35e9f244e71ee62",
+        "snapshots": "untouched-by-S",
+        "superseded_intermediate": "a61b65f7a1424c090081632fb1ddacdb85dae1b85920faff5dd7cb144cb1b5a1",
+        "recomputed": "0b9b2bbffd4b27bb34f8e8401f4e9d98dc717b031205db4b3f23cf6476f6fde3"
+      },
+      {
+        "artifact": "test_spec_engine_country_bundles.py uk",
+        "grouped": "1ac642230eb3166dd9ea2a113536985e35bf2898f914e289f5564ac8fde6e0b4",
+        "snapshots": "untouched-by-S",
+        "superseded_intermediate": "66837fd0fad4956566655f558d10f8d39e83523ad873b17e9f37ce0cb5012724",
+        "recomputed": "b70649a89e2ea5026a554241a69b7c337628b5a55ad95972b8fd0e4c81dd646f"
+      }
     ],
     "deliberately_not_repinned": [
       "packages/microcosm-graph/tests/fixtures/parity/kernels/simulate/pins.json (G's value preserved; it hashes microcosm/frame/bundle.py, not calibrate.solve)",
@@ -53,32 +124,74 @@
       "us-f0-coverage.json": "tools/spec_engine_coverage.py (then --check exits 0)",
       "calibrate parity pin": "tools/graph_parity_repin.py calibrate",
       "loader golden and bundle digests": "taken from the observed value the failing identity assertion reports"
-    }
+    },
+    "recomputed_twice": "The review round edited solve.py again, so every source-derived identity moved a second time. The 'recomputed' column below is FINAL; the values in commit 7ac2b864a's message are the superseded intermediate ones."
   },
   "diff_summary": {
-    "vs_grouped_head": {"files": 25, "insertions": 4287, "deletions": 20, "note": "every deletion is an identity pin line, an extended import, an extended docstring, or a line S replaced; nothing from the grouped head was lost"},
-    "vs_snapshot_head": {"files": 432, "insertions": 148099, "deletions": 3251, "note": "the grouped branch's whole delta"}
+    "vs_grouped_head": {
+      "files": 25,
+      "insertions": 4287,
+      "deletions": 20,
+      "note": "every deletion is an identity pin line, an extended import, an extended docstring, or a line S replaced; nothing from the grouped head was lost"
+    },
+    "vs_snapshot_head": {
+      "files": 432,
+      "insertions": 148099,
+      "deletions": 3251,
+      "note": "the grouped branch's whole delta"
+    }
   },
   "controls": {
-    "microcosm-calibrate shard": {"passed": 443, "failed": 0},
-    "microcosm-graph shard + test_us_multispine_pool_tool + 4 spec-engine identity files": {"passed": 775, "failed": 0},
+    "microcosm-calibrate shard": {
+      "passed": 463,
+      "failed": 0
+    },
+    "microcosm-graph shard + test_us_multispine_pool_tool + 4 spec-engine identity files": {
+      "passed": 775,
+      "failed": 0
+    },
     "per_file": {
-      "test_target_snapshots.py": {"cases": 52, "added": 0},
-      "test_grouped_fixed_support.py": {"cases": 42, "added": 18},
-      "test_group_bounds.py": {"cases": 82, "added": 3},
-      "test_solve_us_launch_integration.py": {"cases": 12, "added": 4}
+      "test_target_snapshots.py": {
+        "cases": 52,
+        "added": 0
+      },
+      "test_grouped_fixed_support.py": {
+        "cases": 58,
+        "added": 34
+      },
+      "test_group_bounds.py": {
+        "cases": 82,
+        "added": 3
+      },
+      "test_solve_us_launch_integration.py": {
+        "cases": 16,
+        "added": 8
+      }
     },
     "tools/spec_engine_coverage.py --check": "exit 0",
     "tools/ci_test_groups.py --verify": "verification=ok; no test file changed lane and none is [defaulted]",
-    "ruff": "format clean, check clean on packages/microcosm-calibrate"
+    "ruff": "format clean, check clean on packages/microcosm-calibrate",
+    "review_round": "5 independent dimension reviewers plus 5 adversarial verifiers; all 7 checklist sections confirmed, no blocker survived. Reviewer suite numbers taken mid-edit are superseded by the counts here, which were taken on the settled final commit."
   },
   "environment": {
     "interpreter": "borrowed root .venv/bin/python 3.14.4 run with -I -B -S and an explicit sys.path",
     "sys_path_order": "this worktree's packages/*/src first, then the repo root, then the borrowed site-packages",
-    "imports_asserted_in_worktree": ["microcosm.frame", "microcosm.calibrate", "microcosm.build", "microcosm.fit", "microcosm.graph"],
+    "imports_asserted_in_worktree": [
+      "microcosm.frame",
+      "microcosm.calibrate",
+      "microcosm.build",
+      "microcosm.fit",
+      "microcosm.graph"
+    ],
     "threads": "OMP/OPENBLAS/MKL/NUMEXPR/VECLIB all 1",
     "pytest": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1, -p no:randomly",
-    "locked_versions": {"numpy": "2.4.6", "pandas": "3.0.3", "scipy": "1.17.1", "torch": "2.12.0", "platform": "arm64/darwin/py3.14"},
+    "locked_versions": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "scipy": "1.17.1",
+      "torch": "2.12.0",
+      "platform": "arm64/darwin/py3.14"
+    },
     "nothing_installed": true
   },
   "not_done_on_purpose": [
@@ -86,5 +199,28 @@
     "any global observer registry, Node.params callback or filesystem path in graph params",
     "any claim that a required replay reruns the optimizer",
     "native build, PUF fixture, country build, dependency install, push, PR, publication or merge"
-  ]
+  ],
+  "corrections": [
+    "Commit 7ac2b864a's message refers to 'the us value there' in test_spec_engine_country_bundles.py. That file has no us row (am/be/uk only) and its `if country == \"us\"` branch is pre-existing dead code. The US resolved-spec digest is pinned in docs/evidence/spec-engine/us-f0-coverage.json and test_us_multispine_pool_tool.py.",
+    "Commit 7ac2b864a's digest table is superseded by the review round's second recomputation.",
+    "target_snapshots.py is no longer byte-identical to the reviewed snapshot head. The delta is the module docstring only, which this branch made false; dropping the module docstring yields identical ASTs on both versions, and the module is not in the attested source inventory, so no identity depends on it."
+  ],
+  "inherited_red": {
+    "file": "packages/microcosm-build/tests/test_us_spine_blindness.py",
+    "result": "3 failed, 495 passed",
+    "cases": [
+      "test_us_runtime_module_classification_is_complete",
+      "test_runtime_classification_rejects_a_new_unreviewed_module",
+      "test_runtime_population_operators_are_source_spine_blind"
+    ],
+    "unclassified_modules": [
+      "graph_fiscal_dense_calibration.py",
+      "graph_fiscal_measurement.py",
+      "graph_puf55_route_attachment.py",
+      "graph_survey_puf55.py"
+    ],
+    "inherited": true,
+    "proof": "that test file and all four modules are byte-identical to the grouped head 536f1ceefcdafda3cc619c14b4da18e012a7be57",
+    "consequence": "this branch does NOT have a green PR gate: the file runs in the always-on fast/rest lane with no engine extras. Fixing it is the grouped branch's own work and was deliberately not attempted here."
+  }
 }

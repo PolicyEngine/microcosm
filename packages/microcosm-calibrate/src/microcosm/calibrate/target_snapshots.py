@@ -28,13 +28,30 @@ names the version-2 staging content policy refuses on upload (microcosm#896).
 
 The contract is the shape every real caller already emits:
 :mod:`~microcosm.calibrate.solve` emits ``search`` as
-``{budget_iteration, budget_iters, l0_lambda}``, ``selection`` as the iterate
-selection receipt (``rule``, ``selected_epoch``, ``epochs_executed``,
-``epoch_convention``, ``selected_loss_float32``,
-``closing_iterate_loss_float32``) and ``best_retained`` as the closed triple
-``{available, epoch, loss}``. ``context`` is caller-supplied run labelling and
-has no in-tree producer, so it takes the same flat scalar contract rather than
-a wider one invented for a caller that does not exist.
+``{budget_iteration, budget_iters, l0_lambda}`` and ``best_retained`` as the
+closed triple ``{available, epoch, loss}``. ``selection`` holds one of two
+shapes, and ``selection["rule"]`` says which:
+
+* ``rule="best_feasible_loss"`` -- the ordinary retain-best iterate selection
+  receipt (``selected_epoch``, ``epochs_executed``, ``epoch_convention``,
+  ``selected_loss_float32``, ``closing_iterate_loss_float32``), attached to the
+  closing ``selected`` row only.
+* ``rule="closing_state"`` -- the grouped solver's mode labels
+  (``constraint_mode``, ``grouped_preserve_zeros``, ``epoch_convention``),
+  attached to every grouped row including the in-loop ones, because a
+  closing-state solver's ``best_retained.available: False`` is otherwise
+  indistinguishable from retain-best being switched off.
+
+An ungrouped *closing-state* run -- gated, mass-conserving, or with
+``l2_lambda > 0``, where the retain-best rule is off -- leaves ``selection``
+``None`` on every row, so an absent ``selection`` is a third case rather than a
+missing one. All of them are bounded flat scalar mappings or ``None``, so the
+codec's contract is unchanged and the schema version is not a function of which
+one a producer chose.
+
+``context`` is caller-supplied run labelling and has no in-tree producer, so it
+takes the same flat scalar contract rather than a wider one invented for a
+caller that does not exist.
 
 Because every supported metadata value is an immutable scalar, the mapping the
 sink receives is a freshly built container of its own: a sink that mutates a

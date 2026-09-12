@@ -1146,21 +1146,47 @@ def _check_grouped_household_ids(frame: Frame, expected: tuple[int | str, ...]) 
         raise ValueError("stored group household IDs must preserve the ordered IDs")
 
 
-def _grouped_snapshot_selection(preserve_zeros: bool) -> dict[str, object]:
+#: What a grouped in-loop snapshot's ``epoch`` refers to. At the top of loop
+#: iteration ``e`` the log parameters are the ones the previous iteration's
+#: single overwrite wrote from accepted state ``e``, so the row stamped
+#: ``epoch = e + 1`` is the fit of the accepted state the private proof seam
+#: reported one epoch earlier -- up to an ``exp(log(x))`` round trip and the
+#: float32 cast. Without this label the two rows a full-cadence run stamps
+#: ``epoch == epochs`` (the last in-loop evaluation and the returned closing
+#: state) look like the same iterate, and they are one update apart.
+GROUPED_IN_LOOP_EPOCH_CONVENTION = (
+    "pre_update_loss_evaluation; epoch e is the fit of accepted state e-1"
+)
+
+#: What the grouped closing snapshot's ``epoch`` refers to: the accepted vector
+#: after every requested projection, which is what calibrate returns.
+GROUPED_CLOSING_EPOCH_CONVENTION = (
+    "returned_closing_state; epoch is the accepted projections executed"
+)
+
+
+def _grouped_snapshot_selection(
+    preserve_zeros: bool, *, epoch_convention: str
+) -> dict[str, object]:
     """The bounded aggregate labels identifying a grouped snapshot's solver.
 
     Grouped Adam is a closing-state algorithm: it never runs the retain-best
     rule, so every grouped snapshot carries ``best_retained.available: False``.
     Without a label saying which solver produced it, that is indistinguishable
     from an ordinary run whose retain-best rule happened to be off, and a
-    consumer would read the two the same way. These are three JSON scalars
-    describing the run's mode -- no household IDs, no group membership, no
-    bounds vector, and nothing of record length.
+    consumer would read the two the same way.
+
+    ``rule`` is the run's own ``options["iterate_selection"]``, and no ordinary
+    iterate-selection receipt carries that value, so ``selection["rule"]``
+    discriminates the two shapes this field can hold. These are four JSON
+    scalars describing the run's mode -- no household IDs, no group membership,
+    no bounds vector, and nothing of record length.
     """
     return {
         "rule": "closing_state",
         "constraint_mode": "grouped_upper_bounds",
         "grouped_preserve_zeros": bool(preserve_zeros),
+        "epoch_convention": epoch_convention,
     }
 
 
@@ -1263,7 +1289,11 @@ def _optimize_grouped(
         anchor_t = torch.tensor(anchor[active], dtype=torch.float64)
     trajectory = np.empty(epochs, dtype=np.float64)
     selection_labels = (
-        None if snapshots is None else _grouped_snapshot_selection(preserve_zeros)
+        None
+        if snapshots is None
+        else _grouped_snapshot_selection(
+            preserve_zeros, epoch_convention=GROUPED_IN_LOOP_EPOCH_CONVENTION
+        )
     )
     for epoch in range(epochs):
         optimizer.zero_grad()
@@ -2136,11 +2166,14 @@ def calibrate(
             the same seams. Because grouped Adam is a closing-state algorithm,
             every grouped snapshot reports ``best_retained.available: False``
             and carries the bounded ``selection`` labels ``rule``,
-            ``constraint_mode`` and ``grouped_preserve_zeros`` so a consumer
-            can tell "this solver retains no best iterate" from "retain-best
-            was switched off". The private ``_post_projection_observer`` proof
-            seam stays entirely separate: its record-length weights, household
-            IDs, group map and bounds never reach a snapshot.
+            ``constraint_mode``, ``grouped_preserve_zeros`` and
+            ``epoch_convention`` so a consumer can tell "this solver retains no
+            best iterate" from "retain-best was switched off", and can tell the
+            last in-loop evaluation from the returned closing state when both
+            are stamped ``epoch == epochs``. The private
+            ``_post_projection_observer`` proof seam stays entirely separate:
+            its record-length weights, household IDs, group map and bounds
+            never reach a snapshot.
 
     Returns:
         A :class:`CalibrationResult` with the calibrated frame, per-target
@@ -2596,7 +2629,10 @@ def calibrate(
             # selection identity is the bounded mode label instead. Both are
             # aggregate scalars; neither carries record-level content.
             selection=(
-                _grouped_snapshot_selection(grouped_preserve_zeros)
+                _grouped_snapshot_selection(
+                    grouped_preserve_zeros,
+                    epoch_convention=GROUPED_CLOSING_EPOCH_CONVENTION,
+                )
                 if grouped_run
                 else (dict(iterate_selection_receipt) or None)
             ),

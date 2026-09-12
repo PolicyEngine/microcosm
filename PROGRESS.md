@@ -71,11 +71,36 @@ for scope, evidence and residual risks.
 - Added the checklist's cross product to the three existing grouped test files
   rather than a new one, so every case reuses fixtures already there.
 
+## Done (review round)
+
+Five independent dimension reviewers plus five adversarial verifiers audited the
+branch. All seven checklist sections were confirmed and no blocker survived. The
+round still produced real corrections, all in the fifth commit: the grouped
+labels gained `epoch_convention` (a full-cadence grouped run stamps
+`epoch == epochs` twice, one accepted projection apart, and in-loop row `e + 1`
+is the fit of accepted state `e`); the codec's own module docstring, which this
+branch made false, was corrected; the docs now state the third `selection` case
+and that a closing snapshot is not proof a run finished; the controls gained a
+bounded-cadence case, a populated-receipt case, a refused-mode-with-observer
+case, a compiled-ordering case with colliding row labels, a read-only-weights
+case and the accepted-state lag assertion; and every source-derived identity was
+recomputed a second time, because the round edited `solve.py` again.
+
 ## Next
 
-Root's independent review and integration. Open follow-ups, none owned here:
-the host observer seam for the US fiscal dense calibration path, a country-scale
-cadence choice backed by a real measurement, and the dashboard consumer.
+Root's independent review and integration.
+
+**This branch does not have a green PR gate, for a reason it inherited.**
+`test_us_spine_blindness.py` fails three cases here; that file and the four US
+runtime modules it names are byte-identical to the grouped head, which added
+those modules without classifying them in the blindness registries. It runs in
+the always-on fast lane, so it would block a PR. Fixing it is the grouped
+branch's own work and was deliberately not attempted here.
+
+Other open follow-ups, none owned here: the host observer seam for the US fiscal
+dense calibration path, a country-scale cadence choice backed by a real
+measurement, the dashboard consumer, and declaring the snapshot codec an
+implementation dependency at whatever owned seam first produces snapshots.
 
 ---
 
