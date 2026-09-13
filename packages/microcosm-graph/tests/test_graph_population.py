@@ -1422,9 +1422,9 @@ def _design_update_result(population: Population, *, factor: float) -> KernelRes
 def _clone_and_entrant_expand_node(*, base: str) -> Node:
     """An EXPAND that clones one household and admits one true entrant.
 
-    The toy household table carries no data columns, so the entrant row
-    materializes nothing; ``expand_cells`` is empty exactly as it is for the
-    lineage EXPAND above.
+    Copied rows carry their source's storage, and the toy household table
+    has no column but its id, so nothing here has to be materialized;
+    ``expand_cells`` is empty exactly as it is for the lineage EXPAND above.
     """
     return Node(
         "grow",
@@ -1448,17 +1448,20 @@ ENTRANT_DESIGN_WEIGHT = 7.0
 
 
 def _clone_and_entrant_expand_result(population: Population) -> KernelResult:
-    """Clone household 10 as 40 and admit 50 from nothing.
+    """Clone household 10 as 40, and admit household 50 from nothing.
 
-    The returned design weights are the incumbent ones with the clone's copy
-    of its source appended, then the entrant's declared weight.
+    Household 10's members are copied with it, because a copied group
+    requires the same number of copies of every incumbent member
+    (``_remapped_expand_memberships``); the entrant household joins with
+    none. The returned design weights are the incumbent ones, then the
+    clone's copy of its source's weight, then the entrant's declared one.
     """
     incumbent = population.frame.weights_for("household").values
     return KernelResult(
         expand={
             "person": pd.Series(
-                [],
-                index=pd.Index([], dtype="int64", name="person_id"),
+                [1, 2],
+                index=pd.Index([5, 6], dtype="int64", name="person_id"),
                 dtype="int64",
             ),
             "household": pd.Series(
@@ -1536,6 +1539,11 @@ def test_a_design_update_moves_no_anchor_for_retained_clone_or_entrant_rows() ->
     np.testing.assert_array_equal(
         over_updated.frame.table("household")["household_id"],
         np.array([10, 20, 30, 40, 50]),
+    )
+    person = over_updated.frame.table("person")
+    np.testing.assert_array_equal(person["person_id"], np.array([1, 2, 3, 4, 5, 6]))
+    np.testing.assert_array_equal(
+        person["person_household_id"], np.array([10, 10, 20, 30, 40, 40])
     )
     # Not vacuous: the two versions' design *values* differ by the factor for
     # every row that existed before the update, and the clone copies the
