@@ -655,6 +655,16 @@ def _project_context(
     )
     strata = frame.strata.loc[person_mask].copy()
     _freeze_series(strata)
+    # The projection above orders each table by declaration, not by the
+    # version's own layout, so a consumer rebuilding the version's tables
+    # needs that layout separately -- restricted to what it was given, so it
+    # never learns the name of a column it cannot read (amendment 26).
+    column_order: dict[str, tuple[str, ...]] = {}
+    for entity, table in tables.items():
+        projected = set(table.columns)
+        column_order[entity] = tuple(
+            column for column in frame.table(entity).columns if column in projected
+        )
     return KernelContext(
         node=node,
         tables=MappingProxyType(tables),
@@ -664,6 +674,9 @@ def _project_context(
         rng=np.random.default_rng(seed(key)),
         sources=MappingProxyType({name: sources[name] for name in node.sources}),
         artifacts={} if artifacts is None else artifacts,
+        frame_metadata=frame.metadata,
+        frame_mass_log=frame.mass_log,
+        frame_column_order=MappingProxyType(column_order),
         tolerances=tolerances,
         numerics=numerics,
     )

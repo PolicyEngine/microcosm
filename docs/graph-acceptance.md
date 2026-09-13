@@ -552,6 +552,49 @@ lock unchanged:
     `uk.full.normalize` node is the first consumer; its UK graph stages
     and calibration science stay in that branch.
 
+26. **The context carries the version's metadata, mass log and column
+    order.** The executor projects each entity table in *declaration*
+    order, so `KernelContext.tables` is not the population version's
+    layout, and the version's `Frame` metadata and mass log were not
+    reachable from a kernel at all. A kernel that has to hand a declared
+    projection back to a legacy function as a `Frame` therefore could not
+    reconstruct one without inventing the parts it could not see.
+    `kernel.py` gains three read-only fields:
+
+    - `frame_metadata` — the version's own metadata. The executor passes
+      `Frame.metadata`, which `Frame` has already deeply frozen;
+      `KernelContext` adds a read-only view over it and does **not** itself
+      deep-freeze a mapping built some other way. (This is a deliberate
+      difference from the UK branch, which imports
+      `microcosm.frame.bundle._freeze_metadata` into the frozen interface:
+      a frozen contract should not depend on another shard's private name.)
+    - `frame_mass_log` — the version's `Frame` mass records, in order, and
+      specifically the *incoming* ones. A node needing a stage's completed
+      records must run after that stage's structural boundary or read its
+      predecessor's evidence; incidental node order is not authority. The
+      write side already existed (`receipt['frame_mass_log_append']`); only
+      the read side was missing.
+    - `frame_column_order` — entity to the version's own column order,
+      restricted to the columns projected into `tables`. An entry that is
+      not exactly an ordering of that table's columns is refused, so an
+      order can neither hide a column the node was given nor name one it
+      was not: a column *name* is itself information about the version, and
+      B1's "nothing else is visible" covers names as well as values.
+
+    The three ride after `artifacts` and before `tolerances`, so amendment
+    17's statement that `numerics` rides at the end of the context stays
+    literally true and amendment 19's that `artifacts` rides before the
+    pair does too — the unit assertion of *adjacency* becomes the ordering
+    amendment 19 actually claimed. The acceptance suite's B2 field set
+    gains the three in its own commit, as amendment 19's did. Nothing here
+    is normative: `Node` is untouched, no canonical projection changes, and
+    no node key moves. The fields are rebuilt from a restored `Frame` on a
+    cache hit exactly as they are from a computed one, which is what
+    amendment 22's metadata-preserving Frame format makes possible.
+    `kernel.py` is re-locked. Raised by the same source review as amendment
+    25; the UK full-build graph's `context_frame` helper (#901, head
+    `051fb972`) is the first consumer.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.
