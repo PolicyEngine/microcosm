@@ -495,3 +495,83 @@ def test_receiving_rechecks_membership_after_declaration(owner, actual):
     person.loc[person.person_household_id == 304, "person_household_id"] = 303
     with pytest.raises(ValueError, match="ORPHAN_GROUP:household"):
         owner.PropertyTaxReceivingKernel().run(replace(context, tables=tables))
+
+
+def test_anticipated_outputs_declare_same_graph_without_invented_values(owner):
+    complete = _supported_frame(owner)
+    added = (*owner.PROPERTY_COMPONENTS[:3], *owner.TAX_LEAF_COLUMNS)
+    source = Frame(
+        {
+            "person": complete.person.drop(columns=list(added)),
+            "household": complete.table("household"),
+        },
+        complete.schema,
+        {"household": complete.weights_for("household")},
+    )
+    before = source.person.copy(deep=True)
+    descriptors = tuple(Owned("person", name, "float64") for name in added)
+    nodes = owner.property_tax_leaf_nodes(
+        source,
+        population="source",
+        projection=ArtifactInput("projection", "source", "projection", PROJECTION),
+        reconciliation=ArtifactInput(
+            "reconciliation", "source", "reconciliation", RECONCILIATION
+        ),
+        atol=1e-10,
+        rtol=1e-12,
+        anticipated_outputs=descriptors,
+    )
+    # Actual appended column order defines the same declared receiving slices.
+    restored = Frame(
+        {
+            "person": pd.concat([source.person, complete.person[list(added)]], axis=1),
+            "household": complete.table("household"),
+        },
+        complete.schema,
+        {"household": complete.weights_for("household")},
+    )
+    assert [n.normative() for n in nodes] == [
+        n.normative() for n in declaration(owner, restored)
+    ]
+    pd.testing.assert_frame_equal(source.person, before, check_exact=True)
+    assert not set(added) & set(source.person)
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "container",
+        "duplicate",
+        "entity",
+        "structural",
+        "mask",
+        "conflict",
+        "unclaimed_rewrite",
+    ],
+)
+def test_anticipated_output_descriptor_refusal(owner, defect):
+    source = _supported_frame(owner)
+    column = Owned("person", "anticipated", "float64")
+    entries = {
+        "container": [column],
+        "duplicate": (column, column),
+        "entity": (Owned("absent", "anticipated", "float64"),),
+        "structural": (Owned("person", "other_id", "int64"),),
+        "mask": (Owned("person", "anticipated", "float64", rows="subset"),),
+        "conflict": (
+            Owned("person", owner.TAX_LEAF_COLUMNS[0], "int64", rewrite=True),
+        ),
+        "unclaimed_rewrite": (Owned("person", "anticipated", "float64", rewrite=True),),
+    }[defect]
+    with pytest.raises(ValueError, match="ANTICIPATED"):
+        owner.property_tax_leaf_nodes(
+            source,
+            population="source",
+            projection=ArtifactInput("projection", "source", "projection", PROJECTION),
+            reconciliation=ArtifactInput(
+                "reconciliation", "source", "reconciliation", RECONCILIATION
+            ),
+            atol=1e-10,
+            rtol=1e-12,
+            anticipated_outputs=entries,
+        )

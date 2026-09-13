@@ -41,6 +41,16 @@ host supplies their actual producer IDs and nominal types. Register
 `PropertyTaxReceivingKernel`, `PropertyTaxLeavesKernel` and
 `PropertyTaxLeafGateKernel`.
 
+When compiling before the earlier financial/property nodes execute, the host
+may pass `anticipated_outputs=tuple_of_owned_descriptors`. The factory combines
+those existing declarations with the real checked Frame's entity/axis/group
+shapes and dtypes. It creates no placeholder values or synthetic population.
+It rejects duplicate descriptors, unknown entities, structural ID fields,
+masked outputs and incompatible or unclaimed rewrites. At execution the host
+re-declares the nodes from the actual complete post-property Frame and requires
+the same normative declarations before reconstructing the results. The default
+empty descriptor tuple still requires a complete actual input Frame.
+
 1. `survey_property.tax_receiving` opens a new population version using
    FILTER-all. This inherits the prior owners and permits explicit replacement of
    the four incumbent leaves. The executor adds a real FILTER conservation record

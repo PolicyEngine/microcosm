@@ -20,11 +20,23 @@ import pandas as pd
 from microcosm.fit import qrf_target
 from microcosm.fit.graph_legacy_apply_matrix import LegacyQRFApplyMatrixKernel
 from microcosm.fit.graph_legacy_train import LegacyQRFTrainKernel
-from microcosm.graph import KernelResult, StructuralDelta, compile_graph, run_graph
+from microcosm.graph import (
+    ArtifactInput,
+    ArtifactValue,
+    KernelResult,
+    StructuralDelta,
+    compile_graph,
+    run_graph,
+)
 from microcosm.graph import population as population_ops
-from microcosm.graph.artifact_edges import typed_contracts
-from microcosm.graph.executor import _all_node_keys, _source_paths_and_keys
-from microcosm.graph.keys import _capabilities_projection
+from microcosm.graph.artifact_edges import numeric_scope, typed_contracts
+from microcosm.graph.executor import (
+    _all_node_keys,
+    _apply_result,
+    _project_context,
+    _source_paths_and_keys,
+)
+from microcosm.graph.keys import _capabilities_projection, opaque_artifact_key
 from microcosm.graph.population import Population
 from microcosm.graph.serialize import graph_to_json
 
@@ -101,6 +113,10 @@ class _FinancialRunState:
     property_income_bytes: bytes | None = None
     legacy_financial_population: Population | None = None
     legacy_financial_stamp: object = None
+    rebase_property_taxes: bool = False
+    property_population: Population | None = None
+    property_population_stamp: object = None
+    tax_verification: bytes | None = None
 
 
 def _property_module():
@@ -108,6 +124,120 @@ def _property_module():
     from . import graph_current_survey_property
 
     return graph_current_survey_property
+
+
+def _tax_module():
+    from . import graph_property_tax_leaves
+
+    return graph_property_tax_leaves
+
+
+def _tax_nodes(frame, population, options, *, anticipated_outputs=()):
+    property_graph = _property_module()
+    reconciliation = options.nodes((property_graph.PROPERTY_REPORTED_TOTAL,))[-1]
+    output = reconciliation.artifact_outputs[0]
+    return _tax_module().property_tax_leaf_nodes(
+        frame,
+        population=population,
+        projection=ArtifactInput(
+            "projection",
+            property_graph.PROJECTION_NODE,
+            "projection",
+            property_graph.PROJECTION_TYPE,
+        ),
+        reconciliation=ArtifactInput(
+            "reconciliation",
+            reconciliation.id,
+            output.name,
+            output.type,
+        ),
+        atol=float(options.atol),
+        rtol=float(options.rtol),
+        anticipated_outputs=anticipated_outputs,
+    )
+
+
+def _reconstruct_tax(population, *, compiled, kernels, keys, loaded, options):
+    """Replay three deterministic operations on the actual complete post35 Frame."""
+    tax = _tax_module()
+    nodes = _tax_nodes(population.frame, population.version, options)
+    classes = (
+        tax.PropertyTaxReceivingKernel,
+        tax.PropertyTaxLeavesKernel,
+        tax.PropertyTaxLeafGateKernel,
+    )
+    populations, results = {}, {}
+    for node, cls in zip(nodes, classes, strict=True):
+        require(
+            node.normative() == compiled.graph.node(node.id).normative(),
+            "PROPERTY_TAX_DECLARATION",
+        )
+        artifacts = {
+            edge.name: ArtifactValue(
+                loaded[edge.producer, edge.artifact],
+                edge.type,
+                opaque_artifact_key(keys[edge.producer], edge.artifact),
+                keys[edge.producer],
+                numeric_scope(
+                    kernels.get(compiled.graph.node(edge.producer).kernel).capabilities
+                ),
+            )
+            for edge in node.artifact_inputs
+        }
+        context = _project_context(
+            node,
+            population,
+            key=keys[node.id],
+            sources={},
+            tolerances={},
+            numerics={},
+            artifacts=artifacts,
+        )
+        result = cls().run(context)
+        require(
+            all(
+                loaded[node.id, name] == payload
+                for name, payload in result.artifacts.items()
+            ),
+            "PROPERTY_TAX_ARTIFACT",
+        )
+        population = _apply_result(
+            node,
+            result,
+            population,
+            mass_partition=compiled.graph.mass_partition,
+        )
+        populations[node.id], results[node.id] = population, result
+    return populations, results
+
+
+def financial_tax_gate_edges(run):
+    """Declare the real numerical gate only for an issued opt-in run."""
+    state = _run_entry(run)[2]
+    if not state.rebase_property_taxes:
+        return ()
+    tax = _tax_module()
+    return (
+        ArtifactInput(
+            "property_tax_verification",
+            tax.GATE_NODE,
+            "verification",
+            tax.VERIFICATION_TYPE,
+        ),
+    )
+
+
+def require_complete_property_taxes(run):
+    """Require the already checked numerical gate before PUF source qualification."""
+    entry = _run_entry(run)
+    _pure_run(run, entry)
+    state = entry[2]
+    if state.rebase_property_taxes:
+        document = codec.decode_json(state.tax_verification)
+        require(
+            document["numeric_verified"] is True and document["complete"] is True,
+            "PROPERTY_TAX_INPUTS_INCOMPLETE",
+        )
 
 
 def _manifest_population_seals(manifest, compiled):
@@ -141,6 +271,8 @@ def _run_entry(run):
 def financial_output_node(run):
     """Name the final writer of an already issued financial run."""
     state = _run_entry(run)[2]
+    if state.rebase_property_taxes:
+        return _tax_module().GATE_NODE
     return (
         financial.ATTACH_NODE
         if state.property_income is None
@@ -187,11 +319,26 @@ def _run_document(run, state):
                 else {
                     "property_income": codec.decode_json(state.property_income_bytes),
                     "property_node_count": 16,
-                    "tax_split_rebased": False,
+                    "tax_split_rebased": state.rebase_property_taxes,
                     "capital_gains_conditioning": _property_module().CAP_LIMITATION,
                     "legacy_financial_frame_sha256": values.source._frame_identity(
                         state.legacy_financial_population.frame
                     ),
+                }
+            ),
+            **(
+                {}
+                if not state.rebase_property_taxes
+                else {
+                    "tax_rebase_node_count": 3,
+                    "tax_rebased_columns": _tax_module().TAX_LEAF_COLUMNS,
+                    "tax_verification_sha256": codec.sha(state.tax_verification),
+                    "property_frame_sha256": values.source._frame_identity(
+                        state.property_population.frame
+                    ),
+                    "tax_leaf_complete": codec.decode_json(state.tax_verification)[
+                        "complete"
+                    ],
                 }
             ),
         }
@@ -261,6 +408,13 @@ def _pure_run(run, entry):
             == state.legacy_financial_stamp,
             "PROPERTY_OPTIONS_OR_LEGACY_POPULATION_CHANGED",
         )
+    if state.rebase_property_taxes:
+        require(
+            state.property_income is not None
+            and reconstruction._population_stamp(state.property_population)
+            == state.property_population_stamp,
+            "PROPERTY_TAX_PARENT_POPULATION_CHANGED",
+        )
     for name, population, stamp in state.populations:
         actual = (
             run.financial_population if name == "financial" else getattr(prefix, name)
@@ -271,7 +425,7 @@ def _pure_run(run, entry):
         )
     require(
         _run_document(run, state) == entry[1]
-        and _live(state.property_income) == state.live,
+        and _live(state.property_income, state.rebase_property_taxes) == state.live,
         "FINAL_FINANCIAL_RUN_SEAL",
     )
     require(_run_entry(run) is entry, "FINAL_FINANCIAL_RUN_ISSUANCE")
@@ -303,6 +457,19 @@ def check_atomic_survey_financial_run(run):
         == state.artifact_hashes,
         "FINANCIAL_RUN_ARTIFACT_CHANGED",
     )
+    if state.rebase_property_taxes:
+        tax_populations, _ = _reconstruct_tax(
+            state.property_population,
+            compiled=run.compiled,
+            kernels=run.kernels,
+            keys=keys,
+            loaded=loaded,
+            options=state.property_income,
+        )
+        atomic.same_replayed_population(
+            tax_populations[_tax_module().GATE_NODE],
+            run.financial_population,
+        )
     # These exact fitted artifacts were checked at actual execution/required
     # replay before issuance. Rechecking their identities needs no new pickle
     # decode or fit; the materialized verifier freshly derives current values.
@@ -335,7 +502,11 @@ def check_atomic_survey_financial_run(run):
             prefix.allocated_population,
             prefix.clone_population,
             legacy_population=state.legacy_financial_population,
-            population=run.financial_population,
+            population=(
+                state.property_population
+                if state.rebase_property_taxes
+                else run.financial_population
+            ),
             host_pins=codec.decode_json(state.pins),
             options=state.property_income,
             artifacts=loaded,
@@ -364,6 +535,8 @@ def _issue_run(
     live,
     property_income=None,
     legacy_financial_population=None,
+    rebase_property_taxes=False,
+    property_population=None,
 ):
     """Called only after this runner's complete materialization/replay checks."""
     prefix = result.prefix
@@ -430,6 +603,14 @@ def _issue_run(
         None
         if legacy_financial_population is None
         else reconstruction._population_stamp(legacy_financial_population),
+        rebase_property_taxes,
+        property_population,
+        None
+        if property_population is None
+        else reconstruction._population_stamp(property_population),
+        None
+        if not rebase_property_taxes
+        else loaded[_tax_module().GATE_NODE, "verification"],
     )
     identifier = id(result)
 
@@ -443,7 +624,7 @@ def _issue_run(
     _pure_run(result, _run_entry(result))
 
 
-def _live(property_income=None):
+def _live(property_income=None, rebase_property_taxes=False):
     """Pure final fence over this composition and its existing owner closure."""
     result = dict(values.host.survey_budget._live())
     modules = (
@@ -490,6 +671,24 @@ def _live(property_income=None):
                 extension.sources.PROTOCOL,
                 current_asec_property_basis.OTHER_PROPERTY_CATEGORIES,
                 current_asec_property_basis.OTHER_UNSPECIFIED_CATEGORY,
+            )
+        )
+    if rebase_property_taxes:
+        tax = _tax_module()
+        modules = (*modules, tax, tax.cps_carried)
+        result["property_tax_contract"] = values.source._runtime_marker(
+            (
+                tax.PROTOCOL,
+                tax.RECEIVING_NODE,
+                tax.TAX_LEAVES_NODE,
+                tax.GATE_NODE,
+                tax.TAX_LEAF_COLUMNS,
+                tax.DIAGNOSTICS_TYPE,
+                tax.VERIFICATION_TYPE,
+                tax.PROPERTY_COMPONENTS,
+                tax._INPUTS,
+                tax.cps_carried.TAXABLE_INTEREST_FRACTION,
+                tax.cps_carried.QUALIFIED_DIVIDEND_FRACTION,
             )
         )
     for module in modules:
@@ -662,11 +861,17 @@ def run_atomic_survey_financial(
     demographic_conditioning=False,
     n_estimators=100,
     property_income=None,
+    rebase_property_taxes=False,
     resume="auto",
     return_values=False,
 ):
     """Verify the base financial graph and its explicitly selected extension."""
     require(type(return_values) is bool, "RETURN_VALUES_FLAG")
+    require(type(rebase_property_taxes) is bool, "PROPERTY_TAX_FLAG")
+    require(
+        not rebase_property_taxes or property_income is not None,
+        "PROPERTY_TAX_REQUIRES_PROPERTY",
+    )
     values.feature_columns(demographic_conditioning)
     property_graph = None if property_income is None else _property_module()
     if property_graph is not None:
@@ -677,7 +882,7 @@ def run_atomic_survey_financial(
         property_income_bytes = property_income.to_bytes()
     else:
         property_income_bytes = None
-    live = _live(property_income)
+    live = _live(property_income, rebase_property_taxes)
     config_bytes = values.host.survey_budget._config_payload(geography_config)
     require(config_bytes is not None, "ATOMIC_GEOGRAPHY_REQUIRED")
     prefix = atomic.run_atomic_survey_population(
@@ -766,16 +971,30 @@ def run_atomic_survey_financial(
             options=property_income,
         )
     )
+    tax_nodes = (
+        ()
+        if not rebase_property_taxes
+        else _tax_nodes(
+            prefix.clone_population.frame,
+            prefix.clone_population.version,
+            property_income,
+            anticipated_outputs=(
+                *next(n.outputs for n in nodes if n.id == financial.ATTACH_NODE),
+                *property_graph.owned_columns(),
+            ),
+        )
+    )
     compiled = compile_graph(
         replace(
             prefix.compiled.graph,
-            nodes=(*prefix.compiled.graph.nodes, *nodes, *property_nodes),
+            nodes=(*prefix.compiled.graph.nodes, *nodes, *property_nodes, *tax_nodes),
         )
     )
     require(
         len(prefix.compiled.order) == 9
         and len(property_nodes) == (0 if property_graph is None else 16)
-        and len(compiled.order) == 19 + len(property_nodes),
+        and len(tax_nodes) == (3 if rebase_property_taxes else 0)
+        and len(compiled.order) == 19 + len(property_nodes) + len(tax_nodes),
         "ATOMIC_COMPILER_ROSTER",
     )
     gate_edge = financial._geography_edge()
@@ -818,6 +1037,14 @@ def run_atomic_survey_financial(
             demographic_conditioning=demographic_conditioning,
             geography_config=geography_config,
         )
+    if rebase_property_taxes:
+        tax = _tax_module()
+        for cls in (
+            tax.PropertyTaxReceivingKernel,
+            tax.PropertyTaxLeavesKernel,
+            tax.PropertyTaxLeafGateKernel,
+        ):
+            kernels.register(cls())
     _, source_keys = _source_paths_and_keys(compiled, sources, store)
     keys, implementations = _all_node_keys(compiled, kernels, source_keys)
     base_expected = {
@@ -920,10 +1147,25 @@ def run_atomic_survey_financial(
         )
     )
     receipts.update({name: result.receipt for name, result in property_results.items()})
-    expected, current = {}, {}
+    expected, current, tax_populations = {}, {}, {}
     for node_id in compiled.order:
         node, version = compiled.graph.node(node_id), compiled.versions[node_id]
-        if node_id in property_results:
+        if rebase_property_taxes and node_id == _tax_module().RECEIVING_NODE:
+            tax_populations, tax_results = _reconstruct_tax(
+                current[node.base],
+                compiled=compiled,
+                kernels=kernels,
+                keys=keys,
+                loaded=loaded,
+                options=property_income,
+            )
+            receipts.update(
+                {name: result.receipt for name, result in tax_results.items()}
+            )
+            population = tax_populations[node_id]
+        elif node_id in tax_populations:
+            population = tax_populations[node_id]
+        elif node_id in property_results:
             incumbent = (
                 version if node.structural is StructuralDelta.NONE else node.base
             )
@@ -979,6 +1221,9 @@ def run_atomic_survey_financial(
     final_node = (
         financial.ATTACH_NODE if property_graph is None else property_graph.ATTACH_NODE
     )
+    property_population = observed[final_node] if rebase_property_taxes else None
+    if rebase_property_taxes:
+        final_node = _tax_module().GATE_NODE
     legacy_population = observed[financial.ATTACH_NODE]
     result = AtomicSurveyFinancialRunValues(
         prefix,
@@ -1020,7 +1265,11 @@ def run_atomic_survey_financial(
             prefix.allocated_population,
             prefix.clone_population,
             legacy_population=legacy_population,
-            population=result.financial_population,
+            population=(
+                property_population
+                if rebase_property_taxes
+                else result.financial_population
+            ),
             host_pins=pins,
             options=property_income,
             artifacts=loaded,
@@ -1068,7 +1317,7 @@ def run_atomic_survey_financial(
         and tuple(sorted(prefix.sources.items())) == source_items
         and graph_to_json(compiled.graph) == declaration
         and compiled == compile_graph(compiled.graph)
-        and _live(property_income) == live,
+        and _live(property_income, rebase_property_taxes) == live,
         "ATOMIC_FINAL_BINDINGS",
     )
     for name, (population, stamp) in retained.items():
@@ -1117,5 +1366,7 @@ def run_atomic_survey_financial(
         legacy_financial_population=None
         if property_graph is None
         else legacy_population,
+        rebase_property_taxes=rebase_property_taxes,
+        property_population=property_population,
     )
     return result if return_values else manifest

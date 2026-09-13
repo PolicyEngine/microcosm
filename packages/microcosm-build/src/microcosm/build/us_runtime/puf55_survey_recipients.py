@@ -480,6 +480,7 @@ def qualify_puf55_survey_recipients(financial_run):
     Source receipt objects and caller-supplied role tables are not accepted.
     """
     financial.check_atomic_survey_financial_run(financial_run)
+    financial.require_complete_property_taxes(financial_run)
     entry = financial._run_entry(financial_run)
     state = entry[2]
     preparation = state.prefix.preparation

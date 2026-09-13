@@ -42,7 +42,7 @@ _NAMES = {
 }
 
 
-def _edges():
+def _edges(run):
     return (
         ArtifactInput(
             "preparation",
@@ -62,6 +62,7 @@ def _edges():
             "matrix",
             model_input.RECIPIENT_MATRIX_TYPE,
         ),
+        *financial.financial_tax_gate_edges(run),
     )
 
 
@@ -75,7 +76,7 @@ def _pins(run):
             "artifact_key": opaque_artifact_key(keys[edge.producer], edge.artifact),
             "payload_sha256": hashes[edge.producer, edge.artifact],
         }
-        for edge in _edges()
+        for edge in _edges(run)
     }
 
 
@@ -138,7 +139,7 @@ def puf55_survey_recipient_nodes(qualified):
         PROJECTION_NODE,
         Puf55SurveyRecipientProjectionKernel.ref,
         **common,
-        artifact_inputs=_edges(),
+        artifact_inputs=_edges(qualified.financial_run),
         artifact_outputs=(ArtifactOutput("projection", PROJECTION_TYPE),),
     )
     matrix = Node(
@@ -146,7 +147,7 @@ def puf55_survey_recipient_nodes(qualified):
         Puf55SurveyRecipientMatrixKernel.ref,
         **common,
         artifact_inputs=(
-            *_edges(),
+            *_edges(qualified.financial_run),
             ArtifactInput("projection", PROJECTION_NODE, "projection", PROJECTION_TYPE),
         ),
         artifact_outputs=tuple(
@@ -230,7 +231,9 @@ class _Kernel(KernelBase):
             "financial_projection": entry[2].projection,
             "financial_matrix": entry[2].matrix,
         }
-        for edge in _edges():
+        if entry[2].rebase_property_taxes:
+            payloads["property_tax_verification"] = entry[2].tax_verification
+        for edge in _edges(qualified.financial_run):
             artifact = host.shared.artifact(context, edge.name, edge.type)
             values._require(
                 {

@@ -32,6 +32,7 @@ from microcosm.graph import (
     StructuralDelta,
     source_hash,
 )
+from microcosm.graph.decl import ROWS_ALL
 from microcosm.graph.keys import opaque_artifact_key
 
 from . import cps_carried
@@ -138,15 +139,50 @@ def split_property_tax_leaves(person: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(columns, index=index)
 
 
-def _slices(frame):
+def _slices(frame, anticipated_outputs=()):
     _require(type(frame) is Frame and frame.schema.person_entity == "person", "FRAME")
     _require(not frame.links, "UNSUPPORTED_LINKS")
-    _person(frame.person)
+    _require(type(anticipated_outputs) is tuple, "ANTICIPATED_OUTPUTS")
+    dtypes = {
+        entity: {c: str(frame.table(entity)[c].dtype) for c in frame.table(entity)}
+        for entity in frame.entities
+    }
+    seen = set()
+    for owned in anticipated_outputs:
+        _require(
+            type(owned) is Owned
+            and owned.entity in dtypes
+            and not owned.column.endswith("_id")
+            and owned.rows == ROWS_ALL,
+            "ANTICIPATED_OUTPUT",
+        )
+        coordinate = (owned.entity, owned.column)
+        _require(coordinate not in seen, "DUPLICATE_ANTICIPATED_OUTPUT")
+        seen.add(coordinate)
+        existing = dtypes[owned.entity].get(owned.column)
+        _require(
+            (existing is None and not owned.rewrite)
+            or (owned.rewrite and existing == owned.dtype),
+            "CONFLICTING_ANTICIPATED_OUTPUT",
+        )
+        dtypes[owned.entity][owned.column] = owned.dtype
+    if not anticipated_outputs:
+        _person(frame.person)
+    else:
+        _require(
+            frame.person.person_id.dtype == np.dtype("int64")
+            and frame.person.person_id.is_unique,
+            "PERSON_IDENTITY",
+        )
+        _require(
+            all(dtypes["person"].get(c) == "float64" for c in _INPUTS),
+            "ANTICIPATED_INPUT_DTYPE",
+        )
     _require(len(frame.person) > 0, "EMPTY_RECEIVING_FRAME")
     result = []
     for entity in frame.entities:
         table = frame.table(entity)
-        columns = tuple(c for c in table if not c.endswith("_id"))
+        columns = tuple(c for c in dtypes[entity] if not c.endswith("_id"))
         _require(bool(columns), "NO_READABLE_ENTITY_COLUMN:" + entity)
         if entity != "person":
             _require(
@@ -161,7 +197,7 @@ def _slices(frame):
         result.append(Slice(entity, columns))
     for name in TAX_LEAF_COLUMNS:
         _require(
-            name in frame.person and frame.person[name].dtype == np.dtype("float64"),
+            dtypes["person"].get(name) == "float64",
             "INCUMBENT_LEAF:" + name,
         )
     return tuple(result)
@@ -223,6 +259,7 @@ def property_tax_leaf_nodes(
     reconciliation: ArtifactInput,
     atol: float,
     rtol: float,
+    anticipated_outputs: tuple[Owned, ...] = (),
 ) -> tuple[Node, Node, Node]:
     """Declare an explicit receiving version, four rewrites and numeric gate.
 
@@ -231,7 +268,14 @@ def property_tax_leaf_nodes(
     those shapes before execution. Group tables need a declared non-ID column
     so the receiving kernel can check their actual IDs through KernelContext.
     """
-    return _nodes(population, _slices(frame), projection, reconciliation, atol, rtol)
+    return _nodes(
+        population,
+        _slices(frame, anticipated_outputs),
+        projection,
+        reconciliation,
+        atol,
+        rtol,
+    )
 
 
 def _bindings(context):
