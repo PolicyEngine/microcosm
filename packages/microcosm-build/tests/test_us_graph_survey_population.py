@@ -547,7 +547,11 @@ def test_authenticated_warm_population_state_mutation_refuses_before_downstream(
     assert injected == [field]
 
 
-def test_authenticated_late_store_io_frame_mutation_refuses(tmp_path, monkeypatch):
+@pytest.mark.parametrize("destination", ["observation", "manifest"])
+@pytest.mark.parametrize("return_values", [False, True])
+def test_authenticated_late_store_io_frame_mutation_refuses(
+    tmp_path, monkeypatch, destination, return_values
+):
     arguments = authenticated_arguments(tmp_path, monkeypatch)
     populations, injected = {}, []
 
@@ -562,8 +566,16 @@ def test_authenticated_late_store_io_frame_mutation_refuses(tmp_path, monkeypatc
             and frame.f_locals["node_id"] == graph.ALLOCATION_NODE
             and frame.f_locals["name"] == "frame_context"
         ):
-            table = populations[graph.ALLOCATION_NODE].frame.person
+            observed = populations[graph.ALLOCATION_NODE].frame.person
+            attached = (
+                frame.f_locals["manifest"].population(graph.ALLOCATION_NODE).person
+            )
+            assert observed is not attached
+            before = attached.loc[attached.index[0], "age"]
+            table = observed if destination == "observation" else attached
             table.loc[table.index[0], "age"] += 1
+            other = attached if destination == "observation" else observed
+            assert other.loc[other.index[0], "age"] == before
             injected.append("after-last-artifact-load")
 
     previous = sys.getprofile()
@@ -572,7 +584,9 @@ def test_authenticated_late_store_io_frame_mutation_refuses(tmp_path, monkeypatc
         with pytest.raises(
             graph.SurveyPopulationGraphError, match="MATERIALIZED_FRAME_VALUES"
         ):
-            graph.run_authenticated_survey_population(**arguments, clones=False)
+            graph.run_authenticated_survey_population(
+                **arguments, clones=False, return_values=return_values
+            )
     finally:
         sys.setprofile(previous)
     assert injected == ["after-last-artifact-load"]

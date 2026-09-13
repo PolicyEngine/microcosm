@@ -796,7 +796,8 @@ def _check_node_states(manifest, expected):
 class SurveyPopulationRunValues:
     """Values retained from one completed run, without additional authority.
 
-    These are the actual objects used by the runner, not decoded substitutes.
+    Populations are the runner's detached observations, checked against the
+    complete attached manifest Frames before return, not decoded substitutes.
     Downstream source-qualified boundaries must check the issued preparation
     and complete populations themselves. Freezing this container does not seal
     its contents, authenticate a copy, or admit a later graph descendant.
@@ -1164,6 +1165,12 @@ def run_authenticated_survey_population(
         )
         _check_design_anchors(observed[node.id], cloned_design)
     for node_id, state in expected_states.items():
+        # Observations are detached from executable/store populations. They can
+        # be retained for composition, so seal their values after the last I/O
+        # as well as the separately checked manifest Frames.
+        _same_frame(
+            manifest.population(compiled.versions[node_id]), observed[node_id].frame
+        )
         _check_population_state(observed[node_id], **state)
         _require(
             manifest.mass_ledger(compiled.versions[node_id]) == state["ledger"],
