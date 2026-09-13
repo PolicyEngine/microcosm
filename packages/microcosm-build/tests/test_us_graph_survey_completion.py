@@ -21,6 +21,7 @@ from microcosm.graph import (
     NumericScope,
     Owned,
     Slice,
+    SourceRef,
     StructuralDelta,
     compile_graph,
 )
@@ -191,6 +192,7 @@ def test_separate_completion_and_tax_versions_avoid_rewrite_reader_cycle():
     source = Node(
         "source",
         "test.completion_source@1",
+        sources=("invented",),
         structural=StructuralDelta.CREATE,
         outputs=tuple(
             Owned(entity, name, str(value.table(entity)[name].dtype))
@@ -223,7 +225,11 @@ def test_separate_completion_and_tax_versions_avoid_rewrite_reader_cycle():
             Owned("person", c, "float64", rewrite=True) for c in tax.TAX_LEAF_COLUMNS
         ),
     )
-    graph = Graph("us", (), (source, receiving, child, later, tax_node))
+    graph = Graph(
+        "us",
+        (SourceRef("invented", "frame-store"),),
+        (source, receiving, child, later, tax_node),
+    )
     compiled = compile_graph(graph)
     assert (
         compiled.order.index(child.id)
