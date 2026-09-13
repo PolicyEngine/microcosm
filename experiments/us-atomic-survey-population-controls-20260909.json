@@ -1,0 +1,31 @@
+{
+  "before_after_current_frozen_source_equal": true,
+  "code_resources": 12,
+  "cpu_seconds": 306.843367,
+  "model_source_files": 5983,
+  "native_geography_acceptance": false,
+  "native_payloads_read": 0,
+  "peak_rss_bytes": 440320000,
+  "pending_followups": [
+    "Nonblocking support-file open correction and its FIFO control are tested separately.",
+    "Geography-aware calibration budget and age-runner integration are tested separately.",
+    "Publisher-qualified native block support and a native calibrated build remain pending."
+  ],
+  "publisher_provenance_established": false,
+  "receipt_sha256": "025bc482224c63c06020acd537c603235b0c612dc805d3b86deccc683624993e",
+  "release_eligible": false,
+  "result": 0,
+  "scope": "Complete survey atomic-geography wrapper on invented original source files: cold and required replay, raw/enriched allocation separation, geography-before-clone ordering, full Frame/owner/weight/design inheritance and late mutation refusals.",
+  "source_and_owned_files": 489,
+  "test_source_sha256": "762c386d5333514ef1cd12c1573c2e97970573ae519f6faedff8f9e736f094b9",
+  "tested_reconstruction_source_sha256": "6c707c55e9c6a1b67241f86807700856a6438e98428b8f5704f22ae175e40f89",
+  "tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 5
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 315.1505964579992,
+  "wrapper_source_sha256": "794789a80298b9d239d707ba4cae605b61265846ad6dbc39330d0e1a28c2d1fc"
+}

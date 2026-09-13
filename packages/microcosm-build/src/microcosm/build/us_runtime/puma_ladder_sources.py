@@ -17,8 +17,10 @@ block pass joined to one small tract-to-PUMA relationship file:
 - ``block -> 119th CD`` and ``block -> POP100`` reuse the block-ladder parsers
   :func:`parse_national_cd_bef` and :func:`parse_pl_geo_blocks` unchanged.
 
-Summing block populations by ``(PUMA, CD)``, ``(PUMA, county)`` and
-``(PUMA, tract)`` yields the three overlap tables; summing by PUMA yields the
+Summing block populations by ``(PUMA, tract, CD)`` preserves the joint support
+needed to draw a consistent county/CD pair (county is the tract prefix). The
+three marginal overlap tables are retained for validation and diagnostics;
+summing by PUMA yields the
 anchor population used for the ASEC state -> PUMA draw. Every populated block
 contributes to exactly one PUMA, one CD, one county and one tract, so each
 overlap table conserves its PUMA's population exactly — a defect (a populated
@@ -45,6 +47,7 @@ PUMA_GEOID_STATE_DIVISOR = 10**5
 TRACT_FROM_BLOCK_DIVISOR = 10**4
 COUNTY_FROM_BLOCK_DIVISOR = 10**10
 COUNTY_FROM_TRACT_DIVISOR = 10**6
+US_PUMA_LADDER_SCHEMA_VERSION = 2
 
 _TRACT_TO_PUMA_HEADER = ("STATEFP", "COUNTYFP", "TRACTCE", "PUMA5CE")
 
@@ -120,16 +123,21 @@ def assemble_us_puma_ladder(
 
     For every populated block the block's tract (a structural prefix) must map
     to a PUMA and the block must carry a congressional district; either gap is
-    a source defect, not a skippable row, so the three overlap tables each
-    conserve their PUMA's population exactly. Returns arrays for the anchor
-    (``puma`` / ``puma_population``) and the three overlap tables, each sorted
-    by ``(puma, layer_value)`` for a stable, searchsorted-friendly artifact.
+    a source defect, not a skippable row. Schema v2 retains the actual joint
+    PUMA/tract/CD population before aggregation is lost; county is the tract
+    prefix. It also emits the anchor and three marginal tables for exact
+    conservation checks. Joint rows are sorted by ``(puma, tract, CD)`` and
+    marginal rows by ``(puma, layer_value)``.
     """
+
+    if metadata.get("schema_version") != US_PUMA_LADDER_SCHEMA_VERSION:
+        raise ValueError("Joint PUMA source assembly requires schema_version 2.")
 
     puma_population: dict[int, int] = {}
     puma_cd_population: dict[tuple[int, int], int] = {}
     puma_county_population: dict[tuple[int, int], int] = {}
     puma_tract_population: dict[tuple[int, int], int] = {}
+    joint_population: dict[tuple[int, int, int], int] = {}
     missing_puma: list[int] = []
     missing_cd: list[int] = []
 
@@ -157,6 +165,8 @@ def assemble_us_puma_ladder(
         puma_tract_population[tract_key] = (
             puma_tract_population.get(tract_key, 0) + population
         )
+        joint_key = (puma, tract, cd)
+        joint_population[joint_key] = joint_population.get(joint_key, 0) + population
 
     if missing_puma:
         examples = [f"{block:015d}" for block in sorted(missing_puma)[:5]]
@@ -180,6 +190,7 @@ def assemble_us_puma_ladder(
     cd_puma, cd_value, cd_pop = _overlap_arrays(puma_cd_population)
     county_puma, county_value, county_pop = _overlap_arrays(puma_county_population)
     tract_puma, tract_value, tract_pop = _overlap_arrays(puma_tract_population)
+    joint_keys = sorted(joint_population)
 
     _assert_conserves(
         pumas, anchor_population, cd_puma, cd_pop, layer="congressional_district"
@@ -199,6 +210,16 @@ def assemble_us_puma_ladder(
         "tract_overlap_puma": tract_puma,
         "tract_overlap_tract": tract_value,
         "tract_overlap_population": tract_pop,
+        "joint_overlap_puma": np.asarray(
+            [key[0] for key in joint_keys], dtype=np.int64
+        ),
+        "joint_overlap_tract": np.asarray(
+            [key[1] for key in joint_keys], dtype=np.int64
+        ),
+        "joint_overlap_cd": np.asarray([key[2] for key in joint_keys], dtype=np.int64),
+        "joint_overlap_population": np.asarray(
+            [joint_population[key] for key in joint_keys], dtype=np.int64
+        ),
         "metadata_json": np.asarray(json.dumps(dict(metadata), sort_keys=True)),
     }
 

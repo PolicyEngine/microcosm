@@ -1,0 +1,1 @@
+Add a canonical59 artifact adapter for the explicit PUF55 survey Social Security profile, retaining return identity and weights and validating the total-carrier convention. Record the scoped passing native seven-node age-development run.

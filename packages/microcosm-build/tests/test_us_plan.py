@@ -1055,6 +1055,23 @@ class TestUsSources:
             if rel in allowed_incumbent_references:
                 continue
             text = path.read_text(encoding="utf-8")
+            if rel == (
+                "packages/microcosm-build/src/microcosm/build/us_runtime/"
+                "asec_housing_status.py"
+            ):
+                # These two exact fields cite the inspected historical source
+                # of a frozen checkpoint's unresolved zero values. Preserve
+                # that evidence while still scanning the rest of this module
+                # for an incumbent import, dependency or other reference.
+                historical_fields = (
+                    '    "inspected_repository": "PolicyEngine/policyengine-'
+                    'us-data",\n',
+                    '    "inspected_path": "policyengine_'
+                    'us_data/datasets/cps/census_cps.py",\n',
+                )
+                for field in historical_fields:
+                    assert text.count(field) == 1
+                    text = text.replace(field, "", 1)
             for needle in forbidden:
                 if needle in text:
                     offenders.append((rel, needle))

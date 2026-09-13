@@ -1,0 +1,37 @@
+{
+  "before_after_current_frozen_and_maintained_source_equal": true,
+  "country_distribution_paths_dereferenced_by_postchecker": false,
+  "cpu_seconds": 2.335378,
+  "guard_policy_passed": true,
+  "model_resources": 0,
+  "model_source_files": 0,
+  "native_payloads_read": 0,
+  "physical_postcheck": "pass",
+  "physical_postcheck_sha256": "dc9ca4ad0c4cd77f40a4a0affb12487975d88a6e9d0e7ff2a8e41011e4430071",
+  "receipt_sha256": "b6abf03c647e79415f593a7f8a2cfc933b6ac1a47cf92ba552f2e0cf38d3a838",
+  "release_acceptance": false,
+  "resources": 0,
+  "reviewer": "root",
+  "scope": "Invented three-system UK atomic-area adapter and ordinary lazy-package behavior; no native UK population or calibration acceptance",
+  "source_count": 64,
+  "source_files": {
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/__init__.py": "accb5208bfc22f0d2905dad12ad390b416f424506e61c417d169215fe4bad78d",
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/atomic_area_support.py": "b2006451f4afcbc2c5192eb421dd7c94d11262889c0a10aa2d1040f1fa28ec8e",
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/atomic_household_identity.py": "8d2164ae90eb521ee838936c6ca17e1ce08f43650889ea14afc9bcb82301a325",
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/content_identity.py": "589002ba67e1c669f40b13968f16ee439937bfbd7e36d6ad4ac9ee195af2b3e5",
+    "packages/microcosm-build/src/microcosm/build/uk_runtime/rowwise_geography.py": "5b7287cd228fa7f5385cc19e6ce73184749b3c8b655953440d7273f86f3eabb3",
+    "packages/microcosm-build/tests/test_uk_atomic_area_support.py": "2109e447bf9446b6c4047bc742f0d9c1ed93f89b926fb9be335ae9567292759a",
+    "packages/microcosm-build/tests/test_uk_runtime_lazy_exports.py": "207f5ba4b21737902e42ed8f72f3251425f1aa68959309d3f2ff0345f0f4296b"
+  },
+  "source_map_sha256": "e7c59f91af92643378cefffb2a59be700d1940d3b3dc5aadfb4a4bf0df8e9eff",
+  "source_plus_owned": 73,
+  "suite_accepted": true,
+  "supplied_geography_conventions": [
+    "EW OA 2021",
+    "Scotland OA 2022",
+    "Northern Ireland Data Zone 2021"
+  ],
+  "tests_passed": 52,
+  "wall_seconds": 3.199442916957196,
+  "xml_sha256": "34a5afffba8a3f7cc8933e306da19e76c8b597c9d31cffbadfeda902a1edbf8d"
+}

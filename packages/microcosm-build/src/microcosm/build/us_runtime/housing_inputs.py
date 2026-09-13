@@ -24,8 +24,11 @@ from __future__ import annotations
 
 import hashlib
 import warnings
+from collections.abc import Mapping
+from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -63,6 +66,11 @@ __all__ = [
     "US_HOUSING_REQUIRED_PERSON_SOURCE_COLUMNS",
     "US_HOUSING_SPM_UNIT_OUTPUT_COLUMNS",
     "derive_us_housing_inputs",
+    "AcsRentDonorPreparation",
+    "AcsRentRecipientPreparation",
+    "prepare_acs_rent_donor",
+    "prepare_acs_rent_recipient",
+    "finalize_acs_rent",
     "impute_us_pre_subsidy_rent",
     "impute_us_housing_assistance_to_puf_support",
     "load_acs_2022_rent_donor",
@@ -465,14 +473,17 @@ def _constant_source_by_unit(
     return values.to_numpy(dtype=np.float64)
 
 
-def derive_us_housing_inputs(frame: Frame) -> Frame:
-    """Carry the three exact ASEC housing/tenure inputs onto their entities."""
+def derive_us_housing_tables(
+    person: pd.DataFrame, household: pd.DataFrame, spm_unit: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return copied household/SPM tables with the exact measured housing leaves.
 
-    if frame.schema != US_SCHEMA:
-        raise ValueError("US housing inputs require the US schema.")
-    person = frame.table("person")
-    household = frame.table("household")
-    spm_unit = frame.table("spm_unit")
+    Inputs are the actual linked tables (or declared views) at the existing
+    housing derivation boundary. SPM raw values align through person_spm_unit_id;
+    returned group row order, indices, other columns and input tables are kept.
+    This helper neither reconstructs other entities nor changes raw code meaning.
+    """
+
     _required_columns(
         person,
         ("SPM_CAPHOUSESUB", "SPM_TENMORTSTATUS", "person_spm_unit_id"),
@@ -521,15 +532,30 @@ def derive_us_housing_inputs(frame: Frame) -> Frame:
             f"{unknown_spm_codes}."
         )
 
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    tables["household"]["tenure_type"] = np.asarray(
+    household_result = household.copy()
+    spm_result = spm_unit.copy()
+    household_result["tenure_type"] = np.asarray(
         [_HOUSEHOLD_TENURE_MAP[code] for code in raw_household_codes], dtype=object
     )
-    tables["spm_unit"]["receives_housing_assistance"] = subsidy > 0.0
-    tables["spm_unit"]["takes_up_housing_assistance_if_eligible"] = subsidy > 0.0
-    tables["spm_unit"]["spm_unit_tenure_type"] = np.asarray(
+    spm_result["receives_housing_assistance"] = subsidy > 0.0
+    spm_result["takes_up_housing_assistance_if_eligible"] = subsidy > 0.0
+    spm_result["spm_unit_tenure_type"] = np.asarray(
         [_SPM_TENURE_MAP[code] for code in raw_spm_codes], dtype=object
     )
+    return household_result, spm_result
+
+
+def derive_us_housing_inputs(frame: Frame) -> Frame:
+    """Carry the three exact ASEC housing/tenure inputs onto their entities."""
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("US housing inputs require the US schema.")
+    household, spm_unit = derive_us_housing_tables(
+        frame.table("person"), frame.table("household"), frame.table("spm_unit")
+    )
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["household"] = household
+    tables["spm_unit"] = spm_unit
     return Frame(
         tables,
         frame.schema,
@@ -703,38 +729,203 @@ def _encode_acs_predictors(
 ) -> tuple[pd.DataFrame, pd.DataFrame, tuple[str, ...]]:
     """Dummy-encode the retired QRF's string predictors without ordinality."""
 
+    context = _rent_encoding_context(training)
+    return (
+        _encode_rent_predictors(training, context=context),
+        _encode_rent_predictors(prediction, context=context),
+        context["predictors"],
+    )
+
+
+def _rent_encoding_context(training: pd.DataFrame) -> Mapping[str, object]:
     numeric_predictors = tuple(
         predictor
         for predictor in ACS_RENT_PREDICTORS
         if predictor not in _ACS_CATEGORICAL_PREDICTORS
     )
-    encoded_training = training.loc[:, numeric_predictors].copy()
-    encoded_prediction = prediction.loc[:, numeric_predictors].copy()
     encoded_columns = list(numeric_predictors)
+    category_levels = {}
     for column in _ACS_CATEGORICAL_PREDICTORS:
         training_values = training[column].astype(str)
-        prediction_values = prediction[column].astype(str)
         levels = tuple(sorted(training_values.unique()))
-        unknown = sorted(set(prediction_values.unique()) - set(levels))
-        if unknown:
-            raise ValueError(
-                f"ACS rent recipient {column!r} has donor-unsupported value(s): "
-                f"{unknown}."
-            )
         if len(levels) < 2:
             raise ValueError(
                 f"ACS rent donor categorical predictor {column!r} is constant."
             )
+        category_levels[column] = levels
+        encoded_columns.extend(f"{column}__{level}" for level in levels[1:])
+    return MappingProxyType(
+        {
+            "schema": "microcosm.us.acs_rent_encoding.v1",
+            "predictors": tuple(encoded_columns),
+            "category_levels": MappingProxyType(category_levels),
+        }
+    )
+
+
+def _validated_rent_encoding_context(
+    context: Mapping[str, object],
+) -> Mapping[str, object]:
+    if (
+        not isinstance(context, Mapping)
+        or set(context) != {"schema", "predictors", "category_levels"}
+        or context.get("schema") != "microcosm.us.acs_rent_encoding.v1"
+    ):
+        raise ValueError("Unsupported ACS rent donor encoding context.")
+    levels_by_column = context["category_levels"]
+    if not isinstance(levels_by_column, Mapping) or set(levels_by_column) != set(
+        _ACS_CATEGORICAL_PREDICTORS
+    ):
+        raise ValueError(
+            "ACS rent donor encoding must name its exact categorical columns."
+        )
+    expected = [
+        name for name in ACS_RENT_PREDICTORS if name not in _ACS_CATEGORICAL_PREDICTORS
+    ]
+    frozen_levels = {}
+    for column in _ACS_CATEGORICAL_PREDICTORS:
+        levels = levels_by_column[column]
+        if (
+            not isinstance(levels, (tuple, list))
+            or len(levels) < 2
+            or any(not isinstance(value, str) for value in levels)
+            or list(levels) != sorted(set(levels))
+        ):
+            raise ValueError(
+                "ACS rent donor encoding levels must be sorted unique strings."
+            )
+        frozen_levels[column] = tuple(levels)
+        expected.extend(f"{column}__{level}" for level in levels[1:])
+    if not isinstance(context["predictors"], (tuple, list)) or tuple(
+        context["predictors"]
+    ) != tuple(expected):
+        raise ValueError(
+            "ACS rent donor encoding predictor order differs from its levels."
+        )
+    return MappingProxyType(
+        {
+            "schema": context["schema"],
+            "predictors": tuple(expected),
+            "category_levels": MappingProxyType(frozen_levels),
+        }
+    )
+
+
+def _encode_rent_predictors(
+    table: pd.DataFrame, *, context: Mapping[str, object]
+) -> pd.DataFrame:
+    numeric = tuple(
+        name for name in ACS_RENT_PREDICTORS if name not in _ACS_CATEGORICAL_PREDICTORS
+    )
+    encoded = table.loc[:, numeric].copy()
+    for column in _ACS_CATEGORICAL_PREDICTORS:
+        values = table[column].astype(str)
+        levels = context["category_levels"][column]
+        unknown = sorted(set(values.unique()) - set(levels))
+        if unknown:
+            raise ValueError(
+                f"ACS rent recipient {column!r} has donor-unsupported value(s): {unknown}."
+            )
         for level in levels[1:]:
-            dummy = f"{column}__{level}"
-            encoded_training[dummy] = training_values.eq(level).to_numpy(
-                dtype=np.float64
+            encoded[f"{column}__{level}"] = values.eq(level).to_numpy(dtype=np.float64)
+    return encoded
+
+
+@dataclass(frozen=True)
+class AcsRentDonorPreparation:
+    """Actual sampled donor training rows and recipient-independent encoding."""
+
+    training: pd.DataFrame
+    predictors: tuple[str, ...]
+    context: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        context = _validated_rent_encoding_context(self.context)
+        if (
+            self.predictors != context["predictors"]
+            or not isinstance(self.training, pd.DataFrame)
+            or tuple(self.training.columns)
+            != (*self.predictors, "rent", _DONOR_WEIGHT_COLUMN)
+        ):
+            raise ValueError(
+                "ACS rent donor training columns differ from their encoding."
             )
-            encoded_prediction[dummy] = prediction_values.eq(level).to_numpy(
-                dtype=np.float64
+        object.__setattr__(self, "context", context)
+
+
+@dataclass(frozen=True)
+class AcsRentRecipientPreparation:
+    """Predictor rows and their household heads' original person positions.
+
+    ``head_positions[i]`` belongs to household ``predictors.index[i]``; it
+    need not be sorted when person and household table orders differ.
+    """
+
+    predictors: pd.DataFrame
+    head_positions: np.ndarray
+    person_index: pd.Index
+
+    def __post_init__(self) -> None:
+        positions = np.asarray(self.head_positions)
+        if (
+            not isinstance(self.predictors, pd.DataFrame)
+            or not isinstance(self.person_index, pd.Index)
+            or positions.ndim != 1
+            or not np.issubdtype(positions.dtype, np.integer)
+            or len(positions) != len(self.predictors)
+            or (positions < 0).any()
+            or (positions >= len(self.person_index)).any()
+            or len(np.unique(positions)) != len(positions)
+        ):
+            raise ValueError(
+                "ACS rent head positions must align to the original person rows."
             )
-            encoded_columns.append(dummy)
-    return encoded_training, encoded_prediction, tuple(encoded_columns)
+        positions = positions.astype(np.int64, copy=True)
+        positions.flags.writeable = False
+        object.__setattr__(self, "head_positions", positions)
+        object.__setattr__(self, "person_index", self.person_index.copy(deep=True))
+
+
+def prepare_acs_rent_recipient(
+    frame: Frame, *, donor_context: Mapping[str, object]
+) -> AcsRentRecipientPreparation:
+    """Encode actual head predictors against donor-owned categorical levels."""
+    context = _validated_rent_encoding_context(donor_context)
+    features, head_mask = _recipient_head_features(frame)
+    head_positions = np.flatnonzero(head_mask)
+    head_households = pd.Index(
+        frame.person["person_household_id"].to_numpy()[head_positions]
+    )
+    household_order = head_households.get_indexer(features.index)
+    if (household_order < 0).any():
+        raise ValueError("ACS rent predictor household has no selected person head.")
+    return AcsRentRecipientPreparation(
+        _encode_rent_predictors(features, context=context),
+        head_positions[household_order],
+        frame.person.index,
+    )
+
+
+def finalize_acs_rent(
+    prepared: AcsRentRecipientPreparation, raw_rent: pd.Series | pd.DataFrame
+) -> np.ndarray:
+    """Clip raw draws and scatter each household's value to its own head."""
+    if not isinstance(prepared, AcsRentRecipientPreparation):
+        raise TypeError("ACS rent finalization requires recipient preparation.")
+    if isinstance(raw_rent, pd.DataFrame) and tuple(raw_rent.columns) == ("rent",):
+        raw_rent = raw_rent["rent"]
+    if not isinstance(raw_rent, pd.Series) or raw_rent.name != "rent":
+        raise ValueError("ACS rent finalization requires the named raw rent Series.")
+    if not raw_rent.index.equals(prepared.predictors.index):
+        raise ValueError(
+            "ACS rent raw prediction index differs from prepared household order."
+        )
+    predicted = pd.to_numeric(raw_rent, errors="coerce").to_numpy(dtype=np.float64)
+    if not np.isfinite(predicted).all():
+        raise ValueError("ACS rent QRF produced nonfinite predictions.")
+    person_rent = np.zeros(len(prepared.person_index), dtype=np.float64)
+    person_rent[prepared.head_positions] = np.maximum(predicted, 0.0)
+    return person_rent
 
 
 def _stable_string_hash(value: str) -> np.uint64:
@@ -822,14 +1013,12 @@ def _archived_joint_training_sample(
     return sampled, sampled_masks
 
 
-def impute_us_pre_subsidy_rent(
-    frame: Frame,
-    donor: pd.DataFrame,
-    *,
-    seed: int,
-    n_estimators: int = _DEFAULT_N_ESTIMATORS,
-) -> np.ndarray:
-    """Draw annual ACS rent once per CPS household and place it on the head."""
+def prepare_acs_rent_donor(donor: pd.DataFrame) -> AcsRentDonorPreparation:
+    """Select and encode actual archived ACS rent support without recipients.
+
+    The joint rent/real-estate-tax sampling, allocation masks, reset-index
+    order and household design weights retain their existing semantics.
+    """
 
     required = (
         *ACS_RENT_PREDICTORS,
@@ -869,35 +1058,39 @@ def impute_us_pre_subsidy_rent(
     if float(fit_frame[_DONOR_WEIGHT_COLUMN].sum()) <= 0.0:
         raise ValueError("ACS rent donor sampled weights sum to zero.")
 
+    context = _rent_encoding_context(fit_frame)
+    encoded_training = _encode_rent_predictors(fit_frame, context=context)
+    encoded_training["rent"] = fit_frame["rent"].to_numpy(dtype=np.float64)
+    encoded_training[_DONOR_WEIGHT_COLUMN] = fit_frame[_DONOR_WEIGHT_COLUMN].to_numpy(
+        dtype=np.float64
+    )
+    return AcsRentDonorPreparation(encoded_training, context["predictors"], context)
+
+
+def impute_us_pre_subsidy_rent(
+    frame: Frame,
+    donor: pd.DataFrame,
+    *,
+    seed: int,
+    n_estimators: int = _DEFAULT_N_ESTIMATORS,
+) -> np.ndarray:
+    """Draw annual ACS rent once per CPS household and place it on the head."""
+
+    prepared_donor = prepare_acs_rent_donor(donor)
+
     global QRF
     if QRF is None:
         from importlib import import_module
 
         QRF = import_module("microcosm.fit").QRF
-    features, head_mask = _recipient_head_features(frame)
-    encoded_training, encoded_features, encoded_predictors = _encode_acs_predictors(
-        fit_frame,
-        features,
-    )
-    encoded_training["rent"] = fit_frame["rent"].to_numpy(dtype=np.float64)
-    encoded_training[_DONOR_WEIGHT_COLUMN] = fit_frame[_DONOR_WEIGHT_COLUMN].to_numpy(
-        dtype=np.float64
-    )
+    recipient = prepare_acs_rent_recipient(frame, donor_context=prepared_donor.context)
     fitted = QRF(n_estimators=int(n_estimators), seed=int(seed)).fit(
-        encoded_training,
-        predictors=list(encoded_predictors),
+        prepared_donor.training,
+        predictors=list(prepared_donor.predictors),
         targets=["rent"],
         weights=_DONOR_WEIGHT_COLUMN,
     )
-    predicted = pd.to_numeric(
-        fitted.predict(encoded_features)["rent"], errors="coerce"
-    ).to_numpy(dtype=np.float64)
-    if not np.isfinite(predicted).all():
-        raise ValueError("ACS rent QRF produced nonfinite predictions.")
-    predicted = np.maximum(predicted, 0.0)
-    person_rent = np.zeros(frame.n("person"), dtype=np.float64)
-    person_rent[head_mask] = predicted
-    return person_rent
+    return finalize_acs_rent(recipient, fitted.predict(recipient.predictors))
 
 
 def _person_puf_predictors(frame: Frame) -> pd.DataFrame:

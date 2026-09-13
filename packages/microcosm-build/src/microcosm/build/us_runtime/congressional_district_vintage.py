@@ -7,6 +7,7 @@ import hashlib
 import json
 from collections.abc import Iterable, Mapping
 from importlib.resources import files
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -93,6 +94,21 @@ def default_congressional_district_vintage_crosswalk_path() -> Path:
                 DEFAULT_CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_RESOURCE
             )
         )
+    )
+
+
+def decode_congressional_district_vintage_crosswalk(payload: bytes) -> pd.DataFrame:
+    """Decode immutable CSV artifact bytes under the existing crosswalk contract.
+
+    The caller separately declares whether national roster validation is
+    required. Generic crosswalks retain the same behavior as the file loader.
+    """
+    if not isinstance(payload, bytes):
+        raise TypeError("CD vintage crosswalk payload must be immutable bytes.")
+    return _prepare_crosswalk(
+        pd.read_csv(BytesIO(payload)),
+        source_prefix=SOURCE_CONGRESSIONAL_DISTRICT_PREFIX,
+        target_prefix=CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
     )
 
 

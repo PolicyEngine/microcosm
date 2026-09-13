@@ -8,14 +8,17 @@ operator applied after this seam, not a peer household spine.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Mapping
+from dataclasses import asdict, dataclass
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-from microcosm.build.us_runtime.puf_support import (
+from microcosm.build.us_runtime.operator_column_contracts import (
     PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
 )
 from microcosm.build.us_runtime.support_provenance import (
@@ -36,7 +39,14 @@ from microcosm.frame import (
     Weights,
 )
 
-__all__ = ["assemble_spines"]
+__all__ = [
+    "SpinePreparation",
+    "SpineHarmonization",
+    "assemble_spines",
+    "prepare_spines",
+    "stack_survey_spines",
+    "harmonize_spine_weights",
+]
 
 _CHANNEL_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 _SUPPORT_CLONE_INDEX = 0
@@ -80,11 +90,146 @@ def assemble_spines(
             provenance, columns, or ID spaces violate the assembly contract.
     """
 
+    prepared = _stack_spine_tables(
+        spines,
+        household_mass_shares=household_mass_shares,
+        mass_anchor_channel=mass_anchor_channel,
+    )
+    harmonized = _harmonize_spine_values(
+        prepared.tables["household"], prepared.values, prepared.context
+    )
+    # These are newly composed per-source records, not a carried Frame log.
+    # Table provenance remains owned by the independent stacking result.
+    assembled_mass_log = harmonized.mass_log
+    result = Frame(
+        prepared.tables,
+        US_SCHEMA,
+        {"household": harmonized.weights},
+        prepared.strata,
+        mass_log=assembled_mass_log,
+        metadata=prepared.metadata,
+    )
+    validate_assembly_provenance(result, boundary="spine assembly output")
+    anchor_mass = prepared.context["incoming_masses"][mass_anchor_channel]
+    if not np.isclose(
+        result.weights_for("household").total, anchor_mass, rtol=_SHARE_RTOL, atol=0.0
+    ):
+        raise RuntimeError("Spine assembly failed to conserve anchor household mass.")
+    return result
+
+
+@dataclass(frozen=True)
+class SpinePreparation:
+    """Actual DESIGN-weight tables plus an immutable assembly context.
+
+    The context schema determines which subsequent weight operation can use it.
+    This numerical container does not authenticate source issuance or membership.
+    """
+
+    frame: Frame
+    context: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.frame, Frame):
+            raise TypeError("SpinePreparation.frame must be a Frame.")
+        if self.frame.weights_for("household").kind is not WeightKind.DESIGN:
+            raise ValueError("Spine preparation requires actual DESIGN weights.")
+        if not isinstance(self.context, Mapping):
+            raise ValueError("Spine preparation context must be a mapping.")
+        object.__setattr__(self, "context", _freeze_context(self.context))
+
+
+@dataclass(frozen=True)
+class SpineHarmonization:
+    """Computed importance weights and exact ordered legacy operator history."""
+
+    weights: Weights
+    mass_log: tuple[MassChangeRecord, ...]
+
+
+@dataclass(frozen=True)
+class _StackedTables:
+    tables: Mapping[str, pd.DataFrame]
+    strata: pd.Series
+    values: np.ndarray
+    context: Mapping[str, object]
+    metadata: Mapping[str, object]
+    mass_log: tuple[MassChangeRecord, ...]
+
+
+def _freeze_context(value: object) -> object:
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {key: _freeze_context(item) for key, item in value.items()}
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_context(item) for item in value)
+    return value
+
+
+def _numeric_digest(values: np.ndarray, dtype: str) -> str:
+    array = np.ascontiguousarray(values, dtype=dtype)
+    return hashlib.sha256(memoryview(array).cast("B")).hexdigest()
+
+
+def _channel_digest(values: np.ndarray) -> str:
+    digest = hashlib.sha256()
+    for value in values:
+        if not isinstance(value, str):
+            raise ValueError("Prepared household channels must be strings.")
+        encoded = value.encode("utf-8")
+        digest.update(len(encoded).to_bytes(8, "little"))
+        digest.update(encoded)
+    return digest.hexdigest()
+
+
+def _stack_spine_tables(
+    spines: Mapping[str, Frame],
+    *,
+    household_mass_shares: Mapping[str, float],
+    mass_anchor_channel: str,
+    require_design: bool = False,
+) -> _StackedTables:
     ordered_channels = _validated_channels(spines, mass_anchor_channel)
     shares = _validated_shares(household_mass_shares, ordered_channels)
     frames = {channel: spines[channel] for channel in ordered_channels}
+    prepared = _stack_source_tables(frames, ordered_channels, require_design)
+    context = dict(prepared.context)
+    context.update(
+        schema="microcosm.us.spine-preparation.v1",
+        household_mass_shares=shares,
+        mass_anchor_channel=mass_anchor_channel,
+        incoming_masses={
+            channel: float(frames[channel].weights_for("household").total)
+            for channel in ordered_channels
+        },
+    )
+    return _StackedTables(
+        prepared.tables,
+        prepared.strata,
+        prepared.values,
+        _freeze_context(context),
+        prepared.metadata,
+        prepared.mass_log,
+    )
+
+
+def _stack_source_tables(
+    spines: Mapping[str, Frame],
+    ordered_channels: tuple[str, ...],
+    require_design: bool,
+) -> _StackedTables:
+    """Preserve source values while remapping only structural collisions."""
+    frames = {channel: spines[channel] for channel in ordered_channels}
     for channel, frame in frames.items():
         _validate_source_frame(frame, channel=channel)
+        if (
+            require_design
+            and frame.weights_for("household").kind is not WeightKind.DESIGN
+        ):
+            raise ValueError(
+                f"Spine {channel!r} preparation requires actual DESIGN weights."
+            )
     _validate_shared_column_dtypes(frames)
 
     offsets = _id_offsets(frames, ordered_channels)
@@ -106,51 +251,286 @@ def assemble_spines(
         column_orders=column_orders,
     )
 
-    anchor_mass = frames[mass_anchor_channel].weights_for("household").total
-    weights, mass_log = _assembled_household_weights(
-        frames,
-        ordered_channels=ordered_channels,
-        shares=shares,
-        anchor_mass=anchor_mass,
+    values = np.concatenate(
+        [
+            frames[channel].weights_for("household").values
+            for channel in ordered_channels
+        ]
     )
-    household_order = group_orders.get("household")
-    if household_order is not None:
-        weights = Weights(weights.values[household_order], weights.kind)
-    weights = _with_exact_total(weights, anchor_mass)
-
+    order = group_orders.get("household")
+    if order is not None:
+        values = values[order]
+    household = tables["household"]
+    source_ids_digest = hashlib.sha256()
+    for channel in ordered_channels:
+        source_ids = np.ascontiguousarray(
+            prepared[channel]["household"]["household_id"].to_numpy(), dtype="<i8"
+        )
+        source_ids_digest.update(memoryview(source_ids).cast("B"))
+    context = {
+        "schema": "microcosm.us.survey-stack.v1",
+        "ordered_channels": ordered_channels,
+        "household_counts": {
+            channel: frames[channel].n("household") for channel in ordered_channels
+        },
+        "source_weight_kinds": {
+            channel: frames[channel].weights_for("household").kind.value
+            for channel in ordered_channels
+        },
+        "household_order": None if order is None else order.tolist(),
+        "source_household_ids_sha256": source_ids_digest.hexdigest(),
+        "household_ids_sha256": _numeric_digest(
+            household["household_id"].to_numpy(), "<i8"
+        ),
+        "household_channels_sha256": _channel_digest(
+            household[support_channel_column("household")].to_numpy()
+        ),
+        "household_weights_sha256": _numeric_digest(values, "<f8"),
+        "source_mass_logs": {
+            channel: [asdict(record) for record in frames[channel].mass_log]
+            for channel in ordered_channels
+        },
+    }
     strata = pd.concat(
-        [frames[channel].strata for channel in ordered_channels],
-        ignore_index=True,
+        [frames[channel].strata for channel in ordered_channels], ignore_index=True
     )
-    result = Frame(
+    return _StackedTables(
         tables,
-        US_SCHEMA,
-        {"household": weights},
         strata,
-        mass_log=mass_log,
-        metadata=spine_assembly_manifest(
-            tables,
-            channels=ordered_channels,
+        values,
+        _freeze_context(context),
+        spine_assembly_manifest(tables, channels=ordered_channels),
+        tuple(
+            record
+            for channel in ordered_channels
+            for record in frames[channel].mass_log
         ),
     )
-    validate_assembly_provenance(
-        result,
-        boundary="spine assembly output",
+
+
+def prepare_spines(
+    spines: Mapping[str, Frame],
+    *,
+    household_mass_shares: Mapping[str, float],
+    mass_anchor_channel: str = BASE_ASEC_SUPPORT_CHANNEL,
+) -> SpinePreparation:
+    """Stack actual DESIGN sources without performing importance allocation.
+
+    Legacy ``assemble_spines`` continues to accept its existing mixed-kind
+    inputs. This new graph-facing seam never relabels such inputs as DESIGN.
+    """
+    prepared = _stack_spine_tables(
+        spines,
+        household_mass_shares=household_mass_shares,
+        mass_anchor_channel=mass_anchor_channel,
+        require_design=True,
     )
-    if not np.isclose(
-        result.weights_for("household").total,
-        anchor_mass,
-        rtol=_SHARE_RTOL,
-        atol=0.0,
+    return _design_preparation(prepared)
+
+
+def stack_survey_spines(spines: Mapping[str, Frame]) -> SpinePreparation:
+    """Stack original DESIGN survey weights before domain allocation.
+
+    Channels are ordered lexically, independent of mapping insertion order.
+    Every household weight, source age and measured value is carried unchanged;
+    only structural IDs are remapped and source provenance is added. No survey
+    total is an anchor, no shares are assigned, and no mass is normalized.
+
+    This is the numerical stacking seam. A graph source owner must separately
+    authenticate the original issuances, complete membership and publisher
+    anchors. Sampling and population-domain allocation are subsequent declared
+    operations. The returned v1 survey-stack context is deliberately refused
+    by the legacy anchor-total harmonizer.
+    """
+    channels = _validated_source_channels(spines)
+    prepared = _stack_source_tables(spines, channels, require_design=True)
+    return _design_preparation(prepared)
+
+
+def _design_preparation(prepared: _StackedTables) -> SpinePreparation:
+    frame = Frame(
+        prepared.tables,
+        US_SCHEMA,
+        {"household": Weights(prepared.values, WeightKind.DESIGN)},
+        prepared.strata,
+        mass_log=prepared.mass_log,
+        metadata=prepared.metadata,
+    )
+    validate_assembly_provenance(frame, boundary="spine preparation output")
+    return SpinePreparation(frame, prepared.context)
+
+
+def harmonize_spine_weights(
+    *,
+    household: pd.DataFrame,
+    weights: Weights,
+    context: Mapping[str, object],
+) -> SpineHarmonization:
+    """Compute importance allocation from declared DESIGN views and context.
+
+    Input digests bind exact normalized values and ordered IDs/channels.
+    The explicit permutation restores source-order sums and correction rows.
+    The result includes legacy per-source logs, not an executor graph ledger.
+    """
+    if not isinstance(weights, Weights) or weights.kind is not WeightKind.DESIGN:
+        raise ValueError("Spine harmonization requires actual DESIGN weights.")
+    if (
+        not isinstance(context, Mapping)
+        or context.get("schema") != "microcosm.us.spine-preparation.v1"
     ):
-        raise RuntimeError("Spine assembly failed to conserve anchor household mass.")
-    return result
+        raise ValueError("Unsupported spine preparation context.")
+    kinds = context.get("source_weight_kinds")
+    ordered = context.get("ordered_channels")
+    if (
+        not isinstance(kinds, Mapping)
+        or not isinstance(ordered, (tuple, list))
+        or set(kinds) != set(ordered)
+        or any(kind != WeightKind.DESIGN.value for kind in kinds.values())
+    ):
+        raise ValueError("Spine preparation context does not declare DESIGN sources.")
+    return _harmonize_spine_values(household, weights.values, context)
+
+
+def _validated_spine_inputs(
+    household: pd.DataFrame, values: np.ndarray, context: Mapping[str, object]
+) -> tuple:
+    if (
+        not isinstance(context, Mapping)
+        or context.get("schema") != "microcosm.us.spine-preparation.v1"
+    ):
+        raise ValueError("Unsupported spine preparation context.")
+    if not isinstance(household, pd.DataFrame) or not {
+        "household_id",
+        support_channel_column("household"),
+    }.issubset(household):
+        raise ValueError("Harmonization requires household IDs and source channels.")
+    ids = household["household_id"].to_numpy()
+    channels = household[support_channel_column("household")].to_numpy()
+    if not np.issubdtype(ids.dtype, np.integer) or len(values) != len(ids):
+        raise ValueError("Prepared household IDs/weights are malformed.")
+    bindings = {
+        "household_ids_sha256": _numeric_digest(ids, "<i8"),
+        "household_channels_sha256": _channel_digest(channels),
+        "household_weights_sha256": _numeric_digest(values, "<f8"),
+    }
+    if any(context.get(key) != value for key, value in bindings.items()):
+        raise ValueError("Prepared household input binding changed.")
+    ordered = tuple(context["ordered_channels"])
+    if (
+        len(ordered) < 2
+        or len(set(ordered)) != len(ordered)
+        or context["mass_anchor_channel"] != ordered[0]
+    ):
+        raise ValueError("Prepared source channel order/anchor is invalid.")
+    shares = _validated_shares(context["household_mass_shares"], ordered)
+    counts = context["household_counts"]
+    if (
+        set(counts) != set(ordered)
+        or any(
+            isinstance(counts[ch], bool)
+            or not isinstance(counts[ch], int)
+            or counts[ch] <= 0
+            for ch in ordered
+        )
+        or sum(counts.values()) != len(values)
+    ):
+        raise ValueError("Prepared source household counts are invalid.")
+    order = context["household_order"]
+    if order is not None:
+        if (
+            not isinstance(order, (list, tuple))
+            or len(order) != len(values)
+            or any(isinstance(i, bool) or not isinstance(i, int) for i in order)
+        ):
+            raise ValueError("Prepared household permutation is invalid.")
+        order = np.asarray(order, dtype=np.int64)
+        if not np.array_equal(np.sort(order), np.arange(len(values))):
+            raise ValueError("Prepared household permutation is invalid.")
+        inverse = np.argsort(order, kind="stable")
+        source_values, source_channels, source_ids = (
+            values[inverse],
+            channels[inverse],
+            ids[inverse],
+        )
+    else:
+        source_values, source_channels, source_ids = values, channels, ids
+    if _numeric_digest(source_ids, "<i8") != context.get("source_household_ids_sha256"):
+        raise ValueError("Prepared permutation changed the original source ID order.")
+    anchor_mass = float(context["incoming_masses"][ordered[0]])
+    return ordered, shares, counts, source_values, source_channels, order, anchor_mass
+
+
+def _harmonize_spine_values(
+    household: pd.DataFrame, values: np.ndarray, context: Mapping[str, object]
+) -> SpineHarmonization:
+    ordered, shares, counts, source_values, source_channels, order, anchor_mass = (
+        _validated_spine_inputs(household, values, context)
+    )
+    result, logs, allocated, start = [], [], 0.0, 0
+    for index, channel in enumerate(ordered):
+        count = counts[channel]
+        existing_values = source_values[start : start + count]
+        if not np.all(source_channels[start : start + count] == channel):
+            raise ValueError(
+                "Prepared permutation does not restore source channel order."
+            )
+        start += count
+        existing_mass = float(existing_values.sum())
+        if existing_mass != float(context["incoming_masses"][channel]):
+            raise ValueError("Prepared source-order mass changed.")
+        target = (
+            anchor_mass - allocated
+            if index == len(ordered) - 1
+            else anchor_mass * shares[channel]
+        )
+        scaled = _values_to_total(existing_values, target)
+        result.append(scaled)
+        allocated += float(scaled.sum())
+        logs.extend(
+            MassChangeRecord(**dict(record))
+            for record in context["source_mass_logs"][channel]
+        )
+        logs.append(
+            MassChangeRecord(
+                entity="household",
+                old_total=existing_mass,
+                new_total=float(scaled.sum()),
+                declared_factor=target / existing_mass,
+                reason=f"allocated {channel!r} source mass in pre-operator spine assembly",
+            )
+        )
+    combined = np.concatenate(result)
+    if order is not None:
+        combined = combined[order]
+    return SpineHarmonization(
+        _with_exact_total(Weights(combined, WeightKind.IMPORTANCE), anchor_mass),
+        tuple(logs),
+    )
 
 
 def _validated_channels(
     spines: Mapping[str, Frame],
     mass_anchor_channel: str,
 ) -> tuple[str, ...]:
+    channels = _validated_source_channels(spines)
+    if (
+        not isinstance(mass_anchor_channel, str)
+        or _CHANNEL_PATTERN.fullmatch(mass_anchor_channel) is None
+    ):
+        raise ValueError(
+            "mass_anchor_channel must be a stable lower-snake-case identifier."
+        )
+    if mass_anchor_channel not in channels:
+        raise ValueError(
+            f"mass_anchor_channel {mass_anchor_channel!r} is absent from spines."
+        )
+    return (
+        mass_anchor_channel,
+        *(channel for channel in channels if channel != mass_anchor_channel),
+    )
+
+
+def _validated_source_channels(spines: Mapping[str, Frame]) -> tuple[str, ...]:
     if not isinstance(spines, Mapping):
         raise TypeError(f"spines must be a mapping, got {type(spines).__name__}.")
     if len(spines) < 2:
@@ -171,21 +551,7 @@ def _validated_channels(
             f"{PUF_TAX_DETAIL_SUPPORT_CHANNEL!r} is a clone operator channel, "
             "not a peer household spine."
         )
-    if (
-        not isinstance(mass_anchor_channel, str)
-        or _CHANNEL_PATTERN.fullmatch(mass_anchor_channel) is None
-    ):
-        raise ValueError(
-            "mass_anchor_channel must be a stable lower-snake-case identifier."
-        )
-    if mass_anchor_channel not in spines:
-        raise ValueError(
-            f"mass_anchor_channel {mass_anchor_channel!r} is absent from spines."
-        )
-    return (
-        mass_anchor_channel,
-        *sorted(channel for channel in channels if channel != mass_anchor_channel),
-    )
+    return tuple(sorted(channels))
 
 
 def _validated_shares(
@@ -394,6 +760,11 @@ def _id_offsets(
                     )
                 offsets[channel][entity] = offset
             remapped = ids if offset == 0 else ids + offset
+            if int(remapped.max()) > PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID:
+                raise ValueError(
+                    f"Spine {channel!r} {entity!r} collision remapping exceeds "
+                    f"the clone-safe bound {PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID}."
+                )
             accumulated[entity] = np.concatenate([used, remapped])
     return offsets
 
@@ -491,45 +862,6 @@ def _combined_tables(
                 group_orders[entity] = order
         tables[entity] = combined
     return tables, group_orders
-
-
-def _assembled_household_weights(
-    frames: Mapping[str, Frame],
-    *,
-    ordered_channels: tuple[str, ...],
-    shares: Mapping[str, float],
-    anchor_mass: float,
-) -> tuple[Weights, tuple[MassChangeRecord, ...]]:
-    values: list[np.ndarray] = []
-    mass_log: list[MassChangeRecord] = []
-    allocated = 0.0
-    for index, channel in enumerate(ordered_channels):
-        existing = frames[channel].weights_for("household")
-        target = (
-            anchor_mass - allocated
-            if index == len(ordered_channels) - 1
-            else anchor_mass * shares[channel]
-        )
-        scaled = _values_to_total(existing.values, target)
-        values.append(scaled)
-        allocated += float(scaled.sum())
-        factor = target / existing.total
-        mass_log.extend(frames[channel].mass_log)
-        mass_log.append(
-            MassChangeRecord(
-                entity="household",
-                old_total=existing.total,
-                new_total=float(scaled.sum()),
-                declared_factor=factor,
-                reason=(
-                    f"allocated {channel!r} source mass in pre-operator spine assembly"
-                ),
-            )
-        )
-    return (
-        Weights(np.concatenate(values), WeightKind.IMPORTANCE),
-        tuple(mass_log),
-    )
 
 
 def _values_to_total(values: np.ndarray, target: float) -> np.ndarray:

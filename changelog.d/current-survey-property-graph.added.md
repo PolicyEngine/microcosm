@@ -1,0 +1,1 @@
+Add an opt-in 16-node survey property-income fragment with original DESIGN donor selection, joint ACS draws, signed reconciliation, explicit unknownness, and exact clone attachment while preserving legacy tax leaves and their stated capital-gains limitation.

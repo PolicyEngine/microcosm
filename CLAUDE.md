@@ -39,6 +39,12 @@ shard's real wheel, install into a clean uv-export-constrained venv, assert
 the wheel/import boundary and spec digests, and run the suite against installed
 wheels.
 
+The shared engine lane also runs a bounded source/seed identity diagnostic on
+Python 3.14.4 after its normal tests, including when those tests fail. Its six
+JSON artifacts retain candidate digests and their complete canonical seed
+records for review. They never replace the test assertions or certify coverage;
+review the captured source and dependency identities before updating any pins.
+
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
 remain independent and can finish validating their merged changes.

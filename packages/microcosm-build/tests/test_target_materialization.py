@@ -158,6 +158,31 @@ def test_prepared_column_path_materializes_filtered_values():
     ]
 
 
+@pytest.mark.parametrize(
+    "left,right,expected",
+    [
+        ([True, False, True], [True, False, False], [2.0, 0.0, 1.0]),
+        ([True, False, True], [2, 3, 4], [3.0, 3.0, 5.0]),
+        ([2, 3, 4], [True, False, True], [3.0, 3.0, 5.0]),
+        ([1, 2, 3], [4, 5, 6], [5.0, 7.0, 9.0]),
+        ([0.25, -0.5, 2.0], [0.5, 1.5, -1.0], [0.75, 1.0, 1.0]),
+    ],
+)
+def test_shared_expression_uses_arithmetic_for_boolean_terms(left, right, expected):
+    adapter = StubAdapter()
+    adapter.tables["person"]["left"] = np.asarray(left)
+    adapter.tables["person"]["right"] = np.asarray(right)
+    registry = _resolution_registry("sum")
+    result = materialize_target_bindings(
+        adapter,
+        registry,
+        {"sum": {"bindings": {"policyengine": {"value_expression": "left + right"}}}},
+        period=2025,
+    )
+    assert result.skipped == ()
+    np.testing.assert_array_equal(adapter.tables["person"]["sum_measure"], expected)
+
+
 @pytest.mark.parametrize("fact_period", [2024, 2025])
 @pytest.mark.parametrize("require_matching_fact_period", [None, False, True])
 def test_existing_measure_respects_fact_guard_at_default_measurement_period(

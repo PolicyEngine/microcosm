@@ -48,6 +48,10 @@ from microcosm.fit import DEFAULT_ZERO_ATOL, QRFChainState
 from microcosm.fit.qrf import detect_regime
 from microcosm.frame import EntitySchema, Frame, Weights
 
+from .operator_column_contracts import (
+    ACS_DERIVED_TRANSFER_INPUTS as ACS_DERIVED_TRANSFER_INPUTS,
+)
+
 QRF: Any | None = None
 
 __all__ = [
@@ -181,6 +185,7 @@ def _pregnancy_structural_policy_identity(*, enabled: bool) -> dict[str, object]
         ).encode("utf-8")
     ).hexdigest()
     return payload
+
 
 _IMMIGRATION_STATUS_TARGETS = (
     "ssn_card_type",
@@ -633,14 +638,6 @@ def required_acs_transfer_inputs() -> frozenset[str]:
         for targets in entity_families.values()
         for target in targets
     )
-
-
-#: Person columns the default transfer DERIVES deterministically after the
-#: QRF fits (never fitted themselves). Coverage checks require them on the
-#: recipient exactly like declared plan targets.
-ACS_DERIVED_TRANSFER_INPUTS: tuple[str, ...] = (
-    "schedule_d_capital_gain_distributions",
-)
 
 
 def acs_derived_transfer_expectations(
@@ -1138,8 +1135,8 @@ def _prepare_pregnancy_structural_plan(
             "through 44."
         )
 
-    source_codes, group_count, key_column, representatives = (
-        _pregnancy_source_groups(table)
+    source_codes, group_count, key_column, representatives = _pregnancy_source_groups(
+        table
     )
     eligible_min = np.ones(group_count, dtype=np.int8)
     eligible_max = np.zeros(group_count, dtype=np.int8)
@@ -1449,9 +1446,7 @@ def transfer_acs_inputs(
                 person,
                 pregnancy_plan,
             )
-            pregnancy_entity, pregnancy_family, pregnancy_targets = (
-                pregnancy_request
-            )
+            pregnancy_entity, pregnancy_family, pregnancy_targets = pregnancy_request
             if pregnancy_targets != (_PREGNANCY_TARGET,):  # pragma: no cover
                 raise AssertionError(
                     "Pregnancy structural target was not isolated before receipt."

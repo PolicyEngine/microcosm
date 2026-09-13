@@ -1,0 +1,21 @@
+{
+  "before_after_and_frozen_source_control_equal": true,
+  "before_after_current_model_and_code_resources_equal": true,
+  "code_resources": 12,
+  "cpu_seconds": 178.432832,
+  "model_source_files": 5983,
+  "peak_rss_bytes": 430325760,
+  "receipt_sha256": "1900801b1bbcea89a3747f656410e500b1328519694c3351100562bba61cab08",
+  "release_eligible": false,
+  "result": 0,
+  "scope": "Invented source qualification only; no native atomic assignment, engine, data or release acceptance.",
+  "source_and_control_files": 484,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 11
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 182.49943441699725
+}

@@ -1,0 +1,1 @@
+Instrument the grouped/fixed-zero Adam solver with the opt-in calibration target snapshot observer, reusing the estimate tensor each epoch's loss was computed from and the closing float64 diagnostics estimate.

@@ -1,0 +1,1 @@
+Keep frame metadata copying and pickling from changing producer identity on Python 3.14. Refresh ACS source pins after verified formatting-only changes, and reduce per-cell survey identity encoding overhead while preserving canonical bytes, mutation checks, and the current-wage projection.

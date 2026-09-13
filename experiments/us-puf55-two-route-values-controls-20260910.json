@@ -1,0 +1,38 @@
+{
+  "attachment_performed": false,
+  "cpu_seconds": 3.8935099999999996,
+  "date": "2026-09-10",
+  "finalization_performed": false,
+  "fitted_model_or_donor_authority_verified": false,
+  "guard_sha256": "bde8f7ce2742b45a750e7705be6fc899b7f04f3d913d933d69594ff6724ca6e9",
+  "junit_sha256": "1619f4b57c5a39df909ee03f7c54d8dd05f634bdda68fe59d12185d012bf4431",
+  "native_acceptance": false,
+  "native_access": false,
+  "next_step": "Bind actual recipient and donor/model owners, execute both real routes, merge raw targets, finalize the whole clone cohort once, and attach once.",
+  "peak_rss_bytes": 438517760,
+  "peer_source_review_sha256": "df628b7d237decebbf252f0c51cc215d2801fa67a355068e05a0a0ae21ee70b1",
+  "postcheck_sha256": "15732db6c91ba14f8c9c012a0f4251c37e6cd1793287958ce0d7f92739e588c4",
+  "protocol": "microcosm.puf55-two-route-values-controls.v1",
+  "raw_merge_only": true,
+  "receipt_sha256": "d52648c33cf48d786a6ee7d4a29838a03e936700db8de05cb4ae0a5b476cac1e",
+  "release_acceptance": false,
+  "scope": "18_invented_puf55_raw_route_merge_controls",
+  "source_files": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/puf55_route_finalization.py": "5ce739283cd80d37c17a3063dc0f8585f303411c21b2f5d87cc92ffb6345f9cd",
+    "packages/microcosm-build/tests/test_us_puf55_route_finalization.py": "f3638ceb41953af57f50c2a43b58eac7fb9dcc4f959832d4921da9ac236041d9"
+  },
+  "source_or_population_admission": false,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 18
+  },
+  "typed_chain_metadata_synthetic": true,
+  "verified_current": {
+    "code_resources": 12,
+    "model_source": 5983,
+    "source_and_owned": 505
+  },
+  "wall_seconds": 4.931140874978155
+}
