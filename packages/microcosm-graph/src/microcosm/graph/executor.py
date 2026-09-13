@@ -78,6 +78,7 @@ from .store import (
     StoreCorrupt,
     StoreMiss,
     StoreUnavailable,
+    _encode_frame_metadata,
 )
 
 __all__ = ["NodeRejected", "NodeRejectedError", "run_graph"]
@@ -351,6 +352,25 @@ def _freeze_frame(table: pd.DataFrame) -> pd.DataFrame:
     return frozen
 
 
+def _detached_record(record):
+    """Rebuild one frozen record with independently copied field values.
+
+    Reconstructed through the dataclass constructor rather than by a
+    reflective copy of its namespace, because source identities may seal
+    these classes. A frozen dataclass is not immune to ``object.__setattr__``,
+    so a record handed out by reference is a live handle on whatever holds
+    it; every hand-out goes through here.
+    """
+
+    return replace(
+        record,
+        **{
+            field.name: deepcopy(getattr(record, field.name))
+            for field in fields(record)
+        },
+    )
+
+
 def _observer_snapshot(population: Population) -> Population:
     """Detach every observation from the executable population and its cache.
 
@@ -369,22 +389,12 @@ def _observer_snapshot(population: Population) -> Population:
     tables = {name: frame.table(name) for name in frame.entities}
     tables.update({name: frame.link(name) for name in frame.links})
     tables, strata = pickle.loads(pickle.dumps((tables, frame.strata), protocol=5))
-
-    def copied_record(record):
-        return replace(
-            record,
-            **{
-                field.name: deepcopy(getattr(record, field.name))
-                for field in fields(record)
-            },
-        )
-
     snapshot = Frame(
         tables,
         replace(
             frame.schema,
             group_entities=deepcopy(frame.schema.group_entities),
-            links=tuple(copied_record(link) for link in frame.schema.links),
+            links=tuple(_detached_record(link) for link in frame.schema.links),
         ),
         {
             entity: Weights(
@@ -393,7 +403,9 @@ def _observer_snapshot(population: Population) -> Population:
             for entity in frame.weighted_entities
         },
         strata,
-        mass_log=tuple(copied_record(record) for record in frame.mass_log),
+        mass_log=tuple(_detached_record(record) for record in frame.mass_log),
+        # ``Frame.__init__`` re-freezes metadata, which rebuilds every nested
+        # mapping, so the snapshot shares no metadata object with its parent.
         metadata=frame.metadata,
     )
     return Population(
@@ -401,7 +413,9 @@ def _observer_snapshot(population: Population) -> Population:
         population.version,
         dict(population.owners),
         dict(population.weight_kind),
-        mass_ledger=tuple(copied_record(record) for record in population.mass_ledger),
+        mass_ledger=tuple(
+            _detached_record(record) for record in population.mass_ledger
+        ),
         design_weights=population.design_weights,
     )
 
@@ -485,7 +499,52 @@ def _context_digest(context: KernelContext) -> bytes:
         )
         digest.update(len(value.payload).to_bytes(8, "little"))
         digest.update(value.payload)
+    # The amendment-26 frame fields are kernel inputs like any other, so B4's
+    # before/after comparison covers them too. They are handed out detached
+    # (`_project_context`), so a kernel that rewrites one cannot reach the
+    # live version -- but it can still make its own node's output a function
+    # of something other than what it was given, and that is what this
+    # catches.
+    digest.update(b"frame-metadata\0")
+    digest.update(_frame_metadata_payload(context.frame_metadata))
+    digest.update(b"frame-column-order\0")
+    for entity, columns in context.frame_column_order.items():
+        _update_scalar(digest, entity)
+        for column in columns:
+            _update_scalar(digest, column)
+    digest.update(b"frame-mass-log\0")
+    for record in context.frame_mass_log:
+        for value in (
+            getattr(record, "entity", None),
+            getattr(record, "old_total", None),
+            getattr(record, "new_total", None),
+            getattr(record, "declared_factor", None),
+            getattr(record, "reason", None),
+        ):
+            _update_scalar(digest, value)
     return digest.digest()
+
+
+#: What a metadata tree digests to when the store codec cannot encode it.
+#: Reached only after a kernel has replaced a value with something ``Frame``
+#: would never have admitted, which is itself the mutation being reported.
+_UNCODABLE_FRAME_METADATA = b"<frame metadata outside the store codec>"
+
+
+def _frame_metadata_payload(metadata: Mapping[str, object]) -> bytes:
+    """Digest bytes for a frame-metadata view, without trusting its contents.
+
+    ``store._encode_frame_metadata`` is the codec the frame format already
+    uses, so an unchanged view digests exactly as it persists. It is a codec
+    for *valid* metadata, though, and this runs a second time after a kernel
+    has held the object: it has to report a mutation rather than raise while
+    computing the comparison that would report it.
+    """
+
+    try:
+        return canonical_json(_encode_frame_metadata(metadata))
+    except (TypeError, ValueError, RecursionError):
+        return _UNCODABLE_FRAME_METADATA
 
 
 def _structural_columns(frame: Frame, entity: str) -> list[str]:
@@ -684,8 +743,13 @@ def _project_context(
         rng=np.random.default_rng(seed(key)),
         sources=MappingProxyType({name: sources[name] for name in node.sources}),
         artifacts={} if artifacts is None else artifacts,
-        frame_metadata=frame.metadata,
-        frame_mass_log=mass_log,
+        # Detached before the kernel sees them: a frozen dataclass still
+        # yields to ``object.__setattr__``, so passing the version's own
+        # ``_FrozenMapping`` leaves and mass records by reference would make
+        # every kernel -- and anything that retains a context past its own
+        # mutation check -- a live handle on the population (amendment 26).
+        frame_metadata=deepcopy(frame.metadata),
+        frame_mass_log=tuple(_detached_record(record) for record in mass_log),
         frame_column_order=MappingProxyType(column_order),
         tolerances=tolerances,
         numerics=numerics,

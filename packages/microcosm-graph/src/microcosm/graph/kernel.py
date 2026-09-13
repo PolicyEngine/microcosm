@@ -349,10 +349,12 @@ class KernelContext:
             nominal type does not itself verify serialized data (amendment
             19).
         frame_metadata: The population version's own metadata. The
-            executor passes :attr:`microcosm.frame.Frame.metadata`, which
-            ``Frame`` has already deeply frozen; this class adds a
-            read-only view over that mapping and does not itself deep-freeze
-            a mapping built some other way (amendment 26).
+            executor passes a deep copy of
+            :attr:`microcosm.frame.Frame.metadata`, so the view is detached
+            from the live version as well as deeply frozen by ``Frame``;
+            this class adds a read-only view over that mapping and does not
+            itself deep-freeze or copy a mapping built some other way
+            (amendment 26).
         frame_mass_log: The ``Frame`` mass records this node's key binds,
             in order. For an ordinary node that is its population version's
             *boundary* log -- the log as that version was admitted -- so a
@@ -365,15 +367,20 @@ class KernelContext:
             base and that version's members. A node that needs a stage's
             completed records therefore runs after that stage's structural
             boundary or reads its predecessor's evidence; incidental node
-            order is not authority (amendment 26).
+            order is not authority. The executor hands out rebuilt records,
+            not the version's own: a frozen dataclass still yields to
+            ``object.__setattr__``, so a record passed by reference would be
+            a live handle on the population (amendment 26).
         frame_column_order: Entity to the population version's own column
             order, restricted to the columns projected into ``tables``.
             The executor projects ``tables`` in declaration order, so this
             is the only way to reconstruct the version's layout. It never
             names a column the node did not get: an entry that is not
             exactly an ordering of that table's columns is refused, so an
-            undeclared column cannot be smuggled in as a name (amendment
-            26).
+            undeclared column cannot be smuggled in as a name. All three
+            frame fields are ordinary inputs: the executor's before/after
+            comparison covers them, so rewriting one is refused exactly as
+            rewriting a table is (amendment 26).
         tolerances: ``(entity, column)`` of each declared input column to
             the :class:`Tolerance` its owning kernel declared, or ``None``
             for a bitwise owner. A gate compares against these.

@@ -597,6 +597,21 @@ lock unchanged:
       was not: a column *name* is itself information about the version, and
       B1's "nothing else is visible" covers names as well as values.
 
+    All three are detached before a kernel sees them and are covered by
+    B4's before/after mutation check. Detachment is not redundant with
+    `Frame`'s freezing: a frozen dataclass still yields to
+    `object.__setattr__`, so passing the version's own `_FrozenMapping`
+    leaves and `MassChangeRecord`s by reference would make every kernel — and
+    anything that retains a context past its own mutation check — a live
+    handle on the population. The executor therefore hands out a deep copy
+    of the metadata and rebuilt mass records (the rule `_observer_snapshot`
+    already followed, now shared), and `_context_digest` binds the metadata
+    through the frame format's own store codec, the mass records field by
+    field, and the projected column order. Neither is a substitute for the
+    other: the digest catches a kernel whose output stops being a function
+    of its declared inputs, while detachment is what stops a retained view
+    from rewriting the live version after that check has passed.
+
     The three ride after `artifacts` and before `tolerances`, so amendment
     17's statement that `numerics` rides at the end of the context stays
     literally true and amendment 19's that `artifacts` rides before the

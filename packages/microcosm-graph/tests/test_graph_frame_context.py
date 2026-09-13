@@ -17,6 +17,7 @@ import dataclasses
 import importlib.util
 import sys
 from pathlib import Path
+from types import MappingProxyType
 
 import pandas as pd
 import pytest
@@ -28,6 +29,7 @@ from microcosm.graph import (
     KernelContext,
     KernelResult,
     Node,
+    NodeRejectedError,
     Owned,
     Slice,
     StructuralDelta,
@@ -47,10 +49,21 @@ toy = sys.modules["_toy"]
 SOURCE_REF = "source.metadata@1"
 PROBE_REF = "probe.frame_context@1"
 REWEIGHT_PROBE_REF = "probe.frame_context_reweight@1"
+ISOLATION_REF = "probe.frame_context_isolation@1"
 
-#: Metadata the CREATE kernel puts on the version, including a nested value
-#: so the frozen projection is exercised rather than a flat string map.
-VERSION_METADATA = {"time_period": "2024", "vintage": ("frs", "was")}
+#: What a tampering probe or observer writes, so an assertion can tell
+#: "the rewrite never happened" from "the rewrite never escaped".
+TAMPERED = "tampered"
+
+#: Metadata the CREATE kernel puts on the version, including a nested
+#: mapping and a nested sequence, so the frozen projection is exercised
+#: rather than a flat string map -- and so a property can rewrite a value
+#: one level below the mapping the context hands out.
+VERSION_METADATA = {
+    "time_period": "2024",
+    "vintage": ("frs", "was"),
+    "provenance": {"source": "frs", "year": 2024},
+}
 
 
 class MetadataSource(toy.ToyKernel):
@@ -156,6 +169,76 @@ class ReweightProbe(toy.ToyKernel):
         )
 
 
+def rewrite(context: KernelContext, field: str) -> None:
+    """Rewrite one of the three frame fields of ``context``, in place.
+
+    This is the adversary the amendment defends against, so it uses the
+    capability a kernel actually has rather than a public setter: a frozen
+    dataclass yields to ``object.__setattr__``, and the nested metadata
+    leaves are frozen dataclasses. The nested field is found through
+    ``dataclasses.fields`` rather than named, so the property survives a
+    rename inside ``microcosm.frame``.
+    """
+
+    if field == "metadata":
+        nested = context.frame_metadata["provenance"]
+        object.__setattr__(
+            nested, dataclasses.fields(nested)[0].name, (("source", TAMPERED),)
+        )
+    elif field == "mass_record":
+        object.__setattr__(context.frame_mass_log[0], "reason", TAMPERED)
+    elif field == "column_order":
+        object.__setattr__(
+            context,
+            "frame_column_order",
+            MappingProxyType(
+                {
+                    entity: tuple(reversed(columns))
+                    for entity, columns in context.frame_column_order.items()
+                }
+            ),
+        )
+    else:  # pragma: no cover - guards the fixture itself
+        raise AssertionError(f"unknown frame field {field!r}")
+
+
+class IsolationProbe(toy.ToyKernel):
+    """Retains the frame view it is handed, and rewrites views on request.
+
+    ``retain`` keeps this node's own context. ``tamper`` rewrites every
+    context retained so far, which happens *after* those nodes' mutation
+    checks have already passed -- at that point only detachment keeps the
+    live version intact. ``tamper_self`` rewrites one field of this node's
+    own context instead, which the before/after comparison has to refuse.
+    """
+
+    def __init__(self, ref: str, capabilities, *, variant: str = "base") -> None:
+        super().__init__(ref, capabilities, variant=variant)
+        self.retained: list[KernelContext] = []
+        self.seen: list[dict[str, object]] = []
+
+    def compute(self, context: KernelContext) -> KernelResult:
+        if context.params.get("tamper"):
+            for held in self.retained:
+                rewrite(held, "metadata")
+                rewrite(held, "mass_record")
+        if context.params.get("retain"):
+            self.retained.append(context)
+        self.seen.append(observed(context))
+        ids = pd.Index(context.tables["person"]["person_id"], name="person_id")
+        result = KernelResult(
+            columns={
+                ("person", str(context.params["target"])): pd.Series(
+                    1.0, index=ids, dtype="float64"
+                )
+            }
+        )
+        tamper_self = context.params.get("tamper_self")
+        if tamper_self is not None:
+            rewrite(context, str(tamper_self))
+        return result
+
+
 def build_registry() -> tuple[object, FrameContextProbe]:
     """The toy registry with the metadata source and both probes registered.
 
@@ -167,6 +250,7 @@ def build_registry() -> tuple[object, FrameContextProbe]:
     probe = FrameContextProbe(PROBE_REF, toy._DETERMINISTIC)
     registry.register(probe)
     registry.register(ReweightProbe(REWEIGHT_PROBE_REF, toy._REWEIGHT))
+    registry.register(IsolationProbe(ISOLATION_REF, toy._DETERMINISTIC))
     return registry, probe
 
 
@@ -631,6 +715,133 @@ def test_required_replay_agrees_when_the_sibling_is_reparameterized(
 
 
 # ----------------------------------------------------------------------
+# Isolation: the fields are detached, and rewriting one is refused
+# ----------------------------------------------------------------------
+
+
+def isolation_node(
+    node_id: str,
+    *,
+    target: str,
+    retain: bool = False,
+    tamper: bool = False,
+    tamper_self: str | None = None,
+) -> Node:
+    """One ordinary member of the ``boundary`` version, with a tamper role."""
+    return Node(
+        node_id,
+        ISOLATION_REF,
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", target, "float64"),),
+        params={
+            "target": target,
+            "retain": retain,
+            "tamper": tamper,
+            "tamper_self": tamper_self,
+        },
+        population="boundary",
+    )
+
+
+def isolation_graph(*nodes: Node) -> Graph:
+    """``boundary_graph``'s appender and boundary, then the given members.
+
+    The members sit in the ``boundary`` version because that is the version
+    whose boundary log is non-empty: a property about rewriting a mass
+    record needs a node that was actually handed one.
+    """
+    return Graph(
+        "toy",
+        (toy.SOURCE,),
+        (
+            CREATE,
+            probe_node(
+                "appender",
+                columns=("age",),
+                target="appender_a",
+                mass_reason=APPEND_REASON,
+            ),
+            reweight_probe_node(),
+            *nodes,
+        ),
+    )
+
+
+def run_isolation(root: Path, *nodes: Node):
+    """Run ``isolation_graph`` and return ``(manifest, isolation probe)``."""
+    registry, probe = build_registry()
+    manifest, _, _, _ = run_probe(
+        root, graph=isolation_graph(*nodes), registry=registry, probe=probe
+    )
+    return manifest, registry.get(ISOLATION_REF)
+
+
+def test_a_retained_context_cannot_rewrite_the_live_version(tmp_path: Path) -> None:
+    """Detachment, stated where the mutation check cannot reach.
+
+    ``iso_b_tamper`` rewrites the nested metadata and the mass record of a
+    context ``iso_a_retain`` was handed, after that node finished and its
+    own before/after comparison passed. The rewrite lands -- the assertions
+    on the retained view prove the property is not vacuous -- and reaches
+    neither the node that runs next nor the version itself.
+    """
+    manifest, isolation = run_isolation(
+        tmp_path / "run",
+        isolation_node("iso_a_retain", target="iso_a", retain=True),
+        isolation_node("iso_b_tamper", target="iso_b", tamper=True),
+        isolation_node("iso_c_reader", target="iso_c"),
+    )
+    (held,) = isolation.retained
+    assert held.frame_mass_log[0].reason == TAMPERED
+    assert held.frame_metadata["provenance"]["source"] == TAMPERED
+
+    reader = observation(isolation, "iso_c_reader")
+    assert only_record(reader["mass_log"]).reason == APPEND_REASON
+    assert reader["metadata"]["provenance"]["source"] == "frs"
+    for version in ("survey", "boundary"):
+        assert manifest.population(version).metadata["provenance"]["source"] == "frs"
+    assert only_record(manifest.population("boundary").mass_log).reason == APPEND_REASON
+
+
+def test_rewriting_nested_metadata_is_refused(tmp_path: Path) -> None:
+    """A leaf one level below the mapping the context hands out."""
+    with pytest.raises(NodeRejectedError, match="mutated its input context"):
+        run_isolation(
+            tmp_path / "run",
+            isolation_node("iso_tamper", target="iso_t", tamper_self="metadata"),
+        )
+
+
+def test_rewriting_a_mass_record_is_refused(tmp_path: Path) -> None:
+    """The record is the node's input, not a description of one."""
+    with pytest.raises(NodeRejectedError, match="mutated its input context"):
+        run_isolation(
+            tmp_path / "run",
+            isolation_node("iso_tamper", target="iso_t", tamper_self="mass_record"),
+        )
+
+
+def test_rewriting_the_projected_column_order_is_refused(tmp_path: Path) -> None:
+    """Reversing an order is a different claim about the version's layout."""
+    with pytest.raises(NodeRejectedError, match="mutated its input context"):
+        run_isolation(
+            tmp_path / "run",
+            isolation_node("iso_tamper", target="iso_t", tamper_self="column_order"),
+        )
+
+
+def test_an_untouched_frame_view_still_passes_the_mutation_check(
+    tmp_path: Path,
+) -> None:
+    """The digest additions do not make an ordinary node look mutated."""
+    manifest, isolation = run_isolation(
+        tmp_path / "run", isolation_node("iso_quiet", target="iso_q")
+    )
+    assert [item["node"] for item in isolation.seen] == ["iso_quiet"]
+    assert manifest.nodes["iso_quiet"].hit is False
+
+
+# ----------------------------------------------------------------------
 # Replay
 # ----------------------------------------------------------------------
 
@@ -686,11 +897,16 @@ def test_a_new_node_over_restored_populations_sees_the_same_frame(
 def test_a_retained_mutating_observer_changes_nothing(tmp_path: Path) -> None:
     """Amendment 24 still holds across the new fields.
 
-    The observer keeps every snapshot and rewrites its tables and its
-    metadata view after the callback returns; what later nodes read through
-    the frame fields, and the run's identity, are unchanged.
+    The observer keeps every snapshot and rewrites its tables, its nested
+    metadata *and* its mass records after the callback returns. Table
+    mutation alone would not touch the amendment-26 fields at all, so it is
+    the metadata and mass-record rewrites that make this property about
+    them; the run is over ``boundary_graph`` because that is the graph
+    whose snapshots carry a mass record to rewrite.
     """
-    plain_manifest, plain_probe, sources, _ = run_probe(tmp_path / "plain")
+    plain_manifest, plain_probe, sources, _ = run_probe(
+        tmp_path / "plain", graph=boundary_graph()
+    )
     retained: list[object] = []
 
     def observe(node_id: str, population) -> None:
@@ -699,13 +915,33 @@ def test_a_retained_mutating_observer_changes_nothing(tmp_path: Path) -> None:
             table = population.frame.table(entity)
             for column in table.columns:
                 table.loc[:, column] = table[column].iloc[0]
+        for record in population.frame.mass_log:
+            object.__setattr__(record, "reason", TAMPERED)
+        nested = population.frame.metadata["provenance"]
+        object.__setattr__(
+            nested, dataclasses.fields(nested)[0].name, (("source", TAMPERED),)
+        )
 
     observed_manifest, observed_probe, _, _ = run_probe(
-        tmp_path / "observed", sources=sources, observer=observe
+        tmp_path / "observed",
+        graph=boundary_graph(),
+        sources=sources,
+        observer=observe,
     )
     assert len(retained) == len(observed_manifest.nodes)
     assert {n: r.key for n, r in observed_manifest.nodes.items()} == {
         n: r.key for n, r in plain_manifest.nodes.items()
     }
-    for node_id in ("probe_first", "probe_second"):
+    for node_id in ("appender", "after_boundary"):
         assert observation(observed_probe, node_id) == observation(plain_probe, node_id)
+
+    # The rewrites landed on the snapshots, and on nothing else.
+    rewritten = [record for snapshot in retained for record in snapshot.frame.mass_log]
+    assert rewritten and all(record.reason == TAMPERED for record in rewritten)
+    assert all(
+        snapshot.frame.metadata["provenance"]["source"] == TAMPERED
+        for snapshot in retained
+    )
+    version = observed_manifest.population("boundary")
+    assert version.metadata["provenance"]["source"] == "frs"
+    assert only_record(version.mass_log).reason == APPEND_REASON
