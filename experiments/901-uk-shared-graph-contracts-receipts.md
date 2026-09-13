@@ -80,19 +80,40 @@ moves a node key. `decl.py` is re-locked by 25, `kernel.py` by 26.
 
 ## Identity
 
+Files as of the fix round (`f5aa65d40`). The four earlier rows this table
+carried for `decl.py`, `executor.py` and the two new test files were the
+pre-fix bytes and are superseded here.
+
 | File | SHA-256 |
 | --- | --- |
-| `decl.py` | `e78c7359b48813c57eff6f697359682753b74f86f565f4e6974421e5a4048933` |
-| `kernel.py` | `51f45e899ba578a6b2324636a9879253266b067812f68b648eacfcd5a184d245` |
+| `decl.py` | `11c2abd77f50389c6cd0b51e26cb3ebd5cbd0770ba96e9de1b53c71e9725eaa4` |
+| `kernel.py` | `2df6cc5b5b396adae578f885aedbd038d2c0e51f56b4a31b64c2f6b69e1b918d` |
 | `weight_update.py` | `0ccfe6fcd257ef62b1f771b12eecc8ac5d447f5aa7d0403102e0ae290de16720` |
 | `population.py` | `33d1bb7bacea22870940288bf1907fb9eb24df7c245a216ff802e7fb41f5208f` |
 | `serialize.py` | `e5bf83c1082154f148626b6a36676614c6ff6c3fe0721aed94a1501da3021b1f` |
-| `executor.py` | `ec4473bb033c4b1a36180c1518a42c755a46a2265d10461df1dfa00065862364` |
+| `executor.py` | `5ab918e495fe4f8dd32c16155fe8c7a911e60e171cdbc8edb790626ce2d58c19` |
 | `explain.py` | `734a7b0e31692c31a99528cd83d9e74d3e508a317d913c1c169724a42d69d0de` |
 | `graph/__init__.py` | `697c59a37989a36124e6d43c7b07dd3b0582d965f97303c1fb02c88b41db2d48` |
-| `tests/test_graph_weight_update.py` | `771ae0becbc57a4dd6198b9df229ec8c8262a5597647f335b7d5ed9be83471ff` |
-| `tests/test_graph_frame_context.py` | `d58250d2194c81002be7282cd53597a7b9cff0906bb879b4b3926b4ac5b91ada` |
-| `docs/graph-interface.lock` | `b42811ff0411dc179aaf9ddcf827aa270db866e08112cef8d1839df99c5a1f02` |
+| `tests/test_graph_weight_update.py` | `6ff1296b1d769454b9664ca95bf084b91cf8bd05ada99ed58d54c8d4768751c7` |
+| `tests/test_graph_frame_context.py` | `bcee6caccb7ffce47f04785557d246d2e8d5211d760ce5a344f3023cb1d3bf0c` |
+| `tests/test_graph_population.py` | `b1aeabac04dbe6af8aeaf3b1691c7306a1442a142279043868500fdfe6476eec` |
+| `tests/test_graph_kernel_contract.py` | `b13105cd302702eadcb30278545e794c16f3d819f571693810fb8f838473b126` |
+| `tests/test_acceptance_b_ownership.py` | `a78ad49a341d08fe2a76e98e94d6dfe2fb60140ce5589101603b93f933f5bb34` |
+| `docs/graph-interface.lock` | `b857403be2206156b844958cbd6abcb25ef951d05c0cc11e22554169a9343d2e` |
+
+### Every test file this lane touched
+
+An earlier draft of this receipt said the lane's test change was "isolated
+to one file". That is true only of the **acceptance suite**, which the
+charter assigns to the suite lane. In full:
+
+| File | Suite? | Change |
+| --- | --- | --- |
+| `test_graph_weight_update.py` | no | new (amendment 25) |
+| `test_graph_frame_context.py` | no | new (amendment 26) |
+| `test_graph_population.py` | no | three design-anchor properties added beside the existing ones (fix round, F2) |
+| `test_graph_kernel_contract.py` | no | one assertion of *adjacency* relaxed to the ordering amendment 19 actually claims |
+| `test_acceptance_b_ownership.py` | **yes** | B2's `KernelContext` field set, in its own commit (`895aabf19`), as amendment 19's was |
 
 The lock was re-recorded as part of each numbered amendment, never
 refreshed to make a test green: amendment 25 moved only the `decl.py`
@@ -113,3 +134,58 @@ test files land in `fast/rest` and the engine lane beside their 27 sibling
 graph tests, neither `[defaulted]`). No pytest, no import of the
 production package, no engine, no install, no network beyond `gh`
 metadata and public blob reads.
+
+---
+
+## Fix round (2026-09-13), after the independent adjudication
+
+An independent read-only review of `6f4ba4ec9` over `15ebde806` returned
+REQUEST_CHANGES; its verbatim text is `FABLE-REVIEW.md` in this packet.
+Root adjudicated. What changed in the contracts above:
+
+**Amendment 26, mass log (F1).** The projection handed every node
+`population.frame.mass_log`, which for an ordinary node is its version's
+*cumulative* log. An ordinary node's key binds only its version's
+structural boundary and the owners of the columns it declared, so a
+sibling that ran earlier in the same version and appended a record could
+change what the node was shown without moving its key. `run_graph` now
+records each version's log as that version is admitted — one line, which
+cold execution and a restored hit both reach — and projects ordinary nodes
+from that boundary. A structural node still receives the cumulative log,
+which its key binds through `base` and `members`.
+
+**Amendment 26, isolation (F3/F4).** `Frame` deeply freezes its metadata
+and its mass records, but a frozen dataclass still yields to
+`object.__setattr__`, so passing those objects by reference made every
+kernel a live handle on the population. The projection now hands out a
+deep copy of the metadata and rebuilt records, through the rule
+`_observer_snapshot` already followed (now the shared `_detached_record`),
+and `_context_digest` binds all three fields — the metadata through the
+frame format's own store codec, each mass record field by field, and the
+projected column order.
+
+**Amendment 25, design ancestry (F2 — not accepted as stated).** The
+review asked a design-kind update to re-anchor `Population.design_weights`.
+Root refused: an anchor is the design weight a row entered carrying, it is
+captured once at CREATE and afterwards only carried by stable entity id,
+and `_carry_design_weights` maps an EXPAND's copied rows back to their
+source's *original* anchor rather than its current value. Re-anchoring
+would silently redefine the denominator of every `max_weight_ratio`
+declared upstream of an unrelated normalization. The amendment and the
+`WeightUpdate` docstring now state the anchor rule instead of "ancestry is
+untouched", and `test_graph_population.py` asserts it.
+
+**Amendment 25, motivating claim (F5).** The amendment claimed a re-solve
+of an existing calibration as a covered case. `calibrate.adam@1` emits no
+`receipt['weight_update']`, so that declaration would be refused by the
+axis check; the claim is now marked a future consumer adaptation.
+
+### Checks actually run in the fix round
+
+`ruff check .` (clean), `ruff format --check` on every touched file
+(clean), stdlib `ast` parses of every touched Python file, and
+`tools/ci_test_groups.py --verify` (`verification=ok`; the three touched
+graph test files appear under `[fast]` and `[engine]`, none under
+`[defaulted]`). Still no pytest, no import of the production package, no
+engine, no install, no native source and no publication. `origin/main`
+re-fetched on resume: `15ebde806`, nothing to merge.
