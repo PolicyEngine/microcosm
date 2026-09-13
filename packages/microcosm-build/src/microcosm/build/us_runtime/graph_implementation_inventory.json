@@ -594,6 +594,7 @@
         "microcosm.build.us_runtime.graph_implementation",
         "microcosm.build.us_runtime.stacked_spine",
         "microcosm.build.us_runtime.support_provenance",
+        "microcosm.build.us_runtime.survey_demographic_contract",
         "microcosm.frame",
         "microcosm.graph",
         "microcosm.graph.canonical",
@@ -915,6 +916,11 @@
       ],
       "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "unbound_uses_sha256": "00c2ba97f0fb73d788c8f9c6e42ab90a67c5a2f7fe947d2232441aa6b03ae27c"
+    },
+    "microcosm.build/us_runtime/survey_demographic_contract.py": {
+      "imports": [],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
     "microcosm.build/us_runtime/survey_observed_age.py": {
       "imports": [
@@ -1486,6 +1492,7 @@
     "microcosm.build.us_runtime.stacked_spine": "whole-module in explicit stages",
     "microcosm.build.us_runtime.support_provenance": "whole-module in explicit stages",
     "microcosm.build.us_runtime.survey_catalogue_selection": "whole-module pure complete-catalogue selection plan in authenticated_survey_population_v1",
+    "microcosm.build.us_runtime.survey_demographic_contract": "Immutable historical unbound demographic requirements only; whole-module in composed_asec_binding_v1 and explicit later household-role hashes. No imports, resources, source authority or population operations.",
     "microcosm.build.us_runtime.survey_population_domains": "whole-module raw source-record classification and prespecified development allocation declaration in authenticated_survey_population_v1",
     "microcosm.build.us_runtime.us_late_overlap_ownership": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "microcosm.build.us_runtime.us_late_producer_registry": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
@@ -1611,7 +1618,7 @@
     "asec_prepared_v3": "Full P/H/T1 restoration, unchanged money recipe, separate S authentication/attachment before tax units, housing authentication against original T1, lossless dtype promotion, typed whole-household selection, corrected CPS leaves and four admitted PE outputs. Graph/Frame/microunit rosters are bound conservatively. Only declared source codec registration and frame column declarations run from graph_sources; ACS and stack assembly routes remain inactive. Alimony's pure ASEC split and cps_carried's split constants are bound, while their legacy consumer/source-manifest routes are inactive. V2 additionally authenticates HU from original T1, attaches it after housing status, preserves the pre-HU parent signature and carries native HU bytes plus selected-row ancestry with exact int64 promotion; pure ACS HU remains inactive. V3 additionally issues separate PAW_VAL/PAW_YN observations from the same official members and a derived six-column reported-income branch. The 33-field body, T1/S definitions, selected-money v1 and selection v2 payload contract remain sealed; historical v2 artifacts are preserved, but v3 runtime keys invalidate old caches.",
     "authenticated_survey_population_v1": "Complete ACS and ASEC catalogues authenticate original source records before one domain draw. Selected native issuers produce original DESIGN anchors, which are stacked without share normalization; the graph applies share/inclusion probability once. Explicit narrow source closure includes pure origin canonical encoding and the original household/person custody helpers, not the legacy prepared ASEC resource union. Original source JSONs and microunit YAML are the only packaged data. The isolated real source-codec loader is declared separately from the unchanged global five codecs. The runner reconstructs source authority on cold and warm invocations and checks actual populations, design ancestry, owners, weight kinds, mass ledgers and typed artifact descriptors. Optional PUF support cloning follows over both survey arms under existing clone implementation identities. No donor fit/draw, policy engine, calibration or target measurement is part of this stage. Initial source and graph snapshots remain preliminary pending integrated invented execution and independent review.",
     "bound_modules": "Whole bytes of explicitly named modules; helper-only parsing never imports adapters.",
-    "composed_asec_binding_v1": "Binding the carried prepared-ASEC evidence to the composed ASEC rows and deriving the reviewed corrected leaves and reported observations over them. This stage reads no source; every artifact it admits was produced by composed_population_v1, and every verifier, selector and derivation it reuses already lives in that scope, so its module inventory is exactly that scope's plus the two binding modules and its dependency set is identical. Because the inventory is a superset of composed_population_v1 and therefore of each of its parents, no existing module's covered-import set moves. It binds the same two codecs the composing CREATE binds rather than claiming an identity narrower than its actual inputs.",
+    "composed_asec_binding_v1": "Binding the carried prepared-ASEC evidence to the composed ASEC rows and deriving the reviewed corrected leaves and reported observations over them. This stage reads no source; every artifact it admits was produced by composed_population_v1, and every verifier, selector and derivation it reuses already lives in that scope, so its module inventory is that scope's plus the two binding modules and shared demographic declarations, with the same dependency set. Because the inventory is a superset of composed_population_v1 and therefore of each of its parents, no existing module's covered-import set moves. It binds the same two codecs the composing CREATE binds rather than claiming an identity narrower than its actual inputs. The immutable demographic requirements now live in survey_demographic_contract and remain whole-module bound in this scope; the historical stage re-exports them and retains the same canonical-write refusal.",
     "composed_population_v1": "The composed prepared-ASEC/native-ACS population. One CREATE runs both reviewed source scopes, so this stage's module inventory is exactly the union of assembly_prepare, asec_prepared_v3 and geography plus the composing module, and its dependency set is theirs. Because the union is a superset of each parent, no existing module's covered-import set and therefore no existing stage identity moves. It binds the prepared codec and the ACS codec it actually reads; the raw-stage codec is not bound because this stage never reads it. Sampling, stacking, provenance and importance allocation remain in the unchanged stacked_spine/spine_assembly modules, and harmonization reuses the assembly_harmonize scope through its own kernel. No engine, clone, transfer or calibration route is active in this scope.",
     "current_money_resources": "Original source recipe and consumers declaration bytes remain unchanged to preserve authenticated T1/money identities. The additive graph consumer resource is separately pinned and supersedes only implementation status for the graph slice and microunit; all old nominal consumer routes remain pending.",
     "occupied_housing_review_base": "HU v1 source definition and attachment are exact approved 4b26e59b additions on d4bddcb6ac2aba52903cd8dace90330cee4a21e1; only the v2 prepared graph/transport wiring is new. Original source-verifier modules and resources are unchanged.",
@@ -2235,6 +2242,7 @@
         "microcosm.build/us_runtime/spine_assembly.py",
         "microcosm.build/us_runtime/stacked_spine.py",
         "microcosm.build/us_runtime/support_provenance.py",
+        "microcosm.build/us_runtime/survey_demographic_contract.py",
         "microcosm.frame/__init__.py",
         "microcosm.frame/accounting.py",
         "microcosm.frame/adapters/__init__.py",

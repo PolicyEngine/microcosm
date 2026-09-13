@@ -4,8 +4,14 @@ Private fixture projections assert no source authority. Actual owners have a
 separate test file and separately bounded runtime proposal.
 """
 
+import ast
+import builtins
+import hashlib
+import importlib.util
+import sys
 from io import BytesIO
-from types import SimpleNamespace
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -411,3 +417,135 @@ def test_clone_join_refuses_a_changed_identity_without_mutating_receiving(defect
     with pytest.raises(ValueError, match="CLONE_"):
         roles.household_role_columns_for_population(qualified, receiving)
     pd.testing.assert_frame_equal(before, receiving.person, check_exact=True)
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        (
+            "_UNBOUND_DEMOGRAPHICS",
+            "5e05f66bcf34401a3581df8abf0335ea1f34145e952dc635e64b17d21300bbda",
+        ),
+        (
+            "UNBOUND_DEMOGRAPHIC_COLUMNS",
+            "fe968c959d177f46f0a242973f855789b37db036e2987e9981978c37ee28aaac",
+        ),
+    ],
+)
+def test_shared_declarations_preserve_the_original_assignment_ast(name, expected):
+    # Fingerprints of the two assignments in the reviewed b967 composed stage.
+    tree = ast.parse(Path(roles.demographic_contract.__file__).read_bytes())
+    assert all(isinstance(node, (ast.Expr, ast.Assign)) for node in tree.body)
+    assignments = {
+        node.targets[0].id: node for node in tree.body if isinstance(node, ast.Assign)
+    }
+    assert set(assignments) == {"_UNBOUND_DEMOGRAPHICS", "UNBOUND_DEMOGRAPHIC_COLUMNS"}
+    assert hashlib.sha256(ast.dump(assignments[name]).encode()).hexdigest() == expected
+
+
+def test_composed_stage_reexports_the_same_shared_objects_without_redeclaration():
+    path = Path(roles.__file__).with_name("graph_composed_asec_binding.py")
+    tree = ast.parse(path.read_bytes())
+    names = {"_UNBOUND_DEMOGRAPHICS", "UNBOUND_DEMOGRAPHIC_COLUMNS"}
+    reexports = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "survey_demographic_contract"
+        and node.level == 1
+    ]
+    assert {alias.name for node in reexports for alias in node.names} == names
+    assert not any(
+        isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Store)
+        and node.id in names
+        for node in ast.walk(tree)
+    )
+    # Execute only those actual two imports, never the composed module body.
+    namespace = {"__package__": roles.__package__}
+    exec(
+        compile(ast.Module(body=reexports, type_ignores=[]), str(path), "exec"),
+        namespace,
+    )
+    for name in names:
+        assert namespace[name] is getattr(roles.demographic_contract, name)
+
+
+@pytest.mark.parametrize(
+    "module_name",
+    ["current_survey_household_roles", "graph_current_survey_household_roles"],
+)
+def test_actual_module_body_imports_without_the_legacy_composed_runtime(
+    monkeypatch, module_name
+):
+    path = Path(roles.__file__).with_name(module_name + ".py")
+    alias = roles.__package__ + "._import_boundary_" + module_name
+    module = ModuleType(alias)
+    module.__package__ = roles.__package__
+    module.__file__ = str(path)
+    original_import = builtins.__import__
+    blocked = (
+        "microcosm.build.us_runtime.graph_composed_asec_binding",
+        "microcosm.build.us_runtime.graph_composed_population",
+        "microcosm.build.us_runtime.stacked_spine",
+        "microcosm.build.us_runtime.multispine_pool",
+        "microcosm.build.us_runtime.spine_agreement",
+        "microcosm.build.spec_engine",
+        "jsonschema",
+        "policyengine_us",
+        "policyengine_uk",
+    )
+    attempted = []
+
+    def checked_import(name, globals=None, locals=None, fromlist=(), level=0):
+        package = (globals or {}).get("__package__", "")
+        target = (
+            importlib.util.resolve_name("." * level + name, package) if level else name
+        )
+        candidates = (target, *(target + "." + item for item in fromlist or ()))
+        attempted.extend(candidates)
+        assert not any(
+            candidate == forbidden or candidate.startswith(forbidden + ".")
+            for candidate in candidates
+            for forbidden in blocked
+        ), candidates
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setitem(sys.modules, alias, module)
+    monkeypatch.setattr(builtins, "__import__", checked_import)
+    # Real source body, without loader cache probes or a child interpreter.
+    exec(compile(path.read_bytes(), str(path), "exec"), module.__dict__)
+    owner = module if module_name == "current_survey_household_roles" else module.roles
+    assert owner.demographic_contract is roles.demographic_contract
+    assert roles.demographic_contract in owner._implementation_modules()
+    assert not hasattr(owner, "composed")
+    assert attempted
+
+
+@pytest.mark.parametrize(
+    "name", ["_UNBOUND_DEMOGRAPHICS", "UNBOUND_DEMOGRAPHIC_COLUMNS"]
+)
+def test_live_contract_binds_both_complete_shared_declarations(monkeypatch, name):
+    before = roles._live()
+    value = getattr(roles.demographic_contract, name)
+    # Removing the other leaf still must invalidate the complete shared binding.
+    monkeypatch.setattr(roles.demographic_contract, name, value[1:])
+    assert roles._live() != before
+
+
+def test_source_seal_binds_the_shared_contract_file(monkeypatch):
+    path = Path(roles.demographic_contract.__file__)
+    before = dict(roles._source_bytes())
+    assert roles.demographic_contract.__name__ in before
+    read_bytes = Path.read_bytes
+
+    def changed(candidate):
+        value = read_bytes(candidate)
+        return value + b"\n# invented byte mutation\n" if candidate == path else value
+
+    monkeypatch.setattr(Path, "read_bytes", changed)
+    after = dict(roles._source_bytes())
+    assert after.pop(roles.demographic_contract.__name__) != before.pop(
+        roles.demographic_contract.__name__
+    )
+    assert after == before

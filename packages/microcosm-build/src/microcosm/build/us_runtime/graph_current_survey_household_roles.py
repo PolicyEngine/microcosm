@@ -438,7 +438,7 @@ class _HouseholdRoleKernel(KernelBase):
             replay,
             roles.demographic,
             roles.demographic.load_authenticated_asec_demographic_source,
-            roles.composed,
+            roles.demographic_contract,
             roles.housing,
             roles.records,
             roles.source,

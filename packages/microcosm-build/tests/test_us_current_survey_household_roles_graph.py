@@ -582,6 +582,8 @@ def test_rewrite_run_reconstructs_and_refuses_a_conflicting_incumbent(tmp_path):
         "code",
         "defaults",
         "constant",
+        "shared_private",
+        "shared_public",
         "graph_callable",
         "graph_constant",
         "callback_identity",
@@ -610,6 +612,17 @@ def test_first_and_final_owner_callbacks_cannot_change_live_implementation(
             monkeypatch.setattr(roles._bind, "__defaults__", (None,))
         elif mutation == "constant":
             monkeypatch.setattr(roles, "ACS_OBSERVATION_YEAR", 2099)
+        elif mutation in {"shared_private", "shared_public"}:
+            name = (
+                "_UNBOUND_DEMOGRAPHICS"
+                if mutation == "shared_private"
+                else "UNBOUND_DEMOGRAPHIC_COLUMNS"
+            )
+            monkeypatch.setattr(
+                roles.demographic_contract,
+                name,
+                getattr(roles.demographic_contract, name)[1:],
+            )
         elif mutation == "graph_callable":
             monkeypatch.setattr(graph, "_result", replacement)
         elif mutation == "graph_constant":

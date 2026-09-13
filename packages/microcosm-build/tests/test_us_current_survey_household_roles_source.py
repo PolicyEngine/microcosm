@@ -132,7 +132,17 @@ def test_actual_sources_qualify_named_reference_roles_and_leave_gq_unbound(
 
 @pytest.mark.parametrize("borrow_number", [1, 2])
 @pytest.mark.parametrize(
-    "mutation", ["callable", "code", "defaults", "period", "column", "owner_code"]
+    "mutation",
+    [
+        "callable",
+        "code",
+        "defaults",
+        "period",
+        "column",
+        "owner_code",
+        "shared_private",
+        "shared_public",
+    ],
 )
 def test_first_and_final_preparation_borrows_refuse_live_changes(
     tmp_path, monkeypatch, borrow_number, mutation
@@ -170,6 +180,17 @@ def test_first_and_final_preparation_borrows_refuse_live_changes(
             monkeypatch.setattr(roles, "ACS_OBSERVATION_YEAR", 2099)
         elif mutation == "column":
             monkeypatch.setattr(roles, "VALUE_COLUMN", "unreviewed_role")
+        elif mutation in {"shared_private", "shared_public"}:
+            name = (
+                "_UNBOUND_DEMOGRAPHICS"
+                if mutation == "shared_private"
+                else "UNBOUND_DEMOGRAPHIC_COLUMNS"
+            )
+            monkeypatch.setattr(
+                roles.demographic_contract,
+                name,
+                getattr(roles.demographic_contract, name)[1:],
+            )
         else:
             monkeypatch.setattr(checked, "__code__", replacement.__code__)
 
