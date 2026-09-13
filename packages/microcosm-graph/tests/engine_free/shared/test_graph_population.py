@@ -18,6 +18,7 @@ from microcosm.graph.decl import (
     Slice,
     StructuralDelta,
     WeightTransition,
+    WeightUpdate,
 )
 from microcosm.graph.kernel import KernelResult
 from microcosm.graph.population import (
@@ -36,6 +37,7 @@ from microcosm.graph.population import (
     weight_cap_receipt,
 )
 from microcosm.graph.store import ContentStore, _encode_object_scalar
+from microcosm.graph.weight_update import weight_update_receipt
 
 
 def _frame() -> Frame:
@@ -1357,6 +1359,242 @@ def test_calibration_cap_stays_anchored_to_original_design_after_filter() -> Non
             calibrated_node,
             KernelResult(weights=Weights(np.array([3.0, 6.0]), WeightKind.CALIBRATED)),
         )
+
+
+# ----------------------------------------------------------------------
+# Amendment 25: what a same-kind design update does to design ancestry
+# ----------------------------------------------------------------------
+
+
+#: Households 10, 20 and 30 enter the toy population carrying these design
+#: weights, so these are the anchors every cap below is stated against.
+ORIGINAL_DESIGN = np.array([1.0, 2.0, 3.0])
+
+
+def _design_update_node(node_id: str = "normalize") -> Node:
+    """A REWEIGHT that replaces design weights without moving their kind."""
+    return Node(
+        node_id,
+        "test@1",
+        structural=StructuralDelta.REWEIGHT,
+        base="source",
+        weights=WeightUpdate(
+            "household",
+            "design",
+            "normalize sampled source-family mass",
+            mass="declared",
+        ),
+        mass="declared",
+    )
+
+
+def _design_update_result(population: Population, *, factor: float) -> KernelResult:
+    """Scale every design weight by ``factor``, declaring the mass it moves.
+
+    The declared totals are derived from the incumbent frame rather than
+    written down, because a uniform scaling multiplies every stratum's mass
+    by the same factor; a hand-copied number here would only be a second
+    chance to be wrong.
+    """
+    frame = population.frame
+    before = frame.stratum_mass()
+    id_column = frame.schema.entity_id_column("household")
+    ids = frame.table("household")[id_column].tolist()
+    return KernelResult(
+        weights=Weights(
+            frame.weights_for("household").values * factor, WeightKind.DESIGN
+        ),
+        receipt={
+            "weight_update": weight_update_receipt(ids),
+            "mass": {
+                "policy": "declared",
+                "before": float(before.sum()),
+                "after": float(before.sum()) * factor,
+                "stratum_before": {key: float(value) for key, value in before.items()},
+                "stratum_after": {
+                    key: float(value) * factor for key, value in before.items()
+                },
+            },
+        },
+    )
+
+
+def _clone_and_entrant_expand_node(*, base: str) -> Node:
+    """An EXPAND that clones one household and admits one true entrant.
+
+    The toy household table carries no data columns, so the entrant row
+    materializes nothing; ``expand_cells`` is empty exactly as it is for the
+    lineage EXPAND above.
+    """
+    return Node(
+        "grow",
+        "test@1",
+        structural=StructuralDelta.EXPAND,
+        base=base,
+        params={
+            "expand_cells": (),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "design",
+        },
+        mass="free",
+        entrants=True,
+    )
+
+
+#: What the EXPAND declares for the household that has no ancestor. It is a
+#: number the kernel states, not one derived from the incumbent weights, so
+#: it is the same in every run below.
+ENTRANT_DESIGN_WEIGHT = 7.0
+
+
+def _clone_and_entrant_expand_result(population: Population) -> KernelResult:
+    """Clone household 10 as 40 and admit 50 from nothing.
+
+    The returned design weights are the incumbent ones with the clone's copy
+    of its source appended, then the entrant's declared weight.
+    """
+    incumbent = population.frame.weights_for("household").values
+    return KernelResult(
+        expand={
+            "person": pd.Series(
+                [],
+                index=pd.Index([], dtype="int64", name="person_id"),
+                dtype="int64",
+            ),
+            "household": pd.Series(
+                pd.array([10, pd.NA], dtype="Int64"),
+                index=pd.Index([40, 50], dtype="int64", name="household_id"),
+            ),
+        },
+        weights=Weights(
+            np.array([*incumbent, incumbent[0], ENTRANT_DESIGN_WEIGHT]),
+            WeightKind.DESIGN,
+        ),
+    )
+
+
+def test_a_same_kind_design_update_leaves_the_original_anchors_invariant() -> None:
+    """New numbers, same kind, same ancestry.
+
+    ``_apply_weight_update`` replaces the frame's design *values*;
+    ``_carry_design_weights`` carries ``Population.design_weights`` forward
+    by stable entity id, and ``patch`` passes the carried anchors to
+    ``Population.from_frame`` explicitly, so the default that would re-derive
+    anchors from the frame is never taken. An update is therefore not a
+    re-anchoring, and a cap declared against ``weight_anchor='design'``
+    keeps the denominator it was written against.
+    """
+    population = _population()
+    np.testing.assert_array_equal(
+        population.design_weights["household"], ORIGINAL_DESIGN
+    )
+
+    updated = patch(
+        population, _design_update_node(), _design_update_result(population, factor=2.0)
+    )
+
+    weights = updated.frame.weights_for("household")
+    assert weights.kind is WeightKind.DESIGN
+    np.testing.assert_array_equal(weights.values, ORIGINAL_DESIGN * 2.0)
+    np.testing.assert_array_equal(updated.design_weights["household"], ORIGINAL_DESIGN)
+    assert not updated.design_weights["household"].flags.writeable
+
+
+def test_a_design_update_moves_no_anchor_for_retained_clone_or_entrant_rows() -> None:
+    """The same EXPAND over an updated and an un-updated population.
+
+    Retained rows keep their own original anchor, a clone inherits the
+    anchor of the row it copies -- not that row's *current* design weight --
+    and a row with no ancestor is anchored on the design weight the EXPAND
+    installs for it, which the kernel declares rather than derives. All
+    three agree across the two runs, so the update moved no anchor at all;
+    the frames' design weights are a factor apart, so the property is not
+    vacuous.
+    """
+    plain = _population()
+    updated = patch(
+        plain, _design_update_node(), _design_update_result(plain, factor=2.0)
+    )
+    np.testing.assert_array_equal(
+        updated.frame.weights_for("household").values, ORIGINAL_DESIGN * 2.0
+    )
+
+    over_updated = patch(
+        updated,
+        _clone_and_entrant_expand_node(base="normalize"),
+        _clone_and_entrant_expand_result(updated),
+    )
+    over_plain = patch(
+        plain,
+        _clone_and_entrant_expand_node(base="source"),
+        _clone_and_entrant_expand_result(plain),
+    )
+
+    expected = np.array([1.0, 2.0, 3.0, 1.0, ENTRANT_DESIGN_WEIGHT])
+    np.testing.assert_array_equal(over_updated.design_weights["household"], expected)
+    np.testing.assert_array_equal(over_plain.design_weights["household"], expected)
+    np.testing.assert_array_equal(
+        over_updated.frame.table("household")["household_id"],
+        np.array([10, 20, 30, 40, 50]),
+    )
+    # Not vacuous: the two versions' design *values* differ by the factor for
+    # every row that existed before the update, and the clone copies the
+    # updated value while inheriting the original anchor.
+    np.testing.assert_array_equal(
+        over_updated.frame.weights_for("household").values,
+        np.array([2.0, 4.0, 6.0, 2.0, ENTRANT_DESIGN_WEIGHT]),
+    )
+    np.testing.assert_array_equal(
+        over_plain.frame.weights_for("household").values,
+        np.array([1.0, 2.0, 3.0, 1.0, ENTRANT_DESIGN_WEIGHT]),
+    )
+
+
+def test_a_design_update_does_not_move_the_calibration_cap_denominator() -> None:
+    """``max_weight_ratio`` stays relative to the original design weights.
+
+    Calibrated weights equal to the *updated* design weights are twice the
+    original anchors, so a cap of 1.5 refuses them and a cap of 2.0 admits
+    them exactly at the limit. Re-anchoring on the update would instead make
+    the same numbers a ratio of 1.0, silently widening every cap declared
+    upstream of an unrelated normalization by that normalization's factor.
+    """
+    population = _population()
+    updated = patch(
+        population, _design_update_node(), _design_update_result(population, factor=2.0)
+    )
+    normalized = updated.frame.weights_for("household").values
+
+    def calibrated_node(cap: float) -> Node:
+        return Node(
+            "calibrated",
+            "test@1",
+            structural=StructuralDelta.REWEIGHT,
+            base="normalize",
+            params={"max_weight_ratio": cap, "weight_anchor": "design"},
+            weights=WeightTransition("household", "calibrated", mass="free"),
+            mass="free",
+        )
+
+    with pytest.raises(PopulationError, match="calibrated.*original design"):
+        patch(
+            updated,
+            calibrated_node(1.5),
+            KernelResult(weights=Weights(normalized, WeightKind.CALIBRATED)),
+        )
+
+    at_cap = calibrated_node(2.0)
+    accepted = patch(
+        updated,
+        at_cap,
+        KernelResult(weights=Weights(normalized, WeightKind.CALIBRATED)),
+    )
+    np.testing.assert_array_equal(accepted.design_weights["household"], ORIGINAL_DESIGN)
+    assert weight_cap_receipt(accepted, at_cap) == {
+        "weight_anchor": "design",
+        "max_weight_ratio": 2.0,
+        "realized_max_weight_ratio": 2.0,
+    }
 
 
 def test_design_cap_fails_closed_when_source_has_no_design_lineage() -> None:
