@@ -1,5 +1,8 @@
 # Shared graph contracts extracted for the UK full-build graph (#901)
 
+> Historical source-only receipt. Later fixes and runtime verification are
+> recorded in the [13 September acceptance record](uk-shared-graph-contract-acceptance-20260913.md).
+
 Source-only lane receipt, 2026-09-13. Runtime **UNTESTED** — see
 `PROGRESS-uk-shared-graph-contracts.md` for the decisions, risks and the
 finite invented-only runtime plan this lane leaves for root.
