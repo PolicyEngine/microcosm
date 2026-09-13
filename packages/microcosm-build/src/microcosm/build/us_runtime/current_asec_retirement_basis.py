@@ -219,7 +219,7 @@ def _reference_agreement(d, r, published, ages):
                 (None if np.isnan(code) else int(code), literal),
                 kind,
                 net_measure=False,
-                zero_is_dollars=field == "ANN_VAL",
+                zero_is_dollars=routing._zero_is_dollars(field),
             )
             for age, code, literal, kind in zip(
                 ages, receipt, receipt_status, kinds, strict=True
@@ -430,7 +430,7 @@ def _family_row(family, receipt, total, difference, slots, age, assumptions):
     }
 
 
-def _distributions(r, published, ages):
+def _distributions(r, published, ages, differences):
     total, status = _known_routing(r, "retirement_distribution")
     receipt, receipt_literal = _codes(
         r, "retirement_distribution_receipt", routing.RECEIPT_CODE_DOMAIN
@@ -448,7 +448,7 @@ def _distributions(r, published, ages):
     offroute_receipts = {
         name: _codes(
             r, "retirement_distribution_receipt_" + name, routing.RECEIPT_CODE_DOMAIN
-        )[0]
+        )
         for name in ("young", "58")
     }
     roster, rows = [], []
@@ -489,9 +489,11 @@ def _distributions(r, published, ages):
                 if active:
                     account_amounts[int(code)] += value
             else:
-                offroute |= bool(
-                    (np.isfinite(value) and value != 0)
-                    or (np.isfinite(code) and code != 0)
+                offroute |= not bool(
+                    np.isfinite(value)
+                    and value == 0
+                    and literal == "in_printed_range"
+                    and code == 0
                 )
             roster.append(
                 {
@@ -513,8 +515,10 @@ def _distributions(r, published, ages):
                 }
             )
         other = "young" if age >= 58 else "58"
-        other_receipt = offroute_receipts[other]
-        offroute |= bool(np.isfinite(other_receipt[i]) and other_receipt[i] != 0)
+        other_receipt, other_literal = offroute_receipts[other]
+        offroute |= not bool(
+            other_literal[i] == "in_printed_range" and other_receipt[i] == 0
+        )
         if np.isfinite(total[i]) and known_composition:
             _require(total[i] == sum_applicable, "DISTRIBUTION_TOTAL")
         eligible = (
@@ -531,15 +535,27 @@ def _distributions(r, published, ages):
                 or (receipt[i] == 2 and total[i] == 0),
                 "DISTRIBUTION_RECEIPT",
             )
+        candidate_status = (
+            "known_nonreceipt"
+            if eligible and total[i] == 0
+            else "regularity_netting_unresolved"
+            if eligible
+            else "unresolved_source_composition"
+        )
+        if age >= 58 and (not np.isfinite(differences[i]) or differences[i] != 0):
+            eligible = False
+            candidate_status = (
+                "unresolved_source_accounting"
+                if not np.isfinite(differences[i])
+                else "contradictory_accounting"
+                if differences[i] < 0
+                else "additional_scope_unresolved"
+            )
         rows.append(
             {
                 "distribution_candidate_lower": 0.0 if eligible else np.nan,
                 "distribution_candidate_upper": total[i] if eligible else np.nan,
-                "distribution_status": "known_nonreceipt"
-                if eligible and total[i] == 0
-                else "regularity_netting_unresolved"
-                if eligible
-                else "unresolved_source_composition",
+                "distribution_status": candidate_status,
                 "distribution_source_known_amount": total[i],
                 "distribution_source_reporting_status": status[i],
                 "distribution_account_composition_known": bool(
@@ -667,7 +683,9 @@ def build_asec_retirement_basis(
         family: _comparison(d, published, family, total, first, second)
         for family, total, first, second in detail.COMPARISONS
     }
-    distribution, distribution_records = _distributions(r, published, age)
+    distribution, distribution_records = _distributions(
+        r, published, age, differences["distribution"]
+    )
     annuity, annuity_status = _known_routing(r, "pension_annuity_annuity")
     other_amount, other_clear, oi_candidate, oi_unspecified, oi_ss, oi_property = (
         _other_income(r, age)

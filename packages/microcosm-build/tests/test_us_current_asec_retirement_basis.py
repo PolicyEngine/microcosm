@@ -475,3 +475,219 @@ def test_outside_universe_unreadable_and_contradictory_evidence_stay_distinct(ow
     assert np.isnan(unresolved.pension_candidate_upper) and np.isnan(
         contradictory.pension_candidate_upper
     )
+
+
+@pytest.mark.parametrize("total", [150, 50])
+def test_distribution_main_aggregate_difference_blocks_candidate_interval(owner, total):
+    result = build(
+        owner,
+        [
+            {
+                "A_AGE": "60",
+                "DST_YN_YNG": "0",
+                "DST_YN": "1",
+                "DST_SC1": "4",
+                "DST_VAL1": "100",
+                "DBTN_VAL": str(total),
+            }
+        ],
+    )
+    p = result.person.iloc[0]
+    assert p.distribution_accounting_difference == total - 100
+    assert p.distribution_source_known_amount == 100
+    assert p.distribution_account_4_amount == 100
+    assert (
+        result.provenance["retirement_detail.DBTN_VAL_published_amount"].iloc[0]
+        == total
+    )
+    assert np.isnan(p.distribution_candidate_lower)
+    assert np.isnan(p.distribution_candidate_upper)
+    assert not p.candidate_interval_available and not p.candidate_basis_eligible
+    assert p.distribution_status == (
+        "additional_scope_unresolved" if total > 100 else "contradictory_accounting"
+    )
+
+
+@pytest.mark.parametrize("token", ["", "malformed"])
+@pytest.mark.parametrize(
+    "age,field,retained",
+    [
+        (40, "DST_YN", "receipt_58"),
+        (40, "DST_SC1", "slot1_account"),
+        (40, "DST_SC2", "slot2_account"),
+        (60, "DST_YN_YNG", "receipt_young"),
+        (60, "DST_SC1_YNG", "slot1_young_account"),
+        (60, "DST_SC2_YNG", "slot2_young_account"),
+    ],
+)
+def test_unreadable_offroute_distribution_literals_prevent_admission(
+    owner, age, field, retained, token
+):
+    young = age < 58
+    suffix = "_YNG" if young else ""
+    result = build(
+        owner,
+        [
+            {
+                "A_AGE": str(age),
+                "DST_YN_YNG": "1" if young else "0",
+                "DST_YN": "0" if young else "1",
+                "DST_SC1" + suffix: "4",
+                "DST_VAL1" + suffix: "100",
+                "DBTN_VAL": "0" if young else "100",
+                field: token,
+            }
+        ],
+    )
+    p = result.person.iloc[0]
+    assert (
+        result.provenance[
+            "income_routing.retirement_distribution_" + retained + "_literal"
+        ].iloc[0]
+        == token
+    )
+    assert not p.distribution_account_composition_known
+    assert np.isnan(p.distribution_candidate_upper)
+    assert not p.candidate_basis_eligible
+
+
+@pytest.mark.parametrize("age,field", [(40, "DST_VAL1"), (60, "DST_VAL1_YNG")])
+def test_unreadable_offroute_distribution_amount_is_not_assumed_zero(owner, age, field):
+    young = age < 58
+    suffix = "_YNG" if young else ""
+    p = build(
+        owner,
+        [
+            {
+                "A_AGE": str(age),
+                "DST_YN_YNG": "1" if young else "0",
+                "DST_YN": "0" if young else "1",
+                "DST_SC1" + suffix: "4",
+                "DST_VAL1" + suffix: "100",
+                "DBTN_VAL": "0" if young else "100",
+                field: "",
+            }
+        ],
+    ).person.iloc[0]
+    assert not p.distribution_account_composition_known
+    assert np.isnan(p.distribution_candidate_upper)
+
+
+def test_account_subtotals_are_evidence_when_receipt_interval_is_unknown(owner):
+    p = build(
+        owner, [{"DST_YN_YNG": "", "DST_SC1_YNG": "4", "DST_VAL1_YNG": "100"}]
+    ).person.iloc[0]
+    assert p.distribution_account_composition_known
+    assert p.distribution_account_4_amount == 100
+    assert np.isnan(p.distribution_source_known_amount)
+    assert np.isnan(p.distribution_candidate_upper)
+    assert not p.candidate_interval_available
+
+
+@pytest.mark.parametrize(
+    "family,prefix,total,code1,code2,lower,upper,status",
+    [
+        ("pension", "PEN", "PNSN_VAL", 1, 8, 60, 100, "candidate_under_assumptions"),
+        ("pension", "PEN", "PNSN_VAL", 1, 7, 60, 60, "candidate_under_assumptions"),
+        (
+            "disability",
+            "DIS",
+            "DSAB_VAL",
+            2,
+            10,
+            60,
+            100,
+            "candidate_under_assumptions",
+        ),
+        ("disability", "DIS", "DSAB_VAL", 2, 1, 60, 60, "candidate_under_assumptions"),
+        ("disability", "DIS", "DSAB_VAL", 6, 1, 0, 0, "route_outside_only"),
+    ],
+)
+def test_two_slot_family_routes_preserve_candidate_and_unresolved_bounds(
+    owner, family, prefix, total, code1, code2, lower, upper, status
+):
+    p = build(
+        owner,
+        [
+            {
+                prefix + "_YN": "1",
+                prefix + "_SC1": str(code1),
+                prefix + "_SC2": str(code2),
+                prefix + "_VAL1": "60",
+                prefix + "_VAL2": "40",
+                total: "100",
+            }
+        ],
+        pension_annuity_regularity="assume_regular",
+        disability_pension_eligibility="assume_qualifying",
+    ).person.iloc[0]
+    assert p[family + "_candidate_lower"] == lower
+    assert p[family + "_candidate_upper"] == upper
+    assert p[family + "_status"] == status
+    assert p[family + "_accounting_difference"] == 0
+    assert (
+        p[family + "_observed_candidate_subtotal"]
+        + p[family + "_observed_unresolved_subtotal"]
+        == upper
+    )
+
+
+@pytest.mark.parametrize(
+    "family,total",
+    [("pension", "PNSN_VAL"), ("disability", "DSAB_VAL"), ("survivor", "SRVS_VAL")],
+)
+def test_no_receipt_with_nonzero_total_and_zero_slots_remains_contradictory(
+    owner, family, total
+):
+    p = build(owner, [{total: "100"}]).person.iloc[0]
+    assert p[family + "_status"] == "contradictory_accounting"
+    assert p[family + "_accounting_difference"] == 100
+    assert p[family + "_observed_candidate_subtotal"] == 0
+    assert np.isnan(p[family + "_candidate_upper"])
+    assert not p.candidate_basis_eligible
+
+
+def test_equal_bounds_under_explicit_scenarios_do_not_claim_identification(owner):
+    row = {
+        "PEN_YN": "1",
+        "PEN_SC1": "1",
+        "PEN_VAL1": "100",
+        "PNSN_VAL": "100",
+        "DIS_YN": "1",
+        "DIS_SC1": "2",
+        "DIS_VAL1": "40",
+        "DSAB_VAL": "40",
+        "ANN_YN": "1",
+        "ANN_VAL": "20",
+    }
+    unresolved = build(owner, [row]).person.iloc[0]
+    p = build(
+        owner,
+        [row],
+        pension_annuity_regularity="assume_regular",
+        disability_pension_eligibility="assume_qualifying",
+    ).person.iloc[0]
+    assert (
+        unresolved.retirement_candidate_lower == 0
+        and unresolved.retirement_candidate_upper == 160
+    )
+    assert not unresolved.candidate_point_under_assumptions
+    assert p.retirement_candidate_lower == p.retirement_candidate_upper == 160
+    assert p.candidate_point_under_assumptions and p.candidate_basis_eligible
+    assert not p.point_identified and not p.fiscal_outputs_produced
+
+
+def test_diagnostic_household_mass_deduplicates_only_selected_households(owner):
+    row = {"PEN_YN": "1", "PEN_SC1": "1", "PEN_VAL1": "100", "PNSN_VAL": "150"}
+    result = build(owner, [row, row, {}, row, {}])
+    selected = result.summary.loc["diagnostic:pension_candidate_unresolved"]
+    assert selected.person_count == 3 and selected.household_count == 2
+    assert selected.design_weighted_person_mass == 7
+    assert selected.union_household_design_mass == 5
+
+
+def test_design_weights_refuse_an_unselected_household(owner):
+    source = inputs(owner, [{}])
+    source["original_household_design_weights"].loc[999] = 4.0
+    with pytest.raises(ValueError, match="DESIGN_MEMBERSHIP"):
+        owner.build_asec_retirement_basis(**source)

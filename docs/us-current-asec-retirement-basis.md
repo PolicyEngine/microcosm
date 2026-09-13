@@ -15,6 +15,14 @@ original interview ages. Shared amount observations and pension receipt codes
 must agree. A joint permutation is accepted; a one-sided permutation refuses.
 The current contract requires at least one selected person.
 
+Membership must cover exactly those selected person IDs in the same order.
+The weight Series must have a unique int64 `household_id` index containing
+exactly the households represented by that membership, with finite nonnegative
+values. Extra unselected household keys refuse, including keys from a larger
+original survey. The caller must select the exact original household weights
+without replacing them with clone, importance, or calibrated weights. Original
+weight custody remains external; a Series does not authenticate DESIGN status.
+
 It returns `AsecRetirementBasis` with six descriptive fields:
 
 - `person`: source identifiers, observed routed subtotals, candidate family
@@ -89,6 +97,12 @@ The four published total-minus-slot comparisons are recomputed and checked
 against R1. `DBTN_VAL` compares the main distribution slots only; the applicable
 known distribution total is supplied independently by the routing owner. No
 comparison is allocated to another source or attributed causally to disclosure.
+For age 58 and over, the main slots apply and this exact comparison must be
+finite and zero before a distribution candidate interval is available. A
+positive residual leaves additional scope unresolved; a negative residual is
+contradictory accounting. Both retain the published DBTN total, applicable slot
+total and signed difference without a cap, clipping or redistribution. The main
+slot comparison does not constrain the separate applicable young slots below 58.
 
 For pension/disability candidate bounds, all relevant slots must be readable and
 receipt-consistent, and their exact integer-dollar sum must equal the aggregate.
@@ -106,10 +120,21 @@ zero survivor family amount. Source 9 alongside positive annuity is explicitly
 flagged; no overlap priority or max/sum assumption is applied.
 
 A fully resolved applicable distribution composition produces a zero-to-total
-candidate interval. Missing/unreadable account types, ambiguous active zeros or
-off-route answers/dollars prevent that interval. The routing owner's known total
-is still preserved when the stricter candidate composition test fails. Account
-subtotals are finite only when the complete account composition is known.
+candidate interval only when the applicable aggregate check also passes.
+Missing/unreadable account types, ambiguous active zeros or off-route
+answers/dollars prevent that interval. Off-route receipt and account literals
+must be readable NIU codes, and off-route amounts must be readable zeros;
+unreadable literals are uncertainty, not evidence of absence. The routing owner's
+known total is still preserved when the stricter candidate test fails.
+
+Routed subtotals and distribution account subtotals are evidence only, not
+admitted candidate amounts. In particular, account subtotals can be finite when
+all account types/amounts are readable but the applicable receipt is unreadable
+or the DBTN comparison fails. `distribution_account_composition_known` describes
+that account evidence; it does not establish a valid receipt, aggregate balance,
+regularity, netting, or an available interval. Consumers must use the candidate
+interval availability and family statuses rather than infer admission from a
+finite subtotal. Raw observations remain in the detached provenance regardless.
 
 Under-15 people retain their source evidence with outside, unresolved-outside or
 contradictory-outside status and no candidate zeros. Combined bounds are available
