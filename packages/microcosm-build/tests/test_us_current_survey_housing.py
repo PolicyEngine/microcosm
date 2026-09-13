@@ -170,6 +170,18 @@ def _qualified():
     return housing._qualified_values(frame, origins, native, features, {})
 
 
+@pytest.mark.parametrize("storage", ["python", "auto"])
+def test_source_strings_use_canonical_storage_for_scalar_updates(storage):
+    with pd.option_context("mode.string_storage", storage):
+        frame, origins, porigins, keys, selected, _ = _invented()
+        native = housing._source_values(frame, origins, porigins, keys, selected)
+    string_columns = native.select_dtypes(include="string")
+    assert not string_columns.empty
+    for dtype in string_columns.dtypes:
+        assert dtype == housing.population_ops.dtype_for_token("string")
+        assert dtype.storage == "python"
+
+
 def test_source_classification_preserves_order_independent_exact_reference_ids():
     frame, origins, porigins, keys, selected, _ = _invented()
     expected = housing._source_values(frame, origins, porigins, keys, selected)

@@ -406,14 +406,7 @@ def test_housing_observations_donors_and_assisted_units_are_independent(enriched
     expected.index = households.index
     for column in qualified.native:
         if column not in {"housing_receipt", "housing_receipt__origin"}:
-            source_column = expected[column]
-            if isinstance(source_column.dtype, pd.StringDtype):
-                # The graph declares one canonical string storage backend;
-                # qualification can use pandas' optional Arrow backend.
-                source_column = source_column.astype(
-                    housing.population_ops.dtype_for_token("string")
-                )
-            pd.testing.assert_series_equal(households[column], source_column)
+            pd.testing.assert_series_equal(households[column], expected[column])
     known = households.housing_observed_receipt__known
     assert known.any() and (~known).any()
     assert households.loc[known, "housing_observed_receipt"].any()

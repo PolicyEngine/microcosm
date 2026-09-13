@@ -392,21 +392,26 @@ def _source_values(frame, origins, person_origins, person_keys, selected):
     """Qualify housing universe and named reference roles on original support."""
     ids = origins.index
     native = pd.DataFrame(index=ids.copy())
-    native["housing_source"] = pd.array(origins.source, dtype="string")
+    # Scalar writes below must not rebuild Arrow columns for every household.
+    # Use the graph's canonical storage independent of pandas' ambient option.
+    string_dtype = population_ops.dtype_for_token("string")
+    native["housing_source"] = pd.array(origins.source, dtype=string_dtype)
     for name in ("source_year", "survey_year"):
         native["housing_" + name] = origins[name].to_numpy(dtype="int64")
     native["housing_observed_receipt"] = pd.array([pd.NA] * len(ids), dtype="boolean")
     native["housing_observed_receipt__known"] = False
     native["housing_receipt"] = pd.array([pd.NA] * len(ids), dtype="boolean")
     native["housing_receipt__origin"] = pd.array(
-        ["unresolved"] * len(ids), dtype="string"
+        ["unresolved"] * len(ids), dtype=string_dtype
     )
     native["housing_participation_universe"] = pd.array(
-        [pd.NA] * len(ids), dtype="string"
+        [pd.NA] * len(ids), dtype=string_dtype
     )
     native["housing_source_head_person_id"] = np.full(len(ids), -1, dtype=np.int64)
     for name in (*ASEC_HOUSEHOLD_COLUMNS, *ACS_HOUSEHOLD_COLUMNS):
-        native["housing_source_" + name] = pd.array([pd.NA] * len(ids), dtype="string")
+        native["housing_source_" + name] = pd.array(
+            [pd.NA] * len(ids), dtype=string_dtype
+        )
     for name in status.DERIVED_COLUMNS:
         native["housing_source_" + name] = pd.array([pd.NA] * len(ids), dtype="Int64")
     heads = pd.Series(False, index=person_origins.index, dtype=bool)
