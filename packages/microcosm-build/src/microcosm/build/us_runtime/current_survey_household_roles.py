@@ -6,7 +6,8 @@ enrichment host. It borrows maintained owners and re-states none of their
 contracts:
 
 * The canonical requirement is the one the composed binding already records.
-  :mod:`.graph_composed_asec_binding` carries ``is_household_head`` in
+  :mod:`.survey_demographic_contract` carries the historical composed binding's
+  unchanged ``is_household_head`` requirement in
   ``UNBOUND_DEMOGRAPHIC_COLUMNS`` as an open column, with the ASEC requirement
   ``A_EXPRRP`` printed codes 1/2 and exactly one such person per household, the
   ACS requirement ``RELSHIPP == 20`` on housing units only, and three signals
@@ -66,8 +67,8 @@ from microcosm.graph.population import PopulationError, dtype_for_token, token_f
 from . import acs_housing_universe_source as housing
 from . import acs_person_coverage_authentication as records
 from . import asec_demographic_source as demographic
-from . import graph_composed_asec_binding as composed
 from . import support_provenance as provenance
+from . import survey_demographic_contract as demographic_contract
 from . import survey_population_preparation as source
 from .support_provenance import (
     spine_source_id_column,
@@ -245,7 +246,7 @@ def _sha(value):
 
 
 def _implementation_modules():
-    return (sys.modules[__name__], demographic, composed, provenance)
+    return (sys.modules[__name__], demographic, demographic_contract, provenance)
 
 
 def _source_bytes():
@@ -282,6 +283,8 @@ def _live():
         (
             PROTOCOL,
             CANONICAL_COLUMN,
+            demographic_contract._UNBOUND_DEMOGRAPHICS,
+            demographic_contract.UNBOUND_DEMOGRAPHIC_COLUMNS,
             SOURCE_PREFIX,
             SURVEYS,
             MAX_PERSONS,
@@ -332,20 +335,20 @@ def _live():
 def _canonical_requirement():
     """Bind the composed binding's own recorded requirement for this leaf.
 
-    The requirement is not restated here. It is read from the module that
-    records ``is_household_head`` as an open column and refuses any node of that
-    stage from owning it, so a change to the recorded contract refuses this seam
-    instead of letting it drift into an unreviewed second definition.
+    The requirement is not restated here. Its shared data-only module records
+    the historical stage's open column without importing that stage's runtime.
+    The composed binding re-exports the same objects and retains its own write
+    refusal; live and source seals here bind the complete shared declaration.
     """
     entries = [
         entry
-        for entry in composed._UNBOUND_DEMOGRAPHICS
+        for entry in demographic_contract._UNBOUND_DEMOGRAPHICS
         if entry[0] == CANONICAL_COLUMN
     ]
     require(len(entries) == 1, "CANONICAL_REQUIREMENT_ROSTER")
     column, required, diagnostic, asec_rule, not_adopted, caveats, acs_rule = entries[0]
     require(
-        CANONICAL_COLUMN in composed.UNBOUND_DEMOGRAPHIC_COLUMNS
+        CANONICAL_COLUMN in demographic_contract.UNBOUND_DEMOGRAPHIC_COLUMNS
         and tuple(required) == ("A_EXPRRP",)
         and tuple(diagnostic) == ("P_SEQ",)
         and "printed codes 1" in asec_rule

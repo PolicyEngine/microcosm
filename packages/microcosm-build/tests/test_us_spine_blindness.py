@@ -296,6 +296,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "congressional_district_vintage_crosswalk.py",
         "cps_carried.py",
         "demographics.py",
+        # Immutable shared unbound-leaf requirements; no source reads/treatment.
+        "survey_demographic_contract.py",
         "education_assistance_source.py",
         "eligibility_inputs.py",
         "engine_lifecycle.py",
