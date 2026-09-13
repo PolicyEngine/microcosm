@@ -260,6 +260,7 @@ class _HousingKernel(KernelBase):
             housing.source_reader,
             housing.status,
             housing.household_source,
+            housing.demographics,
             participation,
             amount_values,
             amount_values.predictors,

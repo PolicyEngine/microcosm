@@ -99,6 +99,8 @@ def _invented():
             "survey_year": [2025] * 4 + [2024] * 2,
             "raw_native_id": ["1", "2", "3", "4", "2024HU0000005", "2024GQ0000006"],
             "selected_receiving_household_id": hids + 10000,
+            # Source preparation preserves exact rational design anchors.
+            "original_anchor": [[100, 1], [1, 1], [3, 1], [2, 1], [5, 1], [4, 1]],
         },
         index=pd.Index(hids, name="household_id"),
     )
@@ -240,6 +242,25 @@ def test_source_householder_role_never_uses_sequence_as_authority():
     selected["asec_person"][(1, str(12).zfill(22), 2)]["P_SEQ"] = "1"
     native = housing._source_values(frame, origins, porigins, keys, selected)
     assert native.loc[10, "housing_source_head_person_id"] == 11
+
+
+def test_origin_seal_preserves_and_checks_exact_rational_metadata():
+    q = _qualified()
+    before = housing.seal(q)
+    assert q.origins.loc[10, "original_anchor"] == [100, 1]
+    q.origins.loc[10, "original_anchor"][1] = 3
+    assert housing.seal(q) != before
+    q.origins.loc[10, "original_anchor"][1] = 1
+    assert housing.seal(q) == before
+    changed = replace(q, origins=q.origins.rename_axis("wrong_identity"))
+    assert housing.seal(changed) != before
+
+
+def test_unnamed_asec_relationship_refuses_even_with_one_valid_head():
+    frame, origins, porigins, keys, selected, _ = _invented()
+    selected["asec_person"][(1, str(12).zfill(22), 2)]["A_EXPRRP"] = "6"
+    with pytest.raises(ValueError, match="UNNAMED_RELATIONSHIP"):
+        housing._source_values(frame, origins, porigins, keys, selected)
 
 
 @pytest.mark.parametrize(

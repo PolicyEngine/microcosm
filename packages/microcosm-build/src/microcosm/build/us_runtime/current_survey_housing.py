@@ -25,6 +25,7 @@ from microcosm.frame import Frame, WeightKind
 from microcosm.graph import Owned
 from microcosm.graph import population as population_ops
 
+from . import asec_demographic_source as demographics
 from . import asec_housing_status as status
 from . import asec_original_household_weights as household_source
 from . import current_survey_health_source as source_reader
@@ -96,6 +97,9 @@ def live():
             participation.HOUSING_PARTICIPATION_ASSUMPTIONS,
             status.RAW_COLUMNS,
             status.DERIVED_COLUMNS,
+            tuple(demographics.A_EXPRRP.named_codes.items()),
+            demographics.HOUSEHOLD_REFERENCE_CODES,
+            demographics.ACS_OBSERVED_REFERENCE_CODE,
         )
     )
     return tuple(result)
@@ -122,10 +126,14 @@ def seal(value):
         codec.encode_json(value.evidence),
         value.features,
         source._frame_identity(value.source_frame),
-        *(
-            physical._table_stamp(t)
-            for t in (value.origins, value.native, value.donor_columns)
+        codec.encode_json(
+            {
+                "table": value.origins.to_dict(orient="tight"),
+                "dtypes": [repr(dtype) for dtype in value.origins.dtypes],
+                "index_dtype": repr(value.origins.index.dtype),
+            }
         ),
+        *(physical._table_stamp(t) for t in (value.native, value.donor_columns)),
         None
         if value.donor_frame is None
         else source._frame_identity(value.donor_frame),
@@ -410,7 +418,11 @@ def _source_values(frame, origins, person_origins, person_keys, selected):
             minimum=1 if survey == "asec" else 20,
             maximum=14 if survey == "asec" else 38,
         )
-        heads.loc[pid] = role in (1, 2) if survey == "asec" else role == 20
+        if survey == "asec":
+            require(role in demographics.A_EXPRRP.named_codes, "UNNAMED_RELATIONSHIP")
+            heads.loc[pid] = role in demographics.HOUSEHOLD_REFERENCE_CODES
+        else:
+            heads.loc[pid] = role == demographics.ACS_OBSERVED_REFERENCE_CODE
     membership = frame.person.set_index("person_id").person_household_id
     for hid, row in origins.iterrows():
         survey = row.source
