@@ -155,6 +155,8 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "current_survey_health_source.py",  # Qualify exact ACS/ASEC source rosters.
         "current_survey_health_coverage.py",  # Validate the same two-clone join.
         "graph_current_survey_health.py",  # Declare the attachment's identity inputs.
+        "current_survey_housing.py",  # Qualify survey observations and validate both clone identity joins.
+        "graph_current_survey_housing.py",  # Declare housing source/donor and paired attachment identity inputs.
         # Rejoin qualified original property values to both initial clones.
         "graph_current_survey_property.py",
         "current_social_security_source.py",  # Source-owned SS totals per row.
@@ -410,10 +412,14 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_survey_health_coverage.py",
         # Authenticated original ACS/ASEC health-coverage observations
         "current_survey_health_source.py",
+        # Retained housing observations, original-design donors and exact clone joins
+        "current_survey_housing.py",
         # Explicit fiscal input declarations; assumptions/inactivity disabled
         "fiscal_leaf_policy.py",
         # Typed source, recode and attachment health graph fragment
         "graph_current_survey_health.py",
+        # Typed housing observation, household fit/draw and SPM-unit attachment
+        "graph_current_survey_housing.py",
         # Qualified original property branches and exact paired attachment
         "graph_current_survey_property.py",
         # Grouped dense calibration over retained fiscal measurements
@@ -432,6 +438,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "graph_survey_puf55.py",
         # Current amount/health composition over the checked PUF parent
         "graph_us_survey_enrichment.py",
+        # Pure assisted-family/SPM-unit routing; no source-provenance exemption
+        "housing_participation.py",
         # Bounded, checksummed codec preserving target-only money source authority
         "_asec_current_money_codec.py",
         # Validate the measured person-signal summary shape before gate decisions
