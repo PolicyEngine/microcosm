@@ -73,6 +73,11 @@ class MetadataSource(toy.ToyKernel):
         frame = toy.read_toy_frame(context.sources["survey"])
         tables = {entity: frame.table(entity) for entity in frame.entities}
         tables.update({link: frame.link(link) for link in frame.links})
+        mass_log = ()
+        reason = context.params.get("source_mass_reason")
+        if reason is not None:
+            total = float(frame.weights_for("household").values.sum())
+            mass_log = (MassChangeRecord("household", total, total, None, reason),)
         return KernelResult(
             frame=Frame(
                 tables,
@@ -82,6 +87,7 @@ class MetadataSource(toy.ToyKernel):
                     for entity in frame.weighted_entities
                 },
                 frame.strata,
+                mass_log=mass_log,
                 metadata=VERSION_METADATA,
             ),
             receipt={"persons": frame.n("person")},
@@ -198,6 +204,28 @@ def rewrite(context: KernelContext, field: str) -> None:
                 }
             ),
         )
+    elif field in ("column_order_collapse", "column_order_regroup"):
+        (first_entity, first_columns), (second_entity, second_columns) = (
+            context.frame_column_order.items()
+        )
+        if field == "column_order_collapse":
+            changed = {first_entity: (*first_columns, second_entity, *second_columns)}
+        else:
+            # Keep two entries and the same flattened string sequence, but
+            # reinterpret the first entity's last column as the second entity.
+            changed = {
+                first_entity: first_columns[:-1],
+                first_columns[-1]: (second_entity, *second_columns),
+            }
+        assert changed != dict(context.frame_column_order)
+        assert [
+            value for entity, columns in changed.items() for value in (entity, *columns)
+        ] == [
+            value
+            for entity, columns in context.frame_column_order.items()
+            for value in (entity, *columns)
+        ]
+        object.__setattr__(context, "frame_column_order", MappingProxyType(changed))
     else:  # pragma: no cover - guards the fixture itself
         raise AssertionError(f"unknown frame field {field!r}")
 
@@ -830,6 +858,28 @@ def test_rewriting_the_projected_column_order_is_refused(tmp_path: Path) -> None
         )
 
 
+def test_collapsing_entity_column_groups_is_refused(tmp_path: Path) -> None:
+    node = isolation_node(
+        "iso_collapse", target="iso_t", tamper_self="column_order_collapse"
+    )
+    node = dataclasses.replace(
+        node, inputs=(*node.inputs, Slice("household", ("household_id",)))
+    )
+    with pytest.raises(NodeRejectedError, match="mutated its input context"):
+        run_isolation(tmp_path / "run", node)
+
+
+def test_moving_a_column_to_an_entity_boundary_is_refused(tmp_path: Path) -> None:
+    node = isolation_node(
+        "iso_regroup", target="iso_t", tamper_self="column_order_regroup"
+    )
+    node = dataclasses.replace(
+        node, inputs=(*node.inputs, Slice("household", ("household_id",)))
+    )
+    with pytest.raises(NodeRejectedError, match="mutated its input context"):
+        run_isolation(tmp_path / "run", node)
+
+
 def test_an_untouched_frame_view_still_passes_the_mutation_check(
     tmp_path: Path,
 ) -> None:
@@ -864,6 +914,30 @@ def test_required_replay_is_a_full_hit(tmp_path: Path) -> None:
     assert {n: r.key for n, r in warm.nodes.items()} == {
         n: r.key for n, r in cold_manifest.nodes.items()
     }
+
+
+def test_a_cached_create_preserves_its_nonempty_boundary_log(tmp_path: Path) -> None:
+    reason = "source weights reconciled before graph admission"
+    source = dataclasses.replace(CREATE, params={"source_mass_reason": reason})
+    first = probe_node("first", columns=("age",), target="first_count")
+    graph = Graph("toy", (toy.SOURCE,), (source, first))
+    cold, probe, sources, store = run_probe(tmp_path / "run", graph=graph)
+    expected = observation(probe, "first")["mass_log"]
+    assert len(expected) == 1 and expected[0].reason == reason
+
+    registry, next_probe = build_registry()
+    second = probe_node("second", columns=("age",), target="second_count")
+    warm = run_graph(
+        compile_graph(Graph("toy", (toy.SOURCE,), (source, second))),
+        sources=dict(sources),
+        store=store,
+        kernels=registry,
+    )
+    assert warm.nodes[source.id].hit is True
+    assert warm.nodes["second"].hit is False
+    assert warm.nodes[source.id].key == cold.nodes[source.id].key
+    assert observation(next_probe, "second")["mass_log"] == expected
+    assert warm.population(source.id).mass_log == expected
 
 
 def test_a_new_node_over_restored_populations_sees_the_same_frame(

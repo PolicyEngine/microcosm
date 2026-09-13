@@ -508,8 +508,12 @@ def _context_digest(context: KernelContext) -> bytes:
     digest.update(b"frame-metadata\0")
     digest.update(_frame_metadata_payload(context.frame_metadata))
     digest.update(b"frame-column-order\0")
+    # Frame both levels: flattening entity names and columns lets a changed
+    # mapping reinterpret an entity name as a column without changing bytes.
+    digest.update(len(context.frame_column_order).to_bytes(8, "little"))
     for entity, columns in context.frame_column_order.items():
         _update_scalar(digest, entity)
+        digest.update(len(columns).to_bytes(8, "little"))
         for column in columns:
             _update_scalar(digest, column)
     digest.update(b"frame-mass-log\0")
