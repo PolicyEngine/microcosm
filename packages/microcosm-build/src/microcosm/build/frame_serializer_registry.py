@@ -48,6 +48,17 @@ class HdfWriteExclusion:
 
 FRAME_TABLE_SERIALIZERS = (
     FrameSerializerSpec(
+        serializer_id="nsece_childcare_native_candidate",
+        writer=HdfWriteSite(
+            "packages/microcosm-build/src/microcosm/build/us_runtime/childcare_attendance_stage.py",
+            "_write_childcare_candidate_person_table",
+        ),
+        backend="pandas.HDFStore table",
+        routes=("NSECE attendance native population candidate",),
+        version_owner="NSECE native candidate payload contract",
+        nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
+    ),
+    FrameSerializerSpec(
         serializer_id="frame_checkpoint",
         writer=HdfWriteSite(
             "packages/microcosm-build/src/microcosm/build/frame_checkpoint.py",

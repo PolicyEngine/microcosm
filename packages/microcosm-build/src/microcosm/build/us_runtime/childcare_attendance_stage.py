@@ -37,7 +37,7 @@ from microcosm.build.us_runtime.nsece_childcare_bridge import (
 from microcosm.build.us_runtime.nsece_childcare_dependence import (
     fit_nsece_sibling_dependence,
 )
-from microcosm.frame import Frame
+from microcosm.frame import Frame, put_frame_table
 
 
 def inherit_outside_domain_attendance_baseline(frame: Frame) -> Frame:
@@ -198,14 +198,7 @@ def export_native_childcare_candidate(
         raise ValueError("Native childcare temporary path already exists.")
     try:
         shutil.copyfile(parent_path, temporary)
-        with pd.HDFStore(temporary, mode="a") as store:
-            store.put("person", people, format="table", data_columns=True)
-            store.put(
-                "_childcare_attendance_receipt",
-                pd.Series(
-                    [json.dumps(candidate.metadata, default=dict, allow_nan=False)]
-                ),
-            )
+        _write_childcare_candidate_person_table(temporary, people, candidate.metadata)
         loaded = USSingleYearDataset(file_path=str(temporary))
         pd.testing.assert_frame_equal(loaded.person, people)
         for entity in candidate.schema.group_entities:
@@ -218,3 +211,21 @@ def export_native_childcare_candidate(
     finally:
         temporary.unlink(missing_ok=True)
     return output_path
+
+
+def _write_childcare_candidate_person_table(
+    path: Path, people: pd.DataFrame, receipt: dict
+) -> None:
+    """Replace the prepared person table through the shared dtype boundary.
+
+    The caller owns the temporary copy and verifies the native dataset reload.
+    Keep nullable booleans and their masks intact if the person table has them.
+    """
+    with pd.HDFStore(path, mode="a") as store:
+        put_frame_table(
+            store, "person", people, preferred_format="table", data_columns=True
+        )
+        store.put(
+            "_childcare_attendance_receipt",
+            pd.Series([json.dumps(receipt, default=dict, allow_nan=False)]),
+        )

@@ -1,0 +1,9 @@
+{
+  "previous_candidate_sha256": "a2d0ed98081b3707727eddb3d90e007117aa1da50e75c83a1a33fe381f41bcd2",
+  "updated_candidate_sha256": "7e4231f15d48ec060a07616068b5cfd03d8e4e45c0ef089dfacaa01d73dcc44f",
+  "checkpoint_sha256": "882c2ae6b683e2a04ce6c94f5f694f70750a8c2876e8108e3715a7f7095d1f66",
+  "export_code_sha256": "b8dc8009aa87e31e569261d1f1f5efdfb5c59b3345c62360ef9303d496f3963c",
+  "all_entity_values_dtypes_weights_period_equal": true,
+  "people": 166321,
+  "interpretation": "Serializer registry/dtype fix only; qualified attendance values unchanged."
+}

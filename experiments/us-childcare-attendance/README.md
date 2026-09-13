@@ -107,3 +107,28 @@ inventory, generated bundle validation, and diff whitespace checks passed.
 The real production stage completed on the pinned parent, and native export
 reloaded successfully with original data, weights, and period preserved.
 Full GitHub CI runs separately on the submitted commit.
+
+
+## CI integration correction — 2026-09-13
+
+The initial commit's full CI exposed three omissions outside the local targeted
+selection: the new native writer was absent from the serializer registry, the
+new source descriptor's three manifest fields were missing from field-ledger
+pins and the generated coverage report, and a pool-tool test retained the old
+US spec hash. The same failures repeated across Python versions and test lanes.
+
+The writer now uses the shared nullable-boolean table boundary and has registry
+round-trip coverage for mixed and all-missing Boolean columns. The configuration
+ledger retains exact counts and pointer hashes with explicit validation claims
+for the new descriptor; its semantic/missing-sink checks remain enforced.
+
+The [full-population export verification](ci-export-verification.json) reran the
+corrected writer on the qualified checkpoint. All 166,321 people's entity-table
+values, dtypes, weights, and the time period match the original qualified native
+candidate exactly. Attendance estimates and the 31-to-3 state comparison are
+unchanged; artifact bytes have their own new hash.
+
+The correction passed 579 tests across the serializer/source, field-ledger,
+coverage-report, pool-spec identity, and architecture regression runs. The
+coverage generator reports 42,159/42,159 fields and 41/41 inventory checks.
+Repository lint, CI test inventory, and the build wheel also passed locally.
