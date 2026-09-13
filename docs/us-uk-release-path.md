@@ -41,8 +41,10 @@ common source population alone does not guarantee identical estimates.
 ## Current position
 
 The immediate US step is a small native property/tax build with an original-record
-completion report. The 38-node host already passes invented cold/required checks;
-its new pure completion diagnostic passes 29 controls and awaits host integration.
+completion report. The completion diagnostic passes 29 pure controls, 27 focused
+graph controls and three actual invented 38-node cold/required acceptance tests.
+The latter preserve complete populations and exports while retaining unknowns;
+the tax-input completeness gate remains false on that fixture.
 Native PUF qualification follows resolution of the applicable unknown inputs.
 Retirement candidate accounting has passed 80 controls but does not yet supply
 fiscal inputs. The [13 September evidence](../experiments/us-launch-consolidation-20260913.md)

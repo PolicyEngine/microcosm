@@ -1,7 +1,7 @@
 # US launch integration: 13 September 2026
 
-This batch advances the checked survey graph and repairs the three causes of
-the preceding CI failures. It does not certify a native release file.
+This batch advances the checked survey graph, adds completion diagnostics and
+repairs the identified CI failures. It does not certify a native release file.
 
 ## Property income and tax inputs
 
@@ -83,9 +83,35 @@ on both clones. A new pure completion diagnostic passes 29 controls and
 independent review. It distinguishes known components, ACS anchor decomposition,
 missing evidence, source contradictions and unsupported under-15 measurement.
 Counts and DESIGN support refer to original records, with union-household
-support reported separately. No amount is filled by this diagnostic. Its
-optional connection to the existing projection node is still under construction;
-the private row artifact and public aggregate receipt have separate contracts.
+support reported separately. No amount is filled by this diagnostic.
+
+The optional connection to the existing projection node now passes 27 focused
+controls and an actual invented 38-node cold/required acceptance. The projection
+adds a typed private row artifact and an allowlisted public aggregate receipt,
+without adding a numerical node or changing the ordinary three-artifact
+attachment path. The focused controls cover default-option compatibility,
+source-function lifetime checks and the real public graph serializers.
+
+Three full-host acceptance tests share one cold/required pair and invoke five
+committed host controls plus the independently reviewed native-harness helpers.
+They verify complete populations and ledgers, the typed completion artifact,
+private/public separation, full Frame export and disk readback after final source
+checks, and refusal of a changed retained artifact. The nine original people
+become eighteen clone rows. Cold execution reuses nine prefix nodes; required
+replay reuses all 38 nodes with the same manifest. The tax gate reports
+`numeric_verified=true` and `complete=false`; it still refuses PUF admission.
+The full exported Frame is 129,243 bytes. This is invented input evidence,
+not a native coverage measurement.
+
+The run passed in 806.892 wall seconds and 793.124 CPU seconds, with peak RSS
+585,924,608 bytes. All 1,043 frozen source, eight owned-file and fifteen resource
+identities remained unchanged. There were no unexpected access refusals or
+child processes. Root and independent review accepted source commit
+`c06d29ea8f39a820f9055889c89ccf0f3a9e2511`; receipt SHA256
+`05b75c2668889a708c935a72e2a5381f68b86f676f03f7ac7a6722efd019f4d2`
+and test XML SHA256
+`39b7e8701ff0674a6c1b156eeef9f81d6f571072345ca3aaa39e7427e5ffb46f`
+bind this acceptance. The entire host test module was not rerun in that packet.
 See [completion routing](../docs/us-property-completion-routing.md).
 
 The UK household-lineage helper preserves exact original identities through

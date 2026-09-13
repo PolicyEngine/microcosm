@@ -73,3 +73,10 @@ and unknown-input checks, verify the private typed artifact and aggregate receip
 on replay, and refuse changes to the retained artifact bytes. The local native
 harness predicates can share those fixtures through a separately pinned acceptance
 wrapper; they are not a machine-specific dependency of repository tests.
+
+The bounded acceptance passed 27 focused controls and three actual invented
+cold/required host tests at source `c06d29ea8`. The latter reuse one 38-node pair,
+check the full saved Frame after final source revalidation, and reject changed
+retained artifact bytes. They preserve the fixture's false tax-input completeness
+verdict. Exact scope and receipt hashes are in the
+[13 September integration record](../experiments/us-launch-consolidation-20260913.md).
