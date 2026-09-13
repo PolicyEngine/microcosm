@@ -1,0 +1,1 @@
+Added `KernelContext.frame_metadata`, `frame_mass_log` and `frame_column_order`, so a kernel can reconstruct its population version's declared slices without seeing any column it did not declare (graph amendment 26).
