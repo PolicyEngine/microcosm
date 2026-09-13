@@ -144,6 +144,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "current_asec_interest_source.py",  # ASEC interest -> original money owner.
         # Composes qualified original source axes and DESIGN branches; no fit.
         "current_property_income_sources.py",
+        # Reviewed 2026-09-13: source-aware component availability and exact
+        # clone/original identity diagnostics. Fits nothing, assigns no amounts,
+        # and grants no source or complete-parent authority.
+        "current_property_completion_routing.py",
         # Original ASEC pension/disability/survivor details; no population model.
         "current_asec_retirement_detail_source.py",
         "current_asec_unemployment_source.py",  # UC literal -> original ASEC ids.
@@ -389,12 +393,17 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         # Pure supplied-table property donor basis and exclusion diagnostics;
         # no source owner or source-spine access exemption
         "current_asec_property_basis.py",
+        # Pure retirement candidate accounting under explicit assumptions;
+        # source-spine and literal-accessor tripwires still apply.
+        "current_asec_retirement_basis.py",
         # Qualified ASEC retirement details and raw aggregate/slot comparisons
         "current_asec_retirement_detail_source.py",
         # Qualified UC receipt/amount observations, preserving unknown zeros
         "current_asec_unemployment_source.py",
         # Qualified original property donor/recipient branch composition
         "current_property_income_sources.py",
+        # Descriptive original component routes and DESIGN support; no model
+        "current_property_completion_routing.py",
         # Current UC/health amount qualification and exact two-clone attachment
         "current_survey_amounts.py",
         # Pure current-coverage recodes and original-person clone attachment
@@ -3482,6 +3491,9 @@ _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
         # Reviewed 2026-09-12: fixed dividend/interest/RINT-slot amount, status
         # and code families passed to private helpers; no source-channel reads.
         "current_asec_property_basis.py",
+        # Reviewed 2026-09-13: fixed retirement slot/status/family names and
+        # exact alignment keys; no source-channel or provenance selectors.
+        "current_asec_retirement_basis.py",
         # Static leaf/entity closure and engine metadata/default dictionaries,
         # not population provenance. Assumption execution remains disabled.
         "fiscal_leaf_policy.py",
