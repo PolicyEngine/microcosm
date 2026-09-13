@@ -6212,6 +6212,7 @@ def _cbo_income_source_projection_fact(
     )
     return {
         "label": f"Test CBO projection for {income_source}",
+        "assertion": "source_projection",
         "aggregate_fact_key": (
             f"ledger.aggregate_fact.v2:cbo-proj-{income_source}-{source_period}"
         ),
@@ -6268,6 +6269,66 @@ def _aged_spec_by_source_record_id(registry, source_record_id):
     return {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}[
         source_record_id
     ]
+
+
+@pytest.mark.parametrize(
+    "income_source",
+    [
+        "adjusted_gross_income",
+        "wages_and_salaries",
+        "qualified_dividend_income",
+        "net_capital_gain",
+        "net_business_income",
+    ],
+)
+def test_mapped_cbo_projection_preserves_assertion_and_value(income_source) -> None:
+    # Real Chronicle CBO rows declare source_projection. Missing assertions in
+    # this fixture previously disguised the compiler's observation-only default.
+    fact = _cbo_income_source_projection_fact(2024, income_source, value=125_000)
+    registry = compile_us_fiscal_target_registry(
+        [*packaged_reference_facts(), fact], target_period=2024, age_targets=True
+    )
+    spec = _aged_spec_by_source_record_id(registry, fact["lineage"]["source_record_id"])
+
+    assert spec.value == 125_000
+    assert spec.period == 2024
+    assert spec.metadata["ledger_assertion"] == "source_projection"
+    assert spec.metadata["ledger_resolved_assertion"] == "source_projection"
+    assert spec.metadata["ledger_assertion_policy"] == "allow_source_projection"
+    assert fact["assertion"] == "source_projection"
+
+
+def test_unapproved_non_cbo_projection_is_still_refused() -> None:
+    fact = _dynamic_ledger_fact(
+        source_record_id="usda_snap.fy2024.total_benefits",
+        source_name="usda_snap",
+        measure_id="total_benefits",
+        value=125_000,
+    )
+    fact["assertion"] = "source_projection"
+
+    with pytest.raises(ValueError, match="assertion_policy='observed_only'"):
+        compile_us_fiscal_target_registry([*packaged_reference_facts(), fact])
+
+
+@pytest.mark.parametrize(
+    ("income_source", "measure_id"),
+    [
+        ("unmapped_income", "projected_amount"),
+        ("adjusted_gross_income", "other_amount"),
+    ],
+)
+def test_unmapped_cbo_projection_does_not_become_a_target(
+    income_source, measure_id
+) -> None:
+    fact = _cbo_income_source_projection_fact(2024, income_source, value=125_000)
+    fact["layout"]["measure_id"] = measure_id
+    fact["observed_measure"]["source_measure_id"] = measure_id
+    registry = compile_us_fiscal_target_registry([*packaged_reference_facts(), fact])
+
+    assert fact["lineage"]["source_record_id"] not in {
+        spec.metadata["ledger_source_record_id"] for spec in registry.specs
+    }
 
 
 def test_age_targets_defaults_off_leaves_surface_unchanged() -> None:
