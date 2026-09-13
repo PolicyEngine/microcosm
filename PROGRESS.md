@@ -1166,3 +1166,61 @@ Next: root admits the separate exact-allowlist57-case guard and final source ide
 The user explicitly authorized pushing the current source work and creating PRs for Anthony to review. This supersedes earlier source-only local restrictions for source publication; it does not authorize a data release, merge or deployment.
 
 Integration controls passed 36 cases; the exact replay correction subsequently passed all 57 cases at dfa7f872cd3eba3c42adf5758cde8b3ca38f3d17. Source/control, model-declaration and resource hashes matched externally after both runs. A final formatting/import cleanup and explicit test-observer loop binding are included for CI; no release result is claimed. See docs/us-launch-review.md for current scope, evidence and related PRs.
+
+
+# US completion host integration — 2026-09-13
+
+State: source implementation and bounded tests authored for root review; all runtime checks and tests UNRUN.
+The task-specific no-commit instruction overrides the standing commit order.
+Base: 6aa745c8762c3e4a140b8168470de5827e12c5cb.
+
+Done: inspected status, branch, HEAD, AGENTS.md, CLAUDE.md, frozen R2 plan and
+independent source-plan review. Concurrent completion/tax seam files are excluded
+from this work's ownership.
+
+Done: added private completion custody, retained issued property parent, registry
+copies, actual union artifact/state checks, role/child reconstruction and separate
+tax gate wiring. Authored 10 test functions / 20 source-expanded cases and docs.
+AST, direct Ruff lint/format, and tracked whitespace checks pass.
+
+Next: root review and reconciliation, inventories/test-spine updates, bounded
+resource/guard proposal, and actual fixture/cold/required/adversarial validation.
+45/49 counts remain source-derived; combined 51 and fixture assumptions are UNRUN.
+Final report: FINAL_REPORT.md. No acceptance or publication claim.
+
+## Bounded completion-host source corrections — 2026-09-13
+
+State: bounded source corrections complete; all runtime checks remain UNRUN.
+This correction pass used the 20-minute source-only window beginning 22:09 UTC.
+The later explicit no-commit/no-staging instruction governs this correction pass.
+Ownership is limited to graph_survey_completion_host.py,
+test_us_graph_atomic_completion_host.py, docs/us-survey-completion-host.md,
+and this exact PROGRESS.md / FINAL_REPORT.md update.
+
+Done: read the full independent source review and full approved R2 plan from
+the supplied recovered absolute paths. The R2 SHA-256 matches
+b402d6be9d374774e27da7bf42fb83a216305d4cddd2ad8347c8149536269a29.
+Confirmed intentional dirty worktree and HEAD
+6aa745c8762c3e4a140b8168470de5827e12c5cb. Earlier journal content is preserved.
+
+Done: exact receiving1/roles0-or-2/child6/tax3 ordered rosters are bound before
+compilation; child document count and knownness derive from retained nodes and
+reconstructed/materialized-verified evidence. Authored separate 49/45 cold+required
+acceptance, equal-values/replaced-Population refusal, real observed base-hit/union
+and final-I/O identity controls, actual tax-rebased parent refusal, exact child
+adversary reasons, full-spine writer ordering, both FILTER conservation ledgers,
+dimensions and owner/version transitions. Source proves table copying; immediate
+base preservation assertions remain alongside permanent revocation. Fixture-only
+composition wrappers now restore before issuance to avoid cross-fixture chaining.
+
+Done: AST parsing, direct Ruff lint/format and git diff --check pass. AST reports
+16 test functions / 32 source-expanded cases. All tests, collection and project
+imports remain UNRUN. Only the five explicitly owned files were edited; no
+commits, staging, agents, dependency/network/browser access or payload execution.
+
+Next: root reviews exact source/hashes and budgets separately selected execution.
+T4 financial-only-parent coverage, remaining T5 initial/final/reconciliation
+adversaries, T6 actual fixture validation and T7 GQ/zero-weight scientific fixtures
+remain open with concrete reasons in FINAL_REPORT.md. The independently confirmed
+old status/tax42 owner repair, inventories, CI/source closure, scientific/native
+capacity and release/default/PR893 decisions remain separately owned.

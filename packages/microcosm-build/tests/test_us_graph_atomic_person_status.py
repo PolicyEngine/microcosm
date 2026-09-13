@@ -279,12 +279,58 @@ def test_optional_status_preserved_through_property_and_tax_hosts(extended_statu
             run.financial_population.frame.person[columns],
             check_exact=True,
         )
-        assert (
-            boundary.complement(run.financial_population).version
-            == run.financial_population.version
+        status_parent = (
+            state.property_population if case.tax else run.financial_population
+        )
+        assert boundary.complement(status_parent).version == status_parent.version
+        assert all(
+            status_parent.owners["person", c] == graph.BIND_NODE for c in columns
+        )
+        current_owner = (
+            runner._tax_module().RECEIVING_NODE if case.tax else graph.BIND_NODE
         )
         assert all(
-            run.financial_population.owners["person", c] == graph.BIND_NODE
+            run.financial_population.owners["person", c] == current_owner
             for c in columns
         )
+        if case.tax:
+            assert run.financial_population.version == current_owner
+            assert status_parent is not run.financial_population
+            # A post-FILTER population must not masquerade as the original
+            # writer's version merely because all status values were carried.
+            with pytest.raises(ValueError, match="PERSON_STATUS_WRITER"):
+                boundary.complement(run.financial_population)
         run.checked_view()
+        # The pure check runs both during issuance and after final source I/O.
+        # A genuine FILTER owner is accepted only with the retained complete
+        # population seal; neither stale ownership nor status-only drift passes.
+        populations = (
+            (status_parent, run.financial_population)
+            if case.tax
+            else (run.financial_population,)
+        )
+        column = "survey_status_original_age"
+        for population in populations:
+            people = population.frame.person
+            saved_values = people[column].copy(deep=True)
+            saved_owners = population.owners
+            for defect in ("value", "owner"):
+                try:
+                    if defect == "value":
+                        people.loc[people.index[0], column] = (
+                            int(saved_values.iloc[0]) + 1
+                        )
+                    else:
+                        changed = dict(saved_owners)
+                        changed["person", column] = (
+                            graph.BIND_NODE
+                            if saved_owners["person", column] != graph.BIND_NODE
+                            else "unissued_status_writer"
+                        )
+                        object.__setattr__(population, "owners", changed)
+                    with pytest.raises(ValueError):
+                        runner._pure_run(run, runner._run_entry(run))
+                finally:
+                    people[column] = saved_values.copy(deep=True)
+                    object.__setattr__(population, "owners", saved_owners)
+                runner._pure_run(run, runner._run_entry(run))

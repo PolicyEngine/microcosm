@@ -1,5 +1,6 @@
 """Deterministic tax splits on invented components; no native source or engine."""
 
+import builtins
 import hashlib
 import importlib
 import json
@@ -217,6 +218,164 @@ class SourceKernel(KernelBase):
                 "reconciliation": b'{"numerical_fixture":true}',
             },
         )
+
+
+def child_edge():
+    from microcosm.build.us_runtime import graph_child_property_income as child
+
+    return ArtifactInput(
+        "child_verification", child.VERIFY, "verification", child.VERIFICATION_TYPE
+    )
+
+
+def completion_declaration(owner, frame, edge):
+    return owner.property_tax_leaf_nodes(
+        frame,
+        population="source",
+        projection=ArtifactInput("projection", "source", "projection", PROJECTION),
+        reconciliation=ArtifactInput(
+            "reconciliation", "source", "reconciliation", RECONCILIATION
+        ),
+        atol=1e-10,
+        rtol=1e-12,
+        completion=edge,
+    )
+
+
+def test_completion_none_preserves_declarations_without_child_import(
+    owner, monkeypatch
+):
+    value = _supported_frame(owner)
+    original = builtins.__import__
+
+    def no_child(name, globals=None, locals=None, fromlist=(), level=0):
+        assert "graph_child_property_income" not in name
+        assert "graph_child_property_income" not in (fromlist or ())
+        return original(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", no_child)
+    implicit = declaration(owner, value)
+    explicit = completion_declaration(owner, value, None)
+    assert [n.normative() for n in implicit] == [n.normative() for n in explicit]
+    assert all(
+        "child_verification" not in {e.name for e in n.artifact_inputs}
+        for n in explicit
+    )
+
+
+def test_typed_completion_edge_is_the_only_enabled_declaration_change(owner):
+    value = _supported_frame(owner)
+    edge = child_edge()
+    base = declaration(owner, value)
+    enabled = completion_declaration(owner, value, edge)
+    for old, new in zip(base, enabled, strict=True):
+        assert edge in new.artifact_inputs
+        restored = replace(
+            new, artifact_inputs=tuple(e for e in new.artifact_inputs if e != edge)
+        )
+        assert restored.normative() == old.normative()
+
+
+@pytest.mark.parametrize("field", ["name", "producer", "artifact", "type"])
+def test_completion_refuses_noncanonical_child_edge(owner, field):
+    edge = child_edge()
+    changed = ArtifactType("test.other_verification", 1) if field == "type" else "other"
+    with pytest.raises(ValueError, match="CHILD_VERIFICATION_EDGE"):
+        completion_declaration(
+            owner, _supported_frame(owner), replace(edge, **{field: changed})
+        )
+
+
+def completion_contexts(owner, actual):
+    # These are invented evidence bytes, not an issued child/source claim. The
+    # host suite separately must run verify_materialized on the actual child.
+    before, _, _, _, contexts = actual
+    edge = child_edge()
+    nodes = completion_declaration(owner, before, edge)
+    exemplar = contexts["split"].artifacts["projection"]
+    evidence = ArtifactValue(
+        owner.codec.encode_json({"invented_verification": True}),
+        edge.type,
+        owner.opaque_artifact_key("c" * 64, edge.artifact),
+        "c" * 64,
+        exemplar.numerics,
+    )
+    updated = {}
+    for label, node in zip(("receiving", "split", "gate"), nodes, strict=True):
+        ctx = contexts[label]
+        updated[label] = replace(
+            ctx,
+            node=node,
+            params=node.params,
+            artifacts={**ctx.artifacts, edge.name: evidence},
+        )
+    split = owner.PropertyTaxLeavesKernel().run(updated["split"])
+    old = updated["gate"].artifacts["rebase"]
+    updated["gate"] = replace(
+        updated["gate"],
+        artifacts={
+            **updated["gate"].artifacts,
+            "rebase": replace(old, payload=split.artifacts["diagnostics"]),
+        },
+    )
+    return updated, split
+
+
+def test_completion_edge_binds_receipt_without_changing_split_or_unknown_gate(
+    owner, actual
+):
+    contexts, enabled = completion_contexts(owner, actual)
+    receiving = owner.PropertyTaxReceivingKernel().run(contexts["receiving"])
+    assert receiving.keep.all()
+    old = owner.PropertyTaxLeavesKernel().run(actual[-1]["split"])
+    for column in owner.TAX_LEAF_COLUMNS:
+        pd.testing.assert_series_equal(
+            enabled.columns["person", column],
+            old.columns["person", column],
+            check_exact=True,
+        )
+    result = owner.PropertyTaxLeafGateKernel().run(contexts["gate"])
+    document = json.loads(result.artifacts["verification"])
+    assert document["complete"] is False and document["source_authority"] is False
+    assert document["numeric_verified"] is True
+    assert (
+        document["unknown_interest_persons"]
+        == document["unknown_dividend_persons"]
+        == 1
+    )
+    pin = document["input_artifacts"]["child_verification"]
+    assert (
+        pin["payload_sha256"]
+        == hashlib.sha256(
+            contexts["gate"].artifacts["child_verification"].payload
+        ).hexdigest()
+    )
+
+
+@pytest.mark.parametrize(
+    "defect", ["missing", "type", "key", "payload", "noncanonical"]
+)
+def test_completion_gate_refuses_binding_or_split_evidence_drift(owner, actual, defect):
+    contexts, _ = completion_contexts(owner, actual)
+    ctx = contexts["gate"]
+    artifacts = dict(ctx.artifacts)
+    old = artifacts["child_verification"]
+    if defect == "missing":
+        artifacts.pop("child_verification")
+    elif defect == "type":
+        artifacts["child_verification"] = replace(
+            old, type=ArtifactType("test.changed", 1)
+        )
+    elif defect == "key":
+        artifacts["child_verification"] = replace(old, key="0" * 64)
+    elif defect == "payload":
+        artifacts["child_verification"] = replace(
+            old, payload=owner.codec.encode_json({"invented_verification": False})
+        )
+    else:
+        artifacts["child_verification"] = replace(old, payload=old.payload + b" ")
+    with pytest.raises(ValueError):
+        owner.PropertyTaxLeafGateKernel().run(replace(ctx, artifacts=artifacts))
 
 
 def declaration(owner, frame):

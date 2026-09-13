@@ -25,6 +25,7 @@ from microcosm.graph import (
     ArtifactInput,
     ArtifactValue,
     KernelBase,
+    KernelRegistry,
     KernelResult,
     StructuralDelta,
     compile_graph,
@@ -121,6 +122,11 @@ class _FinancialRunState:
     property_population_stamp: object = None
     tax_verification: bytes | None = None
     person_status_boundary: object = None
+    completion_boundary: object = None
+    completion_stamp: object = None
+    node_populations: tuple = ()
+    node_states: object = None
+    registry: tuple = ()
 
 
 def _person_status_module():
@@ -361,7 +367,13 @@ def _tax_module():
     return graph_property_tax_leaves
 
 
-def _tax_nodes(frame, population, options, *, anticipated_outputs=()):
+def _completion_module():
+    from . import graph_survey_completion_host
+
+    return graph_survey_completion_host
+
+
+def _tax_nodes(frame, population, options, *, anticipated_outputs=(), completion=None):
     property_graph = _property_module()
     reconciliation = options.nodes((property_graph.PROPERTY_REPORTED_TOTAL,))[-1]
     output = reconciliation.artifact_outputs[0]
@@ -383,13 +395,18 @@ def _tax_nodes(frame, population, options, *, anticipated_outputs=()):
         atol=float(options.atol),
         rtol=float(options.rtol),
         anticipated_outputs=anticipated_outputs,
+        completion=completion,
     )
 
 
-def _reconstruct_tax(population, *, compiled, kernels, keys, loaded, options):
+def _reconstruct_tax(
+    population, *, compiled, kernels, keys, loaded, options, completion=None
+):
     """Replay three deterministic operations on the actual complete post35 Frame."""
     tax = _tax_module()
-    nodes = _tax_nodes(population.frame, population.version, options)
+    nodes = _tax_nodes(
+        population.frame, population.version, options, completion=completion
+    )
     classes = (
         tax.PropertyTaxReceivingKernel,
         tax.PropertyTaxLeavesKernel,
@@ -543,7 +560,17 @@ def _run_document(run, state):
                     if state.property_income is None
                     else (owned.column for owned in _property_module().owned_columns())
                 ),
+                *(
+                    ()
+                    if state.completion_boundary is None
+                    else state.completion_boundary.owned_columns()
+                ),
             ],
+            **(
+                {}
+                if state.completion_boundary is None
+                else state.completion_boundary.document()
+            ),
             "demographic_conditioning": state.demographic_conditioning,
             "n_estimators": state.n_estimators,
             "release_eligible": False,
@@ -603,6 +630,23 @@ def _pure_run(run, entry):
     require(_run_entry(run) is entry, "FINAL_FINANCIAL_RUN_ISSUANCE")
     state = entry[2]
     prefix = state.prefix
+    if state.completion_boundary is not None:
+        require(
+            state.completion_boundary.attestation() == state.completion_stamp,
+            "COMPLETION_CUSTODY_CHANGED",
+        )
+        state.completion_boundary.pure()
+    require(
+        tuple(run.kernels.as_mapping().items()) == state.registry,
+        "FINANCIAL_KERNEL_REGISTRY_CHANGED",
+    )
+    for population, stamp in state.node_populations:
+        require(
+            reconstruction._population_stamp(population) == stamp,
+            "FINANCIAL_NODE_POPULATION_CHANGED",
+        )
+    if state.node_states is not None:
+        survey._check_node_states(run.manifest, state.node_states)
     require(
         run.prefix is prefix
         and run.financial_population is state.financial_population
@@ -655,7 +699,15 @@ def _pure_run(run, entry):
     values.source._pure_final(state.preparation_entry[2])
     if state.person_status_boundary is not None:
         state.person_status_boundary.pure()
-        state.person_status_boundary.complement(run.financial_population)
+        # Check the original status writer on the retained property parent,
+        # before either completion or tax FILTER carries its columns into a
+        # new version. Final populations retain separate full custody seals
+        # and independent completion/tax reconstruction.
+        state.person_status_boundary.complement(
+            state.property_population
+            if state.rebase_property_taxes
+            else run.financial_population
+        )
     if state.property_income is not None:
         require(
             type(state.property_income) is _property_module().PropertyIncomeOptions
@@ -685,6 +737,7 @@ def _pure_run(run, entry):
             state.property_income,
             state.rebase_property_taxes,
             state.person_status_boundary is not None,
+            state.completion_boundary,
         )
         == state.live,
         "FINAL_FINANCIAL_RUN_SEAL",
@@ -693,6 +746,17 @@ def _pure_run(run, entry):
 
 
 def check_atomic_survey_financial_run(run):
+    """Permanently revoke an enabled completion after any failed host check."""
+    entry = _run_entry(run)
+    try:
+        return _check_atomic_survey_financial_run(run)
+    except Exception:
+        if entry[2].completion_boundary is not None:
+            entry[2].completion_boundary.revoke()
+        raise
+
+
+def _check_atomic_survey_financial_run(run):
     """Requalify existing artifacts and live owners without fitting or execution."""
     entry = _run_entry(run)
     _pure_run(run, entry)
@@ -718,14 +782,21 @@ def check_atomic_survey_financial_run(run):
         == state.artifact_hashes,
         "FINANCIAL_RUN_ARTIFACT_CHANGED",
     )
+    if state.completion_boundary is not None:
+        state.completion_boundary.verify(run, keys=keys, loaded=loaded)
     if state.rebase_property_taxes:
         tax_populations, _ = _reconstruct_tax(
-            state.property_population,
+            state.property_population
+            if state.completion_boundary is None
+            else state.completion_boundary.completed,
             compiled=run.compiled,
             kernels=run.kernels,
             keys=keys,
             loaded=loaded,
             options=state.property_income,
+            completion=None
+            if state.completion_boundary is None
+            else state.completion_boundary.tax_edge(),
         )
         atomic.same_replayed_population(
             tax_populations[_tax_module().GATE_NODE],
@@ -809,6 +880,9 @@ def _issue_run(
     rebase_property_taxes=False,
     property_population=None,
     person_status_boundary=None,
+    completion_boundary=None,
+    node_populations=None,
+    node_states=None,
 ):
     """Called only after this runner's complete materialization/replay checks."""
     prefix = result.prefix
@@ -884,6 +958,14 @@ def _issue_run(
         if not rebase_property_taxes
         else loaded[_tax_module().GATE_NODE, "verification"],
         person_status_boundary,
+        completion_boundary,
+        None if completion_boundary is None else completion_boundary.attestation(),
+        tuple(
+            (population, reconstruction._population_stamp(population))
+            for population in (node_populations or {}).values()
+        ),
+        node_states,
+        tuple(result.kernels.as_mapping().items()),
     )
     identifier = id(result)
 
@@ -897,7 +979,12 @@ def _issue_run(
     _pure_run(result, _run_entry(result))
 
 
-def _live(property_income=None, rebase_property_taxes=False, person_status=False):
+def _live(
+    property_income=None,
+    rebase_property_taxes=False,
+    person_status=False,
+    completion_boundary=None,
+):
     """Pure final fence over this composition and its existing owner closure."""
     result = dict(values.host.survey_budget._live())
     modules = (
@@ -912,6 +999,10 @@ def _live(property_income=None, rebase_property_taxes=False, person_status=False
         sys.modules[LegacyQRFTrainKernel.__module__],
         sys.modules[LegacyQRFApplyMatrixKernel.__module__],
     )
+    if completion_boundary is not None:
+        result["survey_completion"] = _completion_module()._live(
+            completion_boundary.household_roles
+        )
     if person_status:
         result["person_status"] = _person_status_module()._live()
     if property_income is not None:
@@ -1149,6 +1240,8 @@ def run_atomic_survey_financial(
     property_income=None,
     rebase_property_taxes=False,
     person_status=False,
+    household_roles=False,
+    child_property=None,
     resume="auto",
     return_values=False,
 ):
@@ -1160,6 +1253,36 @@ def run_atomic_survey_financial(
         not rebase_property_taxes or property_income is not None,
         "PROPERTY_TAX_REQUIRES_PROPERTY",
     )
+    require(type(household_roles) is bool, "HOUSEHOLD_ROLES_FLAG")
+    require(not household_roles or child_property is not None, "ROLES_REQUIRE_CHILD")
+    require(
+        child_property is None or property_income is not None, "CHILD_REQUIRES_PROPERTY"
+    )
+    require(
+        child_property is None or rebase_property_taxes, "CHILD_REQUIRES_TAX_REBASE"
+    )
+    if child_property is not None:
+        extension = _completion_module()
+        extension.validate_options(child_property)
+        base = run_atomic_survey_financial(
+            source_dir,
+            snapshot_root=snapshot_root,
+            store_root=store_root,
+            fraction=fraction,
+            seed=seed,
+            geography_config=geography_config,
+            demographic_conditioning=demographic_conditioning,
+            n_estimators=n_estimators,
+            property_income=property_income,
+            person_status=person_status,
+            rebase_property_taxes=False,
+            resume=resume,
+            return_values=True,
+        )
+        result = extension.extend(
+            base, options=child_property, household_roles=household_roles, resume=resume
+        )
+        return result if return_values else result.manifest
     values.feature_columns(demographic_conditioning)
     property_graph = None if property_income is None else _property_module()
     if property_graph is not None:
@@ -1344,7 +1467,9 @@ def run_atomic_survey_financial(
             "PERSON_STATUS_ORDERING",
         )
     declaration = graph_to_json(compiled.graph)
-    kernels, store, sources = prefix.kernels, prefix.store, dict(prefix.sources)
+    kernels, store, sources = KernelRegistry(), prefix.store, dict(prefix.sources)
+    for kernel in prefix.kernels.as_mapping().values():
+        kernels.register(kernel)
     source_items = tuple(sorted(sources.items()))
     for cls in (
         financial.CurrentSurveyPredictorProjectionKernel,
@@ -1768,5 +1893,7 @@ def run_atomic_survey_financial(
         rebase_property_taxes=rebase_property_taxes,
         property_population=property_population,
         person_status_boundary=status_boundary,
+        node_populations=observed,
+        node_states=states,
     )
     return result if return_values else manifest

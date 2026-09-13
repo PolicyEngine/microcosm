@@ -45,6 +45,12 @@ weights and mass ledger. The host retains complete output seals and rechecks
 them after its last source requalification. It refuses both a status-only change
 with an unchanged financial complement and an unrelated financial-cell change.
 
+When property-tax rebasing creates a receiving version with FILTER, that
+structural node owns the carried status columns in the new version. The host
+checks the original status writer on its retained pre-tax parent, then verifies
+the complete tax reconstruction and final population seal. It does not accept
+arbitrary replacement writers or treat the carried columns as new source facts.
+
 The fragment validates the actual qualified object on admission. Before and
 after each executed kernel callback it checks live code, defaults, closures,
 declared artifacts, input/output seals and the original preparation/student
