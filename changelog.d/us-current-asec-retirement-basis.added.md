@@ -1,0 +1,1 @@
+Add a pure ASEC retirement candidate ledger with explicit measurement assumptions, source routing and knownness, conservative accounting intervals, preserved unresolved survivor/distribution scope, and original DESIGN-weight support diagnostics. It produces no fiscal inputs or source authority.
