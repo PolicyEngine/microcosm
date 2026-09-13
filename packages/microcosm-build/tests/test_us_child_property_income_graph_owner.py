@@ -3,6 +3,7 @@
 No actual country financial/tax/PUF host acceptance is asserted by these tests.
 """
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
@@ -186,7 +187,7 @@ def _run(actual, tmp_path):
     )
     assert all(not cold.node(node.id).hit for node in boundary.nodes)
 
-    def check(manifest, observed):
+    def evidence(manifest, observed):
         inputs = {
             edge.name: _artifact(manifest, store, edge)
             for edge in boundary.nodes[-1].artifact_inputs
@@ -198,14 +199,17 @@ def _run(actual, tmp_path):
                 "verification", graph.VERIFY, "verification", graph.VERIFICATION_TYPE
             ),
         )
-        return boundary.verify_materialized(
-            observed[graph.VERIFY],
-            inputs,
+        return dict(
+            population=observed[graph.VERIFY],
+            artifacts=inputs,
             support_populations={
                 name: observed[name] for name in (graph.DONOR, graph.RECIPIENT)
             },
             verification=verification,
         )
+
+    def check(manifest, observed):
+        return boundary.verify_materialized(**evidence(manifest, observed))
 
     check(cold, captured)
     warm_capture = {}
@@ -230,6 +234,7 @@ def _run(actual, tmp_path):
         store=store,
         calls=calls,
         check=check,
+        evidence=evidence,
         qualified=qualified,
         parent=parent,
     )
@@ -288,6 +293,66 @@ def test_actual_owner_callbacks_cannot_change_the_completed_population(
     assert result.boundary.revoked
     result.calls.on_call = None
     with pytest.raises(ValueError, match="REVOKED"):
+        result.check(result.warm, result.captured)
+    actual.partial._checked()
+
+
+@pytest.mark.parametrize("when", ["first", "final"])
+@pytest.mark.parametrize(
+    "surface",
+    [
+        "artifact_replace",
+        "support_add",
+        "support_remove",
+        "verification_payload",
+        "verification_producer",
+    ],
+)
+def test_actual_owner_callbacks_cannot_change_materialized_evidence(
+    actual, tmp_path, when, surface
+):
+    result = _run(actual, tmp_path)
+    inputs = result.evidence(result.warm, result.captured)
+    before = graph.child.physical._population_stamp(inputs["population"])
+    target_call = result.calls.count + (1 if when == "first" else 2)
+    mutations = []
+
+    def mutate(count):
+        if count != target_call:
+            return
+        mutations.append(surface)
+        if surface == "artifact_replace":
+            value = inputs["artifacts"]["draws"]
+            inputs["artifacts"]["draws"] = replace(value, payload=value.payload + b" ")
+        elif surface == "support_add":
+            inputs["support_populations"]["unexpected"] = inputs["support_populations"][
+                graph.DONOR
+            ]
+        elif surface == "support_remove":
+            del inputs["support_populations"][graph.RECIPIENT]
+        elif surface == "verification_payload":
+            value = inputs["verification"]
+            object.__setattr__(value, "payload", value.payload + b" ")
+        else:
+            # Keep the descriptor internally valid: changed provenance must
+            # still be detected across either original owner borrow.
+            value = inputs["verification"]
+            producer = "f" * 64
+            assert value.producer_key != producer
+            object.__setattr__(value, "producer_key", producer)
+            object.__setattr__(
+                value, "key", graph.opaque_artifact_key(producer, "verification")
+            )
+
+    result.calls.on_call = mutate
+    with pytest.raises(ValueError, match="EVIDENCE_CHANGED|SUPPORT_POPULATION_ROSTER"):
+        result.boundary.verify_materialized(**inputs)
+    assert mutations == [surface]
+    assert graph.child.physical._population_stamp(inputs["population"]) == before
+    assert result.boundary.revoked
+    result.calls.on_call = None
+    with pytest.raises(ValueError, match="REVOKED"):
+        # Fresh valid descriptors cannot resurrect the boundary.
         result.check(result.warm, result.captured)
     actual.partial._checked()
 

@@ -792,6 +792,45 @@ def _context(context, expected):
     replay._series(expected.frame.strata, context.strata)
 
 
+def _materialized_evidence_seal(artifacts, verification, support_populations):
+    """Detach every caller-owned descriptor before borrowing an owner again."""
+    require(set(support_populations) == {DONOR, RECIPIENT}, "SUPPORT_POPULATION_ROSTER")
+    values = (*sorted(artifacts.items()), ("verification_output", verification))
+    require(
+        all(
+            type(value) is ArtifactValue and type(value.payload) is bytes
+            for _, value in values
+        ),
+        "MATERIALIZED_ARTIFACT_VALUES",
+    )
+    return child.source._runtime_marker(
+        tuple(
+            (
+                name,
+                value.payload,
+                asdict(value.type),
+                value.key,
+                value.producer_key,
+                asdict(value.numerics),
+            )
+            for name, value in values
+        )
+    )
+
+
+def _verification_value(verification, payloads):
+    require(
+        type(verification) is ArtifactValue
+        and verification.type == VERIFICATION_TYPE
+        and verification.key
+        == opaque_artifact_key(verification.producer_key, "verification")
+        and verification.payload == payloads[VERIFY, "verification"]
+        and verification.numerics.numeric is Numeric.PLATFORM_BITWISE
+        and verification.numerics.platform == platform_fingerprint(),
+        "MATERIALIZED_VERIFICATION",
+    )
+
+
 class ChildPropertyBoundary:
     """Actual preparation custody plus a sealed country-parent callback.
 
@@ -920,26 +959,23 @@ class ChildPropertyBoundary:
     ):
         """Mandatory host check even when every node was a required cache hit."""
         try:
+            evidence_seal = _materialized_evidence_seal(
+                artifacts, verification, support_populations
+            )
             qualified = self._current()
+            require(
+                _materialized_evidence_seal(
+                    artifacts, verification, support_populations
+                )
+                == evidence_seal,
+                "INITIAL_OWNER_EVIDENCE_CHANGED",
+            )
             expected, _, payloads, donor, recipient = _reconstruct(
                 qualified, self.origins, self.parent, self.options, self.nodes
             )
             verify_node = self.nodes[-1]
             _artifacts(verify_node, artifacts, payloads, self.host_pins)
-            require(
-                type(verification) is ArtifactValue
-                and verification.type == VERIFICATION_TYPE
-                and verification.key
-                == opaque_artifact_key(verification.producer_key, "verification")
-                and verification.payload == payloads[VERIFY, "verification"]
-                and verification.numerics.numeric is Numeric.PLATFORM_BITWISE
-                and verification.numerics.platform == platform_fingerprint(),
-                "MATERIALIZED_VERIFICATION",
-            )
-            require(
-                set(support_populations) == {DONOR, RECIPIENT},
-                "SUPPORT_POPULATION_ROSTER",
-            )
+            _verification_value(verification, payloads)
             expected_support = {
                 name: populations.Population.from_frame(_support_frame(table), name)
                 for name, table in ((DONOR, donor), (RECIPIENT, recipient))
@@ -953,6 +989,15 @@ class ChildPropertyBoundary:
                 for name, value in support_populations.items()
             }
             self._current()
+            require(
+                _materialized_evidence_seal(
+                    artifacts, verification, support_populations
+                )
+                == evidence_seal,
+                "FINAL_OWNER_EVIDENCE_CHANGED",
+            )
+            _artifacts(verify_node, artifacts, payloads, self.host_pins)
+            _verification_value(verification, payloads)
             require(
                 child.physical._population_stamp(population) == stamp,
                 "FINAL_OUTPUT_CHANGED",

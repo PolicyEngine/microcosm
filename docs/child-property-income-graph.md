@@ -52,7 +52,11 @@ receiving population, both support populations, all verification-node input
 `ArtifactValue`s and its output verification `ArtifactValue`. It re-executes the
 real empirical fit and keyed draw independently of those artifacts, compares
 all three complete populations with maintained replay equality, repeats source
-and parent verification, and checks final output seals. The returned document
+and parent verification, and checks final output seals. Caller-owned artifact
+descriptors and the verification output are detached before the first owner
+borrow, then compared after the first and final borrows; their complete fields
+and exact support-mapping keys must remain unchanged. The reconstructed artifact
+and verification contracts are checked again after the final callback. The returned document
 is descriptive evidence; it is not an issued financial, tax-complete or release
 handle.
 
@@ -76,8 +80,10 @@ joins, zero stress, zero eligible children, known-incumbent refusal, exact
 artifact bindings and drift anywhere in the receiving state. Actual-owner tests
 reuse tiny authenticated survey fixtures whose sole teenager donor is absent
 from the selected target sample. They run an invented receiving prefix and the
-actual six-node fragment, including cold/required replay and final-owner
-mutation controls. They do not claim actual financial/tax/PUF host acceptance.
+actual six-node fragment, including cold/required replay and first/final-owner
+mutation controls for receiving values, artifact replacement, support-key
+addition/removal, and verification payload/producer metadata. Refusal permanently
+revokes the boundary. They do not claim actual financial/tax/PUF host acceptance.
 
 The accepted receiving Frame profile has no explicit links; the maintained
 whole-population comparison refuses nonempty links rather than dropping them.
