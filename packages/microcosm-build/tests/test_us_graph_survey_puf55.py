@@ -95,7 +95,10 @@ def composed(recipient_financial_run, tmp_path_factory):  # noqa: F811
             # Zero each of our exact local masks before clearing callbacks.
             for code in codes:
                 monitoring.set_local_events(tool_id, code, 0)
-            monitoring.clear_tool_id(tool_id)
+            # clear_tool_id was added in Python 3.14. Explicitly unregister
+            # this observer's callbacks on both supported Python versions.
+            for event in (monitoring.events.PY_START, monitoring.events.PY_RETURN):
+                monitoring.register_callback(tool_id, event, None)
             assert monitoring.get_events(tool_id) == 0
             assert all(
                 monitoring.get_local_events(tool_id, code) == 0 for code in codes
@@ -210,7 +213,12 @@ def _observe_exact_code_events(trace, *, starts=(), returns=()):
             monitoring.set_events(tool_id, 0)
             for code in codes:
                 monitoring.set_local_events(tool_id, code, 0)
-            monitoring.clear_tool_id(tool_id)
+            for event in (
+                monitoring.events.PY_START,
+                monitoring.events.PY_RETURN,
+                monitoring.events.PY_UNWIND,
+            ):
+                monitoring.register_callback(tool_id, event, None)
             assert monitoring.get_events(tool_id) == 0
             assert all(
                 monitoring.get_local_events(tool_id, code) == 0 for code in codes
@@ -223,6 +231,54 @@ def _observe_exact_code_events(trace, *, starts=(), returns=()):
             function.__code__ is code
             for function, code in zip(functions, codes, strict=True)
         )
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_exact_observer_cleanup_and_reuse(fail):
+    """Normal and exceptional exits leave no callbacks or event masks behind."""
+    events = []
+
+    def observed(raises):
+        if raises:
+            raise ValueError("invented observer exception")
+        return 17
+
+    def trace(frame, event, value):
+        events.append((frame.f_code, event, value))
+
+    for raises in (fail, False):
+        try:
+            with _observe_exact_code_events(
+                trace, starts=(observed,), returns=(observed,)
+            ):
+                observed(raises)
+        except ValueError as error:
+            assert raises and str(error) == "invented observer exception"
+        else:
+            assert not raises
+        monitoring, tool_id = sys.monitoring, 4
+        assert monitoring.get_tool(tool_id) is None
+        monitoring.use_tool_id(tool_id, "microcosm-cleanup-regression-check")
+        try:
+            assert monitoring.get_events(tool_id) == 0
+            assert monitoring.get_local_events(tool_id, observed.__code__) == 0
+            for event in (
+                monitoring.events.PY_START,
+                monitoring.events.PY_RETURN,
+                monitoring.events.PY_UNWIND,
+            ):
+                assert monitoring.register_callback(tool_id, event, None) is None
+        finally:
+            monitoring.free_tool_id(tool_id)
+        count = len(events)
+        assert observed(False) == 17
+        assert len(events) == count
+    assert [event for _, event, _ in events] == ["call", "return"] * 2
+    assert all(code is observed.__code__ for code, _, _ in events)
+    assert [value for _, event, value in events if event == "return"] == [
+        None if fail else 17,
+        17,
+    ]
 
 
 def _values(case):
