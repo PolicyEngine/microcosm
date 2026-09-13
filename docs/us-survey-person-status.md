@@ -3,8 +3,10 @@
 The additive person-status qualifier retains published difficulty and enrollment
 items from the original ACS 2024 and ASEC 2025 person sources. It does not assign
 `is_blind`, `is_disabled`, or `is_full_time_college_student`. It is independent of
-the existing legacy eligibility operator and is not attached to a graph host or
-included in release coverage by this change.
+the existing legacy eligibility operator. The optional
+[four-node graph fragment](us-survey-person-status-graph.md) exposes these
+descriptions on the common US population; it does not add release coverage or
+establish eligibility.
 
 `qualify_current_survey_person_status(preparation)` accepts the actual retained
 `AuthenticatedSurveyPopulationPreparation`. It captures its pinned original
