@@ -1,5 +1,9 @@
 # Fix round result — UK-enabling shared graph contracts (amendments 25, 26)
 
+> Historical source-only report. Later source corrections and the passing
+> 101-test run are recorded in the
+> [13 September acceptance record](experiments/uk-shared-graph-contract-acceptance-20260913.md).
+
 Source-only. **Runtime is UNTESTED.** No pytest, no import of the
 production package, no engine, no country model, no native source, no
 install, no gated data, no network beyond `git fetch`, no publication. The

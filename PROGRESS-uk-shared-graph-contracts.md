@@ -1,5 +1,8 @@
 # UK-enabling shared graph contracts (amendments 25 and 26)
 
+> Historical lane journal. For the final tested revision, see the
+> [13 September acceptance record](experiments/uk-shared-graph-contract-acceptance-20260913.md).
+
 Lane journal. Append-only within this lane; historicize rather than
 overwrite once the branch merges (CLAUDE.md, "Root journals are history").
 

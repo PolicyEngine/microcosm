@@ -1,3 +1,8 @@
+> Historical review of the initial proposal, preserved verbatim. The findings
+> were subsequently resolved or adjudicated. See the
+> [13 September acceptance record](experiments/uk-shared-graph-contract-acceptance-20260913.md)
+> for the tested revision and remaining scope.
+
 <!-- Filed verbatim by the fix lane from the reviewer's tool result:
      subfleet run 20260913-085330-fable-review-md (dispatched 2026-09-13 08:53,
      returned 09:01). The reviewer reported it could not write this file itself
