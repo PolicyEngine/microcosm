@@ -141,6 +141,12 @@ def test_actual_qualifier_retains_complete_sources_and_closes_mutation_seals(
     )
     with pytest.raises(ValueError, match="PROJECTION_OBJECT_CHANGED"):
         replace(result).validate()
+    original_callback = result._revalidate
+    object.__setattr__(result, "_revalidate", lambda _: None)
+    with pytest.raises(ValueError, match="RETAINED_OWNER_REQUIRED"):
+        result.validate()
+    object.__setattr__(result, "_revalidate", original_callback)
+    result.validate()
     with pytest.raises(ValueError):
         owner.qualify_current_survey_person_status(copy.copy(prepared))
     # No source reconstruction or normalization can hide a mutated projection.

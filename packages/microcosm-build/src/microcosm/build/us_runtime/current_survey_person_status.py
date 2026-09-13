@@ -147,7 +147,9 @@ def literal_code(token, named, *, width=2):
 
 
 def _observed(token, *, applicable, niu):
-    code, status = literal_code(token, (-1, 1, 2))
+    code, status = literal_code(
+        token, (-1, 1, 2) if niu == "-1" else (1, 2), width=2 if niu == "-1" else 1
+    )
     if applicable is None:
         return None, "unresolved_universe"
     if not applicable:

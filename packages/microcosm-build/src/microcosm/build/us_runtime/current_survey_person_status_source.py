@@ -15,7 +15,7 @@ import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import FunctionType
+from types import CodeType, FunctionType
 
 import numpy as np
 import pandas as pd
@@ -64,6 +64,8 @@ def _live():
         student.CONTROLS,
         student.COORDINATES,
         student._READ_COLUMNS,
+        _REVALIDATE_CODE,
+        repr(STRING),
     )
 
 
@@ -250,7 +252,13 @@ class QualifiedSurveyPersonStatus:
     _revalidate: object = field(default=None, repr=False, compare=False)
 
     def validate(self):
-        require(callable(self._revalidate), "RETAINED_OWNER_REQUIRED")
+        require(_live() == _LIVE, "IMPLEMENTATION_CHANGED")
+        require(
+            type(self) is QualifiedSurveyPersonStatus
+            and type(self._revalidate) is FunctionType
+            and self._revalidate.__code__ is _REVALIDATE_CODE,
+            "RETAINED_OWNER_REQUIRED",
+        )
         self._revalidate(self)
 
 
@@ -471,4 +479,9 @@ def qualify_current_survey_person_status(preparation):
     return result
 
 
+_REVALIDATE_CODE = next(
+    c
+    for c in qualify_current_survey_person_status.__code__.co_consts
+    if type(c) is CodeType and c.co_name == "revalidate"
+)
 _LIVE = _live()

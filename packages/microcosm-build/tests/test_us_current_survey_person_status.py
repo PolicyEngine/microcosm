@@ -205,3 +205,11 @@ def test_acs_college_attendance_has_unknown_full_time_workload(school, level, ex
 def test_nonliteral_or_unbounded_source_values_refuse(token):
     with pytest.raises(ValueError, match="LITERAL_TYPE_OR_BOUND"):
         status.recode_person_status(asec(PEDISEYE=token), survey="asec")
+
+
+@pytest.mark.parametrize("token", ["01", "02", "-1"])
+def test_acs_item_width_agrees_with_literal_code_knownness(token):
+    result = status.recode_person_status(acs(DEYE=token), survey="acs")
+    assert result["person_status_source_DEYE__code"] is None
+    assert result["survey_vision_difficulty"] is None
+    assert not result["survey_vision_difficulty__known"]
