@@ -149,6 +149,8 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "current_survey_health_source.py",  # Qualify exact ACS/ASEC source rosters.
         "current_survey_health_coverage.py",  # Validate the same two-clone join.
         "graph_current_survey_health.py",  # Declare the attachment's identity inputs.
+        # Rejoin qualified original property values to both initial clones.
+        "graph_current_survey_property.py",
         "current_social_security_source.py",  # Source-owned SS totals per row.
         "current_survey_geography.py",  # Origin roster and draw keys.
         "current_survey_predictors.py",  # Source-qualified predictor prep.
@@ -399,12 +401,16 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "fiscal_leaf_policy.py",
         # Typed source, recode and attachment health graph fragment
         "graph_current_survey_health.py",
+        # Qualified original property branches and exact paired attachment
+        "graph_current_survey_property.py",
         # Grouped dense calibration over retained fiscal measurements
         "graph_fiscal_dense_calibration.py",
         # Measured fiscal inputs and exact retained population/target axes
         "graph_fiscal_measurement.py",
         # Source-blind weighted QRF chain, raw draws and signed reconciliation
         "graph_property_income.py",
+        # Source-blind fit/history and recipient-draw verification
+        "graph_property_income_receipts.py",
         # Source-blind PUF clone placement and original-channel preservation
         "graph_puf55_route_attachment.py",
         # Complete PUF composition and retained checked-output lifetime
@@ -3473,6 +3479,9 @@ _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
         # Static leaf/entity closure and engine metadata/default dictionaries,
         # not population provenance. Assumption execution remains disabled.
         "fiscal_leaf_policy.py",
+        # Declared numerical target columns and (node, artifact) byte maps;
+        # no original-source routing or provenance selectors.
+        "graph_property_income_receipts.py",
         # Reviewed 2026-09-12: exact geography fields/CSR masks, typed artifact
         # names and producer keys, retained registry entries and node histories.
         # These four remain scanned for provenance columns and accessor calls.

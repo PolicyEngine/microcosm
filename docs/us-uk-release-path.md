@@ -199,9 +199,14 @@ allocation flags through the retained source owner; its 35 invented-source
 controls pass. The [signed reconciliation helper](../experiments/signed-income-reconciliation-20260912.md)
 projects joint component draws onto a caller-qualified total while allowing
 declared signed components and preserving loss offsets; its 45 numeric controls
-pass. These components are not yet invoked by the financial or PUF host.
-The donor measurement bridge, scales, named graph reconciliation operation and
-dependent model replay remain to be implemented and verified.
+pass. An explicit property-income option now integrates the source bridge,
+four conditional component models, signed reconciliation and clone attachment
+into the existing financial host. Its actual invented 35-node construction and
+required replay pass, preserving the full preceding population. The new columns
+still coexist with the earlier tax inputs: the tax-input rebase, retirement
+bridge and complete PUF/native adoption remain separate work. The focused PUF
+handoff retest passes after correction of an invalid invented source record;
+see the [scoped host evidence](../experiments/us-property-financial-host-20260912.md).
 
 The remaining critical sequence is complete PUF/input integration, a small
 real full build, model and calibration evaluation, then progressive scale

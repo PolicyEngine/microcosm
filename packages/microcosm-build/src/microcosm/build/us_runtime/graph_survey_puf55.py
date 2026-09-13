@@ -1,4 +1,4 @@
-"""Extend an issued postclone nineteen-node financial run with two PUF55 routes.
+"""Extend an issued postclone financial run with two PUF55 routes.
 
 The existing financial run is an explicit prerequisite. This host compiles and
 executes the extension once; it does not claim that the upstream run's entire
@@ -243,7 +243,7 @@ def _construct(
 ):
     """Construct actual declarations and bind actual source keys without running."""
     financial.check_atomic_survey_financial_run(financial_run)
-    require(len(financial_run.compiled.order) == 19, "UPSTREAM_NINETEEN_NODES")
+    upstream_count = len(financial_run.compiled.order)
     require(type(seed) is int and 0 <= seed < 2**64, "SEED")
     require(type(n_estimators) is int and n_estimators > 0, "TREE_COUNT")
     qualified = recipient.values.qualify_puf55_survey_recipients(financial_run)
@@ -283,10 +283,13 @@ def _construct(
         nodes=nodes,
     )
     compiled = compile_graph(graph)
-    require(len(compiled.order) == 25 + 110 * len(boundary.routes), "NODE_COUNT")
+    require(
+        len(compiled.order) == upstream_count + 6 + 110 * len(boundary.routes),
+        "NODE_COUNT",
+    )
     order = compiled.order
     require(
-        order.index(financial.financial.ATTACH_NODE)
+        order.index(financial.financial_output_node(financial_run))
         < order.index(recipient.PROJECTION_NODE)
         < order.index(recipient.MATRIX_NODE)
         < order.index(attach.FILTER_NODE)

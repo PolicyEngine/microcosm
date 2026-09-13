@@ -1,8 +1,9 @@
 """Checked atomic survey geography plus current financial development output.
 
-This nineteen-node composition retains the raw allocation and the pre-financial
-clone separately. It grants neither a budget successor nor PUF recipient or
-release authority. Support bytes establish integrity, not publisher provenance.
+The base nineteen nodes retain the raw allocation and the pre-financial clone
+separately. An explicit property-income option adds sixteen nodes and retains
+the complete legacy financial population alongside its extended output. Support
+bytes establish integrity, not publisher provenance or release eligibility.
 """
 
 from __future__ import annotations
@@ -13,10 +14,13 @@ import weakref
 from dataclasses import dataclass, replace
 from types import FunctionType, SimpleNamespace
 
+import numpy as np
+import pandas as pd
+
 from microcosm.fit import qrf_target
 from microcosm.fit.graph_legacy_apply_matrix import LegacyQRFApplyMatrixKernel
 from microcosm.fit.graph_legacy_train import LegacyQRFTrainKernel
-from microcosm.graph import KernelResult, compile_graph, run_graph
+from microcosm.graph import KernelResult, StructuralDelta, compile_graph, run_graph
 from microcosm.graph import population as population_ops
 from microcosm.graph.artifact_edges import typed_contracts
 from microcosm.graph.executor import _all_node_keys, _source_paths_and_keys
@@ -93,6 +97,17 @@ class _FinancialRunState:
     manifest_populations: tuple
     prefix_manifest_populations: tuple
     live: dict
+    property_income: object = None
+    property_income_bytes: bytes | None = None
+    legacy_financial_population: Population | None = None
+    legacy_financial_stamp: object = None
+
+
+def _property_module():
+    """Load the explicitly selected extension without changing the default path."""
+    from . import graph_current_survey_property
+
+    return graph_current_survey_property
 
 
 def _manifest_population_seals(manifest, compiled):
@@ -123,6 +138,16 @@ def _run_entry(run):
     return entry
 
 
+def financial_output_node(run):
+    """Name the final writer of an already issued financial run."""
+    state = _run_entry(run)[2]
+    return (
+        financial.ATTACH_NODE
+        if state.property_income is None
+        else _property_module().ATTACH_NODE
+    )
+
+
 def _run_document(run, state):
     """Portable ancestry omits timing/cache hits and private physical seals."""
     return codec.encode_json(
@@ -145,10 +170,30 @@ def _run_document(run, state):
                 (e, c, writer)
                 for (e, c), writer in run.financial_population.owners.items()
             ),
-            "owned_columns": list(values.OUTPUTS),
+            "owned_columns": [
+                *values.OUTPUTS,
+                *(
+                    ()
+                    if state.property_income is None
+                    else (owned.column for owned in _property_module().owned_columns())
+                ),
+            ],
             "demographic_conditioning": state.demographic_conditioning,
             "n_estimators": state.n_estimators,
             "release_eligible": False,
+            **(
+                {}
+                if state.property_income is None
+                else {
+                    "property_income": codec.decode_json(state.property_income_bytes),
+                    "property_node_count": 16,
+                    "tax_split_rebased": False,
+                    "capital_gains_conditioning": _property_module().CAP_LIMITATION,
+                    "legacy_financial_frame_sha256": values.source._frame_identity(
+                        state.legacy_financial_population.frame
+                    ),
+                }
+            ),
         }
     )
 
@@ -208,6 +253,14 @@ def _pure_run(run, entry):
         "FINANCIAL_RUN_SOURCE_CHANGED",
     )
     values.source._pure_final(state.preparation_entry[2])
+    if state.property_income is not None:
+        require(
+            type(state.property_income) is _property_module().PropertyIncomeOptions
+            and state.property_income.to_bytes() == state.property_income_bytes
+            and reconstruction._population_stamp(state.legacy_financial_population)
+            == state.legacy_financial_stamp,
+            "PROPERTY_OPTIONS_OR_LEGACY_POPULATION_CHANGED",
+        )
     for name, population, stamp in state.populations:
         actual = (
             run.financial_population if name == "financial" else getattr(prefix, name)
@@ -217,7 +270,8 @@ def _pure_run(run, entry):
             "FINANCIAL_RUN_POPULATION_CHANGED",
         )
     require(
-        _run_document(run, state) == entry[1] and _live() == state.live,
+        _run_document(run, state) == entry[1]
+        and _live(state.property_income) == state.live,
         "FINAL_FINANCIAL_RUN_SEAL",
     )
     require(_run_entry(run) is entry, "FINAL_FINANCIAL_RUN_ISSUANCE")
@@ -256,7 +310,11 @@ def check_atomic_survey_financial_run(run):
         prefix.preparation,
         prefix.allocated_population,
         prefix.clone_population,
-        population=run.financial_population,
+        population=(
+            run.financial_population
+            if state.property_income is None
+            else state.legacy_financial_population
+        ),
         projection=state.projection,
         matrix=state.matrix,
         matrix_producer_key=keys[financial.PROJECTION_NODE],
@@ -271,6 +329,20 @@ def check_atomic_survey_financial_run(run):
         demographic_conditioning=state.demographic_conditioning,
         geography_config=prefix.geography_config,
     )
+    if state.property_income is not None:
+        _property_module().verify_materialized_property_income(
+            prefix.preparation,
+            prefix.allocated_population,
+            prefix.clone_population,
+            legacy_population=state.legacy_financial_population,
+            population=run.financial_population,
+            host_pins=codec.decode_json(state.pins),
+            options=state.property_income,
+            artifacts=loaded,
+            legacy_matrix_producer_key=keys[financial.PROJECTION_NODE],
+            demographic_conditioning=state.demographic_conditioning,
+            geography_config=prefix.geography_config,
+        )
     result = CheckedAtomicSurveyFinancialRun(
         entry[1], codec.sha(entry[1]), run.financial_population
     )
@@ -290,6 +362,8 @@ def _issue_run(
     implementations,
     loaded,
     live,
+    property_income=None,
+    legacy_financial_population=None,
 ):
     """Called only after this runner's complete materialization/replay checks."""
     prefix = result.prefix
@@ -350,6 +424,12 @@ def _issue_run(
         _manifest_population_seals(result.manifest, result.compiled),
         _manifest_population_seals(prefix.manifest, prefix.compiled),
         live,
+        property_income,
+        None if property_income is None else property_income.to_bytes(),
+        legacy_financial_population,
+        None
+        if legacy_financial_population is None
+        else reconstruction._population_stamp(legacy_financial_population),
     )
     identifier = id(result)
 
@@ -363,7 +443,7 @@ def _issue_run(
     _pure_run(result, _run_entry(result))
 
 
-def _live():
+def _live(property_income=None):
     """Pure final fence over this composition and its existing owner closure."""
     result = dict(values.host.survey_budget._live())
     modules = (
@@ -378,6 +458,40 @@ def _live():
         sys.modules[LegacyQRFTrainKernel.__module__],
         sys.modules[LegacyQRFApplyMatrixKernel.__module__],
     )
+    if property_income is not None:
+        from . import current_asec_property_basis, graph_property_income_receipts
+
+        extension = _property_module()
+        modules = (
+            *modules,
+            extension,
+            extension.sources,
+            current_asec_property_basis,
+            extension.sources.acs,
+            extension.sources.interest,
+            extension.sources.routing,
+            extension.sources.dividend,
+            extension.model,
+            extension.signed_graph,
+            graph_property_income_receipts,
+            sys.modules[extension.LegacyQRFApplyKernel.__module__],
+        )
+        result["property_contract"] = values.source._runtime_marker(
+            (
+                extension.PROTOCOL,
+                extension.PREFIX,
+                extension.CAP_LIMITATION,
+                extension.LEGACY_DIFFERENCE,
+                extension.BASIS_DIAGNOSTICS,
+                extension.PROPERTY_COMPONENTS,
+                extension.PROPERTY_DRAW_COLUMNS,
+                extension.PROPERTY_REPORTED_TOTAL,
+                extension.model.PROTOCOL,
+                extension.sources.PROTOCOL,
+                current_asec_property_basis.OTHER_PROPERTY_CATEGORIES,
+                current_asec_property_basis.OTHER_UNSPECIFIED_CATEGORY,
+            )
+        )
     for module in modules:
         for name, value in vars(module).items():
             if isinstance(value, FunctionType):
@@ -547,13 +661,23 @@ def run_atomic_survey_financial(
     geography_config,
     demographic_conditioning=False,
     n_estimators=100,
+    property_income=None,
     resume="auto",
     return_values=False,
 ):
-    """Execute and verify all nineteen nodes, including required cache replay."""
+    """Verify the base financial graph and its explicitly selected extension."""
     require(type(return_values) is bool, "RETURN_VALUES_FLAG")
     values.feature_columns(demographic_conditioning)
-    live = _live()
+    property_graph = None if property_income is None else _property_module()
+    if property_graph is not None:
+        require(
+            type(property_income) is property_graph.PropertyIncomeOptions,
+            "PROPERTY_OPTIONS_TYPE",
+        )
+        property_income_bytes = property_income.to_bytes()
+    else:
+        property_income_bytes = None
+    live = _live(property_income)
     config_bytes = values.host.survey_budget._config_payload(geography_config)
     require(config_bytes is not None, "ATOMIC_GEOGRAPHY_REQUIRED")
     prefix = atomic.run_atomic_survey_population(
@@ -598,6 +722,17 @@ def run_atomic_survey_financial(
         geography_config=geography_config,
     )
     projection_bytes, matrix_bytes = qualified.projection, qualified.matrix
+    property_qualified = (
+        None
+        if property_graph is None
+        else property_graph.sources.qualify_current_property_income_sources(
+            prefix.preparation,
+            prefix.allocated_population,
+            prefix.clone_population,
+            demographic_conditioning=demographic_conditioning,
+            geography_config=geography_config,
+        )
+    )
     geography = reconstruction.reconstruct_atomic_survey_geography(
         prefix.preparation, prefix.allocated_population, geography_config
     )
@@ -621,11 +756,26 @@ def run_atomic_survey_financial(
         host_pins=pins,
         n_estimators=n_estimators,
     )
+    property_nodes = (
+        ()
+        if property_graph is None
+        else property_graph.current_survey_property_nodes(
+            property_qualified,
+            prefix.clone_population.frame,
+            host_pins=pins,
+            options=property_income,
+        )
+    )
     compiled = compile_graph(
-        replace(prefix.compiled.graph, nodes=(*prefix.compiled.graph.nodes, *nodes))
+        replace(
+            prefix.compiled.graph,
+            nodes=(*prefix.compiled.graph.nodes, *nodes, *property_nodes),
+        )
     )
     require(
-        len(prefix.compiled.order) == 9 and len(compiled.order) == 19,
+        len(prefix.compiled.order) == 9
+        and len(property_nodes) == (0 if property_graph is None else 16)
+        and len(compiled.order) == 19 + len(property_nodes),
         "ATOMIC_COMPILER_ROSTER",
     )
     gate_edge = financial._geography_edge()
@@ -657,6 +807,17 @@ def run_atomic_survey_financial(
         )
     kernels.register(LegacyQRFTrainKernel())
     kernels.register(LegacyQRFApplyMatrixKernel())
+    if property_graph is not None:
+        property_graph.register_property_kernels(
+            kernels,
+            prefix.preparation,
+            prefix.allocated_population,
+            prefix.clone_population,
+            host_pins=pins,
+            options=property_income,
+            demographic_conditioning=demographic_conditioning,
+            geography_config=geography_config,
+        )
     _, source_keys = _source_paths_and_keys(compiled, sources, store)
     keys, implementations = _all_node_keys(compiled, kernels, source_keys)
     base_expected = {
@@ -746,10 +907,40 @@ def run_atomic_survey_financial(
         "paired_draws": "source_origin_join",
         "host_weights_changed": False,
     }
+    property_results = (
+        {}
+        if property_graph is None
+        else property_graph.reconstruct_property_results(
+            property_qualified,
+            prefix.clone_population.frame,
+            host_pins=pins,
+            options=property_income,
+            artifacts=loaded,
+            legacy_matrix_producer_key=matrix_key,
+        )
+    )
+    receipts.update({name: result.receipt for name, result in property_results.items()})
     expected, current = {}, {}
     for node_id in compiled.order:
         node, version = compiled.graph.node(node_id), compiled.versions[node_id]
-        if node_id == donor_node.id:
+        if node_id in property_results:
+            incumbent = (
+                version if node.structural is StructuralDelta.NONE else node.base
+            )
+            property_result = property_results[node_id]
+            if node.structural is StructuralDelta.FILTER:
+                frame = current[incumbent].frame
+                entity = frame.schema.person_entity
+                id_column = frame.schema.entity_id_column(entity)
+                ids = pd.Index(frame.table(entity)[id_column], name=id_column)
+                mask = property_result.keep.reindex(ids).to_numpy(
+                    dtype=np.bool_, copy=True
+                )
+                property_result = replace(
+                    property_result, frame=frame.select(mask), keep=None
+                )
+            population = population_ops.patch(current[incumbent], node, property_result)
+        elif node_id == donor_node.id:
             population = donor
         elif node_id == columns_node.id:
             population = donor_columns
@@ -769,14 +960,29 @@ def run_atomic_survey_financial(
             population = current[version]
         expected[node_id] = current[version] = population
         atomic.same_replayed_population(population, observed[node_id])
+    if property_graph is not None:
+        from .graph_property_income_receipts import verify_property_model_receipts
+
+        receipts.update(
+            verify_property_model_receipts(
+                property_nodes,
+                expected[property_graph.DONOR_COLUMNS_NODE],
+                expected[property_graph.RECIPIENT_COLUMNS_NODE],
+                loaded,
+            )
+        )
     expected_stamps = {
         n: reconstruction._population_stamp(p) for n, p in expected.items()
     }
     states = atomic._states(compiled, kernels, source_keys, expected, receipts)
     survey._check_node_states(manifest, states)
+    final_node = (
+        financial.ATTACH_NODE if property_graph is None else property_graph.ATTACH_NODE
+    )
+    legacy_population = observed[financial.ATTACH_NODE]
     result = AtomicSurveyFinancialRunValues(
         prefix,
-        observed[financial.ATTACH_NODE],
+        observed[final_node],
         manifest,
         compiled,
         store,
@@ -797,7 +1003,7 @@ def run_atomic_survey_financial(
         prefix.preparation,
         prefix.allocated_population,
         prefix.clone_population,
-        population=result.financial_population,
+        population=legacy_population,
         projection=projection_bytes,
         matrix=matrix_bytes,
         matrix_producer_key=matrix_key,
@@ -808,6 +1014,24 @@ def run_atomic_survey_financial(
         demographic_conditioning=demographic_conditioning,
         geography_config=geography_config,
     )
+    if property_graph is not None:
+        property_graph.verify_materialized_property_income(
+            prefix.preparation,
+            prefix.allocated_population,
+            prefix.clone_population,
+            legacy_population=legacy_population,
+            population=result.financial_population,
+            host_pins=pins,
+            options=property_income,
+            artifacts=loaded,
+            legacy_matrix_producer_key=matrix_key,
+            demographic_conditioning=demographic_conditioning,
+            geography_config=geography_config,
+        )
+        require(
+            property_income.to_bytes() == property_income_bytes,
+            "PROPERTY_OPTIONS_CHANGED",
+        )
     values.source._pure_final(entry[2])
     require(
         values.source._ISSUED.get(id(prefix.preparation)) is entry
@@ -819,7 +1043,7 @@ def run_atomic_survey_financial(
         and result.compiled is compiled
         and result.store is store
         and result.kernels is kernels
-        and result.financial_population is observed[financial.ATTACH_NODE]
+        and result.financial_population is observed[final_node]
         and result.projection == projection_bytes
         and result.matrix == matrix_bytes
         and all(
@@ -844,7 +1068,7 @@ def run_atomic_survey_financial(
         and tuple(sorted(prefix.sources.items())) == source_items
         and graph_to_json(compiled.graph) == declaration
         and compiled == compile_graph(compiled.graph)
-        and _live() == live,
+        and _live(property_income) == live,
         "ATOMIC_FINAL_BINDINGS",
     )
     for name, (population, stamp) in retained.items():
@@ -889,5 +1113,9 @@ def run_atomic_survey_financial(
         implementations=implementations,
         loaded=loaded,
         live=live,
+        property_income=property_income,
+        legacy_financial_population=None
+        if property_graph is None
+        else legacy_population,
     )
     return result if return_values else manifest
