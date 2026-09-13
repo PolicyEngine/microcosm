@@ -353,11 +353,19 @@ class KernelContext:
             ``Frame`` has already deeply frozen; this class adds a
             read-only view over that mapping and does not itself deep-freeze
             a mapping built some other way (amendment 26).
-        frame_mass_log: The population version's ``Frame`` mass records, in
-            order. This is the *incoming* log: a node that needs a stage's
-            completed records must run after that stage's structural
-            boundary or read its predecessor's evidence, because incidental
-            node order is not authority (amendment 26).
+        frame_mass_log: The ``Frame`` mass records this node's key binds,
+            in order. For an ordinary node that is its population version's
+            *boundary* log -- the log as that version was admitted -- so a
+            record another member of the same version appends afterwards is
+            not visible here: an ordinary node's key binds its version's
+            structural boundary and the owners of the columns it declared,
+            not its siblings, and a view the key does not bind could not
+            survive a cache hit. A structural node receives its base
+            version's cumulative log, which its key does bind, through that
+            base and that version's members. A node that needs a stage's
+            completed records therefore runs after that stage's structural
+            boundary or reads its predecessor's evidence; incidental node
+            order is not authority (amendment 26).
         frame_column_order: Entity to the population version's own column
             order, restricted to the columns projected into ``tables``.
             The executor projects ``tables`` in declaration order, so this
