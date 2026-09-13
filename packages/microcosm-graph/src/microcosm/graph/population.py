@@ -1060,8 +1060,11 @@ def storage_equal(
 
     if left.dtype != right.dtype or len(left) != len(right):
         return False
+    selected: np.ndarray | slice
     if positions is None:
-        selected = np.ones(len(left), dtype=np.bool_)
+        # Whole-series comparison: the slice selects the same rows in the same
+        # order as an all-True mask, without building three temporaries per side.
+        selected = slice(None)
     else:
         selected = np.asarray(positions)
         if selected.dtype != np.bool_ or selected.shape != (len(left),):
@@ -2736,15 +2739,29 @@ def _object_storage_values(values: np.ndarray) -> bytes:
     return bytes(payload)
 
 
-def _storage_parts(series: pd.Series, selected: np.ndarray) -> tuple[bytes, bytes]:
-    nulls = series.isna().to_numpy(dtype=np.bool_, copy=False)[selected]
+def _storage_parts(
+    series: pd.Series, selected: np.ndarray | slice
+) -> tuple[bytes, bytes]:
+    """Physical value bytes and null bytes for the ``selected`` rows.
+
+    ``selected`` is a row-aligned bool mask, or ``slice(None)`` for the whole
+    series.  The two forms are byte-identical: an all-True mask selects a copy
+    in row order and ``slice(None)`` a view in the same order, and every byte
+    payload below is taken either through ``np.ascontiguousarray`` or by an
+    in-order walk.  Whole-series callers pass the slice so that no all-True
+    selector, null-selection copy or value-selection copy is built at all.
+    """
+
     array = series.array
     data = getattr(array, "_data", None)
     mask = getattr(array, "_mask", None)
     if isinstance(data, np.ndarray) and isinstance(mask, np.ndarray):
+        # Masked storage carries its own nulls, so the isna() below — which
+        # would only rebuild this same mask — stays out of this branch.
         values = np.ascontiguousarray(data[selected]).tobytes()
         bitmap = np.ascontiguousarray(mask[selected]).tobytes()
         return values, bitmap
+    nulls = series.isna().to_numpy(dtype=np.bool_, copy=False)[selected]
     if isinstance(series.dtype, pd.StringDtype):
         payload = bytearray()
         for value, is_null in zip(

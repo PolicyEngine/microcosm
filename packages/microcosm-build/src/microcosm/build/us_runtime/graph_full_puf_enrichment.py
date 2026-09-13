@@ -121,9 +121,9 @@ def _series_parts(series):
         # Portable typed scalar bytes, never Python object pointers.
         yield from (store_ops._encode_object_scalar(v) for v in series)
     else:
-        yield from population_ops._storage_parts(
-            series, np.ones(len(series), dtype=np.bool_)
-        )
+        # Whole series: the slice selects every row in order, so no all-True
+        # selector or selection copy is built. The emitted bytes are identical.
+        yield from population_ops._storage_parts(series, slice(None))
 
 
 def _axis_parts(axis):
