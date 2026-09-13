@@ -36,6 +36,23 @@ def enrichment_source_arguments(root, patch):
     import test_us_puf55_survey_recipients as recipient_fixture
     import test_us_survey_population_preparation as source_fixture
 
+    original_household = recipient_fixture._household
+
+    def household_with_housing_recipient(serialno, **overrides):
+        if serialno == "2024HU0000001":
+            overrides = {
+                **overrides,
+                "TEN": 3,
+                "RNTP": 1000,
+                "GRNTP": 1100,
+                "TAXAMT": None,
+            }
+        return original_household(serialno, **overrides)
+
+    # ACS does not observe receipt. A renter activates the housing fit path;
+    # known ASEC receipt/nonreceipt supply its independent donor labels.
+    for fixture in (source_fixture, recipient_fixture):
+        patch.setattr(fixture, "_household", household_with_housing_recipient)
     patch.setattr(source_fixture, "_person", _health_acs_person(source_fixture._person))
     patch.setattr(
         recipient_fixture, "_person", _health_acs_person(recipient_fixture._person)
@@ -123,6 +140,14 @@ def test_actual_current_uc_projection_preserves_ambiguous_and_contradictory_sour
     health = graph.health_graph.qualify_health_coverage(prepared)
     assert set(health.raw.source) == {"asec", "acs"}
     graph.health_graph.health_coverage_seal(health)
+    housing = graph.housing_graph.housing
+    frame, origins, porigins, keys, selected, _ = housing._original_columns(prepared)
+    receipt = housing._source_values(frame, origins, porigins, keys, selected)
+    assert (
+        receipt.housing_source.eq("acs")
+        & receipt.housing_participation_universe.eq("occupied_housing_unit")
+        & receipt.housing_receipt.isna()
+    ).any()
     prepared.checked_view()
 
 
