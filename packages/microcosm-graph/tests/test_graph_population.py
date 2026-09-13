@@ -1422,9 +1422,9 @@ def _design_update_result(population: Population, *, factor: float) -> KernelRes
 def _clone_and_entrant_expand_node(*, base: str) -> Node:
     """An EXPAND that clones one household and admits one true entrant.
 
-    Copied rows carry their source's storage, and the toy household table
-    has no column but its id, so nothing here has to be materialized;
-    ``expand_cells`` is empty exactly as it is for the lineage EXPAND above.
+    Both members of the copied household are cloned without reassignment.
+    A true entrant person has all carried cells and its stratum declared,
+    and joins the new entrant household.
     """
     return Node(
         "grow",
@@ -1432,7 +1432,13 @@ def _clone_and_entrant_expand_node(*, base: str) -> Node:
         structural=StructuralDelta.EXPAND,
         base=base,
         params={
-            "expand_cells": (),
+            "expand_cells": (
+                ("person", "person_household_id", "int64"),
+                ("person", "keep", "bool"),
+                ("person", "owned", "boolean"),
+                ("person", "nullable", "boolean"),
+                ("person", "amount", "float64"),
+            ),
             "expand_weight_entity": "household",
             "expand_weight_kind": "design",
         },
@@ -1452,26 +1458,49 @@ def _clone_and_entrant_expand_result(population: Population) -> KernelResult:
 
     Household 10's members are copied with it, because a copied group
     requires the same number of copies of every incumbent member
-    (``_remapped_expand_memberships``); the entrant household joins with
-    none. The returned design weights are the incumbent ones, then the
-    clone's copy of its source's weight, then the entrant's declared one.
+    (``_remapped_expand_memberships``); person 7 enters without ancestry
+    and belongs to household 50. The returned design weights are the
+    incumbent ones, the clone's source weight, then the entrant's weight.
     """
     incumbent = population.frame.weights_for("household").values
+    person = population.frame.table("person")
+    ids = pd.Index([1, 2, 3, 4, 5, 6, 7], name="person_id")
+    entrant = {
+        "person_household_id": 50,
+        "keep": True,
+        "owned": False,
+        "nullable": pd.NA,
+        "amount": 4.0,
+    }
+    columns = {
+        ("person", column): pd.Series(
+            [*person[column], *person[column].iloc[:2], value],
+            index=ids,
+            dtype=person[column].dtype,
+        )
+        for column, value in entrant.items()
+    }
+    columns[("person", "person_household_id")] = pd.Series(
+        [10, 10, 20, 30, 40, 40, 50], index=ids, dtype="int64"
+    )
     return KernelResult(
         expand={
             "person": pd.Series(
-                [1, 2],
-                index=pd.Index([5, 6], dtype="int64", name="person_id"),
-                dtype="int64",
+                pd.array([1, 2, pd.NA], dtype="Int64"),
+                index=pd.Index([5, 6, 7], dtype="int64", name="person_id"),
             ),
             "household": pd.Series(
                 pd.array([10, pd.NA], dtype="Int64"),
                 index=pd.Index([40, 50], dtype="int64", name="household_id"),
             ),
         },
+        columns=columns,
         weights=Weights(
             np.array([*incumbent, incumbent[0], ENTRANT_DESIGN_WEIGHT]),
             WeightKind.DESIGN,
+        ),
+        strata=pd.Series(
+            ["entrant"], index=pd.Index([7], name="person_id"), dtype=object
         ),
     )
 
@@ -1541,10 +1570,11 @@ def test_a_design_update_moves_no_anchor_for_retained_clone_or_entrant_rows() ->
         np.array([10, 20, 30, 40, 50]),
     )
     person = over_updated.frame.table("person")
-    np.testing.assert_array_equal(person["person_id"], np.array([1, 2, 3, 4, 5, 6]))
+    np.testing.assert_array_equal(person["person_id"], np.array([1, 2, 3, 4, 5, 6, 7]))
     np.testing.assert_array_equal(
-        person["person_household_id"], np.array([10, 10, 20, 30, 40, 40])
+        person["person_household_id"], np.array([10, 10, 20, 30, 40, 40, 50])
     )
+    assert over_updated.frame.strata.iloc[-1] == "entrant"
     # Not vacuous: the two versions' design *values* differ by the factor for
     # every row that existed before the update, and the clone copies the
     # updated value while inheriting the original anchor.
