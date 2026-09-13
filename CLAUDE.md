@@ -39,6 +39,11 @@ shard's real wheel, install into a clean uv-export-constrained venv, assert
 the wheel/import boundary and spec digests, and run the suite against installed
 wheels.
 
+After checking the base wheel boundary, the wheel lane installs the built
+`microcosm-frame[us]` and `microcosm-build[source-io]` extras for engine-free
+source tests. An invented pandas HDF round trip checks the compiled reader;
+the country rules engine must still be absent.
+
 The shared engine lane also runs a bounded source/seed identity diagnostic on
 Python 3.14.4 after its normal tests, including when those tests fail. Its six
 JSON artifacts retain candidate digests and their complete canonical seed

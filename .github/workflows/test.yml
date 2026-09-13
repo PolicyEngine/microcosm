@@ -400,34 +400,38 @@ jobs:
           PY
       - name: Spec identity section digests (cross-environment diffing aid)
         run: env -u PYTHONPATH /tmp/wheels-venv/bin/python -I tools/spec_envelope_digests.py be uk
-      - name: Add the engine-free US extra the source runtimes require
-        # microunit is microcosm-frame's `us` extra: the sanctioned tax-unit
-        # constructor, and the only optional dependency the US source runtimes
-        # need without a country engine. Every ACS/CREATE stage names it in
-        # us_runtime.graph_implementation.STAGE_DEPENDENCIES, so an installed
-        # constellation without it cannot hash those stages: the suite then
-        # fails closed (SOURCE_PREPARATION_REFUSED / CATALOGUE_ISSUANCE_REFUSED)
-        # instead of skipping, which is a false packaging verdict.
-        #
-        # This runs after the boundary check above, so that check still proves
-        # the base wheels import with no optional dependency installed at all.
-        # Requesting the extra against the built wheel — rather than naming
-        # `microunit` here — keeps the extra declared only in
-        # packages/microcosm-frame/pyproject.toml and makes this gate prove the
-        # wheel carries resolvable extra metadata. policyengine-us stays absent:
-        # it is declared by microcosm-build[us] and microcosm-frame[policyengine],
-        # and neither is requested.
+      - name: Add engine-free source preparation extras
+        # Real source fixtures require microunit for tax-unit construction and
+        # PyTables for pandas HDF input, alongside h5py. Request the extras from
+        # built wheels so their metadata, not editable installs, supplies these
+        # dependencies. The preceding step still checks the base wheel boundary;
+        # neither source extra installs a country rules engine.
         run: |
           frame_wheel="$(ls dist/microcosm_frame-*.whl)"
+          build_wheel="$(ls dist/microcosm_build-*.whl)"
           uv pip install --python /tmp/wheels-venv/bin/python \
             --constraint /tmp/wheel-constraints.txt \
-            "microcosm-frame[us] @ file://$(realpath "$frame_wheel")"
+            "microcosm-frame[us] @ file://$(realpath "$frame_wheel")" \
+            "microcosm-build[source-io] @ file://$(realpath "$build_wheel")"
           env -u PYTHONPATH /tmp/wheels-venv/bin/python -I - <<'PY'
           from importlib import metadata, util
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          import h5py
+          import pandas as pd
+          import tables
 
           assert util.find_spec("microunit") is not None, (
               "microcosm-frame[us] must install microunit into the wheel venv"
           )
+          # Exercise the same HDF reader used by source preparation. Imports
+          # alone do not establish that the compiled PyTables backend works.
+          with TemporaryDirectory() as directory:
+              path = Path(directory) / "invented-source.h5"
+              expected = pd.DataFrame({"person_id": [1, 2], "amount": [0.0, 12.5]})
+              expected.to_hdf(path, key="person")
+              pd.testing.assert_frame_equal(pd.read_hdf(path, key="person"), expected)
           assert util.find_spec("policyengine_us") is None
           try:
               metadata.distribution("policyengine-us")
@@ -436,6 +440,7 @@ jobs:
           else:
               raise AssertionError("policyengine-us must be absent from the base wheel gate")
           print("microunit", metadata.version("microunit"))
+          print("h5py", h5py.__version__, "tables", tables.__version__)
           PY
       - name: Run the suite against the installed wheels
         run: |

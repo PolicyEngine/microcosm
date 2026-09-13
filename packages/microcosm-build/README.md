@@ -49,6 +49,11 @@ The `us` extra adds the rules engine for formula/export checks. Country source
 loaders are not Python dependencies: source stages are declared in packaged
 JSON manifests and executed by shared Microcosm runtimes.
 
+The `source-io` extra installs h5py and PyTables for HDF survey input without a
+country rules engine. US source preparation also uses `microcosm-frame[us]`
+for tax-unit construction. These extras provide readers and constructors;
+they do not download or authorize any source data.
+
 Country namespaces under `microcosm.build.us` and `microcosm.build.uk` are
 resource packages only. They may contain specs and data artifacts, but no Python
 modules; guard tests enforce this so country content stays declarative.
