@@ -232,9 +232,11 @@ def country_manifest() -> dict[str, object]:
         }
         for kind in DOMAIN_KINDS
     ]
+    # The local source extension uses the existing SourceStageSpec compatibility
+    # interpreter; the three generation-0 projections remain byte-frozen.
     legacy_rows = [
         {"path": path, "kind": "legacy_json", "schema_id": "legacy_json"}
-        for path in LEGACY_RESOURCE_PATHS
+        for path in (*LEGACY_RESOURCE_PATHS, "childcare_attendance_source.json")
     ]
     return {"schema_version": 1, "country": "us", "resources": typed_rows + legacy_rows}
 

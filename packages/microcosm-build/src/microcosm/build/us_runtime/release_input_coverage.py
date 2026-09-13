@@ -51,6 +51,9 @@ from microcosm.build.us_runtime.capital_gain_details import (
     US_CAPITAL_GAIN_DETAILS_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.child_support import US_CHILD_SUPPORT_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.childcare_attendance import (
+    US_CHILDCARE_ATTENDANCE_COLUMNS,
+)
 from microcosm.build.us_runtime.disability_benefits import (
     US_DISABILITY_BENEFITS_OUTPUT_COLUMNS,
 )
@@ -140,6 +143,7 @@ REFERENCE_ECPS_LAYER_RENAMES = {
 # become structural zeroes.
 POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
     {
+        *US_CHILDCARE_ATTENDANCE_COLUMNS,
         "fsla_overtime_premium",
         "qualified_passenger_vehicle_loan_interest",
         "traditional_401k_contributions_desired",
@@ -634,12 +638,8 @@ def _ecps_populated_layers() -> frozenset[str]:
             f"{_ECPS_PARITY_REFERENCE_RESOURCE}: 'nonzero_shares' must be a "
             "non-empty JSON object."
         )
-    historical = {
-        str(name) for name, share in shares.items() if float(share) > 0.0
-    }
-    projected = {
-        REFERENCE_ECPS_LAYER_RENAMES.get(name, name) for name in historical
-    }
+    historical = {str(name) for name, share in shares.items() if float(share) > 0.0}
+    projected = {REFERENCE_ECPS_LAYER_RENAMES.get(name, name) for name in historical}
     if len(projected) != len(historical):
         raise ValueError(
             f"{_ECPS_PARITY_REFERENCE_RESOURCE}: reference-layer rename "

@@ -231,6 +231,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "block_ladder_sources.py",
         "capital_gain_distributions.py",
         "casualty_losses.py",
+        # Opt-in normalized-donor preparation; not a registered build stage.
+        # Still scanned for source-spine access by the all-runtime guard.
+        "childcare_attendance.py",
+        "childcare_attendance_stage.py",  # Licensed source extension after relationship/hours inputs.
+        "childcare_population.py",  # ASEC relationship harmonization for candidate builds.
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",
@@ -251,6 +256,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "medicaid_take_up.py",
         "misc_itemized.py",
         "nonzero_shares.py",
+        # Hash-verified local NSECE source adapter and opt-in candidate Frame step.
+        "nsece_childcare.py",
+        "nsece_childcare_assessment.py",  # Source selection and household validation.
+        "nsece_childcare_dependence.py",  # Household dependence estimation.
+        "nsece_childcare_bridge.py",  # Source measurement completion; no spine routing.
         "operator_boundary.py",  # Raw-stage validator; no population treatment.
         "org_wages.py",
         "parity_reference.py",

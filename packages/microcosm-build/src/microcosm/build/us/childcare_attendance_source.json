@@ -1,0 +1,22 @@
+{
+  "stage": "nsece_childcare_attendance",
+  "survey": "2024 NSECE household DS5 and calendar DS4, ICPSR39466.v1",
+  "source": "https://www.childandfamilydataarchive.org/cfda/archives/cfda/studies/39466/datadocumentation",
+  "grain": "person",
+  "artifacts": [
+    {"dataset": "DS5", "format": "tsv", "sha256": "b42c69874de627273cdf698e4b8cdd39d3d4fdfef7d1295c239772cbc4e6c5a2"},
+    {"dataset": "DS4", "format": "tsv", "sha256": "c2e04a7a3eb6e187dc6d4496be1de77508354e05c6249725ae072f8a5f2ce18e"}
+  ],
+  "operations": [
+    {"kind": "derive_childcare_inputs", "operation": "calendar_attendance", "age_min": 0, "age_max": 12},
+    {"kind": "derive_childcare_inputs", "operation": "regular_hours_schedule_bridge", "nearest_donors": 10},
+    {"kind": "derive_childcare_inputs", "operation": "joint_weighted_schedule_transfer", "preserve_observed": true}
+  ],
+  "outputs": ["childcare_attending_days_per_month", "childcare_days_per_week", "childcare_hours_per_day"],
+  "nonnegative_outputs": ["childcare_attending_days_per_month", "childcare_days_per_week", "childcare_hours_per_day"],
+  "income_reference_year": 2023,
+  "income_band_upper_bounds": [0, 25000, 50000, 100000, 200000],
+  "cpi_u_annual_average": {"2022": 292.655, "2023": 304.702, "2024": 313.689},
+  "cpi_source": "https://www.bls.gov/cpi/tables/supplemental-files/historical-cpi-u-202412.pdf",
+  "notes": "Local licensed-source build extension. Scope is ages 0-12. Unresolved records outside the source domain are not observations of zero care. Calendar and bridge provenance must accompany population outputs. Publication is separate from source preparation."
+}
