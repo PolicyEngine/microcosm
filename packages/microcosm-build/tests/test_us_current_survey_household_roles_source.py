@@ -4,12 +4,99 @@ These cases require a separate bounded runtime proposal. They replace only
 fixture pins before issuance and never substitute an issuer or checked accessor.
 """
 
+import json
 import sys
 
 import pytest
 from test_us_current_asec_demographics import _demographic_arguments
 
 from microcosm.build.us_runtime import current_survey_household_roles as roles
+
+
+@pytest.mark.parametrize(
+    "defect,reason",
+    [
+        ("native", "ASEC_NATIVE_JOIN"),
+        ("line", "ASEC_COORDINATE_DISAGREE"),
+        ("household", "ASEC_COORDINATE_DISAGREE"),
+    ],
+)
+def test_actual_asec_owner_rejects_detached_mismatched_join_coordinates(
+    tmp_path, monkeypatch, defect, reason
+):
+    prepared = roles.source.prepare_authenticated_survey_population(
+        **_demographic_arguments(tmp_path, monkeypatch)
+    )
+    entry = prepared._checked()
+    state = entry[2]
+    before = roles.source._frame_identity(state.frame)
+    origins = roles._origins(state.frame, json.loads(entry[1]))
+    keys = roles._asec_keys(origins)
+    observed, _ = roles._asec_observed(state, prepared)
+    expected = roles._asec_selected(origins, keys, observed)
+    changed = origins.copy(deep=True)
+    row = changed.index[changed.source.eq("asec")][0]
+    if defect == "native":
+        changed.loc[row, "native_person_id"] = (
+            int(observed.array("person_id").max()) + 1
+        )
+    elif defect == "line":
+        old = int(changed.loc[row, "native_line_numeric_original"])
+        changed.loc[row, "native_line_numeric_original"] = "2" if old == 1 else "1"
+    else:
+        old = int(changed.loc[row, "raw_native_household_id"])
+        changed.loc[row, "raw_native_household_id"] = "2" if old == 1 else "1"
+    # Only a detached consumer coordinate is changed. The real preparation,
+    # owner buffers, member bytes and issuance accessors remain untouched.
+    with pytest.raises(ValueError, match=reason):
+        roles._asec_selected(changed, keys, observed)
+    assert roles._asec_selected(origins, keys, observed) == expected
+    observed.validate()
+    assert prepared._checked() is entry
+    assert roles.source._frame_identity(state.frame) == before
+
+
+@pytest.mark.parametrize(
+    "defect,reason",
+    [
+        ("household", "ACS_ROSTER_HOUSEHOLD_SCOPE"),
+        ("line", "ACS_ROSTER_COVERAGE"),
+    ],
+)
+def test_actual_acs_roster_rejects_detached_unpublished_retained_scope(
+    tmp_path, monkeypatch, defect, reason
+):
+    prepared = roles.source.prepare_authenticated_survey_population(
+        **_demographic_arguments(tmp_path, monkeypatch)
+    )
+    entry = prepared._checked()
+    state = entry[2]
+    before = roles.source._frame_identity(state.frame)
+    origins = roles._origins(state.frame, json.loads(entry[1]))
+    _, serials = roles._acs_keys(origins)
+    roster, owner = roles._acs_roster(state, serials)
+    expected = roles._acs_states(serials, roster)
+    changed = {serial: set(lines) for serial, lines in serials.items()}
+    if defect == "household":
+        invented = "2024HU9999999"
+        assert invented not in changed
+        changed[invented] = {1}
+    else:
+        serial = sorted(changed)[0]
+        absent = next(
+            line
+            for line in range(1, roles.MAX_HOUSEHOLD_MEMBERS + 1)
+            if (serial, line) not in roster
+        )
+        changed[serial].add(absent)
+    # The retained scope is the adversarial input; the roster still comes from
+    # the real pinned catalogue and no issuer/classifier is substituted.
+    with pytest.raises(ValueError, match=reason):
+        roles._acs_states(changed, roster)
+    assert roles._acs_states(serials, roster) == expected
+    assert roles.source.acs_catalogue._lookup(state.catalogues[0]) is owner
+    assert prepared._checked() is entry
+    assert roles.source._frame_identity(state.frame) == before
 
 
 def test_actual_sources_qualify_named_reference_roles_and_leave_gq_unbound(

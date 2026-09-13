@@ -249,6 +249,62 @@ def test_conflicting_incumbent_refuses_and_remains_visible_to_reconciliation():
     pd.testing.assert_frame_equal(before, receiving.person, check_exact=True)
 
 
+def test_nonnullable_bool_incumbent_preserves_storage_and_all_known_values():
+    qualified = _qualified(_table(DEFAULT[:2]))
+    receiving = _receiving(
+        qualified.rows, incumbent={10: True, 20: False}, dtype="bool"
+    )
+    before = receiving.person.copy(deep=True)
+    assert roles.canonical_dtype_token(receiving) == "bool"
+    result = roles.household_role_columns_for_population(qualified, receiving)[
+        "person", roles.CANONICAL_COLUMN
+    ]
+    expected = before.set_index("person_id")[roles.CANONICAL_COLUMN]
+    pd.testing.assert_series_equal(result, expected, check_exact=True)
+    assert result.dtype == np.dtype("bool")
+    pd.testing.assert_frame_equal(before, receiving.person, check_exact=True)
+
+
+def test_nonnullable_bool_cannot_supply_an_unsupported_source_role():
+    qualified = _qualified()
+    receiving = _receiving(
+        qualified.rows, incumbent={10: True, 20: False, 30: False}, dtype="bool"
+    )
+    before = receiving.person.copy(deep=True)
+    # A genuine bool column has no unknown incumbents. Its unsupported known
+    # cell therefore refuses before the later unresolved-bool defense.
+    with pytest.raises(ValueError, match="UNBOUND_INCUMBENT"):
+        roles.household_role_columns_for_population(qualified, receiving)
+    pd.testing.assert_frame_equal(before, receiving.person, check_exact=True)
+
+
+@pytest.mark.parametrize(
+    "dtype,reason",
+    [("int64", "INCUMBENT_DTYPE$"), ("object", "INCUMBENT_DTYPE_NOT_DECLARABLE$")],
+)
+def test_invalid_incumbent_storage_refuses_without_boolean_coercion(dtype, reason):
+    qualified = _qualified(_table(DEFAULT[:2]))
+    receiving = _receiving(qualified.rows, incumbent={10: True, 20: False}, dtype=dtype)
+    before = receiving.person.copy(deep=True)
+    with pytest.raises(ValueError, match=reason):
+        roles.household_role_columns_for_population(qualified, receiving)
+    pd.testing.assert_frame_equal(before, receiving.person, check_exact=True)
+
+
+def test_asec_current_published_maximum_line_is_a_coordinate_not_a_role():
+    # The 2025 dictionary prints A_LINENO 01:16 (physical page 22).
+    origins = pd.DataFrame(
+        {
+            "source": ["asec"],
+            "raw_native_household_id": ["12345"],
+            "raw_native_person_id": ["0000000000000000000001"],
+            "native_line_numeric_original": ["16"],
+        },
+        index=pd.Index([101], dtype="int64", name="person_id"),
+    )
+    assert roles._asec_keys(origins) == {(12345, "0000000000000000000001", 16): 101}
+
+
 @pytest.mark.parametrize(
     "column",
     [

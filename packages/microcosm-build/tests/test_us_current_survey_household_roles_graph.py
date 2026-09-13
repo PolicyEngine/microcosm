@@ -196,7 +196,7 @@ def test_private_codes_stay_in_the_typed_artifact_and_the_public_receipt_is_clos
     binding = case.warm.node(graph.BIND_NODE)
     document = json.loads(case.store.load_bytes(binding.opaque_artifacts["binding"]))
     assert set(document) == roles.PUBLIC_RECEIPT_KEYS
-    assert document["acs_allocation_provenance"] == "unresolved"
+    assert document["relationship_allocation_provenance"] == "unresolved"
     assert document["equivalent_allocation_evidence_claim"] is False
     assert document["source_admission_issued"] is False
     assert document["release_eligible"] is False
