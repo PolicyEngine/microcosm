@@ -190,32 +190,32 @@ def _population(*, frame=None, version="v1", design=None, mass_ledger=None):
     )
 
 
-def _empty_population():
-    person = pd.DataFrame(
-        {
-            "person_id": np.array([], dtype=np.int64),
-            "person_household_id": np.array([], dtype=np.int64),
-            "amount": np.array([], dtype=np.float64),
-            "nullable": pd.arrays.IntegerArray(
-                np.array([], dtype=np.int64), np.array([], dtype=np.bool_)
-            ),
-            "text": pd.array(
-                [], dtype=pd.StringDtype(storage="python", na_value=pd.NA)
-            ),
-        }
+def _singleton_population():
+    """Smallest supported population, with one person and one weighted household.
+
+    Frame requires a nonempty weight vector and every group must have a person.
+    Empty series are covered by the storage-parts tests, not an invalid Frame.
+    """
+    person = _person_table(
+        person_id=(1,),
+        household_of=(10,),
+        amount=(-0.0,),
+        hidden=(7,),
+        mask=(True,),
+        text=("",),
+        leaves=(None,),
     )
-    person["leaf"] = _object_array(())
     household = pd.DataFrame(
         {
-            "household_id": np.array([], dtype=np.int64),
-            "rent": np.array([], dtype=np.float64),
+            "household_id": np.array([10], dtype=np.int64),
+            "rent": np.array([0.5], dtype=np.float64),
         }
     )
     frame = Frame(
         {"person": person, "household": household},
         EntitySchema(group_entities=("household",)),
-        {},
-        pd.Series(_object_array(()), index=person.index),
+        {"household": Weights(np.array([1.0]), WeightKind.DESIGN)},
+        _strata(labels=("s1",)),
     )
     return Population.from_frame(frame, "v1")
 
@@ -272,7 +272,7 @@ def _wide_object_strata_population():
 
 _POPULATIONS = {
     "default": _population,
-    "empty": _empty_population,
+    "singleton": _singleton_population,
     "labelled-index": _labelled_index_population,
     "reversed-rows": _reversed_row_population,
     "no-design-weights": _no_design_population,
