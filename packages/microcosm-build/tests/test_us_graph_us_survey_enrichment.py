@@ -7,6 +7,7 @@ No production issuer, qualification method, donor model or engine is replaced.
 import hashlib
 import os
 import shutil
+import sys
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -18,6 +19,7 @@ from test_us_current_survey_health_coverage import (
     _health_acs_person,
     _health_asec_table,
 )
+from test_us_current_survey_housing import add_housing_source_fields
 from test_us_graph_atomic_survey_population import _support_payload
 from test_us_graph_puf55_canonical_donor import _original_sources
 from test_us_puf55_survey_recipients import _recipient_source_arguments
@@ -93,7 +95,7 @@ def enrichment_source_arguments(root, patch):
     shutil.copyfile(
         output / restoration.CHECKPOINT_FILENAME, source / "person-income-attachment.h5"
     )
-    return arguments
+    return add_housing_source_fields(arguments, patch)
 
 
 def test_actual_current_uc_projection_preserves_ambiguous_and_contradictory_sources(
@@ -206,7 +208,7 @@ def test_actual_enrichment_cold_required_and_complete_parent_preservation(enrich
     cold, warm = enriched.cold, enriched.warm
     assert cold.manifest.key == warm.manifest.key
     assert all(r.hit for r in warm.manifest.nodes.values())
-    assert len(cold.compiled.order) == 271
+    assert len(cold.compiled.order) == 277
     graph.physical.replay.same_replayed_population(cold.population, warm.population)
     parent = enriched.parent.population
     for entity in parent.frame.entities:
@@ -315,9 +317,11 @@ def test_complete_frame_store_readback_and_input_coverage(enriched):
     after = diagnose_us_input_coverage(
         run.population, compiled=run.compiled, manifest=run.manifest
     )
-    outputs = {out for g in graph.values.GROUPS for _, out in g.fields} | {
-        f.output for f in graph.health_graph.health.FIELDS
-    }
+    outputs = (
+        {out for g in graph.values.GROUPS for _, out in g.fields}
+        | {f.output for f in graph.health_graph.health.FIELDS}
+        | set(graph.housing_graph.housing.SPM_OUTPUTS)
+    )
     assert outputs <= set(before.missing_inputs)
     assert not outputs & set(after.missing_inputs)
     assert len(after.inputs) == 161
@@ -352,6 +356,108 @@ def test_complete_frame_store_readback_and_input_coverage(enriched):
         )
     )
     run.checked_view()
+
+
+def test_housing_observations_donors_and_assisted_units_are_independent(enriched):
+    run = enriched.cold
+    boundary = graph._ISSUED[id(run)][1]
+    housing = graph.housing_graph.housing
+    qualified = boundary.housing
+    households = run.population.frame.table("household").set_index("household_id")
+    original = households[housing.provenance.support_source_id_column("household")]
+    expected = qualified.native.reindex(original.to_numpy())
+    expected.index = households.index
+    for column in qualified.native:
+        if column not in {"housing_receipt", "housing_receipt__origin"}:
+            pd.testing.assert_series_equal(households[column], expected[column])
+    known = households.housing_observed_receipt__known
+    assert known.any() and (~known).any()
+    assert households.loc[known, "housing_observed_receipt"].any()
+    np.testing.assert_array_equal(
+        households.loc[known, "housing_receipt"].to_numpy(),
+        households.loc[known, "housing_observed_receipt"].to_numpy(dtype=bool),
+    )
+    for _, clones in households.groupby(original):
+        assert len(clones) == 2
+        assert clones.housing_receipt.nunique() == 1
+        assert clones.housing_receipt__origin.nunique() == 1
+    donors = qualified.donor_columns.index
+    assert len(donors) == len(set(donors))
+    assert qualified.origins.loc[donors, "source"].eq("asec").all()
+    assert qualified.native.loc[donors, "housing_observed_receipt__known"].all()
+    source_hids = qualified.source_frame.table("household").household_id
+    source_weights = qualified.source_frame.weights_for("household")
+    np.testing.assert_array_equal(
+        qualified.donor_frame.weights_for("household").values,
+        source_weights.values[source_hids.isin(donors).to_numpy()],
+    )
+    assert source_weights.kind.value == "design"
+    # Resolve the assisted unit through the independently observed source head,
+    # including its clone. No capped amount enters this expected result.
+    people = run.population.frame.person
+    head_ids = people.person_household_id.map(households.housing_source_head_person_id)
+    heads = people[housing.provenance.support_source_id_column("person")].eq(head_ids)
+    assisted = people.loc[heads, "person_spm_unit_id"]
+    receipts = people.loc[heads, "person_household_id"].map(households.housing_receipt)
+    expected_spm = pd.Series(receipts.to_numpy(), index=assisted.to_numpy())
+    units = run.population.frame.table("spm_unit")
+    expected_values = units.spm_unit_id.map(expected_spm).fillna(False).to_numpy(bool)
+    for name in housing.SPM_OUTPUTS:
+        assert units[name].dtype == np.dtype("bool")
+        np.testing.assert_array_equal(units[name].to_numpy(), expected_values)
+    added = {out.column for node in boundary.housing_nodes for out in node.outputs}
+    assert not added & {"housing_assistance", "spm_unit_capped_housing_subsidy"}
+    run.checked_view()
+
+
+def test_housing_mapper_change_during_owner_callback_refuses(enriched):
+    boundary = graph._ISSUED[id(enriched.cold)][1]
+    housing = graph.housing_graph.housing
+    original = housing.attach_columns
+    fired = False
+
+    def changed(*args, **kwargs):
+        return original(*args, **kwargs)
+
+    def during_owner(frame, event, arg):
+        nonlocal fired
+        if (
+            not fired
+            and event == "return"
+            and frame.f_code is graph.parent._pure_run.__code__
+        ):
+            fired = True
+            housing.attach_columns = changed
+
+    previous = sys.getprofile()
+    try:
+        sys.setprofile(during_owner)
+        with pytest.raises(ValueError, match="BOUNDARY_CHANGED"):
+            boundary.pure()
+    finally:
+        sys.setprofile(previous)
+        housing.attach_columns = original
+    assert fired
+    boundary.pure()
+
+
+def test_housing_source_value_and_configuration_mutations_refuse(enriched):
+    boundary = graph._ISSUED[id(enriched.cold)][1]
+    housing = graph.housing_graph.housing
+    table = boundary.housing.native
+    row = table.index[0]
+    old = table.loc[row, "housing_receipt__origin"]
+    try:
+        table.loc[row, "housing_receipt__origin"] = "invented-mutation"
+        with pytest.raises(ValueError, match="BOUNDARY_CHANGED"):
+            boundary.pure()
+    finally:
+        table.loc[row, "housing_receipt__origin"] = old
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(housing, "FEATURES", tuple(reversed(housing.FEATURES)))
+        with pytest.raises(ValueError, match="BOUNDARY_CHANGED"):
+            boundary.pure()
+    boundary.pure()
 
 
 def test_final_parent_revocation_invalidates_the_retained_child(enriched):

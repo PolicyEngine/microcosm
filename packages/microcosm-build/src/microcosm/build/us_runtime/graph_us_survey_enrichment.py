@@ -2,7 +2,7 @@
 
 The owning boundary retains a real checked PUF run and authenticated source
 projection. Models use separate original-design donor branches; attachment
-adds the declared amount and coverage families to the existing receiving frame.
+adds declared amounts, coverage and participation to the existing receiving frame.
 """
 
 from __future__ import annotations
@@ -49,6 +49,7 @@ from microcosm.graph.serialize import graph_to_json
 
 from . import current_survey_amounts as values
 from . import graph_current_survey_health as health_graph
+from . import graph_current_survey_housing as housing_graph
 from . import graph_current_survey_predictors as predictor_graph
 
 parent = values.parent_host
@@ -70,6 +71,9 @@ def _live():
         health_graph,
         health_graph.health,
         health_graph.source,
+        housing_graph,
+        housing_graph.housing,
+        housing_graph.participation,
     ):
         for name, item in vars(module).items():
             if type(item) is FunctionType:
@@ -120,12 +124,32 @@ def _live():
             health_graph.source.ACS_COLUMNS,
         )
     )
+    result.append(
+        (
+            "housing_configuration",
+            housing_graph.housing.PROTOCOL,
+            housing_graph.housing.TARGET,
+            housing_graph.SEED,
+            housing_graph.PHASE,
+            housing_graph.participation.HOUSING_PARTICIPATION_ASSUMPTIONS,
+            housing_graph.housing.live(),
+        )
+    )
     return tuple(result)
 
 
 def _amount_edge():
     return ArtifactInput(
         "amount_attachment", ATTACH_NODE, "attachment", ATTACHMENT_TYPE
+    )
+
+
+def _housing_after_edge():
+    return ArtifactInput(
+        "health_attachment",
+        health_graph.ATTACH_NODE,
+        "attachment",
+        health_graph.ATTACHMENT_TYPE,
     )
 
 
@@ -277,6 +301,7 @@ class Boundary:
     """Internal retained-value seam; a detached projection cannot construct it."""
 
     def __init__(self, run, *, groups, n_estimators):
+        live = _live()
         self.run = run
         self.parent_view = parent.check_survey_puf55_run(run)
         self.parent_entry = parent._run_entry(run)
@@ -286,6 +311,8 @@ class Boundary:
         self.preparation = run.financial_run.prefix.preparation
         self.health = health_graph.qualify_health_coverage(self.preparation)
         self.health_stamp = health_graph.health_coverage_seal(self.health)
+        self.housing = housing_graph.housing.qualify_current_survey_housing(run)
+        self.housing_stamp = housing_graph.housing.seal(self.housing)
         self.n_estimators = n_estimators
         self.amount_nodes = amount_nodes(
             self.qualified,
@@ -298,9 +325,16 @@ class Boundary:
             receiving_version=parent.attach.FILTER_NODE,
             after=_amount_edge(),
         )
-        self.nodes = (*self.amount_nodes, *self.health_nodes)
+        self.housing_nodes = housing_graph.housing_nodes(
+            self.housing,
+            run.population.frame,
+            after=_housing_after_edge(),
+            n_estimators=n_estimators,
+        )
+        self.nodes = (*self.amount_nodes, *self.health_nodes, *self.housing_nodes)
         self.declaration = tuple(self.nodes)
         self.live = _live()
+        require(self.live == live, "QUALIFIER_CALLBACK_CHANGED_IMPLEMENTATION")
         self.compiled = self.kernels = self.store = None
         self.paths = self.source_keys = self.keys = self.implementations = None
         self.parent_objects = (
@@ -335,6 +369,7 @@ class Boundary:
             and values.seal(self.qualified) == self.qualified_stamp
             and self.run.financial_run.prefix.preparation is self.preparation
             and health_graph.health_coverage_seal(self.health) == self.health_stamp
+            and housing_graph.housing.seal(self.housing) == self.housing_stamp
             and self.nodes == self.declaration
             and _live() == self.live,
             "BOUNDARY_CHANGED",
@@ -353,7 +388,15 @@ class Boundary:
                 receiving_version=parent.attach.FILTER_NODE,
                 after=_amount_edge(),
             )
-            and self.nodes == (*self.amount_nodes, *self.health_nodes),
+            and self.housing_nodes
+            == housing_graph.housing_nodes(
+                self.housing,
+                self.run.population.frame,
+                after=_housing_after_edge(),
+                n_estimators=self.n_estimators,
+            )
+            and self.nodes
+            == (*self.amount_nodes, *self.health_nodes, *self.housing_nodes),
             "BOUNDARY_DECLARATIONS",
         )
         if self.compiled is not None:
@@ -421,6 +464,10 @@ class Boundary:
             )
             if edge.name == "projection":
                 require(value.payload == self.qualified.projection, "PROJECTION_BYTES")
+            if edge.name == "housing_projection":
+                require(
+                    value.payload == self.housing.projection, "HOUSING_PROJECTION_BYTES"
+                )
             if edge == _upstream_edge():
                 record = self.run.manifest.node(edge.producer)
                 payload = self.run.store.load_bytes(
@@ -447,6 +494,11 @@ class Boundary:
         require(
             health_graph.health_coverage_seal(fresh_health) == self.health_stamp,
             "HEALTH_SOURCE_REQUALIFICATION_CHANGED",
+        )
+        fresh_housing = housing_graph.housing.qualify_current_survey_housing(self.run)
+        require(
+            housing_graph.housing.seal(fresh_housing) == self.housing_stamp,
+            "HOUSING_SOURCE_REQUALIFICATION_CHANGED",
         )
         self.pure()
 
@@ -651,6 +703,9 @@ def _construct(run, *, groups, n_estimators):
         require_current=boundary.pure,
     ):
         require(kernel.ref not in kernels.refs(), "HEALTH_KERNEL_COLLISION")
+        kernels.register(kernel)
+    for kernel in housing_graph.kernels(boundary):
+        require(kernel.ref not in kernels.refs(), "HOUSING_KERNEL_COLLISION")
         kernels.register(kernel)
     registry = parent._registry(run.store.codecs, codecs.SourceCodecRegistry())
     store = ContentStore(run.store.root, codecs=registry)
@@ -899,7 +954,20 @@ def run_us_survey_enrichment(
                 mass_ledger=run.manifest.mass_ledger(version),
             ),
         )
+    housing_attach = boundary.compiled.graph.node(housing_graph.ATTACH_NODE)
+    housing_artifacts = parent._loaded_values(
+        boundary, manifest, loaded, housing_attach
+    )
+    housing_result = housing_graph.attachment_result(boundary, housing_artifacts)
+    require(
+        loaded[housing_graph.PROJECTION_NODE, "projection"]
+        == boundary.housing.projection
+        and loaded[housing_graph.ATTACH_NODE, "attachment"]
+        == housing_result.artifacts["attachment"],
+        "HOUSING_RESULT_ARTIFACT",
+    )
     current, donors = {}, {}
+    housing_donor = None
     health_ids = {n.id for n in boundary.health_nodes}
     group_nodes = {_ids(g)[0]: g for g in boundary.qualified.groups}
     column_nodes = {_ids(g)[1]: g for g in boundary.qualified.groups}
@@ -952,6 +1020,30 @@ def run_us_survey_enrichment(
                 ),
             )
             donors[_ids(group)[0]] = expected
+        elif node_id == housing_graph.DONOR_NODE:
+            source_population = population_ops.Population.from_frame(
+                boundary.housing.source_frame,
+                values.predictors.host.survey_graph.CREATE_NODE,
+            )
+            expected = population_ops.patch(
+                source_population,
+                node,
+                KernelResult(frame=boundary.housing.donor_frame),
+            )
+        elif node_id == housing_graph.COLUMNS_NODE:
+            expected = population_ops.patch(
+                current[version],
+                node,
+                KernelResult(
+                    columns={
+                        ("household", name): boundary.housing.donor_columns[name]
+                        for name in boundary.housing.donor_columns
+                    }
+                ),
+            )
+            housing_donor = expected
+        elif node_id == housing_graph.ATTACH_NODE:
+            expected = population_ops.patch(current[version], node, housing_result)
         elif node_id == ATTACH_NODE:
             expected = population_ops.patch(current[version], node, result)
         else:
@@ -959,6 +1051,7 @@ def run_us_survey_enrichment(
         physical.replay.same_replayed_population(expected, observed[node_id])
         current[version] = expected
     _verify_models(boundary, loaded, donors)
+    housing_graph.verify_model(boundary, loaded, housing_donor)
     for version, population in current.items():
         physical.replay.same_replayed_population(
             population_ops.Population.from_frame(
@@ -985,12 +1078,19 @@ def run_us_survey_enrichment(
                 loaded[health_graph.ATTACH_NODE, "attachment"]
             ),
             "health_fields": [f.output for f in health_graph.health.FIELDS],
+            "housing_projection_sha256": codec.sha(boundary.housing.projection),
+            "housing_attachment_sha256": codec.sha(
+                loaded[housing_graph.ATTACH_NODE, "attachment"]
+            ),
+            "housing_participation_assumptions": boundary.housing.evidence[
+                "assumptions"
+            ],
             "release_eligible": False,
         }
     )
     output = SurveyEnrichmentRun(
         run,
-        observed[health_graph.ATTACH_NODE],
+        observed[housing_graph.ATTACH_NODE],
         manifest,
         boundary.compiled,
         boundary.store,
