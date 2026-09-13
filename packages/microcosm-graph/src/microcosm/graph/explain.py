@@ -13,7 +13,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from .availability import execution_state
-from .decl import GATE_OUTCOMES, CompiledGraph, StructuralDelta
+from .decl import GATE_OUTCOMES, CompiledGraph, StructuralDelta, WeightUpdate
 from .manifest import NodeReceipt, RunManifest
 from .population import mass_record_receipt
 from .view import describe
@@ -1196,12 +1196,22 @@ def _render_calibration(compiled: CompiledGraph, manifest: RunManifest) -> str:
         mass = _mass_payload(manifest, node, receipt)
         transition = node.weights
         assert transition is not None
+        # A same-kind update does not move the kind, so it does not get the
+        # arrow that says it did (amendment 25).
+        kind_label = (
+            f"{_escape(transition.entity)} → {_escape(transition.to_kind)}"
+            if not isinstance(transition, WeightUpdate)
+            else (
+                f"{_escape(transition.entity)} · {_escape(transition.kind)} "
+                f"updated ({_escape(transition.reason)})"
+            )
+        )
         cards.append(
             '<article class="calibration-card">'
             '<div class="calibration-head"><div>'
             f"<h3>{_escape(node.id)}</h3>"
             f'<p class="section-intro"><code>{_escape(node.kernel)}</code> · '
-            f"{_escape(transition.entity)} → {_escape(transition.to_kind)}</p></div>"
+            f"{kind_label}</p></div>"
             f'<span class="badge">{_escape(transition.mass)} mass</span></div>'
             "<h4>Declared targets and results</h4>"
             + target_table

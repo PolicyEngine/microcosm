@@ -1,0 +1,1 @@
+Added `WeightUpdate`, a declared same-kind replacement of an entity's weight values, with `weight_update_receipt` binding the ordered entity axis the replacement values are positional against (graph amendment 25).

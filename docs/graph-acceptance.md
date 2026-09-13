@@ -512,6 +512,46 @@ lock unchanged:
     cost before scaling. Extracted with the independently reviewed observer
     isolation repair on 2026-09-12.
 
+25. **A weight update that keeps its kind is declarable.**
+    `WeightTransition` only ever moves a kind forward, so a stage that
+    recomputes weights it already holds — a sampling normalization, a
+    re-solve of an existing calibration — could not be declared at all,
+    and the only way to express it was to misdeclare a transition.
+    `WeightUpdate(entity, kind, reason, mass)` is that declaration and is
+    deliberately narrower than a transition: the incumbent kind, the
+    declared kind and the returned weights' kind must all be the same one;
+    `mass` is `conserve` or `declared` (`WEIGHT_UPDATE_MASS_POLICIES`),
+    because an update that neither changes kind nor bounds mass records
+    nothing a reader could check it against; and `reason` is required,
+    non-empty and normative.
+
+    Positional replacement values are not self-describing: the same vector
+    is correct against one row order and silently wrong against another.
+    A kernel therefore binds its ordered entity axis with
+    `microcosm.graph.weight_update.weight_update_receipt` under
+    `receipt['weight_update']`, and the executor recomputes that binding
+    from the incumbent axis it is about to apply the values to. This is
+    checked on replay by construction rather than by a parallel rule: a
+    cache hit reconstructs the `KernelResult` with its restored weights
+    and receipt and re-applies the REWEIGHT to the current base, so it
+    re-enters the same function. A count mismatch, a missing binding and a
+    binding against a different axis are each a rejection.
+
+    `WeightUpdate.to_kind` is a property, not a field, so the two
+    declarations have disjoint field sets (`{entity, to_kind, mass}` and
+    `{entity, kind, reason, mass}`) and a `WeightUpdate` can never
+    canonicalize, or serialize, to the same bytes as a
+    `WeightTransition`. Declaration JSON discriminates on those names, and
+    a transition's payload is byte-for-byte what it was before this
+    amendment, so every declaration written earlier restores unchanged.
+    Existing `to_kind` readers — the design-weight cap and the calibration
+    view — keep working through the property; the view drops the arrow
+    that would claim a kind moved. `Node` gains no field, so no existing
+    node key moves. `decl.py` is re-locked. Raised by the source review of
+    the UK full-build graph (#901, head `051fb972`), whose
+    `uk.full.normalize` node is the first consumer; its UK graph stages
+    and calibration science stay in that branch.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.
