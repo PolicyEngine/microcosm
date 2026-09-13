@@ -16,10 +16,10 @@ FAST_GROUPS = ("trade", "spine-uk", "rest")
 ENGINE_GROUPS = ("shared-spec", "us-p", "us-qs", "us-not", "us-am", "uk")
 GROUPS = (*FAST_GROUPS, *ENGINE_GROUPS)
 
-# Files the engine-free `fast` lane cannot run. They gate on `importorskip("tables")`
-# — satisfied by the workspace sync, unlike the wheels venv where it is absent and
-# these skip — and then reach an unguarded `policyengine_us` import, so without the
-# engine they FAIL instead of skipping (e.g. build_us_fiscal_refresh_release._load_frame).
+# Files explicitly reserved for the engine tier by the existing fast-lane policy.
+# PyTables is available in both the workspace and the engine-free wheels venv;
+# `importorskip("tables")` does not establish country-engine availability.
+# Engine-dependent scorer HDF tests carry `requires_us` for the wheels suite.
 # They run in full in the engine tier, which installs both extras, so nothing is lost.
 # Listed explicitly, and printed by --verify, so the exclusion is never silent.
 ENGINE_ONLY = (
