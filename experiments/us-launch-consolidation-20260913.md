@@ -62,6 +62,33 @@ optional metadata changed. Full remote CI is still pending.
 
 ## Other integrated source work
 
+The common survey housing graph is now incorporated from the independently
+reviewed housing branch. It retains source housing observations, fits household
+participation on original survey design weights, shares each original draw
+between its clones, and routes the result to SPM units. Country-model formulas
+remain responsible for awards and caps. Sixty-four focused tests and nine
+actual invented full-host tests pass, including fresh fitting and application,
+277 required replay hits, full retained populations, mutation refusal and
+FrameStore readback. The final host run took 1,459.15 seconds. These tests do
+not establish native participation rates or a complete fiscal input inventory.
+
+Root and Fable approved housing revision
+`076b4a89072ed5cb55c5a51e114b1434ad770a92`; all nine housing files retain
+their tested bytes in this integration. The host receipt SHA256 is
+`77931e8570e6117a2a05358cdd8c156e8643ae62e18b4ca95322992ed49c99be`.
+An independent reviewer additionally reported five passing classification and
+source-channel guard tests on the combined branch. That narrow run disabled
+capture after a sandbox temporary-storage failure and generated no JUnit;
+its test counts come from the completed reviewer report. The pure housing
+router retains the source-blindness guard. Only source qualification and graph
+declaration modules receive the necessary provenance-owner classification.
+
+The PUF observer test fixture also now releases its own monitoring events and
+callbacks explicitly on Python 3.13, which lacks `clear_tool_id`. Eight isolated
+stdlib observer probes pass across Python 3.13.9 and 3.14.4, covering normal
+cleanup, exceptions, partial fixture setup and tool-ID reuse. No production
+calculation changed. The new full remote CI run remains pending.
+
 ASEC retirement qualification retains raw slot and aggregate observations,
 including the annuity not-in-universe literal. Its comparison follows the
 declared normalization without rewriting the source; 62 controls pass.

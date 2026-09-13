@@ -51,9 +51,18 @@ fiscal inputs. The [13 September evidence](../experiments/us-launch-consolidatio
 records these limits and the scoped hashing benchmark.
 
 UK work proceeds independently on the shared same-kind weight update and
-metadata/mass-log/column-order interfaces needed by its country graph. That
-source proposal is under independent review and has not run its invented
-runtime checks. It establishes no new UK candidate or release acceptance.
+metadata/mass-log/column-order interfaces needed by its country graph. The
+separate [UK contract proposal](https://github.com/PolicyEngine/microcosm/pull/918)
+has passed 101 invented runtime checks. Native FRS integration and an accepted
+UK file remain unverified; that proposal establishes no new UK candidate or
+release acceptance.
+
+The US housing participation graph is incorporated in the integration branch,
+with 64 focused and nine actual invented full-host tests passing. It preserves
+source observations, original household design weights and paired clone draws,
+with awards and caps owned by the country model. Native housing outcomes and
+the remaining fiscal-input inventory still need verification. See the
+[housing integration evidence](../experiments/us-launch-consolidation-20260913.md#other-integrated-source-work).
 
 | Stage | US demonstrated result | UK demonstrated result |
 | --- | --- | --- |
