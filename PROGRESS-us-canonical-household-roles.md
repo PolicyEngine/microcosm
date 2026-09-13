@@ -24,7 +24,7 @@ Out of scope (owned elsewhere or deferred): canonical sex, raw
 disability/student observations, housing participation, native restoration,
 parent-link preservation, wiring the shared country host.
 
-## State
+## Original lane checklist (historical)
 
 - [x] Worktree/branch/base verified; AGENTS.md + CLAUDE.md read.
 - [ ] Trace maintained source owners + canonical `is_household_head`.
@@ -36,6 +36,16 @@ parent-link preservation, wiring the shared country host.
 - [ ] Docs + changelog fragment.
 - [ ] BUILD-RESULT.md.
 
-## Next
+## Original next step (historical)
 
 Trace owners with a parallel read sweep over the ACS/ASEC source runtime.
+
+## Source-only continuation, 2026-09-13
+
+The external builder stopped after commit `593aa157a46d4736238b4535ed3f9d9eb6dd7a52`, containing a qualifier module without graph/tests/docs. Its commits are preserved. The continuation rechecked the clean assigned branch and fetched main: 239 commits ahead, zero behind before further edits.
+
+Review found the declared live fence was never called by the qualifier. The continuation checks it around every owner callback, binds individual column aliases, and independently reconstructs the final projection after owner I/O. Root also explicitly confirmed that unsupported known incumbents must refuse at canonical binding, including artificial group-quarters heads; reconciliation retains the original evidence for adjudication.
+
+The source continuation adds a common two-node graph fragment, pure/graph/actual-owner tests, the mapping and independent-minor audit in `docs/us-current-survey-household-roles.md`, and a changelog fragment. No country-host wiring, housing routing, independent-minor calculation, source staging, project import, pytest, native or installed-model read, push or release is performed. The packet's source pins and bounded runtime proposal record the final scope; written tests remain unrun until separately authorized.
+
+Source AST parsing/compilation, Ruff formatting/lint, diff whitespace and CI inventory verification pass. The inventory contains 122 planned cases (58 pure, 50 graph, 14 actual owners), not executed results. All three new files receive the existing fast/rest and engine/us-am/build classification; no CI classifier change is required.

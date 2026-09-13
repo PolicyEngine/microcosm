@@ -250,9 +250,13 @@ def _implementation_modules():
 
 def _source_bytes():
     """Source identity is checked before the final pure owner/output seals."""
+    modules = {
+        module.__name__: module
+        for module in (*source._modules(), *_implementation_modules())
+    }
     return tuple(
         (module.__name__, _sha(Path(module.__file__).read_bytes()))
-        for module in _implementation_modules()
+        for module in modules.values()
     )
 
 
@@ -286,6 +290,19 @@ def _live():
             MAX_RECEIPT_BYTES,
             COLUMN_TOKENS,
             COLUMNS,
+            SURVEY_COLUMN,
+            NATIVE_ID_COLUMN,
+            CODE_COLUMN,
+            ROLE_STATE_COLUMN,
+            UNBOUND_REASON_COLUMN,
+            HOUSEHOLD_VERDICT_COLUMN,
+            CODE_KNOWN_COLUMN,
+            VALUE_KNOWN_COLUMN,
+            ALLOCATION_KNOWN_COLUMN,
+            ORIGIN_COLUMN,
+            UNIVERSE_COLUMN,
+            OBSERVATION_YEAR_COLUMN,
+            VALUE_COLUMN,
             tuple(sorted(ROLE_STATES.items())),
             tuple(sorted(ROLE_UNBOUND_REASONS.items())),
             tuple(sorted(HOUSEHOLD_VERDICTS.items())),
@@ -553,6 +570,14 @@ def acs_household_role_observation(state, relshipp):
     require(
         state != 3 or relshipp in demographic.ACS_GROUP_QUARTERS_CODES,
         "ACS_GROUP_QUARTERS_CODE_DISAGREE",
+    )
+    require(
+        state != 2
+        or (
+            relshipp != demographic.ACS_OBSERVED_REFERENCE_CODE
+            and relshipp not in demographic.ACS_GROUP_QUARTERS_CODES
+        ),
+        "ACS_NONREFERENCE_CODE_DISAGREE",
     )
     require(
         relshipp in ACS_PRINTED_RELATIONSHIP_DOMAIN or role == 0,
@@ -1086,9 +1111,14 @@ def qualify_current_survey_household_roles(preparation):
         type(preparation) is source.AuthenticatedSurveyPopulationPreparation,
         "PREPARATION_TYPE",
     )
+    live = _live()
+    require(live == _LIVE, "IMPLEMENTATION_CHANGED")
+    require(_source_bytes() == _SOURCE_BYTES, "IMPLEMENTATION_SOURCE_CHANGED")
+    require(_live() == live, "IMPLEMENTATION_CHANGED")
     _shared_code_tables()
     requirement = _canonical_requirement()
     entry = preparation._checked()
+    require(_live() == live, "IMPLEMENTATION_CHANGED")
     state = entry[2]
     document = json.loads(entry[1])
     origins = _origins(state.frame, document)
@@ -1099,10 +1129,21 @@ def qualify_current_survey_household_roles(preparation):
         "ORIGIN_ARM_PARTITION",
     )
     observed, native_entry = _asec_observed(state, preparation)
+    require(_live() == live, "IMPLEMENTATION_CHANGED")
     roster, acs_owned = _acs_roster(state, serials)
+    require(_live() == live, "IMPLEMENTATION_CHANGED")
+    acs_receipt = acs_owned.receipt
+    acs_pins = acs_owned.pins
     acs_states, acs_diagnostics = _acs_states(serials, roster)
     acs_selected = {person_id: acs_states[key] for key, person_id in acs_keys.items()}
     asec_selected = _asec_selected(origins, asec_keys, observed)
+    require(_live() == live, "IMPLEMENTATION_CHANGED")
+    # Detach the validated owner's immutable buffers and selected observations
+    # before the remaining owner I/O. These are private retained inputs, not a
+    # caller receipt or a replacement source issuer.
+    observed_bytes = (observed._header, observed._body)
+    asec_rows = tuple(sorted(asec_selected.items()))
+    acs_rows = tuple(sorted(roster.items()))
     table = _project(origins, asec_selected, acs_selected)
     projection = _projection_bytes(table)
     receipt = source._encode(
@@ -1114,7 +1155,7 @@ def qualify_current_survey_household_roles(preparation):
             "preparation_sha256": _sha(entry[1]),
             "asec_native_sha256": _sha(native_entry[1]),
             "asec_demographic_content_sha256": observed.content_sha256,
-            "acs_catalogue_sha256": _sha(acs_owned.receipt),
+            "acs_catalogue_sha256": _sha(acs_receipt),
             "acs_relationship_diagnostics": acs_diagnostics,
             "acs_roster_rows": int(len(roster)),
             "acs_roster_households": int(len(serials)),
@@ -1133,21 +1174,56 @@ def qualify_current_survey_household_roles(preparation):
         },
         maximum=MAX_RECEIPT_BYTES,
     )
+    result = QualifiedCurrentSurveyHouseholdRoles(
+        state.frame, origins, table, projection, receipt
+    )
+    result_seal = household_role_projection_seal(result)
     observed.validate()
+    require(_live() == live, "IMPLEMENTATION_CHANGED")
     # The original issuers check source bytes after the last capture/cleanup I/O.
     require(preparation._checked() is entry, "PREPARATION_CHANGED")
-    source._pure_final(state)
+    require(_live() == live, "IMPLEMENTATION_CHANGED")
+    require(
+        source.acs_catalogue._lookup(state.catalogues[0]) is acs_owned,
+        "FINAL_ACS_OWNER",
+    )
+    require(_live() == live, "IMPLEMENTATION_CHANGED")
+    require(_source_bytes() == _SOURCE_BYTES, "IMPLEMENTATION_SOURCE_CHANGED")
+    require(_live() == live, "IMPLEMENTATION_CHANGED")
     require(
         source._ISSUED.get(id(preparation)) is entry
         and preparation.payload == entry[1]
         and source.asec_native._ISSUED.get(id(state.native[1])) is native_entry
         and state.native[1].payload == native_entry[1]
-        and source.acs_catalogue._lookup(state.catalogues[0]) is acs_owned,
+        and acs_owned.receipt == acs_receipt
+        and acs_owned.pins == acs_pins
+        and (observed._header, observed._body) == observed_bytes
+        and tuple(sorted(asec_selected.items())) == asec_rows
+        and tuple(sorted(roster.items())) == acs_rows,
         "FINAL_OWNER",
     )
-    return QualifiedCurrentSurveyHouseholdRoles(
-        state.frame, origins, table, projection, receipt
+    # After the final callback/source-file read, reconstruct the whole projected
+    # table from retained source inputs, independently of the first result.
+    source._pure_final(state)
+    final_origins = _origins(state.frame, json.loads(entry[1]))
+    final_keys, final_serials = _acs_keys(final_origins)
+    final_acs, final_diagnostics = _acs_states(final_serials, dict(acs_rows))
+    final_projection = _project(
+        final_origins,
+        dict(asec_rows),
+        {person_id: final_acs[key] for key, person_id in final_keys.items()},
     )
+    require(
+        household_role_projection_seal(result) == result_seal
+        and _table_stamp(final_origins) == _table_stamp(origins)
+        and _table_stamp(final_projection) == _table_stamp(table)
+        and final_diagnostics == acs_diagnostics
+        and _canonical_requirement() == requirement
+        and contract_sha256() == json.loads(receipt)["contract_sha256"],
+        "FINAL_PROJECTION",
+    )
+    require(_live() == live, "IMPLEMENTATION_CHANGED")
+    return result
 
 
 def _person_table(receiving):
@@ -1240,10 +1316,11 @@ def _bind(qualified, receiving):
     contradiction refuses for explicit adjudication rather than being rewritten
     silently, because the ASEC incumbent shipped by ``relationship_inputs`` is
     the positional ``P_SEQ == 1`` signal the canonical requirement records as
-    *not adopted*. An incumbent cell the projection leaves unbound is preserved
-    unchanged and counted, because an unresolved observation is not evidence
-    that the incumbent is wrong. Only a null cell whose binding is known is
-    filled.
+    *not adopted*. A known incumbent without a qualified source binding also
+    refuses: this boundary cannot certify an artificial group-quarters head or
+    another unsupported role. The original value is never cleared or rewritten;
+    ``household_role_reconciliation`` keeps it available for adjudication. Only
+    a null cell whose binding is known is filled.
     """
     ids, clone, expected = _aligned(qualified, receiving)
     people = _person_table(receiving)
@@ -1256,6 +1333,10 @@ def _bind(qualified, receiving):
     require(bool(np.array_equal(present, qualified_known)), "QUALIFIED_KNOWNNESS")
     qualified_value[present] = np.asarray(values[present], dtype=bool)
     incumbent_known, incumbent_value = _incumbent(people, count)
+    require(
+        not bool((incumbent_known & ~qualified_known).any()),
+        "UNBOUND_INCUMBENT",
+    )
     both = incumbent_known & qualified_known
     conflict = both & (incumbent_value != qualified_value)
     require(not bool(conflict.any()), "CANONICAL_CONFLICT")
@@ -1384,7 +1465,9 @@ def household_role_reconciliation(value, receiving_frame):
             (~incumbent_known & qualified_known).sum()
         ),
         "unresolved_cells": int((~(incumbent_known | qualified_known)).sum()),
-        "binding_would_refuse": bool(conflict.any()),
+        "binding_would_refuse": bool(
+            conflict.any() or (incumbent_known & ~qualified_known).any()
+        ),
         "by_survey": {
             survey: {
                 "rows": int((channel == survey).sum()),
