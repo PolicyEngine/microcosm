@@ -40,17 +40,27 @@ independent living at age 15+. Out-of-universe items remain unknown, not false.
 A positive or other non-NIU code outside that universe prevents an item-derived
 battery answer and remains visible as a contradiction.
 
+For ASEC student items, the printed enrollment universe is ages 16–54; the
+named zero explicitly includes NIU, children and Armed Forces. The descriptive
+recoder therefore also rejects positive enrollment routes for those named
+person types and leaves an unresolved type unknown. This is an additional
+published-code consistency check, not an alteration of the existing control
+issuer's age-only assertion. Missing or unreadable student literals remain
+unresolved even outside the age universe.
+
 All values retain literal/code/parse states. Printed but unnamed numeric range
 members remain unresolved. ASEC `PXDIS*` transitions distinguish no change,
 longitudinal retention, allocation and changes to blank; nonzero is not a common
 allocation flag. Valid published yes/no values survive unknown edit provenance
 without becoming claims about an unallocated original answer. ACS `FSCHP` retains
-its documented enrollment scope; no separate `SCHG` allocation flag is invented.
+its enrollment scope and the separate `FSCHGP` flag records grade-attending
+allocation. The initial source-review packet overlooked `FSCHGP` on dictionary
+p.129; this implementation corrects that omission using the same pinned PDF.
 
 ## Source contracts
 
 - [ASEC 2025 dictionary](https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf), SHA256 `5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f`: student values pp.23–24, difficulty values pp.26–27, person type and summary p.28, student allocation pp.28–29, edit transitions p.30 (one-based PDF pages).
-- [ACS 2024 dictionary](https://www2.census.gov/programs-surveys/acs/tech_docs/pums/data_dict/PUMS_Data_Dictionary_2024.pdf), SHA256 `929c2752995b0af1c16d5c64de8cdc43b4aa7d388ee2d45b4b4df90fecce1dff`: difficulty p.36, attendance/level pp.43–44, summary p.56, allocation pp.124–125 and130.
+- [ACS 2024 dictionary](https://www2.census.gov/programs-surveys/acs/tech_docs/pums/data_dict/PUMS_Data_Dictionary_2024.pdf), SHA256 `929c2752995b0af1c16d5c64de8cdc43b4aa7d388ee2d45b4b4df90fecce1dff`: difficulty p.36, attendance/level pp.43–44, summary p.56, allocation pp.124–125 and129–130.
 - [ACS 2024 household questionnaire](https://www2.census.gov/programs-surveys/acs/methodology/questionnaires/2024/quest24.pdf): attendance items10a/b, p.12; difficulty items18–20 and their age gates, p.14. This does not claim separate verification of the group-quarters instrument or every interview mode.
 - [BLS disability FAQ](https://www.bls.gov/cps/cpsdisability_faq.htm): rotation-period retention and the distinction between the statistical battery and SSA eligibility.
 
@@ -62,6 +72,17 @@ that issuer consumes its existing **three-cohort** contract (income years
 2022–2024); only the matched 2024 cohort is selected into this projection. The
 extra current-cohort `A_HSCOL` and allocation fields are authenticated from the
 pinned original member rather than assumed to be covered by the control issuer.
+Where the parent retains known `A_HSCOL` or `PEDIS*` cells, the qualifier also
+checks their numeric representation against the captured member. Missing carried
+cells impose no observation; matching NIU or unnamed numeric codes only establish
+representation consistency. They remain unknown under the named observation
+domains. Per-field comparison counts are recorded without changing the parent.
+
+Code columns have nullable integer dtype even when every code is unknown. The
+receipt records actual table columns, named observations, difficulty mappings,
+allocation vocabularies and the applicable source periods alongside the table
+digests. This metadata describes the projection; a stored receipt cannot replace
+the retained owner or its validation callback.
 
 The source modules perform no downloads, no fitting, no tax/benefit calculations,
 no cloning, and no graph or dataset publication. A later legal or annual bridge

@@ -29,6 +29,7 @@ from . import survey_population_preparation as source
 
 require = status.require
 STRING = pd.StringDtype(storage="python", na_value=pd.NA)
+_INCUMBENT_STATUS_FIELDS = ("A_HSCOL", *(item.asec for item in status.ITEMS))
 
 
 def _live():
@@ -64,6 +65,7 @@ def _live():
         student.CONTROLS,
         student.COORDINATES,
         student._READ_COLUMNS,
+        _INCUMBENT_STATUS_FIELDS,
         _REVALIDATE_CODE,
         repr(STRING),
     )
@@ -130,7 +132,9 @@ def _table(records, index):
     for column in columns:
         values = [row.get(column) for row in records]
         known = [v for v in values if v is not None]
-        if known and all(type(v) is bool for v in known):
+        if column.endswith("__code"):
+            result[column] = pd.array(values, dtype="Int64")
+        elif known and all(type(v) is bool for v in known):
             result[column] = pd.array(values, dtype="boolean")
         elif known and all(type(v) is int for v in known):
             result[column] = pd.array(values, dtype="Int64")
@@ -182,10 +186,37 @@ def _combine(frame, origins, keys, selected):
     )
 
 
+def _incumbent_status(person, position, row):
+    """Compare carried numeric representations, without assigning observations.
+
+    Missing carried cells supply no constraint. Numeric NIU and unnamed codes
+    can agree as raw representations; their observation semantics remain unknown.
+    """
+    compared = []
+    for name in _INCUMBENT_STATUS_FIELDS:
+        if name not in person or pd.isna(person[name].iloc[position]):
+            continue
+        incumbent = person[name].iloc[position]
+        # This broad numeric domain is for representation equality only. Named
+        # observation domains are still enforced separately by the pure recode.
+        code, parsed = status.literal_code(
+            row[name], range(-9, 100), width=1 if name == "A_HSCOL" else 2
+        )
+        require(
+            not isinstance(incumbent, (bool, np.bool_))
+            and isinstance(incumbent, (int, float, np.integer, np.floating))
+            and parsed == "named"
+            and incumbent == code,
+            "INCUMBENT_STATUS_LITERAL_CONFLICT",
+        )
+        compared.append(name)
+    return tuple(compared)
+
+
 def _student_join(parent, controls, origins, keys, selected):
     """Join issuer-owned numeric controls through exact full-parent coordinates."""
-    controls.validate()
     require(type(controls) is student.AuthenticatedStudentControls, "STUDENT_TYPE")
+    controls.validate()
     receipt = controls.receipt
     require(
         receipt["source_identity"] == parent.source.identity.decode()
@@ -207,6 +238,7 @@ def _student_join(parent, controls, origins, keys, selected):
         coordinate = (int(year), int(pid))
         require(coordinate not in lookup, "STUDENT_DUPLICATE_PARENT_ID")
         lookup[coordinate] = position
+    compared = dict.fromkeys(_INCUMBENT_STATUS_FIELDS, 0)
     for (survey, key), pid in keys.items():
         if survey != "asec":
             continue
@@ -217,10 +249,12 @@ def _student_join(parent, controls, origins, keys, selected):
             "STUDENT_NATIVE_KEY_JOIN",
         )
         row = selected["asec"][key]
+        original_age, parsed = status.literal_code(row["A_AGE"], range(100))
+        require(parsed == "named", "ORIGINAL_AGE")
         expected = {
             "source_household_id": key[0],
             "A_LINENO": key[2],
-            "A_AGE": int(row["A_AGE"]),
+            "A_AGE": original_age,
         }
         require(
             all(
@@ -234,6 +268,9 @@ def _student_join(parent, controls, origins, keys, selected):
                 state == "named" and code == int(arrays[name][position]),
                 "STUDENT_AUTHENTICATED_CONTROL_CONFLICT",
             )
+        for name in _incumbent_status(parent.frame.person, position, row):
+            compared[name] += 1
+    return compared
 
 
 @dataclass(frozen=True, eq=False)
@@ -393,7 +430,7 @@ def qualify_current_survey_person_status(preparation):
             and original.housing._persisted_sha(captured, acs_size) == acs_digest,
             "ACS_CAPTURE_CHANGED",
         )
-    _student_join(parent, controls, origins, keys, selected)
+    incumbent_counts = _student_join(parent, controls, origins, keys, selected)
     raw, observations = _combine(state.frame, origins, keys, selected)
     seals = (_table_seal(origins), _table_seal(raw), _table_seal(observations))
     receipt = source._encode(
@@ -405,8 +442,9 @@ def qualify_current_survey_person_status(preparation):
             "asec_person_member_sha256": digest,
             "acs_person_archive_sha256": acs_digest,
             "student_controls_sha256": controls.content_sha256,
-            "student_controls_income_cohorts": [2022, 2023, 2024],
-            "student_controls_selected_income_cohort": 2024,
+            "student_controls_income_cohorts": [pin[0] for pin in student_pins],
+            "student_controls_selected_income_cohort": native_document["income_year"],
+            "known_incumbent_status_compared_rows": incumbent_counts,
             "asec_observation_year": 2025,
             "acs_observation_year": 2024,
             "asec_difficulty_period": status.ASEC_PERIOD,
@@ -414,6 +452,21 @@ def qualify_current_survey_person_status(preparation):
             "asec_student_period": status.ASEC_STUDENT_PERIOD,
             "acs_student_period": status.ACS_STUDENT_PERIOD,
             "read_columns": {"asec": status.ASEC_COLUMNS, "acs": status.ACS_COLUMNS},
+            "raw_columns": status.RAW_COLUMNS,
+            "observation_columns": tuple(observations.columns),
+            "named_observations": status.OBSERVATIONS,
+            "difficulty_items": tuple(dict(vars(item)) for item in status.ITEMS),
+            "allocation_code_meanings": {
+                name: tuple(
+                    {"code": code, "meaning": meaning}
+                    for code, meaning in codes.items()
+                )
+                for name, codes in (
+                    ("cps_difficulty", status.PX_CODES),
+                    ("asec_student", status.AX_CODES),
+                    ("acs", status.ACS_FLAG_CODES),
+                )
+            },
             "origins_sha256": seals[0],
             "raw_sha256": seals[1],
             "observations_sha256": seals[2],

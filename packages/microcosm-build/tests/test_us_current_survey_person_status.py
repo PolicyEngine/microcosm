@@ -191,14 +191,15 @@ def test_asec_student_combination_describes_only_last_week(
 )
 def test_acs_college_attendance_has_unknown_full_time_workload(school, level, expected):
     result = status.recode_person_status(
-        acs(SCH=school, SCHG=level, FSCHP="1"), survey="acs"
+        acs(SCH=school, SCHG=level, FSCHP="1", FSCHGP="0"), survey="acs"
     )
     assert result["survey_college_attended_last_3_months"] is expected
     assert result["survey_full_time_college_student_last_week"] is None
     assert not result["survey_student_full_time_measured"]
-    assert not result["survey_school_level_separate_allocation_measured"]
-    assert "SCHL" not in status.ACS_COLUMNS and "FSCHGP" not in status.ACS_COLUMNS
+    assert result["survey_school_level_separate_allocation_measured"]
+    assert "SCHL" not in status.ACS_COLUMNS and "FSCHGP" in status.ACS_COLUMNS
     assert result["person_status_source_FSCHP__meaning"] == "allocated"
+    assert result["person_status_source_FSCHGP__meaning"] == "not_allocated"
 
 
 @pytest.mark.parametrize("token", [None, True, 1, 1.0, "0" * 65])
@@ -213,3 +214,13 @@ def test_acs_item_width_agrees_with_literal_code_knownness(token):
     assert result["person_status_source_DEYE__code"] is None
     assert result["survey_vision_difficulty"] is None
     assert not result["survey_vision_difficulty__known"]
+
+
+@pytest.mark.parametrize("token", ["", "-1", "9"])
+def test_unreadable_student_literal_is_unresolved_even_outside_age_universe(token):
+    result = status.recode_person_status(asec(age=55, A_HSCOL=token), survey="asec")
+    assert result["survey_full_time_college_student_last_week"] is None
+    assert (
+        result["survey_full_time_college_student_last_week__status"]
+        == "unresolved_school_literal"
+    )

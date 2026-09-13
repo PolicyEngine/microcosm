@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 PROTOCOL = "microcosm.us.current-survey-person-status.v1"
-ASEC_PERIOD = "cps_status_published_2025_may_retain_earlier_rotation_response"
+ASEC_PERIOD = "cps_status_published_2025_with_possible_earlier_rotation_response"
 ACS_PERIOD = "acs_condition_status_collected_2024"
 ASEC_STUDENT_PERIOD = "preceding_survey_week_2025_not_income_year_2024"
 ACS_STUDENT_PERIOD = "last_three_months_at_2024_collection"
@@ -111,6 +111,7 @@ ACS_COLUMNS = (
     "SCH",
     "SCHG",
     "FSCHP",
+    "FSCHGP",
 )
 RAW_COLUMNS = tuple(dict.fromkeys((*ASEC_COLUMNS, *ACS_COLUMNS)))
 OBSERVATIONS = (
@@ -174,6 +175,8 @@ def _asec_student(row, age, person_type):
     enrolled = literal_code(row["A_ENRLW"], (0, 1, 2), width=1)[0]
     full_time = literal_code(row["A_FTPT"], (0, 1, 2), width=1)[0]
     level = literal_code(row["A_HSCOL"], (0, 1, 2), width=1)[0]
+    if None in (enrolled, full_time, level):
+        return None, "unresolved_school_literal"
     if not 16 <= age <= 54 or person_type in (1, 3):
         return (
             (None, "outside_universe")
@@ -182,8 +185,6 @@ def _asec_student(row, age, person_type):
         )
     if person_type is None:
         return None, "unresolved_person_type"
-    if None in (enrolled, full_time, level):
-        return None, "unresolved_school_literal"
     if enrolled == 0:
         return (
             (None, "declared_niu")
@@ -282,7 +283,8 @@ def recode_person_status(row, *, survey):
             {"DIS": ((1, 2), 1), "SCH": ((1, 2, 3), 1), "SCHG": (range(1, 17), 2)}
         )
         flags = {
-            c: ACS_FLAG_CODES for c in (*(i.acs_flag for i in ITEMS), "FDISP", "FSCHP")
+            c: ACS_FLAG_CODES
+            for c in (*(i.acs_flag for i in ITEMS), "FDISP", "FSCHP", "FSCHGP")
         }
     for column, (named, width) in domains.items():
         code, state = literal_code(row[column], named, width=width)
@@ -358,5 +360,5 @@ def recode_person_status(row, *, survey):
         out[name] = value
         out[name + "__known"] = value is not None
         out[name + "__status"] = status
-    out["survey_school_level_separate_allocation_measured"] = survey == "asec"
+    out["survey_school_level_separate_allocation_measured"] = True
     return out

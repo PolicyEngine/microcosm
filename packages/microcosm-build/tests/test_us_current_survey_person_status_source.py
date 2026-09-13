@@ -19,7 +19,7 @@ from microcosm.build.us_runtime import current_survey_person_status as status
 from microcosm.build.us_runtime import current_survey_person_status_source as owner
 
 
-def _source_arguments(tmp_path, monkeypatch):
+def _source_arguments(tmp_path, monkeypatch, *, incumbent_conflict=False):
     import test_us_survey_population_preparation as preparation_fixture
     from test_us_current_asec_demographics import _demographic_arguments
 
@@ -47,7 +47,13 @@ def _source_arguments(tmp_path, monkeypatch):
         kwargs["person_changes"] = {
             "A_ENRLW": np.zeros(6, dtype=np.int64),
             "A_FTPT": np.zeros(6, dtype=np.int64),
+            **{
+                item.asec: np.array([2, -1] * 3, dtype=np.int64)
+                for item in status.ITEMS
+            },
         }
+        if incumbent_conflict:
+            kwargs["person_changes"]["PEDISEYE"] = np.array([1, -1] * 3, dtype=np.int64)
         return original_asec(*args, **kwargs)
 
     monkeypatch.setattr(preparation_fixture, "_person", person)
@@ -120,11 +126,25 @@ def test_actual_qualifier_retains_complete_sources_and_closes_mutation_seals(
     assert not receipt["canonical_eligibility_assigned"]
     assert not receipt["annual_five_month_student_status_validated"]
     assert not receipt["source_admission_issued"] and not receipt["release_eligible"]
+    assert receipt["named_observations"] == list(status.OBSERVATIONS)
+    assert receipt["raw_columns"] == list(status.RAW_COLUMNS)
+    assert receipt["observation_columns"] == list(result.observations)
+    assert receipt["difficulty_items"] == [dict(vars(item)) for item in status.ITEMS]
+    assert receipt["allocation_code_meanings"]["acs"] == [
+        {"code": 0, "meaning": "not_allocated"},
+        {"code": 1, "meaning": "allocated"},
+    ]
     assert not {"is_blind", "is_disabled", "is_full_time_college_student"} & set(
         result.observations
     )
     assert owner.source._frame_identity(original) == before
     asec_mask = result.origins.source.eq("asec")
+    assert set(receipt["known_incumbent_status_compared_rows"]) == set(
+        owner._INCUMBENT_STATUS_FIELDS
+    )
+    assert set(receipt["known_incumbent_status_compared_rows"].values()) == {
+        int(asec_mask.sum())
+    }
     assert result.raw.loc[asec_mask, "PERIDNUM"].str.len().eq(22).all()
     assert result.raw.loc[~asec_mask, "PERIDNUM"].isna().all()
     assert (
@@ -195,6 +215,52 @@ def test_actual_qualifier_retains_complete_sources_and_closes_mutation_seals(
     assert len(triggered) == 1
     result.raw.at[pid, "DEYE"] = previous
     result.validate()
+
+
+def test_actual_qualifier_refuses_known_incumbent_disagreement(tmp_path, monkeypatch):
+    arguments = _source_arguments(tmp_path, monkeypatch, incumbent_conflict=True)
+    prepared = owner.source.prepare_authenticated_survey_population(**arguments)
+    with pytest.raises(ValueError, match="INCUMBENT_STATUS_LITERAL_CONFLICT"):
+        owner.qualify_current_survey_person_status(prepared)
+
+
+@pytest.mark.parametrize(
+    "column",
+    ["A_HSCOL", "PEDISDRS", "PEDISEAR", "PEDISEYE", "PEDISOUT", "PEDISPHY", "PEDISREM"],
+)
+def test_incumbent_literal_comparison_covers_each_retained_field(column):
+    row = asec()
+    carried = pd.DataFrame(
+        {name: [int(row[name])] for name in owner._INCUMBENT_STATUS_FIELDS}
+    )
+    assert set(owner._incumbent_status(carried, 0, row)) == set(
+        owner._INCUMBENT_STATUS_FIELDS
+    )
+    carried.loc[0, column] = 1
+    with pytest.raises(ValueError, match="INCUMBENT_STATUS_LITERAL_CONFLICT"):
+        owner._incumbent_status(carried, 0, row)
+
+
+def test_incumbent_comparison_does_not_authorize_missing_niu_or_unnamed_answers():
+    row = asec(person_type="1", PEDISDRS="-4")
+    carried = pd.DataFrame(
+        {name: [int(row[name])] for name in owner._INCUMBENT_STATUS_FIELDS}
+    )
+    carried["A_HSCOL"] = pd.array([None], dtype="Int64")
+    assert "A_HSCOL" not in owner._incumbent_status(carried, 0, row)
+    recoded = status.recode_person_status(row, survey="asec")
+    assert all(recoded[item.observation] is None for item in status.ITEMS)
+    assert recoded["person_status_source_PEDISDRS__literal_status"] == "unlabelled_code"
+
+
+@pytest.mark.parametrize(
+    "column", ["person_status_source_SCHG__code", "person_status_source_FSCHGP__code"]
+)
+def test_all_null_published_codes_retain_integer_dtype(column):
+    index = pd.Index([1], name="person_id", dtype="int64")
+    table = owner._table([{column: None}], index)
+    assert table[column].dtype == pd.Int64Dtype()
+    assert table[column].isna().all()
 
 
 def _stream(rows, columns):
