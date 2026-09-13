@@ -415,6 +415,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "graph_property_income.py",
         # Source-blind fit/history and recipient-draw verification
         "graph_property_income_receipts.py",
+        # Deterministic ordinary-interest/dividend tax split and numeric gate
+        "graph_property_tax_leaves.py",
         # Source-blind PUF clone placement and original-channel preservation
         "graph_puf55_route_attachment.py",
         # Complete PUF composition and retained checked-output lifetime
@@ -3486,6 +3488,9 @@ _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
         # Declared numerical target columns and (node, artifact) byte maps;
         # no original-source routing or provenance selectors.
         "graph_property_income_receipts.py",
+        # Reviewed 2026-09-13: declared entity/ID columns, fixed property and
+        # tax-leaf families, dtype maps and typed artifact names only.
+        "graph_property_tax_leaves.py",
         # Reviewed 2026-09-12: exact geography fields/CSR masks, typed artifact
         # names and producer keys, retained registry entries and node histories.
         # These four remain scanned for provenance columns and accessor calls.

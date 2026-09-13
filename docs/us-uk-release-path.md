@@ -97,8 +97,13 @@ not establish completed native financial acceptance. The corrected v3 harness
 passes two actual invented financial cold/replay controls and thirteen bounded
 source and diagnostic controls. After independent review of its exact packet,
 one fresh native run started with unchanged calculation source, native inputs
-and resource limits. Its result is pending; no retry pass or native PUF result
-is claimed.
+and resource limits. On 13 September, the owned process was no longer present
+and neither a final receipt nor a PUF manifest existed. Its last recorded
+progress was about 5.76 hours wall time, 6.41 hours process CPU and 28.29 GB peak
+RSS. The exit code and stopping cause are unavailable; the CPU total exceeding
+the configured budget does not establish that cause. This attempt is closed
+without verified native PUF output. A successor requires a fresh reviewed
+packet; the preceding source, input and failure evidence remain preserved.
 
 The maintained financial graph now retains an eighth field: the tax-exempt
 interest remainder of its existing observed or modeled total. The split remains
@@ -203,10 +208,16 @@ pass. An explicit property-income option now integrates the source bridge,
 four conditional component models, signed reconciliation and clone attachment
 into the existing financial host. Its actual invented 35-node construction and
 required replay pass, preserving the full preceding population. The new columns
-still coexist with the earlier tax inputs: the tax-input rebase, retirement
-bridge and complete PUF/native adoption remain separate work. The focused PUF
+remain available beside the retained earlier population. A further explicit
+three-node extension rebases four interest/dividend tax inputs and checks their
+conservation and completeness. Its 38-node cold/required host passes eleven
+invented-source controls; unknown inputs remain unknown and an incomplete gate
+refuses PUF qualification. Retirement completion and complete PUF/native adoption
+remain separate work. The focused PUF
 handoff retest passes after correction of an invalid invented source record;
 see the [scoped host evidence](../experiments/us-property-financial-host-20260912.md).
+The [13 September integration record](../experiments/us-launch-consolidation-20260913.md)
+also covers retirement source qualification, UK lineage and the CI repairs.
 
 The remaining critical sequence is complete PUF/input integration, a small
 real full build, model and calibration evaluation, then progressive scale
