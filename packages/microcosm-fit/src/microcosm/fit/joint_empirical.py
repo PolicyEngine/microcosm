@@ -212,6 +212,9 @@ def _vector(value, length, name):
     _require(
         array.ndim == 1 and len(array) == length and array.dtype.kind in "iuf", name
     )
+    # This operator's arithmetic is binary64. Refuse wider floating inputs
+    # before narrowing can erase a nonzero value or hide a negative amount.
+    _require(array.dtype.kind != "f" or array.dtype.itemsize <= 8, name + "_DTYPE")
     result = array.astype(np.float64)
     _require(np.isfinite(result).all(), name)
     return result
@@ -331,7 +334,7 @@ def _prepare(document):
     _enforce(overall, support.overall, "overall")
     _enforce(positive, support.positive, "positive")
     for g, item in enumerate(stats):
-        if g in support.required_patterns or (g > 0 and item["rows"]):
+        if g in support.required_patterns or item["rows"]:
             _enforce(item, support.pattern, "pattern" + str(g))
     masses = np.asarray([s["weight"] for s in stats])
     total = fsum(masses)
@@ -436,6 +439,7 @@ def fit_joint_empirical(
         _require(len(owners) == 1, "TARGET_ENTITY")
         entity = next(iter(owners))
         frame = frame_or_df.table(entity)
+        _vector(frame_or_df.resolve_weights(entity).values, len(frame), "WEIGHTS")
         resolved = weight_model.resolve_fit_weights(frame_or_df, entity, weights)
     else:
         _require(type(frame_or_df) is pd.DataFrame, "FIT_INPUT")
@@ -444,8 +448,7 @@ def fit_joint_empirical(
             frame[weights] if isinstance(weights, str) and weights in frame else weights
         )
         if not isinstance(raw_weights, str):
-            require_weights = np.asarray(raw_weights)
-            _require(require_weights.dtype.kind in "iuf", "WEIGHT_DTYPE")
+            _vector(raw_weights, len(frame), "WEIGHTS")
         resolved = weight_model.resolve_dataframe_fit_weights(
             frame, weights, predictors=[], targets=list(targets)
         )
@@ -501,7 +504,15 @@ def draw_joint_empirical(
         isfinite(transported_positive) and 0 <= transported_positive <= 1,
         "TRANSPORT_PROBABILITY",
     )
-    masses = np.r_[1 - transported_positive, receipt * probabilities[1:]]
+    # The reference law already carries its measured zero-pattern mass. Its
+    # complement may round to zero even when that leading interval is
+    # representable (for example masses 2**-54 and 1). Retain all reference
+    # masses and use the same declared cumulative-endpoint normalization.
+    masses = (
+        probabilities.copy()
+        if receipt == 1
+        else np.r_[1 - transported_positive, receipt * probabilities[1:]]
+    )
     _require(np.isfinite(masses).all() and (masses >= 0).all(), "TRANSPORT_PROBABILITY")
     _require(
         not receipt or ((probabilities[1:] == 0) | (masses[1:] > 0)).all(),

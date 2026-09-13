@@ -227,11 +227,12 @@ def test_invalid_or_unweighted_fit_is_refused(weights):
         fitted(weights=weights)
 
 
+@pytest.mark.parametrize("scope", ["overall", "positive", "pattern"])
 @pytest.mark.parametrize("name", ["rows", "households", "person_ess", "household_ess"])
-def test_declared_support_minimum_is_enforced(name):
-    threshold = replace(policy().positive, **{name: 10})
-    with pytest.raises(ValueError, match="SUPPORT"):
-        fitted(support=policy(positive=threshold))
+def test_declared_support_minimum_is_enforced(scope, name):
+    threshold = replace(getattr(policy(), scope), **{name: 10})
+    with pytest.raises(ValueError, match="SUPPORT:" + scope):
+        fitted(support=policy(**{scope: threshold}))
 
 
 def test_absent_required_pattern_refuses_and_r_zero_cannot_bypass_model_support():
@@ -405,3 +406,107 @@ def test_dataframe_weight_default_is_not_silently_unweighted():
             household_keys=households,
             support=policy(),
         )
+
+
+@pytest.mark.parametrize("zero_weight", [2**-53, 2**-54, 2**-55])
+def test_reference_retains_small_supported_zero_interval(zero_weight):
+    frame = pd.DataFrame({"O": [0.0, 1.0], "D": [0.0, 1.0]})
+    model = fit_joint_empirical(
+        frame,
+        targets=("O", "D"),
+        donor_keys=[(0,), (1,)],
+        household_keys=[(0,), (1,)],
+        weights=[zero_weight, 1.0],
+        support=policy(required_patterns=(0, 3)),
+    )
+    # Both inputs are exact powers of two. The cumulative endpoint rounds to
+    # one, while its leading zero-pattern interval is representable.
+    boundary = zero_weight
+    result = draw_joint_empirical(
+        model,
+        pattern_uniforms=[
+            0.0,
+            np.nextafter(boundary, 0.0),
+            boundary,
+            np.nextafter(boundary, 1.0),
+        ],
+        donor_uniforms=[0.0] * 4,
+        transport=JointTransport(1.0, (1.0, 1.0)),
+    )
+    np.testing.assert_array_equal(result.patterns, [0, 0, 3, 3])
+    np.testing.assert_array_equal(result.values, [[0, 0], [0, 0], [1, 1], [1, 1]])
+
+
+@pytest.mark.parametrize(
+    "measure", ["rows", "households", "person_ess", "household_ess"]
+)
+def test_present_nonrequired_zero_pattern_must_meet_each_minimum(measure):
+    frame = pd.DataFrame({"O": [0.0, 1.0, 2.0], "D": [0.0, 1.0, 2.0]})
+    threshold = replace(policy().pattern, **{measure: 2})
+    with pytest.raises(ValueError, match="SUPPORT:pattern0:" + measure):
+        fit_joint_empirical(
+            frame,
+            targets=("O", "D"),
+            donor_keys=[(0,), (1,), (2,)],
+            household_keys=[(0,), (1,), (2,)],
+            weights=[1.0, 1.0, 1.0],
+            support=policy(pattern=threshold, required_patterns=(3,)),
+        )
+
+
+@pytest.mark.parametrize("factor", [0.5, 2**20, 2**-20])
+def test_common_representable_weight_scaling_preserves_joint_law(factor):
+    original = fitted()
+    scaled = fitted(weights=[factor * x for x in [1.0, 2.0, 3.0, 4.0]])
+    for name in ("pattern_probabilities", "absent_patterns"):
+        assert original.diagnostics[name] == scaled.diagnostics[name]
+    for name in ("person_ess", "household_ess", "rows", "households"):
+        assert (
+            original.diagnostics["overall"][name] == scaled.diagnostics["overall"][name]
+        )
+    arguments = dict(
+        pattern_uniforms=[0.0, 0.15, 0.45, 0.95],
+        donor_uniforms=[0.0, 0.2, 0.5, 0.9],
+        transport=JointTransport(1, (1, 1)),
+    )
+    np.testing.assert_array_equal(
+        draw_joint_empirical(original, **arguments).values,
+        draw_joint_empirical(scaled, **arguments).values,
+    )
+    assert (
+        original.to_bytes() != scaled.to_bytes()
+    )  # Original weight provenance stays exact.
+
+
+@pytest.mark.parametrize("destination", ["target", "weight_vector", "weight_column"])
+@pytest.mark.parametrize("sign", [1, -1])
+def test_wider_float_inputs_are_refused_before_narrowing(destination, sign):
+    frame, keys, households = inputs()
+    extended = np.dtype(np.longdouble).itemsize > 8
+    raw = np.array([1, 2, 3, 4], dtype=np.longdouble)
+    if extended:
+        raw[0] = sign * np.longdouble("1e-4000")
+    weights = [1.0, 2.0, 3.0, 4.0]
+    if destination == "target":
+        frame["O"] = raw
+    elif destination == "weight_vector":
+        weights = raw
+    else:
+        frame["weight"] = raw
+        weights = "weight"
+    arguments = dict(
+        targets=("O", "D"),
+        donor_keys=keys,
+        household_keys=households,
+        weights=weights,
+        support=policy(required_patterns=(1, 3))
+        if destination == "target"
+        else policy(),
+    )
+    if extended:
+        with pytest.raises(ValueError, match="DTYPE"):
+            fit_joint_empirical(frame, **arguments)
+    else:
+        # On platforms where longdouble is binary64 this is supported input,
+        # not a skipped case or a claim to exercise extended-exponent refusal.
+        assert fit_joint_empirical(frame, **arguments).diagnostics["raw_rows"] == 4

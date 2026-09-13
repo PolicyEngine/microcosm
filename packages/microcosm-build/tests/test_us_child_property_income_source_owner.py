@@ -1,5 +1,6 @@
 """Actual bounded source owners on invented inputs; tests authored, not native."""
 
+import hashlib
 import json
 import shutil
 import sys
@@ -17,7 +18,48 @@ from microcosm.fit.joint_empirical import (
 )
 
 
-def source_arguments(tmp_path, monkeypatch):
+def _change_unissued_literals(arguments, monkeypatch, donor, changes):
+    """Change invented raw literals and rebuild their real attachment before issuance."""
+    from microcosm.build.us_runtime import asec_person_income_source as restoration
+
+    folder = arguments["source_dir"] / "asec"
+    pins, paths = [], {}
+    for year, member, archive, *_ in child.routing.coverage._MEMBER_PINS:
+        path = folder / f"pppub{year - 1999}.csv"
+        raw = pd.read_csv(path, dtype=str, keep_default_na=False)
+        if year == 2024:
+            selected = raw.PERIDNUM.eq(str(donor - 100).zfill(22))
+            assert selected.sum() == 1
+            for name, token in {"I_INTYN": "10", **changes}.items():
+                raw.loc[selected, name] = token
+            raw.to_csv(path, index=False)
+        payload = path.read_bytes()
+        pins.append(
+            (
+                year,
+                member,
+                archive,
+                hashlib.sha256(payload).hexdigest(),
+                len(raw),
+                len(payload),
+            )
+        )
+        paths[year] = path
+    for module in (child.routing.coverage, restoration):
+        monkeypatch.setattr(module, "_MEMBER_PINS", tuple(pins))
+    output = folder.parent.parent / "child-restored-money"
+    restoration.restore_asec_person_income_source(
+        folder / "parent.h5",
+        folder / "household-attachment.h5",
+        member_paths=paths,
+        output_dir=output,
+    )
+    shutil.copyfile(
+        output / restoration.CHECKPOINT_FILENAME, folder / "person-income-attachment.h5"
+    )
+
+
+def source_arguments(tmp_path, monkeypatch, *, donor_changes=None):
     """Place the sole eligible teenager in the unselected household before issuance."""
     import test_us_current_asec_income_routing as routing_fixture
     import test_us_current_property_income_sources as property_fixture
@@ -46,6 +88,7 @@ def source_arguments(tmp_path, monkeypatch):
 
     monkeypatch.setattr(routing_fixture, "fixture", positive_households)
     arguments = property_fixture.source_arguments(tmp_path, monkeypatch)
+    _change_unissued_literals(arguments, monkeypatch, donor, donor_changes or {})
     # Both preparation requests are created before either owner is issued.
     source_dir = arguments["source_dir"]
     partial = tmp_path / "partial-source"
@@ -98,6 +141,20 @@ def test_full_source_donor_is_available_when_target_sample_has_no_teenagers(actu
     assert left.donors.index.tolist() == right.donors.index.tolist() == [actual.donor]
     pd.testing.assert_frame_equal(left.donors, right.donors)
     pd.testing.assert_frame_equal(left.diagnostics, right.diagnostics)
+    homes = actual.full._checked()[2].catalogues[1]._checked()[2].households
+    assert {home.key.native_id: home.hsup_wgt for home in homes} == {
+        "00007": "000255212",
+        "00008": "000010000",
+    }
+    assert left.diagnostics.original_household_design_weight.to_dict() == {
+        105: 2552.12,
+        106: 2552.12,
+        107: 100.0,
+        108: 100.0,
+    }
+    expected_weight = 2552.12 if actual.donor == 105 else 100.0
+    assert left.donors.original_household_design_weight.tolist() == [expected_weight]
+    assert left.interest.loc[actual.donor, "allocation_origin"] == "publisher_allocated"
     one = SupportThreshold(1, 1, 1.0, 1.0)
     support = SupportRequirements(
         "invented-one-source-donor", "test", one, one, one, (3,)
@@ -146,7 +203,15 @@ def test_copied_preparation_cannot_supply_full_donor_authority(actual):
 
 @pytest.mark.parametrize("when", ["first", "final"])
 @pytest.mark.parametrize(
-    "mutation", ["constant", "function", "defaults", "closure", "source_value"]
+    "mutation",
+    [
+        "constant",
+        "dependency_constant",
+        "function",
+        "defaults",
+        "closure",
+        "source_value",
+    ],
 )
 def test_initial_and_final_owner_callback_mutations_refuse_current_borrow(
     actual, when, mutation
@@ -156,6 +221,7 @@ def test_initial_and_final_owner_callback_mutations_refuse_current_borrow(
     mutated = False
     original_profile = sys.getprofile()
     original_ages = child.DONOR_AGES
+    original_unpublished = child.routing.ALLOCATION_CODE_MEANINGS_UNPUBLISHED
     original_function = child._bad_status
     original_defaults = child._age.__defaults__
     closure_cell = child.QualifiedChildPropertySources.__repr__.__closure__[0]
@@ -177,6 +243,10 @@ def test_initial_and_final_owner_callback_mutations_refuse_current_borrow(
                 mutated = True
                 if mutation == "constant":
                     child.DONOR_AGES = (16, 17)
+                elif mutation == "dependency_constant":
+                    child.routing.ALLOCATION_CODE_MEANINGS_UNPUBLISHED = frozenset(
+                        {"I_INTYN"}
+                    )
                 elif mutation == "function":
                     child._bad_status = lambda value: False
                 elif mutation == "defaults":
@@ -193,6 +263,7 @@ def test_initial_and_final_owner_callback_mutations_refuse_current_borrow(
     finally:
         sys.setprofile(original_profile)
         child.DONOR_AGES = original_ages
+        child.routing.ALLOCATION_CODE_MEANINGS_UNPUBLISHED = original_unpublished
         child._bad_status = original_function
         child._age.__defaults__ = original_defaults
         closure_cell.cell_contents = original_closure
@@ -209,3 +280,74 @@ def test_detached_donor_mutation_does_not_change_retained_source(actual):
     new = child.qualify_child_property_sources(actual.full)
     assert child.child_property_sources_seal(new) == old
     actual.full._checked()
+
+
+def test_preexisting_dependency_interpretation_mutation_refuses(actual, monkeypatch):
+    monkeypatch.setattr(
+        child.routing, "ALLOCATION_CODE_MEANINGS_UNPUBLISHED", frozenset({"I_INTYN"})
+    )
+    with pytest.raises(ValueError, match="IMPLEMENTATION_CHANGED"):
+        child.qualify_child_property_sources(actual.full)
+
+
+@pytest.mark.parametrize("changes", [{"TRDINT_VAL": "bad"}, {"INT_YN": "2"}])
+def test_malformed_excluded_teenager_is_refused_from_full_source(tmp_path, changes):
+    with pytest.MonkeyPatch.context() as patch:
+        _, arguments, donor = source_arguments(tmp_path, patch, donor_changes=changes)
+        preparation = child.source.prepare_authenticated_survey_population(**arguments)
+        selected = preparation._checked()[2].frame.person
+        asec = selected.loc[
+            selected[child.routing.support_channel_column("person")].eq("asec")
+        ]
+        assert donor not in set(asec[child.routing.spine_source_id_column("person")])
+        assert not asec.A_AGE.between(15, 17).any()
+        with pytest.raises(ValueError, match="DONOR_SOURCE_REVIEW_REQUIRED"):
+            child.qualify_child_property_sources(preparation)
+        preparation._checked()
+
+
+@pytest.mark.parametrize("owner", ["catalogue", "preparation"])
+@pytest.mark.parametrize("surface", ["observation", "result"])
+def test_final_owner_callbacks_cannot_change_already_projected_values(
+    actual, owner, surface
+):
+    preparation = actual.full
+    catalogue = preparation._checked()[2].catalogues[1]
+    code = type(catalogue if owner == "catalogue" else preparation)._checked.__code__
+    original_profile = sys.getprofile()
+    calls, mutated = 0, False
+
+    def profile(frame, event, argument):
+        nonlocal calls, mutated
+        caller = frame.f_back
+        if (
+            event == "return"
+            and frame.f_code is code
+            and caller is not None
+            and caller.f_code is child.qualify_child_property_sources.__code__
+        ):
+            calls += 1
+            if calls == 2:
+                # These are only the test's invented, detached in-process
+                # projections. No value, frame or local is emitted to output.
+                if surface == "observation":
+                    caller.f_locals["observed_interest"].person.loc[
+                        :, "allocation_origin"
+                    ] = "changed"
+                else:
+                    caller.f_locals["result"].recipients.loc[:, "reason"] = "changed"
+                mutated = True
+
+    sys.setprofile(profile)
+    try:
+        expected = (
+            "FINAL_OBSERVATIONS_CHANGED"
+            if surface == "observation"
+            else "FINAL_VALUES_CHANGED"
+        )
+        with pytest.raises(ValueError, match=expected):
+            child.qualify_child_property_sources(preparation)
+    finally:
+        sys.setprofile(original_profile)
+    assert mutated
+    preparation._checked()
