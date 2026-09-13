@@ -57,7 +57,7 @@ from typing import Protocol, runtime_checkable
 import numpy as np
 import pandas as pd
 
-from microcosm.frame import Frame, Weights
+from microcosm.frame import Frame, MassChangeRecord, Weights
 
 from .decl import ArtifactType, Node, Param, StructuralDelta
 
@@ -348,6 +348,24 @@ class KernelContext:
             validates the versioned payload before using it, because a
             nominal type does not itself verify serialized data (amendment
             19).
+        frame_metadata: The population version's own metadata. The
+            executor passes :attr:`microcosm.frame.Frame.metadata`, which
+            ``Frame`` has already deeply frozen; this class adds a
+            read-only view over that mapping and does not itself deep-freeze
+            a mapping built some other way (amendment 26).
+        frame_mass_log: The population version's ``Frame`` mass records, in
+            order. This is the *incoming* log: a node that needs a stage's
+            completed records must run after that stage's structural
+            boundary or read its predecessor's evidence, because incidental
+            node order is not authority (amendment 26).
+        frame_column_order: Entity to the population version's own column
+            order, restricted to the columns projected into ``tables``.
+            The executor projects ``tables`` in declaration order, so this
+            is the only way to reconstruct the version's layout. It never
+            names a column the node did not get: an entry that is not
+            exactly an ordering of that table's columns is refused, so an
+            undeclared column cannot be smuggled in as a name (amendment
+            26).
         tolerances: ``(entity, column)`` of each declared input column to
             the :class:`Tolerance` its owning kernel declared, or ``None``
             for a bitwise owner. A gate compares against these.
@@ -366,6 +384,9 @@ class KernelContext:
     rng: np.random.Generator
     sources: Mapping[str, Path] = field(default_factory=dict)
     artifacts: Mapping[str, ArtifactValue] = field(default_factory=dict)
+    frame_metadata: Mapping[str, object] = field(default_factory=dict)
+    frame_mass_log: tuple[MassChangeRecord, ...] = ()
+    frame_column_order: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     tolerances: Mapping[tuple[str, str], Tolerance | None] = field(default_factory=dict)
     numerics: Mapping[tuple[str, str], NumericScope] = field(default_factory=dict)
 
@@ -381,6 +402,37 @@ class KernelContext:
                 "KernelContext.artifacts must map non-empty aliases to ArtifactValue."
             )
         object.__setattr__(self, "artifacts", MappingProxyType(values))
+
+        metadata = dict(self.frame_metadata)
+        if any(not isinstance(name, str) or not name for name in metadata):
+            raise TypeError(
+                "KernelContext.frame_metadata keys must be non-empty strings."
+            )
+        object.__setattr__(self, "frame_metadata", MappingProxyType(metadata))
+
+        if not isinstance(self.frame_mass_log, tuple) or any(
+            not isinstance(record, MassChangeRecord) for record in self.frame_mass_log
+        ):
+            raise TypeError(
+                "KernelContext.frame_mass_log must be a tuple of MassChangeRecord."
+            )
+
+        # An order is an order *of the projected columns*, so it can neither
+        # name a column the node was not given nor hide one it was.
+        order = dict(self.frame_column_order)
+        for entity, columns in order.items():
+            table = self.tables.get(entity)
+            if (
+                table is None
+                or not isinstance(columns, tuple)
+                or len(set(columns)) != len(columns)
+                or set(columns) != set(table.columns)
+            ):
+                raise TypeError(
+                    "KernelContext.frame_column_order must order exactly the "
+                    f"projected columns of each entity; {entity!r} does not."
+                )
+        object.__setattr__(self, "frame_column_order", MappingProxyType(order))
 
 
 @dataclass(frozen=True)
