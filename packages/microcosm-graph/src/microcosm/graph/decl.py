@@ -360,8 +360,8 @@ class WeightUpdate:
 
     :class:`WeightTransition` only ever moves a weight *kind* forward, so a
     stage that recomputes the numbers of weights it already holds — a
-    sampling normalization, a re-solve of an existing calibration — cannot
-    be declared at all. This is that declaration, and it is deliberately
+    sampling normalization is the case this was extracted for — cannot be
+    declared at all. This is that declaration, and it is deliberately
     narrower than a transition (amendment 25):
 
     - The kind does not move. The executor checks the incumbent kind, the
@@ -378,8 +378,23 @@ class WeightUpdate:
       executor recomputes that binding from the incumbent axis, on cold
       execution and on replay.
 
-    Design-weight ancestry is untouched: the executor carries the original
-    design anchors exactly as it does for any other node.
+    An update replaces weight *values*; it does not re-anchor design
+    ancestry, and it is not a way to redefine a calibration cap. A row's
+    design anchor is the design weight it entered the population carrying:
+    ``Population.design_weights`` is captured once, at ``CREATE``
+    (``population.Population.from_frame``), and afterwards only carried by
+    stable entity id (``population._carry_design_weights``), which ``patch``
+    passes on explicitly so the re-derive-from-the-frame default is never
+    taken. So a design-kind update leaves every existing row's anchor
+    exactly where it was, a later ``EXPAND``'s copied rows still inherit
+    the anchor of the row they copy rather than that row's current value,
+    and ``max_weight_ratio`` with ``weight_anchor='design'`` keeps the
+    denominator it was written against. A row admitted with no ancestor is
+    anchored on the design weight the ``EXPAND`` installs for it, whatever
+    that is — it has no earlier weight to be anchored on. Re-anchoring here
+    instead would let an unrelated normalization silently widen every cap
+    declared upstream of it by that normalization's factor; a stage that
+    wants a cap against normalized weights states the ratio it means.
 
     Attributes:
         entity: The entity whose explicit weights are replaced.
@@ -566,9 +581,11 @@ class Node:
                     "WeightTransition or WeightUpdate."
                 )
             if self.mass != self.weights.mass:
+                # Reached by a WeightTransition and a WeightUpdate alike, so
+                # the text names neither (amendment 25).
                 raise GraphError(
-                    f"Node {self.id!r}: mass policy {self.mass!r} disagrees with its "
-                    f"weight transition's {self.weights.mass!r}."
+                    f"Node {self.id!r}: mass policy {self.mass!r} disagrees with "
+                    f"its declared weight change's {self.weights.mass!r}."
                 )
         declared_inputs = {(s.entity, c) for s in self.inputs for c in s.columns}
         for s in self.inputs:

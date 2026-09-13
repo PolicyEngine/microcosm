@@ -514,9 +514,9 @@ lock unchanged:
 
 25. **A weight update that keeps its kind is declarable.**
     `WeightTransition` only ever moves a kind forward, so a stage that
-    recomputes weights it already holds — a sampling normalization, a
-    re-solve of an existing calibration — could not be declared at all,
-    and the only way to express it was to misdeclare a transition.
+    recomputes weights it already holds — a sampling normalization is the
+    case this was extracted for — could not be declared at all, and the
+    only way to express it was to misdeclare a transition.
     `WeightUpdate(entity, kind, reason, mass)` is that declaration and is
     deliberately narrower than a transition: the incumbent kind, the
     declared kind and the returned weights' kind must all be the same one;
@@ -536,6 +536,34 @@ lock unchanged:
     and receipt and re-applies the REWEIGHT to the current base, so it
     re-enters the same function. A count mismatch, a missing binding and a
     binding against a different axis are each a rejection.
+
+    An update replaces weight *values* and does not re-anchor design
+    ancestry. `Population.design_weights` is captured once, at `CREATE`
+    (`Population.from_frame`), and afterwards only carried by stable entity
+    id (`_carry_design_weights`), which `patch` passes on explicitly so the
+    re-derive-from-the-frame default is never taken. A design-kind update
+    therefore leaves every existing row's anchor where it was; a later
+    `EXPAND`'s copied rows still inherit the anchor of the row they copy
+    rather than that row's current value; and `max_weight_ratio` with
+    `weight_anchor='design'` keeps the denominator it was written against —
+    the error text has always said "original design weight". A row admitted
+    with no ancestor is anchored on whatever design weight the `EXPAND`
+    installs for it, because it has no earlier weight to be anchored on;
+    that is the anchor definition applied to a row with no ancestry, not a
+    mixture. Re-anchoring on a same-kind update would instead let an
+    unrelated normalization silently widen every cap declared upstream of
+    it by that normalization's factor, which is a non-local change to an
+    already-declared contract. A stage that wants a cap against normalized
+    weights states the ratio it means.
+
+    The shared calibration kernel does **not** consume this yet:
+    `calibrate.adam@1` emits no `receipt['weight_update']`
+    (`packages/microcosm-calibrate/src/microcosm/calibrate/kernels.py`), so
+    declaring a re-solve of an existing calibration as a `WeightUpdate`
+    would be refused by the axis check as unverifiable, and its own guard
+    still asks for a `WeightTransition` by name. Re-solving an existing
+    calibration through the shared kernel is a **future consumer
+    adaptation**, not a case this amendment already covers.
 
     `WeightUpdate.to_kind` is a property, not a field, so the two
     declarations have disjoint field sets (`{entity, to_kind, mass}` and

@@ -1,11 +1,15 @@
 """Amendment 25: a same-kind weight update is declarable and axis-bound.
 
 ``WeightTransition`` only moves a kind forward, so a stage that recomputes
-weights it already holds — a sampling normalization, a re-solve of an
-existing calibration — had no declaration at all. These properties are
-about the one that does: the kind cannot move, mass cannot be free, and
-positional replacement values are refused unless the kernel binds the
-ordered entity axis they were computed against.
+weights it already holds — a sampling normalization is the case this was
+extracted for — had no declaration at all. These properties are about the
+one that does: the kind cannot move, mass cannot be free, and positional
+replacement values are refused unless the kernel binds the ordered entity
+axis they were computed against.
+
+What an update does *not* do is re-anchor design ancestry; those
+properties live beside the other design-anchor ones in
+``test_graph_population.py``.
 
 Everything here runs real shared graph operations over the invented toy
 country. No country model, engine, or build artifact is involved.
@@ -38,6 +42,7 @@ from microcosm.graph import (
     weight_update_receipt,
 )
 from microcosm.graph.canonical import normative
+from microcosm.graph.executor import _cache_record_key
 
 if "_toy" not in sys.modules:
     _SPEC = importlib.util.spec_from_file_location(
@@ -308,13 +313,15 @@ def test_update_refuses_a_short_axis(tmp_path: Path) -> None:
 # ----------------------------------------------------------------------
 
 
-def test_cold_then_required_replay_revalidates_the_axis(tmp_path: Path) -> None:
-    """A hit re-applies the REWEIGHT, so the axis is checked again.
+def test_required_replay_reapplies_the_stored_update(tmp_path: Path) -> None:
+    """A hit re-applies the REWEIGHT rather than restoring its frame.
 
     The cached result is reconstructed with its stored weights and receipt
-    and passed back through the same application, which is why replay
-    needs no parallel rule. ``resume="require"`` proves the second run read
-    the store rather than recomputing.
+    and passed back through the same application, which is why replay needs
+    no parallel rule. ``resume="require"`` proves the second run read the
+    store rather than recomputing. That the axis check *rejects* on that
+    path is the next three properties; this one only establishes that the
+    path is taken and agrees.
     """
     cold = run_update(tmp_path / "run")
     assert cold.misses() == set(cold.compiled.order)
@@ -335,6 +342,105 @@ def test_cold_then_required_replay_revalidates_the_axis(tmp_path: Path) -> None:
     original = cold.manifest.population("update").weights_for("household")
     assert replayed.kind is original.kind
     assert list(replayed.values) == list(original.values)
+
+
+def household_axis(run: object) -> list[int]:
+    """The incumbent ``survey`` household axis the update is applied to."""
+    household = run.manifest.population("survey").entity("household")
+    return household[toy.id_column("household")].tolist()
+
+
+def rebind_cached_axis(run: object, ids: list[int]) -> dict[str, object]:
+    """Rewrite the stored update record's axis binding to name ``ids``.
+
+    The cache record is filed under a key derived from the node key, not
+    from its own content, and its receipt body carries no digest of its
+    own (`_require_record_shape` validates the envelope and the execution
+    evidence), so this is a faithful stand-in for a record produced against
+    a different axis rather than a store forgery the loader would catch.
+    """
+    key = run.keys()["update"]
+    record_key = _cache_record_key(key)
+    record = run.store.load_json(record_key)
+    receipt = dict(record["receipt"])
+    receipt["weight_update"] = weight_update_receipt(ids)
+    record["receipt"] = receipt
+    run.store.put_json(record_key, record, node_key=key, verify_existing=False)
+    return record
+
+
+def test_required_replay_refuses_a_cached_binding_against_another_axis(
+    tmp_path: Path,
+) -> None:
+    """The stored binding is re-checked, not trusted, on a hit.
+
+    The cold run's record is rewritten to bind the same household ids in
+    the reverse order — the one case a count check cannot catch — and the
+    replay is then required to hit that record. It is refused, and no
+    kernel runs, so the refusal came from re-applying the cached result
+    rather than from recomputing it. This is also where the check fires:
+    ``resume="require"``'s preflight validates record *shape*, so a foreign
+    axis surfaces at apply time, mid-run.
+    """
+    cold = run_update(tmp_path / "run")
+    ids = household_axis(cold)
+    assert len(ids) > 1
+    rebind_cached_axis(cold, list(reversed(ids)))
+
+    registry = registry_with_update()
+    with pytest.raises(NodeRejectedError, match="different .household. axis"):
+        toy.run_toy(
+            update_graph(),
+            tmp_path / "run",
+            sources=cold.sources,
+            registry=registry,
+            store=ContentStore(tmp_path / "run" / "store"),
+            resume="require",
+        )
+    assert toy.total_calls(registry) == 0
+
+
+def test_required_replay_refuses_a_cached_binding_of_the_wrong_length(
+    tmp_path: Path,
+) -> None:
+    """A shortened axis is refused on replay for the same reason."""
+    cold = run_update(tmp_path / "run")
+    rebind_cached_axis(cold, household_axis(cold)[:-1])
+
+    registry = registry_with_update()
+    with pytest.raises(NodeRejectedError, match="different .household. axis"):
+        toy.run_toy(
+            update_graph(),
+            tmp_path / "run",
+            sources=cold.sources,
+            registry=registry,
+            store=ContentStore(tmp_path / "run" / "store"),
+            resume="require",
+        )
+    assert toy.total_calls(registry) == 0
+
+
+def test_an_untouched_cached_binding_still_replays(tmp_path: Path) -> None:
+    """The rewrite above is what fails, not the rewriting.
+
+    The record is written back through the same call with the binding it
+    already had, so the two properties above cannot be passing because a
+    re-filed record is unreadable.
+    """
+    cold = run_update(tmp_path / "run")
+    rebind_cached_axis(cold, household_axis(cold))
+
+    registry = registry_with_update()
+    warm = toy.run_toy(
+        update_graph(),
+        tmp_path / "run",
+        sources=cold.sources,
+        registry=registry,
+        store=ContentStore(tmp_path / "run" / "store"),
+        resume="require",
+    )
+    assert warm.misses() == set()
+    assert toy.total_calls(registry) == 0
 
 
 def test_reason_is_part_of_the_node_identity(tmp_path: Path) -> None:
