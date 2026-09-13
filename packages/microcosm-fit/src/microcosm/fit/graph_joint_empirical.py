@@ -30,6 +30,7 @@ from microcosm.graph import (
     Numeric,
     SeedSource,
     Slice,
+    canonical,
     platform_fingerprint,
     randomness,
     source_hash,
@@ -239,10 +240,17 @@ def joint_empirical_draw_node(
     source_sha256,
     source_projection,
     model_producer,
+    eligibility_column=None,
 ):
     """Draw once per original coordinate; receiving/clone IDs never seed draws."""
     _names((entity,))
     _names(recipient_key_columns)
+    if eligibility_column is not None:
+        _names((eligibility_column,))
+        _require(
+            eligibility_column not in (*recipient_key_columns, f"{entity}_id"),
+            "ELIGIBILITY_COLLISION",
+        )
     _require(
         f"{entity}_id" not in recipient_key_columns, "SUPPORT_ID_IS_NOT_SOURCE_KEY"
     )
@@ -264,10 +272,17 @@ def joint_empirical_draw_node(
         node_id,
         JointEmpiricalDrawKernel.ref,
         population=population,
-        inputs=(Slice(entity, recipient_key_columns),),
+        inputs=(
+            Slice(
+                entity,
+                recipient_key_columns
+                + (() if eligibility_column is None else (eligibility_column,)),
+            ),
+        ),
         params=dict(
             entity=entity,
             recipient_key_columns=recipient_key_columns,
+            eligibility_column=eligibility_column,
             coordinate_suffix=coordinate_suffix,
             stream=stream,
             support_json=support_json,
@@ -418,6 +433,7 @@ class JointEmpiricalFitKernel(KernelBase):
             empirical,
             weight_model,
             randomness,
+            canonical,
             dependencies=self.capabilities.dependencies,
         )
 
@@ -495,6 +511,7 @@ class JointEmpiricalDrawKernel(KernelBase):
             empirical,
             weight_model,
             randomness,
+            canonical,
             dependencies=self.capabilities.dependencies,
         )
 
@@ -518,7 +535,17 @@ class JointEmpiricalDrawKernel(KernelBase):
             source_sha256=p["donor_source_sha256"],
             support_json=p["support_json"],
         )
-        _require(_document(metadata_value.payload) == metadata, "MODEL_METADATA")
+        _document(metadata_value.payload)
+        _require(metadata_value.payload == _json(metadata), "MODEL_METADATA")
+        # Keep every real original recipient in the support Frame. The graph
+        # executor cannot construct typed empty weights for an all-false row
+        # Slice; this explicit boolean input selects draws within the kernel.
+        candidate_rows = len(table)
+        eligibility = p["eligibility_column"]
+        if eligibility is not None:
+            _require(table[eligibility].dtype == np.dtype("bool"), "ELIGIBILITY_BOOL")
+            _keys(table, p["recipient_key_columns"], unique=True)
+            table = table.loc[table[eligibility]]
         keys = _keys(table, p["recipient_key_columns"], unique=True)
         uniforms = {
             purpose: randomness.keyed_uniform(
@@ -541,6 +568,7 @@ class JointEmpiricalDrawKernel(KernelBase):
             receipt=dict(
                 protocol=PROTOCOL,
                 rows=len(keys),
+                candidate_rows=candidate_rows,
                 model_sha256=model.sha256,
                 support_sha256=p["support_sha256"],
                 donor_source_sha256=p["donor_source_sha256"],
@@ -608,7 +636,8 @@ def read_joint_empirical_draw(
         coordinate_suffix=_coordinate(coordinate_suffix),
     )
     _require(
-        set(doc) == {*expected, "rows"} and {k: doc[k] for k in expected} == expected,
+        set(doc) == {*expected, "rows"}
+        and _json({k: doc[k] for k in expected}) == _json(expected),
         "DRAW_BINDING",
     )
     rows = doc["rows"]

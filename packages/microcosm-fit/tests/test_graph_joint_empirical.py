@@ -3,6 +3,7 @@
 import hashlib
 import json
 from dataclasses import replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -30,6 +31,7 @@ from microcosm.graph import (
     Owned,
     SeedSource,
     SourceRef,
+    StoreCorruptError,
     StructuralDelta,
     compile_graph,
     keyed_uniform,
@@ -37,7 +39,7 @@ from microcosm.graph import (
     platform_fingerprint,
     run_graph,
 )
-from microcosm.graph.keys import opaque_artifact_key
+from microcosm.graph.keys import node_key, opaque_artifact_key
 
 INPUT_TYPE = ArtifactType("test.joint_empirical_source", 1)
 DONOR_SOURCE = b"invented-full-donor-projection"
@@ -346,7 +348,9 @@ def test_fit_refuses_unsupported_identity_weights_and_amounts(defect):
         "type",
         "artifact_key",
         "model",
+        "valid_model_stale_metadata",
         "metadata",
+        "metadata_count_float",
         "producer",
         "scope",
         "schema",
@@ -369,6 +373,30 @@ def test_draw_rejects_changed_declarations_or_typed_artifact_bindings(defect):
         artifacts["model"] = replace(artifacts["model"], key="0" * 64)
     elif defect == "model":
         artifacts["model"] = replace(artifacts["model"], payload=b"{}")
+    elif defect == "valid_model_stale_metadata":
+        changed = donor_table()
+        changed.loc[4, "O"] = 31.0
+        valid_model = fitted(changed).artifacts["model"]
+        empirical.JointEmpiricalModel.from_bytes(valid_model)
+        artifacts["model"] = replace(artifacts["model"], payload=valid_model)
+    elif defect == "metadata_count_float":
+        doc = json.loads(artifacts["model_metadata"].payload)
+
+        def float_counts(value):
+            if type(value) is int:
+                return float(value)
+            if type(value) is dict:
+                return {key: float_counts(item) for key, item in value.items()}
+            if type(value) is list:
+                return [float_counts(item) for item in value]
+            return value
+
+        doc["diagnostics"] = float_counts(doc["diagnostics"])
+        payload = graph._json(doc)
+        assert payload != artifacts["model_metadata"].payload
+        artifacts["model_metadata"] = replace(
+            artifacts["model_metadata"], payload=payload
+        )
     elif defect == "metadata":
         doc = json.loads(artifacts["model_metadata"].payload)
         doc["donor_source_sha256"] = "0" * 64
@@ -431,6 +459,38 @@ def test_zero_stress_and_empty_recipient_projection_are_explicit():
     assert decoded(result.artifacts["draws"], empty).values.shape == (0, 2)
 
 
+@pytest.mark.parametrize("replacement", [2.0, True, 0.0, False])
+def test_private_reader_refuses_noninteger_stream_encodings(replacement):
+    replicate = 2 if replacement == 2.0 else int(replacement)
+    node = draw_node(stream=(STREAM[0], STREAM[1], replicate, STREAM[3]))
+    table = recipient_table()
+    result = graph.JointEmpiricalDrawKernel().run(draw_context(table, node))
+    document = json.loads(result.artifacts["draws"])
+    document["stream"][2] = replacement
+    with pytest.raises(ValueError, match="DRAW_BINDING"):
+        decoded(graph._json(document), table, node)
+
+
+@pytest.mark.parametrize(
+    "defect", ["nullable", "integer", "null", "duplicate_unselected"]
+)
+def test_eligibility_is_a_complete_boolean_source_input(defect):
+    table = recipient_table()
+    table["eligible"] = False
+    if defect == "nullable":
+        table["eligible"] = pd.array(table.eligible, dtype="boolean")
+    elif defect == "integer":
+        table["eligible"] = 0
+    elif defect == "null":
+        table["eligible"] = None
+    else:
+        table.loc[1, "native_id"] = table.loc[0, "native_id"]
+    with pytest.raises(ValueError):
+        graph.JointEmpiricalDrawKernel().run(
+            draw_context(table, draw_node(eligibility_column="eligible"))
+        )
+
+
 class PrivateSupportKernel(KernelBase):
     ref = "test.joint_empirical_support@1"
     capabilities = Capabilities(
@@ -461,8 +521,16 @@ def support_frame(table):
     )
 
 
-def test_actual_cold_and_required_replay_and_scenario_key_change(tmp_path):
+@pytest.mark.parametrize("eligibility", ["all", "some", "none"])
+def test_actual_cold_and_required_replay_and_scenario_key_change(tmp_path, eligibility):
     tables = {"donors": donor_table(), "recipients": recipient_table()}
+    if eligibility != "all":
+        tables["recipients"]["eligible"] = (
+            np.arange(len(tables["recipients"])) % 2 == 0
+            if eligibility == "some"
+            else False
+        )
+    draw = draw_node(eligibility_column=None if eligibility == "all" else "eligible")
     sources = []
     creates = []
     for name, table in tables.items():
@@ -481,7 +549,7 @@ def test_actual_cold_and_required_replay_and_scenario_key_change(tmp_path):
                 artifact_outputs=(ArtifactOutput("projection", INPUT_TYPE),),
             )
         )
-    declarations = (*creates, fit_node(), draw_node())
+    declarations = (*creates, fit_node(), draw)
     compiled = compile_graph(
         Graph(country="us", sources=tuple(sources), nodes=declarations)
     )
@@ -518,14 +586,24 @@ def test_actual_cold_and_required_replay_and_scenario_key_change(tmp_path):
     assert cold.key == warm.key and all(node.hit for node in warm.nodes.values())
     assert cold.node("draw").opaque_artifacts == warm.node("draw").opaque_artifacts
     payload = store.load_bytes(cold.node("draw").opaque_artifacts["draws"])
-    decoded(payload, tables["recipients"])
+    selected = (
+        tables["recipients"]
+        if eligibility == "all"
+        else tables["recipients"].loc[tables["recipients"].eligible]
+    )
+    assert decoded(payload, selected, draw).values.shape == (len(selected), 2)
+    assert cold.node("draw").receipt["candidate_rows"] == len(tables["recipients"])
     for name, table in tables.items():
         pd.testing.assert_frame_equal(observed[name].frame.person[table.columns], table)
+    changed_draw = draw_node(
+        scenario_sha256="f" * 64,
+        eligibility_column=None if eligibility == "all" else "eligible",
+    )
     changed = compile_graph(
         Graph(
             country="us",
             sources=tuple(sources),
-            nodes=(*creates, fit_node(), draw_node(scenario_sha256="f" * 64)),
+            nodes=(*creates, fit_node(), changed_draw),
         )
     )
     rerun = run_graph(changed, sources=refs, store=store, kernels=registry)
@@ -533,6 +611,120 @@ def test_actual_cold_and_required_replay_and_scenario_key_change(tmp_path):
     assert rerun.node("draw").key != cold.node("draw").key
     new = store.load_bytes(rerun.node("draw").opaque_artifacts["draws"])
     np.testing.assert_array_equal(
-        decoded(payload, tables["recipients"]).values,
-        decoded(new, tables["recipients"], draw_node(scenario_sha256="f" * 64)).values,
+        decoded(payload, selected, draw).values,
+        decoded(new, selected, changed_draw).values,
     )
+    # Only this test's invented cache bytes are changed. Required replay must
+    # refuse the corrupted artifact, including a legitimate zero-draw payload.
+    corrupt = (
+        store.object_path(cold.node("draw").opaque_artifacts["draws"]) / "payload.bin"
+    )
+    corrupt.write_bytes(payload + b" ")
+    with pytest.raises(StoreCorruptError):
+        run_graph(
+            compiled, sources=refs, store=store, kernels=registry, resume="require"
+        )
+
+
+def _key_case(*, fit=None, draw=None):
+    creates = tuple(
+        Node(
+            name,
+            PrivateSupportKernel.ref,
+            sources=(name,),
+            structural=StructuralDelta.CREATE,
+            outputs=tuple(
+                Owned("person", column, str(table[column].dtype))
+                for column in table
+                if column != "person_id"
+            ),
+            artifact_outputs=(ArtifactOutput("projection", INPUT_TYPE),),
+        )
+        for name, table in (
+            ("donors", donor_table()),
+            ("recipients", recipient_table()),
+        )
+    )
+    return compile_graph(
+        Graph(
+            "us",
+            tuple(SourceRef(name, "frame-store") for name in ("donors", "recipients")),
+            (
+                *creates,
+                fit_node() if fit is None else fit,
+                draw_node() if draw is None else draw,
+            ),
+        )
+    )
+
+
+def _keys_for(compiled, draw_implementation):
+    keys = {}
+    for name in compiled.order:
+        kernel = (
+            graph.JointEmpiricalFitKernel()
+            if name == "fit"
+            else graph.JointEmpiricalDrawKernel()
+            if name == "draw"
+            else PrivateSupportKernel()
+        )
+        keys[name] = node_key(
+            compiled,
+            name,
+            keys,
+            draw_implementation if name == "draw" else kernel.implementation_hash(),
+            {"donors": "d" * 64, "recipients": "e" * 64},
+            kernel_capabilities=kernel.capabilities,
+        )
+    return keys
+
+
+def test_actual_canonical_source_bytes_change_implementation_and_draw_key(monkeypatch):
+    compiled = _key_case()
+    kernel = graph.JointEmpiricalDrawKernel()
+    before = kernel.implementation_hash()
+    key_before = _keys_for(compiled, before)["draw"]
+    target = Path(graph.canonical.__file__).resolve()
+    original = Path.read_bytes
+    reads = []
+
+    def changed(path):
+        data = original(path)
+        if path.resolve() == target:
+            reads.append(path)
+            return data + b"\n# invented canonical implementation revision\n"
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", changed)
+    after = kernel.implementation_hash()
+    assert reads and before != after
+    assert key_before != _keys_for(compiled, after)["draw"]
+
+
+@pytest.mark.parametrize(
+    "change", ["donor_source", "recipient_source", "support", "transport", "stream"]
+)
+def test_actual_compiler_keys_bind_each_model_and_draw_revision(change):
+    baseline = _key_case()
+    fit, draw = fit_node(), draw_node()
+    if change == "donor_source":
+        fit, draw = (
+            fit_node(source_sha256="f" * 64),
+            draw_node(donor_source_sha256="f" * 64),
+        )
+    elif change == "recipient_source":
+        draw = draw_node(source_sha256="f" * 64)
+    elif change == "support":
+        support = replace(policy(), policy_id="another-explicit-test-policy")
+        fit, draw = fit_node(support=support), draw_node(support=support)
+    elif change == "transport":
+        draw = draw_node(transport=empirical.JointTransport(0.5, (2.0, 3.0)))
+    else:
+        draw = draw_node(stream=(*STREAM[:3], STREAM[3] + 1))
+    implementation = graph.JointEmpiricalDrawKernel().implementation_hash()
+    before, after = (
+        _keys_for(baseline, implementation),
+        _keys_for(_key_case(fit=fit, draw=draw), implementation),
+    )
+    assert before["draw"] != after["draw"]
+    assert (before["fit"] != after["fit"]) == (change in ("donor_source", "support"))

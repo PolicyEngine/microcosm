@@ -49,6 +49,16 @@ Changing selected recipient sampling does not enter the numerical model bytes.
 ## Draw contract
 
 `joint_empirical_draw_node` declares the original-recipient coordinate Slice. It
+can also declare an exact nonnullable Boolean `eligibility_column`. The support
+Frame then contains all real original recipients; the kernel selects eligible
+coordinates internally, with candidate/draw counts in its receipt. An all-false
+column produces a legitimate zero-row draw while retaining the nonempty support
+Frame. This uses no sentinel person and does not relax Frame or Weights: a
+row-masked empty Slice would itself require forbidden empty projected weights.
+An empty direct DataFrame test is only a numerical context test, not this graph
+path. Invalid or duplicate unselected coordinates are still refused.
+
+The node
 consumes model and metadata from the same producer and the separate typed
 recipient `source_projection`. It checks platform scope, artifact store identity,
 the numerical model's complete plain-data encoding, support agreement, donor
@@ -96,4 +106,13 @@ object construction. These are ceilings, not measured national capacity. Before
 large use, measure bytes per row, working-memory peaks and repeated validation
 cost on small samples. A separately reviewed compact transport may be needed.
 Implementation identity includes this adapter, the numerical model, weight
-resolver and keyed-randomness module, with NumPy/Pandas platform-bitwise scope.
+resolver, keyed-randomness module and its canonical serializer implementation,
+with NumPy/Pandas platform-bitwise scope. Serialized metadata and draw-header
+bindings compare canonical bytes, preserving integer/Boolean/float distinctions.
+
+The corrective source tests add valid changed-model/stale-metadata refusal,
+noninteger encoded stream/count refusal, canonical source identity and actual
+compiler-key changes for source/support/transport/stream revisions. The actual
+four-node runtime test now covers all, some and zero eligible recipients with
+cold/required replay and refusal of corrupted invented cache payloads. These
+tests are authored and UNRUN pending a separately approved bounded runtime.
