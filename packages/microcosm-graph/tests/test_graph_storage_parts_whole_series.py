@@ -71,6 +71,10 @@ _NAN_TWO = _nan(0x2)
 _SUBNORMAL = 5e-324
 
 
+class _Money(float):
+    """A float subclass: an object leaf must still encode by value."""
+
+
 def _object_series(values):
     array = np.empty(len(values), dtype=object)
     for position, value in enumerate(values):
@@ -137,6 +141,16 @@ _CASES = {
     ),
     "object-float-signs": lambda: _object_series((-0.0, 0.0, _NAN_ONE, _NAN_TWO)),
     "object-big-int": lambda: _object_series((2**70, -(2**70))),
+    "object-numpy-leaves": lambda: _object_series(
+        (
+            np.float64(-0.0),
+            np.float32(1.5),
+            np.int64(7),
+            np.bool_(True),
+            np.bytes_(b"x"),
+        )
+    ),
+    "object-float-subclass": lambda: _object_series((_Money(1.5), _Money(-0.0))),
     "strided": lambda: pd.Series(np.arange(12, dtype=np.int64))[::3],
     "reversed": lambda: pd.Series(np.arange(6, dtype=np.float64))[::-1],
     "frame-column-slice": lambda: pd.DataFrame(
@@ -371,3 +385,20 @@ def test_an_unencodable_object_leaf_still_fails_closed():
         _storage_parts(series, slice(None))
     with pytest.raises(PopulationError, match="storage-object-leaf"):
         _storage_parts(series, np.ones(1, dtype=np.bool_))
+
+
+def test_object_float_leaves_encode_by_value_across_float_types():
+    """numpy floats and float subclasses widen exactly like a plain float."""
+
+    # NaN is left out on purpose: whether numpy round-trips a payload is a
+    # separate question from this helper, and is pinned in the executor test.
+    for value in (1.5, -0.0, float("inf"), 5e-324):
+        plain = _object_series((value,))
+        for equivalent in (np.float64(value), _Money(value)):
+            assert _storage_parts(plain, slice(None)) == _storage_parts(
+                _object_series((equivalent,)), slice(None)
+            )
+    # np.float32 is a different value, so it must not collide with float64.
+    assert _storage_parts(_object_series((np.float32(0.1),)), slice(None)) != (
+        _storage_parts(_object_series((0.1,)), slice(None))
+    )
