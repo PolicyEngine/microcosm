@@ -21,6 +21,90 @@ shared = graph.shared
 OPTIONS = dict(scales=(1.0, 1.0, 1.0, 1.0), atol=1e-10, rtol=1e-12, n_estimators=2)
 
 
+def test_joint_fit_exclusion_preserves_independent_asec_components(actual):  # noqa: F811
+    """Actual invented source qualification and pure attachment, without fitting.
+
+    Native fixture person107 reports interest/dividends but survivor source8
+    excludes the person from the joint fit. Those independent observations
+    remain usable on both clones. ACS draw inputs below are invented numbers,
+    not fitted or authenticated model artifacts; they only exercise the
+    separate recipient assignment in the pure attachment function.
+    """
+    from microcosm.build.us_runtime import current_property_income_sources as sources
+    from microcosm.build.us_runtime import graph_property_tax_leaves as tax
+
+    live, qualified, _ = actual
+    basis = qualified.donor_basis
+    excluded = basis.person.index[basis.person.native_person_id.eq(107)]
+    assert len(excluded) == 1
+    origin = excluded[0]
+    assert basis.exclusions.loc[origin, "survivor_possible_property"]
+    assert not basis.person.loc[origin, "joint_component_fit_eligible"]
+    assert origin not in qualified.donor_columns.index
+    assert origin not in qualified.recipient_columns.index
+    assert basis.provenance.loc[origin, "interest.TRDINT_VAL_amount_known"]
+    assert basis.provenance.loc[origin, "dividend.DIV_VAL_amount_known"]
+    assert basis.provenance.loc[origin, "dividend.SUR_SC2_code"] == 8
+    source_seal = sources.property_income_sources_seal(qualified)
+    frame = live.clone_population.frame
+    frame_seal = sources._frame_seal(frame)
+
+    draws = pd.DataFrame(
+        np.tile([11.0, 7.0, 13.0, -2.0], (len(qualified.recipient_columns), 1)),
+        index=qualified.recipient_columns.index,
+        columns=graph.PROPERTY_DRAW_COLUMNS,
+    )
+    reconciled = graph._reconciliation_result(
+        qualified, graph.PropertyIncomeOptions(**OPTIONS), draws
+    )
+    legacy = pd.DataFrame(0.0, index=draws.index, columns=shared.TARGETS)
+    columns = graph.complete_property_columns(
+        qualified, frame, draws, reconciled, legacy
+    )
+    people = frame.person.copy(deep=True)
+    for (entity, name), values in columns.items():
+        assert entity == "person"
+        np.testing.assert_array_equal(values.index, people.person_id)
+        people[name] = values.array.copy()
+    split = tax.split_property_tax_leaves(people)
+    source_ids = people[shared.provenance.support_source_id_column("person")]
+    paired = people.loc[source_ids.eq(origin)]
+    assert len(paired) == 2
+    assert set(paired[shared.provenance.support_clone_index_column("person")]) == {
+        0,
+        1,
+    }
+    for component, known_column, primary, complement in (
+        (
+            graph.PROPERTY_COMPONENTS[0],
+            "interest.TRDINT_VAL_amount",
+            *tax.TAX_LEAF_COLUMNS[:2],
+        ),
+        (
+            graph.PROPERTY_COMPONENTS[2],
+            "dividend.DIV_VAL_amount",
+            *tax.TAX_LEAF_COLUMNS[2:],
+        ),
+    ):
+        amount = np.float64(basis.provenance.loc[origin, known_column])
+        assert amount == 500.0
+        np.testing.assert_array_equal(
+            paired[component].to_numpy().view("uint64"),
+            np.repeat(amount, 2).view("uint64"),
+        )
+        parts = split.loc[paired.person_id, [primary, complement]]
+        assert np.isfinite(parts.to_numpy()).all()
+        np.testing.assert_array_equal(parts.sum(axis=1), np.repeat(amount, 2))
+    assert paired[list(graph.PROPERTY_DRAW_COLUMNS)].isna().all().all()
+    # Every original ASEC component, including unknowns, survives unfiltered.
+    for original_id, row in basis.person.iterrows():
+        pair = people.loc[source_ids.eq(original_id)]
+        for component in graph.PROPERTY_COMPONENTS:
+            np.testing.assert_array_equal(pair[component], np.repeat(row[component], 2))
+    assert sources.property_income_sources_seal(qualified) == source_seal
+    assert sources._frame_seal(frame) == frame_seal
+
+
 def test_explicit_frozen_options_and_complete_owned_roster():
     options = graph.PropertyIncomeOptions(**OPTIONS)
     assert graph.codec.decode_json(options.to_bytes()) == graph.codec.decode_json(
