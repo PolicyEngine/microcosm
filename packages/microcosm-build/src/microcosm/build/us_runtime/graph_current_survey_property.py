@@ -39,6 +39,7 @@ from microcosm.graph import population as population_ops
 from microcosm.graph.kernel import KernelContext
 from microcosm.graph.keys import opaque_artifact_key
 
+from . import current_property_completion_routing as completion
 from . import current_property_income_sources as sources
 from . import current_survey_predictors as shared
 from . import graph_current_survey_predictors as financial
@@ -79,10 +80,12 @@ class PropertyIncomeOptions:
     atol: float
     rtol: float
     n_estimators: int
+    completion_routing: bool = False
 
     def __post_init__(self):
         # Reuse the real numeric declaration's domain checks, including finite
         # positive scales and finite nonnegative tolerances; no fitted model.
+        require(type(self.completion_routing) is bool, "COMPLETION_ROUTING_OPTION")
         self.nodes((PROPERTY_REPORTED_TOTAL,))
 
     def nodes(self, features):
@@ -102,6 +105,14 @@ class PropertyIncomeOptions:
         return codec.encode_json(self.document())
 
     def document(self):
+        require(type(self.completion_routing) is bool, "COMPLETION_ROUTING_OPTION")
+        value = self.model_document()
+        if self.completion_routing:
+            value["completion_routing"] = True
+        return value
+
+    def model_document(self):
+        """Numerical settings; completion diagnostics never alter these."""
         return {
             "scales": self.scales,
             "atol": self.atol,
@@ -207,6 +218,38 @@ def _projection_values(qualified):
     }
 
 
+def _projection_result(qualified, clone_frame, options):
+    """Produce diagnostics once at the source boundary, never branch checks."""
+    require(type(options) is PropertyIncomeOptions, "OPTIONS_TYPE")
+    require(type(options.completion_routing) is bool, "COMPLETION_ROUTING_OPTION")
+    projected = _projection_values(qualified)
+    receipt = codec.decode_json(projected["projection"])
+    if options.completion_routing:
+        routing = completion.build_property_completion_routing(qualified, clone_frame)
+        projected["completion_routing"] = routing.payload
+        receipt["completion_routing"] = {
+            "summary": completion.property_completion_public_summary(routing),
+            "private_artifact": "completion_routing",
+            "private_artifact_sha256": codec.sha(routing.payload),
+        }
+    return KernelResult(artifacts=projected, receipt=receipt)
+
+
+def _checked_projection_result(qualified, clone_frame, options, artifacts):
+    """Independently reconstruct bytes, including diagnostics on required replay."""
+    result = _projection_result(qualified, clone_frame, options)
+    require(
+        {name for node, name in artifacts if node == PROJECTION_NODE}
+        == set(result.artifacts)
+        and all(
+            artifacts[PROJECTION_NODE, name] == payload
+            for name, payload in result.artifacts.items()
+        ),
+        "PROJECTION_ARTIFACTS",
+    )
+    return result
+
+
 def _source_edges():
     return (
         ArtifactInput(
@@ -289,6 +332,7 @@ def _attach_edges():
 
 def _params(qualified, host_pins, options):
     require(type(options) is PropertyIncomeOptions, "OPTIONS_TYPE")
+    require(type(options.completion_routing) is bool, "COMPLETION_ROUTING_OPTION")
     # Reuse exact host-pin validation; tree count here only validates an option.
     financial._params(qualified.shared_predictors, host_pins, options.n_estimators)
     projected = _projection_values(qualified)
@@ -325,12 +369,20 @@ def current_survey_property_nodes(qualified, clone_frame, *, host_pins, options)
         CurrentSurveyPropertyProjectionKernel.ref,
         population=financial.DONOR_NODE,
         inputs=financial._inputs(qualified.shared_predictors.donor_frame),
-        params=params,
+        params={
+            **params,
+            **({"completion_routing": True} if options.completion_routing else {}),
+        },
         artifact_inputs=_host_edges(qualified),
         artifact_outputs=(
             ArtifactOutput("projection", PROJECTION_TYPE),
             ArtifactOutput("donor_matrix", model_input.RECIPIENT_MATRIX_TYPE),
             ArtifactOutput("recipient_matrix", model_input.RECIPIENT_MATRIX_TYPE),
+            *(
+                (completion.property_completion_artifact_output(),)
+                if options.completion_routing
+                else ()
+            ),
         ),
     )
     branches = []
@@ -383,7 +435,7 @@ def current_survey_property_nodes(qualified, clone_frame, *, host_pins, options)
         population=host.survey_clone.COMBINED_CLONE_NODE,
         inputs=_attachment_inputs(clone_frame),
         outputs=owned_columns(),
-        params={**params, **options.document()},
+        params={**params, **options.model_document()},
         artifact_inputs=_attach_edges(),
         description="Attach source components or one reconciled original ACS draw to both initial clones; preserve legacy tax leaves and CAP limitation.",
     )
@@ -599,19 +651,52 @@ def reconstruct_property_results(
     current_survey_property_nodes(
         qualified, clone_frame, host_pins=host_pins, options=options
     )
-    projected = _projection_values(qualified)
-    require(
-        all(
-            artifacts[PROJECTION_NODE, name] == payload
-            for name, payload in projected.items()
-        ),
-        "PROJECTION_ARTIFACTS",
+    source_result = _checked_projection_result(
+        qualified, clone_frame, options, artifacts
     )
-    result = {
-        PROJECTION_NODE: KernelResult(
-            artifacts=projected, receipt=codec.decode_json(projected["projection"])
-        )
-    }
+    return _reconstruct_property_values(
+        qualified,
+        clone_frame,
+        options=options,
+        artifacts=artifacts,
+        legacy_matrix_producer_key=legacy_matrix_producer_key,
+        source_result=source_result,
+    )
+
+
+def _reconstruct_attachment_results(
+    qualified, clone_frame, *, options, artifacts, legacy_matrix_producer_key
+):
+    """Attach consumes its three declared source edges, without diagnostics.
+
+    This private numerical helper grants no source/artifact authority. The
+    retaining host separately reconstructs the full projection artifact roster.
+    """
+    source_result = _checked_projection_result(
+        qualified, clone_frame, replace(options, completion_routing=False), artifacts
+    )
+    return _reconstruct_property_values(
+        qualified,
+        clone_frame,
+        options=options,
+        artifacts=artifacts,
+        legacy_matrix_producer_key=legacy_matrix_producer_key,
+        source_result=source_result,
+    )
+
+
+def _reconstruct_property_values(
+    qualified,
+    clone_frame,
+    *,
+    options,
+    artifacts,
+    legacy_matrix_producer_key,
+    source_result,
+):
+    # Callers have checked the source artifact bytes they actually consume.
+    projected = source_result.artifacts
+    result = {PROJECTION_NODE: source_result}
     for donor, filter_id, columns_id, frame, table in (
         (
             True,
@@ -713,6 +798,8 @@ class _Kernel(host._CurrentSurveyKernel):
                     "fragment": source_hash(
                         sys.modules[__name__],
                         sources,
+                        completion,
+                        completion.provenance,
                         sources.acs,
                         sources.interest,
                         sources.routing,
@@ -824,10 +911,7 @@ class CurrentSurveyPropertyProjectionKernel(_Kernel):
             "SHARED_PREDICTOR_BYTES",
         )
         host.shared.siblings(context, ("predictor_projection", "predictor_matrix"))
-        projected = _projection_values(qualified)
-        return KernelResult(
-            artifacts=projected, receipt=codec.decode_json(projected["projection"])
-        )
+        return _projection_result(qualified, self.clone_population.frame, self.options)
 
 
 class CurrentSurveyPropertyFilterKernel(_Kernel):
@@ -956,10 +1040,9 @@ class CurrentSurveyPropertyAttachKernel(_Kernel):
                 ),
                 "LEGACY_LEAF_CHANGED:" + name,
             )
-        results = reconstruct_property_results(
+        results = _reconstruct_attachment_results(
             qualified,
             frame,
-            host_pins=self.host_pins,
             options=self.options,
             artifacts=loaded,
             legacy_matrix_producer_key=legacy_key,

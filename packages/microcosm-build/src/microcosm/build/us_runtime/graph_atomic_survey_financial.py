@@ -646,6 +646,8 @@ def _live(property_income=None, rebase_property_taxes=False):
         modules = (
             *modules,
             extension,
+            extension.completion,
+            extension.completion.provenance,
             extension.sources,
             current_asec_property_basis,
             extension.sources.acs,
@@ -660,6 +662,15 @@ def _live(property_income=None, rebase_property_taxes=False):
         result["property_contract"] = values.source._runtime_marker(
             (
                 extension.PROTOCOL,
+                extension.completion.PROTOCOL,
+                extension.completion.PROPERTY_COMPLETION_TYPE,
+                extension.completion._COMPONENT_FIELDS,
+                extension.completion._ASEC_STATUSES,
+                extension.completion._ACS_STATUSES,
+                extension.completion._LITERAL_STATUSES,
+                extension.completion._PUBLIC_ROUTES,
+                extension.completion._PUBLIC_REASONS,
+                extension.completion._PUBLIC_MEASURES,
                 extension.PREFIX,
                 extension.CAP_LIMITATION,
                 extension.LEGACY_DIFFERENCE,

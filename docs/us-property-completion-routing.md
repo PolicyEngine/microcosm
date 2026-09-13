@@ -37,3 +37,32 @@ These are support diagnostics, not prevalence estimates or calibrated totals. Ov
 `property_completion_artifact_output()` supplies the typed `completion_routing` artifact declaration. This additive slice does not connect a new node or change the accepted38-node host. The next host integration should emit the payload at the existing property source-projection boundary, bind the actual retained source and clone descriptions, and recompute/compare it during requalification and reconstruction. That host change requires its own source/graph identity and observation checks.
 
 This operation does not create a child-income measurement model, fill an unknown adult input, assert that the PUF covers a missing source population or relax the existing completeness gate.
+
+## Opt-in host artifact
+
+`PropertyIncomeOptions(completion_routing=True, ...)` requests a fourth typed
+artifact, `completion_routing`, from the existing
+`survey_property.source_projection` node. The default remains disabled and
+retains the previous canonical option payload. Neither setting changes the
+numerical model declarations, source universes, clone attachment or tax split.
+An implementation source edit does change executable cache identities.
+
+The private artifact contains the complete original-person, component, reason
+and initial-clone tables. The source receipt contains an explicitly allowlisted
+aggregate summary and its private artifact digest. The actual graph HTML and
+text views expose receipts, so private identifiers and per-person values must
+never enter this summary. Aggregate DESIGN support is descriptive; it is not
+calibrated representation, a release gate or a disclosure certificate.
+
+Source execution reuses its existing qualification and builds routing once.
+Independent host reconstruction checks exact diagnostic bytes and the expected
+aggregate receipt on cold execution and required replay. Ordinary branch checks
+retain their existing three source-artifact checks and do not recompute routing.
+The host retains all declared artifact hashes and canonical options; its checked
+parent/source lifetime remains the authority boundary. The pure routing result
+and the artifact grant no source or complete-parent authority.
+
+The bounded integration controls exercise qualified invented source descriptions,
+option/declaration behavior, tamper refusal and the real public serializers.
+Actual 38-node host acceptance is a separate test scope; this feature does not
+claim native completion, PUF readiness or a released dataset.

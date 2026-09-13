@@ -597,3 +597,118 @@ def build_property_completion_routing(
     return PropertyCompletionRouting(
         person, components, reasons, clones, summary, payload
     )
+
+
+# Explicit publication vocabulary. A new source/route reason needs review here
+# before it can enter a public receipt; never export arbitrary summary labels.
+_PUBLIC_ROUTES = frozenset(
+    {
+        "unsupported_under15_measurement",
+        "source_review_required",
+        "carry_known_components",
+        "existing_acs_anchor_decomposition",
+        "acs_anchor_completion_review",
+        "asec_component_completion_review",
+    }
+)
+_PUBLIC_REASONS = frozenset(
+    {
+        "under15",
+        "source_error",
+        "contradictory_evidence",
+        "positive_outside_universe",
+        "missing_source_evidence",
+        "ambiguous_zero",
+        "niu",
+        "ordinary_interest_unknown",
+        "dividends_unknown",
+        "joint:under15",
+        "joint:reported_total_unknown",
+        "joint:ordinary_interest_unknown",
+        "joint:retirement_interest_unknown",
+        "joint:dividends_unknown",
+        "joint:property_receipts_unknown",
+        "joint:interest_discrepancy_unknown",
+        "joint:interest_discrepancy_nonzero",
+        "joint:other_income_possible_property",
+        "joint:other_income_route_unresolved",
+        "joint:survivor_possible_property",
+        "joint:survivor_route_unresolved",
+        "joint:survivor_additional_sources_unresolved",
+    }
+)
+_PUBLIC_MEASURES = (
+    "person_count",
+    "household_count",
+    "design_weighted_person_mass",
+    "union_household_design_mass",
+)
+
+
+def property_completion_public_summary(value: PropertyCompletionRouting) -> dict:
+    """Allowlisted aggregate description only; private row payload stays local.
+
+    DESIGN measures describe original support, not calibrated representation or
+    independently disclosive proof. This function does not grant source custody.
+    """
+    _require(type(value) is PropertyCompletionRouting, "PUBLIC_TYPE")
+    table = value.summary
+    labels = (
+        {"all"}
+        | {"route:" + r for r in _PUBLIC_ROUTES}
+        | {"reason:" + r for r in _PUBLIC_REASONS}
+    )
+    _require(
+        type(table) is pd.DataFrame
+        and table.index.is_unique
+        and table.index.name == "selection"
+        and set(table.index) <= labels
+        and "all" in table.index
+        and tuple(table.columns) == _PUBLIC_MEASURES,
+        "PUBLIC_ROSTER",
+    )
+    rows = []
+    for label, row in zip(table.index, table.itertuples(index=False), strict=True):
+        counts, masses = row[:2], row[2:]
+        _require(
+            all(
+                isinstance(n, (int, np.integer))
+                and not isinstance(n, (bool, np.bool_))
+                and n >= 0
+                for n in counts
+            )
+            and all(
+                isinstance(n, (float, np.floating)) and np.isfinite(n) and n >= 0
+                for n in masses
+            ),
+            "PUBLIC_VALUES",
+        )
+        rows.append(
+            {
+                "selection": label,
+                **dict(
+                    zip(
+                        _PUBLIC_MEASURES,
+                        (
+                            int(counts[0]),
+                            int(counts[1]),
+                            float(masses[0]),
+                            float(masses[1]),
+                        ),
+                        strict=True,
+                    )
+                ),
+            }
+        )
+    return {
+        "protocol": PROTOCOL,
+        "stage": "before_property_models",
+        "amounts_assigned": False,
+        "model_executed": False,
+        "source_authority": False,
+        "complete_parent_authority": False,
+        "support": "original_household_DESIGN; descriptive_only",
+        "routes_mutually_exclusive": True,
+        "reasons_overlap": True,
+        "summary": rows,
+    }
