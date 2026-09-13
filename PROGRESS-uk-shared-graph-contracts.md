@@ -204,3 +204,53 @@ and the CI group inventory only.
 - F3/F4: detach the exposed frame objects; digest all three fields.
 - F2: source-backed rejection plus the anchor-invariance tests.
 - F5/F6: correct the docs' motivating claim and the disclosure.
+
+## Fix round, resumed (2026-09-13)
+
+The first fix-round process died on an external API DNS error after two
+commits. Nothing was reset; the checkout resumed clean at `6ec46d62c`.
+`origin/main` re-fetched on resume: still `15ebde806`, branch 8 ahead / 0
+behind. Restrictions unchanged — no pytest, import, engine, native source,
+install, publication or disallowed log; source, stdlib `ast`, `ruff` and
+the CI group inventory only.
+
+### Verified on resume, not assumed from the commit messages
+
+- `executor.py` boundary selection: `boundary_mass_logs[node.id]` is
+  written at exactly one place — beside `populations[node.id] = updated`
+  in the structural arm of the admission step (`executor.py:2669-2674`),
+  which both a cold run and a restored hit reach — and read at exactly one
+  place, the `StructuralDelta.NONE` arm that projects a context
+  (`executor.py:2508`). Its key set is therefore a subset of
+  `populations`', so the ordinary lookup cannot miss a version whose
+  incumbent lookup succeeded.
+- Key binding re-read at source: `keys.py:206-209` binds an ordinary
+  node's `population_input` to `frame_key(version_key)` only, and
+  `keys.py:214-225` binds a structural node's `base` *and* `members`. The
+  projection matches that split exactly.
+- `store.py:1157-1174`/`1334-1368` round-trip `Frame.mass_log`, so a
+  restored boundary carries the same records a computed one does.
+- Detachment: `Frame.__init__` calls `_freeze_metadata`
+  (`bundle.py:112`), and `_freeze_metadata_value` rebuilds every nested
+  mapping, tuple and frozenset (`bundle.py:1382-1405`), so the
+  `_observer_snapshot` metadata hand-off shares no mutable-by-`setattr`
+  object with its parent. `_project_context` deep-copies the metadata and
+  rebuilds every record through `_detached_record`.
+- `_context_digest` additions cannot raise while computing the comparison
+  that reports a mutation: `canonical_json` raises only `TypeError` /
+  `ValueError` (`canonical.py:_json_value`), `_encode_frame_metadata`
+  only `TypeError` (`store.py:1060-1082`), and both are caught alongside
+  `RecursionError`.
+- `_project_context`'s only other caller,
+  `packages/microcosm-build/tests/test_uk_uc_capital_coherence.py:223`,
+  passes no `mass_log` and so takes the documented empty default.
+- `ruff check .` clean; `ruff format --check` clean on every touched file;
+  stdlib `ast` parses clean.
+
+### Next
+
+- F4b: the required-replay axis property is still the weak one the review
+  named. Strengthen it.
+- F2: source-backed rejection plus the anchor-invariance properties.
+- F5/F6: the unsupported `calibrate.adam` motivating claim, the
+  transition-only wording, and an accurate receipts disclosure.
