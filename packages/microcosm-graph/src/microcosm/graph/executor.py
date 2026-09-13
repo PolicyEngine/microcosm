@@ -17,7 +17,7 @@ from types import MappingProxyType
 import numpy as np
 import pandas as pd
 
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights
 
 from . import keys as graph_keys
 from .artifact_edges import scope_payload, typed_contracts, value_from_descriptor
@@ -561,7 +561,17 @@ def _project_context(
     tolerances: Mapping[tuple[str, str], Tolerance | None],
     numerics: Mapping[tuple[str, str], NumericScope],
     artifacts: Mapping[str, ArtifactValue] | None = None,
+    mass_log: tuple[MassChangeRecord, ...] = (),
 ) -> KernelContext:
+    """Project one node's frozen inputs out of the population it reads.
+
+    ``mass_log`` is the ``Frame`` mass log this node's *key* binds, which is
+    not in general the cumulative log carried by ``population``: see the
+    boundary selection in :func:`run_graph`.  It defaults to the empty log,
+    so a caller that projects a context outside the executor states no mass
+    history rather than inheriting one it never bound (amendment 26).
+    """
+
     if population is None:
         return KernelContext(
             node=node,
@@ -675,7 +685,7 @@ def _project_context(
         sources=MappingProxyType({name: sources[name] for name in node.sources}),
         artifacts={} if artifacts is None else artifacts,
         frame_metadata=frame.metadata,
-        frame_mass_log=frame.mass_log,
+        frame_mass_log=mass_log,
         frame_column_order=MappingProxyType(column_order),
         tolerances=tolerances,
         numerics=numerics,
@@ -2297,6 +2307,11 @@ def run_graph(
         _preflight_require(compiled, store, keys, implementations, kernels)
 
     populations: dict[str, Population] = {}
+    # Each structural version's ``Frame`` mass log as that version was
+    # admitted.  ``populations`` cannot answer this: an ordinary member
+    # replaces its version's entry there, so by the time a later member runs
+    # the boundary state is gone.
+    boundary_mass_logs: dict[str, tuple[MassChangeRecord, ...]] = {}
     receipts: dict[str, NodeReceipt] = {}
     receipt_payloads: dict[str, Mapping[str, object]] = {}
     for node_id in compiled.order:
@@ -2417,6 +2432,25 @@ def run_graph(
                 )
                 for binding in node.artifact_inputs
             }
+            if incumbent is None:
+                incoming_mass_log: tuple[MassChangeRecord, ...] = ()
+            elif node.structural is StructuralDelta.NONE:
+                # An ordinary node's key binds its version's structural
+                # boundary and the owners of the columns it declared
+                # (``population_input`` and ``input_artifacts`` in keys.py) --
+                # never a sibling that merely ran earlier in the same version
+                # and appended a mass record.  Projecting the cumulative log
+                # would hand the kernel an input its own key does not bind, so
+                # adding or re-parameterising that sibling would change what a
+                # node sees while its key, and therefore its cache entry,
+                # stayed put.  It is projected from the boundary instead.
+                incoming_mass_log = boundary_mass_logs[compiled.versions[node_id]]
+            else:
+                # A structural node's key binds its base *and* every ordinary
+                # member of that version (``members`` in keys.py, built from
+                # ``compiled.predecessors``), so the base version's cumulative
+                # log is bound by the key that will name its cache entry.
+                incoming_mass_log = incumbent.frame.mass_log
             context = _project_context(
                 node,
                 incumbent,
@@ -2425,6 +2459,7 @@ def run_graph(
                 tolerances=input_tolerances,
                 numerics=input_numerics,
                 artifacts=artifact_values,
+                mass_log=incoming_mass_log,
             )
             before = _context_digest(context)
             try:
@@ -2570,6 +2605,9 @@ def run_graph(
             populations[compiled.versions[node_id]] = updated
         else:
             populations[node.id] = updated
+            # Captured at admission, so cold execution and a restored cache
+            # hit record the same boundary: both reach this line.
+            boundary_mass_logs[node.id] = updated.frame.mass_log
 
         if _population_observer is not None:
             _population_observer(node_id, _observer_snapshot(updated))

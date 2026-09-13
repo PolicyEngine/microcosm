@@ -21,7 +21,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from microcosm.frame import Frame, MassChangeRecord
+from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights
 from microcosm.graph import (
     ContentStore,
     Graph,
@@ -30,6 +30,8 @@ from microcosm.graph import (
     Node,
     Owned,
     Slice,
+    StructuralDelta,
+    WeightTransition,
     compile_graph,
     run_graph,
 )
@@ -44,6 +46,7 @@ toy = sys.modules["_toy"]
 
 SOURCE_REF = "source.metadata@1"
 PROBE_REF = "probe.frame_context@1"
+REWEIGHT_PROBE_REF = "probe.frame_context_reweight@1"
 
 #: Metadata the CREATE kernel puts on the version, including a nested value
 #: so the frozen projection is exercised rather than a flat string map.
@@ -72,6 +75,22 @@ class MetadataSource(toy.ToyKernel):
         )
 
 
+def observed(context: KernelContext) -> dict[str, object]:
+    """Everything a property asserts about one node's frame view."""
+    return {
+        "node": context.node.id,
+        "column_order": {
+            entity: tuple(columns)
+            for entity, columns in context.frame_column_order.items()
+        },
+        "projected": {
+            entity: tuple(table.columns) for entity, table in context.tables.items()
+        },
+        "metadata": dict(context.frame_metadata),
+        "mass_log": tuple(context.frame_mass_log),
+    }
+
+
 class FrameContextProbe(toy.ToyKernel):
     """Owns one column and records the frame view it was handed.
 
@@ -85,25 +104,14 @@ class FrameContextProbe(toy.ToyKernel):
         self.seen: list[dict[str, object]] = []
 
     def compute(self, context: KernelContext) -> KernelResult:
-        self.seen.append(
-            {
-                "node": context.node.id,
-                "column_order": {
-                    entity: tuple(columns)
-                    for entity, columns in context.frame_column_order.items()
-                },
-                "projected": {
-                    entity: tuple(table.columns)
-                    for entity, table in context.tables.items()
-                },
-                "metadata": dict(context.frame_metadata),
-                "mass_log": tuple(context.frame_mass_log),
-            }
-        )
+        self.seen.append(observed(context))
         ids = pd.Index(context.tables["person"]["person_id"], name="person_id")
+        # The output *is* the mass-log view, so the stored bytes of a node
+        # differ whenever what it was shown differs. A key that survives an
+        # unrelated sibling therefore has to have been shown the same log.
         result_columns = {
             ("person", str(context.params["target"])): pd.Series(
-                1.0, index=ids, dtype="float64"
+                float(len(context.frame_mass_log)), index=ids, dtype="float64"
             )
         }
         reason = context.params.get("mass_reason")
@@ -126,12 +134,39 @@ class FrameContextProbe(toy.ToyKernel):
         )
 
 
+class ReweightProbe(toy.ToyKernel):
+    """REWEIGHT: records the frame view it was handed, then scales weights.
+
+    A structural node, unlike an ordinary one, has a key that binds its
+    base *and* every ordinary member of that version, so it is the node
+    that may be shown the version's cumulative mass log.
+    """
+
+    def __init__(self, ref: str, capabilities, *, variant: str = "base") -> None:
+        super().__init__(ref, capabilities, variant=variant)
+        self.seen: list[dict[str, object]] = []
+
+    def compute(self, context: KernelContext) -> KernelResult:
+        self.seen.append(observed(context))
+        before = context.weights["household"].values
+        after = before * 2.0
+        return KernelResult(
+            weights=Weights(values=after, kind=WeightKind.IMPORTANCE),
+            receipt={"mass": toy._mass_record(context, before, after, "free")},
+        )
+
+
 def build_registry() -> tuple[object, FrameContextProbe]:
-    """The toy registry with the metadata source and the probe registered."""
+    """The toy registry with the metadata source and both probes registered.
+
+    The structural probe is reachable as ``registry.get(REWEIGHT_PROBE_REF)``
+    for the properties that are about a boundary rather than a member.
+    """
     registry = toy.toy_registry()
     registry.register(MetadataSource(SOURCE_REF, toy._CREATE))
     probe = FrameContextProbe(PROBE_REF, toy._DETERMINISTIC)
     registry.register(probe)
+    registry.register(ReweightProbe(REWEIGHT_PROBE_REF, toy._REWEIGHT))
     return registry, probe
 
 
@@ -144,6 +179,7 @@ def probe_node(
     columns: tuple[str, ...],
     target: str,
     mass_reason: str | None = None,
+    population: str = "survey",
 ) -> Node:
     """A probe reading ``columns`` of the person entity, in that order.
 
@@ -160,7 +196,21 @@ def probe_node(
         inputs=inputs,
         outputs=(Owned("person", target, "float64"),),
         params={"target": target, "mass_reason": mass_reason},
-        population="survey",
+        population=population,
+    )
+
+
+def reweight_probe_node(node_id: str = "boundary", *, base: str = "survey") -> Node:
+    """A structural boundary that observes the log it is handed."""
+    return Node(
+        node_id,
+        REWEIGHT_PROBE_REF,
+        structural=StructuralDelta.REWEIGHT,
+        base=base,
+        inputs=(Slice("person", ("age",)), Slice("household", ("household_size",))),
+        weights=WeightTransition("household", "importance", mass="free"),
+        mass="free",
+        description="design -> importance, observing the frame view",
     )
 
 
@@ -343,15 +393,241 @@ def test_version_metadata_reaches_every_node_of_the_version(tmp_path: Path) -> N
         assert tuple(metadata["vintage"]) == ("frs", "was")
 
 
-def test_mass_log_is_the_incoming_log(tmp_path: Path) -> None:
-    """The appending node sees the log before its own record; its successor after."""
-    _, probe, _, _ = run_probe(tmp_path / "run")
-    assert observation(probe, "probe_first")["mass_log"] == ()
-    after = observation(probe, "probe_second")["mass_log"]
-    assert len(after) == 1
-    assert after[0].entity == "household"
-    assert after[0].reason == "households are unchanged by a derivation"
-    assert after[0].old_total == after[0].new_total
+# ----------------------------------------------------------------------
+# The mass log is the one the node's key binds
+# ----------------------------------------------------------------------
+
+
+#: One ordinary member that appends a ``Frame`` mass record, and one that
+#: reads a different column of the same version and declares nothing of the
+#: appender's. ``compile_graph`` orders equal-depth nodes by id, so
+#: ``appender`` runs first and its record is in the version's cumulative log
+#: by the time ``unrelated`` is projected.
+APPEND_REASON = "households are unchanged by a derivation"
+
+
+def sibling_graph(*, appender: bool = True, reason: str = APPEND_REASON) -> Graph:
+    """``unrelated`` beside an optional, unread same-version mass appender."""
+    unrelated = probe_node("unrelated", columns=("income",), target="unrelated_a")
+    if not appender:
+        return Graph("toy", (toy.SOURCE,), (CREATE, unrelated))
+    return Graph(
+        "toy",
+        (toy.SOURCE,),
+        (
+            CREATE,
+            probe_node(
+                "appender",
+                columns=("age",),
+                target="appender_a",
+                mass_reason=reason,
+            ),
+            unrelated,
+        ),
+    )
+
+
+def boundary_graph() -> Graph:
+    """An appender, a structural boundary over it, and a member of the new version."""
+    return Graph(
+        "toy",
+        (toy.SOURCE,),
+        (
+            CREATE,
+            probe_node(
+                "appender",
+                columns=("age",),
+                target="appender_a",
+                mass_reason=APPEND_REASON,
+            ),
+            reweight_probe_node(),
+            probe_node(
+                "after_boundary",
+                columns=("age",),
+                target="after_a",
+                population="boundary",
+            ),
+        ),
+    )
+
+
+def boundary_graph_with_reason(reason: str) -> Graph:
+    """``boundary_graph`` with the appender stating a different purpose."""
+    return Graph(
+        "toy",
+        (toy.SOURCE,),
+        tuple(
+            probe_node(
+                "appender",
+                columns=("age",),
+                target="appender_a",
+                mass_reason=reason,
+            )
+            if node.id == "appender"
+            else node
+            for node in boundary_graph().nodes
+        ),
+    )
+
+
+def unrelated_bytes(store: ContentStore, manifest) -> tuple[bytes, bytes]:
+    """The stored bytes of ``unrelated``'s output column."""
+    key = manifest.nodes["unrelated"].artifacts[("person", "unrelated_a")]
+    return toy.artifact_bytes(store, key)
+
+
+def only_record(view: object) -> MassChangeRecord:
+    """The single mass record in an observed view, asserted to be alone."""
+    log = tuple(view)  # type: ignore[call-overload]
+    assert len(log) == 1
+    return log[0]
+
+
+def test_an_ordinary_node_sees_its_versions_boundary_log(tmp_path: Path) -> None:
+    """Not the cumulative log, and specifically not a sibling's record.
+
+    ``appender`` runs first and appends one record to the ``survey``
+    version. ``unrelated`` declares no column of the appender's, so its key
+    binds ``survey``'s boundary and nothing else; showing it the record
+    would be showing it an input its key does not bind.
+    """
+    _, probe, _, _ = run_probe(tmp_path / "run", graph=sibling_graph())
+    assert observation(probe, "appender")["mass_log"] == ()
+    assert observation(probe, "unrelated")["mass_log"] == ()
+
+
+def test_the_appenders_own_record_reaches_the_version_it_leaves(
+    tmp_path: Path,
+) -> None:
+    """The record is applied — it is the *view* that is bounded, not the log."""
+    manifest, _, _, _ = run_probe(tmp_path / "run", graph=sibling_graph())
+    record = only_record(manifest.population("survey").mass_log)
+    assert record.entity == "household"
+    assert record.reason == APPEND_REASON
+    assert record.old_total == record.new_total
+
+
+def test_a_keyed_structural_predecessor_does_see_the_cumulative_log(
+    tmp_path: Path,
+) -> None:
+    """A structural node's key binds its base *and* that version's members.
+
+    That is the difference the projection turns on: the boundary may be
+    shown what an ordinary member may not, because re-parameterising the
+    appender moves the boundary's key and so cannot be replayed onto it.
+    """
+    registry, probe = build_registry()
+    manifest, _, sources, _ = run_probe(
+        tmp_path / "run", graph=boundary_graph(), registry=registry, probe=probe
+    )
+    boundary = registry.get(REWEIGHT_PROBE_REF)
+    record = only_record(observation(boundary, "boundary")["mass_log"])
+    assert record.reason == APPEND_REASON
+
+    other_registry, _ = build_registry()
+    moved = run_graph(
+        compile_graph(boundary_graph_with_reason("a different stated reason")),
+        sources=dict(sources),
+        store=ContentStore(tmp_path / "moved" / "store"),
+        kernels=other_registry,
+    )
+    assert moved.nodes["boundary"].key != manifest.nodes["boundary"].key
+    assert moved.nodes["after_boundary"].key != manifest.nodes["after_boundary"].key
+
+
+def test_a_member_of_the_next_version_sees_the_carried_boundary_log(
+    tmp_path: Path,
+) -> None:
+    """The boundary carries the record forward, so its own members do see it."""
+    registry, probe = build_registry()
+    run_probe(tmp_path / "run", graph=boundary_graph(), registry=registry, probe=probe)
+    record = only_record(observation(probe, "after_boundary")["mass_log"])
+    assert record.reason == APPEND_REASON
+
+
+def test_a_restored_boundary_log_is_the_one_a_cold_member_sees(
+    tmp_path: Path,
+) -> None:
+    """The boundary survives the store round trip, not only the computed frame."""
+    registry, probe = build_registry()
+    _, _, sources, _ = run_probe(
+        tmp_path / "run", graph=boundary_graph(), registry=registry, probe=probe
+    )
+    expected = observation(probe, "after_boundary")
+
+    later = probe_node(
+        "later", columns=("age",), target="later_a", population="boundary"
+    )
+    warm_registry, warm_probe = build_registry()
+    warm = run_graph(
+        compile_graph(
+            Graph("toy", (toy.SOURCE,), (*boundary_graph().nodes, later)),
+        ),
+        sources=dict(sources),
+        store=ContentStore(tmp_path / "run" / "store"),
+        kernels=warm_registry,
+    )
+    assert {n for n, r in warm.nodes.items() if not r.hit} == {"later"}
+    assert observation(warm_probe, "later")["mass_log"] == expected["mass_log"]
+
+
+def test_an_unrelated_appender_changes_neither_the_key_nor_the_view(
+    tmp_path: Path,
+) -> None:
+    """Same key, same truth: cold with the sibling equals cold without it.
+
+    This is the property the boundary rule exists for. ``unrelated``'s
+    output column *is* its mass-log view, so equal stored bytes mean it was
+    shown the same log in both graphs — and its key is the same, so the
+    store would serve either result for the other.
+    """
+    with_manifest, with_probe, sources, with_store = run_probe(
+        tmp_path / "with", graph=sibling_graph()
+    )
+    without_manifest, without_probe, _, without_store = run_probe(
+        tmp_path / "without", graph=sibling_graph(appender=False), sources=sources
+    )
+    assert (
+        with_manifest.nodes["unrelated"].key == without_manifest.nodes["unrelated"].key
+    )
+    assert observation(with_probe, "unrelated")["mass_log"] == ()
+    assert observation(without_probe, "unrelated")["mass_log"] == ()
+    assert unrelated_bytes(with_store, with_manifest) == unrelated_bytes(
+        without_store, without_manifest
+    )
+
+
+def test_required_replay_agrees_when_the_sibling_is_added(tmp_path: Path) -> None:
+    """A store written with the appender serves the graph without it."""
+    _, _, sources, _ = run_probe(tmp_path / "run", graph=sibling_graph())
+    registry, probe = build_registry()
+    warm = run_graph(
+        compile_graph(sibling_graph(appender=False)),
+        sources=dict(sources),
+        store=ContentStore(tmp_path / "run" / "store"),
+        kernels=registry,
+        resume="require",
+    )
+    assert all(receipt.hit for receipt in warm.nodes.values())
+    assert probe.seen == []
+
+
+def test_required_replay_agrees_when_the_sibling_is_reparameterized(
+    tmp_path: Path,
+) -> None:
+    """Re-stating the appender's reason moves its key, and no other node's."""
+    first_manifest, _, sources, _ = run_probe(tmp_path / "run", graph=sibling_graph())
+    registry, probe = build_registry()
+    second = run_graph(
+        compile_graph(sibling_graph(reason="a different stated reason")),
+        sources=dict(sources),
+        store=ContentStore(tmp_path / "run" / "store"),
+        kernels=registry,
+    )
+    assert second.nodes["appender"].key != first_manifest.nodes["appender"].key
+    assert second.nodes["unrelated"].key == first_manifest.nodes["unrelated"].key
+    assert {n for n, r in second.nodes.items() if not r.hit} == {"appender"}
+    assert [item["node"] for item in probe.seen] == ["appender"]
 
 
 # ----------------------------------------------------------------------

@@ -568,12 +568,28 @@ lock unchanged:
       difference from the UK branch, which imports
       `microcosm.frame.bundle._freeze_metadata` into the frozen interface:
       a frozen contract should not depend on another shard's private name.)
-    - `frame_mass_log` — the version's `Frame` mass records, in order, and
-      specifically the *incoming* ones. A node needing a stage's completed
-      records must run after that stage's structural boundary or read its
-      predecessor's evidence; incidental node order is not authority. The
-      write side already existed (`receipt['frame_mass_log_append']`); only
-      the read side was missing.
+    - `frame_mass_log` — the `Frame` mass records the node's *key* binds,
+      in order. An ordinary node's key binds its version's structural
+      boundary (`population_input`) and the owners of the columns it
+      declared (`input_artifacts`); it does not bind the other ordinary
+      members of its version. Its log is therefore the version's
+      **boundary** log, captured when the structural node was admitted, and
+      a record another member appends afterwards is not visible to it. The
+      alternative — the cumulative log the version carries at the moment the
+      node runs — would be a kernel input no key binds: adding or
+      re-parameterising an unrelated sibling would change what the node
+      sees while its key, and so its cache entry, stayed put, and a hit
+      would replay output computed against a different log. A structural
+      node is given its base version's cumulative log instead, because its
+      key does bind it: `keys.py` binds the base's frame identity *and*
+      every ordinary member of that version through `members`, which
+      `compile_graph` fills with `members.get(base, ())`. Boundaries are
+      captured where the version is admitted, so cold execution and a
+      restored cache hit record the same one. A node needing a stage's
+      completed records therefore runs after that stage's structural
+      boundary or reads its predecessor's evidence; incidental node order is
+      not authority. The write side already existed
+      (`receipt['frame_mass_log_append']`); only the read side was missing.
     - `frame_column_order` — entity to the version's own column order,
       restricted to the columns projected into `tables`. An entry that is
       not exactly an ordering of that table's columns is refused, so an
