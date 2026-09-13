@@ -19,6 +19,7 @@ from .decl import (
     SourceRef,
     StructuralDelta,
     WeightTransition,
+    WeightUpdate,
 )
 
 __all__ = ["graph_from_json", "graph_to_json"]
@@ -149,15 +150,7 @@ def _node_payload(node: Node) -> dict[str, object]:
         "structural": node.structural.value,
         "base": node.base,
         "sources": list(node.sources),
-        "weights": (
-            None
-            if node.weights is None
-            else {
-                "entity": node.weights.entity,
-                "to_kind": node.weights.to_kind,
-                "mass": node.weights.mass,
-            }
-        ),
+        "weights": _weights_payload(node.weights),
         "mass": node.mass,
         **({"entrants": True} if node.entrants else {}),
         "description": node.description,
@@ -288,10 +281,48 @@ def _owned_from_payload(value: object, label: str) -> Owned:
     )
 
 
-def _weights_from_payload(value: object, label: str) -> WeightTransition | None:
+def _weights_payload(
+    weights: WeightTransition | WeightUpdate | None,
+) -> dict[str, object] | None:
+    """Discriminate the two weight declarations by their own field names.
+
+    ``WeightUpdate`` exposes ``to_kind`` as a property, so projecting it
+    the way a transition is projected would round-trip it back as a
+    transition and silently change what the node means. The transition
+    payload is byte-for-byte what it was before amendment 25, so every
+    declaration serialized before it restores unchanged.
+    """
+
+    if weights is None:
+        return None
+    if isinstance(weights, WeightUpdate):
+        return {
+            "entity": weights.entity,
+            "kind": weights.kind,
+            "reason": weights.reason,
+            "mass": weights.mass,
+        }
+    return {
+        "entity": weights.entity,
+        "to_kind": weights.to_kind,
+        "mass": weights.mass,
+    }
+
+
+def _weights_from_payload(
+    value: object, label: str
+) -> WeightTransition | WeightUpdate | None:
     if value is None:
         return None
     payload = _mapping(value, label)
+    if "kind" in payload:
+        _exact_fields(payload, {"entity", "kind", "reason", "mass"}, label)
+        return WeightUpdate(
+            entity=_string(payload["entity"], f"{label}.entity"),
+            kind=_string(payload["kind"], f"{label}.kind"),
+            reason=_string(payload["reason"], f"{label}.reason"),
+            mass=_string(payload["mass"], f"{label}.mass"),
+        )
     _exact_fields(payload, {"entity", "to_kind", "mass"}, label)
     return WeightTransition(
         entity=_string(payload["entity"], f"{label}.entity"),
