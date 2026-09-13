@@ -863,7 +863,7 @@ def test_collapsing_entity_column_groups_is_refused(tmp_path: Path) -> None:
         "iso_collapse", target="iso_t", tamper_self="column_order_collapse"
     )
     node = dataclasses.replace(
-        node, inputs=(*node.inputs, Slice("household", ("household_id",)))
+        node, inputs=(*node.inputs, Slice("household", ("household_size",)))
     )
     with pytest.raises(NodeRejectedError, match="mutated its input context"):
         run_isolation(tmp_path / "run", node)
@@ -874,7 +874,7 @@ def test_moving_a_column_to_an_entity_boundary_is_refused(tmp_path: Path) -> Non
         "iso_regroup", target="iso_t", tamper_self="column_order_regroup"
     )
     node = dataclasses.replace(
-        node, inputs=(*node.inputs, Slice("household", ("household_id",)))
+        node, inputs=(*node.inputs, Slice("household", ("household_size",)))
     )
     with pytest.raises(NodeRejectedError, match="mutated its input context"):
         run_isolation(tmp_path / "run", node)
