@@ -424,6 +424,51 @@ def _source_values(frame, origins, person_origins, person_keys, selected):
         else:
             heads.loc[pid] = role == demographics.ACS_OBSERVED_REFERENCE_CODE
     membership = frame.person.set_index("person_id").person_household_id
+    # Build reference counts and exact integer identities once on person support.
+    # Keep duplicate household keys until the cardinality check below refuses them.
+    reference_members = membership.loc[heads]
+    reference_counts = reference_members.value_counts()
+    reference_ids = pd.Series(
+        reference_members.index.to_numpy(dtype="int64"),
+        index=reference_members.to_numpy(dtype="int64"),
+        dtype="int64",
+    )
+    asec_ids = ids[origins.source.eq("asec")]
+    if len(asec_ids):
+        asec_rows = [
+            selected["asec_household"][int(raw_id)]
+            for raw_id in origins.loc[asec_ids, "raw_native_id"]
+        ]
+        for raw in asec_rows:
+            # Preserve the original literal universe and tenure refusals.
+            require(
+                raw["H_HHTYPE"] == "1"
+                and 1 <= _integer(raw["HRHTYPE"], maximum=10) <= 8
+                and 1 <= _integer(raw["H_LIVQRT"], maximum=12) <= 7,
+                "ASEC_HOUSING_UNIVERSE",
+            )
+            _integer(raw["H_TENURE"], minimum=1, maximum=3)
+        numeric = {
+            name: np.array(
+                [_integer(raw[name] or "0", maximum=99999) for raw in asec_rows],
+                dtype="int64",
+            )
+            for name in status.RAW_COLUMNS
+            if name in ASEC_HOUSEHOLD_COLUMNS
+        }
+        numeric.update(
+            household_id=asec_ids.to_numpy(dtype="int64"),
+            income_year=np.full(len(asec_ids), 2024, dtype="int64"),
+            survey_year=np.full(len(asec_ids), 2025, dtype="int64"),
+        )
+        derived = status._derive(numeric)
+        observations = pd.DataFrame({"household_id": asec_ids, **derived})
+        observed = participation.observed_participation(observations).receipt
+        native.loc[asec_ids, "housing_observed_receipt"] = observed.array
+        for name, values in derived.items():
+            native.loc[asec_ids, "housing_source_" + name] = pd.array(
+                values, dtype="Int64"
+            )
     for hid, row in origins.iterrows():
         survey = row.source
         raw = selected[survey + "_household"][
@@ -432,43 +477,16 @@ def _source_values(frame, origins, person_origins, person_keys, selected):
         for name, token in raw.items():
             native.at[hid, "housing_source_" + name] = token
         if survey == "asec":
-            # Complete selected ASEC housing support is already admitted by the
-            # common catalogue, and original literal context is checked again.
-            require(
-                raw["H_HHTYPE"] == "1"
-                and 1 <= _integer(raw["HRHTYPE"], maximum=10) <= 8
-                and 1 <= _integer(raw["H_LIVQRT"], maximum=12) <= 7,
-                "ASEC_HOUSING_UNIVERSE",
-            )
             tenure = _integer(raw["H_TENURE"], minimum=1, maximum=3)
             owner, gq = tenure == 1, False
-            numeric = {
-                name: np.array(
-                    [_integer(raw[name] or "0", maximum=99999)], dtype="int64"
-                )
-                for name in status.RAW_COLUMNS
-                if name in raw
-            }
-            numeric.update(
-                household_id=np.array([hid], dtype="int64"),
-                income_year=np.array([2024], dtype="int64"),
-                survey_year=np.array([2025], dtype="int64"),
-            )
-            derived = status._derive(numeric)
-            observations = pd.DataFrame({"household_id": [hid], **derived})
-            observed = participation.observed_participation(observations).receipt.iloc[
-                0
-            ]
-            for name, values in derived.items():
-                native.at[hid, "housing_source_" + name] = values[0]
             if owner:
                 require(
-                    derived["conflicts"][0] == 0
+                    native.at[hid, "housing_source_conflicts"] == 0
                     and raw["HPUBLIC"] in ("0", "")
                     and raw["HLORENT"] in ("0", ""),
                     "OWNER_SOURCE_CONFLICT",
                 )
-            native.at[hid, "housing_observed_receipt"] = observed
+            observed = native.at[hid, "housing_observed_receipt"]
         else:
             kind = _integer(raw["TYPEHUGQ"], minimum=1, maximum=3)
             count = _integer(raw["NP"], maximum=20)
@@ -479,11 +497,11 @@ def _source_values(frame, origins, person_origins, person_keys, selected):
             observed = pd.NA
         universe = "group_quarters" if gq else "occupied_housing_unit"
         native.at[hid, "housing_participation_universe"] = universe
-        members = membership.index[membership.eq(hid)]
-        reference = members[heads.loc[members].to_numpy()]
-        require(len(reference) == (0 if gq else 1), "NAMED_REFERENCE_ROLE")
+        require(
+            reference_counts.get(hid, 0) == (0 if gq else 1), "NAMED_REFERENCE_ROLE"
+        )
         if not gq:
-            native.at[hid, "housing_source_head_person_id"] = int(reference[0])
+            native.at[hid, "housing_source_head_person_id"] = int(reference_ids.at[hid])
         if pd.notna(observed):
             native.at[hid, "housing_observed_receipt__known"] = True
             native.at[hid, "housing_receipt"] = bool(observed)
@@ -508,6 +526,10 @@ def _qualified_values(frame, origins, native, person_features, evidence):
         "PERSON_FEATURE_AXIS",
     )
     ids = origins.index
+    require(
+        type(ids) in (pd.Index, pd.RangeIndex) and ids.dtype == np.dtype("int64"),
+        "ORIGIN_HOUSEHOLD_INDEX",
+    )
     membership = frame.person.set_index("person_id").person_household_id
     features = pd.DataFrame(index=ids.copy(), columns=FEATURES, dtype="float64")
     features[FEATURES[1]] = (
@@ -560,10 +582,16 @@ def _qualified_values(frame, origins, native, person_features, evidence):
         require(
             donor_frame.weights_for("household").values.sum() > 0, "DONOR_WEIGHT_MASS"
         )
+        recipient_features = features.loc[ids[recipient]].copy()
+        # Source preparation may compact contiguous IDs into a RangeIndex.
+        # Materialize those same int64 IDs for the strict model-input codec.
+        recipient_features.index = pd.Index(
+            recipient_features.index.to_numpy(copy=True), name=ids.name
+        )
         matrix = model_input.encode_recipient_matrix(
-            features.loc[ids[recipient]],
+            recipient_features,
             entity="household",
-            entity_ids=ids[recipient].to_numpy(dtype="<i8"),
+            entity_ids=recipient_features.index.to_numpy(copy=True),
         )
     evidence = {
         **evidence,

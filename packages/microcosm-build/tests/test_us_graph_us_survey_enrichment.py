@@ -200,6 +200,8 @@ def enriched(tmp_path_factory, request):
             flush=True,
         )
         cold = graph.run_us_survey_enrichment(parent, n_estimators=2)
+        (root / "cold-receipt.json").write_bytes(cold.receipt)
+        cold.manifest.save(root / "cold-manifest.json")
         final_control_only = all(
             item.name == "test_final_parent_revocation_invalidates_the_retained_child"
             for item in request.session.items
@@ -210,6 +212,8 @@ def enriched(tmp_path_factory, request):
             warm = graph.run_us_survey_enrichment(
                 parent, n_estimators=2, resume="require"
             )
+            (root / "required-receipt.json").write_bytes(warm.receipt)
+            warm.manifest.save(root / "required-manifest.json")
             print("INVENTED required closed; owner and readback controls", flush=True)
         else:
             print(
@@ -375,6 +379,14 @@ def test_complete_frame_store_readback_and_input_coverage(enriched):
                 "required_hits": sum(
                     n.hit for n in enriched.warm.manifest.nodes.values()
                 ),
+                "housing_fit_hit": run.manifest.node("survey_housing.fit.000").hit,
+                "housing_nodes": [
+                    n for n in run.compiled.order if n.startswith("survey_housing.")
+                ],
+                "cold_receipt_sha256": hashlib.sha256(run.receipt).hexdigest(),
+                "required_receipt_sha256": hashlib.sha256(
+                    enriched.warm.receipt
+                ).hexdigest(),
                 "native_data_used": False,
                 "release_eligible": False,
             }
@@ -394,7 +406,14 @@ def test_housing_observations_donors_and_assisted_units_are_independent(enriched
     expected.index = households.index
     for column in qualified.native:
         if column not in {"housing_receipt", "housing_receipt__origin"}:
-            pd.testing.assert_series_equal(households[column], expected[column])
+            source_column = expected[column]
+            if isinstance(source_column.dtype, pd.StringDtype):
+                # The graph declares one canonical string storage backend;
+                # qualification can use pandas' optional Arrow backend.
+                source_column = source_column.astype(
+                    housing.population_ops.dtype_for_token("string")
+                )
+            pd.testing.assert_series_equal(households[column], source_column)
     known = households.housing_observed_receipt__known
     assert known.any() and (~known).any()
     assert households.loc[known, "housing_observed_receipt"].any()

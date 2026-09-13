@@ -40,6 +40,10 @@ ASEC `P_SEQ` do not establish that role. A household with an ambiguous reference
 role refuses attachment. Explicitly classified group quarters may lack a
 reference person only when their completed modeled receipt is false.
 
+An owner household with positive or conflicting public/lower-rent answers
+stops qualification with `OWNER_SOURCE_CONFLICT`. The owner exclusion cannot
+silently override those source answers.
+
 ## Household imputation and attachment
 
 Known ASEC households supply one binary label per household to the existing

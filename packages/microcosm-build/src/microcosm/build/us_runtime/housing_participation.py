@@ -20,7 +20,10 @@ from .asec_housing_status import DERIVED_COLUMNS, _codebook
 from .asec_housing_status_source import ATTACHED_COLUMNS
 
 HOUSING_PARTICIPATION_ASSUMPTIONS = (
-    ("A1", "The household head's SPM unit is the modeled assisted family."),
+    (
+        "A1",
+        "The household reference person's SPM unit is the modeled assisted family.",
+    ),
     (
         "A2",
         "Interview-time participation is carried through the preceding income year.",

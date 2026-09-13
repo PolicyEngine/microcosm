@@ -170,6 +170,32 @@ def _qualified():
     return housing._qualified_values(frame, origins, native, features, {})
 
 
+def test_source_classification_preserves_order_independent_exact_reference_ids():
+    frame, origins, porigins, keys, selected, _ = _invented()
+    expected = housing._source_values(frame, origins, porigins, keys, selected)
+    # These identities cannot be represented exactly by float64. Reorder both
+    # source axes so batch classification must join by identity, not row order.
+    offset = 2**54
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"]["person_id"] += offset
+    tables["person"] = tables["person"].iloc[::-1].reset_index(drop=True)
+    reordered = Frame(
+        tables,
+        frame.schema,
+        dict(frame._weights),
+        frame.strata.iloc[::-1].reset_index(drop=True),
+    )
+    porigins.index += offset
+    porigins = porigins.iloc[::-1]
+    keys = {key: pid + offset for key, pid in reversed(list(keys.items()))}
+    actual = housing._source_values(
+        reordered, origins.iloc[::-1], porigins, keys, selected
+    )
+    occupied = expected.housing_source_head_person_id.ge(0)
+    expected.loc[occupied, "housing_source_head_person_id"] += offset
+    pd.testing.assert_frame_equal(actual, expected.iloc[::-1])
+
+
 def _cloned(frame):
     tables = {}
     for entity in frame.entities:
@@ -254,6 +280,21 @@ def test_origin_seal_preserves_and_checks_exact_rational_metadata():
     assert housing.seal(q) == before
     changed = replace(q, origins=q.origins.rename_axis("wrong_identity"))
     assert housing.seal(changed) != before
+
+
+def test_source_range_index_materializes_exact_household_ids_for_the_model():
+    frame, origins, porigins, keys, selected, features = _invented()
+    origins.index = pd.RangeIndex(10, 70, 10, name="household_id")
+    native = housing._source_values(frame, origins, porigins, keys, selected)
+    q = housing._qualified_values(frame, origins, native, features, {})
+    matrix = housing.model_input.decode_recipient_matrix(q.matrix)
+    assert type(matrix.features.index) is pd.Index
+    assert matrix.features.index.dtype == np.dtype("int64")
+    assert matrix.features.index.tolist() == [30, 50]
+    assert isinstance(q.origins.index, pd.RangeIndex)
+    origins.index = origins.index.astype("float64")
+    with pytest.raises(ValueError, match="ORIGIN_HOUSEHOLD_INDEX"):
+        housing._qualified_values(frame, origins, native, features, {})
 
 
 def test_unnamed_asec_relationship_refuses_even_with_one_valid_head():
