@@ -173,3 +173,34 @@ lane could be wrong, in the order worth checking:
 4. `test_round_trip_refuses_a_mixed_weights_payload` edits canonical JSON
    by string surgery and depends on lexicographic key order
    (`entity, kind, mass, reason`).
+
+---
+
+# Fix round (2026-09-13, after the independent Fable adjudication)
+
+## State
+
+The lane's four commits (`97428cd9f`..`6f4ba4ec9`) stand. An independent
+read-only adjudication of exactly `6f4ba4ec9` over base `15ebde806`
+returned **REQUEST_CHANGES**; its verbatim text is now filed in this
+packet as `FABLE-REVIEW.md` (the reviewer ran without a write tool and
+returned the review through its tool result instead).
+
+Root owns adjudication. Findings F1, F3, F4, F5 and F6 are accepted and
+implemented in this round. **F2 is not accepted as stated** — see the
+point-by-point response below and in `FIX-RESULT.md`.
+
+`origin/main` re-fetched before editing: still
+`15ebde806cd1a262363f7217fe535c7234ff757f`, nothing new to merge, branch
+is 5 commits ahead and 0 behind.
+
+**Runtime remains UNTESTED in this round too.** No pytest, no production
+import, no engine, no install, no network. Source, stdlib `ast`, `ruff`
+and the CI group inventory only.
+
+## Next
+
+- F1: project ordinary nodes from their version boundary's mass log.
+- F3/F4: detach the exposed frame objects; digest all three fields.
+- F2: source-backed rejection plus the anchor-invariance tests.
+- F5/F6: correct the docs' motivating claim and the disclosure.
