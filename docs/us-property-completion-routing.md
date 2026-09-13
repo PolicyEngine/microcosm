@@ -66,3 +66,10 @@ The bounded integration controls exercise qualified invented source descriptions
 option/declaration behavior, tamper refusal and the real public serializers.
 Actual 38-node host acceptance is a separate test scope; this feature does not
 claim native completion, PUF readiness or a released dataset.
+
+The repository's existing 38-node tax-host fixture now enables completion
+routing on both its cold and required calls. Its controls retain full population
+and unknown-input checks, verify the private typed artifact and aggregate receipt
+on replay, and refuse changes to the retained artifact bytes. The local native
+harness predicates can share those fixtures through a separately pinned acceptance
+wrapper; they are not a machine-specific dependency of repository tests.
