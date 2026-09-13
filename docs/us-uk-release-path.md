@@ -1,6 +1,6 @@
 # US and UK release path
 
-Planning snapshot, 12 September 2026. This is a release work plan, not a
+Planning snapshot, 13 September 2026. This is a release work plan, not a
 certification of either country. Component tests, historical candidates and
 current-candidate acceptance are distinct evidence.
 
@@ -39,6 +39,19 @@ common source population alone does not guarantee identical estimates.
 | Release and consumption | Exact-file dashboard, methods/papers, immutable package and real PolicyEngine loading | Exact-file dashboard and certification; immutable cut, loader/pointer integration and PolicyEngine-UK adoption | Fresh export/readback, reproducible manifest and checksums, consumer calculation smoke test, reviewed release and rollback path |
 
 ## Current position
+
+The immediate US step is a small native property/tax build with an original-record
+completion report. The 38-node host already passes invented cold/required checks;
+its new pure completion diagnostic passes 29 controls and awaits host integration.
+Native PUF qualification follows resolution of the applicable unknown inputs.
+Retirement candidate accounting has passed 80 controls but does not yet supply
+fiscal inputs. The [13 September evidence](../experiments/us-launch-consolidation-20260913.md)
+records these limits and the scoped hashing benchmark.
+
+UK work proceeds independently on the shared same-kind weight update and
+metadata/mass-log/column-order interfaces needed by its country graph. That
+source proposal is under independent review and has not run its invented
+runtime checks. It establishes no new UK candidate or release acceptance.
 
 | Stage | US demonstrated result | UK demonstrated result |
 | --- | --- | --- |

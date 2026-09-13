@@ -51,6 +51,15 @@ native source or full PUF run was executed in that test packet.
   dependency versions are unchanged. This smoke test does not replace the
   full remote wheel suite.
 
+The following CI run exposed two remaining literal lockfile pins: the seed
+diagnostic and Primary-QRF worker identity still expected the pre-extra lock.
+Both now reference the reviewed lock. Two diagnostic controls and six worker
+lock controls pass, including refusal of incorrect pins and preservation of
+the explicitly named historical campaign boundary. The six worker controls
+first reproduced three expected failures against the old constant. All 125
+locked package version/source records remain unchanged; only the source-I/O
+optional metadata changed. Full remote CI is still pending.
+
 ## Other integrated source work
 
 ASEC retirement qualification retains raw slot and aggregate observations,
@@ -59,16 +68,77 @@ declared normalization without rewriting the source; 62 controls pass.
 Retirement measurement and regularity assumptions still require an explicit
 bridge before they can supply complete tax inputs.
 
+The conservative retirement candidate ledger now passes 80 focused controls
+and independent review. It preserves source observations, distinguishes
+assumption-dependent candidates from identified amounts, and refuses an
+aggregate interval when applicable source evidence is unreadable or fails its
+accounting checks. It supplies no fiscal inputs. An under-58 zero requirement
+for the main DBTN aggregate remains unsupported by the qualified source
+contract; its raw value and residual remain diagnostics. See
+[the retirement ledger](../docs/us-current-asec-retirement-basis.md).
+
+An independent property-observation test confirms that excluding an ASEC record
+from joint model fitting preserves its separately known interest and dividends
+on both clones. A new pure completion diagnostic passes 29 controls and
+independent review. It distinguishes known components, ACS anchor decomposition,
+missing evidence, source contradictions and unsupported under-15 measurement.
+Counts and DESIGN support refer to original records, with union-household
+support reported separately. No amount is filled by this diagnostic. Its
+optional connection to the existing projection node is still under construction;
+the private row artifact and public aggregate receipt have separate contracts.
+See [completion routing](../docs/us-property-completion-routing.md).
+
 The UK household-lineage helper preserves exact original identities through
 declared selection and cloning. Forty-three controls pass, including large
 integer IDs and graph operations. This is a supplied-lineage contract; it
 does not certify a new native UK graph or replace the UK country work.
+
+## Hashing checks and measured scope
+
+The latest hashing changes preserve exact digests in 267 controls. Two additional
+tests exercise actual invented source preparation and requalification, including
+refusal after a retained Frame changes during the final source I/O. These pass
+with no changed source/resource pins or unexpected access refusals.
+
+Six isolated processes compared the old and new helpers on 207,692 invented
+rows, with three repetitions per process. The paired digests match exactly.
+Median helper times were:
+
+| Helper | Before | After |
+| --- | ---: | ---: |
+| Population part streaming | 29.17 ms | 29.34 ms |
+| Whole-series storage selection | 26.20 ms | 25.60 ms |
+| Exact Python-float framing | 55.10 ms | 23.75 ms |
+
+The float helper is about 2.32 times faster in this workload. The other two
+show little timing difference. Peak RSS differs by less than about 1.1 MB in
+each pair; these runs establish no meaningful memory reduction. Helper timings
+exclude input construction, while peak RSS includes imports and construction.
+This is not a native-build speed or memory estimate. All mutation checks and
+digest framing remain active.
+
+The parity receipt SHA256 is
+`30fba8c4e2c91042e06d177ce51e9077219c743b28180c210fa630600ac1a197`;
+the independent qualified-owner receipt is
+`ceaf0946c07e7f0d333ca1d2673ad2ffb63d7ab81de2a70e8e62c5020640923c`.
+The frozen benchmark comparison document has SHA256
+`db8d881b0b3bbd710acaca4a3b850d13b9855cc294f7cc1cda6837d20ee9fce5`.
 
 ## Native run and remaining work
 
 The preceding native PUF attempt ended without a final receipt or PUF manifest.
 Its stopping cause is unknown. It provides no verified native PUF output.
 A new attempt needs a separately reviewed packet and resource budget.
+
+The immediate native milestone is the property/tax graph with completion
+diagnostics. Its original-record counts will quantify the missing-input routes
+before selecting a completion method or attempting PUF qualification. The
+current PUF allocation code does not establish child-income coverage: it uses
+existing positive per-person component shares across receiving unit members,
+with a first-row fallback when all shares are zero. The HEAD/spouse restriction
+belongs to Social Security conditioning. There is no admitted dependent-return
+to child-ownership match, so neither a zero fallback nor a claim that the PUF
+already covers the gap has been adopted.
 
 Remaining release work includes honest completion of applicable unknown inputs,
 full PUF composition, a small native end-to-end build, engine and calibration
