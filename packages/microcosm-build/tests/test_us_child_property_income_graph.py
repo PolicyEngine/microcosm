@@ -156,6 +156,15 @@ def _receiving_frame(qualified, origins):
                 }
             )
     people = pd.DataFrame(rows)
+    # The invented CREATE must declare the graph's nullable string dtype;
+    # pandas inference can instead choose the distinct NaN-based str dtype.
+    for column in (
+        graph.provenance.support_channel_column("person"),
+        "census_block",
+    ):
+        people[column] = pd.array(
+            people[column], dtype=graph.populations.dtype_for_token("string")
+        )
     people["nullable_source"] = pd.array([pd.NA, True] * len(origins), dtype="boolean")
     homes = pd.DataFrame(
         {
@@ -185,6 +194,54 @@ def _receiving_frame(qualified, origins):
         },
         metadata={"invented_parent": {"purpose": "whole-state preservation"}},
     )
+
+
+def test_receiving_fixture_declares_strings_without_changing_other_values():
+    qualified, origins = _qualified()
+    people = _receiving_frame(qualified, origins).person
+    channel = graph.provenance.support_channel_column("person")
+    canonical_string = pd.StringDtype(storage="python", na_value=pd.NA)
+    for column, values in (
+        (channel, ["asec", "asec", "acs", "acs", "asec", "asec"]),
+        ("census_block", ["012345678901234"] * 6),
+    ):
+        pd.testing.assert_series_equal(
+            people[column], pd.Series(values, name=column, dtype=canonical_string)
+        )
+        assert people[column].dtype.storage == "python"
+        assert people[column].dtype.na_value is pd.NA
+
+    source_id = graph.provenance.support_source_id_column("person")
+    spine_id = graph.provenance.spine_source_id_column("person")
+    for column, offsets in (
+        ("person_id", [100000, 100001, 100002, 100003, 100004, 100005]),
+        (source_id, [101, 101, 102, 102, 103, 103]),
+        (spine_id, [10101, 10101, 10102, 10102, 10103, 10103]),
+        ("person_household_id", [50000, 50001, 50002, 50003, 50004, 50005]),
+        ("person_tax_unit_id", [50000, 50001, 50002, 50003, 50004, 50005]),
+    ):
+        pd.testing.assert_series_equal(
+            people[column],
+            pd.Series(
+                [2**53 + offset for offset in offsets], name=column, dtype="int64"
+            ),
+        )
+    pd.testing.assert_series_equal(
+        people["nullable_source"],
+        pd.Series([pd.NA, True] * 3, name="nullable_source", dtype="boolean"),
+    )
+    pd.testing.assert_series_equal(
+        people["source_amount_known"],
+        pd.Series([False] * 6, name="source_amount_known", dtype="bool"),
+    )
+    for column, values in (
+        (graph.child.TARGETS[0], [np.nan] * 4 + [31.0, 31.0]),
+        (graph.child.TARGETS[1], [np.nan] * 4 + [41.0, 41.0]),
+        ("unrelated_amount", [-12.5] * 6),
+    ):
+        pd.testing.assert_series_equal(
+            people[column], pd.Series(values, name=column, dtype="float64")
+        )
 
 
 def _ordering(producer="test.parent"):
