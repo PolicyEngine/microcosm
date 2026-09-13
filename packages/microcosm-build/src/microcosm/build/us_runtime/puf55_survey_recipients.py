@@ -93,9 +93,8 @@ def _table_digest(table):
                 "OBJECT_STRING_STORAGE",
             )
             continue
-        for part in financial.reconstruction._storage_parts(
-            series, np.ones(len(series), dtype=np.bool_)
-        ):
+        # Whole series: the slice selects every row in order, byte for byte.
+        for part in financial.reconstruction._storage_parts(series, slice(None)):
             digest.update(len(part).to_bytes(8, "big"))
             digest.update(part)
     return digest.hexdigest()

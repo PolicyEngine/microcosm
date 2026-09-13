@@ -283,8 +283,8 @@ def _physical_nonweight_identity(frame):
         ),
         frame.strata,
     ):
-        selected = np.ones(len(series), dtype=np.bool_)
-        for part in _storage_parts(series, selected):
+        # Whole series: the slice selects every row in order, byte for byte.
+        for part in _storage_parts(series, slice(None)):
             digest.update(len(part).to_bytes(8, "little"))
             digest.update(part)
     return digest.hexdigest()

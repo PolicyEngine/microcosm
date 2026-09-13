@@ -142,7 +142,8 @@ def _series_stamp(series):
             digest.update(len(part).to_bytes(8, "little"))
             digest.update(part)
     else:
-        for part in _storage_parts(series, np.ones(len(series), dtype=np.bool_)):
+        # Whole series: the slice selects every row in order, byte for byte.
+        for part in _storage_parts(series, slice(None)):
             digest.update(len(part).to_bytes(8, "little"))
             digest.update(part)
     return digest.hexdigest()

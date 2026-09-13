@@ -278,9 +278,10 @@ def _qualified_seal(value):
                 "shape": list(table.shape),
             }
         )
-        selected = np.ones(len(table), dtype=np.bool_)
+        # Every series below is exactly len(table) rows, so the whole-series
+        # slice selects the same rows in the same order, byte for byte.
         parts = tuple(
-            (str(series.dtype), geography._storage_parts(series, selected))
+            (str(series.dtype), geography._storage_parts(series, slice(None)))
             for series in (
                 pd.Series(table.index.to_numpy(copy=False)),
                 *(table[c] for c in table),
