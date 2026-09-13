@@ -1,0 +1,137 @@
+{
+  "age_calibration_acceptance": false,
+  "approval_sha256": "3dbd7c5f0e939e803d292ece30eaeee2ea88b9b9adabd8534d22d8841fa3d343",
+  "artifact_identity_verification": "pinned manifest metadata and internal producer/key/size relations only; no graph store, export or snapshot reopen",
+  "cold_exports_unchanged": true,
+  "cold_root_postcheck_sha256": "50eabf02b476f2fdc55e15812e374fd76cf6002feb7fd60f10810e4d2122ac8c",
+  "collected_tests": 1,
+  "compiled_nodes": 20,
+  "composed_prefix_store_hits": 10,
+  "cpu_seconds": 4442.82255,
+  "cross_process_source_authority_granted": false,
+  "current_checkout_certified": false,
+  "date": "2026-09-10",
+  "entity_rows": {
+    "clone": {
+      "household": 3168,
+      "person": 6928
+    },
+    "create": {
+      "household": 1584,
+      "person": 3464
+    },
+    "financial": {
+      "household": 3168,
+      "person": 6928
+    }
+  },
+  "features": [
+    "survey_predictor_age",
+    "survey_predictor_employment_income",
+    "survey_predictor_self_employment_income",
+    "survey_predictor_is_female",
+    "survey_predictor_state_fips"
+  ],
+  "final_manifest_store_hits": 20,
+  "financial_cold_nodes": 0,
+  "financial_successor_acceptance": false,
+  "guard_before_after_identity_count": 520,
+  "guard_sha256": "49c8971db347181c888e17b69d33efed987bf32ba3d4e93b2c06c283b4460b4c",
+  "head_coordinate": "e0718150d062f0fb34702d1443c701f0e1ac59e9",
+  "implementation_overlays": {
+    "acs_fingerprint_sharing": false,
+    "budget_detached_view_correction": false,
+    "compilation_cache": false
+  },
+  "limits": {
+    "automatic_retry": false,
+    "children": 0,
+    "cpu_seconds": 7200,
+    "engine": false,
+    "network": false,
+    "numeric_threads": 1,
+    "peak_rss_bytes": 34359738368,
+    "wall_seconds": 10800
+  },
+  "manifest_metadata_sha256": "2d7816bf1260b72008a5c774a27534412fd2e4f72cc23effe457a2429dd76ff3",
+  "model_quality_established": false,
+  "model_source_map_sha256": "018d739504f5919c65104ad44a46c1df045d0bf71002622e66e8b68c3192b035",
+  "native_identity_verification": "config/staging/manifest/guard before-after metadata; no postcheck payload read, hash or stat",
+  "native_input_bytes": 3735332980,
+  "native_input_count": 10,
+  "owned_columns": [
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "taxable_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains_before_response"
+  ],
+  "peak_rss_bytes": 11312398336,
+  "postcheck_script_sha256": "a6514601c1a7e9c28e65ecad0e363822a67e373f96fa9421a3b204afefc87b63",
+  "puf_enrichment_acceptance": false,
+  "receipt_sha256": "7669f91957b1610e56d3284e013f2c2c4a113b610322975c2cb8c92274a80650",
+  "release_acceptance": false,
+  "remaining": [
+    "Actual two-route PUF55 fitting and single finalization/attachment",
+    "Model-input coverage and fit-quality checks",
+    "National and congressional-district calibration/holdouts",
+    "Full and pruned export verification with exact-file dashboard"
+  ],
+  "request": {
+    "demographic_conditioning": true,
+    "fraction": [
+      1,
+      1000
+    ],
+    "geography_seed": 20260908,
+    "n_estimators": 2,
+    "resume": "require",
+    "seed": 20260908,
+    "selection_request": {
+      "declaration": "experiments/us-survey-allocation-declaration-v1-20260907.md",
+      "fraction": [
+        1,
+        1000
+      ],
+      "protocol": "microcosm.us.survey-population-request.v1",
+      "seed": 20260908
+    },
+    "selection_request_bytes": 168,
+    "selection_request_sha256": "33f8ec1279a7bac6a27302bf6ea230e704cbcabe02d6f85cdc9b22edaec1f745"
+  },
+  "required_replay_comparison": {
+    "actual_stored_attach_reconstruction_required": true,
+    "all_ten_prefix_nodes_store_hits": true,
+    "all_twenty_final_nodes_store_hits": true,
+    "cold_manifest_key": "c9d9e2e4d2c04a294ece9b2325929b4344732a7e833a20c58d25eb9e95104567",
+    "four_non_manifest_export_bytes_equal": true,
+    "portable_manifest_content_equal": true,
+    "stored_create_clone_and_terminal_column_identities_equal": true
+  },
+  "required_replay_run": true,
+  "resource_map_sha256": "62a6329a8d84ad96410581f4e5043c4b62fb648a7aa7737a2ee8eed61a80a7bc",
+  "root_postcheck_sha256": "596f29b8fd8aa3d4e59e3df80f863d33c443b526de191d7b2c6a77ac82b62d3c",
+  "runtime_result": 0,
+  "schema_version": "microcosm.scoped-native-control.v1",
+  "scope": "one_selected_native_survey_atomic_financial_required_replay",
+  "source_count": 491,
+  "source_map_sha256": "44d9306d0964a4b72490a07895a080b129b83c251866c2aeac06c74deb4ca762",
+  "status": "required_replay_development_pilot_accepted",
+  "targets": [
+    "survey_current_INT_VAL",
+    "survey_current_DIV_VAL",
+    "survey_current_CAP_VAL"
+  ],
+  "test_outcomes": [
+    "passed"
+  ],
+  "unexpected_refusals": {},
+  "verified_current": {
+    "code_resources": 12,
+    "model_source": 5983,
+    "source_and_safe_owned": 516
+  },
+  "wall_seconds": 4450.337948458036
+}

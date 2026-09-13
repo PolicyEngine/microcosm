@@ -1,0 +1,1 @@
+Qualify the current ASEC pension/annuity, retirement distribution, net property, farm and other-income source families into a typed reporting/routing projection, keeping printed totals, receipt universes, account and category routing, and allocation provenance distinct from any modelled taxable, private or residual component.

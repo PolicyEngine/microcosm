@@ -29,13 +29,9 @@ from microcosm.build.us_runtime.puf_e01000_reconciliation import (
     puf_capital_gains_joint_metrics,
     puf_processed_capital_gains_stage,
 )
-from microcosm.build.us_runtime.puf_interest_components import (
-    split_us_puf_e19200_by_agi_band,
-)
 from microcosm.build.us_runtime.qbi_inputs import (
     US_QBI_BOOLEAN_OUTPUT_COLUMNS,
     US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
-    US_QBI_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -53,6 +49,19 @@ from microcosm.build.us_runtime.support_provenance import (
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights, wquantile
 from microcosm.frame.schema import EntitySchema
+
+from .operator_column_contracts import (
+    PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID as PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
+)
+from .operator_column_contracts import (
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS as PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+)
+from .operator_column_contracts import (
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS as PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+)
+from .operator_column_contracts import (
+    US_PUF_SUPPORT_STAGE_NAME as US_PUF_SUPPORT_STAGE_NAME,
+)
 
 QRF: Any | None = None
 
@@ -91,7 +100,6 @@ __all__ = [
     "validate_puf_clone_attachment",
 ]
 
-US_PUF_SUPPORT_STAGE_NAME = "puf_support_channel"
 
 #: Frozen receipt binding a seeded clone attachment (microcosm#578 revision
 #: item 3) to the live rows: fraction, seed, the floor-rule counts, and the
@@ -207,54 +215,6 @@ PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
     "puf_predictor_long_term_capital_gains",
 )
 
-PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
-    "employment_income_before_lsr",
-    "self_employment_income_before_lsr",
-    "taxable_interest_income",
-    "qualified_dividend_income",
-    "non_qualified_dividend_income",
-    "tax_exempt_interest_income",
-    "short_term_capital_gains",
-    "long_term_capital_gains_before_response",
-    "long_term_capital_gains_on_collectibles",
-    "non_sch_d_capital_gains",
-    "taxable_private_pension_income",
-    "taxable_ira_distributions",
-    "social_security_retirement",
-    "social_security_disability",
-    "social_security_dependents",
-    "social_security_survivors",
-    "alimony_income",
-    "alimony_expense",
-    "salt_refund_income",
-    "charitable_cash_donations",
-    "charitable_non_cash_donations",
-    "real_estate_taxes",
-    "home_mortgage_interest",
-    "investment_interest_expense",
-    "investment_income_elected_form_4952",
-    "student_loan_interest",
-    "educator_expense",
-    "qualified_tuition_expenses",
-    "casualty_loss",
-    "unreimbursed_business_employee_expenses",
-    # The engine owns the realized contribution amounts through the
-    # IRA-limit scale and self-employment caps; the persistable leaves are
-    # the desired contributions, equal to the PUF's observed deductions at
-    # baseline (issue #278).
-    "traditional_ira_contributions_desired",
-    "self_employed_pension_contributions_desired",
-    "rental_income",
-    "estate_income",
-    "farm_income",
-    "farm_operations_income",
-    "farm_rent_income",
-    "miscellaneous_income",
-    "partnership_income",
-    "s_corp_income",
-    "partnership_self_employment_net_earnings",
-    *US_QBI_OUTPUT_COLUMNS,
-)
 
 PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS = (
     "social_security_retirement",
@@ -263,17 +223,6 @@ PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS = (
     "social_security_survivors",
 )
 
-PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS: tuple[str, ...] = (
-    "domestic_production_ald",
-    "unrecaptured_section_1250_gain",
-    "first_home_mortgage_balance",
-    "second_home_mortgage_balance",
-    "first_home_mortgage_interest",
-    "second_home_mortgage_interest",
-    "first_home_mortgage_origination_year",
-    "second_home_mortgage_origination_year",
-    "health_savings_account_ald",
-)
 
 _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
     {
@@ -1505,6 +1454,16 @@ def _quarantine_us_puf_mortgage_fields(
         donor_build_summary["mortgage_field_quarantine"] = quarantine
 
 
+def split_us_puf_e19200_by_agi_band(
+    total_interest_paid: Any,
+    adjusted_gross_income: Any,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Load the published component resource only for actual decomposition."""
+    from .puf_interest_components import split_us_puf_e19200_by_agi_band as split
+
+    return split(total_interest_paid, adjusted_gross_income)
+
+
 def _split_us_puf_e19200_components(donor: pd.DataFrame) -> None:
     """Split raw E19200 into mortgage and modeled non-mortgage components."""
 
@@ -2368,7 +2327,6 @@ def _id_multiplier_for_frame(frame: Frame) -> int:
 # indices up to 921 before int64 overflow — orders beyond any configured
 # clone count. Assembly enforces this bound; _remap_ids re-checks it so a
 # violation is a governed ValueError, never an OverflowError.
-PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID = 10**15 - 1
 
 _INT64_MAX = 2**63 - 1
 
@@ -2563,7 +2521,7 @@ def _formula_owned_engine() -> Any | None:
     except ImportError:
         return None
     try:
-        return PolicyEngineUSVariableMetadataIndex()
+        return PolicyEngineUSVariableMetadataIndex(include_consumers=False)
     except ImportError:
         return None
 

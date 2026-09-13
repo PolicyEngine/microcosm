@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from functools import lru_cache
 from importlib.metadata import version
@@ -38,12 +38,18 @@ from microcosm.build.us_runtime.acs_transfer import (
 from microcosm.build.us_runtime.adult_care import with_us_adult_care_inputs
 from microcosm.build.us_runtime.child_support import with_us_child_support_inputs
 from microcosm.build.us_runtime.childcare import with_us_childcare_inputs
-from microcosm.build.us_runtime.cps_carried import derive_us_cps_carried_inputs
+from microcosm.build.us_runtime.cps_carried import (
+    CpsCarriedTables,
+    derive_us_cps_carried_inputs,
+    derive_us_cps_carried_tables,
+)
 from microcosm.build.us_runtime.disability_benefits import (
     with_us_disability_benefits,
 )
 from microcosm.build.us_runtime.education_inputs import with_us_education_inputs
 from microcosm.build.us_runtime.eligibility_inputs import (
+    prepare_us_eligibility_person,
+    us_eligibility_inputs_person_carries_signal,
     with_us_eligibility_inputs,
 )
 from microcosm.build.us_runtime.energy_subsidy import (
@@ -51,8 +57,11 @@ from microcosm.build.us_runtime.energy_subsidy import (
 )
 from microcosm.build.us_runtime.hours_worked import (
     US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS,
+    us_hours_worked_gate_from_summary,
+    us_hours_worked_person_summary,
     us_hours_worked_signal_gate,
     with_us_hours_worked_inputs,
+    with_us_hours_worked_person,
 )
 from microcosm.build.us_runtime.housing_inputs import (
     US_HOUSING_ASSISTANCE_PUF_MAX_TRAIN_SAMPLES,
@@ -70,6 +79,7 @@ from microcosm.build.us_runtime.operator_boundary import (
 )
 from microcosm.build.us_runtime.pregnancy import with_us_pregnancy_inputs
 from microcosm.build.us_runtime.prior_year_income import (
+    prepare_us_prior_year_person,
     with_us_prior_year_income_inputs,
 )
 from microcosm.build.us_runtime.puf_qrf_chain import PRIMARY_QRF_TARGET_ORDER
@@ -84,6 +94,8 @@ from microcosm.build.us_runtime.qbi_inputs import (
     with_us_qbi_input_reconciliation,
 )
 from microcosm.build.us_runtime.relationship_inputs import (
+    prepare_us_relationship_person,
+    us_relationship_inputs_person_carries_signal,
     with_us_relationship_inputs,
 )
 from microcosm.build.us_runtime.retirement_contributions import (
@@ -91,10 +103,6 @@ from microcosm.build.us_runtime.retirement_contributions import (
 )
 from microcosm.build.us_runtime.retirement_distributions import (
     with_us_retirement_distribution_inputs,
-)
-from microcosm.build.us_runtime.spine_agreement import (
-    default_spine_agreement_registry,
-    spine_agreement_gate,
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.build.us_runtime.support_provenance import (
@@ -121,7 +129,7 @@ from microcosm.build.us_runtime.wic_claim import with_us_wic_claim_input
 from microcosm.build.us_runtime.workers_compensation import (
     with_us_workers_compensation,
 )
-from microcosm.frame import US_SCHEMA, Frame
+from microcosm.frame import US_SCHEMA, Frame, Weights
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
     VariableDependencyClosure,
@@ -163,6 +171,18 @@ __all__ = [
     "finalize_multispine_source_inputs",
     "materialize_multispine_agreement_outputs",
     "materialize_pool_deferred_transfer_inputs",
+    "multispine_hours_worked_boundary_columns",
+    "multispine_housing_boundary_columns",
+    "multispine_housing_implementation_contract",
+    "multispine_housing_output_family",
+    "multispine_housing_source_selection",
+    "assert_multispine_source_merge_labels_supported",
+    "merge_multispine_housing_source_outputs",
+    "validate_multispine_housing_person_boundary",
+    "observe_multispine_hours_person",
+    "observe_multispine_hours_worked_inputs",
+    "validate_multispine_hours_person_boundary",
+    "validate_multispine_hours_worked_boundary",
     "pool_input_surface",
     "pool_engine_input_projection_receipt",
     "pool_remaining_stage_input_manifest",
@@ -861,9 +881,8 @@ def _resolve_take_up_program_bindings(
             for program in load_take_up_contract().programs
         )
     for index, binding in enumerate(bindings):
-        if (
-            len(binding) != 3
-            or not all(isinstance(value, str) and value for value in binding)
+        if len(binding) != 3 or not all(
+            isinstance(value, str) and value for value in binding
         ):
             raise ValueError(
                 "Take-up manifest program binding must contain three non-empty "
@@ -1333,9 +1352,7 @@ def pool_remaining_stage_input_manifest(
             variable,
             execution_scope="whole_pool",
             provision=provision,
-            available_by=(
-                "transferred" if variable in transfer_owned else "seeded"
-            ),
+            available_by=("transferred" if variable in transfer_owned else "seeded"),
             fallback=fallback,
         )
 
@@ -1715,6 +1732,14 @@ def materialize_pool_deferred_transfer_inputs(frame: Frame) -> PoolStageOutput:
     return PoolStageOutput(result, {"inputs": receipts})
 
 
+# The default agreement registry validates the engine ABI, whose fresh
+# manifest reads the pool functions above. Define that surface before importing
+# the registry so either module can be the first import in a fresh process.
+from microcosm.build.us_runtime.spine_agreement import (  # noqa: E402
+    default_spine_agreement_registry,
+    spine_agreement_gate,
+)
+
 POOL_SPINE_AGREEMENT_REGISTRY = default_spine_agreement_registry(
     pool_transfer_target_families()
 )
@@ -1792,32 +1817,872 @@ def prepare_multispine_source_inputs_for_clone(
 def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
     """Run the shared hours kernel, then keep only pool-owned input leaves."""
 
+    observed = _observe_us_hours_worked_inputs(frame)
+    gate = observed.receipt["hours_worked_signal_gate"]
+    if not gate["passed"]:
+        raise ValueError(
+            "Pool pre-clone hours-worked signal gate failed:\n  "
+            + "\n  ".join(gate["failures"])
+        )
+    return observed
+
+
+def _observe_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
+    """Compute actual values and gate evidence without certifying the surface."""
+
     produced = with_us_hours_worked_inputs(
         frame,
         seed=POOL_RANDOM_SEED,
         time_period=POOL_TIME_PERIOD,
     )
     gate = us_hours_worked_signal_gate(produced)
-    if not gate.passed:
-        raise ValueError(
-            "Pool pre-clone hours-worked signal gate failed:\n  "
-            + "\n  ".join(gate.failures)
-        )
     pool_surface, removed = _drop_source_output_columns(
         produced,
         {"person": US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS},
     )
     return PoolStageOutput(
         pool_surface,
-        {
-            "hours_worked_signal_gate": {
-                "name": gate.name,
-                "passed": True,
-                "failures": [],
-                "details": dict(gate.details),
-            },
-            "pool_excluded_outputs_removed": removed,
+        _hours_gate_receipt(gate, removed),
+    )
+
+
+def _hours_gate_receipt(
+    gate: GateResult, removed: Mapping[str, list[str]]
+) -> dict[str, object]:
+    return {
+        "hours_worked_signal_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
         },
+        "pool_excluded_outputs_removed": dict(removed),
+    }
+
+
+def multispine_hours_worked_boundary_columns() -> tuple[str, ...]:
+    """Declare source-boundary evidence without exposing role dispatch downstream."""
+    return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
+
+
+def multispine_cps_carried_boundary_columns() -> tuple[str, ...]:
+    """Declare the registered pre-clone CPS evidence to its graph boundary."""
+    return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
+
+
+def validate_multispine_cps_carried_person_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Retain source-role validation in the existing registered owner."""
+    _assert_source_person_boundary(
+        person, metadata=metadata, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    return {"phase": _PRE_CLONE_PHASE, "cps_person_rows": int(mask.sum())}
+
+
+def multispine_cps_carried_implementation_contract() -> dict[str, object]:
+    """Bind live provider projections actually consumed by this source operator."""
+    return {
+        "outputs": {
+            entity: sorted(columns)
+            for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+                "cps_carried"
+            ].items()
+        },
+        "transient_outputs": _transient_source_outputs(
+            ("derive_us_cps_carried_inputs",), PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES
+        ),
+    }
+
+
+def observe_multispine_cps_carried_tables(
+    person: pd.DataFrame,
+    spm_unit: pd.DataFrame,
+    *,
+    weights: Weights,
+    metadata: Mapping[str, object],
+    pool_rows: Mapping[str, int],
+) -> tuple[CpsCarriedTables, dict[str, object]]:
+    """Use actual person/SPM views for the original source projection and merge."""
+    boundary = validate_multispine_cps_carried_person_boundary(
+        person, metadata=metadata
+    )
+    if (
+        set(pool_rows) != set(US_SCHEMA.entities)
+        or any(type(value) is not int or value < 0 for value in pool_rows.values())
+        or pool_rows["person"] != len(person)
+        or pool_rows["spm_unit"] != len(spm_unit)
+        or len(weights) != len(person)
+    ):
+        raise ValueError("CPS-carried population counts or weights are misaligned.")
+    for group in US_SCHEMA.group_entities:
+        if pool_rows[group] != int(
+            person[US_SCHEMA.membership_column(group)].nunique()
+        ):
+            raise ValueError("CPS-carried population counts differ from memberships.")
+    if spm_unit.spm_unit_id.duplicated().any() or set(spm_unit.spm_unit_id) != set(
+        person.person_spm_unit_id
+    ):
+        raise ValueError("CPS-carried SPM rows differ from actual memberships.")
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    selected_person = without_support_role_metadata(person.loc[mask], entity="person")
+    selected_spm = without_support_role_metadata(
+        spm_unit.loc[
+            spm_unit.spm_unit_id.isin(selected_person.person_spm_unit_id)
+        ].reset_index(drop=True),
+        entity="spm_unit",
+    )
+    # Match selected Frame weight validation without constructing a partial
+    # Frame carrying whole-population metadata or unobserved entity tables.
+    weights.with_values(weights.values[mask], kind=weights.kind)
+    outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["cps_carried"]
+    selected = {
+        "person": selected_person.drop(
+            columns=_unavailable_output_columns(selected_person, outputs["person"])
+        ),
+        "spm_unit": selected_spm.drop(
+            columns=_unavailable_output_columns(selected_spm, outputs["spm_unit"])
+        ),
+    }
+    produced = derive_us_cps_carried_tables(selected["person"], selected["spm_unit"])
+    merged = {}
+    merged_rows = {}
+    for entity, outcome in (
+        ("person", produced.person),
+        ("spm_unit", produced.spm_unit),
+    ):
+        identity = US_SCHEMA.entity_id_column(entity)
+        _assert_source_table_identity(
+            selected[entity],
+            outcome,
+            entity_id=identity,
+            operator_name="derive_us_cps_carried_inputs",
+        )
+        target = person if entity == "person" else spm_unit
+        merged[entity], merged_rows[entity] = _merge_source_person_or_group_outputs(
+            target.copy(),
+            outcome,
+            outputs[entity],
+            entity=entity,
+            entity_id=identity,
+            operator_name="derive_us_cps_carried_inputs",
+        )
+    selected_rows = {
+        "person": len(selected_person),
+        **{
+            group: int(selected_person[US_SCHEMA.membership_column(group)].nunique())
+            for group in US_SCHEMA.group_entities
+        },
+    }
+    receipt = _source_operator_receipt(
+        order_index=0,
+        operator_name="derive_us_cps_carried_inputs",
+        family="cps_carried",
+        phase=_PRE_CLONE_PHASE,
+        contract=POOL_OPERATOR_CONTRACTS["derive_us_cps_carried_inputs"],
+        before_rows=dict(pool_rows),
+        available_rows=selected_rows,
+        output_rows=selected_rows,
+        merged_rows=merged_rows,
+        declared_outputs=outputs,
+        formula_owned_removed={},
+        kernel_receipt={},
+        overlap_ownership=None,
+    )
+    return CpsCarriedTables(
+        merged["person"], merged["spm_unit"]
+    ), _source_chain_receipt(
+        phase=_PRE_CLONE_PHASE,
+        operator_names=("derive_us_cps_carried_inputs",),
+        evidence_rows=boundary["cps_person_rows"],
+        receipts=[receipt],
+        output_families=PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+    )
+
+
+def multispine_prior_year_boundary_columns() -> tuple[str, ...]:
+    """Declare the existing pre-clone evidence at its registered source owner."""
+    return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
+
+
+def validate_multispine_prior_year_person_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Reject support populations before the source-only prior-year join."""
+    _assert_source_person_boundary(
+        person, metadata=metadata, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    return {"phase": _PRE_CLONE_PHASE, "cps_person_rows": int(mask.sum())}
+
+
+def multispine_prior_year_implementation_contract() -> dict[str, object]:
+    """Bind the live output and transient projections consumed by this operator."""
+    return {
+        "outputs": {
+            entity: sorted(columns)
+            for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+                "prior_year_income"
+            ].items()
+        },
+        "transient_outputs": _transient_source_outputs(
+            ("with_us_prior_year_income_inputs",),
+            PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+        ),
+        "seed": POOL_RANDOM_SEED,
+        "time_period": POOL_TIME_PERIOD,
+    }
+
+
+def observe_multispine_prior_year_person(
+    person: pd.DataFrame,
+    *,
+    weights: Weights,
+    metadata: Mapping[str, object],
+    pool_rows: Mapping[str, int],
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Run the real pre-clone join on its declared source person projection.
+
+    Canonical person weights are selected in the original person order. Actual
+    memberships determine selected group counts; authenticated full counts
+    describe the unchanged pool. No incomplete Frame is constructed. Support
+    role fields are removed only from the validated ephemeral source view, so
+    the helper's support-QRF path cannot run at this boundary.
+    """
+    boundary = validate_multispine_prior_year_person_boundary(person, metadata=metadata)
+    if (
+        not isinstance(weights, Weights)
+        or set(pool_rows) != set(US_SCHEMA.entities)
+        or any(type(value) is not int or value < 0 for value in pool_rows.values())
+        or pool_rows["person"] != len(person)
+        or len(weights) != len(person)
+    ):
+        raise ValueError("Prior-year population counts or weights are misaligned.")
+    for group in US_SCHEMA.group_entities:
+        if pool_rows[group] != int(
+            person[US_SCHEMA.membership_column(group)].nunique()
+        ):
+            raise ValueError("Prior-year population counts differ from memberships.")
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    selected = without_support_role_metadata(person.loc[mask], entity="person")
+    outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["prior_year_income"]
+    selected = selected.drop(
+        columns=_unavailable_output_columns(selected, outputs["person"])
+    )
+    selected_weights = weights.with_values(weights.values[mask], kind=weights.kind)
+    produced = prepare_us_prior_year_person(
+        selected,
+        weights=selected_weights,
+        seed=POOL_RANDOM_SEED,
+        time_period=POOL_TIME_PERIOD,
+    )
+    _assert_source_table_identity(
+        selected,
+        produced,
+        entity_id="person_id",
+        operator_name="with_us_prior_year_income_inputs",
+    )
+    merged, count = _merge_source_person_or_group_outputs(
+        person.copy(),
+        produced,
+        outputs["person"],
+        entity="person",
+        entity_id="person_id",
+        operator_name="with_us_prior_year_income_inputs",
+    )
+    selected_rows = {
+        "person": len(selected),
+        **{
+            group: int(selected[US_SCHEMA.membership_column(group)].nunique())
+            for group in US_SCHEMA.group_entities
+        },
+    }
+    receipt = _source_operator_receipt(
+        order_index=0,
+        operator_name="with_us_prior_year_income_inputs",
+        family="prior_year_income",
+        phase=_PRE_CLONE_PHASE,
+        contract=POOL_OPERATOR_CONTRACTS["with_us_prior_year_income_inputs"],
+        before_rows=dict(pool_rows),
+        available_rows=selected_rows,
+        output_rows=selected_rows,
+        merged_rows={"person": count},
+        declared_outputs=outputs,
+        formula_owned_removed={},
+        kernel_receipt={},
+        overlap_ownership=None,
+    )
+    return merged, _source_chain_receipt(
+        phase=_PRE_CLONE_PHASE,
+        operator_names=("with_us_prior_year_income_inputs",),
+        evidence_rows=boundary["cps_person_rows"],
+        receipts=[receipt],
+        output_families=PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+    )
+
+
+def multispine_relationship_boundary_columns() -> tuple[str, ...]:
+    """Declare the registered pre-clone evidence for relationship preparation."""
+    return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
+
+
+def multispine_eligibility_boundary_columns() -> tuple[str, ...]:
+    """Declare the registered pre-clone evidence for eligibility preparation."""
+    return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
+
+
+def validate_multispine_relationship_person_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Reject support populations before the source-only relationship derivation."""
+    return _validate_multispine_person_preparation_boundary(person, metadata=metadata)
+
+
+def validate_multispine_eligibility_person_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Reject support populations before the source-only eligibility derivation."""
+    return _validate_multispine_person_preparation_boundary(person, metadata=metadata)
+
+
+def _validate_multispine_person_preparation_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Validate actual person evidence at the registered source boundary."""
+    _assert_source_person_boundary(
+        person, metadata=metadata, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    return {"phase": _PRE_CLONE_PHASE, "cps_person_rows": int(mask.sum())}
+
+
+def multispine_relationship_implementation_contract() -> dict[str, object]:
+    """Bind the live projections and options this source operator executes."""
+    return _multispine_person_preparation_contract(
+        "with_us_relationship_inputs", "relationship_inputs"
+    )
+
+
+def multispine_eligibility_implementation_contract() -> dict[str, object]:
+    """Bind the live projections and options this source operator executes."""
+    return _multispine_person_preparation_contract(
+        "with_us_eligibility_inputs", "eligibility_inputs"
+    )
+
+
+def _multispine_person_preparation_contract(
+    operator_name: str, family: str
+) -> dict[str, object]:
+    """Project the live output/transient rosters and the executed options.
+
+    These values move through imported registries without an edit here, so a
+    graph identity that omits them would not describe what actually ran.
+    """
+    return {
+        "outputs": {
+            entity: sorted(columns)
+            for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family].items()
+        },
+        "transient_outputs": _transient_source_outputs(
+            (operator_name,), PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES
+        ),
+        "seed": POOL_RANDOM_SEED,
+        "time_period": POOL_TIME_PERIOD,
+    }
+
+
+def observe_multispine_relationship_person(
+    person: pd.DataFrame,
+    *,
+    weights: Weights,
+    metadata: Mapping[str, object],
+    pool_rows: Mapping[str, int],
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Run the real pre-clone relationship derivation on its person projection.
+
+    Canonical person weights are selected in the original person order and the
+    authenticated full counts describe the unchanged pool. No incomplete Frame
+    is constructed. Support role fields are removed only from the validated
+    ephemeral source view. The public pass-through predicate decides whether
+    the always-recomputing helper runs, so the wrapper's order — signal check
+    before weight validation and before any raw-column requirement — holds.
+    """
+    return _observe_multispine_person_preparation(
+        person,
+        weights=weights,
+        metadata=metadata,
+        pool_rows=pool_rows,
+        operator_name="with_us_relationship_inputs",
+        family="relationship_inputs",
+        label="Relationship-input",
+        carries_signal=lambda table: us_relationship_inputs_person_carries_signal(
+            table
+        ),
+        prepare=lambda table, values: prepare_us_relationship_person(
+            table,
+            values,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+    )
+
+
+def observe_multispine_eligibility_person(
+    person: pd.DataFrame,
+    *,
+    weights: Weights,
+    metadata: Mapping[str, object],
+    pool_rows: Mapping[str, int],
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Run the real pre-clone eligibility derivation on its person projection.
+
+    The same registered boundary, canonical weight selection and full-pool ID
+    merge as the relationship observer. The legacy partial-null pass-through
+    rule — all five outputs present and observed disability varying — is the
+    public predicate's, not this helper's, so the graph cannot strengthen or
+    weaken it.
+    """
+    return _observe_multispine_person_preparation(
+        person,
+        weights=weights,
+        metadata=metadata,
+        pool_rows=pool_rows,
+        operator_name="with_us_eligibility_inputs",
+        family="eligibility_inputs",
+        label="Eligibility-input",
+        carries_signal=lambda table: us_eligibility_inputs_person_carries_signal(table),
+        prepare=lambda table, values: prepare_us_eligibility_person(
+            table,
+            values,
+            seed=POOL_RANDOM_SEED,
+            time_period=POOL_TIME_PERIOD,
+        ),
+    )
+
+
+def _observe_multispine_person_preparation(
+    person: pd.DataFrame,
+    *,
+    weights: Weights,
+    metadata: Mapping[str, object],
+    pool_rows: Mapping[str, int],
+    operator_name: str,
+    family: str,
+    label: str,
+    carries_signal: Callable[[pd.DataFrame], bool],
+    prepare: Callable[[pd.DataFrame, np.ndarray], pd.DataFrame],
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """The shared person-preparation source projection, run and full-pool merge."""
+    boundary = _validate_multispine_person_preparation_boundary(
+        person, metadata=metadata
+    )
+    if (
+        not isinstance(weights, Weights)
+        or set(pool_rows) != set(US_SCHEMA.entities)
+        or any(type(value) is not int or value < 0 for value in pool_rows.values())
+        or pool_rows["person"] != len(person)
+        or len(weights) != len(person)
+    ):
+        raise ValueError(f"{label} population counts or weights are misaligned.")
+    for group in US_SCHEMA.group_entities:
+        if pool_rows[group] != int(
+            person[US_SCHEMA.membership_column(group)].nunique()
+        ):
+            raise ValueError(f"{label} population counts differ from memberships.")
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    selected = without_support_role_metadata(person.loc[mask], entity="person")
+    outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family]
+    selected = selected.drop(
+        columns=_unavailable_output_columns(selected, outputs["person"])
+    )
+    selected_weights = weights.with_values(weights.values[mask], kind=weights.kind)
+    # The wrapper returns its frame untouched on a signal-carrying surface,
+    # reading neither weights nor raw source columns. Preserve that order.
+    produced = (
+        selected
+        if carries_signal(selected)
+        else prepare(selected, selected_weights.values)
+    )
+    _assert_source_table_identity(
+        selected,
+        produced,
+        entity_id="person_id",
+        operator_name=operator_name,
+    )
+    merged, count = _merge_source_person_or_group_outputs(
+        person.copy(),
+        produced,
+        outputs["person"],
+        entity="person",
+        entity_id="person_id",
+        operator_name=operator_name,
+    )
+    selected_rows = {
+        "person": len(selected),
+        **{
+            group: int(selected[US_SCHEMA.membership_column(group)].nunique())
+            for group in US_SCHEMA.group_entities
+        },
+    }
+    receipt = _source_operator_receipt(
+        order_index=0,
+        operator_name=operator_name,
+        family=family,
+        phase=_PRE_CLONE_PHASE,
+        contract=POOL_OPERATOR_CONTRACTS[operator_name],
+        before_rows=dict(pool_rows),
+        available_rows=selected_rows,
+        output_rows=selected_rows,
+        merged_rows={"person": count},
+        declared_outputs=outputs,
+        formula_owned_removed={},
+        kernel_receipt={},
+        overlap_ownership=None,
+    )
+    return merged, _source_chain_receipt(
+        phase=_PRE_CLONE_PHASE,
+        operator_names=(operator_name,),
+        evidence_rows=boundary["cps_person_rows"],
+        receipts=[receipt],
+        output_families=PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+    )
+
+
+def multispine_hours_implementation_contract() -> dict[str, object]:
+    """Bind live provider rosters actually consumed by the hours projection.
+
+    These values can change through imported registries without an edit to
+    this module. Keep their actual projection in graph implementation identity.
+    """
+    return {
+        "outputs": {
+            entity: sorted(columns)
+            for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+                "hours_worked"
+            ].items()
+        },
+        "transient_outputs": _transient_source_outputs(
+            ("with_us_hours_worked_inputs",),
+            PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+        ),
+    }
+
+
+def validate_multispine_hours_worked_boundary(frame: Frame) -> dict[str, object]:
+    """Validate the existing pre-clone boundary before graph hours derivation."""
+    return validate_multispine_hours_person_boundary(
+        frame.person, metadata=frame.metadata
+    )
+
+
+def validate_multispine_hours_person_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Validate actual person evidence at the registered source boundary."""
+    _assert_source_person_boundary(
+        person, metadata=metadata, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    available = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    return {"phase": _PRE_CLONE_PHASE, "cps_person_rows": int(available.sum())}
+
+
+def observe_multispine_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
+    """Run one registered source operator and retain its uncertified gate evidence.
+
+    The graph's mandatory gate must accept this evidence before any downstream
+    context is released. Projection, structure checks and ID merge are the
+    exact same source-boundary implementation used by the direct path.
+    """
+    return _run_source_operator_chain(
+        frame,
+        phase=_PRE_CLONE_PHASE,
+        operator_names=("with_us_hours_worked_inputs",),
+        operators={"with_us_hours_worked_inputs": _observe_us_hours_worked_inputs},
+    )
+
+
+def observe_multispine_hours_person(
+    person: pd.DataFrame,
+    *,
+    weights: Weights,
+    metadata: Mapping[str, object],
+    pool_rows: Mapping[str, int],
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Run the registered hours projection using only actual person columns.
+
+    ``weights`` must be the pool's canonically resolved person vector. Full
+    entity counts come from the authenticated population descriptor; selected
+    group counts use actual membership IDs, as Frame.select prunes each group
+    to the referenced IDs. No partial Frame carries whole-pool metadata.
+    """
+    boundary = validate_multispine_hours_person_boundary(person, metadata=metadata)
+    if (
+        set(pool_rows) != set(US_SCHEMA.entities)
+        or any(type(value) is not int or value < 0 for value in pool_rows.values())
+        or pool_rows["person"] != len(person)
+        or len(weights) != len(person)
+    ):
+        raise ValueError("Measured hours population counts or weights are misaligned.")
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    selected = without_support_role_metadata(person.loc[mask], entity="person")
+    outputs = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["hours_worked"]
+    selected = selected.drop(
+        columns=_unavailable_output_columns(selected, outputs["person"])
+    )
+    selected_weights = weights.with_values(weights.values[mask], kind=weights.kind)
+    selected_rows = {"person": len(selected)}
+    selected_rows.update(
+        {
+            group: int(selected[US_SCHEMA.membership_column(group)].nunique())
+            for group in US_SCHEMA.group_entities
+        }
+    )
+    if any(selected_rows[entity] > pool_rows[entity] for entity in pool_rows):
+        raise ValueError("Measured hours membership counts exceed the population.")
+    produced = with_us_hours_worked_person(
+        selected,
+        weights=selected_weights,
+        seed=POOL_RANDOM_SEED,
+        time_period=POOL_TIME_PERIOD,
+    )
+    gate = us_hours_worked_gate_from_summary(
+        us_hours_worked_person_summary(produced, weights=selected_weights)
+    )
+    removed = sorted(US_HOURS_WORKED_POOL_EXCLUDED_COLUMNS & set(produced.columns))
+    produced = produced.drop(columns=removed)
+    _assert_source_table_identity(
+        selected,
+        produced,
+        entity_id="person_id",
+        operator_name="with_us_hours_worked_inputs",
+    )
+    merged, count = _merge_source_person_or_group_outputs(
+        person.copy(),
+        produced,
+        outputs["person"],
+        entity="person",
+        entity_id="person_id",
+        operator_name="with_us_hours_worked_inputs",
+    )
+    receipt = _source_operator_receipt(
+        order_index=0,
+        operator_name="with_us_hours_worked_inputs",
+        family="hours_worked",
+        phase=_PRE_CLONE_PHASE,
+        contract=POOL_OPERATOR_CONTRACTS["with_us_hours_worked_inputs"],
+        before_rows=dict(pool_rows),
+        available_rows=selected_rows,
+        output_rows=selected_rows,
+        merged_rows={"person": count},
+        declared_outputs=outputs,
+        formula_owned_removed={},
+        kernel_receipt=_hours_gate_receipt(
+            gate, {"person": removed} if removed else {}
+        ),
+        overlap_ownership=None,
+    )
+    return merged, _source_chain_receipt(
+        phase=_PRE_CLONE_PHASE,
+        operator_names=("with_us_hours_worked_inputs",),
+        evidence_rows=boundary["cps_person_rows"],
+        receipts=[receipt],
+        output_families=PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+    )
+
+
+def multispine_housing_boundary_columns() -> tuple[str, ...]:
+    """Declare the registered pre-clone housing evidence to its graph boundary."""
+    return (_CPS_SOURCE_EVIDENCE_COLUMN, support_clone_index_column("person"))
+
+
+def validate_multispine_housing_person_boundary(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> dict[str, object]:
+    """Retain source-role validation in the existing registered owner."""
+    _assert_source_person_boundary(
+        person, metadata=metadata, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    return {"phase": _PRE_CLONE_PHASE, "cps_person_rows": int(mask.sum())}
+
+
+def multispine_housing_source_selection(
+    person: pd.DataFrame, *, metadata: Mapping[str, object]
+) -> tuple[pd.Series, dict[str, object]]:
+    """Return the registered CPS person mask and its boundary receipt.
+
+    The mask is the same one the direct source-operator chain applies, so a
+    graph FILTER built from it selects exactly the historical projection rows.
+    """
+    boundary = validate_multispine_housing_person_boundary(person, metadata=metadata)
+    mask = _cps_person_evidence_mask(
+        person, person_entity="person", phase=_PRE_CLONE_PHASE
+    )
+    return mask, boundary
+
+
+def multispine_housing_output_family() -> Mapping[str, frozenset[str]]:
+    """Return the live registered housing output roster."""
+    return PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["housing_inputs"]
+
+
+def multispine_housing_implementation_contract() -> dict[str, object]:
+    """Bind live provider rosters actually consumed by this source operator."""
+    contract = POOL_OPERATOR_CONTRACTS["with_us_housing_inputs"]
+    return {
+        "outputs": {
+            entity: sorted(columns)
+            for entity, columns in multispine_housing_output_family().items()
+        },
+        "transient_outputs": _transient_source_outputs(
+            ("with_us_housing_inputs",), PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES
+        ),
+        "formula_owned_outputs": {
+            entity: sorted(
+                set(columns) & set(_FORMULA_OWNED_SOURCE_OUTPUTS.get(entity, ()))
+            )
+            for entity, columns in multispine_housing_output_family().items()
+        },
+        "execution_scope": contract.execution_scope,
+        "phases": list(contract.phases),
+        "family": contract.family,
+        "seed": POOL_RANDOM_SEED,
+        "time_period": POOL_TIME_PERIOD,
+    }
+
+
+def assert_multispine_source_merge_labels_supported(
+    target: pd.DataFrame,
+    columns: Iterable[str],
+    *,
+    entity: str,
+    operator_name: str,
+    source: pd.DataFrame | None = None,
+) -> None:
+    """Refuse the inherited label-based merge seam instead of working around it.
+
+    :func:`_merge_source_person_or_group_outputs` writes a non-boolean output
+    through ``target.loc[target.index[positions]]``. With repeated pandas index
+    labels that assignment reaches every row sharing a selected label, so the
+    combination of duplicated labels and that write is refused at this explicit
+    scope boundary. Fixing the shared merge is a separate approved scope;
+    unique labels retain exact original parity.
+
+    The merge picks its write path from the **produced** values, so pass
+    ``source`` to decide from the same series it does. Without ``source`` this
+    falls back to the incumbent rather than the actual write dtype: it can
+    over-refuse a boolean-producing column whose incumbent is not boolean, and
+    it would under-refuse a non-boolean-producing column whose incumbent is.
+    """
+    if not target.index.has_duplicates:
+        return
+
+    def writes_by_label(column: str) -> bool:
+        decided = (
+            target[column]
+            if source is None or column not in source
+            else (source[column])
+        )
+        return not _is_physical_boolean_series(decided)
+
+    affected = sorted(
+        column for column in columns if column in target and writes_by_label(column)
+    )
+    if affected:
+        raise ValueError(
+            f"Multispine source operator {operator_name!r} cannot merge "
+            f"{entity!r} output(s) {affected} onto repeated index labels; the "
+            "shared label-based merge would write every row sharing a label. "
+            "Fixing that inherited seam is a separate reviewed scope."
+        )
+
+
+def merge_multispine_housing_source_outputs(
+    tables: Mapping[str, pd.DataFrame],
+    produced: Mapping[str, pd.DataFrame],
+    *,
+    pool_rows: Mapping[str, int],
+    selected_rows: Mapping[str, int],
+    evidence_rows: int,
+) -> tuple[dict[str, pd.DataFrame], dict[str, int], dict[str, object]]:
+    """Merge the five declared housing leaves by entity ID and receipt the order.
+
+    ``tables`` are isolated full-pool copies and ``produced`` the projected
+    source rows carrying every declared output. Column values, the ID merge and
+    the ordered receipt come from the existing registered helpers; this wrapper
+    adds no new formula and changes no selection semantics.
+    """
+    outputs = multispine_housing_output_family()
+    if set(produced) != set(outputs) or set(outputs) - set(tables):
+        raise ValueError(
+            "US housing source merge requires its three declared output tables."
+        )
+    merged: dict[str, pd.DataFrame] = {
+        entity: table for entity, table in tables.items()
+    }
+    merged_rows: dict[str, int] = {}
+    for entity in sorted(outputs):
+        columns = outputs[entity]
+        identity = US_SCHEMA.entity_id_column(entity)
+        assert_multispine_source_merge_labels_supported(
+            merged[entity],
+            columns,
+            entity=entity,
+            operator_name="with_us_housing_inputs",
+            source=produced[entity],
+        )
+        merged[entity], merged_rows[entity] = _merge_source_person_or_group_outputs(
+            merged[entity],
+            produced[entity],
+            columns,
+            entity=entity,
+            entity_id=identity,
+            operator_name="with_us_housing_inputs",
+        )
+    receipt = _source_operator_receipt(
+        order_index=0,
+        operator_name="with_us_housing_inputs",
+        family="housing_inputs",
+        phase=_PRE_CLONE_PHASE,
+        contract=POOL_OPERATOR_CONTRACTS["with_us_housing_inputs"],
+        before_rows=dict(pool_rows),
+        available_rows=dict(selected_rows),
+        output_rows=dict(selected_rows),
+        merged_rows=merged_rows,
+        declared_outputs=dict(outputs),
+        formula_owned_removed={},
+        kernel_receipt={},
+        overlap_ownership=None,
+    )
+    return (
+        merged,
+        merged_rows,
+        _source_chain_receipt(
+            phase=_PRE_CLONE_PHASE,
+            operator_names=("with_us_housing_inputs",),
+            evidence_rows=evidence_rows,
+            receipts=[receipt],
+            output_families=PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+        ),
     )
 
 
@@ -2265,43 +3130,21 @@ def _run_source_operator_chain(
                 f"{operator_name!r}: input={before_rows}, output={after_rows}."
             )
         receipts.append(
-            {
-                "order_index": order_index,
-                "operator": operator_name,
-                "family": family,
-                "phase": phase,
-                "execution_scope": contract.execution_scope,
-                "pool_input_rows": before_rows,
-                "operator_input_rows": available_rows,
-                "cps_available_rows": (
-                    available_rows
-                    if contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE
-                    else None
-                ),
-                "operator_output_rows": output_rows,
-                "merged_rows": merged_rows,
-                "operator_projection": {
-                    "selection": (
-                        _CPS_SOURCE_EVIDENCE_COLUMN
-                        if contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE
-                        else _WHOLE_POOL_EXECUTION_SCOPE
-                    ),
-                    "lineage_state_persisted": (
-                        contract.execution_scope == _WHOLE_POOL_EXECUTION_SCOPE
-                    ),
-                    "support_role_metadata_exposed": phase == _POST_CLONE_PHASE,
-                },
-                "output_columns": {
-                    entity: sorted(columns)
-                    for entity, columns in declared_outputs.items()
-                    if columns
-                },
-                "formula_owned_outputs_removed": formula_owned_removed,
-                "kernel_receipt": dict(kernel_receipt),
-                "overlap_ownership": (
-                    dict(overlap_ownership) if overlap_ownership is not None else None
-                ),
-            }
+            _source_operator_receipt(
+                order_index=order_index,
+                operator_name=operator_name,
+                family=family,
+                phase=phase,
+                contract=contract,
+                before_rows=before_rows,
+                available_rows=available_rows,
+                output_rows=output_rows,
+                merged_rows=merged_rows,
+                declared_outputs=declared_outputs,
+                formula_owned_removed=formula_owned_removed,
+                kernel_receipt=kernel_receipt,
+                overlap_ownership=overlap_ownership,
+            )
         )
     uses_cps_source = any(
         POOL_OPERATOR_CONTRACTS[name].execution_scope == _CPS_SOURCE_EXECUTION_SCOPE
@@ -2309,38 +3152,126 @@ def _run_source_operator_chain(
     )
     return PoolStageOutput(
         current,
-        {
-            "phase": phase,
-            "operator_order": list(operator_names),
-            "cps_source_evidence": (
-                {
-                    "column": _CPS_SOURCE_EVIDENCE_COLUMN,
-                    "person_rows": int(
-                        _cps_source_evidence_mask(frame, phase=phase).sum()
-                    ),
-                }
+        _source_chain_receipt(
+            phase=phase,
+            operator_names=operator_names,
+            evidence_rows=(
+                int(_cps_source_evidence_mask(frame, phase=phase).sum())
                 if uses_cps_source
                 else None
             ),
-            "transient_outputs_carried_through_clone": (
-                _transient_source_outputs(operator_names, output_families)
-                if phase == _PRE_CLONE_PHASE
-                else {}
-            ),
-            "suboperators": receipts,
-        },
+            receipts=receipts,
+            output_families=output_families,
+        ),
     )
 
 
+def _source_chain_receipt(
+    *,
+    phase: str,
+    operator_names: tuple[str, ...],
+    evidence_rows: int | None,
+    receipts: list[dict[str, object]],
+    output_families: Mapping[str, Mapping[str, frozenset[str]]],
+) -> dict[str, object]:
+    return {
+        "phase": phase,
+        "operator_order": list(operator_names),
+        "cps_source_evidence": (
+            {
+                "column": _CPS_SOURCE_EVIDENCE_COLUMN,
+                "person_rows": evidence_rows,
+            }
+            if evidence_rows is not None
+            else None
+        ),
+        "transient_outputs_carried_through_clone": (
+            _transient_source_outputs(operator_names, output_families)
+            if phase == _PRE_CLONE_PHASE
+            else {}
+        ),
+        "suboperators": receipts,
+    }
+
+
+def _source_operator_receipt(
+    *,
+    order_index: int,
+    operator_name: str,
+    family: str,
+    phase: str,
+    contract: SourceOperatorContract,
+    before_rows: Mapping[str, int],
+    available_rows: Mapping[str, int],
+    output_rows: Mapping[str, int],
+    merged_rows: Mapping[str, int],
+    declared_outputs: Mapping[str, frozenset[str]],
+    formula_owned_removed: Mapping[str, list[str]],
+    kernel_receipt: Mapping[str, object],
+    overlap_ownership: Mapping[str, object] | None,
+) -> dict[str, object]:
+    return {
+        "order_index": order_index,
+        "operator": operator_name,
+        "family": family,
+        "phase": phase,
+        "execution_scope": contract.execution_scope,
+        "pool_input_rows": before_rows,
+        "operator_input_rows": available_rows,
+        "cps_available_rows": (
+            available_rows
+            if contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE
+            else None
+        ),
+        "operator_output_rows": output_rows,
+        "merged_rows": merged_rows,
+        "operator_projection": {
+            "selection": (
+                _CPS_SOURCE_EVIDENCE_COLUMN
+                if contract.execution_scope == _CPS_SOURCE_EXECUTION_SCOPE
+                else _WHOLE_POOL_EXECUTION_SCOPE
+            ),
+            "lineage_state_persisted": (
+                contract.execution_scope == _WHOLE_POOL_EXECUTION_SCOPE
+            ),
+            "support_role_metadata_exposed": phase == _POST_CLONE_PHASE,
+        },
+        "output_columns": {
+            entity: sorted(columns)
+            for entity, columns in declared_outputs.items()
+            if columns
+        },
+        "formula_owned_outputs_removed": formula_owned_removed,
+        "kernel_receipt": dict(kernel_receipt),
+        "overlap_ownership": (
+            dict(overlap_ownership) if overlap_ownership is not None else None
+        ),
+    }
+
+
 def _assert_source_operator_boundary(frame: Frame, *, phase: str) -> None:
-    manifest = frame.metadata.get(SPINE_ASSEMBLY_MANIFEST_KEY)
+    _assert_source_person_boundary(
+        frame.table(frame.schema.person_entity),
+        metadata=frame.metadata,
+        person_entity=frame.schema.person_entity,
+        phase=phase,
+    )
+
+
+def _assert_source_person_boundary(
+    person: pd.DataFrame,
+    *,
+    metadata: Mapping[str, object],
+    person_entity: str,
+    phase: str,
+) -> None:
+    manifest = metadata.get(SPINE_ASSEMBLY_MANIFEST_KEY)
     if not isinstance(manifest, Mapping):
         raise ValueError(
             "Multispine source operators require the immutable spine assembly "
             "manifest before any source derivation."
         )
-    person = frame.table(frame.schema.person_entity)
-    clone_column = support_clone_index_column(frame.schema.person_entity)
+    clone_column = support_clone_index_column(person_entity)
     if clone_column not in person:
         raise ValueError(
             "Multispine source operators require post-assembly clone provenance; "
@@ -2370,7 +3301,19 @@ def _assert_source_operator_boundary(frame: Frame, *, phase: str) -> None:
 def _cps_source_evidence_mask(frame: Frame, *, phase: str) -> pd.Series:
     """Select CPS lineage only from a raw column unavailable on ACS."""
 
-    person = frame.table(frame.schema.person_entity)
+    return _cps_person_evidence_mask(
+        frame.table(frame.schema.person_entity),
+        person_entity=frame.schema.person_entity,
+        phase=phase,
+    )
+
+
+def _cps_person_evidence_mask(
+    person: pd.DataFrame,
+    *,
+    person_entity: str,
+    phase: str,
+) -> pd.Series:
     if _CPS_SOURCE_EVIDENCE_COLUMN not in person:
         raise ValueError(
             "Multispine source operators require raw CPS evidence column "
@@ -2385,7 +3328,7 @@ def _cps_source_evidence_mask(frame: Frame, *, phase: str) -> pd.Series:
             "Multispine source operators found no CPS-evidenced person rows in "
             f"{_CPS_SOURCE_EVIDENCE_COLUMN!r}."
         )
-    clone_column = support_clone_index_column(frame.schema.person_entity)
+    clone_column = support_clone_index_column(person_entity)
     clone_index = pd.to_numeric(person[clone_column], errors="coerce")
     evidenced_clones = set(clone_index.loc[available].astype(int).tolist())
     invalid_evidence = (
@@ -2679,15 +3622,39 @@ def _assert_source_operator_structure(
         )
     for entity in before.entities:
         entity_id = before.schema.entity_id_column(entity)
-        before_ids = before.table(entity)[entity_id]
-        after_ids = after.table(entity)[entity_id]
-        if after_ids.duplicated().any() or set(after_ids.tolist()) != set(
-            before_ids.tolist()
-        ):
-            raise ValueError(
-                f"Multispine source operator {operator_name!r} changed structural "
-                f"{entity_id!r} values."
-            )
+        _assert_source_table_identity(
+            before.table(entity),
+            after.table(entity),
+            entity_id=entity_id,
+            operator_name=operator_name,
+        )
+
+
+def _assert_source_table_identity(
+    before: pd.DataFrame,
+    after: pd.DataFrame,
+    *,
+    entity_id: str,
+    operator_name: str,
+) -> None:
+    before_ids = before[entity_id]
+    after_ids = after[entity_id]
+    if after_ids.duplicated().any() or set(after_ids.tolist()) != set(
+        before_ids.tolist()
+    ):
+        raise ValueError(
+            f"Multispine source operator {operator_name!r} changed structural "
+            f"{entity_id!r} values."
+        )
+
+
+def _unavailable_output_columns(
+    table: pd.DataFrame,
+    columns: frozenset[str],
+) -> list[str]:
+    return [
+        column for column in columns if column in table and table[column].isna().all()
+    ]
 
 
 def _without_unavailable_output_columns(
@@ -2701,11 +3668,7 @@ def _without_unavailable_output_columns(
     for entity, columns in outputs.items():
         if entity not in tables:
             continue
-        unavailable = [
-            column
-            for column in columns
-            if column in tables[entity] and tables[entity][column].isna().all()
-        ]
+        unavailable = _unavailable_output_columns(tables[entity], columns)
         if unavailable:
             tables[entity] = tables[entity].drop(columns=unavailable)
             dropped = True
@@ -2743,83 +3706,14 @@ def _merge_source_operator_outputs(
         target = tables[entity]
         source = operated.table(entity)
         entity_id = pool.schema.entity_id_column(entity)
-        if entity_id not in target or entity_id not in source:
-            raise ValueError(
-                f"Multispine source operator {operator_name!r} cannot align "
-                f"{entity!r} without {entity_id!r}."
-            )
-        if source[entity_id].duplicated().any():
-            raise ValueError(
-                f"Multispine source operator {operator_name!r} returned duplicate "
-                f"{entity_id!r} values."
-            )
-        missing_outputs = sorted(set(columns) - set(source.columns))
-        if missing_outputs:
-            raise ValueError(
-                f"Multispine source operator {operator_name!r} did not emit its "
-                f"declared {entity!r} output(s): {missing_outputs}."
-            )
-        source_by_id = source.set_index(entity_id)
-        target_ids = target[entity_id]
-        eligible = target_ids.isin(source_by_id.index)
-        if int(eligible.sum()) != len(source):
-            raise ValueError(
-                f"Multispine source operator {operator_name!r} output IDs do not "
-                f"align one-to-one with the {entity!r} pool."
-            )
-        for column in sorted(columns):
-            source_values = source_by_id[column]
-            aligned = source_values.reindex(target_ids)
-            source_is_boolean = _is_physical_boolean_series(source_values)
-            if source_is_boolean:
-                positions = np.flatnonzero(eligible.to_numpy())
-                aligned_boolean = pd.Series(
-                    pd.array(aligned, dtype="boolean"),
-                    index=target.index,
-                    name=column,
-                )
-                if column not in target:
-                    target[column] = aligned_boolean
-                    continue
-                incumbent = target[column]
-                invalid_incumbent = incumbent.dropna().map(
-                    lambda value: not isinstance(value, (bool, np.bool_))
-                )
-                if invalid_incumbent.any():
-                    offending_types = sorted(
-                        {
-                            f"{type(value).__module__}.{type(value).__qualname__}"
-                            for value in incumbent.dropna().loc[invalid_incumbent]
-                        }
-                    )
-                    raise TypeError(
-                        f"Multispine source operator {operator_name!r} emitted "
-                        f"physical booleans for {entity}.{column}, but the pool "
-                        "materialized observed non-boolean values with "
-                        f"dtype {incumbent.dtype!s}: {offending_types}."
-                    )
-                merged_boolean = pd.Series(
-                    pd.array(incumbent, dtype="boolean"),
-                    index=target.index,
-                    name=column,
-                )
-                merged_boolean.iloc[positions] = aligned_boolean.iloc[positions].array
-                target[column] = merged_boolean
-                continue
-            if column in target and pd.api.types.is_bool_dtype(target[column].dtype):
-                raise TypeError(
-                    f"Multispine source operator {operator_name!r} emitted "
-                    f"non-boolean values for boolean-materialized "
-                    f"{entity}.{column}; source dtype={source_values.dtype!s}."
-                )
-            if column not in target:
-                target[column] = aligned.to_numpy()
-            else:
-                positions = np.flatnonzero(eligible.to_numpy())
-                target.loc[target.index[positions], column] = aligned.iloc[
-                    positions
-                ].to_numpy()
-        merged_rows[entity] = int(eligible.sum())
+        tables[entity], merged_rows[entity] = _merge_source_person_or_group_outputs(
+            target,
+            source,
+            columns,
+            entity=entity,
+            entity_id=entity_id,
+            operator_name=operator_name,
+        )
 
     merged = Frame(
         tables,
@@ -2830,6 +3724,95 @@ def _merge_source_operator_outputs(
         metadata=pool.metadata,
     )
     return merged, merged_rows
+
+
+def _merge_source_person_or_group_outputs(
+    target: pd.DataFrame,
+    source: pd.DataFrame,
+    columns: frozenset[str],
+    *,
+    entity: str,
+    entity_id: str,
+    operator_name: str,
+) -> tuple[pd.DataFrame, int]:
+    """The shared source-boundary ID merge; callers supply an isolated target."""
+    if entity_id not in target or entity_id not in source:
+        raise ValueError(
+            f"Multispine source operator {operator_name!r} cannot align "
+            f"{entity!r} without {entity_id!r}."
+        )
+    if source[entity_id].duplicated().any():
+        raise ValueError(
+            f"Multispine source operator {operator_name!r} returned duplicate "
+            f"{entity_id!r} values."
+        )
+    missing_outputs = sorted(set(columns) - set(source.columns))
+    if missing_outputs:
+        raise ValueError(
+            f"Multispine source operator {operator_name!r} did not emit its "
+            f"declared {entity!r} output(s): {missing_outputs}."
+        )
+    source_by_id = source.set_index(entity_id)
+    target_ids = target[entity_id]
+    eligible = target_ids.isin(source_by_id.index)
+    if int(eligible.sum()) != len(source):
+        raise ValueError(
+            f"Multispine source operator {operator_name!r} output IDs do not "
+            f"align one-to-one with the {entity!r} pool."
+        )
+    for column in sorted(columns):
+        source_values = source_by_id[column]
+        aligned = source_values.reindex(target_ids)
+        source_is_boolean = _is_physical_boolean_series(source_values)
+        if source_is_boolean:
+            positions = np.flatnonzero(eligible.to_numpy())
+            aligned_boolean = pd.Series(
+                pd.array(aligned, dtype="boolean"),
+                index=target.index,
+                name=column,
+            )
+            if column not in target:
+                target[column] = aligned_boolean
+                continue
+            incumbent = target[column]
+            invalid_incumbent = incumbent.dropna().map(
+                lambda value: not isinstance(value, (bool, np.bool_))
+            )
+            if invalid_incumbent.any():
+                offending_types = sorted(
+                    {
+                        f"{type(value).__module__}.{type(value).__qualname__}"
+                        for value in incumbent.dropna().loc[invalid_incumbent]
+                    }
+                )
+                raise TypeError(
+                    f"Multispine source operator {operator_name!r} emitted "
+                    f"physical booleans for {entity}.{column}, but the pool "
+                    "materialized observed non-boolean values with "
+                    f"dtype {incumbent.dtype!s}: {offending_types}."
+                )
+            merged_boolean = pd.Series(
+                pd.array(incumbent, dtype="boolean"),
+                index=target.index,
+                name=column,
+            )
+            merged_boolean.iloc[positions] = aligned_boolean.iloc[positions].array
+            target[column] = merged_boolean
+            continue
+        if column in target and pd.api.types.is_bool_dtype(target[column].dtype):
+            raise TypeError(
+                f"Multispine source operator {operator_name!r} emitted "
+                f"non-boolean values for boolean-materialized "
+                f"{entity}.{column}; source dtype={source_values.dtype!s}."
+            )
+        if column not in target:
+            target[column] = aligned.to_numpy()
+        else:
+            positions = np.flatnonzero(eligible.to_numpy())
+            target.loc[target.index[positions], column] = aligned.iloc[
+                positions
+            ].to_numpy()
+    return target, int(eligible.sum())
 
 
 def _is_physical_boolean_series(values: pd.Series) -> bool:

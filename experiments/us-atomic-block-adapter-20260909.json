@@ -1,0 +1,25 @@
+{
+  "before_after_current_frozen_and_maintained_source_equal": true,
+  "before_after_current_model_and_code_resources_equal": true,
+  "code_resources": 12,
+  "cpu_seconds": 3.078341,
+  "district_relation": "official_tabulation",
+  "model_source_files": 5983,
+  "native_payloads_read": 0,
+  "peak_rss_bytes": 353140736,
+  "receipt_sha256": "404deb7666b3ac9b8a654181228c545ab95c131f30a1fbe65a2e15d5a08a4c4c",
+  "release_eligible": false,
+  "result": 0,
+  "sampling_basis": "2020_census_persons",
+  "scope": "Invented US block normalization and declaration through shared assignment, derivation and validation; native support and graph integration remain pending.",
+  "source_and_owned_files": 479,
+  "source_sha256": "8d776a60e5ace340b0de745461b89679653522bb672b95ab43bdfabda0f602ee",
+  "tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 13
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 4.607667459000368
+}

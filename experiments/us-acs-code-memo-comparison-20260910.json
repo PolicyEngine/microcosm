@@ -1,0 +1,217 @@
+{
+  "baseline": {
+    "cpu_seconds": 303.897467,
+    "peak_rss_bytes": 594296832,
+    "wall_seconds": 308.2577062920318
+  },
+  "baseline_receipt_sha256": "784d46a3a5ed3994f1018f6d05900122abdc6f63a0f18e318002fedfe7059af9",
+  "correctness_controls": 18,
+  "cpu_ratio": 1.0405705290067455,
+  "date": "2026-09-10",
+  "decision": "not_adopted",
+  "experiment_patch_sha256": "bc2b245b712256578ad6587c7a242af38e4244eaeacc268b589b2ed0c38ae557",
+  "guard_sha256": "8a2cf87bd0a00c1de1d8e4263764394551efed8e1ecb3d3297eeb5b1ab0eaf5e",
+  "implementation_restored_to_sha256": "db7aaae06961cc1ed9ce13b28dac74d8fd1041b9cd4c32294d2b11105fbef7af",
+  "native_speedup_established": false,
+  "optimized": {
+    "cpu_seconds": 316.226748,
+    "peak_rss_bytes": 601653248,
+    "wall_seconds": 319.78662233403884
+  },
+  "optimized_receipt_sha256": "49016ede5317b1e025e6d476364398b8233e3c589b7b80ef78781d154ab9f0d0",
+  "optimized_source_sha256": "4dc64558ed453f1c06557ef005e42193278496a9c31b374475417c407c037573",
+  "profile_and_original_teardown_passed": true,
+  "reason": "No measured speed improvement in the same instrumented fixture; added eligibility work exceeded the comparison savings.",
+  "release_acceptance": false,
+  "scope": "one paired invented cold/required fixture run, identical cProfile policy and dimensions",
+  "successor_controls_executed": false,
+  "timing_limitations": [
+    "cProfile overhead changes elapsed time and can trigger the unchanged limits",
+    "partial snapshots omit unfinished active-call time until profiler flush",
+    "only exact frozen-source coordinates are reported; external time remains within cumulative callers",
+    "cumulative function times overlap and must not be summed"
+  ],
+  "top_optimized_records": [
+    {
+      "calls": 1,
+      "cumulative_seconds": 309.704728666,
+      "file": "packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py",
+      "function": "known_financial_run",
+      "line": 19,
+      "recursive_calls": 0,
+      "self_seconds": 0.0052826240000000005
+    },
+    {
+      "calls": 2,
+      "cumulative_seconds": 308.7401165,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_atomic_survey_financial.py",
+      "function": "run_atomic_survey_financial",
+      "line": 538,
+      "recursive_calls": 0,
+      "self_seconds": 0.005962359
+    },
+    {
+      "calls": 110,
+      "cumulative_seconds": 224.98760203900002,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/survey_population_preparation.py",
+      "function": "_validate",
+      "line": 1071,
+      "recursive_calls": 0,
+      "self_seconds": 0.00429048
+    },
+    {
+      "calls": 108,
+      "cumulative_seconds": 220.871511795,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/survey_population_preparation.py",
+      "function": "_checked",
+      "line": 1091,
+      "recursive_calls": 0,
+      "self_seconds": 0.000492867
+    },
+    {
+      "calls": 652,
+      "cumulative_seconds": 195.60535725600002,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py",
+      "function": "_producer",
+      "line": 223,
+      "recursive_calls": 0,
+      "self_seconds": 4.97942924
+    },
+    {
+      "calls": 14,
+      "cumulative_seconds": 169.824184456,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/survey_atomic_geography.py",
+      "function": "reconstruct_atomic_survey_geography",
+      "line": 307,
+      "recursive_calls": 0,
+      "self_seconds": 0.006830769
+    },
+    {
+      "calls": 38464,
+      "cumulative_seconds": 168.34809192,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py",
+      "function": "_live_code",
+      "line": 137,
+      "recursive_calls": 0,
+      "self_seconds": 8.731628122
+    },
+    {
+      "calls": 8,
+      "cumulative_seconds": 139.864694334,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/current_survey_predictors.py",
+      "function": "qualify_current_survey_predictors",
+      "line": 304,
+      "recursive_calls": 0,
+      "self_seconds": 0.0066878350000000005
+    },
+    {
+      "calls": 2,
+      "cumulative_seconds": 119.01038833400001,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_atomic_survey_population.py",
+      "function": "run_atomic_survey_population",
+      "line": 213,
+      "recursive_calls": 0,
+      "self_seconds": 0.001211868
+    },
+    {
+      "calls": 6,
+      "cumulative_seconds": 116.761678708,
+      "file": "packages/microcosm-graph/src/microcosm/graph/executor.py",
+      "function": "run_graph",
+      "line": 2158,
+      "recursive_calls": 0,
+      "self_seconds": 0.007467228
+    },
+    {
+      "calls": 15,
+      "cumulative_seconds": 115.40236200000001,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/current_survey_geography.py",
+      "function": "qualify_current_survey_geography",
+      "line": 220,
+      "recursive_calls": 0,
+      "self_seconds": 0.0036097990000000003
+    },
+    {
+      "calls": 2010412,
+      "cumulative_seconds": 114.621920672,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py",
+      "function": "check",
+      "line": 176,
+      "recursive_calls": 51772,
+      "self_seconds": 86.630530445
+    },
+    {
+      "calls": 348,
+      "cumulative_seconds": 111.58561966500001,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_population_catalogue.py",
+      "function": "_producer",
+      "line": 102,
+      "recursive_calls": 0,
+      "self_seconds": 0.135475169
+    },
+    {
+      "calls": 150,
+      "cumulative_seconds": 98.955415883,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py",
+      "function": "verify_acs_native_coverage",
+      "line": 490,
+      "recursive_calls": 0,
+      "self_seconds": 0.010436341
+    },
+    {
+      "calls": 8,
+      "cumulative_seconds": 98.24177225000001,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/survey_origin_budget.py",
+      "function": "_initial",
+      "line": 355,
+      "recursive_calls": 0,
+      "self_seconds": 0.0019372500000000002
+    },
+    {
+      "calls": 116,
+      "cumulative_seconds": 75.394407754,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_population_catalogue.py",
+      "function": "_checked",
+      "line": 406,
+      "recursive_calls": 0,
+      "self_seconds": 0.003720891
+    },
+    {
+      "calls": 110,
+      "cumulative_seconds": 71.55709778800001,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_population_catalogue.py",
+      "function": "verify_acs_source_catalogue",
+      "line": 430,
+      "recursive_calls": 0,
+      "self_seconds": 0.000156618
+    },
+    {
+      "calls": 4,
+      "cumulative_seconds": 70.568924458,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_current_survey_predictors.py",
+      "function": "_qualified",
+      "line": 269,
+      "recursive_calls": 0,
+      "self_seconds": 0.0008037900000000001
+    },
+    {
+      "calls": 23,
+      "cumulative_seconds": 52.046634627,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/current_asec_demographics.py",
+      "function": "qualify_current_asec_demographics",
+      "line": 194,
+      "recursive_calls": 0,
+      "self_seconds": 0.003941233000000001
+    },
+    {
+      "calls": 2,
+      "cumulative_seconds": 42.917792458,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_survey_population.py",
+      "function": "run_authenticated_survey_population",
+      "line": 815,
+      "recursive_calls": 0,
+      "self_seconds": 0.0007081860000000001
+    }
+  ],
+  "wall_ratio": 1.037400252472796
+}

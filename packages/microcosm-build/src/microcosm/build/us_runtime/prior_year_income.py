@@ -45,7 +45,7 @@ from microcosm.build.us_runtime.support_provenance import (
     support_role_series,
     without_support_role_metadata,
 )
-from microcosm.frame import Frame
+from microcosm.frame import Frame, Weights
 from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
@@ -63,6 +63,7 @@ __all__ = [
     "US_PRIOR_YEAR_INCOME_STAGE_NAME",
     "derive_us_prior_year_income_from_manifest",
     "impute_us_prior_year_income_to_puf_support_from_manifest",
+    "prepare_us_prior_year_person",
     "us_prior_year_income_signal_gate",
     "us_prior_year_income_source_reconciliation_gate",
     "us_prior_year_income_stage_spec",
@@ -213,11 +214,7 @@ def _previous_year_availability_match_survival_factor(frame: Frame) -> float:
             f"spine manifest version {version!r}."
         )
     factor = manifest.get("sample_fraction")
-    if (
-        type(factor) is not float
-        or not np.isfinite(factor)
-        or not 0.0 < factor <= 1.0
-    ):
+    if type(factor) is not float or not np.isfinite(factor) or not 0.0 < factor <= 1.0:
         raise ValueError(
             "US prior-year-income availability requires a finite production "
             "stacked sample_fraction in (0, 1]."
@@ -695,34 +692,57 @@ def _replace_person_table(frame: Frame, person: pd.DataFrame) -> Frame:
     )
 
 
-def with_us_prior_year_income_inputs(
-    frame: Frame,
+def _prior_year_person_is_complete(person: pd.DataFrame) -> bool:
+    return (
+        not has_support_role_metadata(person, entity="person")
+        and all(column in person for column in US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS)
+        and not all(
+            column in person for column in US_PRIOR_YEAR_INCOME_REQUIRED_SOURCE_COLUMNS
+        )
+    )
+
+
+def prepare_us_prior_year_person(
+    person: pd.DataFrame,
     *,
+    weights: Weights,
     seed: int,
     time_period: int,
-) -> Frame:
-    """Materialize adjacent-year earnings and PUF-support replacements."""
+    predictors: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Run the actual prior-year stage on a real person table.
 
-    if frame.schema != US_SCHEMA:
-        raise ValueError("US prior-year income requires the US schema.")
-    person = frame.table("person")
+    ``weights`` must be resolved for this person order by the caller. The
+    source-only, pre-clone path requires no other entity table. The legacy
+    post-clone path supplies the actual person/tax-unit predictor projection;
+    it is never reconstructed from placeholder entities here. Monetary values
+    retain the existing source-period treatment; this helper does not uprate.
+    """
+    if not isinstance(weights, Weights):
+        raise TypeError("US prior-year person weights require canonical Weights.")
+    if len(weights) != len(person):
+        raise ValueError("US prior-year weights must match the person row order.")
+    if _prior_year_person_is_complete(person):
+        if predictors is not None:
+            raise ValueError("Source-only prior-year inputs require no PUF predictors.")
+        return person
+
     has_support_roles = has_support_role_metadata(person, entity="person")
-    has_raw_sources = all(
-        column in person for column in US_PRIOR_YEAR_INCOME_REQUIRED_SOURCE_COLUMNS
-    )
-    if (
-        not has_support_roles
-        and all(column in person for column in US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS)
-        and not has_raw_sources
-    ):
-        return frame
-
     stage_person = person.copy(deep=True)
-    stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
+    stage_person[_PERSON_WEIGHT_COLUMN] = weights.values
     if has_support_roles:
-        predictors = _person_prior_year_income_predictors(frame)
+        if (
+            not isinstance(predictors, pd.DataFrame)
+            or not predictors.index.equals(person.index)
+            or tuple(predictors.columns) != _PUF_PREDICTORS
+        ):
+            raise ValueError(
+                "Prior-year support inputs require the actual aligned PUF predictors."
+            )
         for column in _PUF_PREDICTORS:
             stage_person[_PUF_PREDICTOR_PREFIX + column] = predictors[column].to_numpy()
+    elif predictors is not None:
+        raise ValueError("Source-only prior-year inputs require no PUF predictors.")
     output = run_source_stage(
         us_prior_year_income_stage_spec(),
         tables={"person": stage_person},
@@ -742,6 +762,34 @@ def with_us_prior_year_income_inputs(
     )
     if has_support_roles:
         output = output.drop(columns=[_FORMULA_OWNED_OUTPUT])
+    return output
+
+
+def with_us_prior_year_income_inputs(
+    frame: Frame,
+    *,
+    seed: int,
+    time_period: int,
+) -> Frame:
+    """Materialize adjacent-year earnings and PUF-support replacements."""
+    if frame.schema != US_SCHEMA:
+        raise ValueError("US prior-year income requires the US schema.")
+    person = frame.table("person")
+    if _prior_year_person_is_complete(person):
+        return frame
+    weights = frame.resolve_weights("person")
+    predictors = (
+        _person_prior_year_income_predictors(frame)
+        if has_support_role_metadata(person, entity="person")
+        else None
+    )
+    output = prepare_us_prior_year_person(
+        person,
+        weights=weights,
+        seed=seed,
+        time_period=time_period,
+        predictors=predictors,
+    )
     return _replace_person_table(frame, output)
 
 
@@ -892,12 +940,10 @@ def us_prior_year_income_signal_gate(frame: Frame) -> GateResult:
     if match_survival_factor != 1.0:
         authored_lower, authored_upper = summary[availability_band_key]
         applied_floor = float(authored_lower) * match_survival_factor
-        availability_band_key = (
-            "previous_year_income_available_applied_share_band"
+        availability_band_key = "previous_year_income_available_applied_share_band"
+        summary["previous_year_income_available_sampled_match_survival_factor"] = (
+            match_survival_factor
         )
-        summary[
-            "previous_year_income_available_sampled_match_survival_factor"
-        ] = match_survival_factor
         summary["previous_year_income_available_applied_floor"] = applied_floor
         summary[availability_band_key] = [applied_floor, authored_upper]
     failures: list[str] = []

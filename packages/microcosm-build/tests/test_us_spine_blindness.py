@@ -71,9 +71,12 @@ _US_RUNTIME_IMPORT_PREFIX = "microcosm.build.us_runtime"
 _SPINE_BLIND_BUILD_TOOLS = (_REPOSITORY_ROOT / "tools" / "build_us_multispine_pool.py",)
 _REQUIRED_POOL_RUNTIME_MODULES = frozenset(
     {
+        "_person_signal_summary.py",
         "late_producer_dag.py",
         "multispine_pool.py",
+        "operator_column_contracts.py",
         "puf_support.py",
+        "reported_coverage_source.py",
         "spine_agreement.py",
         "spine_assembly.py",
         "us_late_overlap_ownership.py",
@@ -116,6 +119,56 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "us_late_overlap_ownership.py",
         "us_late_producer_registry.py",
         "warm_start_selection.py",  # Provenance reporting and recovery.
+        # US launch integration (PR #893), reviewed 2026-09-11. The composed
+        # two-survey population is source-qualified by charter: ACS and ASEC
+        # rows are composed, cloned and bound to their original records, and
+        # the PUF55 routes condition on source-owned Social Security totals
+        # (known for ASEC reporters, unknown otherwise; nine versus eight
+        # predictors). These modules read support_channel/spine_source_id to
+        # select or validate origin rows and to bind original identities;
+        # none routes a PUF-detail imputation by spine.
+        "current_asec_demographics.py",  # ASEC rows -> sex/household state.
+        # Source-owned pension/annuity, retirement distribution, net property,
+        # farm and other-income reporting and routing per row. Selects the ASEC
+        # channel and binds original identities exactly as the Social Security
+        # qualifier beside it does; it routes no PUF-detail imputation and
+        # models nothing.
+        "current_asec_income_routing_source.py",
+        # Source-qualified graph additions reviewed 2026-09-12. These are
+        # original-record joins or declarations, not source-routed PUF models.
+        "current_acs_income_anchor_source.py",  # ACS anchor -> exact original ids.
+        # Exact original ASEC joins, preserving reporting/routing unknowns;
+        # neither qualifier selects modeled donors or attaches tax leaves.
+        "current_asec_child_support_source.py",  # Paid/received support observations.
+        "current_asec_dividend_source.py",  # Dividend observations/survivor routes.
+        "current_asec_interest_source.py",  # ASEC interest -> original money owner.
+        # Composes qualified original source axes and DESIGN branches; no fit.
+        "current_property_income_sources.py",
+        # Original ASEC pension/disability/survivor details; no population model.
+        "current_asec_retirement_detail_source.py",
+        "current_asec_unemployment_source.py",  # UC literal -> original ASEC ids.
+        "current_survey_amounts.py",  # Validate origin join; fan out to both clones.
+        "current_survey_health_source.py",  # Qualify exact ACS/ASEC source rosters.
+        "current_survey_health_coverage.py",  # Validate the same two-clone join.
+        "graph_current_survey_health.py",  # Declare the attachment's identity inputs.
+        # Rejoin qualified original property values to both initial clones.
+        "graph_current_survey_property.py",
+        "current_social_security_source.py",  # Source-owned SS totals per row.
+        "current_survey_geography.py",  # Origin roster and draw keys.
+        "current_survey_predictors.py",  # Source-qualified predictor prep.
+        "graph_combined_clone.py",  # Clone EXPAND keeps the channel labels.
+        "graph_composed_asec_binding.py",  # Binds prepared ASEC to its rows.
+        "graph_composed_population.py",  # Composes ACS + ASEC populations.
+        "graph_current_survey_predictors.py",  # Trains/draws per source.
+        "graph_sources.py",  # Declares the channel slices it loads.
+        "graph_survey_population.py",  # Declares/validates origin columns.
+        "native_household_origin.py",  # Original household lineage.
+        "population_input_coverage.py",  # Reports coverage by source group.
+        "puf55_survey_recipients.py",  # ASEC reporter ids for SS routes.
+        "puf55_survey_ss_measurement.py",  # Reported SS sums by reporter.
+        "puf_detail_transfer.py",  # Validates channels at placement.
+        "puf_diagnostic_consumer.py",  # Development diagnostic by origin.
+        "survey_population_preparation.py",  # Stacks original anchors.
     }
 )
 
@@ -226,6 +279,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "acs_sources.py",
         "acs_transfer_bank.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_checkpoint.py",  # Bounded checkpoint I/O; no population treatment.
+        "asec_raw_stage_v4.py",  # Authenticated source restoration; no treatment.
         "asec_pool.py",
         "base_pool.py",
         "block_ladder_sources.py",
@@ -255,6 +309,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "org_wages.py",
         "parity_reference.py",
         "pregnancy.py",
+        # Shared numeric property component names; no source access or treatment.
+        "property_income_constants.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
         "puf_aggregate_records.py",
@@ -313,8 +369,324 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "worker_identity.py",  # Portable primary-QRF worker identity; no population treatment.
     }
 )
-_CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(
-    _OTHER_US_RUNTIME_MODULES
+# The US launch integration (PR #893) adds the graph-native source, catalogue,
+# composition, clone, geography, predictor, PUF and calibration modules below.
+# None is a migrated population-treatment registry operator; each is classified
+# here from its module docstring (reviewed 2026-09-11) so an added module
+# still fails until reviewed. This inventory does not exempt any of them from
+# the source-spine scan below; modules that inspect provenance by charter are
+# listed separately in _SOURCE_SPINE_PROVENANCE_OWNERS with their reason.
+_US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
+    {
+        # Qualified raw ACS INTP/RETP anchors, preserving literal knownness
+        "current_acs_income_anchor_source.py",
+        # Exact received/paid child-support source observations; no tax treatment
+        "current_asec_child_support_source.py",
+        # Dividend receipt/amount and survivor-route source qualification
+        "current_asec_dividend_source.py",
+        # Qualified ASEC interest components and unreconciled total diagnostics
+        "current_asec_interest_source.py",
+        # Pure supplied-table property donor basis and exclusion diagnostics;
+        # no source owner or source-spine access exemption
+        "current_asec_property_basis.py",
+        # Qualified ASEC retirement details and raw aggregate/slot comparisons
+        "current_asec_retirement_detail_source.py",
+        # Qualified UC receipt/amount observations, preserving unknown zeros
+        "current_asec_unemployment_source.py",
+        # Qualified original property donor/recipient branch composition
+        "current_property_income_sources.py",
+        # Current UC/health amount qualification and exact two-clone attachment
+        "current_survey_amounts.py",
+        # Pure current-coverage recodes and original-person clone attachment
+        "current_survey_health_coverage.py",
+        # Authenticated original ACS/ASEC health-coverage observations
+        "current_survey_health_source.py",
+        # Explicit fiscal input declarations; assumptions/inactivity disabled
+        "fiscal_leaf_policy.py",
+        # Typed source, recode and attachment health graph fragment
+        "graph_current_survey_health.py",
+        # Qualified original property branches and exact paired attachment
+        "graph_current_survey_property.py",
+        # Grouped dense calibration over retained fiscal measurements
+        "graph_fiscal_dense_calibration.py",
+        # Measured fiscal inputs and exact retained population/target axes
+        "graph_fiscal_measurement.py",
+        # Source-blind weighted QRF chain, raw draws and signed reconciliation
+        "graph_property_income.py",
+        # Source-blind fit/history and recipient-draw verification
+        "graph_property_income_receipts.py",
+        # Deterministic ordinary-interest/dividend tax split and numeric gate
+        "graph_property_tax_leaves.py",
+        # Source-blind PUF clone placement and original-channel preservation
+        "graph_puf55_route_attachment.py",
+        # Complete PUF composition and retained checked-output lifetime
+        "graph_survey_puf55.py",
+        # Current amount/health composition over the checked PUF parent
+        "graph_us_survey_enrichment.py",
+        # Bounded, checksummed codec preserving target-only money source authority
+        "_asec_current_money_codec.py",
+        # Validate the measured person-signal summary shape before gate decisions
+        "_person_signal_summary.py",
+        # Pure, unbound ACS housing-unit semantics; no source authentication
+        "acs_housing_universe.py",
+        # Closed ACS source observations, with a same-snapshot native Frame bridge
+        "acs_housing_universe_source.py",
+        # Closed real ACS preparation plus literal coverage issuance, without
+        # admission
+        "acs_native_coverage_binding.py",
+        # Closed ACS coverage source issuance; native consistency grants no identity
+        "acs_person_coverage_authentication.py",
+        # Additive, literal ACS person coverage fields for an exact native roster
+        "acs_person_coverage_columns.py",
+        # Closed raw ACS catalogue before native population or unit construction
+        "acs_population_catalogue.py",
+        # Issue selected 2024 ASEC observations with original household DESIGN
+        # anchors
+        "asec_2024_native_population.py",
+        # Closed, source-only PRPERTYP evidence for an exact current-money parent
+        "asec_coverage_authentication.py",
+        # Pure ASEC current-money decoding and price restatement
+        "asec_current_money.py",
+        # Pinned additive consumer status, separate from the immutable money recipe
+        "asec_current_money_graph_resources.py",
+        # Explicit packaged-resource and installed microunit byte verification
+        "asec_current_money_resources.py",
+        # Typed subset of an authenticated ASEC current-money body
+        "asec_current_money_selection.py",
+        # Authenticate the reviewed full ASEC v4 plus household-observation
+        # attachment
+        "asec_current_money_source.py",
+        # Actual tax-only reconstruction from verified target-current ASEC money
+        "asec_current_money_units.py",
+        # Explicit ASEC demographic source contract: sex, its allocation flag, and
+        # the
+        "asec_demographic_source.py",
+        # Closure-admitted PolicyEngine-US evaluation of the corrected money leaves
+        "asec_engine_evaluation.py",
+        # Closed original ASEC household observations, without coverage inference
+        "asec_household_coverage_fields.py",
+        # Attach authenticated raw ASEC household observations by exact original
+        # keys
+        "asec_household_observations.py",
+        # Immutable interview-time ASEC housing observations and publisher routing
+        "asec_housing_status.py",
+        # Fixed-cohort numeric source authentication and tax-result composition
+        "asec_housing_status_source.py",
+        # Source-specific occupied-HU evidence; never a population or release
+        # verdict
+        "asec_housing_universe.py",
+        # Authenticate carried ASEC HU evidence and preserve the chosen parent chain
+        "asec_housing_universe_source.py",
+        # Closed PAW source observations, independent of the sealed 33-field money
+        # body
+        "asec_income_observations.py",
+        # Authenticate literal original ASEC household weights without pooling them
+        "asec_original_household_weights.py",
+        # Bounded, non-authoritative original-CSV ASEC PRPERTYP projection
+        "asec_person_coverage_source.py",
+        # Restore an observed person total from closed, authenticated Census members
+        "asec_person_income_source.py",
+        # Authenticate the complete 2024 ASEC catalogue before population
+        # construction
+        "asec_population_catalogue.py",
+        # Full-source ASEC preparation for the current-money graph slice
+        "asec_prepared_source.py",
+        # Closed Census interview-week controls, separate from the T1 money source
+        "asec_student_controls.py",
+        # Pinned population-only Census API responses to atomic support, without I/O
+        "atomic_block_api_sources.py",
+        # Pinned Census source bytes to normalized atomic-block support, without I/O
+        "atomic_block_sources.py",
+        # Normalize US block mappings for shared geography operators; no new kernel
+        "atomic_block_support.py",
+        # Public CD references and uncertainty, without target or candidate
+        # activation
+        "cd_reference.py",
+        # Pinned public ACS acquisition; credentials never enter stored provenance
+        "cd_reference_sources.py",
+        # Pure export comparison against a supplied common parent; no source issuer
+        "common_frame_export_contract.py",
+        # Corrected CPS monetary leaves derived from a typed selected-money subset
+        "cps_carried_current.py",
+        # Current survey source projection for ASEC sex and household state
+        "current_asec_demographics.py",
+        # Current ASEC pension/annuity, retirement distribution, net property,
+        # farm and other-income reporting and routing projection
+        "current_asec_income_routing_source.py",
+        # Current survey Social Security totals, reason literals and unknown shares
+        "current_social_security_source.py",
+        # Qualified observed geography and stable household draw keys for both
+        # surveys
+        "current_survey_geography.py",
+        # Source-qualified current ASEC to ACS financial predictor preparation
+        "current_survey_predictors.py",
+        # National demographic calibration with registry-bound graph diagnostics
+        "demographic_calibration_graph.py",
+        # Complete canonical PUF enrichment boundaries; no source admission is
+        # issued
+        "full_puf_enrichment.py",
+        # Typed ACS source evidence and exact whole-household graph selection
+        "graph_acs_housing_universe.py",
+        # Typed PAW transport and reported-income accounting, never source authority
+        "graph_asec_income.py",
+        # The five-node ASEC slice: source, selection, leaves, engine and reported
+        # income
+        "graph_asec_prepared.py",
+        # Assign shared geography after the complete combined-survey support clone
+        "graph_atomic_survey_clone.py",
+        # Checked atomic survey geography plus current financial development output
+        "graph_atomic_survey_financial.py",
+        # Complete initial support clones before assigning qualified survey
+        # geography
+        "graph_atomic_survey_population.py",
+        # The combined-survey PUF-support clone, as a real graph ``EXPAND`` stage
+        "graph_combined_clone.py",
+        # Bind the carried prepared-ASEC evidence to the ASEC rows of a composed
+        # population
+        "graph_composed_asec_binding.py",
+        # Corrected ASEC monetary and demographic measurements over composed ASEC
+        # rows
+        "graph_composed_asec_measures.py",
+        # Source-free declarations shared by composed producers and their consumers
+        "graph_composed_contracts.py",
+        # Compose the prepared ASEC population with the native ACS population
+        "graph_composed_population.py",
+        # Identity-bound metadata for real US operators in the population graph
+        "graph_context.py",
+        # Project authenticated survey geography into declared household cells
+        "graph_current_survey_geography.py",
+        # Graph training, draw and attachment of current survey financial predictors
+        "graph_current_survey_predictors.py",
+        # Current survey-first E00900 diagnostic placement, not donor admission
+        "graph_current_survey_puf_transfer.py",
+        # Bounded PUF profile attachment to an independently retained Population
+        "graph_full_puf_enrichment.py",
+        # Declared lookup import, household assignment, and geography validation
+        "graph_geography.py",
+        # Non-authoritative HU transport bound to CREATE and selected graph ancestry
+        "graph_housing_universe.py",
+        # Reviewed, path-independent implementation identities for the US source
+        # graph
+        "graph_implementation.py",
+        # Disjoint household age counts, and the composition that calibrates them
+        "graph_national_age_counts.py",
+        # Graph source producers and population-grain native household lineage
+        "graph_native_household_origin.py",
+        # Closed additional identity for native-origin nodes; upstream bytes stay
+        # fixed
+        "graph_native_origin_implementation.py",
+        # One source-backed canonical PUF55 donor CREATE, shared by both routes
+        "graph_puf55_canonical_donor.py",
+        # Typed PUF55 route artifacts after current financial leaves
+        "graph_puf55_survey_recipients.py",
+        # A fixture-only price → donor → matrix → raw draw → masked placement graph
+        "graph_puf_detail_transfer.py",
+        # Source-qualified development diagnostic, preserving the fixture-only path
+        "graph_puf_diagnostic_consumer.py",
+        # Real, declared US source construction for the population graph
+        "graph_sources.py",
+        # Unweighted age counts as an ordered artifact, without population columns
+        "graph_survey_age_artifact.py",
+        # Transport source-qualified budget values through their actual graph edges
+        "graph_survey_budget.py",
+        # Source-blind age calibration over typed numeric budget and count artifacts
+        "graph_survey_calibration.py",
+        # Graph declarations for a source-authenticated, selected survey population
+        "graph_survey_population.py",
+        # Explicit input-name profiles; neither a release gate nor source admission
+        "input_coverage_profile.py",
+        # Explicit activation of the direct-national ACS 2024 published age counts
+        "national_age_activation.py",
+        # Private native household origins, authenticated from original source
+        # members
+        "native_household_origin.py",
+        # Source-visible operator column declarations, without operation imports
+        "operator_column_contracts.py",
+        # Describe required inputs on one actual graph Population and attached
+        # manifest
+        "population_input_coverage.py",
+        # Project a bound canonical59 artifact into the survey-SS PUF55 donor
+        "puf55_canonical_donor.py",
+        # Validate and merge the two PUF55 raw chains before one finalization
+        "puf55_route_finalization.py",
+        # Disjoint PUF55 recipient values from an actual, authenticated financial
+        # run
+        "puf55_survey_recipients.py",
+        # Filer/joint-spouse report sums for conditioning, never beneficiary amounts
+        "puf55_survey_ss_measurement.py",
+        # Return-grain canonical PUF59 with explicit model/growth lineage
+        "puf59_canonical.py",
+        # Bounded deterministic private canonical59 array envelope; no source
+        # admission
+        "puf59_canonical_artifact.py",
+        # Fixture-only PUF price-result import and combined-host feature placement
+        "puf_detail_transfer.py",
+        # Qualified transport for one development-only PUF conditional diagnostic
+        "puf_diagnostic_consumer.py",
+        # Additive full-return PUF source projection, before canonical modeling
+        "puf_full_source.py",
+        # Graph owner of the additive complete PUF return-source artifact
+        "puf_full_source_graph.py",
+        # Pure per-field growth contract and transform for a raw-source PUF
+        # successor
+        "puf_growth.py",
+        # Graph nodes that run the pure PUF growth transform inside a real
+        # population
+        "puf_growth_graph.py",
+        # The thirteen-field 2015 PUF monetary source projection: the twelve
+        # accepted
+        "puf_monetary_agi_projection.py",
+        # The first monetary amounts typed out of the 2015 PUF delivery bytes
+        "puf_monetary_source.py",
+        # The developmental CPI-U price-restatement baseline for the 2015 PUF
+        "puf_price_baseline.py",
+        # Explicit canonical PUF QBI data model, adapted from the archived PUF owner
+        "puf_qbi_model.py",
+        # The first typed artifact read straight from the 2015 PUF delivery bytes
+        "puf_raw_source.py",
+        # Source-specific, explicit PUF2015 to target2024 monetary transport
+        "puf_target2024_growth.py",
+        # Measured ASEC at-interview coverage recodes omitted by frozen H5 inputs
+        "reported_coverage_source.py",
+        # Bind source CSV readers to the real stdlib builtin, including caller
+        # aliases
+        "source_csv_builtin.py",
+        # Explicit S0101-only activation for the selected ACS/ASEC development path
+        "survey_age_activation.py",
+        # Country admission for survey age profiles with an explicit source prefix
+        "survey_age_calibration.py",
+        # Two explicit S0101-only source captures; no network or target activation
+        "survey_age_sources.py",
+        # Reconstruct observed constraints, initial clones and geography from live
+        # sources
+        "survey_atomic_geography.py",
+        # Recompute supported age diagnostics without rerunning an optimizer
+        "survey_calibration_diagnostics.py",
+        # Plan one draw over complete supplied survey records, before native Frames
+        "survey_catalogue_selection.py",
+        # Admit a checked financial graph result under its original sampling budget
+        "survey_financial_successor.py",
+        # Pure observed-age alias; no source, population or release authority
+        "survey_observed_age.py",
+        # Source-qualified, sampling-aware budgets for the complete first survey
+        # clone
+        "survey_origin_budget.py",
+        # Pure US development-domain declarations over complete, supplied literal
+        # rows
+        "survey_population_domains.py",
+        # Authenticate complete catalogues, select once, and stack original anchors
+        "survey_population_preparation.py",
+        # Directional ContentStore replay checks, never source or population
+        # authority
+        "survey_population_replay.py",
+        # Explicit source-report Social Security component basis
+        "survey_social_security.py",
+    }
+)
+_CLASSIFIED_US_RUNTIME_MODULES = (
+    frozenset(_SPINE_BLIND_OPERATOR_MODULES)
+    .union(_OTHER_US_RUNTIME_MODULES)
+    .union(_US_LAUNCH_GRAPH_RUNTIME_MODULES)
 )
 
 
@@ -3096,6 +3468,65 @@ def _source_spine_accesses(source: str) -> tuple[str, ...]:
     )
 
 
+# US launch integration (PR #893), reviewed 2026-09-11. The fail-closed
+# scanner records every dynamic subscript, getattr or .get() on a value it
+# cannot resolve. In these modules every such site was read: they index
+# tuples and state records (entry[2], state[0]), node/kernel maps keyed by
+# node id, byte payloads in codecs (payload[offset:...]), PUF donor tables
+# by profile-declared predictor/target names, or numpy masks. None selects a
+# provenance column. The scanner keeps running on them: accessor calls and
+# contraband source columns still fail; only the dynamic-selector class is
+# accepted, and only for the listed modules.
+_REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
+    {
+        # Reviewed 2026-09-12: fixed dividend/interest/RINT-slot amount, status
+        # and code families passed to private helpers; no source-channel reads.
+        "current_asec_property_basis.py",
+        # Static leaf/entity closure and engine metadata/default dictionaries,
+        # not population provenance. Assumption execution remains disabled.
+        "fiscal_leaf_policy.py",
+        # Declared numerical target columns and (node, artifact) byte maps;
+        # no original-source routing or provenance selectors.
+        "graph_property_income_receipts.py",
+        # Reviewed 2026-09-13: declared entity/ID columns, fixed property and
+        # tax-leaf families, dtype maps and typed artifact names only.
+        "graph_property_tax_leaves.py",
+        # Reviewed 2026-09-12: exact geography fields/CSR masks, typed artifact
+        # names and producer keys, retained registry entries and node histories.
+        # These four remain scanned for provenance columns and accessor calls.
+        "graph_fiscal_measurement.py",
+        "graph_puf55_route_attachment.py",
+        "graph_survey_puf55.py",
+        "graph_us_survey_enrichment.py",
+        "acs_native_coverage_binding.py",
+        "acs_person_coverage_columns.py",
+        "acs_population_catalogue.py",
+        "asec_2024_native_population.py",
+        "atomic_block_api_sources.py",
+        "atomic_block_sources.py",
+        "full_puf_enrichment.py",
+        "graph_atomic_survey_financial.py",
+        "graph_atomic_survey_population.py",
+        "graph_current_survey_puf_transfer.py",
+        "graph_full_puf_enrichment.py",
+        "graph_puf55_canonical_donor.py",
+        "graph_puf_detail_transfer.py",
+        "puf55_route_finalization.py",
+        "puf59_canonical_artifact.py",
+        "puf_full_source.py",
+        "puf_price_baseline.py",
+        "puf_qbi_model.py",
+        "puf_target2024_growth.py",
+        "survey_atomic_geography.py",
+        "survey_social_security.py",
+    }
+)
+_DYNAMIC_SELECTOR_FINDING_MARKERS = (
+    "unresolvable dynamic",
+    "hidden or expanded arguments",
+)
+
+
 def _non_owner_source_spine_accesses(
     module_name: str,
     source: str,
@@ -3104,7 +3535,52 @@ def _non_owner_source_spine_accesses(
 
     if module_name in _SOURCE_SPINE_PROVENANCE_OWNERS:
         return ()
-    return _source_spine_accesses(source)
+    accesses = _source_spine_accesses(source)
+    if module_name in _REVIEWED_DYNAMIC_SELECTOR_MODULES:
+        accesses = tuple(
+            access
+            for access in accesses
+            if not any(marker in access for marker in _DYNAMIC_SELECTOR_FINDING_MARKERS)
+        )
+    return accesses
+
+
+def test_reviewed_dynamic_selector_modules_still_fail_on_provenance_reads() -> None:
+    """The dynamic-selector acceptance never hides an accessor or a column."""
+
+    reviewed = next(iter(sorted(_REVIEWED_DYNAMIC_SELECTOR_MODULES)))
+    dynamic_only = """
+def pick(table, name):
+    return table[name]
+"""
+    assert _non_owner_source_spine_accesses("unlisted_module.py", dynamic_only)
+    assert _non_owner_source_spine_accesses(reviewed, dynamic_only) == ()
+    with_accessor = """
+from microcosm.build.us_runtime.support_provenance import support_channel_column
+
+def pick(table, name):
+    channel = table[support_channel_column("person")]
+    return table[name], channel
+"""
+    remaining = _non_owner_source_spine_accesses(reviewed, with_accessor)
+    assert remaining and all(
+        "support_channel_column" in access for access in remaining
+    ), remaining
+    with_column = """
+def pick(table):
+    return table["person_spine_source_id"]
+"""
+    assert _non_owner_source_spine_accesses(reviewed, with_column)
+    overlap = sorted(
+        _REVIEWED_DYNAMIC_SELECTOR_MODULES.intersection(_SOURCE_SPINE_PROVENANCE_OWNERS)
+    )
+    assert not overlap, overlap
+    missing = sorted(
+        name
+        for name in _REVIEWED_DYNAMIC_SELECTOR_MODULES
+        if not (_US_RUNTIME / name).is_file()
+    )
+    assert not missing, missing
 
 
 def _called_function_names(source: str) -> set[str]:
@@ -3265,6 +3741,10 @@ def test_us_runtime_module_classification_is_complete() -> None:
     actual = {path.name for path in _US_RUNTIME.glob("*.py")}
     overlap = sorted(
         set(_SPINE_BLIND_OPERATOR_MODULES).intersection(_OTHER_US_RUNTIME_MODULES)
+        | set(_SPINE_BLIND_OPERATOR_MODULES).intersection(
+            _US_LAUNCH_GRAPH_RUNTIME_MODULES
+        )
+        | set(_OTHER_US_RUNTIME_MODULES).intersection(_US_LAUNCH_GRAPH_RUNTIME_MODULES)
     )
     assert not overlap, f"runtime module classifications overlap: {overlap}"
     assert not _unclassified_runtime_modules(actual), (
@@ -3406,8 +3886,12 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 70, (
-            f"{tool.name} must reach the pinned 70-module runtime graph; "
+        # 73 since the US launch integration: the pool tool now also reaches
+        # _person_signal_summary.py, operator_column_contracts.py and
+        # reported_coverage_source.py (reviewed 2026-09-11; all three are
+        # listed in _REQUIRED_POOL_RUNTIME_MODULES so a silent drop fails).
+        assert len(runtime_graph) == 73, (
+            f"{tool.name} must reach the pinned 73-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

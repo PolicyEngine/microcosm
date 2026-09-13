@@ -1,3 +1,147 @@
+# Grouped solver x calibration target snapshots integration - 2026-09-12
+
+Historical note, 12 September 2026: this grouped-lane journal was subsequently
+integrated with PR #914's corrected iteration identities and the actual fiscal
+host observer. Its 443-test evidence and statements that host wiring is absent
+describe that earlier lane. Current source and acceptance are recorded in
+[the fiscal-host evidence](experiments/fiscal-target-snapshot-host-20260912.md).
+
+Lane: `microcosm-grouped-target-snapshot-integration-20260912`, branch
+`grouped-target-snapshot-integration-20260912`. Base: fresh `origin/main`
+`116d46ee9dc2aafdc68259b7c06e4c3462522e8b` (unmoved; it is exactly the shared
+base both reviewed heads were cut from). Integrates the exact reviewed heads
+`536f1ceefcdafda3cc619c14b4da18e012a7be57` (G, US grouped/fixed-zero Adam) and
+`b43369dc49e175803f62020cc1e72fa53926aed8` (S, calibration target snapshots,
+PR #914) against the read-only checklist
+`grouped-snapshot-integration-review.md`.
+
+Everything below this section is prior-lane history and was accurate when
+written; see "Root journals are history, not state" in `CLAUDE.md`.
+
+## State
+
+Complete and local. Four commits: the merge, the grouped instrumentation, the
+identity recomputation, and the cross-product controls. Nothing pushed, no PR,
+no release action. Root reviews and integrates.
+
+Scope is the shared solver seam only. `graph_fiscal_dense_calibration.py` still
+calls `calibrate` without an observer, so this branch emits no snapshot for the
+real US fiscal path; that host wiring is a separate step, and no observer
+registry, `Node.params` callback or replay-reruns-the-optimizer claim was
+invented here. See
+[the lane experiment](experiments/grouped-target-snapshot-integration-20260912.md)
+for scope, evidence and residual risks.
+
+## Done
+
+- Fetched `origin/main`; confirmed it is still `116d46ee9`, so no main drift
+  had to be preserved. Recorded as the integration base.
+- Created this worktree on a new branch from that base; fast-forwarded to G,
+  then merged S. Verified all four pinned source hashes
+  (`solve.py` and `calibrate/__init__.py` on both heads) match
+  `grouped-snapshot-integration-review-pins.json` byte for byte before merging.
+- `calibrate/__init__.py` auto-merged as a true union: `GroupedUpperBounds`
+  export retained alongside every snapshot export.
+- `solve.py`: the single textual conflict was the `calibrate()` signature;
+  resolved as a union of S's `target_snapshots` and G's
+  `grouped_upper_bounds` / `grouped_preserve_zeros` /
+  `_post_projection_observer`.
+- `test_us_multispine_pool_tool.py`: resolved semantically. G's unrelated US
+  integration delta (schema_version 2 PUMA-ladder fixture with joint
+  PUMA/tract/CD overlap arrays and per-layer `source` labels) merged cleanly
+  and is retained; the only textual conflict was the `spec_sha256` pin.
+- The five source-derived identity conflicts
+  (`inventory_coverage.py` EXPECTED_HASHES, `us-f0-coverage.json`,
+  `test_spec_engine_loader.py` golden, the multispine `spec_sha256`, and the
+  calibrate parity `pins.json`) carry a placeholder in this merge commit. None
+  of them is an ours/theirs decision: both sides' values describe their own
+  tree, and neither describes the merged one. They are recomputed against the
+  final merged sources in a later commit on this branch.
+
+## Done (continued)
+
+- Instrumented `_optimize_grouped`: the grouped early return in `_optimize`
+  bypassed every hook S added, so grouped runs emitted only a closing snapshot.
+  The in-loop emission sits after the progress callback and before `backward()`
+  and reads the exact float32 estimate tensor the epoch's loss was computed
+  from. Returned weights, trajectory and RNG state are bit-identical with the
+  observer on and off, and no evaluation is added.
+- Separated retain-best detection from the receipt for grouped runs, so a later
+  change that populated a grouped receipt cannot make the reused final emitter
+  claim a retained best. The receipt stays empty.
+- Recomputed six source-derived identity artifacts against this checkout (the
+  five conflicted ones plus the country-bundle digests, which were not
+  conflicted because only G had touched them but which move for the same
+  reason). No value equals either branch's. The simulate and fit.qrf pins were
+  deliberately left alone.
+- Added the checklist's cross product to the three existing grouped test files
+  rather than a new one, so every case reuses fixtures already there.
+
+## Next
+
+Root's independent review and integration. Open follow-ups, none owned here:
+the host observer seam for the US fiscal dense calibration path, a country-scale
+cadence choice backed by a real measurement, and the dashboard consumer.
+
+---
+
+# #893 reconciliation to main's amended graph interface (amendments 19 and 20)
+
+Lane: `microcosm-us-launch-verified-lanes-20260910` (the live integration
+worktree for PR #893, branch `microcosm-us-launch-integration-20260909`).
+Started 2026-09-12 at `069d5ed9a`. Everything below the `---` rule at the end
+of this section is prior-lane history; see "Root journals are history, not
+state" in `CLAUDE.md`.
+
+## State
+
+Merges done, four graph pieces re-applied, graph package green (518 passed),
+fit green (191), spec check / groups verify / ruff clean. Build-side consumer
+suites running at the time of this entry; final results in `out.md` §5 and
+`experiments/893-reconciliation-amendments-19-20-20260912.md`. Nothing
+pushed, no PR, no new branch, `uv.lock` untouched.
+
+## Done
+
+- Read `CLAUDE.md`, the charter's "Interface freeze" at `23ba24770`, PR
+  #893's body, the Amendment 19 lane's "Scope" list; diffed the graph package
+  against `23ba24770` per file; AST-scanned every non-graph consumer.
+- `uv sync --all-packages --locked --extra us --extra uk` exit 0. Baseline
+  graph suite: 5 failed / 362 passed (the five the brief names).
+- `3010b7788` merge `origin/main`: graph package, fit sources, lock and
+  charter resolved to main's bytes; branch-only `attachments.py`,
+  `availability.py`, `schema.py` and the two branch-only graph tests removed
+  in the merge, to return only where consumed.
+- `051357909` merge `23ba24770` (amendment 20, merged from the branch head
+  because #912 was still on CI; the dispatcher re-runs `git merge origin/main`
+  after it lands — expected no-op for graph/fit/lock/charter).
+- `dc621c14c` seed digests re-pinned (the branch's `acs_transfer` and
+  `housing_inputs` plus amendment 20's `fit.qrf` move them); coverage report
+  regenerated; `--check` exit 0.
+- `cff8fbf32` calibrate/simulate H1 pins re-recorded (the branch's solver and
+  `Frame.__reduce__` changes move them); parity files 27 passed.
+- Pieces re-applied on main's files, each with graph-level tests the branch
+  never had: `752ab840f` raw-byte codec (13 US consumers; 8 codec tests),
+  `db1b7821a` Frame-metadata store (3 named consumers; 274 passed across the
+  store/population/executor/manifest files), `d1019762b` execution states
+  (the post-clone geography gate's typed artifact; replaces the amendment-19
+  gate refusal and its test; whole graph package 518 passed), `a16eeacf8`
+  population observer (4 consumers; 94 passed on the executor + B/F files).
+- Dropped for lack of a consumer: lazy retention (`attachments.py`, layer
+  08), `schema.py`, `keys._stream_file`, the `_write_node` refactor.
+- Layer map computed from `git log --name-only` attribution plus an AST
+  import scan with hard / name-hard / soft link classes; written to `out.md`.
+
+## Next
+
+- Record the build-side consumer results in `out.md` §5, commit the
+  `experiments/` copy of the report, leave `out.md` uncommitted (it is
+  another lane's tracked report; see the memory note).
+- For Max: piece C supersedes amendment 19's gate refusal (`out.md` §8.1);
+  the dropped lazy retention / `_stream_file` / `_write_node` pieces (§8.2–3).
+
+---
+
 # Amendment 19 — typed opaque artifacts on the graph interface
 
 Lane: `amend-typed-artifacts`, off `origin/main` at `3094bfe84`. Started
@@ -960,3 +1104,65 @@ The still-earlier PolicyEngine-US 1.819.0 lock-bump lane merged into
 `origin/main` at `7b90bb18` on 2026-08-24; its final state remains at commit
 `05d254aa` and its detailed receipts remain in the historical section of
 `_LANE-NOTES.md`.
+
+## US launch integration staging — 2026-09-09
+
+### State
+Source-only staging in progress. Execution and source/data admission remain root-owned.
+
+### Done
+Verified requested clean branch, base HEAD, main ancestry and preservation pins.
+
+### Next
+Apply thirteen explicit source layers, commit each, then separately review isolated ordinary execution. Existing journal history above is retained.
+
+Layer 1: SAFE-ADDITIVE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 2: GRAPH-RESTORE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 3: ACCEPTED-SHARED-RESTORE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 4: PUF-SUPPORT-MERGE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 5: SOLVE-MERGE-PROPOSAL.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 6: J-GRAPH-COMPATIBILITY.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 7: F-CATALOGUE-OPTIMIZATION.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 8: GRAPH-ATTACHMENT-METADATA.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 9: F-JOINT-GEOGRAPHY-GATE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 10: SOURCE-CLOSURE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 11: PLACEMENT-ADDITIONS.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 12: ORDINARY-CLOSURE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 13: INTEGRATION-REGRESSIONS.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+### State
+All thirteen source layers staged and committed; behavioral qualification pending.
+
+### Done
+Per-layer pins and actual commit messages checked; store/current-main preservation retained.
+
+### Next
+Root reviews exact ordinary guard/source/resource admissions before execution. Full65 findings and survey/SCF lanes remain separately owned. No remote action is authorized.
+
+### Integration source-resource closure — 2026-09-09
+
+Root preflight found seven JSON source definitions declared by the ordinary guard but omitted by the staged patch delivery. Added the exact previously reviewed resource bytes from the accepted full65 source projection; no new resource admission or genuine payload. Preserved source staging and earlier evidence.
+
+## Layer14 full65 replay correction — 2026-09-09
+
+State: exact accepted two-file correction staged; successor57 integration execution pending.
+Done: verified clean84243 preimages, exact r2 postimages, fixed store/current-main sources and frozen36 evidence.
+Next: root admits the separate exact-allowlist57-case guard and final source identities before execution; no new resources.
+
+## Source review publication — 2026-09-09
+
+The user explicitly authorized pushing the current source work and creating PRs for Anthony to review. This supersedes earlier source-only local restrictions for source publication; it does not authorize a data release, merge or deployment.
+
+Integration controls passed 36 cases; the exact replay correction subsequently passed all 57 cases at dfa7f872cd3eba3c42adf5758cde8b3ca38f3d17. Source/control, model-declaration and resource hashes matched externally after both runs. A final formatting/import cleanup and explicit test-observer loop binding are included for CI; no release result is claimed. See docs/us-launch-review.md for current scope, evidence and related PRs.

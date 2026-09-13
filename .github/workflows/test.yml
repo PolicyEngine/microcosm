@@ -207,7 +207,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13", "3.14"]
+        python-version: ["3.13", "3.14.4"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -219,6 +219,70 @@ jobs:
         run: |
           mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list shared-spec)
           /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+
+  spec-seed-diagnostics:
+    # Produce bounded diagnosis immediately, independently of the full suite.
+    # This remains required by ci-ok and never updates assertion goldens.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.14.4"
+      - name: Sync workspace with US and UK engines
+        run: uv sync --all-packages --locked --extra us --extra uk
+      - name: Check diagnostic bootstrap and failure reporting
+        timeout-minutes: 2
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: >-
+          uv run --no-sync pytest --noconftest -p no:cacheprovider -q
+          packages/microcosm-build/tests/test_spec_seed_identity_cpu_bootstrap.py
+          packages/microcosm-build/tests/test_spec_seed_identity_outer_failure.py
+          packages/microcosm-build/tests/test_spec_seed_identity_owned_temp.py
+          packages/microcosm-build/tests/test_spec_seed_identity_system_metadata.py
+          packages/microcosm-build/tests/test_spec_seed_identity_per_code_context.py
+      - name: Derive candidate spec and seed identities (diagnostic only)
+        id: spec_seed_diagnostics
+        timeout-minutes: 15
+        env:
+          DIAG_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          DIAG_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DIAG_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DIAG_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PYTHONDONTWRITEBYTECODE: "1"
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+          VECLIB_MAXIMUM_THREADS: "1"
+          NUMEXPR_NUM_THREADS: "1"
+          BLIS_NUM_THREADS: "1"
+          POPULACE_FIT_N_JOBS: "1"
+          POPULACE_FIT_PREDICT_WORKERS: "1"
+        run: |
+          DIAG_CHECKOUT_SHA="$(git rev-parse --verify HEAD)"
+          DIAG_UV_VERSION="$(uv --version)"
+          export DIAG_CHECKOUT_SHA DIAG_UV_VERSION
+          uv run --no-sync python tools/spec_seed_identity_diagnostics.py \
+            --output-dir "$RUNNER_TEMP/spec-seed-diagnostics"
+      - name: Retain bounded candidate identity evidence
+        if: ${{ always() && steps.spec_seed_diagnostics.outcome != 'skipped' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: spec-seed-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}-py3.14.4
+          path: |
+            ${{ runner.temp }}/spec-seed-diagnostics/candidate-digests.json
+            ${{ runner.temp }}/spec-seed-diagnostics/seed-protocol.json
+            ${{ runner.temp }}/spec-seed-diagnostics/seed-map.json
+            ${{ runner.temp }}/spec-seed-diagnostics/seed-bindings.json
+            ${{ runner.temp }}/spec-seed-diagnostics/environment-and-source.json
+            ${{ runner.temp }}/spec-seed-diagnostics/diagnostic-status.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+          include-hidden-files: false
 
   engine-us:
     needs: changes
@@ -336,6 +400,48 @@ jobs:
           PY
       - name: Spec identity section digests (cross-environment diffing aid)
         run: env -u PYTHONPATH /tmp/wheels-venv/bin/python -I tools/spec_envelope_digests.py be uk
+      - name: Add engine-free source preparation extras
+        # Real source fixtures require microunit for tax-unit construction and
+        # PyTables for pandas HDF input, alongside h5py. Request the extras from
+        # built wheels so their metadata, not editable installs, supplies these
+        # dependencies. The preceding step still checks the base wheel boundary;
+        # neither source extra installs a country rules engine.
+        run: |
+          frame_wheel="$(ls dist/microcosm_frame-*.whl)"
+          build_wheel="$(ls dist/microcosm_build-*.whl)"
+          uv pip install --python /tmp/wheels-venv/bin/python \
+            --constraint /tmp/wheel-constraints.txt \
+            "microcosm-frame[us] @ file://$(realpath "$frame_wheel")" \
+            "microcosm-build[source-io] @ file://$(realpath "$build_wheel")"
+          env -u PYTHONPATH /tmp/wheels-venv/bin/python -I - <<'PY'
+          from importlib import metadata, util
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          import h5py
+          import pandas as pd
+          import tables
+
+          assert util.find_spec("microunit") is not None, (
+              "microcosm-frame[us] must install microunit into the wheel venv"
+          )
+          # Exercise the same HDF reader used by source preparation. Imports
+          # alone do not establish that the compiled PyTables backend works.
+          with TemporaryDirectory() as directory:
+              path = Path(directory) / "invented-source.h5"
+              expected = pd.DataFrame({"person_id": [1, 2], "amount": [0.0, 12.5]})
+              expected.to_hdf(path, key="person")
+              pd.testing.assert_frame_equal(pd.read_hdf(path, key="person"), expected)
+          assert util.find_spec("policyengine_us") is None
+          try:
+              metadata.distribution("policyengine-us")
+          except metadata.PackageNotFoundError:
+              pass
+          else:
+              raise AssertionError("policyengine-us must be absent from the base wheel gate")
+          print("microunit", metadata.version("microunit"))
+          print("h5py", h5py.__version__, "tables", tables.__version__)
+          PY
       - name: Run the suite against the installed wheels
         run: |
           /usr/bin/time -v env -u PYTHONPATH /tmp/wheels-venv/bin/python -I -m pytest \
@@ -350,7 +456,7 @@ jobs:
     # dependency-skip lets a failed `changes` take the engine lanes down without
     # any required check going red: a lane skip is accepted only when
     # classification itself succeeded.
-    needs: [changes, lint, fast, engine-shared, engine-us, engine-uk, wheels]
+    needs: [changes, lint, fast, engine-shared, spec-seed-diagnostics, engine-us, engine-uk, wheels]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -365,6 +471,7 @@ jobs:
           require_success lint           "${{ needs.lint.result }}"
           require_success fast           "${{ needs.fast.result }}"
           require_success engine-shared  "${{ needs['engine-shared'].result }}"
+          require_success spec-seed-diagnostics "${{ needs['spec-seed-diagnostics'].result }}"
           require_success wheels         "${{ needs.wheels.result }}"
           for lane in "engine-us:${{ needs['engine-us'].result }}" "engine-uk:${{ needs['engine-uk'].result }}"; do
             name="${lane%%:*}"; result="${lane#*:}"

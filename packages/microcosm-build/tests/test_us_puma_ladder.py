@@ -1,6 +1,7 @@
 """US PUMA-anchored geography-ladder tests."""
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -13,6 +14,7 @@ from microcosm.build.us_runtime import (
     load_us_puma_ladder,
     us_puma_ladder_assignment_summary,
     us_puma_ladder_gate,
+    us_puma_ladder_joint_support_gate,
     with_household_us_puma_ladder,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -34,7 +36,7 @@ def _ladder_metadata(**overrides: object) -> dict:
         },
     }
     metadata = {
-        "schema_version": 1,
+        "schema_version": 2,
         "kind": "us_puma_ladder",
         "puma_vintage": "2020_puma",
         "sampling_basis": "population",
@@ -66,6 +68,14 @@ def _write_ladder(path: Path, **overrides: object) -> Path:
             [1001000100, 1003000100, 1003000200, 2013000100], dtype=np.int64
         ),
         "tract_overlap_population": np.asarray([900.0, 100.0, 500.0, 400.0]),
+        "joint_overlap_puma": np.asarray(
+            [100100, 100100, 100200, 200100], dtype=np.int64
+        ),
+        "joint_overlap_tract": np.asarray(
+            [1001000100, 1003000100, 1003000200, 2013000100], dtype=np.int64
+        ),
+        "joint_overlap_cd": np.asarray([101, 102, 102, 200], dtype=np.int64),
+        "joint_overlap_population": np.asarray([900, 100, 500, 400], dtype=np.int64),
         "metadata_json": np.asarray(json.dumps(_ladder_metadata())),
     }
     arrays.update({k: np.asarray(v) for k, v in overrides.items()})
@@ -465,3 +475,168 @@ def _minimal_us_frame() -> Frame:
     }
     strata = pd.Series(["acs_2023", "acs_2023"], name="stratum")
     return Frame(tables, US_SCHEMA, weights, strata)
+
+
+def test_county_cd_pairs_have_actual_joint_support(tmp_path) -> None:
+    ladder = _ladder(tmp_path)
+    household = pd.DataFrame({"state_fips": [1] * 1000, "puma": [100100] * 1000})
+    assigned = assign_us_puma_ladder(household, ladder, seed=578)
+    pairs = set(
+        zip(
+            assigned["county_fips"],
+            assigned["congressional_district_geoid"],
+            strict=True,
+        )
+    )
+    assert pairs == {("01001", 101), ("01003", 102)}
+    assert us_puma_ladder_joint_support_gate(assigned, ladder).passed
+    # Both marginals and the state prefix are valid; their pairing is not.
+    assigned.loc[0, ["county_fips", "congressional_district_geoid"]] = ["01001", 102]
+    result = us_puma_ladder_joint_support_gate(assigned, ladder)
+    assert not result.passed
+    assert result.details["unsupported_rows"] == 1
+    assert any(
+        "no joint PUMA/county/CD support" in reason for reason in result.failures
+    )
+
+
+def test_tract_flag_preserves_the_complete_coarse_assignment(tmp_path) -> None:
+    ladder = _ladder(tmp_path)
+    household = pd.DataFrame(
+        {"state_fips": [1, 1, 2] * 20, "puma": [100100, np.nan, np.nan] * 20}
+    )
+    before = household.copy(deep=True)
+    coarse = assign_us_puma_ladder(household, ladder, seed=20260909)
+    fine = assign_us_puma_ladder(household, ladder, seed=20260909, assign_tract=True)
+    pd.testing.assert_frame_equal(coarse, fine.drop(columns=["tract_geoid"]))
+    pd.testing.assert_frame_equal(household, before)
+    assert coarse.loc[household["puma"].notna(), "puma"].eq("0100100").all()
+    assert us_puma_ladder_joint_support_gate(fine, ladder, assign_tract=True).passed
+    fine.loc[0, "tract_geoid"] = "01003000200"
+    assert not us_puma_ladder_joint_support_gate(fine, ladder, assign_tract=True).passed
+
+
+def test_old_marginal_only_artifact_requires_rebuild(tmp_path) -> None:
+    path = _write_ladder(tmp_path / "v1.npz")
+    with np.load(path, allow_pickle=False) as payload:
+        arrays = {
+            name: payload[name]
+            for name in payload.files
+            if not name.startswith("joint_")
+        }
+    arrays["metadata_json"] = np.asarray(json.dumps(_ladder_metadata(schema_version=1)))
+    np.savez_compressed(path, **arrays)
+    with pytest.raises(ValueError, match="missing required key"):
+        load_us_puma_ladder(path)
+
+
+@pytest.mark.parametrize(
+    "overrides, reason",
+    [
+        (
+            {"joint_overlap_population": np.asarray([899, 100, 500, 400])},
+            "exactly reproduce the anchor",
+        ),
+        (
+            {"joint_overlap_cd": np.asarray([102, 101, 102, 200])},
+            "exactly reproduce the congressional_district",
+        ),
+        (
+            {
+                "joint_overlap_tract": np.asarray(
+                    [1003000100, 1003000100, 1003000200, 2013000100]
+                )
+            },
+            "exactly reproduce the county",
+        ),
+        (
+            {"joint_overlap_population": np.asarray([900.0, 100.0, 500.0, 400.0])},
+            "integer array",
+        ),
+        (
+            {"joint_overlap_population": np.asarray([900, 0, 500, 400])},
+            "positive integer",
+        ),
+        (
+            {"joint_overlap_population": np.asarray([[900, 100, 500, 400]])},
+            "one-dimensional",
+        ),
+        (
+            {"joint_overlap_cd": np.asarray([201, 102, 102, 200])},
+            "state prefix must match",
+        ),
+        (
+            {
+                "joint_overlap_population": np.asarray(
+                    [900, 100, 500, 2**63], dtype=np.uint64
+                )
+            },
+            "outside signed int64",
+        ),
+        (
+            {"joint_overlap_puma": np.asarray([100100, 100200, 100100, 200100])},
+            "unique and sorted",
+        ),
+    ],
+)
+def test_load_rejects_invalid_joint_support(tmp_path, overrides, reason) -> None:
+    path = _write_ladder(tmp_path / "invalid-joint.npz", **overrides)
+    with pytest.raises(ValueError, match=reason):
+        load_us_puma_ladder(path)
+
+
+def test_mutated_ladder_arrays_refuse_before_assignment(tmp_path) -> None:
+    ladder = _ladder(tmp_path)
+    ladder.joint_overlap_population[0] -= 1
+    household = pd.DataFrame({"state_fips": [1], "puma": [100100]})
+    with pytest.raises(ValueError, match="exactly reproduce the anchor"):
+        assign_us_puma_ladder(household, ladder)
+    assert not us_puma_ladder_joint_support_gate(household, ladder).passed
+
+
+def test_joint_support_gate_rejects_vintage_and_nonintegral_geoids(tmp_path) -> None:
+    ladder = _ladder(tmp_path)
+    household = pd.DataFrame({"state_fips": [1], "puma": [100100]})
+    assigned = assign_us_puma_ladder(household, ladder)
+    assert not us_puma_ladder_joint_support_gate(
+        assigned, ladder, expected_congressional_district_vintage="118th_congress"
+    ).passed
+    assigned["congressional_district_geoid"] = [101.5]
+    assert not us_puma_ladder_joint_support_gate(assigned, ladder).passed
+
+
+def test_direct_ladder_duplicate_anchor_is_rejected(tmp_path) -> None:
+    ladder = _ladder(tmp_path)
+    # Aggregate counts still match, but duplicate anchors would bias the ASEC draw.
+    ladder = replace(
+        ladder,
+        puma=np.asarray([100100, 100100, 100200, 200100], dtype=np.int64),
+        puma_population=np.asarray([500.0, 500.0, 500.0, 400.0]),
+    )
+    with pytest.raises(ValueError, match="anchors must be unique"):
+        assign_us_puma_ladder(pd.DataFrame({"state_fips": [1]}), ladder)
+
+
+def test_live_joint_support_requires_tracts_to_nest_in_one_puma(tmp_path) -> None:
+    ladder = _ladder(tmp_path)
+    household = pd.DataFrame({"state_fips": [1], "puma": [100100]})
+    assigned = assign_us_puma_ladder(household, ladder)
+    # Counts and every marginal remain exact, but this corrupts tract nesting.
+    ladder.joint_overlap_tract[2] = ladder.joint_overlap_tract[1]
+    ladder.tract_overlap_tract[2] = ladder.tract_overlap_tract[1]
+    with pytest.raises(ValueError, match="one tract to multiple PUMAs"):
+        assign_us_puma_ladder(household, ladder)
+    result = us_puma_ladder_joint_support_gate(assigned, ladder)
+    assert not result.passed
+    assert any("one tract to multiple PUMAs" in reason for reason in result.failures)
+
+
+@pytest.mark.parametrize("layer", ["county", "tract"])
+def test_joint_assignment_rejects_wrong_census_vintage(tmp_path, layer) -> None:
+    metadata = _ladder_metadata()
+    metadata["layers"][layer]["vintage"] = "2010_census"
+    path = _write_ladder(
+        tmp_path / "puma_ladder.npz", metadata_json=np.asarray(json.dumps(metadata))
+    )
+    with pytest.raises(ValueError, match="2020 Census county/tract"):
+        load_us_puma_ladder(path)

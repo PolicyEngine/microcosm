@@ -1725,9 +1725,7 @@ class _ConsumerInterpreter:
                     owner_name=owner.name,
                     frame=frame,
                     receiver_entity=self._definitions[owner.name].metadata.entity,
-                    aggregation_entity=(
-                        self._definitions[owner.name].metadata.entity
-                    ),
+                    aggregation_entity=(self._definitions[owner.name].metadata.entity),
                 )
             elif (
                 name == "defined_for"
@@ -2427,30 +2425,10 @@ class _ConsumerInterpreter:
         return list(unique.values())
 
 
-def _index_policyengine_us_sources(
-    variables_root: Path,
-    *,
-    parameters_root: Path | None = None,
-) -> _PolicyEngineUSSourceIndex:
-    """Build the shared source index from one parsed module inventory.
-
-    Consumer interpretation is layered on this exact IR; this checkpoint keeps
-    the metadata surface live while the sequential consumer pass is added.
-    """
-
-    if not variables_root.is_dir():
-        raise RuntimeError(
-            "The installed PolicyEngine-US variable source tree is unavailable "
-            f"at {variables_root}."
-        )
-    modules = _inventory_modules(variables_root)
-    resolver = _ParameterListResolver(
-        parameters_root
-        if parameters_root is not None
-        else variables_root.parent / "parameters"
-    )
-    module_envs = _module_environments(modules, resolver)
-
+def _definitions_from_modules(
+    modules: Mapping[str, _ModuleIR], variables_root: Path
+) -> Mapping[str, _SourceVariableDefinition]:
+    """Shared declaration parser; ownership does not interpret consumer formulas."""
     definitions: dict[str, _SourceVariableDefinition] = {}
     for module_name in sorted(modules):
         module = modules[module_name]
@@ -2470,6 +2448,28 @@ def _index_policyengine_us_sources(
         raise RuntimeError(
             f"No PolicyEngine variable classes found below {variables_root}."
         )
+    return MappingProxyType(definitions)
+
+
+def _index_policyengine_us_sources(
+    variables_root: Path,
+    *,
+    parameters_root: Path | None = None,
+) -> _PolicyEngineUSSourceIndex:
+    """Build full metadata and consumer evidence from one parsed module inventory."""
+    if not variables_root.is_dir():
+        raise RuntimeError(
+            "The installed PolicyEngine-US variable source tree is unavailable "
+            f"at {variables_root}."
+        )
+    modules = _inventory_modules(variables_root)
+    resolver = _ParameterListResolver(
+        parameters_root
+        if parameters_root is not None
+        else variables_root.parent / "parameters"
+    )
+    module_envs = _module_environments(modules, resolver)
+    definitions = _definitions_from_modules(modules, variables_root)
     consumers = _ConsumerInterpreter(
         modules,
         module_envs,
@@ -2477,7 +2477,7 @@ def _index_policyengine_us_sources(
         definitions,
     ).run()
     return _PolicyEngineUSSourceIndex(
-        definitions=MappingProxyType(definitions),
+        definitions=definitions,
         consumers=consumers,
     )
 
@@ -2485,9 +2485,13 @@ def _index_policyengine_us_sources(
 def _index_policyengine_us_variable_sources(
     variables_root: Path,
 ) -> Mapping[str, _SourceVariableDefinition]:
-    """Compatibility metadata view over the one combined source index."""
-
-    return _index_policyengine_us_sources(variables_root).definitions
+    """Read exact declaration metadata without parameter-dependent consumer work."""
+    if not variables_root.is_dir():
+        raise RuntimeError(
+            "The installed PolicyEngine-US variable source tree is unavailable "
+            f"at {variables_root}."
+        )
+    return _definitions_from_modules(_inventory_modules(variables_root), variables_root)
 
 
 __all__ = [

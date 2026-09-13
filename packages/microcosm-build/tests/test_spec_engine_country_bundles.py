@@ -25,7 +25,10 @@ EXPECTED_RESOURCES = {
     "spine",
     "vintages",
 }
-AM_SPEC_SHA256 = "c4163f9ab3577cd5b6d509c6fe091d0f95ae7892a4746562a57a62a3f8b3be8e"
+# Resolved country identities include the shared legacy-v1 seed protocol.
+# Reviewed snapshot iteration labels in solve.py change its source attestation;
+# AM/BE/UK authored resources and draw-site bindings remain unchanged.
+AM_SPEC_SHA256 = "ab8458f8520ffe8325bf9193a7c4f3cb76bade3944522fba5f9ab3f9c4b235b6"
 
 
 @pytest.mark.parametrize(
@@ -45,7 +48,7 @@ AM_SPEC_SHA256 = "c4163f9ab3577cd5b6d509c6fe091d0f95ae7892a4746562a57a62a3f8b3be
         ),
         (
             "be",
-            "fe25bbc48c785801bc7f518380eff9f528a3ceab4fa8501e1b527362c9c579b6",
+            "44cabc2b42e47090605a9e9947eb71e0b894d008babdfe7415faf894aa330bf2",
             {
                 "household.household_id",
                 "person.person_id",
@@ -55,7 +58,7 @@ AM_SPEC_SHA256 = "c4163f9ab3577cd5b6d509c6fe091d0f95ae7892a4746562a57a62a3f8b3be
         ),
         (
             "uk",
-            "3ea1b53abb0ceef57b6ddef6d49251579e633bfe7d5ae7ec5a2152c0858445af",
+            "fcaa57d66c3831e174917e64319cd7c651b5d8aad89dd13327ad6f7b4d5c85f3",
             {
                 "benunit.benunit_id",
                 "household.household_id",

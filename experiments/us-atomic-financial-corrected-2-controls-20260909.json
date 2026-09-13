@@ -1,0 +1,24 @@
+{
+  "code_resources": 12,
+  "control_accepted": true,
+  "cpu_seconds": 248.723104,
+  "frozen_before_after_current_equal": true,
+  "model_source_files": 5983,
+  "native_payloads_read": 0,
+  "peak_rss_bytes": 552976384,
+  "publisher_provenance_established": false,
+  "receipt_sha256": "adc535f414c62ab01240f98d0a50f498f4b345531157f1b67c6be23c6deaa0b5",
+  "release_eligible": false,
+  "result": 0,
+  "scope": "Identical unexecuted-v2 source closure; select only the two previously failing corrected tests, retaining their actual cold/required replay fixture. Passed original negative controls are not rerun. No ongoing successor implementation, fit quality, native admission, or release acceptance.",
+  "source_and_owned_files": 497,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 2
+  },
+  "tested_source_changes": {},
+  "unexpected_refusals": {},
+  "wall_seconds": 252.2364875409985
+}

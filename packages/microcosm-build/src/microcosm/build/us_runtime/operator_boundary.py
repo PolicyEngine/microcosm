@@ -14,7 +14,6 @@ from typing import Any
 
 import pandas as pd
 
-from microcosm.build.us_runtime.acs_transfer import ACS_DERIVED_TRANSFER_INPUTS
 from microcosm.build.us_runtime.adult_care import US_ADULT_CARE_OUTPUT_COLUMNS
 from microcosm.build.us_runtime.child_support import (
     US_CHILD_SUPPORT_OUTPUT_COLUMNS,
@@ -59,20 +58,6 @@ from microcosm.build.us_runtime.prior_year_income import (
     US_PRIOR_YEAR_INCOME_FORMULA_OWNED_OUTPUT_COLUMNS,
     US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS,
 )
-from microcosm.build.us_runtime.puf_capital_gains_tail import (
-    PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
-    PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
-    PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN,
-    PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
-    PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
-    PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
-    PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
-    PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
-)
-from microcosm.build.us_runtime.puf_support import (
-    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
-    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
-)
 from microcosm.build.us_runtime.qbi_inputs import US_QBI_RECONCILED_PERSON_COLUMNS
 from microcosm.build.us_runtime.relationship_inputs import (
     US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
@@ -95,6 +80,20 @@ from microcosm.build.us_runtime.workers_compensation import (
     US_WORKERS_COMPENSATION_OUTPUT_COLUMNS,
 )
 from microcosm.frame import Frame
+
+from .operator_column_contracts import (
+    ACS_DERIVED_TRANSFER_INPUTS,
+    PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
+    PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
+    PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+)
 
 __all__ = [
     "FORMULA_OWNED_SOURCE_COLUMNS",

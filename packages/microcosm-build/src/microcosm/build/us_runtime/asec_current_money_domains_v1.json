@@ -1,0 +1,3418 @@
+{
+  "fields": [
+    {
+      "column": "ANN_VAL",
+      "declared_niu_codes": [
+        -1
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [
+          -1
+        ],
+        "declared_niu_codes": [
+          -1
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": -1
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "valid_zero_dollars"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": -1,
+      "name": "ANN_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 430,
+          "dictionary_spelling": "ANN_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 41,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-22",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": -1
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "ANN_YN = 1",
+          "values_description": "-1 = niu\n0-999999 = dollar amount"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 430,
+          "dictionary_spelling": "ANN_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 42,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-22",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": -1
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "ANN_YN = 1",
+          "values_description": "-1 = niu\n0-999999 = dollar amount"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 438,
+          "dictionary_spelling": "ANN_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 44,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-23",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": -1
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "ANN_YN = 1",
+          "values_description": "-1 = niu\n0-999999 = dollar amount"
+        }
+      ],
+      "zero_semantics": "valid_zero_dollars"
+    },
+    {
+      "column": "CAP_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "CAP_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 437,
+          "dictionary_spelling": "CAP_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 41,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-22",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "CAP_YN = 1",
+          "values_description": "0 = none or niu\n1-999999 = captial gains amount"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 437,
+          "dictionary_spelling": "CAP_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 42,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-22",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "CAP_YN = 1",
+          "values_description": "0 = none or niu\n1-999999 = captial gains amount"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 445,
+          "dictionary_spelling": "CAP_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 44,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-23",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "CAP_YN = 1",
+          "values_description": "0 = none or niu\n1-999999 = captial gains amount"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "CHSP_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 1
+        },
+        "zero_semantics": "niu"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 99999,
+      "minimum": 0,
+      "name": "CHSP_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 704,
+          "dictionary_spelling": "CHSP_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 49,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-30",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "CHSP_YN = 1",
+          "values_description": "0 = NIU\n1:99999 = amount paid in child support"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 704,
+          "dictionary_spelling": "CHSP_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 50,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-30",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "CHSP_YN = 1",
+          "values_description": "0 = NIU\n1:99999 = amount paid in child support"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 712,
+          "dictionary_spelling": "CHSP_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 52,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-31",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "CHSP_YN = 1",
+          "values_description": "0 = NIU\n1:99999 = amount paid in child support"
+        }
+      ],
+      "zero_semantics": "niu"
+    },
+    {
+      "column": "CSP_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 99999,
+      "minimum": 0,
+      "name": "CSP_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 710,
+          "dictionary_spelling": "CSP_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 50,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-31",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "CSP_YN = 1",
+          "values_description": "0 = none or niu\n1-99999 = child support"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 710,
+          "dictionary_spelling": "CSP_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 51,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-31",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "CSP_YN = 1",
+          "values_description": "0 = none or niu\n1-99999 = child support"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 718,
+          "dictionary_spelling": "CSP_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 52,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-31",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "CSP_YN = 1",
+          "values_description": "0 = none or niu\n1-99999 = child support"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "DIS_VAL1",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "DIS_VAL1",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 457,
+          "dictionary_spelling": "DIS_VAL1",
+          "income_year": 2022,
+          "pdf_page_1based": 42,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-23",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "DIS_SC1>0",
+          "values_description": "0 = none or niu\n1-999999 = disability income"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 457,
+          "dictionary_spelling": "DIS_VAL1",
+          "income_year": 2023,
+          "pdf_page_1based": 43,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-23",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "DIS_SC1>0",
+          "values_description": "0 = none or niu\n1-999999 = disability income"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 465,
+          "dictionary_spelling": "DIS_VAL1",
+          "income_year": 2024,
+          "pdf_page_1based": 44,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-23",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "DIS_SC1>0",
+          "values_description": "0 = none or niu\n1-999999 = disability income"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "DIS_VAL2",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "DIS_VAL2",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 463,
+          "dictionary_spelling": "DIS_VAL2",
+          "income_year": 2022,
+          "pdf_page_1based": 42,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-23",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "DIS_SC2>0",
+          "values_description": "0 = none or niu\n1-999999 = disability income"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 463,
+          "dictionary_spelling": "DIS_VAL2",
+          "income_year": 2023,
+          "pdf_page_1based": 43,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-23",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "DIS_SC2>0",
+          "values_description": "0 = none or niu\n1-999999 = disability income"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 471,
+          "dictionary_spelling": "DIS_VAL2",
+          "income_year": 2024,
+          "pdf_page_1based": 44,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-23",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "DIS_SC2>0",
+          "values_description": "0 = none or niu\n1-999999 = disability income"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "DIV_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "DIV_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 470,
+          "dictionary_spelling": "DIV_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 42,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-23",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "DIV_YN = 1",
+          "values_description": "0 = none or niu\n1-999999 = dividends"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 470,
+          "dictionary_spelling": "DIV_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 43,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-23",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "DIV_YN = 1",
+          "values_description": "0 = none or niu\n1-999999 = dividends"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 478,
+          "dictionary_spelling": "DIV_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 45,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "DIV_YN = 1",
+          "values_description": "0 = none or niu\n1-999999 = dividends"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "DST_VAL1",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "DST_VAL1",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 487,
+          "dictionary_spelling": "DST_VAL1",
+          "income_year": 2022,
+          "pdf_page_1based": 43,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "DST_SC1 = 1",
+          "values_description": "0 = none or niu\n1-999,999 = amount withdrawn or distributed"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 487,
+          "dictionary_spelling": "DST_VAL1",
+          "income_year": 2023,
+          "pdf_page_1based": 44,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "DST_SC1 = 1",
+          "values_description": "0 = none or niu\n1-999,999 = amount withdrawn or distributed"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 495,
+          "dictionary_spelling": "DST_VAL1",
+          "income_year": 2024,
+          "pdf_page_1based": 45,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "DST_SC1 = 1",
+          "values_description": "0 = none or niu\n1-999,999 = amount withdrawn or distributed"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "DST_VAL1_YNG",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "DST_VAL1_YNG",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 493,
+          "dictionary_spelling": "DST_VAL1_YNG",
+          "income_year": 2022,
+          "pdf_page_1based": 43,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "DST_SC1_YNG = 1",
+          "values_description": "0 = none or niu\n1- 999,999 = amount withdrawn or distributed"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 493,
+          "dictionary_spelling": "DST_VAL1_YNG",
+          "income_year": 2023,
+          "pdf_page_1based": 44,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "DST_SC1_YNG = 1",
+          "values_description": "0 = none or niu\n1- 999,999 = amount withdrawn or distributed"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 501,
+          "dictionary_spelling": "DST_VAL1_YNG",
+          "income_year": 2024,
+          "pdf_page_1based": 45,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "DST_SC1_YNG = 1",
+          "values_description": "0 = none or niu\n1- 999,999 = amount withdrawn or distributed"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "DST_VAL2",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "DST_VAL2",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 499,
+          "dictionary_spelling": "DST_VAL2",
+          "income_year": 2022,
+          "pdf_page_1based": 43,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "DST_SC2 = 1",
+          "values_description": "0 = none or niu\n1- 999,999 = amount withdrawn or distributed"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 499,
+          "dictionary_spelling": "DST_VAL2",
+          "income_year": 2023,
+          "pdf_page_1based": 44,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "DST_SC2 = 1",
+          "values_description": "0 = none or niu\n1- 999,999 = amount withdrawn or distributed"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 507,
+          "dictionary_spelling": "DST_VAL2",
+          "income_year": 2024,
+          "pdf_page_1based": 45,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "DST_SC2 = 1",
+          "values_description": "0 = none or niu\n1- 999,999 = amount withdrawn or distributed"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "DST_VAL2_YNG",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "DST_VAL2_YNG",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 505,
+          "dictionary_spelling": "DST_VAL2_YNG",
+          "income_year": 2022,
+          "pdf_page_1based": 43,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "DST_SC2_YNG = 1",
+          "values_description": "0 = none or niu\n1-999,999 = amount withdrawn or distributed"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 505,
+          "dictionary_spelling": "DST_VAL2_YNG",
+          "income_year": 2023,
+          "pdf_page_1based": 44,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "DST_SC2_YNG = 1",
+          "values_description": "0 = none or niu\n1-999,999 = amount withdrawn or distributed"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 513,
+          "dictionary_spelling": "DST_VAL2_YNG",
+          "income_year": 2024,
+          "pdf_page_1based": 45,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "DST_SC2_YNG = 1",
+          "values_description": "0 = none or niu\n1-999,999 = amount withdrawn or distributed"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "ED_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "ED_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 513,
+          "dictionary_spelling": "ED_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 43,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "ED_YN = 1",
+          "values_description": "0 = none or niu;\n1- 999,999 = dollar amount"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 513,
+          "dictionary_spelling": "ED_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 44,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-24",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "ED_YN = 1",
+          "values_description": "0 = none or niu;\n1- 999,999 = dollar amount"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 521,
+          "dictionary_spelling": "ED_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 46,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-25",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "ED_YN = 1",
+          "values_description": "0 = none or niu;\n1- 999,999 = dollar amount"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "FRSE_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 9999999,
+          "minimum": -9999999
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": true,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 9999999,
+          "minimum": -9999999
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 9999999,
+      "minimum": -9999999,
+      "name": "FRSE_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 7,
+          "ascii_position_as_printed": 382,
+          "dictionary_spelling": "FRSE_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 40,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-21",
+          "range_header": {
+            "maximum": 9999999,
+            "minimum": -9999999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "ERN_YN=1 or FRMOTR=1",
+          "values_description": "0 = none or niu;\n-9999999-9999999 = farm self employment"
+        },
+        {
+          "ascii_length_as_printed": 7,
+          "ascii_position_as_printed": 382,
+          "dictionary_spelling": "FRSE_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 41,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-21",
+          "range_header": {
+            "maximum": 9999999,
+            "minimum": -9999999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "ERN_YN=1 or FRMOTR=1",
+          "values_description": "0 = none or niu;\n-9999999-9999999 = farm self employment"
+        },
+        {
+          "ascii_length_as_printed": 7,
+          "ascii_position_as_printed": 390,
+          "dictionary_spelling": "FRSE_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 43,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-22",
+          "range_header": {
+            "maximum": 9999999,
+            "minimum": -9999999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "ERN_YN=1 or FRMOTR=1",
+          "values_description": "0 = none or niu;\n-9999999-9999999 = farm self employment"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "asec_HTOTVAL",
+      "declared_niu_codes": [],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 99999999,
+          "minimum": -999999
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": true,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 99999999,
+          "minimum": -999999
+        },
+        "zero_semantics": "valid_zero_dollars_or_none_as_described"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "household",
+      "grain": "household",
+      "maximum": 99999999,
+      "minimum": -999999,
+      "name": "HTOTVAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 8,
+          "ascii_position_as_printed": 106,
+          "dictionary_spelling": "HTOTVAL",
+          "income_year": 2022,
+          "pdf_page_1based": 5,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6A-5",
+          "range_header": {
+            "maximum": 99999999,
+            "minimum": -999999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "All Households",
+          "values_description": "0 = none\nnegative dollar amount\npositive dollar amount"
+        },
+        {
+          "ascii_length_as_printed": 8,
+          "ascii_position_as_printed": 106,
+          "dictionary_spelling": "HTOTVAL",
+          "income_year": 2023,
+          "pdf_page_1based": 5,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6A-5",
+          "range_header": {
+            "maximum": 99999999,
+            "minimum": -999999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "All Households",
+          "values_description": "0 = none\nnegative dollar amount\npositive dollar amount"
+        },
+        {
+          "ascii_length_as_printed": 8,
+          "ascii_position_as_printed": 108,
+          "dictionary_spelling": "HTOTVAL",
+          "income_year": 2024,
+          "pdf_page_1based": 12,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6A-5",
+          "range_header": {
+            "maximum": 99999999,
+            "minimum": -999999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "All Households",
+          "values_description": "0 = none\nnegative dollar amount\npositive dollar amount"
+        }
+      ],
+      "zero_semantics": "valid_zero_dollars_or_none_as_described"
+    },
+    {
+      "column": "INT_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "INT_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 529,
+          "dictionary_spelling": "INT_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 44,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-25",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "INT_YN = 1",
+          "values_description": "0 = none or niu;\n1- 999,999 = dollar amount"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 529,
+          "dictionary_spelling": "INT_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 45,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-25",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "INT_YN = 1",
+          "values_description": "0 = none or niu;\n1- 999,999 = dollar amount"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 537,
+          "dictionary_spelling": "INT_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 46,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-25",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "INT_YN = 1",
+          "values_description": "0 = none or niu;\n1- 999,999 = dollar amount"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "OI_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "OI_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 541,
+          "dictionary_spelling": "OI_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 44,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-25",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "OI_YN = 1",
+          "values_description": "0 = none or niu\n1-999999 = other income"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 541,
+          "dictionary_spelling": "OI_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 45,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-25",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "OI_YN = 1",
+          "values_description": "0 = none or niu\n1-999999 = other income"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 549,
+          "dictionary_spelling": "OI_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 47,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-26",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "OI_YN = 1",
+          "values_description": "0 = none or niu\n1-999999 = other income"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "PHIP_VAL",
+      "declared_niu_codes": [],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "valid_zero_dollars_or_none_as_described"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "PHIP_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365,
+          289
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 1292,
+          "dictionary_spelling": "PHIP_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 78,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-59",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "All Persons",
+          "values_description": "0 - 999999"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 1288,
+          "dictionary_spelling": "PHIP_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 79,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-59",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "All Persons",
+          "values_description": "0 - 999999"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 1455,
+          "dictionary_spelling": "PHIP_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 83,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-62",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "All Persons",
+          "values_description": "0 - 999999"
+        }
+      ],
+      "zero_semantics": "valid_zero_dollars_or_none_as_described"
+    },
+    {
+      "column": "PMED_VAL",
+      "declared_niu_codes": [],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "valid_zero_dollars_or_none_as_described"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "PMED_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365,
+          289
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 1304,
+          "dictionary_spelling": "PMED_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 79,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-60",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "All Persons",
+          "values_description": "0 - 999999"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 1300,
+          "dictionary_spelling": "PMED_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 79,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-59",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "All Persons",
+          "values_description": "0 - 999999"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 1467,
+          "dictionary_spelling": "PMED_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 83,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-62",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "All Persons",
+          "values_description": "0 - 999999"
+        }
+      ],
+      "zero_semantics": "valid_zero_dollars_or_none_as_described"
+    },
+    {
+      "column": "PNSN_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 9999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 9999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 9999999,
+      "minimum": 0,
+      "name": "PNSN_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 7,
+          "ascii_position_as_printed": 563,
+          "dictionary_spelling": "PNSN_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 45,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-26",
+          "range_header": {
+            "maximum": 9999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "PEN_YN = 1",
+          "values_description": "0 = none or niu\n1- 9,999,999 = retirement income"
+        },
+        {
+          "ascii_length_as_printed": 7,
+          "ascii_position_as_printed": 563,
+          "dictionary_spelling": "PNSN_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 46,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-26",
+          "range_header": {
+            "maximum": 9999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "PEN_YN = 1",
+          "values_description": "0 = none or niu\n1- 9,999,999 = retirement income"
+        },
+        {
+          "ascii_length_as_printed": 7,
+          "ascii_position_as_printed": 571,
+          "dictionary_spelling": "PNSN_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 47,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-26",
+          "range_header": {
+            "maximum": 9999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "PEN_YN = 1",
+          "values_description": "0 = none or niu\n1- 9,999,999 = retirement income"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "POTC_VAL",
+      "declared_niu_codes": [],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "zero_semantics": "valid_zero_dollars_or_none_as_described"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 99999,
+      "minimum": 0,
+      "name": "POTC_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365,
+          289,
+          290
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 1310,
+          "dictionary_spelling": "POTC_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 79,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-60",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "All Persons",
+          "values_description": "0 - 99999"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 1306,
+          "dictionary_spelling": "POTC_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 79,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-59",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "All Persons",
+          "values_description": "0 - 99999"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 1473,
+          "dictionary_spelling": "POTC_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 83,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-62",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "All Persons",
+          "values_description": "0 - 99999"
+        }
+      ],
+      "zero_semantics": "valid_zero_dollars_or_none_as_described"
+    },
+    {
+      "column": "PTOTVAL",
+      "declared_niu_codes": [],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 99999999,
+          "minimum": -99999
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": true,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 99999999,
+          "minimum": -99999
+        },
+        "zero_semantics": "valid_zero_dollars_or_none_as_described"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 99999999,
+      "minimum": -99999,
+      "name": "PTOTVAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 8,
+          "ascii_position_as_printed": 580,
+          "dictionary_spelling": "PTOTVAL",
+          "income_year": 2022,
+          "pdf_page_1based": 45,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-26",
+          "range_header": {
+            "maximum": 99999999,
+            "minimum": -99999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "All Persons aged 15+",
+          "values_description": "0 = none\nnegative amt = income (loss)\npositive amt = income"
+        },
+        {
+          "ascii_length_as_printed": 8,
+          "ascii_position_as_printed": 580,
+          "dictionary_spelling": "PTOTVAL",
+          "income_year": 2023,
+          "pdf_page_1based": 46,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-26",
+          "range_header": {
+            "maximum": 99999999,
+            "minimum": -99999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "All Persons aged 15+",
+          "values_description": "0 = none\nnegative amt = income (loss)\npositive amt = income"
+        },
+        {
+          "ascii_length_as_printed": 8,
+          "ascii_position_as_printed": 588,
+          "dictionary_spelling": "PTOTVAL",
+          "income_year": 2024,
+          "pdf_page_1based": 48,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-27",
+          "range_header": {
+            "maximum": 99999999,
+            "minimum": -99999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "All Persons aged 15+",
+          "values_description": "0 = none\nnegative amt = income (loss)\npositive amt = income"
+        }
+      ],
+      "zero_semantics": "valid_zero_dollars_or_none_as_described"
+    },
+    {
+      "column": "RETCB_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 99999,
+      "minimum": 0,
+      "name": "RETCB_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365,
+          274
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 592,
+          "dictionary_spelling": "RETCB_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 46,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-27",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "RETCB_YN = 1",
+          "values_description": "0 = none or niu;\n1-99999 = amount contributed"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 592,
+          "dictionary_spelling": "RETCB_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 47,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-27",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "RETCB_YN = 1",
+          "values_description": "0 = none or niu;\n1-99999 = amount contributed"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 600,
+          "dictionary_spelling": "RETCB_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 48,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-27",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "RETCB_YN = 1",
+          "values_description": "0 = none or niu;\n1-99999 = amount contributed"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "RNT_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": -9999
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": true,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": -9999
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": -9999,
+      "name": "RNT_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 613,
+          "dictionary_spelling": "RNT_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 47,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-28",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": -9999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "RNT_YN = 1",
+          "values_description": "0 = none or niu;\n-9999-999999 = rental income"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 613,
+          "dictionary_spelling": "RNT_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 48,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-28",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": -9999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "RNT_YN = 1",
+          "values_description": "0 = none or niu;\n-9999-999999 = rental income"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 621,
+          "dictionary_spelling": "RNT_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 49,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-28",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": -9999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "RNT_YN = 1",
+          "values_description": "0 = none or niu;\n-9999-999999 = rental income"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "SEMP_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 9999999,
+          "minimum": -999999
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": true,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 9999999,
+          "minimum": -999999
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 9999999,
+      "minimum": -999999,
+      "name": "SEMP_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 7,
+          "ascii_position_as_printed": 405,
+          "dictionary_spelling": "SEMP_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 41,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-22",
+          "range_header": {
+            "maximum": 9999999,
+            "minimum": -999999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "ERN_YN=1 or SEOTR=1",
+          "values_description": "0 = none or niu;\n-999999-9999999 = own business self employment"
+        },
+        {
+          "ascii_length_as_printed": 7,
+          "ascii_position_as_printed": 405,
+          "dictionary_spelling": "SEMP_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 42,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-22",
+          "range_header": {
+            "maximum": 9999999,
+            "minimum": -999999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "ERN_YN=1 or SEOTR=1",
+          "values_description": "0 = none or niu;\n-999999-9999999 = own business self employment"
+        },
+        {
+          "ascii_length_as_printed": 7,
+          "ascii_position_as_printed": 413,
+          "dictionary_spelling": "SEMP_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 43,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-22",
+          "range_header": {
+            "maximum": 9999999,
+            "minimum": -999999
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "ERN_YN=1 or SEOTR=1",
+          "values_description": "0 = none or niu;\n-999999-9999999 = own business self employment"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "SPM_CAPHOUSESUB",
+      "declared_niu_codes": [],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "zero_semantics": "valid_zero_dollars_or_none_as_described"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "spm_unit_repeated_on_person",
+      "maximum": 99999,
+      "minimum": 0,
+      "name": "SPM_CAPHOUSESUB",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 1436,
+          "dictionary_spelling": "SPM_CapHouseSub",
+          "income_year": 2022,
+          "pdf_page_1based": 85,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-66",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "All Persons",
+          "values_description": "$0 to $99,999"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 1432,
+          "dictionary_spelling": "SPM_CapHouseSub",
+          "income_year": 2023,
+          "pdf_page_1based": 85,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-65",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "All Persons",
+          "values_description": "$0 to $99,999"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 936,
+          "dictionary_spelling": "SPM_CapHouseSub",
+          "income_year": 2024,
+          "pdf_page_1based": 61,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-40",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "All Persons",
+          "values_description": "$0 to $99,999"
+        }
+      ],
+      "zero_semantics": "valid_zero_dollars_or_none_as_described"
+    },
+    {
+      "column": "SPM_CHILDCAREXPNS",
+      "declared_niu_codes": [],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "valid_zero_dollars_or_none_as_described"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "spm_unit_repeated_on_person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "SPM_CHILDCAREXPNS",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365,
+          304
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 1447,
+          "dictionary_spelling": "SPM_ChildcareXpns",
+          "income_year": 2022,
+          "pdf_page_1based": 85,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-66",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "All Persons",
+          "values_description": "$0 to $999,999"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 1443,
+          "dictionary_spelling": "SPM_ChildcareXpns",
+          "income_year": 2023,
+          "pdf_page_1based": 85,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-65",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "All Persons",
+          "values_description": "$0 to $999,999"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 947,
+          "dictionary_spelling": "SPM_ChildcareXpns",
+          "income_year": 2024,
+          "pdf_page_1based": 61,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-40",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "All Persons",
+          "values_description": "$0 to $999,999"
+        }
+      ],
+      "zero_semantics": "valid_zero_dollars_or_none_as_described"
+    },
+    {
+      "column": "SPM_ENGVAL",
+      "declared_niu_codes": [],
+      "domain": {
+        "authority_range_alternatives": [
+          {
+            "location": "Range header",
+            "maximum": 10000,
+            "minimum": 0
+          },
+          {
+            "location": "Values description",
+            "maximum": 99999,
+            "minimum": 0
+          }
+        ],
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [],
+        "declared_other_missing_codes": [],
+        "definitely_outside_both_declared_ranges": {
+          "above": 99999,
+          "below": 0
+        },
+        "encoded_range_inclusive": null,
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "uncontested_valid_dollar_range_inclusive": {
+          "maximum": 10000,
+          "minimum": 0
+        },
+        "unresolved_dollar_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 10001
+        },
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": null,
+        "zero_semantics": "valid_zero_dollars_or_none_as_described"
+      },
+      "domain_status": "partial_conflicting_upper_bound_all_three_vintages",
+      "entity": "person",
+      "grain": "spm_unit_repeated_on_person",
+      "maximum": 10000,
+      "minimum": 0,
+      "name": "SPM_ENGVAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365,
+          293
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 1463,
+          "dictionary_spelling": "SPM_EngVal",
+          "income_year": 2022,
+          "pdf_page_1based": 85,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-66",
+          "range_header": {
+            "maximum": 10000,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "All Persons",
+          "values_description": "$0 to $99,999"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 1459,
+          "dictionary_spelling": "SPM_EngVal",
+          "income_year": 2023,
+          "pdf_page_1based": 86,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-66",
+          "range_header": {
+            "maximum": 10000,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "All Persons",
+          "values_description": "$0 to $99,999"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 963,
+          "dictionary_spelling": "SPM_EngVal",
+          "income_year": 2024,
+          "pdf_page_1based": 61,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-40",
+          "range_header": {
+            "maximum": 10000,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "All Persons",
+          "values_description": "$0 to $99,999"
+        }
+      ],
+      "zero_semantics": "valid_zero_dollars_or_none_as_described"
+    },
+    {
+      "column": "SSI_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 99999,
+      "minimum": 0,
+      "name": "SSI_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 632,
+          "dictionary_spelling": "SSI_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 47,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-28",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "SSI_YN = 1",
+          "values_description": "0 = none or niu\n1-99999 = supplemental security income"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 632,
+          "dictionary_spelling": "SSI_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 48,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-28",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "SSI_YN = 1",
+          "values_description": "0 = none or niu\n1-99999 = supplemental security income"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 640,
+          "dictionary_spelling": "SSI_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 49,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-28",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "SSI_YN = 1",
+          "values_description": "0 = none or niu\n1-99999 = supplemental security income"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "SS_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 99999,
+      "minimum": 0,
+      "name": "SS_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 626,
+          "dictionary_spelling": "SS_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 47,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-28",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "SS_YN = 1",
+          "values_description": "0 = none or niu;\n1-99999 = social security"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 626,
+          "dictionary_spelling": "SS_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 48,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-28",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "SS_YN = 1",
+          "values_description": "0 = none or niu;\n1-99999 = social security"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 634,
+          "dictionary_spelling": "SS_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 49,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-28",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "SS_YN = 1",
+          "values_description": "0 = none or niu;\n1-99999 = social security"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "UC_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 99999,
+      "minimum": 0,
+      "name": "UC_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 664,
+          "dictionary_spelling": "UC_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 48,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-29",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "UC_YN = 1",
+          "values_description": "0 = none or niu\n1-99999 = unemployment compensation"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 664,
+          "dictionary_spelling": "UC_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 49,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-29",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "UC_YN = 1",
+          "values_description": "0 = none or niu\n1-99999 = unemployment compensation"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 672,
+          "dictionary_spelling": "UC_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 50,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-29",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "UC_YN = 1",
+          "values_description": "0 = none or niu\n1-99999 = unemployment compensation"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "VET_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 999999,
+      "minimum": 0,
+      "name": "VET_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 676,
+          "dictionary_spelling": "VET_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 48,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-29",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "VET_YN = 1",
+          "values_description": "0 = none or niu\n1-999999 = veterans' payments"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 676,
+          "dictionary_spelling": "VET_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 49,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-29",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "VET_YN = 1",
+          "values_description": "0 = none or niu\n1-999999 = veterans' payments"
+        },
+        {
+          "ascii_length_as_printed": 6,
+          "ascii_position_as_printed": 684,
+          "dictionary_spelling": "VET_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 51,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-30",
+          "range_header": {
+            "maximum": 999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "VET_YN = 1",
+          "values_description": "0 = none or niu\n1-999999 = veterans' payments"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "WC_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 99999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 99999,
+      "minimum": 0,
+      "name": "WC_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 684,
+          "dictionary_spelling": "WC_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 49,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-30",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "WC_YN = 1",
+          "values_description": "0 = none or niu\n1-99999 = worker's compensation"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 684,
+          "dictionary_spelling": "WC_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 50,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-30",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "WC_YN = 1",
+          "values_description": "0 = none or niu\n1-99999 = worker's compensation"
+        },
+        {
+          "ascii_length_as_printed": 5,
+          "ascii_position_as_printed": 692,
+          "dictionary_spelling": "WC_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 51,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-30",
+          "range_header": {
+            "maximum": 99999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "WC_YN = 1",
+          "values_description": "0 = none or niu\n1-99999 = worker's compensation"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    },
+    {
+      "column": "WSAL_VAL",
+      "declared_niu_codes": [
+        0
+      ],
+      "domain": {
+        "declared_negative_nonmoney_codes": [],
+        "declared_niu_codes": [
+          0
+        ],
+        "declared_other_missing_codes": [],
+        "encoded_range_inclusive": {
+          "maximum": 9999999,
+          "minimum": 0
+        },
+        "missing_code_statement": "No additional missing codes are declared in this field entry; this does not certify upstream storage null handling.",
+        "negative_dollars_permitted": false,
+        "numeric_type": "integer_US_dollars_in_public_use_dictionary",
+        "valid_dollar_range_excludes": [],
+        "valid_dollar_range_inclusive": {
+          "maximum": 9999999,
+          "minimum": 0
+        },
+        "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+      },
+      "domain_status": "resolved_numeric_domain_all_three_vintages",
+      "entity": "person",
+      "grain": "person",
+      "maximum": 9999999,
+      "minimum": 0,
+      "name": "WSAL_VAL",
+      "period": {
+        "currency": "USD",
+        "income_year": "source_year",
+        "observation_period": "annual",
+        "price_basis": "nominal_income_year",
+        "survey_year": "source_year + 1"
+      },
+      "temporal_authority": {
+        "pdf_pages_1based": [
+          2,
+          365
+        ],
+        "pdf_sha256": "7f0cb9f791f2737ad12fd552b8cb201f4d1de266eac160322597344e73499fb4",
+        "scope": "2025 reference document confirms preceding-calendar-year convention; exact cohort-to-survey bindings additionally authenticated by frozen receipt.",
+        "source_url": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar25.pdf"
+      },
+      "universe_validation": "Literal dictionary universe is preserved as evidence, not automatically compiled into a row-exclusion rule.",
+      "vintages": [
+        {
+          "ascii_length_as_printed": 7,
+          "ascii_position_as_printed": 422,
+          "dictionary_spelling": "WSAL_VAL",
+          "income_year": 2022,
+          "pdf_page_1based": 41,
+          "pdf_sha256": "66bd6e3fe516233ab63b75c60573451222b3b3d3235d61cfed96f64608de2117",
+          "printed_page": "6C-22",
+          "range_header": {
+            "maximum": 9999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asec2023_ddl_pub_full.pdf",
+          "survey_year": 2023,
+          "universe_as_printed": "ERN_YN=1 or WAGEOTR=1",
+          "values_description": "0 = none or niu;\n1-9999999 = wage and salary"
+        },
+        {
+          "ascii_length_as_printed": 7,
+          "ascii_position_as_printed": 422,
+          "dictionary_spelling": "WSAL_VAL",
+          "income_year": 2023,
+          "pdf_page_1based": 42,
+          "pdf_sha256": "761c67ea53f5c3264329b3e9ddbdd802826ba4a859122b8a8a2f29ab85b3a840",
+          "printed_page": "6C-22",
+          "range_header": {
+            "maximum": 9999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf",
+          "survey_year": 2024,
+          "universe_as_printed": "ERN_YN=1 or WAGEOTR=1",
+          "values_description": "0 = none or niu;\n1-9999999 = wage and salary"
+        },
+        {
+          "ascii_length_as_printed": 7,
+          "ascii_position_as_printed": 430,
+          "dictionary_spelling": "WSAL_VAL",
+          "income_year": 2024,
+          "pdf_page_1based": 43,
+          "pdf_sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+          "printed_page": "6C-22",
+          "range_header": {
+            "maximum": 9999999,
+            "minimum": 0
+          },
+          "source_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+          "survey_year": 2025,
+          "universe_as_printed": "ERN_YN=1 or WAGEOTR=1",
+          "values_description": "0 = none or niu;\n1-9999999 = wage and salary"
+        }
+      ],
+      "zero_semantics": "none_or_niu_not_distinguishable_from_amount_alone"
+    }
+  ],
+  "max_households": 400000,
+  "max_persons": 1000000,
+  "recipe": "us_asec_current_money_ccpiu_2024_v1",
+  "registry_sha256": "bdeb4d2fa1c37c6064530d560a62b12c515118608845b30d01b06c2eeeda8c6e",
+  "schema_version": 1,
+  "source_years": [
+    [
+      2022,
+      2023
+    ],
+    [
+      2023,
+      2024
+    ],
+    [
+      2024,
+      2025
+    ]
+  ],
+  "zero_origin_policy": "frozen_fillna_zero_origin_unresolved"
+}

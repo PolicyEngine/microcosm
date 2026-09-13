@@ -15,6 +15,7 @@ or does not identify exactly one household head per source household.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from importlib.resources import files
 
 import numpy as np
@@ -32,6 +33,9 @@ from microcosm.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from microcosm.build.us_runtime._person_signal_summary import (
+    validate_person_signal_summary,
+)
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
@@ -41,6 +45,11 @@ __all__ = [
     "US_RELATIONSHIP_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_RELATIONSHIP_INPUTS_STAGE_NAME",
     "derive_us_relationship_inputs_from_manifest",
+    "prepare_us_relationship_person",
+    "us_relationship_inputs_person_carries_signal",
+    "us_relationship_inputs_gate_from_summary",
+    "us_relationship_inputs_person_gate",
+    "us_relationship_inputs_person_summary",
     "us_relationship_inputs_signal_gate",
     "us_relationship_inputs_stage_spec",
     "us_relationship_inputs_summary",
@@ -182,8 +191,13 @@ def derive_us_relationship_inputs_from_manifest(
     return result
 
 
-def _relationship_surface_carries_signal(frame: Frame) -> bool:
-    person = frame.table("person")
+def us_relationship_inputs_person_carries_signal(person: pd.DataFrame) -> bool:
+    """Return the exact incumbent pass-through decision from the real person table.
+
+    All three outputs must be present and each must have multiple observed
+    values. Preserve the legacy null/constant rule; this does not validate raw
+    source columns or resolve weights, and is not a scientific signal gate.
+    """
     if any(column not in person for column in US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS):
         return False
     return all(
@@ -192,22 +206,70 @@ def _relationship_surface_carries_signal(frame: Frame) -> bool:
     )
 
 
-def with_us_relationship_inputs(
-    frame: Frame,
+def _relationship_surface_carries_signal(frame: Frame) -> bool:
+    return us_relationship_inputs_person_carries_signal(frame.table("person"))
+
+
+def _validated_relationship_weights(
+    person: pd.DataFrame, weights: np.ndarray
+) -> np.ndarray:
+    """Return ``weights`` as a float64 array aligned 1:1 with ``person``."""
+
+    array = np.asarray(weights, dtype=np.float64)
+    if array.ndim != 1 or len(array) != len(person):
+        raise ValueError(
+            "US relationship-input weights must be a 1-D array aligned 1:1 "
+            f"with the person table ({len(person)} row(s)); got shape "
+            f"{array.shape}."
+        )
+    if not np.isfinite(array).all():
+        raise ValueError("US relationship-input weights must be finite.")
+    if (array < 0.0).any():
+        raise ValueError("US relationship-input weights must be nonnegative.")
+    return array
+
+
+def prepare_us_relationship_person(
+    person: pd.DataFrame,
+    weights: np.ndarray,
     *,
     seed: int,
     time_period: int,
-) -> Frame:
-    """Materialize measured ASEC relationship inputs on a US frame."""
+) -> pd.DataFrame:
+    """Derive measured ASEC relationship inputs onto a copy of ``person``.
 
-    if frame.schema != US_SCHEMA:
-        raise ValueError("US relationship inputs require the US schema.")
-    if _relationship_surface_carries_signal(frame):
-        return frame
+    The deterministic table-helper behind :func:`with_us_relationship_inputs`:
+    it always runs the ``relationship_inputs`` source-manifest stage over
+    ``person`` and ``weights`` and returns the aligned result. It does not
+    decide whether the surface already carries signal — that pass-through
+    decision belongs to the Frame wrapper.
 
-    person = frame.table("person")
+    Args:
+        person: The actual person table, carrying the raw ASEC source
+            columns (``PH_SEQ``, ``P_SEQ``, ``A_MARITL``), in its own index
+            and row order.
+        weights: Person weights aligned 1:1 with ``person``'s rows (same
+            length and row order; need not be reindexed by ``person_id``).
+        seed: Build-wide imputation seed threaded to the source-stage
+            runtime (the derivation itself is deterministic).
+        time_period: The dataset's time period.
+
+    Returns:
+        A copy of ``person`` with ``is_household_head``, ``is_separated``,
+        and ``is_surviving_spouse`` attached as ``bool`` columns, in
+        ``person``'s original index and row order.
+
+    Raises:
+        ValueError: If ``weights`` does not align 1:1 with ``person``, is
+            not finite/nonnegative, or the stage output does not cover
+            every person.
+        SourceRuntimeError: If required raw ASEC column(s) are missing or
+            malformed.
+    """
+
+    weight_values = _validated_relationship_weights(person, weights)
     stage_person = person.copy(deep=True)
-    stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
+    stage_person[_PERSON_WEIGHT_COLUMN] = weight_values
     output = run_source_stage(
         us_relationship_inputs_stage_spec(),
         tables={"person": stage_person},
@@ -224,9 +286,34 @@ def with_us_relationship_inputs(
                 f"for {column!r}."
             )
 
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    result = person.copy(deep=True)
     for column in US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS:
-        tables["person"][column] = aligned[column].to_numpy(dtype=bool)
+        result[column] = aligned[column].to_numpy(dtype=bool)
+    return result
+
+
+def with_us_relationship_inputs(
+    frame: Frame,
+    *,
+    seed: int,
+    time_period: int,
+) -> Frame:
+    """Materialize measured ASEC relationship inputs on a US frame."""
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("US relationship inputs require the US schema.")
+    if _relationship_surface_carries_signal(frame):
+        return frame
+
+    person = frame.table("person")
+    new_person = prepare_us_relationship_person(
+        person,
+        frame.resolve_weights("person").values,
+        seed=seed,
+        time_period=time_period,
+    )
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = new_person
     return Frame(
         tables,
         frame.schema,
@@ -237,16 +324,35 @@ def with_us_relationship_inputs(
     )
 
 
-def us_relationship_inputs_summary(frame: Frame) -> dict[str, object]:
-    """Return weighted relationship shares and one-head invariants."""
+def us_relationship_inputs_person_summary(
+    person: pd.DataFrame, weights: np.ndarray
+) -> dict[str, object]:
+    """Return weighted relationship shares and one-head invariants.
 
-    person = frame.table("person")
-    weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
-    total_weight = float(weights.sum())
+    The real-person-table counterpart of :func:`us_relationship_inputs_summary`,
+    for callers (e.g. graph adapters) that hold a person table and an
+    explicit weight vector without a :class:`~microcosm.frame.Frame`.
+
+    Args:
+        person: The actual person table, already carrying
+            ``is_household_head``, ``is_separated``, and
+            ``is_surviving_spouse``.
+        weights: Person weights aligned 1:1 with ``person``'s rows.
+
+    Returns:
+        The same summary payload as :func:`us_relationship_inputs_summary`.
+    """
+
+    weight_values = _validated_relationship_weights(person, weights)
+    total_weight = float(weight_values.sum())
 
     def _share(column: str) -> float:
         values = person[column].fillna(False).astype(bool).to_numpy()
-        return float(weights[values].sum()) / total_weight if total_weight > 0 else 0.0
+        return (
+            float(weight_values[values].sum()) / total_weight
+            if total_weight > 0
+            else 0.0
+        )
 
     household_column = (
         "person_household_id" if "person_household_id" in person else "PH_SEQ"
@@ -276,24 +382,50 @@ def us_relationship_inputs_summary(frame: Frame) -> dict[str, object]:
     }
 
 
-def us_relationship_inputs_signal_gate(frame: Frame) -> GateResult:
-    """Require plausible signal and exactly one ASEC head per household."""
+def us_relationship_inputs_summary(frame: Frame) -> dict[str, object]:
+    """Return weighted relationship shares and one-head invariants."""
 
-    person = frame.table("person")
-    missing = [
-        column
-        for column in US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS
-        if column not in person
-    ]
-    if missing:
-        return GateResult(
-            name="relationship_inputs_signal",
-            passed=False,
-            failures=(f"person columns missing: {missing}.",),
-            details={"missing": missing},
-        )
+    return us_relationship_inputs_person_summary(
+        frame.table("person"), frame.resolve_weights("person").values
+    )
 
-    summary = us_relationship_inputs_summary(frame)
+
+def us_relationship_inputs_gate_from_summary(
+    summary: Mapping[str, object],
+) -> GateResult:
+    """Check relationship-input plausibility bands and invariants from a summary.
+
+    The pure decision core of :func:`us_relationship_inputs_signal_gate`,
+    factored out so graph adapters can reuse the incumbent checks — same
+    bands, order, and meaning — against a summary computed off the real
+    person table (see :func:`us_relationship_inputs_person_summary`)
+    without a :class:`~microcosm.frame.Frame`. Assumes the caller has
+    already confirmed the three output columns are present; missing
+    columns are a separate failure mode (see
+    :func:`us_relationship_inputs_person_gate`).
+
+    Raises:
+        ValueError: If required fields/counts are missing, measurements are
+            malformed, or supplied bands differ from the registered policy.
+    """
+
+    validate_person_signal_summary(
+        summary,
+        family="relationship",
+        outputs=US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
+        share_bands={
+            "household_head_share": (
+                "household_head_share_band",
+                _HOUSEHOLD_HEAD_SHARE_BAND,
+            ),
+            "separated_share": ("separated_share_band", _SEPARATED_SHARE_BAND),
+            "surviving_spouse_share": (
+                "surviving_spouse_share_band",
+                _SURVIVING_SPOUSE_SHARE_BAND,
+            ),
+        },
+        invariants=("households_without_exactly_one_head", "separated_and_surviving"),
+    )
     failures: list[str] = []
     for share_key, band_key, label in (
         (
@@ -330,3 +462,51 @@ def us_relationship_inputs_signal_gate(frame: Frame) -> GateResult:
         failures=tuple(failures),
         details=summary,
     )
+
+
+def us_relationship_inputs_person_gate(
+    person: pd.DataFrame, weights: np.ndarray
+) -> GateResult:
+    """Require plausible signal and exactly one ASEC head per household.
+
+    The real-person-table counterpart of
+    :func:`us_relationship_inputs_signal_gate`, composing
+    :func:`us_relationship_inputs_person_summary` and
+    :func:`us_relationship_inputs_gate_from_summary` exactly as the Frame
+    wrapper does.
+    """
+
+    missing = [
+        column
+        for column in US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS
+        if column not in person
+    ]
+    if missing:
+        return GateResult(
+            name="relationship_inputs_signal",
+            passed=False,
+            failures=(f"person columns missing: {missing}.",),
+            details={"missing": missing},
+        )
+    summary = us_relationship_inputs_person_summary(person, weights)
+    return us_relationship_inputs_gate_from_summary(summary)
+
+
+def us_relationship_inputs_signal_gate(frame: Frame) -> GateResult:
+    """Require plausible signal and exactly one ASEC head per household."""
+
+    person = frame.table("person")
+    missing = [
+        column
+        for column in US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS
+        if column not in person
+    ]
+    if missing:
+        return GateResult(
+            name="relationship_inputs_signal",
+            passed=False,
+            failures=(f"person columns missing: {missing}.",),
+            details={"missing": missing},
+        )
+    summary = us_relationship_inputs_summary(frame)
+    return us_relationship_inputs_gate_from_summary(summary)

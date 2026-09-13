@@ -1,0 +1,1 @@
+Add a candidate-only US graph measurement stage using declared target bindings, household-aligned sparse measures, explicit national/state/district support checks, and complete input-closure checks for optional model evaluation.

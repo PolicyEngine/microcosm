@@ -1,0 +1,1 @@
+Preserve grouped calibration closing-state results alongside ordinary best-iterate selection, retain the combined US runtime facade and joint geography validation, and publish complete metadata for lazy graph snapshots.
