@@ -15,6 +15,7 @@ __all__ = [
     "US_STATE_FIPS_TO_POSTAL",
     "US_STATE_NUMERIC_FIPS_TO_POSTAL",
     "US_STATE_POSTAL_TO_NUMERIC_FIPS",
+    "US_STATE_NUMERIC_FIPS_TO_CENSUS_REGION",
 ]
 
 
@@ -96,4 +97,38 @@ US_STATE_NUMERIC_FIPS_TO_POSTAL: Mapping[int, str] = MappingProxyType(
 )
 US_STATE_POSTAL_TO_NUMERIC_FIPS: Mapping[str, int] = MappingProxyType(
     {postal: fips for fips, postal in US_STATE_NUMERIC_FIPS_TO_POSTAL.items()}
+)
+
+
+# Census region codes, https://www2.census.gov/geo/pdfs/maps-data/maps/reference/us_regdiv.pdf
+_US_CENSUS_REGION_POSTAL_CODES = {
+    1: ("CT", "ME", "MA", "NH", "RI", "VT", "NJ", "NY", "PA"),
+    2: ("IN", "IL", "MI", "OH", "WI", "IA", "KS", "MN", "MO", "NE", "ND", "SD"),
+    3: (
+        "DE",
+        "DC",
+        "FL",
+        "GA",
+        "MD",
+        "NC",
+        "SC",
+        "VA",
+        "WV",
+        "AL",
+        "KY",
+        "MS",
+        "TN",
+        "AR",
+        "LA",
+        "OK",
+        "TX",
+    ),
+    4: ("AZ", "CO", "ID", "MT", "NV", "NM", "UT", "WY", "AK", "CA", "HI", "OR", "WA"),
+}
+US_STATE_NUMERIC_FIPS_TO_CENSUS_REGION: Mapping[int, int] = MappingProxyType(
+    {
+        US_STATE_POSTAL_TO_NUMERIC_FIPS[postal]: region
+        for region, states in _US_CENSUS_REGION_POSTAL_CODES.items()
+        for postal in states
+    }
 )

@@ -17,25 +17,33 @@ import pandas as pd
 
 from microcosm.build.us_runtime.childcare_attendance import (
     US_CHILDCARE_ATTENDANCE_COLUMNS,
+    childcare_attendance_contract,
+    childcare_income_band,
     impute_us_childcare_attendance,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
-NSECE_2024_HOUSEHOLD_SHA256 = (
-    "b42c69874de627273cdf698e4b8cdd39d3d4fdfef7d1295c239772cbc4e6c5a2"
-)
-NSECE_2024_CALENDAR_SHA256 = (
-    "c2e04a7a3eb6e187dc6d4496be1de77508354e05c6249725ae072f8a5f2ce18e"
-)
+_SOURCE_ARTIFACTS = {
+    artifact["dataset"]: artifact
+    for artifact in childcare_attendance_contract()["artifacts"]
+}
+NSECE_2024_HOUSEHOLD_SHA256 = _SOURCE_ARTIFACTS["DS5"]["sha256"]
+NSECE_2024_CALENDAR_SHA256 = _SOURCE_ARTIFACTS["DS4"]["sha256"]
 NSECE_CHILD_INDICES = tuple(range(1, 10))
 NSECE_PROVIDER_INDICES = tuple(range(1, 16))
 NSECE_CALENDAR_BLOCKS = 672
-NSECE_CHILDCARE_MATCH_COLUMNS = ("age", "region", "parent_work_status")
+NSECE_CHILDCARE_MATCH_COLUMNS = ("age", "region", "parent_work_status", "income_band")
+NSECE_CHILDCARE_FALLBACK_COLUMNS = (
+    ("age", "parent_work_status", "income_band"),
+    ("age", "parent_work_status"),
+    ("age",),
+)
 # HH-280: individual regular paid/unpaid, center, other organizational, irregular.
 NSECE_ECE_TYPES = frozenset({1, 2, 3, 4, 5, 7})
 # HH-566--568: parental care, self-care, or school only. Mixed/unclear gap-check
 # codes are deliberately unresolved, even if part of the interval involved ECE.
-NSECE_NON_ECE_CALENDAR_CODES = frozenset({0, 50, 51, 52, 53, 56, 57, 60, 65, 68, 70})
+NSECE_NON_ECE_CALENDAR_CODES = frozenset({0, 50, 53, 56, 57, 60, 65})
+NSECE_UNPAID_GAP_CODES = frozenset({54, 61, 62, 69})
 
 
 @dataclass(frozen=True)
@@ -47,7 +55,11 @@ class NSECEChildcareSource:
     source_receipt: dict[str, object]
 
     def donors(self) -> tuple[pd.DataFrame, Weights]:
-        usable = self.children["attendance_status"].eq("complete").to_numpy()
+        usable = (
+            self.children["attendance_status"]
+            .isin(["complete", "summary_bridge"])
+            .to_numpy()
+        )
         return (
             self.children.loc[usable].reset_index(drop=True).copy(),
             Weights(self.weights.values[usable], self.weights.kind),
@@ -57,9 +69,11 @@ class NSECEChildcareSource:
 def nsece_childcare_household_columns() -> tuple[str, ...]:
     return (
         "HH4_METH_CASEID",
+        "HH4_METH_WEIGHT",
         "HH4_METH_QUEXVERSION",
         "HH4_REGION",
         "HH4_PARWORK_STATUS",
+        "HH4_RPARENT",
         "HH4_ECON_INCOME_ANNUAL",
         *(
             f"{prefix}_{child}"
@@ -74,6 +88,11 @@ def nsece_childcare_household_columns() -> tuple[str, ...]:
             f"HH4_TYPEOFCARE_AGG_{child}_{provider}"
             for child in NSECE_CHILD_INDICES
             for provider in NSECE_PROVIDER_INDICES
+        ),
+        *(
+            f"HHC4_NPC_HRSWEEK_TOC{kind}_{child}"
+            for child in NSECE_CHILD_INDICES
+            for kind in range(1, 10)
         ),
     )
 
@@ -139,11 +158,21 @@ def derive_nsece_childcare(
             raise ValueError("Unknown NSECE calendar completeness code.")
         ece = np.zeros(values.shape, dtype=bool)
         known = np.isin(values, tuple(NSECE_NON_ECE_CALENDAR_CODES))
+        # HH-314/566: respondent/spouse care depends on parent status. School
+        # without a provider type is not evidence of K-8 for preschool children.
+        respondent_parent = rows.HH4_RPARENT.to_numpy()
+        respondent_care = np.isin(values, [51, 52])
+        ece |= np.isin(values, tuple(NSECE_UNPAID_GAP_CODES))
+        ece |= respondent_care & (respondent_parent == 0)[:, None]
+        known |= ece | (respondent_care & (respondent_parent == 1)[:, None])
+        known |= (values == 68) & (age_months.loc[present].to_numpy() >= 72)[:, None]
+        regular_ece = ece.copy()
         provider_count = np.zeros(len(rows), dtype=int)
         for p in NSECE_PROVIDER_INDICES:
             used = values == p
             ece_type = np.isin(types[:, p - 1], tuple(NSECE_ECE_TYPES))
             ece |= used & ece_type[:, None]
+            regular_ece |= used & np.isin(types[:, p - 1], [1, 2, 3, 4, 5])[:, None]
             known |= used & (ece_type | (types[:, p - 1] == 6))[:, None]
             provider_count += used.any(axis=1) & ece_type
         age = np.floor(age_months.loc[present].to_numpy() / 12)
@@ -158,8 +187,21 @@ def derive_nsece_childcare(
             default="complete",
         )
         complete = reason == "complete"
+        summary_hours = rows[
+            [f"HHC4_NPC_HRSWEEK_TOC{kind}_{child}" for kind in range(1, 10)]
+        ].to_numpy(dtype=float)
+        regular_hours = summary_hours[:, :5].sum(axis=1)
+        summary_known = (
+            np.isfinite(summary_hours).all(axis=1)
+            & (summary_hours >= 0).all(axis=1)
+            & (summary_hours[:, 7] == 0)
+            & (regular_hours <= 168)
+            & (complete | rows.HH4_METH_QUEXVERSION.isin([2, 3]).to_numpy())
+        )
         days = ece.reshape(-1, 7, 96).any(axis=2).sum(axis=1).astype(float)
         weekly_hours = ece.sum(axis=1) / 4
+        regular_hours = np.where(complete, regular_ece.sum(axis=1) / 4, regular_hours)
+        summary_known |= complete
         hours = np.divide(weekly_hours, days, out=np.zeros(len(rows)), where=days > 0)
         monthly = np.floor(days * 52 / 12 + 0.5)
         weight = pd.to_numeric(rows[f"HHC4_METH_WEIGHT_{child}"], errors="raise")
@@ -173,9 +215,17 @@ def derive_nsece_childcare(
                 "region": rows.HH4_REGION.to_numpy(),
                 "parent_work_status": rows.HH4_PARWORK_STATUS.to_numpy(),
                 "household_income": rows.HH4_ECON_INCOME_ANNUAL.to_numpy(),
+                "income_band": childcare_income_band(rows.HH4_ECON_INCOME_ANNUAL),
                 "questionnaire_version": rows.HH4_METH_QUEXVERSION.to_numpy(),
+                "regular_hours_per_week": np.where(
+                    summary_known, regular_hours, np.nan
+                ),
+                "irregular_hours_per_week": np.where(
+                    complete, weekly_hours - regular_hours, np.nan
+                ),
                 "attendance_status": reason,
                 "child_weight": weight.to_numpy(),
+                "household_weight": rows.HH4_METH_WEIGHT.to_numpy(),
                 "ece_provider_count": np.where(complete, provider_count, np.nan),
                 "ece_hours_per_week": np.where(complete, weekly_hours, np.nan),
             }
@@ -239,6 +289,8 @@ def with_us_nsece_childcare_attendance(
     *,
     seed: int,
     match_columns: tuple[str, ...],
+    fallback_match_columns: tuple[tuple[str, ...], ...] = (),
+    sibling_dependence: float = 0.0,
 ) -> Frame:
     """Apply the source to a candidate Frame, preserving links, weights and receipts.
 
@@ -251,17 +303,30 @@ def with_us_nsece_childcare_attendance(
     if frame.schema != US_SCHEMA:
         raise ValueError("NSECE childcare attendance requires the US schema.")
     donor, weights = source.donors()
+    original_people = frame.table("person")
+    recipients = original_people.copy()
+    # Native BuildP IDs are exact int64, while the pure donor API uses strings.
+    # Encode integers losslessly for hashing, then restore the native column.
+    if "person_source_id" in recipients and pd.api.types.is_integer_dtype(
+        recipients.person_source_id
+    ):
+        if recipients.person_source_id.isna().any():
+            raise ValueError("Childcare source person IDs cannot be missing.")
+        recipients["person_source_id"] = recipients.person_source_id.astype(str)
     people = impute_us_childcare_attendance(
-        frame.table("person"),
+        recipients,
         donor,
         donor_weights=weights,
         seed=seed,
         match_columns=match_columns,
+        fallback_match_columns=fallback_match_columns,
+        sibling_dependence=sibling_dependence,
     )
     # Float storage supports unresolved nulls in ordinary Frame checkpoints;
     # the monthly variable has already been validated to be integral when known.
     for column in US_CHILDCARE_ATTENDANCE_COLUMNS:
         people[column] = people[column].astype(float)
+    people["person_source_id"] = original_people.person_source_id
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tables["person"] = people
     return Frame(
@@ -276,6 +341,8 @@ def with_us_nsece_childcare_attendance(
                 **source.source_receipt,
                 "seed": int(seed),
                 "match_columns": match_columns,
+                "fallback_match_columns": fallback_match_columns,
+                "sibling_dependence": sibling_dependence,
                 "candidate_only": True,
             },
         },
@@ -313,6 +380,10 @@ def nsece_childcare_validation_report(
     Repeated use of this fixed holdout does not create fresh independent evidence.
     """
     children = source.children
+    if children.attendance_status.eq("summary_bridge").any():
+        raise ValueError(
+            "Validate original calendars before bridge completion to avoid leakage."
+        )
     donors, _ = source.donors()
     in_domain = children.age.between(0, 12)
     domain_mass = float(children.loc[in_domain, "child_weight"].sum())

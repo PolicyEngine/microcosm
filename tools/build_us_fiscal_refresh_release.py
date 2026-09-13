@@ -962,6 +962,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--release-id")
+    parser.add_argument("--childcare-attendance-household-tsv", type=Path)
+    parser.add_argument("--childcare-attendance-calendar-tsv", type=Path)
+    parser.add_argument("--childcare-attendance-asec-cache", type=Path)
+    parser.add_argument(
+        "--childcare-attendance-inherit-outside-domain-baseline",
+        action="store_true",
+        help="Retain the engine baseline outside modeled ages 0-12; does not assert older-child nonattendance",
+    )
     parser.add_argument(
         "--incumbent-diagnostics",
         type=Path,
@@ -1556,6 +1564,17 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Minimum seconds between progress uploads to the staging repo.",
     )
     args = parser.parse_args(argv)
+    if bool(args.childcare_attendance_household_tsv) != bool(
+        args.childcare_attendance_calendar_tsv
+    ):
+        parser.error("Both NSECE household and calendar TSV paths are required")
+    if (
+        args.childcare_attendance_inherit_outside_domain_baseline
+        and not args.childcare_attendance_household_tsv
+    ):
+        parser.error(
+            "Outside-domain baseline policy requires an NSECE attendance build"
+        )
     if args.congressional_district_vintage_crosswalk is None:
         # Every build compiles the same national + state + CD target surface,
         # translated through the canonical packaged vintage crosswalk unless
@@ -9327,6 +9346,19 @@ def _main(argv: Sequence[str] | None = None) -> None:
             time_period=PERIOD,
             allow_existing_without_source=True,
         )
+    if args.childcare_attendance_household_tsv is not None:
+        from microcosm.build.us_runtime.childcare_attendance_stage import (
+            with_us_childcare_attendance_inputs,
+        )
+
+        base_frame = with_us_childcare_attendance_inputs(
+            base_frame,
+            household_tsv=args.childcare_attendance_household_tsv,
+            calendar_tsv=args.childcare_attendance_calendar_tsv,
+            asec_source_cache=args.childcare_attendance_asec_cache,
+            seed=args.seed,
+            inherit_outside_domain_baseline=args.childcare_attendance_inherit_outside_domain_baseline,
+        )
     childcare_gate = us_childcare_signal_gate(base_frame)
     if not childcare_gate.passed:
         if telemetry is not None:
@@ -11766,6 +11798,18 @@ def _main(argv: Sequence[str] | None = None) -> None:
         reviewed_exclusions=_reviewed_exclusions(active_aliases),
     )
     coverage["fiscal_target_sources"] = _fiscal_target_source_provenance(target_specs)
+    attendance_receipts = {
+        key: json.loads(json.dumps(base_frame.metadata[key], default=dict))
+        for key in (
+            "childcare_attendance_stage",
+            "nsece_childcare_attendance",
+            "childcare_predictor_harmonization",
+            "childcare_outside_domain_baseline",
+        )
+        if key in base_frame.metadata
+    }
+    if attendance_receipts:
+        coverage["childcare_attendance"] = attendance_receipts
     if congressional_district_vintage_crosswalk_metadata is not None:
         coverage["congressional_district_vintage_crosswalk"] = (
             congressional_district_vintage_crosswalk_metadata

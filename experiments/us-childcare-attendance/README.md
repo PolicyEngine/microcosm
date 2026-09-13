@@ -1,89 +1,109 @@
-# NSECE attendance candidate: 2026-09-12 diagnostic
+# NSECE attendance population qualification — 2026-09-12
 
 Related: [#915](https://github.com/PolicyEngine/microcosm/issues/915) and
-[draft PR #916](https://github.com/PolicyEngine/microcosm/pull/916).
+[PR #916](https://github.com/PolicyEngine/microcosm/pull/916).
 
-**Verdict: candidate only; not ready for production activation.** The real source
-adapter and local checkpoint path work. This experiment does not establish
-national representativeness, target population validity, or state CCDF effects.
+The real survey adapter, ASEC harmonization, fiscal-builder attendance stage,
+and native population export are implemented. The final aggregate reports below
+record the source/model diagnostics and the attendance-only state comparison.
+This is a local population candidate, not a calibrated or published replacement
+population, and the reports retain `production_ready: false`.
 
-The [aggregate report](nsece-2024-v1-validation.json) was generated from the
-2024 NSECE public household DS5 and calendar DS4 TSVs, ICPSR 39466 V1. It records
-source hashes/size, seed, exact code hashes, and Python/library versions. It
-contains no individual records or identifiers. Source archives, normalized donor
-records, and local candidate checkpoints are not redistributed in this PR.
-See the [mapping and reproduction guide](../../docs/us-childcare-attendance.md).
+- [Source and production-stage qualification](qualified-preparation.json)
+- [All-state population comparison](qualified-population-comparison.json)
+- [Reproduction and field mapping](../../docs/us-childcare-attendance.md)
 
-## Source coverage
+No individual survey records, identifiers, raw archives, or H5 populations are
+committed. Reports contain aggregate diagnostics and exact artifact/code hashes.
+The earlier [source-only report](nsece-2024-v1-validation.json) is historical
+(f065a3ae), predating the corrected gap-code classification and population model.
+It does not describe the final candidate.
 
-| Status | Children |
+## Source coverage and model
+
+| Source status | Children |
 | --- | ---: |
-| Complete and unambiguous | 7,120 |
-| Missing calendar | 3,095 |
-| Partial calendar | 174 |
-| Ambiguous calendar/provider | 1,222 |
-| Age outside 0–12 | 134 |
+| Complete classified calendars | 7,460 |
+| Reconstructed from observed regular weekly hours | 3,046 |
+| Still excluded under age 13 | 1,105 |
+| Outside source age domain | 134 |
 | Total | 11,745 |
 
-Complete schedules cover **60.26%** of the original weighted under-13 population.
-This is source coverage, not an attendance participation rate. The original
-child weights are used for conditional donor draws and descriptive comparisons;
-using them after these exclusions does not validate national totals. Calendar
-availability differs by questionnaire version, including the summer and
-new-school-year instruments. Missing and ambiguous attendance stays unknown.
+The 10,506 usable donors include measured nonparticipants and modeled schedules
+for May/fall questionnaire respondents. The latter preserve regular weekly hours
+but borrow days and irregular care; they are not observed full schedules. The
+remaining excluded records comprise 882 ambiguous calendars, 174 partial
+calendars, and 49 unusable noncalendar summaries. Conditional matching cannot
+identify their missing schedules without additional assumptions.
 
-## Household-separated diagnostic
+Matching uses age, region, parents' last-week work, and household income in 2023
+dollars. The explicit fallback hierarchy always retains age. Tied nearest-hour
+donors are all retained. A household shared-rank mixture models sibling
+participation; it does not assert common provider identity.
 
-A stable hash with seed 915 holds out approximately 20% of households, keeping
-siblings on the same side: 5,721 training children and 1,399 held-out children,
-with zero household overlap. The final candidate matches exact child age,
-Census region, and household parent-work status. Three held-out children lack
-training support (weight 44,357.42) and are reported separately; 1,396 are scored.
-No unsupported record is assigned a default zero.
+The source evaluation uses five household-separated folds. Overall observed ECE
+participation is 46.51%, compared with 46.55% predicted, and weekly hours are
+14.24 observed versus 14.08 predicted. For youngest sibling pairs, joint
+attendance is 32.86% observed versus 32.28% predicted; independent draws predict
+25.99%. The masked-calendar check holds out 1,581 children by whole household: weekly
+hours are 13.10 observed versus 13.16 reconstructed, and days are 1.72 versus
+1.79. Subgroup discrepancies remain visible in the final report. These diagnostics informed development and
+must not be described as an untouched external acceptance sample.
 
-| Weighted mean, supported children | Observed | Imputed |
-| --- | ---: | ---: |
-| Any ECE attendance | 44.82% | 45.99% |
-| Days per week | 1.823 | 1.793 |
-| Hours per week | 13.652 | 13.095 |
+## Population boundary
 
-Means include participants and nonparticipants. Matching draws all three
-attendance inputs jointly; it does not independently predict their means.
+The exact BuildP parent contains 166,321 people, 57,240 households, and 31,889
+children ages 0–12. The stage restores temporary income predictors for all three
+ASEC cohorts from pinned Census sources while preserving the parent's original
+columns, raw missingness, entity links, weights, and period. Its native export
+adds only the three attendance inputs and a provenance receipt.
 
-| Parent work group | Observed participation | Imputed participation |
-| --- | ---: | ---: |
-| All parents worked | 60.79% | 59.14% |
-| Some parents worked | 25.44% | 30.49% |
-| No parents worked | 28.59% | 33.79% |
-| No parents present, supported subset | 28.83% | 20.26% |
+Outside ages 0–12, the explicit export policy inherits existing engine baseline
+values where observations are absent. The 134,432 out-of-domain people include
+557 disabled teenagers ages 13–17. Their attendance has not been estimated by
+this source. Preserving baseline behavior does not establish nonattendance.
 
-An earlier age-and-region-only diagnostic on the same household split imputed
-41.51% participation for all-working-parent households and 47.03% for
-some-working-parent households, compared with observed 60.79% and 25.44%.
-That motivated adding parent work. Consequently this split has been used during
-model development and must not be treated as an untouched final acceptance set.
-Age, region, and work-group detail is retained in the JSON; for example the
-age-zero weekly-hours mean remains 9.85 imputed versus 13.48 observed. No
-uncertainty intervals or acceptance thresholds have yet been established.
+The state experiment applies 2026 policies to fixed source ages and incomes,
+without aging or uprating, and calls each direct state child-care subsidy
+variable. Only attendance changes. Provider, activity, expense, enrollment, and
+take-up inputs remain as in the parent. Benefit amounts are potential modeled
+benefits, not national CCDF spending or caseload estimates. Source-selection,
+true summer schedules, provider-specific pricing, and older-child coverage
+remain limitations for population publication.
 
-## Integration evidence and limits
 
-The report's `candidate_frame_written: true` refers to a **two-person synthetic
-target checkpoint with the real survey donor source**, not a production build.
-The local CLI run preserved parent receipt metadata, entity links and household
-weight, wrote a separate candidate checkpoint, and reloaded its attendance
-columns without missing values for this fixture. The fixture's adult had
-explicit observed zeros; the adapter did not infer adult zero attendance.
+## Final state results
 
-A separate synthetic-source CI test exports through `PolicyEngineUSEngine`,
-reloads through `USSingleYearDataset`, and calculates weekly hours through a
-real `Microsimulation`. Locally this ran with PolicyEngine-US 1.819.0 and period
-2026. It verifies the person input/export contract only. It does not validate
-benefit changes or production data.
+All 51 jurisdictions were evaluated. All-zero state results fell from **31 to 3**:
+California, Maryland, and Nevada. Positive modeled subsidies became available
+in 28 additional jurisdictions. The aggregate annual potential benefit changes
+from $2.253 billion to $5.286 billion under this fixed-population experiment;
+these amounts are not calibrated spending estimates.
 
-The next acceptance work is source-selection/seasonality analysis, tested
-harmonization of real target parent/work/region fields, sparse-cell handling,
-sibling and provider conventions, older-child coverage, registered build and
-input contracts, and a full population comparison with pinned parent and engine
-artifacts. No release, production manifest change, or national CCDF result is
-claimed here.
+All 31,889 under-13 children have resolved inputs. Weighted attendance is 48.47%,
+with 1.959 days and 14.081 hours per week averaged across all children, including
+nonparticipants. Exact four-field support covers 31,152 children; 576 use
+age/parent-work/income and 161 use age/parent-work. None needs the age-only level.
+The report gives target distributions by age, region, work, and income.
+
+The [remaining-input diagnostic](qualified-remaining-state-inputs.json) identifies
+separate blockers in January 2026:
+
+| State | Evidence on this candidate |
+| --- | --- |
+| CA | 341 SPM units meet CAPP eligibility, but state-specific days/month and weeks/month remain zero, making the time coefficient zero. |
+| MD | 115 SPM units meet CCS eligibility, but every provider type is `NONE`, giving a zero reimbursement rate. |
+| NV | 149 SPM units meet the income test, but every activity test is false. |
+
+These require additional source/engine mapping work. The PR does not infer
+licensed provider status or approved CCDF activity from attendance alone, and
+does not claim to close every part of #915.
+
+### Local checks
+
+916 distinct targeted tests passed across the attendance/source, architecture,
+fiscal-builder, release-coverage, and US bundle suites. Lint, tracked CI test
+inventory, generated bundle validation, and diff whitespace checks passed.
+The real production stage completed on the pinned parent, and native export
+reloaded successfully with original data, weights, and period preserved.
+Full GitHub CI runs separately on the submitted commit.

@@ -12295,3 +12295,19 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
     assert len(owner_check_calls) == 5, (
         f"expected 5 owner-resolution sites in _main(), found {len(owner_check_calls)}"
     )
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--childcare-attendance-household-tsv", "household.tsv"],
+        ["--childcare-attendance-calendar-tsv", "calendar.tsv"],
+        ["--childcare-attendance-inherit-outside-domain-baseline"],
+    ],
+)
+def test_attendance_source_cli_requires_paired_inputs(options):
+    builder = _load_builder_module()
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            ["--ledger-facts", "facts.jsonl", "--out", "release", *options]
+        )
