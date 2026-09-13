@@ -120,10 +120,12 @@ def _live():
             interest.TOPCODE_ENTRIES,
             dividend.PROTOCOL,
             dividend.READ_COLUMNS,
+            dividend.AMOUNT_FIELDS,
             dividend.RECEIPT_ENTRIES,
             dividend.SURVIVOR_ENTRIES,
             dividend.SURVIVOR_CODES,
             dividend.ALLOCATION_ENTRIES,
+            dividend.ALLOCATION_CONFLICT_NOTE,
             dividend.TOPCODE_ENTRIES,
             routing.COORDINATE_COLUMNS,
             routing.COORDINATE_WIDTHS,
@@ -142,7 +144,11 @@ def _live():
             routing.DICTIONARY_URL,
             routing.DICTIONARY_SHA256,
             acs.PROTOCOL,
+            acs.COLUMNS,
             acs.ANCHORS,
+            acs.STRING_DTYPE,
+            acs.STRING_DTYPE.storage,
+            acs.STRING_DTYPE.na_value,
         )
     )
     return result

@@ -207,6 +207,7 @@ def test_copied_preparation_cannot_supply_full_donor_authority(actual):
     [
         "constant",
         "dependency_constant",
+        "dividend_evidence_note",
         "function",
         "defaults",
         "closure",
@@ -222,6 +223,7 @@ def test_initial_and_final_owner_callback_mutations_refuse_current_borrow(
     original_profile = sys.getprofile()
     original_ages = child.DONOR_AGES
     original_unpublished = child.routing.ALLOCATION_CODE_MEANINGS_UNPUBLISHED
+    original_conflict_note = child.dividend.ALLOCATION_CONFLICT_NOTE
     original_function = child._bad_status
     original_defaults = child._age.__defaults__
     closure_cell = child.QualifiedChildPropertySources.__repr__.__closure__[0]
@@ -247,6 +249,8 @@ def test_initial_and_final_owner_callback_mutations_refuse_current_borrow(
                     child.routing.ALLOCATION_CODE_MEANINGS_UNPUBLISHED = frozenset(
                         {"I_INTYN"}
                     )
+                elif mutation == "dividend_evidence_note":
+                    child.dividend.ALLOCATION_CONFLICT_NOTE = "changed interpretation"
                 elif mutation == "function":
                     child._bad_status = lambda value: False
                 elif mutation == "defaults":
@@ -264,6 +268,7 @@ def test_initial_and_final_owner_callback_mutations_refuse_current_borrow(
         sys.setprofile(original_profile)
         child.DONOR_AGES = original_ages
         child.routing.ALLOCATION_CODE_MEANINGS_UNPUBLISHED = original_unpublished
+        child.dividend.ALLOCATION_CONFLICT_NOTE = original_conflict_note
         child._bad_status = original_function
         child._age.__defaults__ = original_defaults
         closure_cell.cell_contents = original_closure
@@ -282,10 +287,20 @@ def test_detached_donor_mutation_does_not_change_retained_source(actual):
     actual.full._checked()
 
 
-def test_preexisting_dependency_interpretation_mutation_refuses(actual, monkeypatch):
-    monkeypatch.setattr(
-        child.routing, "ALLOCATION_CODE_MEANINGS_UNPUBLISHED", frozenset({"I_INTYN"})
-    )
+@pytest.mark.parametrize("dependency", ["allocation_set", "dividend_note"])
+def test_preexisting_dependency_interpretation_mutation_refuses(
+    actual, monkeypatch, dependency
+):
+    if dependency == "allocation_set":
+        monkeypatch.setattr(
+            child.routing,
+            "ALLOCATION_CODE_MEANINGS_UNPUBLISHED",
+            frozenset({"I_INTYN"}),
+        )
+    else:
+        monkeypatch.setattr(
+            child.dividend, "ALLOCATION_CONFLICT_NOTE", "changed interpretation"
+        )
     with pytest.raises(ValueError, match="IMPLEMENTATION_CHANGED"):
         child.qualify_child_property_sources(actual.full)
 
