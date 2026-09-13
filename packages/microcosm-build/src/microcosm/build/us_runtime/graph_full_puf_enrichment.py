@@ -145,29 +145,37 @@ def _table_stamp(table):
 
 
 def _population_stamp(population):
-    """In-process mutation seal only; never source or successor qualification."""
+    """In-process mutation seal only; never source or successor qualification.
+
+    The parts are streamed into the unchanged ``_digest``, exactly as
+    ``_table_stamp`` already does, rather than expanded into one tuple first.
+    Every part, its order and its length prefix are identical either way; only
+    the object strata's per-row encodings stop being retained all at once.
+    """
     require(type(population) is Population, "FULL_PUF_POPULATION_REQUIRED")
     frame = population.frame
     return _digest(
-        (
-            canonical_json(
-                {
-                    "schema": asdict(frame.schema),
-                    "entities": frame.entities,
-                    "links": frame.links,
-                    "metadata": store_ops._encode_frame_metadata(frame.metadata),
-                    "mass_log": [asdict(r) for r in frame.mass_log],
-                    "version": population.version,
-                    "owners": sorted(population.owners.items()),
-                    "weight_kind": tuple(population.weight_kind.items()),
-                    "mass_ledger": [asdict(r) for r in population.mass_ledger],
-                }
+        chain(
+            (
+                canonical_json(
+                    {
+                        "schema": asdict(frame.schema),
+                        "entities": frame.entities,
+                        "links": frame.links,
+                        "metadata": store_ops._encode_frame_metadata(frame.metadata),
+                        "mass_log": [asdict(r) for r in frame.mass_log],
+                        "version": population.version,
+                        "owners": sorted(population.owners.items()),
+                        "weight_kind": tuple(population.weight_kind.items()),
+                        "mass_ledger": [asdict(r) for r in population.mass_ledger],
+                    }
+                ),
             ),
-            *(_table_stamp(frame.table(e)).encode() for e in frame.entities),
-            *_axis_parts(frame.strata.index),
-            canonical_json(store_ops._axis_name_payload(frame.strata.name)),
-            *_series_parts(frame.strata),
-            *(
+            (_table_stamp(frame.table(e)).encode() for e in frame.entities),
+            _axis_parts(frame.strata.index),
+            (canonical_json(store_ops._axis_name_payload(frame.strata.name)),),
+            _series_parts(frame.strata),
+            (
                 canonical_json(
                     (
                         e,
@@ -179,7 +187,7 @@ def _population_stamp(population):
                 + frame.weights_for(e).values.tobytes()
                 for e in frame.weighted_entities
             ),
-            *(
+            (
                 canonical_json((e, str(a.dtype), a.shape)) + a.tobytes()
                 for e, a in population.design_weights.items()
             ),
