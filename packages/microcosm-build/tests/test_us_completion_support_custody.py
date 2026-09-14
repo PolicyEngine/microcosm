@@ -155,7 +155,7 @@ def _full_us_parent_frame(original):
     for frame in (original, full):
         pd.testing.assert_series_equal(frame.strata, strata_before, check_exact=True)
         assert frame.mass_log == mass_log_before
-    assert full.metadata == {}
+    assert len(full.metadata) == 0
     assert original.metadata == metadata_before
     assert original.metadata is metadata_before and original.mass_log is mass_log_before
     return full
