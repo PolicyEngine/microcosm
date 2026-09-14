@@ -18,10 +18,21 @@ from microcosm.build.stochastic_assignment import (
     assign_binary_from_rate,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.bus_use_incidence import (
+    BusUseIncidenceResult,
+    assign_bus_use_incidence,
+    incidence_operation,
+    nts_band_shares,
+)
 from microcosm.build.uk_runtime.donor_uprating import (
     apply_donor_uprating,
     donor_uprating_factors,
     uprating_operation,
+)
+from microcosm.build.uk_runtime.fact_raking import (
+    rake_operations,
+    rake_to_facts,
+    resolve_cells,
 )
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
@@ -126,7 +137,24 @@ UK_LCFS_VEHICLE_COUNT_RANGE = (0, 5)
 #: these and no other (the vendor register lists this module as their consumer).
 UK_LCFS_ROAD_FUEL_RESOURCE = "road_fuel_anchors.json"
 UK_LCFS_LICENSED_CARS_RESOURCE = "licensed_cars_fuel_type.json"
+UK_LCFS_NTS_BUS_USE_RESOURCE = "nts_bus_use_frequency.json"
+UK_LCFS_DFT_BUS_VALUE_RESOURCE = "dft_bus_value_anchors.json"
+UK_LCFS_DEVOLVED_BUS_FINANCE_RESOURCE = "devolved_bus_finance.json"
+UK_LCFS_VENDORED_RESOURCES = (
+    UK_LCFS_ROAD_FUEL_RESOURCE,
+    UK_LCFS_LICENSED_CARS_RESOURCE,
+    UK_LCFS_NTS_BUS_USE_RESOURCE,
+    UK_LCFS_DFT_BUS_VALUE_RESOURCE,
+    UK_LCFS_DEVOLVED_BUS_FINANCE_RESOURCE,
+)
 UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
+#: Identity-keyed uniforms for the positive-regime bus fare draw of user
+#: households the chain drew at zero (salted apart from the incidence draw).
+UK_LCFS_BUS_FARE_POSITIVE_SALT = "lcfs_bus_fare_positive"
+#: Columns whose level a declared rake sets; the support clip never touches them.
+UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT = frozenset(
+    {"electricity_consumption", "gas_consumption", "domestic_energy_consumption"}
+)
 UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS = (
     "is_adult",
     "is_child",
@@ -184,6 +212,8 @@ class UKLCFSConsumptionResult:
     support_clip: UKSupportClipReceipt
     donor_uprating: Mapping[str, Any] | None = None
     fuel_flag: Mapping[str, Any] | None = None
+    bus_use_incidence: Mapping[str, Any] | None = None
+    bus_fare_rake: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -194,6 +224,10 @@ class UKLCFSConsumptionResult:
             evidence["donor_uprating"] = dict(self.donor_uprating)
         if self.fuel_flag is not None:
             evidence["has_fuel_consumption"] = dict(self.fuel_flag)
+        if self.bus_use_incidence is not None:
+            evidence["bus_use_incidence"] = dict(self.bus_use_incidence)
+        if self.bus_fare_rake is not None:
+            evidence["bus_fare_rake"] = dict(self.bus_fare_rake)
         return evidence
 
 
@@ -249,34 +283,45 @@ class UKLCFSConsumptionStageTransform:
             rate=ice_share,
             seed=_operation_seed(self.stage, "assign_binary_from_rate"),
         )
+        weights = frame.weights_for("household").values
         fuel_flag_receipt = fuel_flag_evidence(
             donor,
             recipient,
-            recipient_weights=frame.weights_for("household").values,
+            recipient_weights=weights,
             ice_share_receipt=ice_share_receipt,
         )
+        incidence = lcfs_bus_use_incidence(self.stage, frame)
         imputation = impute_lcfs_consumption(
             donor,
             recipient,
             seed=_operation_seed(self.stage, "fit_weighted_qrf_chain"),
             n_estimators=_qrf_n_estimators(self.stage),
+            bus_users=None if incidence is None else incidence.household_user,
+            bus_positive_uniforms=None
+            if incidence is None
+            else stable_identity_uniforms(
+                frame.table("household")["household_id"].to_numpy(),
+                seed=_operation_seed(self.stage, "assign_bus_use_incidence"),
+                salt=UK_LCFS_BUS_FARE_POSITIVE_SALT,
+            ),
         )
         clip_result = support_clip_to_donor(
-            imputation.draws,
-            donor,
-            exempt={
-                "electricity_consumption",
-                "gas_consumption",
-                "domestic_energy_consumption",
-            },
+            imputation.draws, donor, exempt=support_clip_exempt(self.stage)
         )
         household_draws = clip_result.clipped
         household_draws = rake_energy_to_need(
             household_draws.join(recipient[["household_gross_income"]]),
-            weights=frame.weights_for("household").values,
+            weights=weights,
             tenure=recipient["tenure_type"].astype(str).to_numpy(),
             accommodation=recipient["accommodation_type"].astype(str).to_numpy(),
             region=recipient["region"].astype(str).to_numpy(),
+        )
+        household_draws, bus_fare_rake_receipt = lcfs_bus_fare_rake(
+            self.stage,
+            household_draws,
+            frame,
+            recipient=recipient,
+            users=None if incidence is None else incidence.household_user,
         )
         household_draws["domestic_energy_consumption"] = (
             household_draws["electricity_consumption"]
@@ -308,6 +353,10 @@ class UKLCFSConsumptionStageTransform:
             support_clip=clip_result.receipt,
             donor_uprating=uprating_receipt,
             fuel_flag=fuel_flag_receipt,
+            bus_use_incidence=None
+            if incidence is None
+            else {**incidence.receipt, **imputation.bus_fare_receipt},
+            bus_fare_rake=bus_fare_rake_receipt,
         )
         return result
 
@@ -325,6 +374,91 @@ class UKLCFSConsumptionStageTransform:
 class UKLCFSConsumptionImputationResult:
     draws: pd.DataFrame
     fit_weight_records: tuple[FitWeightRecord, ...]
+    bus_fare_receipt: Mapping[str, Any] = field(default_factory=dict)
+
+
+def support_clip_exempt(stage: SourceStageSpec) -> set[str]:
+    """Columns the declared ``support_clip`` exempts (raked columns keep their level)."""
+
+    for operation in stage.operations:
+        if operation.kind == "support_clip":
+            declared = operation.parameters.get("exempt")
+            if declared:
+                return {str(column) for column in declared}
+    return set(UK_LCFS_DEFAULT_SUPPORT_CLIP_EXEMPT)
+
+
+def lcfs_bus_use_incidence(
+    stage: SourceStageSpec, frame: Frame
+) -> BusUseIncidenceResult | None:
+    """Draw the declared local-bus use incidence on the recipient frame."""
+
+    parameters = incidence_operation(stage)
+    if parameters is None:
+        return None
+    if parameters.get("output") != "uses_local_bus":
+        raise ValueError("assign_bus_use_incidence must output uses_local_bus.")
+    shares, shares_receipt = nts_band_shares(parameters)
+    result = assign_bus_use_incidence(
+        frame.table("person"),
+        frame.table("household"),
+        household_weights=frame.weights_for("household").values,
+        shares=shares,
+        seed=int(parameters["seed"]),
+    )
+    return BusUseIncidenceResult(
+        household_user=result.household_user,
+        household_trips_per_year=result.household_trips_per_year,
+        person_band=result.person_band,
+        receipt={"nts": shares_receipt, **result.receipt},
+    )
+
+
+def lcfs_bus_fare_rake(
+    stage: SourceStageSpec,
+    household_draws: pd.DataFrame,
+    frame: Frame,
+    *,
+    recipient: pd.DataFrame,
+    users: np.ndarray | None,
+) -> tuple[pd.DataFrame, dict[str, Any] | None]:
+    """Apply every declared ``rake_to_vendored_facts`` operation on the stage."""
+
+    operations = rake_operations(stage)
+    if not operations:
+        return household_draws, None
+    household = frame.table("household")
+    person = frame.table("person")
+    persons = (
+        person.groupby("person_household_id")
+        .size()
+        .reindex(household["household_id"])
+        .fillna(0.0)
+        .to_numpy(dtype=float)
+    )
+    receipts: list[dict[str, Any]] = []
+    raked = household_draws
+    for parameters in operations:
+        cells = resolve_cells(parameters, allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+        income_key = parameters.get("quintile_income")
+        raked, receipt = rake_to_facts(
+            raked,
+            columns=[str(column) for column in parameters["columns"]],
+            cells=cells,
+            region=recipient["region"].astype(str).to_numpy(),
+            weights=frame.weights_for("household").values
+            if bool(parameters.get("weighted", True))
+            else None,
+            scope=str(parameters["scope"]),
+            users=users,
+            quintile_income=None
+            if income_key is None
+            else _numeric(recipient[str(income_key)]).to_numpy(dtype=float),
+            household_persons=persons,
+            iterations=int(parameters.get("iterations", 1)),
+        )
+        receipts.append(receipt)
+    return raked, receipts[0] if len(receipts) == 1 else {"operations": receipts}
 
 
 def lcfs_donor_uprating(
@@ -637,7 +771,19 @@ def impute_lcfs_consumption(
     *,
     seed: int,
     n_estimators: int,
+    bus_users: np.ndarray | None = None,
+    bus_positive_uniforms: np.ndarray | None = None,
 ) -> UKLCFSConsumptionImputationResult:
+    """Chain-draw the targets; optionally impose the bus-use incidence.
+
+    With ``bus_users`` (one bool per recipient) the ``bus_fare_spending``
+    draw is overridden after the chain step: non-user households take zero,
+    user households drawn at zero take the step's positive-regime draw at
+    their identity-keyed ``bus_positive_uniforms`` quantile, and user
+    households drawn positive keep their draw. The chain itself keeps
+    conditioning on the raw prior draw, so later targets are unchanged.
+    """
+
     from microcosm.fit import RegimeGatedQRF
 
     donor_encoded, recipient_encoded, predictors = _encode_consumption_predictors(
@@ -651,23 +797,69 @@ def impute_lcfs_consumption(
         weights="household_weight",
     )
     raw = pd.DataFrame(index=recipient_encoded.index)
+    draws = pd.DataFrame(index=recipient_encoded.index)
     fit_records: list[FitWeightRecord] = []
+    bus_receipt: dict[str, Any] = {}
     for target in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
+        features = recipient_encoded.loc[:, list(predictors)]
         result = model.fit_draw_next(
             donor_encoded,
-            recipient_encoded.loc[:, list(predictors)],
+            features,
             raw,
             state=state,
             weights="household_weight",
         )
         raw[target] = result.raw_draw
+        draws[target] = result.raw_draw
+        if target == "bus_fare_spending" and bus_users is not None:
+            draws[target], bus_receipt = _impose_bus_use_incidence(
+                result,
+                features.join(raw.drop(columns=[target])),
+                raw_draw=np.asarray(result.raw_draw, dtype=float),
+                users=np.asarray(bus_users, dtype=bool),
+                uniforms=bus_positive_uniforms,
+            )
         fit_records.append(
             FitWeightRecord(
                 f"{UK_LCFS_CONSUMPTION_FIT_NAME}:{target}", result.weight_kind
             )
         )
         state = result.state
-    return UKLCFSConsumptionImputationResult(raw, tuple(fit_records))
+    return UKLCFSConsumptionImputationResult(draws, tuple(fit_records), bus_receipt)
+
+
+def _impose_bus_use_incidence(
+    step: Any,
+    features: pd.DataFrame,
+    *,
+    raw_draw: np.ndarray,
+    users: np.ndarray,
+    uniforms: np.ndarray | None,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    if uniforms is None:
+        raise ValueError("bus incidence needs identity-keyed positive-draw uniforms.")
+    if len(users) != len(raw_draw) or len(uniforms) != len(raw_draw):
+        raise ValueError("bus incidence inputs must align with the recipients.")
+    fitted = step.fitted
+    if fitted is None:
+        raise ValueError("the bus_fare_spending chain step exposes no fitted view.")
+    positive = fitted.predict_positive_from_uniforms(
+        features, quantiles={"bus_fare_spending": np.asarray(uniforms, dtype=float)}
+    )["bus_fare_spending"].to_numpy(dtype=float)
+    drawn_positive = raw_draw > 0
+    filled = users & ~drawn_positive
+    adjusted = np.where(users, np.where(drawn_positive, raw_draw, positive), 0.0)
+    return adjusted, {
+        "regime": str(getattr(step.regime, "name", step.regime)),
+        "positive_draw_salt": UK_LCFS_BUS_FARE_POSITIVE_SALT,
+        "households": int(len(raw_draw)),
+        "users": int(users.sum()),
+        "users_drawn_positive": int((users & drawn_positive).sum()),
+        "users_filled_from_positive_regime": int(filled.sum()),
+        "non_users_zeroed": int((~users & drawn_positive).sum()),
+        "positive_share_before": float(drawn_positive.mean()) if len(raw_draw) else 0.0,
+        "positive_share_after": float((adjusted > 0).mean()) if len(raw_draw) else 0.0,
+    }
 
 
 def support_clip_to_donor(

@@ -635,10 +635,12 @@ class TestE3ManifestLockstep:
             "uprate_donor_columns",
             "iterative_proportional_fit",
             "assign_binary_from_rate",
+            "assign_bus_use_incidence",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
             "iterative_proportional_fit",
+            "rake_to_vendored_facts",
             "fold_into",
             "zero_when_false",
         ]
@@ -654,6 +656,7 @@ class TestE3ManifestLockstep:
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
+            "rake_to_vendored_facts",
             "compute_ratio",
             "allocate_per_capita_from_cell_table",
         ]
@@ -921,6 +924,7 @@ class TestE3ManifestLockstep:
         }
         assert lcfs_seeded == {
             "assign_binary_from_rate": 0,
+            "assign_bus_use_incidence": 0,
             "fit_weighted_qrf_chain": 0,
         }
         assert stages["etb_vat"].operations[2].parameters["seed"] == 0

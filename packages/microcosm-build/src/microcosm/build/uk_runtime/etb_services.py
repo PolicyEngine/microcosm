@@ -17,6 +17,11 @@ from microcosm.build.uk_runtime.donor_uprating import (
     donor_uprating_factors,
     uprating_operation,
 )
+from microcosm.build.uk_runtime.fact_raking import (
+    rake_operations,
+    rake_to_facts,
+    resolve_cells,
+)
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -95,6 +100,7 @@ UK_ETB_SERVICES_STAGE_NAME = "etb_services"
 UK_ETB_SERVICES_VENDORED_RESOURCES = (
     "orr_rail_facts.json",
     "dft_bus_value_anchors.json",
+    "devolved_bus_finance.json",
 )
 
 
@@ -106,6 +112,7 @@ class UKETBServicesResult:
     support_clip: UKSupportClipReceipt
     nhs_cells: dict[str, object] = field(default_factory=dict)
     donor_uprating: dict[str, object] | None = None
+    bus_support_rake: dict[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -115,6 +122,8 @@ class UKETBServicesResult:
         }
         if self.donor_uprating is not None:
             evidence["donor_uprating"] = dict(self.donor_uprating)
+        if self.bus_support_rake is not None:
+            evidence["bus_support_rake"] = dict(self.bus_support_rake)
         return evidence
 
 
@@ -159,10 +168,18 @@ class UKETBServicesStageTransform:
         draws, records = impute_etb_services(
             donor, predictors, seed=_qrf_seed(self.stage)
         )
-        clip_result = support_clip_to_donor(draws, donor)
+        clip_result = support_clip_to_donor(
+            draws, donor, exempt=support_clip_exempt(self.stage)
+        )
         draws = clip_result.clipped
-        draws["rail_usage"] = draws["rail_subsidy_spending"] / config["rail_fare_index"]
         household = frame.table("household").copy()
+        draws, rake_receipt = etb_bus_support_rake(
+            self.stage,
+            draws,
+            household=household,
+            weights=frame.weights_for("household").values,
+        )
+        draws["rail_usage"] = draws["rail_subsidy_spending"] / config["rail_fare_index"]
         for column in UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS:
             household[column] = draws[column].to_numpy()
         person = frame.table("person").copy()
@@ -192,6 +209,7 @@ class UKETBServicesStageTransform:
             support_clip=clip_result.receipt,
             nhs_cells=nhs_cells,
             donor_uprating=uprating_receipt,
+            bus_support_rake=rake_receipt,
         )
         return result
 
@@ -418,14 +436,60 @@ def impute_etb_services(
 
 
 def support_clip_to_donor(
-    draws: pd.DataFrame, donor: pd.DataFrame
+    draws: pd.DataFrame, donor: pd.DataFrame, *, exempt: set[str] | None = None
 ) -> UKSupportClipResult:
     return support_clip_to_donor_with_receipt(
         draws,
         donor,
         columns=UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3],
         stage=UK_ETB_SERVICES_STAGE_NAME,
+        exempt=exempt,
     )
+
+
+def support_clip_exempt(stage: SourceStageSpec) -> set[str]:
+    """Columns the declared ``support_clip`` exempts (a raked column keeps its level)."""
+
+    for operation in stage.operations:
+        if operation.kind == "support_clip":
+            declared = operation.parameters.get("exempt")
+            if declared:
+                return {str(column) for column in declared}
+    return set()
+
+
+def etb_bus_support_rake(
+    stage: SourceStageSpec,
+    draws: pd.DataFrame,
+    *,
+    household: pd.DataFrame,
+    weights: np.ndarray,
+) -> tuple[pd.DataFrame, dict[str, object] | None]:
+    """Apply every declared ``rake_to_vendored_facts`` operation on the stage."""
+
+    operations = rake_operations(stage)
+    if not operations:
+        return draws, None
+    if "region" not in household:
+        raise KeyError("etb_services rake needs the household 'region' column.")
+    region = household["region"].map(_enum_name).to_numpy()
+    receipts = []
+    raked = draws
+    for parameters in operations:
+        cells = resolve_cells(
+            parameters, allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES
+        )
+        raked, receipt = rake_to_facts(
+            raked,
+            columns=[str(column) for column in parameters["columns"]],
+            cells=cells,
+            region=np.asarray(region).astype(str),
+            weights=weights if bool(parameters.get("weighted", True)) else None,
+            scope=str(parameters["scope"]),
+            iterations=int(parameters.get("iterations", 1)),
+        )
+        receipts.append(receipt)
+    return raked, receipts[0] if len(receipts) == 1 else {"operations": receipts}
 
 
 def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:

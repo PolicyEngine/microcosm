@@ -1446,6 +1446,24 @@
      "resource": "licensed_cars_fuel_type.json",
      "kind": "public_aggregate_reference",
      "format": "json"
+    },
+    {
+     "role": "nts_bus_use_frequency",
+     "resource": "nts_bus_use_frequency.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
+     "role": "dft_bus_value_anchors",
+     "resource": "dft_bus_value_anchors.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
+     "role": "devolved_bus_finance",
+     "resource": "devolved_bus_finance.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
     }
    ],
    "operations": [
@@ -1597,6 +1615,71 @@
      "seed": 0
     },
     {
+     "kind": "assign_bus_use_incidence",
+     "output": "uses_local_bus",
+     "seed": 0,
+     "resource": "nts_bus_use_frequency.json",
+     "period_value": 2024,
+     "transport_mode_groupby_value_id": "local_bus",
+     "older_age_band": "60 and over",
+     "age_threshold": 60,
+     "user_definition": "at_least_once_a_year",
+     "non_user_band": "less_than_once_a_year_or_never",
+     "bands": [
+      {
+       "id": "three_or_more_times_a_week",
+       "trips_per_year": 208,
+       "labels": [
+        "3 or more times a week (%)"
+       ]
+      },
+      {
+       "id": "once_or_twice_a_week",
+       "trips_per_year": 78,
+       "labels": [
+        "Once or twice a week (%)"
+       ]
+      },
+      {
+       "id": "less_than_weekly_more_than_twice_a_month",
+       "trips_per_year": 36,
+       "labels": [
+        "Less than once a week, more than once or twice a month (%)",
+        "Less than once per week, more than twice a month (%)"
+       ]
+      },
+      {
+       "id": "once_or_twice_a_month",
+       "trips_per_year": 18,
+       "labels": [
+        "Once or twice a month (%)"
+       ]
+      },
+      {
+       "id": "less_than_monthly_more_than_twice_a_year",
+       "trips_per_year": 6,
+       "labels": [
+        "Less than once a month, more than once or twice a year (%)",
+        "Less than once a month, more than twice a year (%)"
+       ]
+      },
+      {
+       "id": "once_or_twice_a_year",
+       "trips_per_year": 1.5,
+       "labels": [
+        "Once or twice a year (%)"
+       ]
+      },
+      {
+       "id": "less_than_once_a_year_or_never",
+       "trips_per_year": 0,
+       "labels": [
+        "Less than once a year or never (%)"
+       ]
+      }
+     ]
+    },
+    {
      "kind": "materialize_rules_engine_predictors",
      "predictors": [
       "is_adult",
@@ -1656,7 +1739,8 @@
      "exempt": [
       "electricity_consumption",
       "gas_consumption",
-      "domestic_energy_consumption"
+      "domestic_energy_consumption",
+      "bus_fare_spending"
      ]
     },
     {
@@ -1673,6 +1757,88 @@
      ],
      "iterations": 50,
      "weighted": true
+    },
+    {
+     "kind": "rake_to_vendored_facts",
+     "columns": [
+      "bus_fare_spending"
+     ],
+     "scope": "users_only",
+     "quintile_income": "hbai_household_net_income",
+     "iterations": 1,
+     "weighted": true,
+     "cells": [
+      {
+       "label": "london",
+       "regions": [
+        "LONDON"
+       ],
+       "resource": "dft_bus_value_anchors.json",
+       "selector": {
+        "concept": "dft.local_bus_passenger_fare_receipts",
+        "fiscal_start": "2024-04-01",
+        "geography_id": "E12000007"
+       },
+       "allocation": "income_quintile_trips",
+       "allocation_resource": "dft_bus_value_anchors.json",
+       "allocation_concept": "dft.bus_in_london_trips_per_person",
+       "allocation_period_value": 2024
+      },
+      {
+       "label": "england_outside_london",
+       "regions": [
+        "NORTH_EAST",
+        "NORTH_WEST",
+        "YORKSHIRE",
+        "EAST_MIDLANDS",
+        "WEST_MIDLANDS",
+        "EAST_OF_ENGLAND",
+        "SOUTH_EAST",
+        "SOUTH_WEST"
+       ],
+       "resource": "dft_bus_value_anchors.json",
+       "selector": {
+        "concept": "dft.local_bus_passenger_fare_receipts",
+        "fiscal_start": "2024-04-01",
+        "geography_id": "dft:england_outside_london"
+       },
+       "allocation": "income_quintile_trips",
+       "allocation_resource": "dft_bus_value_anchors.json",
+       "allocation_concept": "dft.other_local_bus_trips_per_person",
+       "allocation_period_value": 2024
+      },
+      {
+       "label": "scotland",
+       "regions": [
+        "SCOTLAND"
+       ],
+       "resource": "devolved_bus_finance.json",
+       "selector": {
+        "concept": "scotgov.bus.operator_revenue",
+        "fiscal_start": "2024-04-01",
+        "groupby_value_id": "passenger_revenue"
+       },
+       "allocation": "uniform"
+      },
+      {
+       "label": "northern_ireland",
+       "regions": [
+        "NORTHERN_IRELAND"
+       ],
+       "resource": "devolved_bus_finance.json",
+       "selector": {
+        "concept": "dfi_ni.translink_bus.passenger_receipts",
+        "fiscal_start": "2024-04-01",
+        "sum_over": {
+         "service": [
+          "ulsterbus",
+          "metro_glider"
+         ]
+        }
+       },
+       "allocation": "uniform"
+      }
+     ]
     },
     {
      "kind": "fold_into",
@@ -1734,7 +1900,7 @@
     "gas_consumption",
     "has_fuel_consumption"
    ],
-   "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns. The 2023-24 diary is uprated to the FRS 2024-25 base year by the declared uprate_donor_columns step (microcosm#890), with consumption columns uprated by the engine's CPI index, income predictors by the engine's earnings, mixed-income and pension indices, petrol and diesel by the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json; the energy columns are exempt because the NEED rake and the FY2024-25 Ofgem pricing set their level."
+   "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns, and bus fares because the declared rake sets their level. Who uses local buses is drawn take-up style (microcosm#890 I), where each person takes a frequency band by an identity-keyed draw from the vendored NTS0313 shares (NTS0621 for people aged 60 and over, the under-60 shares derived from the two with the frame's design-weighted 60-plus share), a household is a user when any member rides at least once a year, user households the chain drew at zero take the bus step's positive-regime draw at an identity-keyed quantile and non-users take zero. Bus fares are then raked (microcosm#890 D) so that user households' design-weighted totals equal the FY2024-25 DfT BUS05ai receipts for London and England outside London, spread across design-weighted person income quintiles in proportion to NTS0705a trips per person, Scottish Transport Statistics passenger revenue for Scotland and Translink passenger receipts for Northern Ireland; Wales publishes no fare receipts and is untouched. The 2023-24 diary is uprated to the FRS 2024-25 base year by the declared uprate_donor_columns step (microcosm#890), with consumption columns uprated by the engine's CPI index, income predictors by the engine's earnings, mixed-income and pension indices, petrol and diesel by the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json; the energy columns are exempt because the NEED rake and the FY2024-25 Ofgem pricing set their level."
   },
   {
    "stage": "etb_vat",
@@ -1856,6 +2022,12 @@
      "resource": "dft_bus_value_anchors.json",
      "kind": "public_aggregate_reference",
      "format": "json"
+    },
+    {
+     "role": "devolved_bus_finance",
+     "resource": "devolved_bus_finance.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
     }
    ],
    "operations": [
@@ -1932,7 +2104,115 @@
     },
     {
      "kind": "support_clip",
-     "range": "donor_realized"
+     "range": "donor_realized",
+     "exempt": [
+      "bus_subsidy_spending"
+     ]
+    },
+    {
+     "kind": "rake_to_vendored_facts",
+     "columns": [
+      "bus_subsidy_spending"
+     ],
+     "scope": "all",
+     "iterations": 1,
+     "weighted": true,
+     "cells": [
+      {
+       "label": "london",
+       "regions": [
+        "LONDON"
+       ],
+       "resource": "dft_bus_value_anchors.json",
+       "selector": {
+        "concept": "dft.local_bus_total_estimated_net_support",
+        "fiscal_start": "2024-04-01",
+        "geography_id": "E12000007"
+       },
+       "allocation": "uniform"
+      },
+      {
+       "label": "england_outside_london",
+       "regions": [
+        "NORTH_EAST",
+        "NORTH_WEST",
+        "YORKSHIRE",
+        "EAST_MIDLANDS",
+        "WEST_MIDLANDS",
+        "EAST_OF_ENGLAND",
+        "SOUTH_EAST",
+        "SOUTH_WEST"
+       ],
+       "resource": "dft_bus_value_anchors.json",
+       "selector": {
+        "concept": "dft.local_bus_total_estimated_net_support",
+        "fiscal_start": "2024-04-01",
+        "geography_id": "dft:england_outside_london"
+       },
+       "allocation": "uniform"
+      },
+      {
+       "label": "scotland",
+       "regions": [
+        "SCOTLAND"
+       ],
+       "resource": "devolved_bus_finance.json",
+       "selector": {
+        "concept": "scotgov.bus.government_support",
+        "fiscal_start": "2024-04-01",
+        "dimension_values": {
+         "funding_component": "all_government_support"
+        }
+       },
+       "allocation": "uniform"
+      },
+      {
+       "label": "wales",
+       "regions": [
+        "WALES"
+       ],
+       "resource": "devolved_bus_finance.json",
+       "selector": {
+        "concept": "welshgov.local_transport.gross_expenditure",
+        "fiscal_start": "2024-04-01",
+        "dimension_values": {
+         "expenditure_component": "Gross expenditure"
+        },
+        "sum_over": {
+         "service_line": [
+          "Concessionary fares",
+          "Support to operators"
+         ]
+        }
+       },
+       "allocation": "uniform"
+      },
+      {
+       "label": "northern_ireland",
+       "regions": [
+        "NORTHERN_IRELAND"
+       ],
+       "resource": "devolved_bus_finance.json",
+       "selector": {
+        "concept": "nithc.dfi_transaction_value",
+        "fiscal_start": "2024-04-01",
+        "dimension_values": {
+         "mode_scope": "all_public_transport"
+        },
+        "sum_over": {
+         "funding_component": [
+          "Public Service Obligation compensation",
+          "Concessionary fare compensation for a range of groups"
+         ]
+        }
+       },
+       "allocation": "uniform",
+       "joint_columns": [
+        "bus_subsidy_spending",
+        "rail_subsidy_spending"
+       ]
+      }
+     ]
     },
     {
      "kind": "compute_ratio",
@@ -1973,7 +2253,7 @@
     "nhs_admitted_patient_spending",
     "nhs_outpatient_spending"
    ],
-   "notes": "Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support), computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage."
+   "notes": "Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support), rakes bus support so each area's design-weighted total equals the FY2024-25 published net support (DfT BUS05bi for London and England outside London, Scottish Transport Statistics all government support, the StatsWales local-authority gross expenditure on concessionary fares plus support to operators for Wales, and for Northern Ireland the NITHC accounts' PSO plus concessionary compensation bound jointly on bus plus rail support since the accounts carry no split; microcosm#890 D), with the raked column exempt from the support clip, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage."
   },
   {
    "stage": "frs_hmrc_spine_leaves",

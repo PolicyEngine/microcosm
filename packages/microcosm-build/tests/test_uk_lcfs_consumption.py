@@ -433,3 +433,214 @@ def test_post_imputation_rake_fits_all_four_need_margins() -> None:
     scotland_mean = wmean(elec, region == "SCOTLAND")
     for kwh in need["region"]["electricity_kwh"].values():
         assert abs(scotland_mean - kwh * rates["electricity_gbp_per_kwh"]) > 1.0
+
+
+def _synthetic_lcfs_donor(
+    n: int = 240, seed: int = 4
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    rng = np.random.default_rng(seed)
+    rows = np.arange(n)
+    household = {
+        "case": rows + 1,
+        "g018": 1 + rows % 3,
+        "g019": rows % 3,
+        "gorx": 1 + rows % 12,
+        "a124": rows % 4,
+        "p389p": rng.uniform(100.0, 1500.0, n),
+        "p344p": rng.uniform(150.0, 2000.0, n),
+        "weighta": rng.uniform(0.5, 2.0, n),
+        "a122": 1 + rows % 8,
+        "a121": 1 + rows % 8,
+        "b226": rng.uniform(0.0, 30.0, n),
+        "b489": rng.uniform(0.0, 30.0, n),
+        "b490": rng.uniform(0.0, 20.0, n),
+        "p537": rng.uniform(10.0, 60.0, n),
+    }
+    for code in (
+        "p601",
+        "p602",
+        "p603",
+        "p604",
+        "p605",
+        "p606",
+        "p607",
+        "p608",
+        "p609",
+        "p610",
+        "p611",
+        "p612",
+    ):
+        household[code] = rng.uniform(1.0, 200.0, n)
+    household["c72211"] = np.where(rows % 4 == 0, 0.0, rng.uniform(5.0, 80.0, n))
+    household["c72212"] = np.where(rows % 4 == 0, 0.0, rng.uniform(0.0, 40.0, n))
+    for code in BUS_FARE_LCFS_CODES:
+        household[code] = np.where(rng.random(n) < 0.55, 0.0, rng.uniform(1.0, 30.0, n))
+    person = pd.DataFrame(
+        {
+            "case": rows + 1,
+            "b303p": rng.uniform(0.0, 900.0, n),
+            "b3262p": rng.uniform(0.0, 100.0, n),
+            "p049p": rng.uniform(0.0, 200.0, n),
+        }
+    )
+    return person, pd.DataFrame(household)
+
+
+def test_stage_transform_imposes_bus_incidence_and_rakes_fares_to_the_facts() -> None:
+    """End to end on synthetic inputs: the committed declaration minus the engine.
+
+    The uprating step needs the installed engine and is dropped; the QRF is
+    shrunk to four trees. Everything else is the committed lcfs_consumption
+    stage (#890 A, E2, I and D).
+    """
+
+    import dataclasses
+    from types import SimpleNamespace
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.source_manifest import SourceOperationSpec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
+        UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+
+    committed = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    operations = []
+    for operation in committed.operations:
+        if operation.kind == "uprate_donor_columns":
+            continue
+        if operation.kind == "fit_weighted_qrf_chain":
+            operation = SourceOperationSpec(
+                kind=operation.kind,
+                parameters={**operation.parameters, "n_estimators": 4},
+            )
+        operations.append(operation)
+    stage = dataclasses.replace(committed, operations=tuple(operations))
+
+    rng = np.random.default_rng(21)
+    n = 360
+    regions = np.array(
+        ["LONDON", "SOUTH_EAST", "NORTH_WEST", "SCOTLAND", "WALES", "NORTHERN_IRELAND"]
+    )[np.arange(n) % 6]
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(1, n + 1),
+            "household_weight": rng.uniform(0.5, 3.0, n),
+            "region": regions,
+            "tenure_type": np.array(
+                ["OWNED_OUTRIGHT", "RENT_PRIVATELY", "RENT_FROM_COUNCIL"]
+            )[np.arange(n) % 3],
+            "accommodation_type": np.array(
+                ["HOUSE_DETACHED", "FLAT", "HOUSE_TERRACED"]
+            )[np.arange(n) % 3],
+            "num_vehicles": np.arange(n) % 3,
+            "household_gross_income": rng.uniform(5e3, 9e4, n),
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(1, 2 * n + 1),
+            "person_benunit_id": np.repeat(np.arange(1, n + 1), 2),
+            "person_household_id": np.repeat(np.arange(1, n + 1), 2),
+            "age": rng.integers(1, 90, 2 * n).astype(float),
+        }
+    )
+    frame = uk_national_frame(
+        person=person,
+        benunit=pd.DataFrame({"benunit_id": np.arange(1, n + 1)}),
+        household=household,
+        time_period="2024",
+    )
+
+    class _Engine:
+        country = "uk"
+
+        def variable_metadata(self, name):
+            return SimpleNamespace(entity="household")
+
+        def materialize(self, frame, variables, period):
+            rows = len(frame.table("household"))
+            values = {
+                "is_adult": np.full(rows, 2.0),
+                "is_child": np.zeros(rows),
+                "employment_income": rng.uniform(0.0, 5e4, rows),
+                "self_employment_income": rng.uniform(0.0, 5e3, rows),
+                "private_pension_income": rng.uniform(0.0, 1e4, rows),
+                "hbai_household_net_income": frame.table("household")[
+                    "household_gross_income"
+                ].to_numpy()
+                * 0.8,
+            }
+            return {name: values[name] for name in variables}
+
+    donor_person, donor_household = _synthetic_lcfs_donor()
+    transform = UKLCFSConsumptionStageTransform(
+        stage=stage,
+        engine=_Engine(),
+        lcfs_household=donor_household,
+        lcfs_person=donor_person,
+    )
+    result = transform(frame)
+
+    out = result.table("household")
+    assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) <= set(out.columns)
+    assert len(transform.fit_weight_records) == 18
+    assert set(UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS) <= set(
+        transform.stage.operations[4].parameters["predictors"]
+    )
+    evidence = transform.checkpoint_metadata()["evidence"]
+    assert {
+        "support_clip",
+        "has_fuel_consumption",
+        "bus_use_incidence",
+        "bus_fare_rake",
+    } <= (set(evidence))
+    assert "donor_uprating" not in evidence
+    # Fuel: no vehicles means no fuel; the fuel-buyer share came from VEH1103.
+    no_vehicle = household["num_vehicles"].to_numpy() == 0
+    assert (out.loc[no_vehicle, "petrol_spending"] == 0.0).all()
+    assert 0.95 < evidence["has_fuel_consumption"]["ice_share"]["rate"] < 0.97
+    # Bus: non-user households are zero, user cells hit the published totals.
+    incidence = evidence["bus_use_incidence"]
+    assert incidence["users_filled_from_positive_regime"] >= 0
+    assert (
+        incidence["users"]
+        == incidence["users_drawn_positive"]
+        + (incidence["users_filled_from_positive_regime"])
+    )
+    assert 0.3 < incidence["household_user_share"] < 0.95
+    rake = evidence["bus_fare_rake"]
+    assert rake["scope"] == "users_only"
+    fares = out["bus_fare_spending"].to_numpy()
+    weights = result.weights_for("household").values
+    london_total = float(
+        np.dot(fares[regions == "LONDON"], weights[regions == "LONDON"])
+    )
+    published_london = float(
+        vendored_rows(
+            "dft_bus_value_anchors.json",
+            concept="dft.local_bus_passenger_fare_receipts",
+            fiscal_start="2024-04-01",
+            geography_id="E12000007",
+        )[0]["value"]
+    )
+    assert london_total == pytest.approx(published_london)
+    ni = regions == "NORTHERN_IRELAND"
+    assert float(np.dot(fares[ni], weights[ni])) == pytest.approx(
+        49_584_434.28 + 100_498_383.21
+    )
+    users_after = fares > 0
+    assert users_after.sum() == incidence["users"]
+    # Wales is untouched by the rake: its fares stay inside the donor support.
+    wales = regions == "WALES"
+    donor_max = donor_household[list(BUS_FARE_LCFS_CODES)].sum(axis=1).max() * (
+        365.25 / 7
+    )
+    assert fares[wales].max() <= donor_max + 1e-6
+    assert {fit["label"] for fit in rake["fits"]} == {
+        "london",
+        "england_outside_london",
+        "scotland",
+        "northern_ireland",
+    }

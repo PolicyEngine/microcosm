@@ -8135,6 +8135,13 @@
          },
          "allocation_period_value": {
           "type": "integer"
+         },
+         "joint_columns": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+           "type": "string"
+          }
          }
         }
        }
