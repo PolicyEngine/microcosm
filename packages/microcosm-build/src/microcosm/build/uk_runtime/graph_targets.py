@@ -67,29 +67,14 @@ SOURCE_CODECS.register_bytes(CHRONICLE_SOURCE_CODEC, load_chronicle_source_bytes
 
 
 def registry_payload(registry: TargetRegistry) -> dict:
-    return {"country": "uk", "specs": [asdict(spec) for spec in registry.specs]}
+    return {"country": "uk", "specs": [spec.to_dict() for spec in registry.specs]}
 
 
 def registry_from_payload(payload: Mapping) -> TargetRegistry:
     if payload.get("country") != "uk" or not isinstance(payload.get("specs"), list):
         raise ValueError("Invalid UK target registry artifact.")
-    # Decode the schema-8 hierarchy the same way TargetRegistry.from_json does
-    # (#855): asdict() flattens CalibrationHierarchy to a mapping.
     return TargetRegistry(
-        [
-            TargetSpec(
-                **{
-                    **spec,
-                    "hierarchy": (
-                        CalibrationHierarchy.from_dict(spec["hierarchy"])
-                        if spec.get("hierarchy") is not None
-                        else None
-                    ),
-                }
-            )
-            for spec in payload["specs"]
-        ],
-        country="uk",
+        [TargetSpec.from_dict(spec) for spec in payload["specs"]], country="uk"
     )
 
 
@@ -119,7 +104,7 @@ def _surface_records(frame: pd.DataFrame) -> list[dict]:
 
     def encode(key, value):
         # #855: the local surface carries each spec's CalibrationHierarchy;
-        # the artifact stores it as TargetRegistry.to_json does (asdict).
+        # store it exactly as TargetSpec.to_dict does.
         if key == "hierarchy":
             return None if value is None else asdict(value)
         return native(value)
@@ -143,7 +128,7 @@ def _local_specs(surface: pd.DataFrame) -> list[TargetSpec]:
             source=str(row.get("source", "uk_rowwise_local_surface")),
             family=str(row["family"]),
             # #855: schema-8 diagnostics need the hierarchy on every
-            # registry-backed target; decode it as TargetRegistry.from_json does.
+            # registry-backed target; decode it as TargetSpec.from_dict does.
             hierarchy=(
                 CalibrationHierarchy.from_dict(row["hierarchy"])
                 if row.get("hierarchy") is not None
