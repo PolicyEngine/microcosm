@@ -6284,7 +6284,6 @@
        "enum": [
         "allocate_per_capita_from_cell_table",
         "assign_binary_from_rate",
-        "bridge_donor_column_via_qrf",
         "compute_ratio",
         "derive",
         "iterative_proportional_fit",
@@ -6442,6 +6441,23 @@
       },
       "margins_resource": {
        "type": "string"
+      },
+      "mappings": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "clip": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {
+         "type": "number"
+        }
+       }
       }
      }
     },

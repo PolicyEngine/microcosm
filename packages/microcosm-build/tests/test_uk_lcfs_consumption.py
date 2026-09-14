@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from microcosm.build.uk_runtime.lcfs_consumption import (
     BUS_FARE_LCFS_CODES,
     LCFS_ACCOMM_MAP,
     LCFS_TENURE_MAP,
+    UK_LCFS_CONSUMPTION_PREDICTORS,
     UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
     UKLCFSConsumptionResult,
     UKLCFSConsumptionStageTransform,
@@ -24,6 +26,7 @@ def _household() -> pd.DataFrame:
         "g018": [2, 1, 3, 1],
         "g019": [0, 1, 2, 0],
         "gorx": [7, 12, 10, 1],
+        "a124": [0, 1, 2, 9],
         "p389p": [100.0, 200.0, 300.0, 400.0],
         "p344p": [150.0, 250.0, 350.0, 450.0],
         "weighta": [1.5, 2.0, 2.5, 3.0],
@@ -80,6 +83,11 @@ def test_lcfs_donor_cleaning_arithmetic_and_lossy_maps() -> None:
     assert LCFS_ACCOMM_MAP[4] == "FLAT"
     assert LCFS_ACCOMM_MAP[5] == "FLAT"
     assert donor["household_weight"].tolist() == [1500.0, 2000.0, 2500.0, 3000.0]
+    # LCFS a124 is the vehicle-count predictor, clipped to the declared 0-5.
+    assert donor["num_vehicles"].tolist() == [0, 1, 2, 5]
+    assert "has_fuel_consumption" not in donor
+    assert UK_LCFS_CONSUMPTION_PREDICTORS[-1] == "num_vehicles"
+    assert "has_fuel_consumption" not in UK_LCFS_CONSUMPTION_PREDICTORS
     assert np.isclose(
         donor.loc[0, "employment_income"],
         (10.0 + 5.0) * (365.25 / 7),
@@ -190,52 +198,169 @@ def test_support_clip_exempts_raked_energy_columns() -> None:
     }
 
 
-def test_has_fuel_bridge_accepts_lcfs_native_predictor_names() -> None:
-    # Regression for the licensed-build failure: the LCFS donor frame carries
-    # hbai_household_net_income / is_adult / is_child, not the WAS names the
-    # bridge model is fit on. The bridge must rename before predicting.
+def test_declared_vehicle_count_mapping_and_clip_lockstep_with_the_module() -> None:
+    from microcosm.build.country_spec import load_country_spec
     from microcosm.build.uk_runtime.lcfs_consumption import (
-        UK_LCFS_HAS_FUEL_PREDICTORS,
-        bridge_has_fuel_to_lcfs,
+        HOUSEHOLD_LCFS_RENAMES,
+        UK_LCFS_VEHICLE_COUNT_RANGE,
     )
 
-    rng = np.random.default_rng(7)
-    n = 120
-    was = pd.DataFrame(
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    derive = stage.operations[0]
+    assert derive.kind == "derive"
+    assert derive.parameters["mappings"] == {"num_vehicles": "a124"}
+    assert HOUSEHOLD_LCFS_RENAMES["a124"] == "num_vehicles"
+    assert tuple(derive.parameters["clip"]["num_vehicles"]) == (
+        UK_LCFS_VEHICLE_COUNT_RANGE
+    )
+    assert {artifact["role"] for artifact in stage.artifacts} >= {
+        "road_fuel_anchors",
+        "licensed_cars_fuel_type",
+    }
+    assert not any(
+        artifact["role"] == "was_bridge_donor" for artifact in stage.artifacts
+    )
+
+
+def test_ice_share_comes_from_the_vendored_veh1103_stock() -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        ice_share_from_licensed_cars,
+        lcfs_ice_share,
+    )
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    rate, receipt = lcfs_ice_share(stage)
+
+    def licensed(fuel_type: str) -> float:
+        rows = vendored_rows(
+            "licensed_cars_fuel_type.json",
+            period_type="calendar_year",
+            period_value=2024,
+            geography_id="K03000001",
+            dimensions={"fuel_type": fuel_type},
+        )
+        assert len(rows) == 1
+        return float(rows[0]["value"])
+
+    expected = 1.0 - (
+        licensed("battery_electric") + licensed("fuel_cell_electric")
+    ) / licensed("all")
+    assert rate == expected
+    assert 0.95 < rate < 0.97
+    assert receipt["rule"] == "one_minus_zero_emission_share"
+    assert receipt["period_value"] == 2024
+    assert receipt["geography_id"] == "K03000001"
+    assert set(receipt["zero_emission_licensed_cars"]) == {
+        "battery_electric",
+        "fuel_cell_electric",
+    }
+    assert receipt["licensed_cars"] == licensed("all")
+    assert len(receipt["source_record_ids"]) == 3
+
+    declared = {
+        op.kind: dict(op.parameters)
+        for op in stage.operations
+        if op.kind == "assign_binary_from_rate"
+    }["assign_binary_from_rate"]
+    foreign = {**declared, "rate_resource": "need_energy_facts.json"}
+    with pytest.raises(ValueError, match="licensed_cars_fuel_type.json"):
+        ice_share_from_licensed_cars(foreign)
+    with pytest.raises(ValueError, match="rate_rule"):
+        ice_share_from_licensed_cars({**declared, "rate_rule": "share"})
+    with pytest.raises(ValueError, match="zero_emission_fuel_types"):
+        ice_share_from_licensed_cars({**declared, "zero_emission_fuel_types": []})
+    with pytest.raises(ValueError, match="expected one"):
+        ice_share_from_licensed_cars({**declared, "period_value": 1999})
+
+
+def test_recipient_predictors_read_the_vehicle_count_numerically() -> None:
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
+        recipient_predictors,
+    )
+
+    class _Engine:
+        def materialize(self, frame, variables, period):
+            n = len(frame.table("household"))
+            return {name: np.full(n, 1.0) for name in variables}
+
+        def variable_metadata(self, name):
+            return SimpleNamespace(entity="household")
+
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2, 3],
+                "person_benunit_id": [1, 2, 3],
+                "person_household_id": [10, 20, 30],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2, 3]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [10, 20, 30],
+                "household_weight": [1.0, 1.0, 1.0],
+                "region": ["LONDON", "WALES", "SCOTLAND"],
+                "tenure_type": ["OWNED_OUTRIGHT", "RENT_PRIVATELY", "OWNED_OUTRIGHT"],
+                "accommodation_type": ["FLAT", "HOUSE_DETACHED", "FLAT"],
+                "num_vehicles": [0, 2.6, 11],
+            }
+        ),
+        time_period="2024",
+    )
+
+    predictors = recipient_predictors(frame, _Engine())
+
+    assert predictors["num_vehicles"].tolist() == [0, 3, 5]
+    assert predictors["num_vehicles"].dtype == np.int64
+    assert set(UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS) <= set(predictors.columns)
+    without = uk_national_frame(
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=frame.table("household").drop(columns=["num_vehicles"]),
+        time_period="2024",
+        household_weights=frame.weights_for("household").values,
+    )
+    with pytest.raises(KeyError, match="num_vehicles"):
+        recipient_predictors(without, _Engine())
+
+
+def test_fuel_flag_evidence_records_both_sides_at_design_weights() -> None:
+    from microcosm.build.uk_runtime.lcfs_consumption import fuel_flag_evidence
+
+    donor = pd.DataFrame(
         {
-            "household_net_income": rng.uniform(1e4, 6e4, n),
-            "num_adults": rng.integers(1, 4, n).astype(float),
-            "num_children": rng.integers(0, 3, n).astype(float),
-            "private_pension_income": rng.uniform(0, 1e4, n),
-            "employment_income": rng.uniform(0, 5e4, n),
-            "self_employment_income": rng.uniform(0, 1e4, n),
-            "region": rng.choice(["LONDON", "WALES"], n),
-            "num_vehicles": rng.integers(0, 3, n).astype(float),
-            "weight": rng.uniform(0.5, 2.0, n),
+            "household_weight": [1.0, 1.0, 2.0],
+            "num_vehicles": [0, 1, 2],
+            "petrol_spending": [0.0, 0.0, 10.0],
+            "diesel_spending": [0.0, 0.0, 0.0],
         }
     )
-    lcfs = pd.DataFrame(
-        {
-            "hbai_household_net_income": [2e4, 3e4, 4e4],
-            "is_adult": [1.0, 2.0, 3.0],
-            "is_child": [0.0, 1.0, 2.0],
-            "private_pension_income": [0.0, 1e3, 2e3],
-            "employment_income": [1e4, 2e4, 3e4],
-            "self_employment_income": [0.0, 0.0, 5e3],
-            "region": ["LONDON", "WALES", "LONDON"],
-        }
+    recipient = pd.DataFrame(
+        {"num_vehicles": [0, 1, 1], "has_fuel_consumption": [False, True, False]}
     )
-    assert not set(UK_LCFS_HAS_FUEL_PREDICTORS) <= set(lcfs.columns)
-
-    first, record = bridge_has_fuel_to_lcfs(lcfs, was, seed=0, n_estimators=10)
-    second, _ = bridge_has_fuel_to_lcfs(lcfs, was, seed=0, n_estimators=10)
-
-    assert record.fit_name.endswith("has_fuel")
-    values = first["has_fuel_consumption"].to_numpy(dtype=float)
-    assert ((values >= 0.0) & (values <= 1.0)).all()
-    assert first["has_fuel_consumption"].tolist() == (
-        second["has_fuel_consumption"].tolist()
+    evidence = fuel_flag_evidence(
+        donor,
+        recipient,
+        recipient_weights=[1.0, 1.0, 2.0],
+        ice_share_receipt={"rate": 0.9},
     )
+    assert evidence["ice_share"] == {"rate": 0.9}
+    assert evidence["donor"] == {
+        "households": 3,
+        "with_vehicles_share": 0.75,
+        "positive_fuel_share": 0.5,
+        "positive_fuel_share_among_vehicle_households": pytest.approx(2 / 3),
+    }
+    assert evidence["recipient"] == {
+        "households": 3,
+        "with_vehicles_share": 0.75,
+        "flagged_share": 0.25,
+    }
 
 
 def test_post_imputation_rake_fits_all_four_need_margins() -> None:
@@ -283,8 +408,8 @@ def test_post_imputation_rake_fits_all_four_need_margins() -> None:
     # Region is the last margin swept, so it fits essentially exactly; the
     # earlier margins settle within a tight band over 50 iterations.
     elec = raked["electricity_consumption"].to_numpy(dtype=float)
-    target = need["region"]["electricity_kwh"]["LONDON"] * (
-        rates["electricity_gbp_per_kwh"]
+    target = (
+        need["region"]["electricity_kwh"]["LONDON"] * (rates["electricity_gbp_per_kwh"])
     )
     assert abs(wmean(elec, region == "LONDON") - target) / target < 1e-6
     gas = raked["gas_consumption"].to_numpy(dtype=float)

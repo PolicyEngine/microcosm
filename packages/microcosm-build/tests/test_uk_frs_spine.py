@@ -1750,7 +1750,6 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "lcfs_person_tab",
         "published_fact_surface",
         "qrf_donor",
-        "was_bridge_donor",
         "was_qrf_donor",
     }
     for pin in pins.values():

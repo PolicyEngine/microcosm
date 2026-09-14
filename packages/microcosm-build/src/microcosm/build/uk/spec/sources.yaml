@@ -1061,7 +1061,7 @@ stages:
   notes: Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior.
 - stage: lcfs_consumption
   survey: Living Costs and Food Survey 2023-24
-  source: UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs, NEED 2023 headline energy tables, Ofgem Q2 2026 unit rates, and WAS round-8 bridge donor.
+  source: UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs, NEED 2023 headline energy tables, Ofgem Q2 2026 unit rates, and the vendored Chronicle facts for road-fuel outturn (DESNZ, HMRC, ONS) and the DfT VEH1103 licensed-car stock.
   grain: household
   base_candidate:
     filename: populace_uk_2023.h5
@@ -1087,21 +1087,16 @@ stages:
     size_bytes: 6545146
     runtime_sha256_required: true
     filename: dvper_ukanon_202324_2023.tab
-  - role: was_bridge_donor
-    kind: private_microdata
-    format: tab
-    vintage: '2018_20'
-    locator: caller-supplied local input
-    sha256: 18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374
-    size_bytes: 39073613
-    runtime_sha256_required: true
-    filename: was_round_8_hhold_eul_may_2025_230525.tab
   - role: need_energy_targets
     resource: need_energy_targets.json
     kind: public_aggregate_reference
     format: json
-  - role: lcfs_consumption_anchors
-    resource: lcfs_consumption_anchors.json
+  - role: road_fuel_anchors
+    resource: road_fuel_anchors.json
+    kind: public_aggregate_reference
+    format: json
+  - role: licensed_cars_fuel_type
+    resource: licensed_cars_fuel_type.json
     kind: public_aggregate_reference
     format: json
   operations:
@@ -1109,6 +1104,12 @@ stages:
     lowercase_columns: true
     annualization_weeks: 52.17857142857143
     donor_weight: weighta * 1000
+    mappings:
+      num_vehicles: a124
+    clip:
+      num_vehicles:
+      - 0
+      - 5
     lossy_mappings:
     - LCFS tenure 4 and 8 -> RENT_PRIVATELY
     - LCFS accommodation 4 and 5 -> FLAT
@@ -1198,23 +1199,15 @@ stages:
     - gross_income_band
     iterations: 1
     weighted: false
-  - kind: bridge_donor_column_via_qrf
-    source: was_wealth
-    target: has_fuel_consumption
-    predictors:
-    - household_net_income
-    - num_adults
-    - num_children
-    - private_pension_income
-    - employment_income
-    - self_employment_income
-    - region
-    weights: explicit
-    seed: 0
-    n_estimators: 100
   - kind: assign_binary_from_rate
     target: has_fuel_consumption
-    rate_key: nts_ice_share
+    rate_resource: licensed_cars_fuel_type.json
+    rate_rule: one_minus_zero_emission_share
+    period_value: 2024
+    geography_id: K03000001
+    zero_emission_fuel_types:
+    - battery_electric
+    - fuel_cell_electric
     condition: num_vehicles > 0
     seed: 0
   - kind: materialize_rules_engine_predictors
@@ -1236,7 +1229,7 @@ stages:
     - hbai_household_net_income
     - tenure_type
     - accommodation_type
-    - has_fuel_consumption
+    - num_vehicles
     targets:
     - food_and_non_alcoholic_beverages_consumption
     - alcohol_and_tobacco_consumption
@@ -1331,7 +1324,7 @@ stages:
   - electricity_consumption
   - gas_consumption
   - has_fuel_consumption
-  notes: Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and identity-keyed seed-0 fuel flags. Energy support clipping is exempt because NEED raking governs those columns. The 2023-24 diary is uprated to the FRS 2024-25 base year by the declared uprate_donor_columns step (microcosm#890), with consumption columns uprated by the engine's CPI index, income predictors by the engine's earnings, mixed-income and pension indices, petrol and diesel by the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json; the energy columns are exempt because the NEED rake and the FY2024-25 Ofgem pricing set their level.
+  notes: Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns. The 2023-24 diary is uprated to the FRS 2024-25 base year by the declared uprate_donor_columns step (microcosm#890), with consumption columns uprated by the engine's CPI index, income predictors by the engine's earnings, mixed-income and pension indices, petrol and diesel by the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json; the energy columns are exempt because the NEED rake and the FY2024-25 Ofgem pricing set their level.
 - stage: etb_vat
   survey: Effects of Taxes and Benefits 1977-2024
   source: UK Data Service SN 8856 Effects of Taxes and Benefits household tab and cited VAT anchor resource.
@@ -1411,6 +1404,14 @@ stages:
   - role: etb_services_anchors
     resource: etb_services_anchors.json
     kind: public_parameter_reference
+    format: json
+  - role: orr_rail_facts
+    resource: orr_rail_facts.json
+    kind: public_aggregate_reference
+    format: json
+  - role: dft_bus_value_anchors
+    resource: dft_bus_value_anchors.json
+    kind: public_aggregate_reference
     format: json
   operations:
   - kind: derive

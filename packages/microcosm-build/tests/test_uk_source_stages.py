@@ -634,7 +634,6 @@ class TestE3ManifestLockstep:
             "derive",
             "uprate_donor_columns",
             "iterative_proportional_fit",
-            "bridge_donor_column_via_qrf",
             "assign_binary_from_rate",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
@@ -741,7 +740,6 @@ class TestE3ManifestLockstep:
             UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
             UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
             UK_LCFS_CONSUMPTION_PREDICTORS,
-            UK_LCFS_HAS_FUEL_PREDICTORS,
         )
         from microcosm.build.uk_runtime.uc_reporter_redraw import (
             UC_REPORTER_AGGREGATES,
@@ -801,10 +799,7 @@ class TestE3ManifestLockstep:
         )
         lcfs = stages["lcfs_consumption"]
         lcfs_ops = {op.kind: op for op in lcfs.operations}
-        assert (
-            tuple(lcfs_ops["bridge_donor_column_via_qrf"].parameters["predictors"])
-            == UK_LCFS_HAS_FUEL_PREDICTORS
-        )
+        assert "bridge_donor_column_via_qrf" not in lcfs_ops
         assert (
             tuple(
                 lcfs_ops["materialize_rules_engine_predictors"].parameters["predictors"]
@@ -925,7 +920,6 @@ class TestE3ManifestLockstep:
             if "seed" in op.parameters
         }
         assert lcfs_seeded == {
-            "bridge_donor_column_via_qrf": 0,
             "assign_binary_from_rate": 0,
             "fit_weighted_qrf_chain": 0,
         }

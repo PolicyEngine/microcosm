@@ -128,11 +128,6 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "lcfs_consumption_anchors.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
       "path": "etb_policy_anchors.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

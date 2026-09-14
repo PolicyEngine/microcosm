@@ -24,6 +24,7 @@ from microcosm.build.uk_runtime.donor_uprating import (
     uprating_operation,
 )
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -34,10 +35,6 @@ from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipReceipt,
     UKSupportClipResult,
     support_clip_to_donor_with_receipt,
-)
-from microcosm.build.uk_runtime.was_wealth import (
-    clean_was_household_table,
-    encode_qrf_predictor_pair,
 )
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
@@ -92,6 +89,7 @@ HOUSEHOLD_LCFS_RENAMES = {
     "g018": "is_adult",
     "g019": "is_child",
     "gorx": "region",
+    "a124": "num_vehicles",
     "p389p": "hbai_household_net_income",
     "p344p": "household_gross_income",
     "weighta": "household_weight",
@@ -119,22 +117,16 @@ CONSUMPTION_VARIABLE_RENAMES = {
     "p537": "domestic_energy_consumption",
 }
 BUS_FARE_LCFS_CODES = ("c73212", "c73213", "c73214")
-UK_LCFS_HAS_FUEL_PREDICTORS = (
-    "household_net_income",
-    "num_adults",
-    "num_children",
-    "private_pension_income",
-    "employment_income",
-    "self_employment_income",
-    "region",
-)
-# LCFS-native names for the three bridge predictors the WAS donor names
-# differently (incumbent consumption.py:556-574).
-LCFS_TO_WAS_HAS_FUEL_RENAMES = {
-    "hbai_household_net_income": "household_net_income",
-    "is_adult": "num_adults",
-    "is_child": "num_children",
-}
+#: Cars and vans available to the household: LCFS ``a124`` on the donor, the
+#: was_wealth QRF draw of WAS ``vcarnr8`` on the recipient (the FRS carries no
+#: vehicle variable). Both sides are rounded and clipped to this closed range so
+#: the consumption QRF sees one predictor scale (microcosm#890 A).
+UK_LCFS_VEHICLE_COUNT_RANGE = (0, 5)
+#: Vendored Chronicle resources this stage reads; the declaration must name
+#: these and no other (the vendor register lists this module as their consumer).
+UK_LCFS_ROAD_FUEL_RESOURCE = "road_fuel_anchors.json"
+UK_LCFS_LICENSED_CARS_RESOURCE = "licensed_cars_fuel_type.json"
+UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
 UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS = (
     "is_adult",
     "is_child",
@@ -153,7 +145,7 @@ UK_LCFS_CONSUMPTION_PREDICTORS = (
     "hbai_household_net_income",
     "tenure_type",
     "accommodation_type",
-    "has_fuel_consumption",
+    "num_vehicles",
 )
 UK_LCFS_CONSUMPTION_TARGET_COLUMNS = (
     "food_and_non_alcoholic_beverages_consumption",
@@ -181,7 +173,6 @@ UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS = (
 )
 UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS = UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
 UK_LCFS_CONSUMPTION_FIT_NAME = "uk_lcfs_2023_24_consumption"
-UK_LCFS_HAS_FUEL_FIT_NAME = "uk_was_2018_20_has_fuel"
 UK_LCFS_CONSUMPTION_STAGE_NAME = "lcfs_consumption"
 
 
@@ -192,6 +183,7 @@ class UKLCFSConsumptionResult:
     frame: Frame
     support_clip: UKSupportClipReceipt
     donor_uprating: Mapping[str, Any] | None = None
+    fuel_flag: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -200,6 +192,8 @@ class UKLCFSConsumptionResult:
         }
         if self.donor_uprating is not None:
             evidence["donor_uprating"] = dict(self.donor_uprating)
+        if self.fuel_flag is not None:
+            evidence["has_fuel_consumption"] = dict(self.fuel_flag)
         return evidence
 
 
@@ -211,10 +205,8 @@ class UKLCFSConsumptionStageTransform:
     engine: object
     lcfs_hh_tab_path: str | Path | None = None
     lcfs_person_tab_path: str | Path | None = None
-    was_tab_path: str | Path | None = None
     lcfs_household: pd.DataFrame | None = None
     lcfs_person: pd.DataFrame | None = None
-    was_donor: pd.DataFrame | None = None
     last_fit_weight_records: tuple[FitWeightRecord, ...] | None = field(
         default=None,
         init=False,
@@ -230,7 +222,6 @@ class UKLCFSConsumptionStageTransform:
 
     def __call__(self, frame: Frame) -> Frame:
         assert_rules_engine_country(self.engine, "uk")
-        anchors = load_lcfs_consumption_anchors()
         lcfs_household = (
             self.lcfs_household
             if self.lcfs_household is not None
@@ -247,30 +238,22 @@ class UKLCFSConsumptionStageTransform:
                 _artifact(self.stage, "lcfs_person_tab"),
             )
         )
-        was_raw = (
-            self.was_donor
-            if self.was_donor is not None
-            else read_pinned_tab(
-                _require_path(self.was_tab_path),
-                _artifact(self.stage, "was_bridge_donor"),
-            )
-        )
-        was = clean_was_household_table(was_raw)
         uprating_factors, uprating_receipt = lcfs_donor_uprating(self.stage)
         donor = clean_lcfs_consumption_table(
             lcfs_person, lcfs_household, uprating=uprating_factors
         )
-        donor, bridge_record = bridge_has_fuel_to_lcfs(
-            donor,
-            was,
-            seed=_operation_seed(self.stage, "bridge_donor_column_via_qrf"),
-            nts_ice_share=float(anchors["nts_ice_share"]["value"]),
-        )
+        ice_share, ice_share_receipt = lcfs_ice_share(self.stage)
         recipient = recipient_predictors(frame, self.engine)
         recipient["has_fuel_consumption"] = assign_recipient_has_fuel(
             frame,
-            rate=float(anchors["nts_ice_share"]["value"]),
+            rate=ice_share,
             seed=_operation_seed(self.stage, "assign_binary_from_rate"),
+        )
+        fuel_flag_receipt = fuel_flag_evidence(
+            donor,
+            recipient,
+            recipient_weights=frame.weights_for("household").values,
+            ice_share_receipt=ice_share_receipt,
         )
         imputation = impute_lcfs_consumption(
             donor,
@@ -319,11 +302,12 @@ class UKLCFSConsumptionStageTransform:
             mass_log=frame.mass_log,
         )
         validate_uk_national_frame(result)
-        self.last_fit_weight_records = (bridge_record, *imputation.fit_weight_records)
+        self.last_fit_weight_records = imputation.fit_weight_records
         self.last_result = UKLCFSConsumptionResult(
             frame=result,
             support_clip=clip_result.receipt,
             donor_uprating=uprating_receipt,
+            fuel_flag=fuel_flag_receipt,
         )
         return result
 
@@ -351,7 +335,145 @@ def lcfs_donor_uprating(
     parameters = uprating_operation(stage)
     if parameters is None:
         return {}, None
+    declared = {
+        str(spec.get("resource"))
+        for spec in parameters["columns"].values()
+        if spec.get("resource")
+    }
+    if declared - {UK_LCFS_ROAD_FUEL_RESOURCE}:
+        raise ValueError(
+            "lcfs_consumption uprating may only read "
+            f"{UK_LCFS_ROAD_FUEL_RESOURCE!r}; declared {sorted(declared)}."
+        )
     return donor_uprating_factors(parameters)
+
+
+def lcfs_ice_share(stage: SourceStageSpec) -> tuple[float, dict[str, Any]]:
+    """The declared fuel-buyer share of car households and its receipt.
+
+    Read from the stage's ``assign_binary_from_rate`` declaration for
+    ``has_fuel_consumption``: the vendored DfT VEH1103 licensed-car stock at
+    the declared period and geography, one minus the zero-emission share.
+    """
+
+    parameters = _operation_parameters(
+        stage, "assign_binary_from_rate", target="has_fuel_consumption"
+    )
+    return ice_share_from_licensed_cars(parameters)
+
+
+def ice_share_from_licensed_cars(
+    parameters: Mapping[str, Any],
+) -> tuple[float, dict[str, Any]]:
+    """1 - (zero-emission licensed cars / all licensed cars) from vendored rows."""
+
+    resource = str(parameters.get("rate_resource") or "")
+    if resource != UK_LCFS_LICENSED_CARS_RESOURCE:
+        raise ValueError(
+            "has_fuel_consumption rate must come from "
+            f"{UK_LCFS_LICENSED_CARS_RESOURCE!r}, not {resource!r}."
+        )
+    rule = str(parameters.get("rate_rule") or "")
+    if rule != UK_LCFS_ICE_SHARE_RULE:
+        raise ValueError(f"unsupported has_fuel_consumption rate_rule {rule!r}.")
+    period_value = int(parameters["period_value"])
+    geography_id = str(parameters["geography_id"])
+    zero_emission_types = tuple(
+        str(fuel_type) for fuel_type in parameters.get("zero_emission_fuel_types", ())
+    )
+    if not zero_emission_types:
+        raise ValueError("has_fuel_consumption declares no zero_emission_fuel_types.")
+
+    def licensed(fuel_type: str) -> tuple[float, str]:
+        rows = vendored_rows(
+            resource,
+            period_type="calendar_year",
+            period_value=period_value,
+            geography_id=geography_id,
+            dimensions={"fuel_type": fuel_type},
+        )
+        if len(rows) != 1:
+            raise ValueError(
+                f"{resource}: expected one {fuel_type!r} row for {period_value} "
+                f"{geography_id}, found {len(rows)}."
+            )
+        return float(rows[0]["value"]), str(rows[0].get("source_record_id", ""))
+
+    all_cars, all_record = licensed("all")
+    zero_emission = {
+        fuel_type: licensed(fuel_type) for fuel_type in zero_emission_types
+    }
+    if not np.isfinite(all_cars) or all_cars <= 0:
+        raise ValueError(f"{resource}: licensed-car total must be positive.")
+    zero_total = sum(count for count, _ in zero_emission.values())
+    rate = 1.0 - zero_total / all_cars
+    if not 0.0 < rate <= 1.0:
+        raise ValueError(f"{resource}: fuel-buyer share {rate} is outside (0, 1].")
+    receipt = {
+        "resource": resource,
+        "rule": rule,
+        "period_value": period_value,
+        "geography_id": geography_id,
+        "licensed_cars": all_cars,
+        "zero_emission_licensed_cars": {
+            fuel_type: count for fuel_type, (count, _) in zero_emission.items()
+        },
+        "rate": float(rate),
+        "source_record_ids": [
+            all_record,
+            *(record for _, record in zero_emission.values()),
+        ],
+    }
+    return float(rate), receipt
+
+
+def vehicle_count(values: pd.Series) -> pd.Series:
+    """Round and clip a vehicle count to ``UK_LCFS_VEHICLE_COUNT_RANGE``."""
+
+    low, high = UK_LCFS_VEHICLE_COUNT_RANGE
+    return np.rint(_numeric(values)).clip(low, high).astype("int64")
+
+
+def fuel_flag_evidence(
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    *,
+    recipient_weights: Sequence[float],
+    ice_share_receipt: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Design-weighted fuel-household shares on both sides of the imputation."""
+
+    donor_weights = _numeric(donor["household_weight"]).to_numpy(dtype=float)
+    donor_vehicles = _numeric(donor["num_vehicles"]).to_numpy(dtype=float) > 0
+    donor_fuel = (
+        _numeric(donor["petrol_spending"]) + _numeric(donor["diesel_spending"])
+    ).to_numpy(dtype=float) > 0
+    weights = np.asarray(recipient_weights, dtype=float)
+    recipient_vehicles = _numeric(recipient["num_vehicles"]).to_numpy(dtype=float) > 0
+    flagged = recipient["has_fuel_consumption"].to_numpy(dtype=bool)
+    return {
+        "ice_share": dict(ice_share_receipt),
+        "donor": {
+            "households": int(len(donor)),
+            "with_vehicles_share": _weighted_share(donor_vehicles, donor_weights),
+            "positive_fuel_share": _weighted_share(donor_fuel, donor_weights),
+            "positive_fuel_share_among_vehicle_households": _weighted_share(
+                donor_fuel[donor_vehicles], donor_weights[donor_vehicles]
+            ),
+        },
+        "recipient": {
+            "households": int(len(recipient)),
+            "with_vehicles_share": _weighted_share(recipient_vehicles, weights),
+            "flagged_share": _weighted_share(flagged, weights),
+        },
+    }
+
+
+def _weighted_share(mask: np.ndarray, weights: np.ndarray) -> float:
+    total = float(np.sum(weights))
+    if total <= 0:
+        return 0.0
+    return float(np.sum(weights[np.asarray(mask, dtype=bool)]) / total)
 
 
 def clean_lcfs_consumption_table(
@@ -373,6 +495,7 @@ def clean_lcfs_consumption_table(
     _require_columns(household, ("case", *HOUSEHOLD_LCFS_RENAMES.values()))
     _require_columns(person, ("case", *PERSON_LCFS_RENAMES.values()))
     household["region"] = _numeric(household["region"]).map(LCFS_REGIONS)
+    household["num_vehicles"] = vehicle_count(household["num_vehicles"])
     household["tenure_type"] = _numeric(_lowercase(lcfs_household)["a122"]).map(
         LCFS_TENURE_MAP
     )
@@ -409,7 +532,7 @@ def clean_lcfs_consumption_table(
     )
     return household[
         [
-            *UK_LCFS_CONSUMPTION_PREDICTORS[:-1],
+            *UK_LCFS_CONSUMPTION_PREDICTORS,
             *UK_LCFS_CONSUMPTION_TARGET_COLUMNS,
             "household_gross_income",
             "household_weight",
@@ -451,52 +574,6 @@ def derive_energy_from_lcfs(household: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def bridge_has_fuel_to_lcfs(
-    lcfs: pd.DataFrame,
-    was: pd.DataFrame,
-    *,
-    seed: int,
-    n_estimators: int = 100,
-    nts_ice_share: float | None = None,
-) -> tuple[pd.DataFrame, FitWeightRecord]:
-    """Fit a WAS has-fuel bridge and predict a clipped rate onto LCFS."""
-
-    from microcosm.fit import RegimeGatedQRF
-
-    if nts_ice_share is None:
-        nts_ice_share = float(load_lcfs_consumption_anchors()["nts_ice_share"]["value"])
-    donor = was.copy()
-    donor["has_fuel_consumption"] = (
-        (_numeric(donor["num_vehicles"]) > 0)
-        & (
-            stable_identity_uniforms(
-                donor.index.to_numpy(), seed=seed, salt="was_has_fuel"
-            )
-            < nts_ice_share
-        )
-    ).astype(float)
-    # The LCFS frame carries its own names for three of the WAS bridge
-    # predictors (incumbent consumption.py:556-574 renames before predicting).
-    recipient = lcfs.rename(columns=LCFS_TO_WAS_HAS_FUEL_RENAMES)
-    donor_encoded, recipient_encoded, predictors = encode_qrf_predictor_pair(
-        donor[[*UK_LCFS_HAS_FUEL_PREDICTORS, "has_fuel_consumption", "weight"]],
-        recipient[list(UK_LCFS_HAS_FUEL_PREDICTORS)],
-        predictors=UK_LCFS_HAS_FUEL_PREDICTORS,
-    )
-    model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed)
-    result = model.fit(
-        donor_encoded,
-        list(predictors),
-        ["has_fuel_consumption"],
-        weights="weight",
-    ).predict(recipient_encoded)
-    out = lcfs.copy()
-    out["has_fuel_consumption"] = np.clip(
-        np.asarray(result["has_fuel_consumption"], dtype=float), 0.0, 1.0
-    )
-    return out, FitWeightRecord(UK_LCFS_HAS_FUEL_FIT_NAME, "explicit")
-
-
 def assign_recipient_has_fuel(frame: Frame, *, rate: float, seed: int) -> np.ndarray:
     household = frame.table("household")
     if "num_vehicles" not in household:
@@ -536,9 +613,15 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
             )
         else:
             raise ValueError(f"unsupported LCFS predictor entity {declared!r}.")
-    for predictor in ("region", "tenure_type", "accommodation_type", "num_vehicles"):
+    for predictor in ("region", "tenure_type", "accommodation_type"):
         if predictor in household:
             result[predictor] = household[predictor].map(_enum_name).to_numpy()
+    if "num_vehicles" not in household:
+        raise KeyError(
+            "recipient household table is missing 'num_vehicles' "
+            "(the was_wealth draw the consumption QRF conditions on)."
+        )
+    result["num_vehicles"] = vehicle_count(household["num_vehicles"]).to_numpy()
     if "household_gross_income" in household:
         result["household_gross_income"] = household[
             "household_gross_income"
@@ -666,16 +749,6 @@ def rake_energy_to_need(
         weight_column=weight_column,
     )
     return raked.drop(columns=[c for c in scratch if c in raked])
-
-
-def load_lcfs_consumption_anchors() -> dict:
-    from importlib.resources import files
-
-    return json.loads(
-        files("microcosm.build.uk")
-        .joinpath("lcfs_consumption_anchors.json")
-        .read_text(encoding="utf-8")
-    )
 
 
 def _load_need_energy_targets() -> dict:
@@ -812,6 +885,17 @@ def _artifact(stage: SourceStageSpec, role: str) -> Mapping[str, Any]:
         if artifact.get("role") == role:
             return artifact
     raise ValueError(f"{stage.stage} declares no {role!r} artifact.")
+
+
+def _operation_parameters(
+    stage: SourceStageSpec, kind: str, **match: object
+) -> Mapping[str, Any]:
+    for operation in stage.operations:
+        if operation.kind == kind and all(
+            operation.parameters.get(key) == value for key, value in match.items()
+        ):
+            return dict(operation.parameters)
+    raise ValueError(f"{stage.stage} declares no {kind!r} operation for {match}.")
 
 
 def _operation_seed(stage: SourceStageSpec, kind: str) -> int:

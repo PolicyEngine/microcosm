@@ -58,7 +58,6 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "annualize_periodic_amounts",
         "assemble_group_entities",
         "attribute_self_employed_health_premiums",
-        "bridge_donor_column_via_qrf",
         "calibrate_binary_assignment",
         "calibrate_binary_assignment_joint_targets",
         "classify_cgt_band_facts_with_reviewed_fence",

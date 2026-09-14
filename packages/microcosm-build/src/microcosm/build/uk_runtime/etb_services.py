@@ -90,6 +90,12 @@ UK_NHS_SPENDING_COMPONENT_COLUMNS = (
 UK_ETB_SERVICES_NONNEGATIVE_OUTPUT_COLUMNS = UK_ETB_SERVICES_OUTPUT_COLUMNS
 UK_ETB_SERVICES_FIT_NAME = "uk_etb_2024_services"
 UK_ETB_SERVICES_STAGE_NAME = "etb_services"
+#: Vendored Chronicle resources the declared donor uprating may read (the vendor
+#: register lists this module as their consumer).
+UK_ETB_SERVICES_VENDORED_RESOURCES = (
+    "orr_rail_facts.json",
+    "dft_bus_value_anchors.json",
+)
 
 
 @dataclass
@@ -207,6 +213,16 @@ def etb_donor_uprating(
     parameters = uprating_operation(stage)
     if parameters is None:
         return {}, None
+    declared = {
+        str(spec.get("resource"))
+        for spec in parameters["columns"].values()
+        if spec.get("resource")
+    }
+    if declared - set(UK_ETB_SERVICES_VENDORED_RESOURCES):
+        raise ValueError(
+            "etb_services uprating may only read "
+            f"{sorted(UK_ETB_SERVICES_VENDORED_RESOURCES)}; declared {sorted(declared)}."
+        )
     return donor_uprating_factors(parameters)
 
 

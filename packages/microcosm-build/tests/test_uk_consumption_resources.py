@@ -29,12 +29,10 @@ def test_need_energy_targets_shape_and_citations() -> None:
 
 
 def test_policy_anchor_resources_carry_parameter_paths() -> None:
-    lcfs = _load("lcfs_consumption_anchors.json")
     vat = _load("etb_policy_anchors.json")
     services = _load("etb_services_anchors.json")
 
-    assert lcfs["source"]["chronicle_candidate"] is True
-    assert lcfs["source"]["urls"]
+    assert not (UK_PACKAGE / "lcfs_consumption_anchors.json").exists()
     assert vat["source"]["urls"]
     assert services["source"]["urls"]
     assert vat["vat"]["standard_rate"]["parameter_path"] == (
