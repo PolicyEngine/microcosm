@@ -441,14 +441,25 @@ def _bindings(host_edges, host_pins):
 
 
 def _slices(frame, *, completion=False):
-    return tuple(
-        Slice(
-            entity,
-            tuple(frame.table(entity).columns)
-            + ((STATUS, IMPUTED) if completion and entity == "person" else ()),
+    # Entity IDs and memberships arrive in the executor's structural view;
+    # they do not have ordinary column owners in the compiled declaration.
+    # Retain every other column, including source identifiers ending in _id.
+    slices = []
+    for entity in frame.entities:
+        structural = {frame.schema.entity_id_column(entity)}
+        if entity == frame.schema.person_entity:
+            structural.update(
+                frame.schema.membership_column(group)
+                for group in frame.schema.group_entities
+            )
+        slices.append(
+            Slice(
+                entity,
+                tuple(c for c in frame.table(entity) if c not in structural)
+                + ((STATUS, IMPUTED) if completion and entity == "person" else ()),
+            )
         )
-        for entity in frame.entities
-    )
+    return tuple(slices)
 
 
 def child_property_nodes(qualified, origins, parent, *, options, host_edges, host_pins):

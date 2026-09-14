@@ -12,10 +12,18 @@ from microcosm.fit import joint_empirical as empirical
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph import (
     ArtifactInput,
+    ArtifactOutput,
     ArtifactType,
     ArtifactValue,
+    Graph,
+    Node,
     Numeric,
     NumericScope,
+    Owned,
+    SourceRef,
+    StructuralDelta,
+    WeightTransition,
+    compile_graph,
 )
 
 ORDER_TYPE = ArtifactType("test.child_property_ordering", 1)
@@ -290,6 +298,67 @@ def _case(*, zero=False, no_children=False):
         value,
         pins,
     )
+
+
+def test_child_nodes_compile_with_structural_ids_and_source_identity_reads():
+    _, _, parent, nodes, *_ = _case()
+    frame = parent.frame
+    create = Node(
+        "test.parent",
+        "test.child.receiving@1",
+        sources=(graph.SOURCE_NAME,),
+        structural=StructuralDelta.CREATE,
+        outputs=tuple(
+            Owned(
+                entity,
+                column,
+                graph.populations.token_for_dtype(frame.table(entity)[column].dtype),
+            )
+            for entity in frame.entities
+            for column in frame.table(entity)
+            if column != frame.schema.entity_id_column(entity)
+            and not (
+                entity == frame.schema.person_entity
+                and column
+                in {
+                    frame.schema.membership_column(group)
+                    for group in frame.schema.group_entities
+                }
+            )
+        ),
+        artifact_outputs=(ArtifactOutput("ordering", ORDER_TYPE),),
+    )
+    allocated = Node(
+        parent.version,
+        "test.child.allocate@1",
+        base=create.id,
+        structural=StructuralDelta.REWEIGHT,
+        weights=WeightTransition("household", "importance", "conserve"),
+        mass="conserve",
+    )
+    compiled = compile_graph(
+        Graph(
+            "us",
+            (SourceRef(graph.SOURCE_NAME, "frame-store"),),
+            (create, allocated, *nodes),
+        )
+    )
+    assert graph.ATTACH in compiled.predecessors[graph.VERIFY]
+    for node in nodes[-2:]:
+        reads = {s.entity: set(s.columns) for s in node.inputs}
+        for entity in frame.entities:
+            expected = set(frame.table(entity))
+            expected.remove(frame.schema.entity_id_column(entity))
+            if entity == frame.schema.person_entity:
+                expected.difference_update(
+                    frame.schema.membership_column(group)
+                    for group in frame.schema.group_entities
+                )
+                if node.id == graph.VERIFY:
+                    expected.update((graph.STATUS, graph.IMPUTED))
+            assert reads[entity] == expected
+        assert graph.provenance.support_source_id_column("person") in reads["person"]
+        assert graph.provenance.spine_source_id_column("person") in reads["person"]
 
 
 @pytest.mark.parametrize(
