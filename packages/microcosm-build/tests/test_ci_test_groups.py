@@ -23,6 +23,10 @@ SPEC.loader.exec_module(groups)
 
 
 class ShardSelectionTests(unittest.TestCase):
+    def test_cli_accepts_single_and_maximum_shard_boundaries(self):
+        self.assertEqual(groups.parse_shard("1/1"), (1, 1))
+        self.assertEqual(groups.parse_shard("64/64"), (64, 64))
+
     def test_round_robin_keeps_whole_files_and_covers_each_once(self):
         files = [f"packages/demo/tests/test_{i:02d}.py" for i in range(17)]
         pieces = [groups.shard_files(reversed(files), i, 4) for i in range(1, 5)]
@@ -65,6 +69,20 @@ class ShardSelectionTests(unittest.TestCase):
                 groups.main(["--list", "rest", "--shard", "1/4"])
         self.assertEqual(output.getvalue(), "")
 
+    def test_insufficient_selected_files_emits_no_paths_and_fails(self):
+        output = io.StringIO()
+        with (
+            patch.object(
+                groups,
+                "tracked_test_files",
+                return_value=("packages/microcosm-fit/tests/test_fit.py",),
+            ),
+            contextlib.redirect_stdout(output),
+        ):
+            with self.assertRaises(SystemExit):
+                groups.main(["--list", "rest", "--shard", "1/4"])
+        self.assertEqual(output.getvalue(), "")
+
     def test_inventory_command_failure_cannot_become_an_empty_success(self):
         output = io.StringIO()
         failure = subprocess.CalledProcessError(7, ["git", "ls-files"])
@@ -81,6 +99,42 @@ class ShardSelectionTests(unittest.TestCase):
         with patch.object(groups, "tracked_test_files", return_value=files):
             self.assertEqual(groups.selected_files("wheels"), sorted(files))
             self.assertEqual(groups.selected_files("rest"), [files[-1]])
+
+
+class InventoryTests(unittest.TestCase):
+    def test_nested_files_are_excluded_then_reported_even_with_broad_git_output(self):
+        flat = "packages/microcosm-build/tests/test_flat.py"
+        nested = "packages/microcosm-build/tests/test_util/test_nested.py"
+        completed = subprocess.CompletedProcess(
+            args=[], returncode=0, stdout=f"{nested}\n{flat}\n"
+        )
+        with (
+            patch.object(groups.subprocess, "run", return_value=completed) as run,
+            patch.object(Path, "is_file", return_value=True),
+        ):
+            files = groups.tracked_test_files()
+            self.assertEqual(files, (flat,))
+            self.assertEqual(
+                run.call_args.args[0],
+                ["git", "ls-files", "--", ":(glob)packages/*/tests/test_*.py"],
+            )
+            self.assertEqual(groups.stray_nested_test_files(files), (nested,))
+            self.assertEqual(
+                run.call_args.args[0], ["git", "ls-files", "--", "packages"]
+            )
+
+    def test_deleted_tracked_files_do_not_enter_inventory(self):
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="packages/microcosm-build/tests/test_deleted.py\n",
+        )
+        with (
+            patch.object(groups.subprocess, "run", return_value=completed),
+            patch.object(Path, "is_file", return_value=False),
+        ):
+            self.assertEqual(groups.tracked_test_files(), ())
+            self.assertEqual(groups.stray_nested_test_files(()), ())
 
 
 class WorkflowCoverageTests(unittest.TestCase):

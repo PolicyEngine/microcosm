@@ -11,7 +11,8 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TEST_GLOB = "packages/*/tests/test_*.py"
+# Git's ordinary pathspec '*' also matches '/', so use explicit glob semantics.
+TEST_GLOB = ":(glob)packages/*/tests/test_*.py"
 
 FAST_GROUPS = ("trade", "spine-uk", "rest")
 US_GROUPS = ("us-p", "us-qs", "us-not", "us-am")
@@ -96,7 +97,8 @@ def tracked_test_files() -> tuple[str, ...]:
         sorted(
             line
             for line in result.stdout.splitlines()
-            if line and (ROOT / line).is_file()
+            if re.fullmatch(r"packages/[^/]+/tests/test_[^/]*\.py", line)
+            and (ROOT / line).is_file()
         )
     )
 

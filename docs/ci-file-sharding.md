@@ -37,6 +37,11 @@ python3 tools/ci_test_groups.py --list us-am:build --shard 2/4
 python3 tools/ci_test_groups.py --list wheels --shard 4/4
 ```
 
+The inventory includes only `packages/<package>/tests/test_*.py` at that exact
+depth. Git's explicit `:(glob)` pathspec and a matching path-depth check keep
+nested test files out of the flat inventory. A separate tracked-file scan makes
+`--verify` reject nested tests instead of silently dropping their coverage.
+
 `INDEX/COUNT` is 1-based, with `1 <= INDEX <= COUNT <= 64`. Selection sorts
 the files and takes `files[INDEX-1::COUNT]` after the group/process filter.
 Duplicate inventory entries, invalid ranges and an inventory too small to fill
