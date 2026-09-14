@@ -13,7 +13,7 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from .availability import execution_state
-from .decl import GATE_OUTCOMES, CompiledGraph, StructuralDelta
+from .decl import GATE_OUTCOMES, CompiledGraph, StructuralDelta, WeightUpdate
 from .manifest import NodeReceipt, RunManifest
 from .population import mass_record_receipt
 from .view import describe
@@ -884,9 +884,11 @@ def _frame_ratios(frame, anchor, entity: str) -> list[float]:
     except (KeyError, ValueError):
         return []
     design_by_id = dict(zip(design_ids, design_weights, strict=True))
+    if any(entity_id not in design_by_id for entity_id in entity_ids):
+        return []
     ratios = []
     for entity_id, current in zip(entity_ids, values, strict=True):
-        design = float(design_by_id.get(entity_id, 0.0))
+        design = float(design_by_id[entity_id])
         current_value = float(current)
         if design > 0:
             ratios.append(current_value / design)
@@ -902,6 +904,14 @@ def _population_ratios(
     manifest: RunManifest,
     node: Node,
 ) -> tuple[list[float], list[float]]:
+    """Infer ratios only when the manifest retains the original anchor.
+
+    Manifest populations are Frames, not Populations with carried design
+    anchors. CREATE design weights suffice across updates and filters, but
+    an EXPAND needs copy/entrant ancestry not carried by those Frames. In
+    that case leave the fallback unavailable; explicit receipt samples
+    remain usable. A later design-kind update never becomes a new anchor.
+    """
     if node.weights is None:
         return [], []
     before = None if node.base is None else manifest.populations.get(node.base)
@@ -912,17 +922,24 @@ def _population_ratios(
     anchor_node = node.base
     anchor = None
     while anchor_node is not None:
-        candidate = manifest.populations.get(anchor_node)
-        if candidate is not None and entity in candidate.weighted_entities:
-            weights = candidate.weights_for(entity)
-            if str(_value(weights.kind)) == "design":
-                anchor = candidate
-                break
         declaration = compiled.graph.node(anchor_node)
+        if declaration.structural is StructuralDelta.EXPAND:
+            return [], []
+        if declaration.structural is StructuralDelta.CREATE:
+            candidate = manifest.populations.get(anchor_node)
+            if candidate is not None and entity in candidate.weighted_entities:
+                weights = candidate.weights_for(entity)
+                if str(_value(weights.kind)) == "design":
+                    anchor = candidate
+            break
         anchor_node = declaration.base
     if anchor is None:
         return [], []
-    return _frame_ratios(before, anchor, entity), _frame_ratios(after, anchor, entity)
+    before_ratios = _frame_ratios(before, anchor, entity)
+    after_ratios = _frame_ratios(after, anchor, entity)
+    if not before_ratios or not after_ratios:
+        return [], []
+    return before_ratios, after_ratios
 
 
 def _numeric_sequence(value: object) -> list[float]:
@@ -965,7 +982,10 @@ def _histogram_svg(before: Sequence[float], after: Sequence[float]) -> str:
     finite = [*finite_before, *finite_after]
     nonfinite = len(before) + len(after) - len(finite)
     if not finite:
-        return '<p class="empty">Weight-ratio samples are not present in this manifest.</p>'
+        return (
+            '<p class="empty">Weight-ratio samples are not recorded or original '
+            "design ancestry is unavailable in this manifest.</p>"
+        )
     low, high = min(finite), max(finite)
     bin_count = min(12, max(4, int(math.sqrt(len(finite)))))
     if math.isclose(low, high):
@@ -1196,12 +1216,22 @@ def _render_calibration(compiled: CompiledGraph, manifest: RunManifest) -> str:
         mass = _mass_payload(manifest, node, receipt)
         transition = node.weights
         assert transition is not None
+        # A same-kind update does not move the kind, so it does not get the
+        # arrow that says it did (amendment 25).
+        kind_label = (
+            f"{_escape(transition.entity)} → {_escape(transition.to_kind)}"
+            if not isinstance(transition, WeightUpdate)
+            else (
+                f"{_escape(transition.entity)} · {_escape(transition.kind)} "
+                f"updated ({_escape(transition.reason)})"
+            )
+        )
         cards.append(
             '<article class="calibration-card">'
             '<div class="calibration-head"><div>'
             f"<h3>{_escape(node.id)}</h3>"
             f'<p class="section-intro"><code>{_escape(node.kernel)}</code> · '
-            f"{_escape(transition.entity)} → {_escape(transition.to_kind)}</p></div>"
+            f"{kind_label}</p></div>"
             f'<span class="badge">{_escape(transition.mass)} mass</span></div>'
             "<h4>Declared targets and results</h4>"
             + target_table

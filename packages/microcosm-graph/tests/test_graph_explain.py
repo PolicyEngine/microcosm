@@ -13,7 +13,9 @@ from pathlib import Path
 import pytest
 
 import microcosm.graph as graph_api
+from microcosm.frame import WeightKind, Weights
 from microcosm.graph import describe, explain_html, graph_to_json
+from microcosm.graph.explain import _population_ratios
 
 ROOT = Path(__file__).parents[3]
 
@@ -238,6 +240,120 @@ def test_calibration_view_uses_targets_ratios_and_mass(explanation) -> None:
     assert "Mass ledger" in rendered
     assert "rural" in rendered
     assert "urban" in rendered
+
+
+class _NormalizeDesign(toy.ToyKernel):
+    """A real same-kind update for the original-anchor explanation check."""
+
+    def compute(self, context):
+        before = context.weights["household"].values
+        after = before * 2.0
+        return graph_api.KernelResult(
+            weights=Weights(after, WeightKind.DESIGN),
+            receipt={
+                "mass": toy._mass_record(context, before, after, "declared"),
+                "weight_update": graph_api.weight_update_receipt(
+                    context.tables["household"]["household_id"].tolist()
+                ),
+            },
+        )
+
+
+@pytest.mark.parametrize("filtered", [False, True], ids=("same-axis", "filtered"))
+def test_ratio_fallback_keeps_create_anchors_after_design_update_and_replay(
+    tmp_path: Path, filtered: bool
+) -> None:
+    """The chart and the actual cap receipt both use the original denominator."""
+    normalize = graph_api.Node(
+        "normalize",
+        "explain.normalize@1",
+        structural=graph_api.StructuralDelta.REWEIGHT,
+        base="survey",
+        inputs=(
+            graph_api.Slice("person", ("age",)),
+            graph_api.Slice("household", ("household_size",)),
+        ),
+        weights=graph_api.WeightUpdate(
+            "household", "design", "toy normalization", mass="declared"
+        ),
+        mass="declared",
+    )
+    nodes = [toy.CREATE, normalize]
+    base = normalize.id
+    if filtered:
+        selection = toy.select_node("adults", base=base)
+        nodes.append(selection)
+        base = selection.id
+    calibrated = toy.reweight_node(
+        "calibrated", base=base, to_kind="calibrated", factor=1.0
+    )
+    calibrated = replace(
+        calibrated,
+        params={
+            **dict(calibrated.params),
+            "max_weight_ratio": 2.0,
+            "weight_anchor": "design",
+        },
+    )
+    graph = graph_api.Graph("toy", (toy.SOURCE,), (*nodes, calibrated))
+
+    def registry():
+        value = toy.toy_registry()
+        value.register(_NormalizeDesign(normalize.kernel, toy._REWEIGHT))
+        return value
+
+    cold = toy.run_toy(graph, tmp_path / "cold", registry=registry())
+    replay = toy.run_toy(
+        graph,
+        tmp_path / "replay",
+        sources=cold.sources,
+        store=cold.store,
+        registry=registry(),
+        resume="require",
+    )
+    assert all(receipt.hit for receipt in replay.manifest.nodes.values())
+    assert toy.total_calls(replay.registry) == 0
+    for run in (cold, replay):
+        before, after = _population_ratios(run.compiled, run.manifest, calibrated)
+        count = run.manifest.populations[calibrated.id].n("household")
+        assert before == [2.0] * count
+        assert after == [2.0] * count
+        receipt = run.manifest.nodes[calibrated.id].receipt
+        assert receipt["realized_max_weight_ratio"] == 2.0
+        assert "weight_ratios" not in receipt
+        assert "Before (n=" in explain_html(run.compiled, run.manifest)
+
+
+def test_ratio_fallback_declines_expand_ancestry_but_preserves_receipt_samples(
+    tmp_path: Path,
+) -> None:
+    """Manifest Frames cannot reconstruct copied/entrant original anchors."""
+    expand, claim = toy.entrant_expand_node()
+    calibrated = toy.reweight_node(
+        "calibrated", base=expand.id, to_kind="calibrated", factor=1.0
+    )
+    graph = graph_api.Graph(
+        "toy", (toy.SOURCE,), (toy.CREATE, expand, claim, calibrated)
+    )
+    run = toy.run_toy(graph, tmp_path / "run")
+
+    assert _population_ratios(run.compiled, run.manifest, calibrated) == ([], [])
+    rendered = explain_html(run.compiled, run.manifest)
+    assert "original design ancestry is unavailable" in rendered
+    original = run.manifest.nodes[calibrated.id]
+    updated = replace(
+        original,
+        receipt={
+            **dict(original.receipt),
+            "weight_ratios": {"before": (1.0, 2.0), "after": (2.0, 3.0)},
+        },
+    )
+    supplied = replace(
+        run.manifest, nodes={**dict(run.manifest.nodes), calibrated.id: updated}
+    )
+    rendered = explain_html(run.compiled, supplied)
+    assert "Before (n=2)" in rendered and "After (n=2)" in rendered
+    assert "original design ancestry is unavailable" not in rendered
 
 
 def test_calibration_view_renders_partition_mass_with_deltas(tmp_path: Path) -> None:
