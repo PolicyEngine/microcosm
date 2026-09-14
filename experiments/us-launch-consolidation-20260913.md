@@ -198,3 +198,41 @@ full PUF composition, a small native end-to-end build, engine and calibration
 evaluation, national and congressional-district quality checks, progressive
 local scale, and full/compact exports. The
 [US/UK release path](../docs/us-uk-release-path.md) tracks those gates.
+
+## 14 September completion checks
+
+The child property-income component at
+`d68e078cfb01fbde98e8fcf493d9443ef6c18d32` passed 58 pure tests and all 14
+actual-owner cases on invented inputs. The owner cases ran in five disjoint
+executions, covering the positive cold/required pair and the full authored
+mutation/refusal set. This is complete component coverage across bounded runs,
+not one monolithic test execution. Root reconciled their source, resource,
+executable and owned-output checks. The aggregate acceptance has SHA256
+`a26791e06d8ecd8a0a6d55e1f6fe4f976e9d65f74ab0243aef6c2ac62356d0c9`.
+
+The corrected private support-frame stamp preserves each support population's
+actual schema, table and weight rosters. It no longer applies the unrelated
+US receiving-population schema to these internal donor/recipient frames. The
+complete population and source-identity checks remain active. These component
+bytes are integrated into the combined host; its 45-, 49- and 51-node acceptance
+cases remain unrun on the combined source.
+
+The scanner candidate at `a93b7c7f54038e6ef67f647bb4337e91bc23e27c` passed 82
+algorithm controls and 7,029 exhaustive input pairs, plus the actual
+producer's corrected-pin acceptance and prior-pin refusal. The digest candidate
+at `0062b8fb7e772557274397f320c1c0214c5e82cb` passed 36 extracted real-function
+cases. Their producer and digest acceptance receipts have SHA256
+`021dfc42be0cab2fd1dadf5bca88a54566c5f4c0ddb25aec7443758b291b50c1`
+and `3783dac416e6103aa7b876e4ad5c2255109b9458eed9f9b8387af15df7cce045`,
+respectively. These changes are not yet adopted: dense scanner workloads were
+slower in preliminary measurements, and a fixed paired benchmark is pending.
+Correctness alone establishes no performance improvement.
+
+Separately, native property/tax attempt V4 stopped at its 21,600-second CPU
+ceiling without a final acceptance receipt. Its approved partial monitoring
+projection identifies source-read and hashing activity within retained samples.
+It supplies neither complete call counts nor a whole-run profile. This known
+CPU-limit stop is distinct from the earlier native PUF attempt above, whose
+stopping cause remains unknown. Neither attempt provides accepted native PUF
+output. The next runtime milestone remains the small combined host, followed
+by native input completion, scale measurement and the release gates above.

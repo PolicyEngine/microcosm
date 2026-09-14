@@ -1,6 +1,6 @@
 # US and UK release path
 
-Planning snapshot, 13 September 2026. This is a release work plan, not a
+Planning snapshot, 14 September 2026. This is a release work plan, not a
 certification of either country. Component tests, historical candidates and
 current-candidate acceptance are distinct evidence.
 
@@ -40,15 +40,24 @@ common source population alone does not guarantee identical estimates.
 
 ## Current position
 
-The immediate US step is a small native property/tax build with an original-record
-completion report. The completion diagnostic passes 29 pure controls, 27 focused
-graph controls and three actual invented 38-node cold/required acceptance tests.
-The latter preserve complete populations and exports while retaining unknowns;
-the tax-input completeness gate remains false on that fixture.
-Native PUF qualification follows resolution of the applicable unknown inputs.
-Retirement candidate accounting has passed 80 controls but does not yet supply
-fiscal inputs. The [13 September evidence](../experiments/us-launch-consolidation-20260913.md)
-records these limits and the scoped hashing benchmark.
+The immediate US step is the combined completion-host test: a 45-node cold build
+and required-cache replay, followed by its 49- and 51-node status/role variants.
+The child property-income component has passed all 58 pure tests and all 14
+actual-owner cases on invented inputs. Its reviewed source is integrated with
+the status, household-role and tax stages, but the combined host has not yet
+passed runtime acceptance. Component success does not certify that union or a
+native dataset.
+
+The latest native property/tax attempt reached its CPU limit without a final
+acceptance receipt. Scanner and digest changes pass their correctness checks;
+paired performance measurements must establish whether to adopt them before
+another combined source freeze. Partial monitoring identifies repeated source
+reads and hashing, but does not establish a whole-build speedup. Native PUF
+qualification still requires completion of applicable unknown inputs, including
+adult routes that the child model does not address. Retirement candidate
+accounting has passed 80 controls but does not yet supply fiscal inputs. The
+[dated evidence](../experiments/us-launch-consolidation-20260913.md#14-september-completion-checks)
+records the new component results and their limits.
 
 UK work proceeds independently on the shared same-kind weight update and
 metadata/mass-log/column-order interfaces needed by its country graph. The
