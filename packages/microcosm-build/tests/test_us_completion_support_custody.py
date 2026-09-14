@@ -104,7 +104,9 @@ def _full_us_parent_frame(original):
         weights,
         strata=original.strata,
         mass_log=original.mass_log,
-        metadata=original.metadata,
+        # Generic fixture metadata is not a country-authority receipt. Admit an
+        # empty context only on this ordinary US parent; retain the input below.
+        metadata={},
     )
 
     assert full.schema is US_SCHEMA and full.entities == US_SCHEMA.entities
@@ -152,7 +154,9 @@ def _full_us_parent_frame(original):
         assert full.weights_for(entity).kind is weight.kind
     for frame in (original, full):
         pd.testing.assert_series_equal(frame.strata, strata_before, check_exact=True)
-        assert frame.metadata == metadata_before and frame.mass_log == mass_log_before
+        assert frame.mass_log == mass_log_before
+    assert full.metadata == {}
+    assert original.metadata == metadata_before
     assert original.metadata is metadata_before and original.mass_log is mass_log_before
     return full
 
@@ -275,14 +279,21 @@ def test_four_declared_support_nodes_preserve_actual_population_context(node_id)
 def test_regular_nodes_keep_identical_us_seal_and_reject_private_frames(node_id):
     case = _case()
     actual = case.populations[node_id]
-    actual.frame._metadata = {
-        **actual.frame.metadata,
-        "private_model_support": child.PROTOCOL,
-    }
     assert _stamp(case, node_id) == host.reconstruction._population_stamp(actual)
     assert host._node_population_stamp(case.compiled, node_id, actual) == _stamp(
         case, node_id
     )
+    actual.frame._metadata = {
+        **actual.frame.metadata,
+        "private_model_support": child.PROTOCOL,
+    }
+    metadata_reason = (
+        r"^US graph context has undeclared metadata: \['private_model_support'\]\.$"
+    )
+    with pytest.raises(ValueError, match=metadata_reason):
+        _stamp(case, node_id)
+    with pytest.raises(ValueError, match=metadata_reason):
+        host._node_population_stamp(case.compiled, node_id, actual)
     wrong = replace(case.populations[child.DONOR], version=actual.version)
     with pytest.raises(ValueError, match="^FRAME_TYPE$"):
         extension._population_stamp(case.boundary, case.compiled, node_id, wrong)
