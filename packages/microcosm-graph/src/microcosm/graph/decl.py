@@ -59,6 +59,7 @@ __all__ = [
     "PARTITION_DTYPES",
     "ROWS_ALL",
     "WEIGHT_KINDS",
+    "WEIGHT_UPDATE_MASS_POLICIES",
     "CompiledGraph",
     "Graph",
     "GraphError",
@@ -70,6 +71,7 @@ __all__ = [
     "SourceRef",
     "StructuralDelta",
     "WeightTransition",
+    "WeightUpdate",
     "compile_graph",
 ]
 
@@ -96,6 +98,10 @@ WEIGHT_KINDS = ("design", "importance", "calibrated")
 
 #: Mass policies a weight transition or structural node may declare.
 MASS_POLICIES = frozenset({"conserve", "free", "declared"})
+
+#: Mass policies a same-kind :class:`WeightUpdate` may declare. ``free`` is
+#: deliberately absent (amendment 25).
+WEIGHT_UPDATE_MASS_POLICIES = frozenset({"conserve", "declared"})
 
 #: The dtypes a mass-partition column may have.
 PARTITION_DTYPES = frozenset({"int32", "int64", "string"})
@@ -349,6 +355,86 @@ class WeightTransition:
 
 
 @dataclass(frozen=True)
+class WeightUpdate:
+    """A declared numerical replacement of weights that keeps their kind.
+
+    :class:`WeightTransition` only ever moves a weight *kind* forward, so a
+    stage that recomputes the numbers of weights it already holds — a
+    sampling normalization is the case this was extracted for — cannot be
+    declared at all. This is that declaration, and it is deliberately
+    narrower than a transition (amendment 25):
+
+    - The kind does not move. The executor checks the incumbent kind, the
+      declared kind and the returned weights' kind are the same one.
+    - Mass is ``conserve`` or ``declared``; ``free`` is not offered,
+      because an update that may move mass arbitrarily and does not
+      change kind records nothing a reader could check it against.
+    - ``reason`` is required, non-empty, and normative: it enters the node
+      key, so a node that replaces weights for a different stated purpose
+      is a different node.
+    - The kernel must bind the ordered entity axis its replacement values
+      are positional against, through
+      :func:`~microcosm.graph.weight_update.weight_update_receipt`. The
+      executor recomputes that binding from the incumbent axis, on cold
+      execution and on replay.
+
+    An update replaces weight *values*; it does not re-anchor design
+    ancestry, and it is not a way to redefine a calibration cap. A row's
+    design anchor is the design weight it entered the population carrying:
+    ``Population.design_weights`` is captured once, at ``CREATE``
+    (``population.Population.from_frame``), and afterwards only carried by
+    stable entity id (``population._carry_design_weights``), which ``patch``
+    passes on explicitly so the re-derive-from-the-frame default is never
+    taken. So a design-kind update leaves every existing row's anchor
+    exactly where it was, a later ``EXPAND``'s copied rows still inherit
+    the anchor of the row they copy rather than that row's current value,
+    and ``max_weight_ratio`` with ``weight_anchor='design'`` keeps the
+    denominator it was written against. A row admitted with no ancestor is
+    anchored on the design weight the ``EXPAND`` installs for it, whatever
+    that is — it has no earlier weight to be anchored on. Re-anchoring here
+    instead would let an unrelated normalization silently widen every cap
+    declared upstream of it by that normalization's factor; a stage that
+    wants a cap against normalized weights states the ratio it means.
+
+    Attributes:
+        entity: The entity whose explicit weights are replaced.
+        kind: The unchanged weight kind; one of :data:`WEIGHT_KINDS`.
+        reason: Why the numbers are replaced. Normative, non-empty.
+        mass: ``conserve`` or ``declared``.
+    """
+
+    entity: str
+    kind: str
+    reason: str
+    mass: str = "declared"
+
+    def __post_init__(self) -> None:
+        _name("WeightUpdate.entity", self.entity)
+        _nonempty("WeightUpdate.reason", self.reason)
+        if self.kind not in WEIGHT_KINDS:
+            raise GraphError(
+                f"WeightUpdate.kind {self.kind!r} is not one of {WEIGHT_KINDS}."
+            )
+        if self.mass not in WEIGHT_UPDATE_MASS_POLICIES:
+            raise GraphError(
+                f"WeightUpdate.mass {self.mass!r} is not one of "
+                f"{sorted(WEIGHT_UPDATE_MASS_POLICIES)}; an update that keeps "
+                "its kind does not get unconstrained free mass."
+            )
+
+    @property
+    def to_kind(self) -> str:
+        """The unchanged kind, for shared structural-weight accounting.
+
+        A property, not a field, so it stays out of the normative
+        projection and a :class:`WeightUpdate` can never canonicalize to
+        the same bytes as a :class:`WeightTransition`.
+        """
+
+        return self.kind
+
+
+@dataclass(frozen=True)
 class Node:
     """One unit of computation and cell ownership.
 
@@ -376,7 +462,9 @@ class Node:
         base: For a structural node other than ``CREATE``: the population
             version it transforms.
         sources: Names of :class:`SourceRef` entries this node reads.
-        weights: A declared weight-kind transition, if any.
+        weights: A declared :class:`WeightTransition` (the kind moves
+            forward) or :class:`WeightUpdate` (the numbers are replaced
+            and the kind does not move), if any.
         mass: Mass policy for structural nodes that change rows or weights.
         entrants: ``EXPAND`` nodes only: the kernel may add rows that copy
             no base row. Such a row has null lineage, the kernel supplies
@@ -396,7 +484,7 @@ class Node:
     structural: StructuralDelta = StructuralDelta.NONE
     base: str | None = None
     sources: tuple[str, ...] = ()
-    weights: WeightTransition | None = None
+    weights: WeightTransition | WeightUpdate | None = None
     mass: str = "conserve"
     description: str = ""
     citation: str = ""
@@ -474,6 +562,13 @@ class Node:
                 f"Node {self.id!r}: entrants add mass, so an entrant-admitting "
                 "node cannot declare mass='conserve'."
             )
+        if self.weights is not None and not isinstance(
+            self.weights, WeightTransition | WeightUpdate
+        ):
+            raise GraphError(
+                f"Node {self.id!r}: weights must be a WeightTransition or a "
+                "WeightUpdate, not a look-alike."
+            )
         if self.weights is not None and self.structural is not StructuralDelta.REWEIGHT:
             raise GraphError(
                 f"Node {self.id!r}: a weight transition changes the population "
@@ -482,12 +577,15 @@ class Node:
         if self.structural is StructuralDelta.REWEIGHT:
             if self.weights is None:
                 raise GraphError(
-                    f"Node {self.id!r}: a REWEIGHT node declares its WeightTransition."
+                    f"Node {self.id!r}: a REWEIGHT node declares its "
+                    "WeightTransition or WeightUpdate."
                 )
             if self.mass != self.weights.mass:
+                # Reached by a WeightTransition and a WeightUpdate alike, so
+                # the text names neither (amendment 25).
                 raise GraphError(
-                    f"Node {self.id!r}: mass policy {self.mass!r} disagrees with its "
-                    f"weight transition's {self.weights.mass!r}."
+                    f"Node {self.id!r}: mass policy {self.mass!r} disagrees with "
+                    f"its declared weight change's {self.weights.mass!r}."
                 )
         declared_inputs = {(s.entity, c) for s in self.inputs for c in s.columns}
         for s in self.inputs:

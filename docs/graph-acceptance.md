@@ -512,6 +512,148 @@ lock unchanged:
     cost before scaling. Extracted with the independently reviewed observer
     isolation repair on 2026-09-12.
 
+25. **A weight update that keeps its kind is declarable.**
+    `WeightTransition` only ever moves a kind forward, so a stage that
+    recomputes weights it already holds — a sampling normalization is the
+    case this was extracted for — could not be declared at all, and the
+    only way to express it was to misdeclare a transition.
+    `WeightUpdate(entity, kind, reason, mass)` is that declaration and is
+    deliberately narrower than a transition: the incumbent kind, the
+    declared kind and the returned weights' kind must all be the same one;
+    `mass` is `conserve` or `declared` (`WEIGHT_UPDATE_MASS_POLICIES`),
+    because an update that neither changes kind nor bounds mass records
+    nothing a reader could check it against; and `reason` is required,
+    non-empty and normative.
+
+    Positional replacement values are not self-describing: the same vector
+    is correct against one row order and silently wrong against another.
+    A kernel therefore binds its ordered entity axis with
+    `microcosm.graph.weight_update.weight_update_receipt` under
+    `receipt['weight_update']`, and the executor recomputes that binding
+    from the incumbent axis it is about to apply the values to. This is
+    checked on replay by construction rather than by a parallel rule: a
+    cache hit reconstructs the `KernelResult` with its restored weights
+    and receipt and re-applies the REWEIGHT to the current base, so it
+    re-enters the same function. A count mismatch, a missing binding and a
+    binding against a different axis are each a rejection.
+
+    An update replaces weight *values* and does not re-anchor design
+    ancestry. `Population.design_weights` is captured once, at `CREATE`
+    (`Population.from_frame`), and afterwards only carried by stable entity
+    id (`_carry_design_weights`), which `patch` passes on explicitly so the
+    re-derive-from-the-frame default is never taken. A design-kind update
+    therefore leaves every existing row's anchor where it was; a later
+    `EXPAND`'s copied rows still inherit the anchor of the row they copy
+    rather than that row's current value; and `max_weight_ratio` with
+    `weight_anchor='design'` keeps the denominator it was written against —
+    the error text has always said "original design weight". A row admitted
+    with no ancestor is anchored on whatever design weight the `EXPAND`
+    installs for it, because it has no earlier weight to be anchored on;
+    that is the anchor definition applied to a row with no ancestry, not a
+    mixture. Re-anchoring on a same-kind update would instead let an
+    unrelated normalization silently widen every cap declared upstream of
+    it by that normalization's factor, which is a non-local change to an
+    already-declared contract. A stage that wants a cap against normalized
+    weights states the ratio it means.
+
+    The shared calibration kernel does **not** consume this yet:
+    `calibrate.adam@1` emits no `receipt['weight_update']`
+    (`packages/microcosm-calibrate/src/microcosm/calibrate/kernels.py`), so
+    declaring a re-solve of an existing calibration as a `WeightUpdate`
+    would be refused by the axis check as unverifiable, and its own guard
+    still asks for a `WeightTransition` by name. Re-solving an existing
+    calibration through the shared kernel is a **future consumer
+    adaptation**, not a case this amendment already covers.
+
+    `WeightUpdate.to_kind` is a property, not a field, so the two
+    declarations have disjoint field sets (`{entity, to_kind, mass}` and
+    `{entity, kind, reason, mass}`) and a `WeightUpdate` can never
+    canonicalize, or serialize, to the same bytes as a
+    `WeightTransition`. Declaration JSON discriminates on those names, and
+    a transition's payload is byte-for-byte what it was before this
+    amendment, so every declaration written earlier restores unchanged.
+    Existing `to_kind` readers — the design-weight cap and the calibration
+    view — keep working through the property; the view drops the arrow
+    that would claim a kind moved. `Node` gains no field, so no existing
+    node key moves. `decl.py` is re-locked. Raised by the source review of
+    the UK full-build graph (#901, head `051fb972`), whose
+    `uk.full.normalize` node is the first consumer; its UK graph stages
+    and calibration science stay in that branch.
+
+26. **The context carries the version's metadata, mass log and column
+    order.** The executor projects each entity table in *declaration*
+    order, so `KernelContext.tables` is not the population version's
+    layout, and the version's `Frame` metadata and mass log were not
+    reachable from a kernel at all. A kernel that has to hand a declared
+    projection back to a legacy function as a `Frame` therefore could not
+    reconstruct one without inventing the parts it could not see.
+    `kernel.py` gains three read-only fields:
+
+    - `frame_metadata` — the version's own metadata. The executor passes
+      `Frame.metadata`, which `Frame` has already deeply frozen;
+      `KernelContext` adds a read-only view over it and does **not** itself
+      deep-freeze a mapping built some other way. (This is a deliberate
+      difference from the UK branch, which imports
+      `microcosm.frame.bundle._freeze_metadata` into the frozen interface:
+      a frozen contract should not depend on another shard's private name.)
+    - `frame_mass_log` — the `Frame` mass records the node's *key* binds,
+      in order. An ordinary node's key binds its version's structural
+      boundary (`population_input`) and the owners of the columns it
+      declared (`input_artifacts`); it does not bind the other ordinary
+      members of its version. Its log is therefore the version's
+      **boundary** log, captured when the structural node was admitted, and
+      a record another member appends afterwards is not visible to it. The
+      alternative — the cumulative log the version carries at the moment the
+      node runs — would be a kernel input no key binds: adding or
+      re-parameterising an unrelated sibling would change what the node
+      sees while its key, and so its cache entry, stayed put, and a hit
+      would replay output computed against a different log. A structural
+      node is given its base version's cumulative log instead, because its
+      key does bind it: `keys.py` binds the base's frame identity *and*
+      every ordinary member of that version through `members`, which
+      `compile_graph` fills with `members.get(base, ())`. Boundaries are
+      captured where the version is admitted, so cold execution and a
+      restored cache hit record the same one. A node needing a stage's
+      completed records therefore runs after that stage's structural
+      boundary or reads its predecessor's evidence; incidental node order is
+      not authority. The write side already existed
+      (`receipt['frame_mass_log_append']`); only the read side was missing.
+    - `frame_column_order` — entity to the version's own column order,
+      restricted to the columns projected into `tables`. An entry that is
+      not exactly an ordering of that table's columns is refused, so an
+      order can neither hide a column the node was given nor name one it
+      was not: a column *name* is itself information about the version, and
+      B1's "nothing else is visible" covers names as well as values.
+
+    All three are detached before a kernel sees them and are covered by
+    B4's before/after mutation check. Detachment is not redundant with
+    `Frame`'s freezing: a frozen dataclass still yields to
+    `object.__setattr__`, so passing the version's own `_FrozenMapping`
+    leaves and `MassChangeRecord`s by reference would make every kernel — and
+    anything that retains a context past its own mutation check — a live
+    handle on the population. The executor therefore hands out a deep copy
+    of the metadata and rebuilt mass records (the rule `_observer_snapshot`
+    already followed, now shared), and `_context_digest` binds the metadata
+    through the frame format's own store codec, the mass records field by
+    field, and the projected column order. Neither is a substitute for the
+    other: the digest catches a kernel whose output stops being a function
+    of its declared inputs, while detachment is what stops a retained view
+    from rewriting the live version after that check has passed.
+
+    The three ride after `artifacts` and before `tolerances`, so amendment
+    17's statement that `numerics` rides at the end of the context stays
+    literally true and amendment 19's that `artifacts` rides before the
+    pair does too — the unit assertion of *adjacency* becomes the ordering
+    amendment 19 actually claimed. The acceptance suite's B2 field set
+    gains the three in its own commit, as amendment 19's did. Nothing here
+    is normative: `Node` is untouched, no canonical projection changes, and
+    no node key moves. The fields are rebuilt from a restored `Frame` on a
+    cache hit exactly as they are from a computed one, which is what
+    amendment 22's metadata-preserving Frame format makes possible.
+    `kernel.py` is re-locked. Raised by the same source review as amendment
+    25; the UK full-build graph's `context_frame` helper (#901, head
+    `051fb972`) is the first consumer.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.
