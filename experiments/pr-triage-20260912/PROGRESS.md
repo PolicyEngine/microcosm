@@ -1,4 +1,4 @@
-# PR triage lane journal (2026-09-12)
+# PR triage lane journal (2026-09-12 → 2026-09-14)
 
 Read-only triage of every open PR in PolicyEngine/microcosm. GitHub is read
 only; no tracked file is edited; commits land on the local ref
@@ -7,52 +7,43 @@ only; no tracked file is edited; commits land on the local ref
 ## State
 
 - Output: `~/PolicyEngine/_recovered/scratch-backup/893/triage/out-pr-triage.md`
-  (the `-o` path, confirmed from the subfleet run meta) and
+  (the `-o` path, confirmed from `brief-pr-triage.md`) and
   `~/PolicyEngine/_recovered/scratch-backup/893/triage/pr-dispositions.json`.
 - Scratch: session scratchpad holds `open_prs.json`, `merged_prs.json`,
-  `closed_unmerged_prs.json`, `pr/<n>.json`, `checks/<n>.txt`.
+  `closed_unmerged_prs.json`, `pr/<n>.json`, `checks/<n>.txt`, `packets/<n>.md`.
+- **Run 3 (2026-09-14) is the live attempt.** Runs 1–2 (2026-09-12) died on
+  model limits; their evidence is salvaged under `scratchpad/prior/` and the 16
+  completed evidence-agent verdicts under `scratchpad/prior_results/`.
 
-## Done
+## Done (runs 1–2, 2026-09-12 — historical, re-verified in run 3)
 
 - Listed 43 open PRs, 444 merged PRs (305 since 2026-07-01), 16 closed-unmerged.
 - Pulled full `gh pr view --json` for all 43; ran `gh pr checks` for all 43.
 - Fetched all 43 heads to `refs/heads/triage/<n>`; SHAs verified against GitHub.
-
-## Next
-
-- Compute merge-bases, diffs vs main, #893 overlap, patch-id supersession.
-- Fan out per-PR evidence + disposition; adversarially verify every close.
-- Write both output files.
-
-## 2026-09-12 ~08:00 ET — mechanical evidence complete
-
 - Per PR: merge-base vs its base branch, ahead/behind main, changed-file set,
-  overlap with #893's 404-file set, `git cherry` patch-equivalence (0 of 43 PRs
-  have any patch-equivalent commit on main), added-file presence on main
+  overlap with #893's then-404-file set, `git cherry` patch-equivalence (0 of 43
+  PRs had any patch-equivalent commit on main), added-file presence on main
   (raw or via the populace->microcosm rename), review threads (0 for all 43),
   linked-issue states (99 numbers resolved).
-- `packages/populace-build/` is absent on main; PRs #153–#629 (17 PRs) still
+- `packages/populace-build/` is absent on main; PRs #153-#629 (17 PRs) still
   target it.
-- #893 split into 96 per-commit file lists (`Stage integration layer 01..11`).
-- Base stacks: #339 on `medicaid-chip-take-up` (its PR #334 merged 7/09);
-  #532<-#534<-#535<-{#536,#537}; #536<-#538; #893<-#901; #904<-#906.
-- Next: per-PR judgment fan-out (workflow), adversarial verification of every
-  close-class disposition, then the report.
+- #893 split into 96 per-commit file lists.
+- 16 of 43 evidence agents returned before the limit hit.
 
-## 2026-09-12 ~08:25 ET — judgment fan-out running; owner spot checks
+## Done (run 3, 2026-09-14)
 
-- Workflow `wf_5af23347-412`: 43 evidence agents → lens-specific refuters
-  (close-class PRs get unique-work, superseder and dependents refuters;
-  keep-class get a supersession hunter; MERGE-READY gets a readiness check)
-  → one coherence critic.
-- Owner spot checks so far: #752 is superseded (main merged #756
-  "Bump policyengine-us to 1.819.0", commit 05d254aa2, 2026-08-24; uv.lock and
-  the pin test on main both read 1.819.0). #817's `requires_us` markers are
-  absent on main. #642 (SLD), #718 (campaign naming), #888 (explorer.py),
-  #629 (`reform_dict`) symbols are absent on main. #339's commit is not on
-  main although its base branch merged as #334. Current aggregate `ci-ok`
-  job dates from 404e45777 (2026-08-25); PRs showing only
-  `test (3.13/3.14)` + `wheels (3.13/3.14)` ran under the old workflow.
-- Note: the sibling issue-triage lane checked out `issue-triage-20260912` in
-  this shared worktree (HEAD moved 0c3f4f651 → 3e56e503b); this lane's
-  commits stay on `triage/journal-20260912` via plumbing and are unaffected.
+- Salvaged runs 1-2 scratch + the 16 completed verdicts.
+- `git fetch origin`: main is now `18271b28d` (merge of #904). #912 (Amendment
+  20) and #904 both merged since run 1, so **every** run-1 overlap/merge-base
+  number is stale and is being recomputed.
+- Open-PR set is now **50, not 43**: new since 9/12 are #914 #916 #918 #921
+  #923 #924 #926 #927 #928; #904 and #912 left the set by merging.
+- #893 itself moved: 404 changed files on 9/11 -> 691 on 9/14, so its overlap
+  set is recomputed from the new head.
+
+## Next (run 3)
+
+- Refresh `gh pr view`/`gh pr checks` for all 50; refetch all 50 heads.
+- Recompute mechanical evidence against the new `origin/main` and new #893 set.
+- Rebuild packets for all 50; fan out evidence + adversarial verification.
+- Write `out-pr-triage.md` and `pr-dispositions.json`.
