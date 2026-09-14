@@ -659,7 +659,7 @@ def test_stage_transform_imposes_bus_incidence_and_rakes_fares_to_the_facts() ->
     incidence = evidence["bus_use_incidence"]
     assert incidence["users_filled_from_positive_regime"] >= 0
     assert (
-        incidence["users"]
+        incidence["users_in_scope"]
         == incidence["users_drawn_positive"]
         + (incidence["users_filled_from_positive_regime"])
     )
@@ -684,10 +684,12 @@ def test_stage_transform_imposes_bus_incidence_and_rakes_fares_to_the_facts() ->
     assert float(np.dot(fares[ni], weights[ni])) == pytest.approx(
         49_584_434.28 + 100_498_383.21
     )
-    users_after = fares > 0
-    assert users_after.sum() == incidence["users"]
-    # Wales is untouched by the rake: its fares stay inside the donor support.
     wales = regions == "WALES"
+    # The incidence override is imposed only where a fare cell levels the
+    # amounts; Wales (no published receipts) keeps the chain's raw draw, so
+    # its positive share is the QRF's, not the NTS user share.
+    assert incidence["households_outside_scope_keep_raw_draw"] == int(wales.sum())
+    assert incidence["users_in_scope"] == int((fares[~wales] > 0).sum())
     donor_max = donor_household[list(BUS_FARE_LCFS_CODES)].sum(axis=1).max() * (
         365.25 / 7
     )

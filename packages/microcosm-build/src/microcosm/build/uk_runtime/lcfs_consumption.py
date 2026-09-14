@@ -339,12 +339,16 @@ class UKLCFSConsumptionStageTransform:
             ice_share_receipt=ice_share_receipt,
         )
         incidence = lcfs_bus_use_incidence(self.stage, frame)
+        fare_rake_regions = bus_fare_rake_regions(self.stage)
         imputation = impute_lcfs_consumption(
             donor,
             recipient,
             seed=_operation_seed(self.stage, "fit_weighted_qrf_chain"),
             n_estimators=_qrf_n_estimators(self.stage),
             bus_users=None if incidence is None else incidence.household_user,
+            bus_scope=None
+            if incidence is None
+            else np.isin(recipient["region"].astype(str).to_numpy(), fare_rake_regions),
             bus_positive_uniforms=None
             if incidence is None
             else stable_identity_uniforms(
@@ -705,6 +709,25 @@ def lcfs_bus_use_incidence(
         person_band=result.person_band,
         receipt={"nts": shares_receipt, **result.receipt},
     )
+
+
+def bus_fare_rake_regions(stage: SourceStageSpec) -> tuple[str, ...]:
+    """The FRS regions a declared bus-fare rake cell levels.
+
+    The incidence override (positive-regime fill for users, zero for
+    non-users) is imposed only there: a positive-regime amount is a
+    diary-positive fortnight annualised, so without the rake to level it the
+    override would overstate a region's fares several-fold. Where no
+    publisher receipts exist (Wales) the chain's raw draw stands.
+    """
+
+    regions: list[str] = []
+    for parameters in rake_operations(stage):
+        if "bus_fare_spending" not in [str(c) for c in parameters["columns"]]:
+            continue
+        for cell in parameters["cells"]:
+            regions.extend(str(region) for region in cell["regions"])
+    return tuple(dict.fromkeys(regions))
 
 
 def lcfs_bus_fare_rake(
@@ -1083,6 +1106,7 @@ def impute_lcfs_consumption(
     n_estimators: int,
     bus_users: np.ndarray | None = None,
     bus_positive_uniforms: np.ndarray | None = None,
+    bus_scope: np.ndarray | None = None,
 ) -> UKLCFSConsumptionImputationResult:
     """Chain-draw the targets; optionally impose the bus-use incidence.
 
@@ -1090,8 +1114,11 @@ def impute_lcfs_consumption(
     draw is overridden after the chain step: non-user households take zero,
     user households drawn at zero take the step's positive-regime draw at
     their identity-keyed ``bus_positive_uniforms`` quantile, and user
-    households drawn positive keep their draw. The chain itself keeps
-    conditioning on the raw prior draw, so later targets are unchanged.
+    households drawn positive keep their draw. ``bus_scope`` limits the
+    override to the households a declared fare rake levels afterwards (the
+    regions with published receipts); outside it the raw draw stands. The
+    chain itself keeps conditioning on the raw prior draw, so later targets
+    are unchanged.
     """
 
     from microcosm.fit import RegimeGatedQRF
@@ -1128,6 +1155,7 @@ def impute_lcfs_consumption(
                 raw_draw=np.asarray(result.raw_draw, dtype=float),
                 users=np.asarray(bus_users, dtype=bool),
                 uniforms=bus_positive_uniforms,
+                scope=None if bus_scope is None else np.asarray(bus_scope, dtype=bool),
             )
         fit_records.append(
             FitWeightRecord(
@@ -1145,11 +1173,15 @@ def _impose_bus_use_incidence(
     raw_draw: np.ndarray,
     users: np.ndarray,
     uniforms: np.ndarray | None,
+    scope: np.ndarray | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     if uniforms is None:
         raise ValueError("bus incidence needs identity-keyed positive-draw uniforms.")
     if len(users) != len(raw_draw) or len(uniforms) != len(raw_draw):
         raise ValueError("bus incidence inputs must align with the recipients.")
+    in_scope = np.ones(len(raw_draw), dtype=bool) if scope is None else scope
+    if len(in_scope) != len(raw_draw):
+        raise ValueError("bus incidence scope must align with the recipients.")
     fitted = step.fitted
     if fitted is None:
         raise ValueError("the bus_fare_spending chain step exposes no fitted view.")
@@ -1157,16 +1189,20 @@ def _impose_bus_use_incidence(
         features, quantiles={"bus_fare_spending": np.asarray(uniforms, dtype=float)}
     )["bus_fare_spending"].to_numpy(dtype=float)
     drawn_positive = raw_draw > 0
-    filled = users & ~drawn_positive
-    adjusted = np.where(users, np.where(drawn_positive, raw_draw, positive), 0.0)
+    filled = in_scope & users & ~drawn_positive
+    imposed = np.where(users, np.where(drawn_positive, raw_draw, positive), 0.0)
+    adjusted = np.where(in_scope, imposed, raw_draw)
     return adjusted, {
         "regime": str(getattr(step.regime, "name", step.regime)),
         "positive_draw_salt": UK_LCFS_BUS_FARE_POSITIVE_SALT,
         "households": int(len(raw_draw)),
+        "households_in_scope": int(in_scope.sum()),
+        "households_outside_scope_keep_raw_draw": int((~in_scope).sum()),
         "users": int(users.sum()),
-        "users_drawn_positive": int((users & drawn_positive).sum()),
+        "users_in_scope": int((in_scope & users).sum()),
+        "users_drawn_positive": int((in_scope & users & drawn_positive).sum()),
         "users_filled_from_positive_regime": int(filled.sum()),
-        "non_users_zeroed": int((~users & drawn_positive).sum()),
+        "non_users_zeroed": int((in_scope & ~users & drawn_positive).sum()),
         "positive_share_before": float(drawn_positive.mean()) if len(raw_draw) else 0.0,
         "positive_share_after": float((adjusted > 0).mean()) if len(raw_draw) else 0.0,
     }
