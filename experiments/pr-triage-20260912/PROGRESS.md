@@ -68,7 +68,29 @@ only; no tracked file is edited; commits land on the local ref
   policyengine-uk numbers).
 - Packets rebuilt for all 50 at `scratchpad/packets/<n>.md`.
 
+### Judgment fan-out + independent owner spot checks (2026-09-14 ~19:10 ET)
+
+- Workflow `wf_6f60b8fc-b4d`: 50 evidence agents -> lens-specific refuters
+  (close-class PRs get unique-work / superseder / dependents; MERGE-READY gets a
+  readiness audit + supersession hunt; KEEP-BLOCKED-ON gets a blocker-reality
+  check + supersession hunt) -> a per-PR adjudicator -> two coherence critics.
+- Independent owner spot checks recorded in `scratchpad/owner_spotchecks.md`
+  (verified, not delegated): #752 superseded by 05d254aa2/#756; #817, #749,
+  #642, #888, #167, #413 unique on main; #153 superseded by #904's
+  `dft_bus_value_anchors.json` + #730; #181 by #714's `cash_isa`; the QBI stack
+  splits (#532's v1 port duplicated by #893's `puf_qbi_model.py`, but #534-#538's
+  v2/v3 SSTB-crosswalk / SCF / SOI content exists nowhere); #918 adds amendments
+  **25 and 26** (main is already at 24, not 20) and its `weight_update.py` is
+  byte-identical to #901's while #893 lacks the file entirely.
+- **#914 is the one real fold**: 12 of its 20 files are byte-identical to #893,
+  including `calibrate/target_snapshots.py` and its test, and #893 commit 136 is
+  literally "Merge the completed #908 snapshot slice". Its red CI is verified as
+  stale country-bundle spec digests
+  (`test_spec_engine_country_bundles.py:86` spec_sha256 mismatch x3).
+- Byte-compared every 893-overlapping file of all 29 overlapping PRs: only #914
+  has substantive identity. Filename overlap alone folded nothing.
+
 ## Next (run 3)
 
-- Fan out per-PR evidence + adversarial verification (workflow).
+- Finish the fan-out, reconcile against the owner spot checks.
 - Write `out-pr-triage.md` and `pr-dispositions.json`.
