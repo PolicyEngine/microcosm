@@ -26,7 +26,8 @@ PR CI (`.github/workflows/test.yml`) has four lanes — `lint`, `fast`,
 the diff into `shared`/`us`/`uk`. `lint` verifies
 `tools/ci_test_groups.py --verify`, syncs with `--locked`, and runs ruff.
 `fast` runs the full tracked test-file inventory without engine extras in
-three groups (`trade`, `spine-uk`, `rest`); engine-gated tests skip there
+three groups (`trade`, `spine-uk`, `rest`), with `rest` split across four
+parallel matrix jobs per Python version; engine-gated tests skip there
 through whichever guard they carry — the `requires_*` markers, or the
 `importorskip` calls that remain the norm on the US side. `engine-shared` always syncs
 `--extra us --extra uk` and runs the shared/spec group. `engine-us` and
@@ -38,6 +39,20 @@ after merging. The `wheels` lane remains the packaging gate: build every
 shard's real wheel, install into a clean uv-export-constrained venv, assert
 the wheel/import boundary and spec digests, and run the suite against installed
 wheels.
+
+`us-am` likewise has four matrix subdivisions. Within each, build and other-shard
+tests retain separate pytest processes to isolate their import state. Every wheel
+job retains the complete build/install/smoke boundary and runs one of four
+disjoint file subdivisions, including engine-only files whose markers skip when
+the engine is absent. Other groups and both Python versions are unchanged.
+`tools/ci_test_groups.py --list GROUP[:PROCESS] --shard INDEX/COUNT` selects
+sorted whole files round-robin; indices are 1-based and counts are capped at 64.
+An invalid or empty selection fails before pytest. `--verify` proves the
+configured shard unions and process partitions, while the stdlib-only
+`python3 -I -B -S packages/microcosm-build/tests/test_ci_test_groups.py` checks
+the actual matrix and selection contract. See [CI file sharding](docs/ci-file-sharding.md).
+File counts are not measured runtime weights; a single expensive module can
+still dominate a job, and module-scoped fixtures must remain intact.
 
 After checking the base wheel boundary, the wheel lane installs the built
 `microcosm-frame[us]` and `microcosm-build[source-io]` extras for engine-free
@@ -64,10 +79,9 @@ are already editing that test for another reason.
 
 **Adding a test file.** It must sit directly in `packages/<shard>/tests/` — flat,
 no subdirectories; `fixtures/` and `golden/` hold data only — and be named
-`test_*.py`. The lanes run explicit file lists built from a flat pathspec, while
-local `uv run pytest` and the wheels lane discover recursively, so a test parked
-next to its fixtures would run locally and stay green in CI without ever
-executing against an engine. `--verify` fails on such a file rather than letting
+`test_*.py`. All lanes, including wheels, run explicit flat file lists, while
+local `uv run pytest` discovers recursively. A test parked next to its fixtures
+could run locally without being selected in CI. `--verify` fails on such a file rather than letting
 it hide. Build tests that exercise a country engine must be named `test_us_*` or
 `test_uk_*` so they land in that country's lane; an engine-dependent file named
 anything else falls into the always-on `shared-spec` group and runs on every PR.

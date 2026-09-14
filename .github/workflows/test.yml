@@ -168,6 +168,8 @@ jobs:
         # python3 (not bare `python`): guaranteed on the Ubuntu image, and this
         # step runs before any sync so it must hold with the stdlib alone.
         run: python3 tools/ci_test_groups.py --verify
+      - name: Check file-shard and workflow coverage without importing data tests
+        run: python3 -I -B -S packages/microcosm-build/tests/test_ci_test_groups.py
       - name: Verify the graph acceptance burndown is monotone
         # The charter's second process rule, executable: the number of red
         # properties in the microcosm-graph acceptance suite never rises
@@ -186,7 +188,13 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.13", "3.14"]
-        group: [trade, spine-uk, rest]
+        lane:
+          - {"group": "trade", "shard": "1/1"}
+          - {"group": "spine-uk", "shard": "1/1"}
+          - {"group": "rest", "shard": "1/4"}
+          - {"group": "rest", "shard": "2/4"}
+          - {"group": "rest", "shard": "3/4"}
+          - {"group": "rest", "shard": "4/4"}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -194,9 +202,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Sync workspace without engines
         run: uv sync --all-packages --locked
-      - name: Engine-free tests (${{ matrix.group }})
+      - name: Engine-free tests (${{ matrix.lane.group }} ${{ matrix.lane.shard }})
         run: |
-          mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list "${{ matrix.group }}")
+          set -euo pipefail
+          selected="$(uv run --no-sync python tools/ci_test_groups.py --list "${{ matrix.lane.group }}" --shard "${{ matrix.lane.shard }}")"
+          test -n "$selected"
+          mapfile -t files <<< "$selected"
           /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
 
   engine-shared:
@@ -217,7 +228,10 @@ jobs:
         run: uv sync --all-packages --locked --extra us --extra uk
       - name: Shared/spec engine tests
         run: |
-          mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list shared-spec)
+          set -euo pipefail
+          selected="$(uv run --no-sync python tools/ci_test_groups.py --list shared-spec)"
+          test -n "$selected"
+          mapfile -t files <<< "$selected"
           /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
 
   spec-seed-diagnostics:
@@ -292,7 +306,14 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.13", "3.14"]
-        group: [us-p, us-qs, us-not, us-am]
+        lane:
+          - {"group": "us-p", "shard": "1/1"}
+          - {"group": "us-qs", "shard": "1/1"}
+          - {"group": "us-not", "shard": "1/1"}
+          - {"group": "us-am", "shard": "1/4"}
+          - {"group": "us-am", "shard": "2/4"}
+          - {"group": "us-am", "shard": "3/4"}
+          - {"group": "us-am", "shard": "4/4"}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -300,12 +321,18 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Sync workspace with US and UK engines
         run: uv sync --all-packages --locked --extra us --extra uk
-      - name: US engine tests (${{ matrix.group }})
+      - name: US engine tests (${{ matrix.lane.group }} ${{ matrix.lane.shard }})
         run: |
-          while IFS= read -r proc; do
-            mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list "${{ matrix.group }}:${proc}")
+          set -euo pipefail
+          selected_procs="$(uv run --no-sync python tools/ci_test_groups.py --procs "${{ matrix.lane.group }}")"
+          test -n "$selected_procs"
+          mapfile -t procs <<< "$selected_procs"
+          for proc in "${procs[@]}"; do
+            selected="$(uv run --no-sync python tools/ci_test_groups.py --list "${{ matrix.lane.group }}:${proc}" --shard "${{ matrix.lane.shard }}")"
+            test -n "$selected"
+            mapfile -t files <<< "$selected"
             /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
-          done < <(uv run --no-sync python tools/ci_test_groups.py --procs "${{ matrix.group }}")
+          done
 
   engine-uk:
     needs: changes
@@ -325,10 +352,16 @@ jobs:
         run: uv sync --all-packages --locked --extra us --extra uk
       - name: UK engine tests
         run: |
-          while IFS= read -r proc; do
-            mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list "uk:${proc}")
+          set -euo pipefail
+          selected_procs="$(uv run --no-sync python tools/ci_test_groups.py --procs uk)"
+          test -n "$selected_procs"
+          mapfile -t procs <<< "$selected_procs"
+          for proc in "${procs[@]}"; do
+            selected="$(uv run --no-sync python tools/ci_test_groups.py --list "uk:${proc}")"
+            test -n "$selected"
+            mapfile -t files <<< "$selected"
             /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
-          done < <(uv run --no-sync python tools/ci_test_groups.py --procs uk)
+          done
 
   wheels:
     # The charter-mandated packaging gate: editable installs hide packaging
@@ -341,6 +374,11 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.13", "3.14"]
+        lane:
+          - {"group": "wheels", "shard": "1/4"}
+          - {"group": "wheels", "shard": "2/4"}
+          - {"group": "wheels", "shard": "3/4"}
+          - {"group": "wheels", "shard": "4/4"}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -442,10 +480,14 @@ jobs:
           print("microunit", metadata.version("microunit"))
           print("h5py", h5py.__version__, "tables", tables.__version__)
           PY
-      - name: Run the suite against the installed wheels
+      - name: Run the suite against the installed wheels (${{ matrix.lane.shard }})
         run: |
+          set -euo pipefail
+          selected="$(env -u PYTHONPATH /tmp/wheels-venv/bin/python -I tools/ci_test_groups.py --list wheels --shard "${{ matrix.lane.shard }}")"
+          test -n "$selected"
+          mapfile -t files <<< "$selected"
           /usr/bin/time -v env -u PYTHONPATH /tmp/wheels-venv/bin/python -I -m pytest \
-            packages/*/tests -p no:cacheprovider
+            "${files[@]}" -p no:cacheprovider
 
   ci-ok:
     # The single aggregate context for branch protection. Per-leg matrix names
