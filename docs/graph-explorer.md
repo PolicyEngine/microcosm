@@ -1,5 +1,10 @@
 # Graph explorer
 
+For declaration and schema inspection with the shared viewer, see the
+[shared graph explorer adapter](shared-graph-explorer-adapter.md). The run
+renderer described below remains unchanged, including its separate cache and
+gate statuses.
+
 The graph explorer is one self-contained HTML file generated from a compiled
 graph and its run manifest. It contains its own CSS, JavaScript, DAG, and small
 charts. A reviewer can copy the file to another machine and open it directly in
