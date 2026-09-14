@@ -279,6 +279,26 @@ def _support_frame(table):
     )
 
 
+def _support_frame_stamp(frame):
+    """Seal the live private support Frame, without US population admission."""
+    require(
+        type(frame) is Frame
+        and frame.schema == EntitySchema(group_entities=("household",))
+        and set(frame._tables) == set(frame.entities)
+        and not frame.links
+        and not frame._link_tables
+        and set(frame._weights) == set(frame.weighted_entities),
+        "SUPPORT_FRAME_TYPE",
+    )
+    # This wrapper retains the actual Frame and reads its complete live weights.
+    # Empty graph design anchors avoid copying/coercing them in from_frame;
+    # this is a mutation stamp, not a new graph population or source issuance.
+    population = populations.Population.from_frame(
+        frame, PROTOCOL + "/private-support-stamp", design_weights={}
+    )
+    return child.physical._population_stamp(population)
+
+
 def _projections(qualified, origins):
     child.child_property_sources_seal(qualified)
     recipients = qualified.recipients
@@ -1089,7 +1109,7 @@ class _ChildKernel(KernelBase):
                         "source_admission_issued": False,
                     },
                 )
-                result_stamp = child.source._frame_identity(frame)
+                result_stamp = _support_frame_stamp(frame)
             else:
                 expected, result, payloads, _, _ = _reconstruct(
                     qualified,
@@ -1125,7 +1145,7 @@ class _ChildKernel(KernelBase):
             )
             boundary._current()
             final_stamp = (
-                child.source._frame_identity(result.frame)
+                _support_frame_stamp(result.frame)
                 if result.frame is not None
                 else tuple(
                     (key, child.physical._table_stamp(value.to_frame()))

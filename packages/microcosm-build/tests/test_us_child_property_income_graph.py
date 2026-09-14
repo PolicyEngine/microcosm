@@ -1,7 +1,9 @@
 """Invented country graph values: these pure projections issue no authority."""
 
 import json
+import sys
 from dataclasses import replace
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -9,13 +11,14 @@ import pytest
 
 from microcosm.build.us_runtime import graph_child_property_income as graph
 from microcosm.fit import joint_empirical as empirical
-from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.frame import EntitySchema, Frame, MassChangeRecord, WeightKind, Weights
 from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
     ArtifactType,
     ArtifactValue,
     Graph,
+    KernelContext,
     Node,
     Numeric,
     NumericScope,
@@ -298,6 +301,170 @@ def _case(*, zero=False, no_children=False):
         value,
         pins,
     )
+
+
+def _support_kernel_case(kind, tmp_path, on_final):
+    """Invented boundary for kernel result custody only; no source authority."""
+    qualified, origins, parent, nodes, _, _, _, donors, recipients, value, pins = (
+        _case()
+    )
+    selected = next(node for node in nodes if node.id == kind)
+    boundary = SimpleNamespace(
+        nodes=nodes,
+        origins=origins,
+        entry=(None, None, SimpleNamespace(root=tmp_path)),
+        host_pins=pins,
+        options_bytes=graph._json(_options().document()),
+        revoked=False,
+        calls=0,
+        pure_calls=0,
+    )
+
+    def current():
+        graph.require(not boundary.revoked, "TEST_BOUNDARY_REVOKED")
+        boundary.calls += 1
+        if boundary.calls == 2:
+            on_final()
+        return qualified
+
+    def pure():
+        boundary.pure_calls += 1
+
+    boundary._current, boundary._pure = current, pure
+    context = KernelContext(
+        selected,
+        {},
+        {},
+        pd.Series([], dtype="string"),
+        selected.params,
+        np.random.default_rng(0),
+        sources={graph.SOURCE_NAME: tmp_path},
+        artifacts={"ordering": value},
+    )
+    return (
+        graph._ChildKernel(boundary, selected.kernel),
+        context,
+        boundary,
+        donors if kind == graph.DONOR else recipients,
+        parent,
+    )
+
+
+def _run_captured_support_kernel(kernel, context, captured):
+    # Observe the actual created Frame without replacing any production callable.
+    previous = sys.getprofile()
+
+    def observe(frame, event, result):
+        if event == "return" and frame.f_code is graph._support_frame.__code__:
+            captured.append(result)
+
+    sys.setprofile(observe)
+    try:
+        return kernel.run(context)
+    finally:
+        sys.setprofile(previous)
+
+
+@pytest.mark.parametrize("kind", [graph.DONOR, graph.RECIPIENT])
+def test_private_support_create_preserves_exact_frame_through_final_callback(
+    kind, tmp_path
+):
+    captured = []
+    kernel, context, boundary, table, parent = _support_kernel_case(
+        kind, tmp_path, lambda: None
+    )
+    parent_stamp = graph.child.physical._population_stamp(parent)
+    result = _run_captured_support_kernel(kernel, context, captured)
+    assert len(captured) == 1 and result.frame is captured[0]
+    assert boundary.calls == 2 and boundary.pure_calls == 1
+    assert not boundary.revoked
+    graph.replay.same_replayed_frame(graph._support_frame(table), result.frame)
+    pd.testing.assert_frame_equal(result.frame.person[list(table)], table)
+    assert result.frame.schema == EntitySchema(group_entities=("household",))
+    assert not result.frame.links and not result.frame._link_tables
+    # A support stamp neither coerces the Frame into US_SCHEMA nor changes that
+    # separate owner's strict source-population admission rule.
+    with pytest.raises(ValueError, match="^FRAME_TYPE$"):
+        graph.child.source._frame_identity(result.frame)
+    assert graph.child.physical._population_stamp(parent) == parent_stamp
+
+
+@pytest.mark.parametrize("kind", [graph.DONOR, graph.RECIPIENT])
+@pytest.mark.parametrize(
+    "surface",
+    [
+        "person_cell",
+        "household_cell",
+        "dtype",
+        "index",
+        "table_flags",
+        "weights",
+        "weight_kind",
+        "strata",
+        "metadata",
+        "mass_log",
+        "schema",
+        "extra_table",
+        "missing_table",
+        "hidden_link",
+        "hidden_weight",
+    ],
+)
+def test_private_support_final_callback_mutation_refuses_without_changing_parent(
+    kind, surface, tmp_path
+):
+    captured, mutations = [], []
+
+    def mutate():
+        assert len(captured) == 1
+        frame = captured[0]
+        mutations.append(surface)
+        if surface == "person_cell":
+            frame.person.loc[0, "raw_native_person_id"] = "changed"
+        elif surface == "household_cell":
+            frame.table("household").loc[0, "household_id"] += 1
+        elif surface == "dtype":
+            frame.person["source_year"] = frame.person.source_year.astype("int32")
+        elif surface == "index":
+            frame.person.index = pd.Index(frame.person.index.to_numpy(), name="changed")
+        elif surface == "table_flags":
+            frame.person.flags.allows_duplicate_labels = False
+        elif surface == "weights":
+            frame._weights["household"] = Weights(
+                frame.weights_for("household").values + 1.0, WeightKind.DESIGN
+            )
+        elif surface == "weight_kind":
+            frame._weights["household"] = Weights(
+                frame.weights_for("household").values, WeightKind.IMPORTANCE
+            )
+        elif surface == "strata":
+            frame.strata.iloc[0] = "changed"
+        elif surface == "metadata":
+            frame._metadata = {"changed": True}
+        elif surface == "mass_log":
+            frame._mass_log = (MassChangeRecord("household", 1.0, 2.0, 2.0, "test"),)
+        elif surface == "schema":
+            frame._schema = EntitySchema(group_entities=("household", "tax_unit"))
+        elif surface == "extra_table":
+            frame._tables["unexpected"] = pd.DataFrame({"unexpected_id": [1]})
+        elif surface == "missing_table":
+            del frame._tables["household"]
+        elif surface == "hidden_link":
+            frame._link_tables["unexpected"] = pd.DataFrame({"person_id": [1]})
+        else:
+            frame._weights["unexpected"] = Weights(np.ones(1), WeightKind.DESIGN)
+
+    kernel, context, boundary, _, parent = _support_kernel_case(kind, tmp_path, mutate)
+    parent_stamp = graph.child.physical._population_stamp(parent)
+    with pytest.raises(
+        ValueError, match="FINAL_KERNEL_RESULT_CHANGED|SUPPORT_FRAME_TYPE"
+    ):
+        _run_captured_support_kernel(kernel, context, captured)
+    assert mutations == [surface] and boundary.calls == 2
+    assert boundary.revoked and boundary.pure_calls == 0
+    assert graph.child.physical._population_stamp(parent) == parent_stamp
+    with pytest.raises(ValueError, match="TEST_BOUNDARY_REVOKED"):
+        kernel.run(context)
 
 
 def test_child_nodes_compile_with_structural_ids_and_source_identity_reads():
