@@ -226,6 +226,24 @@
           "kind": "public_parameter_reference",
           "resource": "etb_services_anchors.json",
           "role": "etb_services_anchors"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "orr_rail_facts.json",
+          "role": "orr_rail_facts"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "dft_bus_value_anchors.json",
+          "role": "dft_bus_value_anchors"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "devolved_bus_finance.json",
+          "role": "devolved_bus_finance"
         }
       ],
       "grain": "household+person",
@@ -241,12 +259,39 @@
         "nhs_admitted_patient_spending",
         "nhs_outpatient_spending"
       ],
-      "notes": "Ports ETB public-services QRF at household grain, computes rail_usage from the 2023 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage.",
+      "notes": "Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support), rakes bus support so each area's design-weighted total equals the FY2024-25 published net support (DfT BUS05bi for London and England outside London, Scottish Transport Statistics all government support, the StatsWales local-authority gross expenditure on concessionary fares plus support to operators for Wales, and for Northern Ireland the NITHC accounts' PSO plus concessionary compensation bound jointly on bus plus rail support since the accounts carry no split; microcosm#890 D), with the raked column exempt from the support clip, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage.",
       "operations": [
         {
           "annualization_weeks": 52,
           "kind": "derive",
           "year": "max"
+        },
+        {
+          "columns": {
+            "bus_subsidy_spending": {
+              "basis": "vendored_ratio",
+              "concept": "dft.local_bus_total_estimated_net_support",
+              "geography_id": "E92000001",
+              "resource": "dft_bus_value_anchors.json"
+            },
+            "dfe_education_spending": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "hbai_household_net_income": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+            },
+            "rail_subsidy_spending": {
+              "basis": "vendored_ratio",
+              "concept": "orr.rail.total_government_support",
+              "resource": "orr_rail_facts.json"
+            }
+          },
+          "from_period": 2023,
+          "instant": "january_first",
+          "kind": "uprate_donor_columns",
+          "to_period": 2024
         },
         {
           "derived_predictors": {
@@ -288,11 +333,119 @@
           "weights": "explicit"
         },
         {
+          "exempt": [
+            "bus_subsidy_spending"
+          ],
           "kind": "support_clip",
           "range": "donor_realized"
         },
         {
-          "denominator_key": "rail_fare_index_2023",
+          "cells": [
+            {
+              "allocation": "uniform",
+              "label": "london",
+              "regions": [
+                "LONDON"
+              ],
+              "resource": "dft_bus_value_anchors.json",
+              "selector": {
+                "concept": "dft.local_bus_total_estimated_net_support",
+                "fiscal_start": "2024-04-01",
+                "geography_id": "E12000007"
+              }
+            },
+            {
+              "allocation": "uniform",
+              "label": "england_outside_london",
+              "regions": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "SOUTH_EAST",
+                "SOUTH_WEST"
+              ],
+              "resource": "dft_bus_value_anchors.json",
+              "selector": {
+                "concept": "dft.local_bus_total_estimated_net_support",
+                "fiscal_start": "2024-04-01",
+                "geography_id": "dft:england_outside_london"
+              }
+            },
+            {
+              "allocation": "uniform",
+              "label": "scotland",
+              "regions": [
+                "SCOTLAND"
+              ],
+              "resource": "devolved_bus_finance.json",
+              "selector": {
+                "concept": "scotgov.bus.government_support",
+                "dimension_values": {
+                  "funding_component": "all_government_support"
+                },
+                "fiscal_start": "2024-04-01"
+              }
+            },
+            {
+              "allocation": "uniform",
+              "label": "wales",
+              "regions": [
+                "WALES"
+              ],
+              "resource": "devolved_bus_finance.json",
+              "selector": {
+                "concept": "welshgov.local_transport.gross_expenditure",
+                "dimension_values": {
+                  "expenditure_component": "Gross expenditure"
+                },
+                "fiscal_start": "2024-04-01",
+                "sum_over": {
+                  "service_line": [
+                    "Concessionary fares",
+                    "Support to operators"
+                  ]
+                }
+              }
+            },
+            {
+              "allocation": "uniform",
+              "joint_columns": [
+                "bus_subsidy_spending",
+                "rail_subsidy_spending"
+              ],
+              "label": "northern_ireland",
+              "regions": [
+                "NORTHERN_IRELAND"
+              ],
+              "resource": "devolved_bus_finance.json",
+              "selector": {
+                "concept": "nithc.dfi_transaction_value",
+                "dimension_values": {
+                  "mode_scope": "all_public_transport"
+                },
+                "fiscal_start": "2024-04-01",
+                "sum_over": {
+                  "funding_component": [
+                    "Public Service Obligation compensation",
+                    "Concessionary fare compensation for a range of groups"
+                  ]
+                }
+              }
+            }
+          ],
+          "columns": [
+            "bus_subsidy_spending"
+          ],
+          "iterations": 1,
+          "kind": "rake_to_vendored_facts",
+          "scope": "all",
+          "weighted": true
+        },
+        {
+          "denominator_key": "rail_fare_index_2024",
           "denominator_resource": "etb_services_anchors.json",
           "kind": "compute_ratio",
           "numerator": "rail_subsidy_spending",
@@ -2440,27 +2593,52 @@
           "vintage": "2023_24"
         },
         {
-          "filename": "was_round_8_hhold_eul_may_2025_230525.tab",
-          "format": "tab",
-          "kind": "private_microdata",
-          "locator": "caller-supplied local input",
-          "role": "was_bridge_donor",
-          "runtime_sha256_required": true,
-          "sha256": "18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374",
-          "size_bytes": 39073613,
-          "vintage": "2018_20"
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "need_energy_facts.json",
+          "role": "need_energy_facts"
         },
         {
           "format": "json",
           "kind": "public_aggregate_reference",
-          "resource": "need_energy_targets.json",
-          "role": "need_energy_targets"
+          "resource": "ofgem_price_cap_facts.json",
+          "role": "ofgem_price_cap_facts"
+        },
+        {
+          "format": "json",
+          "kind": "public_parameter_reference",
+          "resource": "ofgem_region_crosswalk.json",
+          "role": "ofgem_region_crosswalk"
         },
         {
           "format": "json",
           "kind": "public_aggregate_reference",
-          "resource": "lcfs_consumption_anchors.json",
-          "role": "lcfs_consumption_anchors"
+          "resource": "road_fuel_anchors.json",
+          "role": "road_fuel_anchors"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "licensed_cars_fuel_type.json",
+          "role": "licensed_cars_fuel_type"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "nts_bus_use_frequency.json",
+          "role": "nts_bus_use_frequency"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "dft_bus_value_anchors.json",
+          "role": "dft_bus_value_anchors"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "devolved_bus_finance.json",
+          "role": "devolved_bus_finance"
         }
       ],
       "grain": "household",
@@ -2485,10 +2663,16 @@
         "gas_consumption",
         "has_fuel_consumption"
       ],
-      "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and identity-keyed seed-0 fuel flags. Energy support clipping is exempt because NEED raking governs those columns. Donor uprating is identity at this vintage (LCFS survey year equals the 2023 build year), so the incumbent's CPI and fuel litre-proxy donor uprating is deliberately not declared here; the machinery lands with the FRS 2024-25 refresh (microcosm#687), where a donor/build year gap first exists. The DESNZ pump-price anchors stay committed as the cited litre-proxy denominators for that refresh.",
+      "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns, and bus fares because the declared rake sets their level. Domestic energy is raked in kWh and priced at the FY2024-25 Ofgem cap (microcosm#890 F), where both NEED rakes take their mean-kWh margins from the vendored NEED 2023 tables (England and Wales by income band, tenure, property type and region; Scotland by income band, tenure and property type with the all-dwellings mean as its region margin; Northern Ireland untouched) and the declared price_energy_at_cap step converts spend to kWh and back at each household's charge-restriction region through the committed crosswalk, with unit rate equal to the benchmark minus nil cap level over the benchmark kWh, the nil level as the standing charge, the fiscal-year mean of the four quarterly cap periods, direct debit, single-rate electricity, including VAT at the declared reduced rate that the GB rows must reproduce, and a gas standing charge only where the gas spend is positive. Who uses local buses is drawn take-up style (microcosm#890 I), where each person takes a frequency band by an identity-keyed draw from the vendored NTS0313 shares (NTS0621 for people aged 60 and over, the under-60 shares derived from the two with the frame's design-weighted 60-plus share), a household is a user when any member rides at least once a year, user households the chain drew at zero take the bus step's positive-regime draw at an identity-keyed quantile and non-users take zero. Bus fares are then raked (microcosm#890 D) so that user households' design-weighted totals equal the FY2024-25 DfT BUS05ai receipts for London and England outside London, spread across design-weighted person income quintiles in proportion to NTS0705a trips per person, Scottish Transport Statistics passenger revenue for Scotland and Translink passenger receipts for Northern Ireland; Wales publishes no fare receipts and is untouched. The 2023-24 diary is uprated to the FRS 2024-25 base year by the declared uprate_donor_columns step (microcosm#890), with consumption columns uprated by the engine's CPI index, income predictors by the engine's earnings, mixed-income and pension indices, petrol and diesel by the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json; the energy columns are exempt because the NEED rake and the FY2024-25 Ofgem pricing set their level.",
       "operations": [
         {
           "annualization_weeks": 52.17857142857143,
+          "clip": {
+            "num_vehicles": [
+              0,
+              5
+            ]
+          },
           "donor_weight": "weighta * 1000",
           "kind": "derive",
           "logged_dropna_row_count": true,
@@ -2496,7 +2680,111 @@
             "LCFS tenure 4 and 8 -> RENT_PRIVATELY",
             "LCFS accommodation 4 and 5 -> FLAT"
           ],
-          "lowercase_columns": true
+          "lowercase_columns": true,
+          "mappings": {
+            "num_vehicles": "a124"
+          }
+        },
+        {
+          "columns": {
+            "alcohol_and_tobacco_consumption": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "bus_fare_spending": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "clothing_and_footwear_consumption": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "communication_consumption": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "diesel_spending": {
+              "audit_parameter_path": "gov.economic_assumptions.indices.obr.diesel_spending_litre_proxy",
+              "basis": "vendored_litre_proxy",
+              "litres_concept": "hmrc.hydrocarbon_oils.total_diesel_quantity",
+              "population_concept": "ons.mid_year_population_estimate",
+              "price_concept": "desnz.road_fuel.annual_ulsd_pump_price",
+              "resource": "road_fuel_anchors.json"
+            },
+            "education_consumption": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "employment_income": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+            },
+            "food_and_non_alcoholic_beverages_consumption": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "hbai_household_net_income": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+            },
+            "health_consumption": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "household_furnishings_consumption": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "household_gross_income": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+            },
+            "housing_water_and_electricity_consumption": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "miscellaneous_consumption": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "petrol_spending": {
+              "audit_parameter_path": "gov.economic_assumptions.indices.obr.petrol_spending_litre_proxy",
+              "basis": "vendored_litre_proxy",
+              "litres_concept": "hmrc.hydrocarbon_oils.total_petrol_quantity",
+              "population_concept": "ons.mid_year_population_estimate",
+              "price_concept": "desnz.road_fuel.annual_ulsp_pump_price",
+              "resource": "road_fuel_anchors.json"
+            },
+            "private_pension_income": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.private_pension_index"
+            },
+            "recreation_consumption": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "restaurants_and_hotels_consumption": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            },
+            "self_employment_income": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.per_capita.mixed_income"
+            },
+            "transport_consumption": {
+              "basis": "engine_parameter",
+              "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+            }
+          },
+          "exempt": [
+            "electricity_consumption",
+            "gas_consumption",
+            "domestic_energy_consumption"
+          ],
+          "from_period": 2023,
+          "instant": "january_first",
+          "kind": "uprate_donor_columns",
+          "to_period": 2024
         },
         {
           "columns": [
@@ -2508,31 +2796,87 @@
           "margins": [
             "gross_income_band"
           ],
+          "margins_resource": "need_energy_facts.json",
           "weighted": false
         },
         {
-          "kind": "bridge_donor_column_via_qrf",
-          "n_estimators": 4,
-          "predictors": [
-            "household_net_income",
-            "num_adults",
-            "num_children",
-            "private_pension_income",
-            "employment_income",
-            "self_employment_income",
-            "region"
-          ],
+          "condition": "num_vehicles > 0",
+          "geography_id": "K03000001",
+          "kind": "assign_binary_from_rate",
+          "period_value": 2024,
+          "rate_resource": "licensed_cars_fuel_type.json",
+          "rate_rule": "one_minus_zero_emission_share",
           "seed": 0,
-          "source": "was_wealth",
           "target": "has_fuel_consumption",
-          "weights": "explicit"
+          "zero_emission_fuel_types": [
+            "battery_electric",
+            "fuel_cell_electric"
+          ]
         },
         {
-          "condition": "num_vehicles > 0",
-          "kind": "assign_binary_from_rate",
-          "rate_key": "nts_ice_share",
+          "age_threshold": 60,
+          "bands": [
+            {
+              "id": "three_or_more_times_a_week",
+              "labels": [
+                "3 or more times a week (%)"
+              ],
+              "trips_per_year": 208
+            },
+            {
+              "id": "once_or_twice_a_week",
+              "labels": [
+                "Once or twice a week (%)"
+              ],
+              "trips_per_year": 78
+            },
+            {
+              "id": "less_than_weekly_more_than_twice_a_month",
+              "labels": [
+                "Less than once a week, more than once or twice a month (%)",
+                "Less than once per week, more than twice a month (%)"
+              ],
+              "trips_per_year": 36
+            },
+            {
+              "id": "once_or_twice_a_month",
+              "labels": [
+                "Once or twice a month (%)"
+              ],
+              "trips_per_year": 18
+            },
+            {
+              "id": "less_than_monthly_more_than_twice_a_year",
+              "labels": [
+                "Less than once a month, more than once or twice a year (%)",
+                "Less than once a month, more than twice a year (%)"
+              ],
+              "trips_per_year": 6
+            },
+            {
+              "id": "once_or_twice_a_year",
+              "labels": [
+                "Once or twice a year (%)"
+              ],
+              "trips_per_year": 1.5
+            },
+            {
+              "id": "less_than_once_a_year_or_never",
+              "labels": [
+                "Less than once a year or never (%)"
+              ],
+              "trips_per_year": 0
+            }
+          ],
+          "kind": "assign_bus_use_incidence",
+          "non_user_band": "less_than_once_a_year_or_never",
+          "older_age_band": "60 and over",
+          "output": "uses_local_bus",
+          "period_value": 2024,
+          "resource": "nts_bus_use_frequency.json",
           "seed": 0,
-          "target": "has_fuel_consumption"
+          "transport_mode_groupby_value_id": "local_bus",
+          "user_definition": "at_least_once_a_year"
         },
         {
           "kind": "materialize_rules_engine_predictors",
@@ -2563,7 +2907,7 @@
             "hbai_household_net_income",
             "tenure_type",
             "accommodation_type",
-            "has_fuel_consumption"
+            "num_vehicles"
           ],
           "seed": 0,
           "targets": [
@@ -2592,7 +2936,8 @@
           "exempt": [
             "electricity_consumption",
             "gas_consumption",
-            "domestic_energy_consumption"
+            "domestic_energy_consumption",
+            "bus_fare_spending"
           ],
           "kind": "support_clip",
           "range": "donor_realized"
@@ -2610,6 +2955,106 @@
             "accommodation",
             "region"
           ],
+          "margins_resource": "need_energy_facts.json",
+          "weighted": true
+        },
+        {
+          "columns": {
+            "electricity": "electricity_consumption",
+            "gas": "gas_consumption"
+          },
+          "crosswalk_resource": "ofgem_region_crosswalk.json",
+          "electricity_fuel": "electricity_single_rate",
+          "fiscal_start": "2024-04-01",
+          "gas_connected": "positive_gas_spend",
+          "kind": "price_energy_at_cap",
+          "margins_resource": "need_energy_facts.json",
+          "payment_method": "direct_debit",
+          "resource": "ofgem_price_cap_facts.json",
+          "vat_parameter_path": "gov.hmrc.vat.reduced_rate",
+          "vat_period": 2024,
+          "vat_rate": 0.05
+        },
+        {
+          "cells": [
+            {
+              "allocation": "income_quintile_trips",
+              "allocation_concept": "dft.bus_in_london_trips_per_person",
+              "allocation_period_value": 2024,
+              "allocation_resource": "dft_bus_value_anchors.json",
+              "label": "london",
+              "regions": [
+                "LONDON"
+              ],
+              "resource": "dft_bus_value_anchors.json",
+              "selector": {
+                "concept": "dft.local_bus_passenger_fare_receipts",
+                "fiscal_start": "2024-04-01",
+                "geography_id": "E12000007"
+              }
+            },
+            {
+              "allocation": "income_quintile_trips",
+              "allocation_concept": "dft.other_local_bus_trips_per_person",
+              "allocation_period_value": 2024,
+              "allocation_resource": "dft_bus_value_anchors.json",
+              "label": "england_outside_london",
+              "regions": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "SOUTH_EAST",
+                "SOUTH_WEST"
+              ],
+              "resource": "dft_bus_value_anchors.json",
+              "selector": {
+                "concept": "dft.local_bus_passenger_fare_receipts",
+                "fiscal_start": "2024-04-01",
+                "geography_id": "dft:england_outside_london"
+              }
+            },
+            {
+              "allocation": "uniform",
+              "label": "scotland",
+              "regions": [
+                "SCOTLAND"
+              ],
+              "resource": "devolved_bus_finance.json",
+              "selector": {
+                "concept": "scotgov.bus.operator_revenue",
+                "fiscal_start": "2024-04-01",
+                "groupby_value_id": "passenger_revenue"
+              }
+            },
+            {
+              "allocation": "uniform",
+              "label": "northern_ireland",
+              "regions": [
+                "NORTHERN_IRELAND"
+              ],
+              "resource": "devolved_bus_finance.json",
+              "selector": {
+                "concept": "dfi_ni.translink_bus.passenger_receipts",
+                "fiscal_start": "2024-04-01",
+                "sum_over": {
+                  "service": [
+                    "ulsterbus",
+                    "metro_glider"
+                  ]
+                }
+              }
+            }
+          ],
+          "columns": [
+            "bus_fare_spending"
+          ],
+          "iterations": 1,
+          "kind": "rake_to_vendored_facts",
+          "quintile_income": "hbai_household_net_income",
+          "scope": "users_only",
           "weighted": true
         },
         {
@@ -2652,7 +3097,7 @@
         "has_fuel_consumption"
       ],
       "rewrites": [],
-      "source": "UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs, NEED 2023 headline energy tables, Ofgem Q2 2026 unit rates, and WAS round-8 bridge donor.",
+      "source": "UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs and the vendored Chronicle facts for NEED 2023 mean kWh, the FY2024-25 Ofgem cap levels, road-fuel outturn (DESNZ, HMRC, ONS), the DfT VEH1103 licensed-car stock, NTS bus use and the DfT and devolved bus finance tables.",
       "stage": "lcfs_consumption",
       "survey": "Living Costs and Food Survey 2023-24"
     },
