@@ -19,6 +19,7 @@ from microcosm.graph import (
     ArtifactInput,
     ArtifactOutput,
     ArtifactType,
+    ArtifactValue,
     Capabilities,
     Determinism,
     KernelBase,
@@ -203,7 +204,26 @@ def _slices(frame, anticipated_outputs=()):
     return tuple(result)
 
 
-def _nodes(base, slices, projection, reconciliation, atol, rtol):
+def _completion_edge(completion):
+    if completion is None:
+        return ()
+    # Only the explicit opt-in loads the child source/model graph. Its actual
+    # producer key binds that implementation transitively; the host still owns
+    # independent verify_materialized and complete-parent/manifest admission.
+    from . import graph_child_property_income as child
+
+    _require(
+        type(completion) is ArtifactInput
+        and completion.name == "child_verification"
+        and completion.producer == child.VERIFY
+        and completion.artifact == "verification"
+        and completion.type == child.VERIFICATION_TYPE,
+        "CHILD_VERIFICATION_EDGE",
+    )
+    return (completion,)
+
+
+def _nodes(base, slices, projection, reconciliation, atol, rtol, completion=None):
     _require(
         type(projection) is type(reconciliation) is ArtifactInput
         and projection.name == "projection"
@@ -211,7 +231,7 @@ def _nodes(base, slices, projection, reconciliation, atol, rtol):
         "ARTIFACT_EDGES",
     )
     params = _parameters(atol, rtol)
-    edges = (projection, reconciliation)
+    edges = (projection, reconciliation, *_completion_edge(completion))
     receiving = Node(
         RECEIVING_NODE,
         PropertyTaxReceivingKernel.ref,
@@ -260,6 +280,7 @@ def property_tax_leaf_nodes(
     atol: float,
     rtol: float,
     anticipated_outputs: tuple[Owned, ...] = (),
+    completion: ArtifactInput | None = None,
 ) -> tuple[Node, Node, Node]:
     """Declare an explicit receiving version, four rewrites and numeric gate.
 
@@ -267,6 +288,12 @@ def property_tax_leaf_nodes(
     preserve orphan groups, link tables or nondefault group indices; refuse
     those shapes before execution. Group tables need a declared non-ID column
     so the receiving kernel can check their actual IDs through KernelContext.
+
+    ``completion`` accepts only the actual child verification edge. This binds
+    the payload into all three operations and their diagnostic lineage; it does
+    not grant authority from payload flags. The host must independently check
+    the child materialization, actual producer and complete retained parent.
+    The default ``None`` preserves the original declarations and calculations.
     """
     return _nodes(
         population,
@@ -275,6 +302,7 @@ def property_tax_leaf_nodes(
         reconciliation,
         atol,
         rtol,
+        completion,
     )
 
 
@@ -291,6 +319,11 @@ def _bindings(context):
             and value.key == opaque_artifact_key(value.producer_key, edge.artifact),
             "ARTIFACT_BINDING",
         )
+        if edge.name == "child_verification":
+            # Canonical object syntax is checked here; only the retained child
+            # boundary can compare it with independently reconstructed evidence.
+            _require(type(value) is ArtifactValue, "CHILD_VERIFICATION_VALUE")
+            codec.decode_json(value.payload)
         if edge.name != "rebase":
             result[edge.name] = {
                 "producer": edge.producer,
@@ -363,6 +396,7 @@ class _Kernel(KernelBase):
             edges["reconciliation"],
             context.params.get("atol"),
             context.params.get("rtol"),
+            edges.get("child_verification"),
         )[2 if gate else 1]
         _require(
             context.node.normative() == expected.normative()
@@ -386,7 +420,14 @@ class PropertyTaxReceivingKernel(_Kernel):
     def run(self, context: KernelContext) -> KernelResult:
         node = context.node
         edges = {e.name: e for e in node.artifact_inputs}
-        _require(set(edges) == {"projection", "reconciliation"}, "ARTIFACT_EDGES")
+        _require(
+            set(edges)
+            in (
+                {"projection", "reconciliation"},
+                {"projection", "reconciliation", "child_verification"},
+            ),
+            "ARTIFACT_EDGES",
+        )
         expected = _nodes(
             node.base,
             node.inputs,
@@ -394,6 +435,7 @@ class PropertyTaxReceivingKernel(_Kernel):
             edges["reconciliation"],
             0.0,
             0.0,
+            edges.get("child_verification"),
         )[0]
         _require(
             node.normative() == expected.normative()

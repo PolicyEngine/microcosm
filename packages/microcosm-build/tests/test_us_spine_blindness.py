@@ -157,6 +157,16 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "graph_current_survey_health.py",  # Declare the attachment's identity inputs.
         "current_survey_housing.py",  # Qualify survey observations and validate both clone identity joins.
         "graph_current_survey_housing.py",  # Declare housing source/donor and paired attachment identity inputs.
+        # Reviewed 2026-09-13: original survey reference-person observations
+        # and their exact original-to-clone join; no tax/SPM role inference.
+        "current_survey_household_roles.py",
+        "graph_current_survey_household_roles.py",
+        # Declare original/native/clone identities for descriptive status only.
+        "graph_current_survey_person_status.py",
+        # Explicit child age-transfer candidate: validate original-to-two-clone
+        # coordinates against separately qualified full-source teenage support.
+        # This grants no general source-routed PUF-detail model exemption.
+        "graph_child_property_income.py",
         # Rejoin qualified original property values to both initial clones.
         "graph_current_survey_property.py",
         "current_social_security_source.py",  # Source-owned SS totals per row.
@@ -296,6 +306,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "congressional_district_vintage_crosswalk.py",
         "cps_carried.py",
         "demographics.py",
+        # Immutable shared unbound-leaf requirements; no source reads/treatment.
+        "survey_demographic_contract.py",
         "education_assistance_source.py",
         "eligibility_inputs.py",
         "engine_lifecycle.py",
@@ -414,12 +426,29 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_survey_health_source.py",
         # Retained housing observations, original-design donors and exact clone joins
         "current_survey_housing.py",
+        # Qualified original reference-person observations and exact clone bind.
+        "current_survey_household_roles.py",
+        # Pure published descriptive-status recodes, without source authority.
+        "current_survey_person_status.py",
+        # Qualify exact original literal status observations through live owners.
+        "current_survey_person_status_source.py",
+        # Full-source teenage O/D support and original-recipient qualification.
+        "current_child_property_income_source.py",
         # Explicit fiscal input declarations; assumptions/inactivity disabled
         "fiscal_leaf_policy.py",
         # Typed source, recode and attachment health graph fragment
         "graph_current_survey_health.py",
         # Typed housing observation, household fit/draw and SPM-unit attachment
         "graph_current_survey_housing.py",
+        # Source-supported reference-person declaration and canonical attachment.
+        "graph_current_survey_household_roles.py",
+        # Descriptive status source/recode/bind, never statutory eligibility.
+        "graph_current_survey_person_status.py",
+        # Explicit empirical child candidate with complete parent verification.
+        "graph_child_property_income.py",
+        # All-row receiving version and optional checked completion composition.
+        "graph_survey_completion.py",
+        "graph_survey_completion_host.py",
         # Qualified original property branches and exact paired attachment
         "graph_current_survey_property.py",
         # Grouped dense calibration over retained fiscal measurements
@@ -3496,6 +3525,16 @@ def _source_spine_accesses(source: str) -> tuple[str, ...]:
 # accepted, and only for the listed modules.
 _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
     {
+        # Reviewed 2026-09-13: exact published fields, original catalogue keys,
+        # masks and retained-owner/receipt maps. No direct provenance access;
+        # accessor and literal protected-column tripwires continue to apply.
+        "current_survey_person_status.py",
+        "current_survey_person_status_source.py",
+        "current_child_property_income_source.py",
+        # Schema-declared entities/columns and typed node/artifact/state maps;
+        # source-specific joins remain in the separately reviewed owners.
+        "graph_survey_completion.py",
+        "graph_survey_completion_host.py",
         # Reviewed 2026-09-12: fixed dividend/interest/RINT-slot amount, status
         # and code families passed to private helpers; no source-channel reads.
         "current_asec_property_basis.py",
@@ -3565,10 +3604,22 @@ def _non_owner_source_spine_accesses(
     return accesses
 
 
-def test_reviewed_dynamic_selector_modules_still_fail_on_provenance_reads() -> None:
+@pytest.mark.parametrize(
+    "reviewed",
+    [
+        next(iter(sorted(_REVIEWED_DYNAMIC_SELECTOR_MODULES))),
+        "current_survey_person_status.py",
+        "current_survey_person_status_source.py",
+        "current_child_property_income_source.py",
+        "graph_survey_completion.py",
+        "graph_survey_completion_host.py",
+    ],
+)
+def test_reviewed_dynamic_selector_modules_still_fail_on_provenance_reads(
+    reviewed,
+) -> None:
     """The dynamic-selector acceptance never hides an accessor or a column."""
 
-    reviewed = next(iter(sorted(_REVIEWED_DYNAMIC_SELECTOR_MODULES)))
     dynamic_only = """
 def pick(table, name):
     return table[name]
