@@ -25,6 +25,7 @@ from microcosm.build.uk_runtime.etb_vat import (
 from microcosm.build.uk_runtime.lcfs_consumption import (
     clean_lcfs_consumption_table,
     lcfs_donor_uprating,
+    lcfs_energy_pricing,
 )
 from microcosm.build.uk_runtime.lcfs_consumption import (
     donor_realized_ranges as lcfs_ranges,
@@ -47,11 +48,13 @@ def build_lcfs_support_bounds(
 ) -> dict[str, object]:
     hh_sha = _sha256(household_tab)
     person_sha = _sha256(person_tab)
-    uprating, _receipt = lcfs_donor_uprating(_committed_stage("lcfs_consumption"))
+    stage = _committed_stage("lcfs_consumption")
+    uprating, _receipt = lcfs_donor_uprating(stage)
     donor = clean_lcfs_consumption_table(
         pd.read_csv(person_tab, sep="\t", low_memory=False),
         pd.read_csv(household_tab, sep="\t", low_memory=False),
         uprating=uprating,
+        energy=lcfs_energy_pricing(stage),
     )
     return _payload(
         source={

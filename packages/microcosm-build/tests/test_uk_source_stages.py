@@ -640,6 +640,7 @@ class TestE3ManifestLockstep:
             "fit_weighted_qrf_chain",
             "support_clip",
             "iterative_proportional_fit",
+            "price_energy_at_cap",
             "rake_to_vendored_facts",
             "fold_into",
             "zero_when_false",

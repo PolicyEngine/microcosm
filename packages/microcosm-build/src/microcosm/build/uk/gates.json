@@ -185,11 +185,11 @@
         "exempt_columns": [
           "domestic_energy_consumption",
           "electricity_consumption",
-          "gas_consumption"
+          "gas_consumption",
+          "bus_fare_spending"
         ],
         "max_clipped_low_rows_by_column": {
           "alcohol_and_tobacco_consumption": 0,
-          "bus_fare_spending": 0,
           "clothing_and_footwear_consumption": 0,
           "communication_consumption": 0,
           "diesel_spending": 0,
@@ -206,7 +206,6 @@
         },
         "max_clipped_high_rows_by_column": {
           "alcohol_and_tobacco_consumption": 0,
-          "bus_fare_spending": 0,
           "clothing_and_footwear_consumption": 0,
           "communication_consumption": 0,
           "diesel_spending": 0,
@@ -222,7 +221,7 @@
           "transport_consumption": 0
         }
       },
-      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
+      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus fares are exempt since microcosm#890: the declared rake to DfT receipts sets their level."
     },
     {
       "id": "uk_stage_etb_vat_support",
@@ -259,18 +258,19 @@
           "dfe_education_spending",
           "rail_subsidy_spending"
         ],
+        "exempt_columns": [
+          "bus_subsidy_spending"
+        ],
         "max_clipped_low_rows_by_column": {
-          "bus_subsidy_spending": 0,
           "dfe_education_spending": 0,
           "rail_subsidy_spending": 0
         },
         "max_clipped_high_rows_by_column": {
-          "bus_subsidy_spending": 0,
           "dfe_education_spending": 0,
           "rail_subsidy_spending": 0
         }
       },
-      "notes": "Stage-time support-clip health gate over the ETB services receipt. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
+      "notes": "Stage-time support-clip health gate over the ETB services receipt. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus support is exempt since microcosm#890: the declared rake to the published net support sets its level."
     },
     {
       "id": "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -549,21 +549,21 @@
             "name": "need_electricity_mean_spending",
             "entity": "household",
             "measure": "electricity_consumption",
-            "value": 882.91463,
-            "period": "2023",
-            "source": "Unweighted mean of NEED 2023 income-band electricity kWh anchors converted with Ofgem Q2 2026 unit rates.",
+            "value": 1081.88357,
+            "period": "2024",
+            "source": "Unweighted mean of the ten NEED 2023 England-and-Wales income-band mean electricity kWh (vendored need_energy_facts.json) priced at the FY2024-25 GB direct-debit single-rate cap (vendored ofgem_price_cap_facts.json: unit rate plus standing charge, including VAT), the same pricing the lcfs_consumption stage applies (microcosm#890 F). Measured as the design-weighted mean over households with positive spend.",
             "family": "need_energy",
-            "tolerance": 132.4371945
+            "tolerance": 162.2825355
           },
           {
             "name": "need_gas_mean_spending",
             "entity": "household",
             "measure": "gas_consumption",
-            "value": 700.3661,
-            "period": "2023",
-            "source": "Unweighted mean of NEED 2023 income-band gas kWh anchors converted with Ofgem Q2 2026 unit rates.",
+            "value": 850.11871,
+            "period": "2024",
+            "source": "Unweighted mean of the ten NEED 2023 England-and-Wales income-band mean gas kWh (vendored need_energy_facts.json) priced at the FY2024-25 GB direct-debit gas cap (vendored ofgem_price_cap_facts.json: unit rate plus standing charge, including VAT), the same pricing the lcfs_consumption stage applies (microcosm#890 F). Measured as the design-weighted mean over gas-connected households (positive gas spend).",
             "family": "need_energy",
-            "tolerance": 105.054915
+            "tolerance": 127.5178065
           },
           {
             "name": "nhs_spending_total",
@@ -577,7 +577,7 @@
           }
         ]
       },
-      "notes": "Release-blocking aggregate-admin gate for E6 NEED energy anchors and the NHS budget. The build supplies SDC-safe measured aggregates as evidence; the gate checks signs and tolerances."
+      "notes": "Release-blocking aggregate-admin gate for E6 NEED energy anchors (priced at the FY2024-25 Ofgem cap from vendored facts, microcosm#890) and the NHS budget. The build supplies SDC-safe measured aggregates as evidence; the gate checks signs and tolerances."
     },
     {
       "id": "uk_export_surface",

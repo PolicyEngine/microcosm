@@ -205,8 +205,8 @@ def _run_battery(tables, *, parity=None, fit_records=None, armed=True, clock=CLO
     if armed:
         artifacts["input_mass_reference"] = _reference()
         artifacts["aggregate_admin"] = {
-            "need_electricity_mean_spending": 882.91463,
-            "need_gas_mean_spending": 700.3661,
+            "need_electricity_mean_spending": 1081.88357,
+            "need_gas_mean_spending": 850.11871,
             "nhs_spending_total": 202_000_000_000,
         }
     # Small synthetic totals exercise battery behavior without disclosing

@@ -1061,7 +1061,7 @@ stages:
   notes: Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior.
 - stage: lcfs_consumption
   survey: Living Costs and Food Survey 2023-24
-  source: UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs, NEED 2023 headline energy tables, Ofgem Q2 2026 unit rates, and the vendored Chronicle facts for road-fuel outturn (DESNZ, HMRC, ONS) and the DfT VEH1103 licensed-car stock.
+  source: UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs and the vendored Chronicle facts for NEED 2023 mean kWh, the FY2024-25 Ofgem cap levels, road-fuel outturn (DESNZ, HMRC, ONS), the DfT VEH1103 licensed-car stock, NTS bus use and the DfT and devolved bus finance tables.
   grain: household
   base_candidate:
     filename: populace_uk_2023.h5
@@ -1087,9 +1087,17 @@ stages:
     size_bytes: 6545146
     runtime_sha256_required: true
     filename: dvper_ukanon_202324_2023.tab
-  - role: need_energy_targets
-    resource: need_energy_targets.json
+  - role: need_energy_facts
+    resource: need_energy_facts.json
     kind: public_aggregate_reference
+    format: json
+  - role: ofgem_price_cap_facts
+    resource: ofgem_price_cap_facts.json
+    kind: public_aggregate_reference
+    format: json
+  - role: ofgem_region_crosswalk
+    resource: ofgem_region_crosswalk.json
+    kind: public_parameter_reference
     format: json
   - role: road_fuel_anchors
     resource: road_fuel_anchors.json
@@ -1209,6 +1217,7 @@ stages:
     - gas_consumption
     margins:
     - gross_income_band
+    margins_resource: need_energy_facts.json
     iterations: 1
     weighted: false
   - kind: assign_binary_from_rate
@@ -1325,8 +1334,23 @@ stages:
     - tenure
     - accommodation
     - region
+    margins_resource: need_energy_facts.json
     iterations: 50
     weighted: true
+  - kind: price_energy_at_cap
+    resource: ofgem_price_cap_facts.json
+    crosswalk_resource: ofgem_region_crosswalk.json
+    margins_resource: need_energy_facts.json
+    fiscal_start: '2024-04-01'
+    payment_method: direct_debit
+    electricity_fuel: electricity_single_rate
+    vat_parameter_path: gov.hmrc.vat.reduced_rate
+    vat_period: 2024
+    vat_rate: 0.05
+    gas_connected: positive_gas_spend
+    columns:
+      electricity: electricity_consumption
+      gas: gas_consumption
   - kind: rake_to_vendored_facts
     columns:
     - bus_fare_spending
@@ -1438,7 +1462,7 @@ stages:
   - electricity_consumption
   - gas_consumption
   - has_fuel_consumption
-  notes: Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns, and bus fares because the declared rake sets their level. Who uses local buses is drawn take-up style (microcosm#890 I), where each person takes a frequency band by an identity-keyed draw from the vendored NTS0313 shares (NTS0621 for people aged 60 and over, the under-60 shares derived from the two with the frame's design-weighted 60-plus share), a household is a user when any member rides at least once a year, user households the chain drew at zero take the bus step's positive-regime draw at an identity-keyed quantile and non-users take zero. Bus fares are then raked (microcosm#890 D) so that user households' design-weighted totals equal the FY2024-25 DfT BUS05ai receipts for London and England outside London, spread across design-weighted person income quintiles in proportion to NTS0705a trips per person, Scottish Transport Statistics passenger revenue for Scotland and Translink passenger receipts for Northern Ireland; Wales publishes no fare receipts and is untouched. The 2023-24 diary is uprated to the FRS 2024-25 base year by the declared uprate_donor_columns step (microcosm#890), with consumption columns uprated by the engine's CPI index, income predictors by the engine's earnings, mixed-income and pension indices, petrol and diesel by the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json; the energy columns are exempt because the NEED rake and the FY2024-25 Ofgem pricing set their level.
+  notes: Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns, and bus fares because the declared rake sets their level. Domestic energy is raked in kWh and priced at the FY2024-25 Ofgem cap (microcosm#890 F), where both NEED rakes take their mean-kWh margins from the vendored NEED 2023 tables (England and Wales by income band, tenure, property type and region; Scotland by income band, tenure and property type with the all-dwellings mean as its region margin; Northern Ireland untouched) and the declared price_energy_at_cap step converts spend to kWh and back at each household's charge-restriction region through the committed crosswalk, with unit rate equal to the benchmark minus nil cap level over the benchmark kWh, the nil level as the standing charge, the fiscal-year mean of the four quarterly cap periods, direct debit, single-rate electricity, including VAT at the declared reduced rate that the GB rows must reproduce, and a gas standing charge only where the gas spend is positive. Who uses local buses is drawn take-up style (microcosm#890 I), where each person takes a frequency band by an identity-keyed draw from the vendored NTS0313 shares (NTS0621 for people aged 60 and over, the under-60 shares derived from the two with the frame's design-weighted 60-plus share), a household is a user when any member rides at least once a year, user households the chain drew at zero take the bus step's positive-regime draw at an identity-keyed quantile and non-users take zero. Bus fares are then raked (microcosm#890 D) so that user households' design-weighted totals equal the FY2024-25 DfT BUS05ai receipts for London and England outside London, spread across design-weighted person income quintiles in proportion to NTS0705a trips per person, Scottish Transport Statistics passenger revenue for Scotland and Translink passenger receipts for Northern Ireland; Wales publishes no fare receipts and is untouched. The 2023-24 diary is uprated to the FRS 2024-25 base year by the declared uprate_donor_columns step (microcosm#890), with consumption columns uprated by the engine's CPI index, income predictors by the engine's earnings, mixed-income and pension indices, petrol and diesel by the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json; the energy columns are exempt because the NEED rake and the FY2024-25 Ofgem pricing set their level.
 - stage: etb_vat
   survey: Effects of Taxes and Benefits 1977-2024
   source: UK Data Service SN 8856 Effects of Taxes and Benefits household tab and cited VAT anchor resource.

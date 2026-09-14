@@ -492,9 +492,18 @@ def etb_bus_support_rake(
     return raked, receipts[0] if len(receipts) == 1 else {"operations": receipts}
 
 
+#: The declared rake levels bus support; the support clip and the committed
+#: support bounds leave it alone.
+UK_ETB_SERVICES_RAKED_COLUMNS = frozenset({"bus_subsidy_spending"})
+
+
 def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
+    """Donor support per clipped column; the raked column carries no bounds."""
+
     ranges = {}
     for column in UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3]:
+        if column in UK_ETB_SERVICES_RAKED_COLUMNS:
+            continue
         values = donor[column]
         finite = values[np.isfinite(values)]
         if not finite.empty:

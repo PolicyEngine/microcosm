@@ -8159,7 +8159,8 @@
       "payment_method",
       "electricity_fuel",
       "vat_parameter_path",
-      "columns"
+      "columns",
+      "vat_rate"
      ],
      "properties": {
       "kind": {
@@ -8209,6 +8210,11 @@
       },
       "margins_resource": {
        "type": "string"
+      },
+      "vat_rate": {
+       "type": "number",
+       "minimum": 0,
+       "exclusiveMaximum": 1
       }
      }
     }

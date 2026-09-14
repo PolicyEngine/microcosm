@@ -14,18 +14,28 @@ def _load(name: str) -> dict:
     return json.loads((UK_PACKAGE / name).read_text(encoding="utf-8"))
 
 
-def test_need_energy_targets_shape_and_citations() -> None:
-    payload = _load("need_energy_targets.json")
+def test_ofgem_region_crosswalk_covers_every_frs_region_once() -> None:
+    from microcosm.build.uk_runtime.energy_pricing import load_ofgem_region_crosswalk
+    from microcosm.build.uk_runtime.lcfs_consumption import LCFS_REGIONS
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import load_vendored_resource
 
+    payload = load_ofgem_region_crosswalk()
     assert payload["version"] == 1
     assert payload["country"] == "uk"
-    assert payload["source"]["chronicle_candidate"] is True
-    assert payload["source"]["urls"]
-    assert "NEED 2023" in payload["source"]["citation"]
-    assert len(payload["income_bands"]) == 10
-    assert payload["tenure"]["map"]["OWNED_OUTRIGHT"] == "owner"
-    assert payload["accommodation"]["map"]["FLAT"] == "flat"
-    assert "NORTHERN_IRELAND" not in payload["region"]["gas_kwh"]
+    assert not (UK_PACKAGE / "need_energy_targets.json").exists()
+    mapping = payload["mapping"]
+    assert set(mapping) == set(LCFS_REGIONS.values())
+    ofgem_ids = {
+        row["geography"]["id"]
+        for row in load_vendored_resource("ofgem_price_cap_facts.json")["rows"]
+    }
+    assert set(mapping.values()) <= ofgem_ids
+    assert mapping["NORTHERN_IRELAND"] == payload["gb_geography_id"] == "K03000001"
+    assert all(
+        value.startswith("ofgem:")
+        for region, value in mapping.items()
+        if region != "NORTHERN_IRELAND"
+    )
 
 
 def test_policy_anchor_resources_carry_parameter_paths() -> None:
@@ -95,13 +105,14 @@ def test_e6_support_bounds_resources_are_sha_bound_and_non_placeholder() -> None
     assert lcfs["source"]["person_tab_sha256"] == (
         "f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50"
     )
-    assert len(lcfs["bounds"]) == 15
+    # Raked columns (energy and, since microcosm#890, bus fares) carry no bounds.
+    assert len(lcfs["bounds"]) == 14
+    assert "bus_fare_spending" not in lcfs["bounds"]
     assert vat["source"]["tab_sha256"] == (
         "d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8"
     )
     assert set(vat["bounds"]) == {"full_rate_vat_expenditure_rate"}
     assert set(services["bounds"]) == {
-        "bus_subsidy_spending",
         "dfe_education_spending",
         "rail_subsidy_spending",
     }

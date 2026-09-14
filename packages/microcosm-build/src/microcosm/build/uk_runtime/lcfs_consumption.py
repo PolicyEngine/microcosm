@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,7 +11,6 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
-from microcosm.build.raking import MarginSpec, iterative_proportional_fit
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import (
     assign_binary_from_rate,
@@ -28,6 +26,20 @@ from microcosm.build.uk_runtime.donor_uprating import (
     apply_donor_uprating,
     donor_uprating_factors,
     uprating_operation,
+)
+from microcosm.build.uk_runtime.energy_pricing import (
+    ELECTRICITY_KWH,
+    GAS_KWH,
+    UK_NEED_ENERGY_FACTS_RESOURCE,
+    UK_OFGEM_PRICE_CAP_RESOURCE,
+    EnergyCapRates,
+    NeedMargins,
+    cap_rates,
+    kwh_to_spend,
+    need_margins_from_facts,
+    pricing_operation,
+    rake_energy_kwh,
+    spend_to_kwh,
 )
 from microcosm.build.uk_runtime.fact_raking import (
     rake_operations,
@@ -146,6 +158,18 @@ UK_LCFS_VENDORED_RESOURCES = (
     UK_LCFS_NTS_BUS_USE_RESOURCE,
     UK_LCFS_DFT_BUS_VALUE_RESOURCE,
     UK_LCFS_DEVOLVED_BUS_FINANCE_RESOURCE,
+    UK_NEED_ENERGY_FACTS_RESOURCE,
+    UK_OFGEM_PRICE_CAP_RESOURCE,
+)
+#: Columns a declared rake levels; the support clip and the committed support
+#: bounds leave them alone.
+UK_LCFS_RAKED_COLUMNS = frozenset(
+    {
+        "electricity_consumption",
+        "gas_consumption",
+        "domestic_energy_consumption",
+        "bus_fare_spending",
+    }
 )
 UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
 #: Identity-keyed uniforms for the positive-regime bus fare draw of user
@@ -214,6 +238,8 @@ class UKLCFSConsumptionResult:
     fuel_flag: Mapping[str, Any] | None = None
     bus_use_incidence: Mapping[str, Any] | None = None
     bus_fare_rake: Mapping[str, Any] | None = None
+    energy_pricing: Mapping[str, Any] | None = None
+    energy_rake: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -228,6 +254,10 @@ class UKLCFSConsumptionResult:
             evidence["bus_use_incidence"] = dict(self.bus_use_incidence)
         if self.bus_fare_rake is not None:
             evidence["bus_fare_rake"] = dict(self.bus_fare_rake)
+        if self.energy_pricing is not None:
+            evidence["energy_pricing"] = dict(self.energy_pricing)
+        if self.energy_rake is not None:
+            evidence["energy_rake"] = dict(self.energy_rake)
         return evidence
 
 
@@ -273,8 +303,13 @@ class UKLCFSConsumptionStageTransform:
             )
         )
         uprating_factors, uprating_receipt = lcfs_donor_uprating(self.stage)
+        energy = lcfs_energy_pricing(self.stage)
         donor = clean_lcfs_consumption_table(
-            lcfs_person, lcfs_household, uprating=uprating_factors
+            lcfs_person,
+            lcfs_household,
+            uprating=uprating_factors,
+            energy=energy,
+            donor_rake_iterations=_donor_energy_rake_iterations(self.stage),
         )
         ice_share, ice_share_receipt = lcfs_ice_share(self.stage)
         recipient = recipient_predictors(frame, self.engine)
@@ -309,13 +344,18 @@ class UKLCFSConsumptionStageTransform:
             imputation.draws, donor, exempt=support_clip_exempt(self.stage)
         )
         household_draws = clip_result.clipped
-        household_draws = rake_energy_to_need(
-            household_draws.join(recipient[["household_gross_income"]]),
-            weights=weights,
-            tenure=recipient["tenure_type"].astype(str).to_numpy(),
-            accommodation=recipient["accommodation_type"].astype(str).to_numpy(),
-            region=recipient["region"].astype(str).to_numpy(),
-        )
+        energy_rake_receipt = None
+        if energy is not None:
+            household_draws, energy_rake_receipt = rake_recipient_energy(
+                household_draws,
+                energy=energy,
+                region=recipient["region"].astype(str).to_numpy(),
+                income=recipient["household_gross_income"].to_numpy(dtype=float),
+                tenure=recipient["tenure_type"].astype(str).to_numpy(),
+                accommodation=recipient["accommodation_type"].astype(str).to_numpy(),
+                weights=weights,
+                iterations=_recipient_energy_rake_iterations(self.stage),
+            )
         household_draws, bus_fare_rake_receipt = lcfs_bus_fare_rake(
             self.stage,
             household_draws,
@@ -357,6 +397,8 @@ class UKLCFSConsumptionStageTransform:
             if incidence is None
             else {**incidence.receipt, **imputation.bus_fare_receipt},
             bus_fare_rake=bus_fare_rake_receipt,
+            energy_pricing=None if energy is None else energy.receipt,
+            energy_rake=energy_rake_receipt,
         )
         return result
 
@@ -375,6 +417,136 @@ class UKLCFSConsumptionImputationResult:
     draws: pd.DataFrame
     fit_weight_records: tuple[FitWeightRecord, ...]
     bus_fare_receipt: Mapping[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class LCFSEnergyPricing:
+    """The declared cap rates and NEED margins, with their receipts."""
+
+    rates: EnergyCapRates
+    margins: NeedMargins
+    gas_connected: str
+    receipt: dict[str, Any]
+
+
+def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
+    """Resolve the declared ``price_energy_at_cap`` operation (none if undeclared)."""
+
+    parameters = pricing_operation(stage)
+    if parameters is None:
+        return None
+    columns = dict(parameters["columns"])
+    if columns != {"electricity": "electricity_consumption", "gas": "gas_consumption"}:
+        raise ValueError("price_energy_at_cap must price the two energy spend columns.")
+    margins_resource = str(
+        parameters.get("margins_resource") or UK_NEED_ENERGY_FACTS_RESOURCE
+    )
+    rates, rates_receipt = cap_rates(parameters)
+    margins = need_margins_from_facts(margins_resource)
+    return LCFSEnergyPricing(
+        rates=rates,
+        margins=margins,
+        gas_connected=str(parameters.get("gas_connected", "positive_gas_spend")),
+        receipt={**rates_receipt, "need_margins": margins.receipt},
+    )
+
+
+def energy_spend_to_kwh(
+    table: pd.DataFrame, *, energy: LCFSEnergyPricing, region: np.ndarray
+) -> pd.DataFrame:
+    """Add ``electricity_kwh`` and ``gas_kwh`` at the declared regional cap rates."""
+
+    result = table.copy()
+    electricity = _numeric(result["electricity_consumption"]).to_numpy(dtype=float)
+    gas = _numeric(result["gas_consumption"]).to_numpy(dtype=float)
+    result[ELECTRICITY_KWH] = spend_to_kwh(
+        electricity, frs_region=region, fuel="electricity", rates=energy.rates
+    )
+    result[GAS_KWH] = spend_to_kwh(
+        gas, frs_region=region, fuel="gas", rates=energy.rates, connected=gas > 0
+    )
+    return result
+
+
+def energy_kwh_to_spend(
+    table: pd.DataFrame, *, energy: LCFSEnergyPricing, region: np.ndarray
+) -> pd.DataFrame:
+    """Price the kWh columns back to spend and drop them."""
+
+    result = table.copy()
+    gas_kwh = result[GAS_KWH].to_numpy(dtype=float)
+    result["electricity_consumption"] = kwh_to_spend(
+        result[ELECTRICITY_KWH].to_numpy(dtype=float),
+        frs_region=region,
+        fuel="electricity",
+        rates=energy.rates,
+    )
+    result["gas_consumption"] = kwh_to_spend(
+        gas_kwh,
+        frs_region=region,
+        fuel="gas",
+        rates=energy.rates,
+        connected=gas_kwh > 0,
+    )
+    return result.drop(columns=[ELECTRICITY_KWH, GAS_KWH])
+
+
+def rake_recipient_energy(
+    household_draws: pd.DataFrame,
+    *,
+    energy: LCFSEnergyPricing,
+    region: np.ndarray,
+    income: np.ndarray,
+    tenure: np.ndarray,
+    accommodation: np.ndarray,
+    weights: np.ndarray,
+    iterations: int,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Price the drawn energy spend to kWh, rake the four NEED margins, price back."""
+
+    in_kwh = energy_spend_to_kwh(household_draws, energy=energy, region=region)
+    raked, receipt = rake_energy_kwh(
+        in_kwh,
+        margins=energy.margins,
+        frs_region=region,
+        income=income,
+        weights=weights,
+        iterations=iterations,
+        tenure=tenure,
+        accommodation=accommodation,
+        use_region_margin=True,
+    )
+    receipt["unit"] = "kwh"
+    receipt["gas_connected_share"] = float(
+        np.dot(
+            raked[GAS_KWH].to_numpy(dtype=float) > 0, np.asarray(weights, dtype=float)
+        )
+        / max(float(np.sum(weights)), 1e-12)
+    )
+    return energy_kwh_to_spend(raked, energy=energy, region=region), receipt
+
+
+def _donor_energy_rake_iterations(stage: SourceStageSpec) -> int:
+    """The declared donor-side energy IPF (the first one on the stage)."""
+
+    for operation in stage.operations:
+        if operation.kind == "iterative_proportional_fit" and (
+            "electricity_consumption" in operation.parameters.get("columns", ())
+        ):
+            return int(operation.parameters.get("iterations", 1))
+    return 1
+
+
+def _recipient_energy_rake_iterations(stage: SourceStageSpec) -> int:
+    """The declared post-imputation energy IPF (the last one on the stage)."""
+
+    iterations = 50
+    for operation in stage.operations:
+        if operation.kind == "iterative_proportional_fit" and (
+            "electricity_consumption" in operation.parameters.get("columns", ())
+        ):
+            iterations = int(operation.parameters.get("iterations", iterations))
+    return iterations
 
 
 def support_clip_exempt(stage: SourceStageSpec) -> set[str]:
@@ -615,6 +787,8 @@ def clean_lcfs_consumption_table(
     lcfs_household: pd.DataFrame,
     *,
     uprating: Mapping[str, float] | None = None,
+    energy: LCFSEnergyPricing | None = None,
+    donor_rake_iterations: int = 1,
 ) -> pd.DataFrame:
     """Return the LCFS donor table with annualized consumption variables.
 
@@ -622,6 +796,10 @@ def clean_lcfs_consumption_table(
     2023-24 diary to the FRS 2024-25 base year (``uprate_donor_columns``);
     it is applied after annualisation and before the donor-side NEED rake, so
     the income bands and the support-clip ranges see base-year values.
+    ``energy`` (the declared ``price_energy_at_cap``) converts the diary's
+    energy spend to kWh at the FY2024-25 regional cap rates, rakes the income
+    margin to the NEED means and prices back; without it the energy columns
+    are the raw diary spend.
     """
 
     person = _lowercase(lcfs_person).rename(columns=PERSON_LCFS_RENAMES)
@@ -660,7 +838,18 @@ def clean_lcfs_consumption_table(
     household["household_weight"] = _numeric(household["household_weight"]) * 1_000
     if uprating:
         household = apply_donor_uprating(household, uprating)
-    household = rake_energy_to_need(household, weights=None, iterations=1)
+    if energy is not None:
+        region = household["region"].astype(str).to_numpy()
+        in_kwh = energy_spend_to_kwh(household, energy=energy, region=region)
+        raked, _receipt = rake_energy_kwh(
+            in_kwh,
+            margins=energy.margins,
+            frs_region=region,
+            income=household["household_gross_income"].to_numpy(dtype=float),
+            weights=None,
+            iterations=donor_rake_iterations,
+        )
+        household = energy_kwh_to_spend(raked, energy=energy, region=region)
     household["domestic_energy_consumption"] = (
         household["electricity_consumption"] + household["gas_consumption"]
     )
@@ -878,144 +1067,17 @@ def support_clip_to_donor(
 
 
 def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
+    """Donor support per clipped column; raked columns carry no bounds."""
+
     ranges: dict[str, tuple[float, float]] = {}
     for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
-        if column in {
-            "electricity_consumption",
-            "gas_consumption",
-            "domestic_energy_consumption",
-        }:
+        if column in UK_LCFS_RAKED_COLUMNS:
             continue
         values = pd.to_numeric(donor[column], errors="coerce")
         finite = values[np.isfinite(values)]
         if not finite.empty:
             ranges[column] = (float(finite.min()), float(finite.max()))
     return ranges
-
-
-def rake_energy_to_need(
-    household: pd.DataFrame,
-    *,
-    weights: Sequence[float] | None,
-    iterations: int = 50,
-    tenure: Sequence[str] | None = None,
-    accommodation: Sequence[str] | None = None,
-    region: Sequence[str] | None = None,
-) -> pd.DataFrame:
-    """Rake electricity/gas to the NEED margins.
-
-    The donor-side single-pass call rakes the income margin only (the
-    incumbent's training-side calibration). The post-imputation call passes
-    all four groupers and sweeps income -> tenure -> accommodation -> region
-    per iteration, the incumbent's order. Categories absent from the NEED
-    maps (CONVERTED_HOUSE/OTHER/UNKNOWN accommodation; Scotland and Northern
-    Ireland regions) are deliberately untouched by that margin.
-    """
-
-    frame = household.copy()
-    frame["_need_income_band"] = _income_band(frame["household_gross_income"])
-    margins = [MarginSpec("_need_income_band", _need_income_targets())]
-    scratch = ["_need_income_band"]
-    for name, values in (
-        ("tenure", tenure),
-        ("accommodation", accommodation),
-        ("region", region),
-    ):
-        if values is None:
-            continue
-        column = f"_need_{name}"
-        frame[column] = np.asarray(values).astype(str)
-        targets, _ = _need_categorical_targets(name)
-        margins.append(MarginSpec(column, targets))
-        scratch.append(column)
-    weight_column = None
-    if weights is not None:
-        frame["_weight"] = np.asarray(weights, dtype=float)
-        weight_column = "_weight"
-        scratch.append("_weight")
-    raked = iterative_proportional_fit(
-        frame,
-        columns=("electricity_consumption", "gas_consumption"),
-        margins=tuple(margins),
-        iterations=iterations,
-        weight_column=weight_column,
-    )
-    return raked.drop(columns=[c for c in scratch if c in raked])
-
-
-def _load_need_energy_targets() -> dict:
-    from importlib.resources import files
-
-    return json.loads(
-        files("microcosm.build.uk")
-        .joinpath("need_energy_targets.json")
-        .read_text(encoding="utf-8")
-    )
-
-
-def _need_income_bands() -> tuple[tuple[float, float, str, float, float], ...]:
-    bands = []
-    for band in _load_need_energy_targets()["income_bands"]:
-        upper = np.inf if band["upper"] is None else float(band["upper"])
-        bands.append(
-            (
-                float(band["lower"]),
-                upper,
-                str(band["label"]),
-                float(band["gas_kwh"]),
-                float(band["electricity_kwh"]),
-            )
-        )
-    return tuple(bands)
-
-
-def _need_income_targets() -> dict:
-    rates = _load_need_energy_targets()["source"]["ofgem_q2_2026"]
-    gas_rate = float(rates["gas_gbp_per_kwh"])
-    electricity_rate = float(rates["electricity_gbp_per_kwh"])
-    return {
-        name: {
-            "gas_consumption": gas * gas_rate,
-            "electricity_consumption": electricity * electricity_rate,
-        }
-        for _, _, name, gas, electricity in _need_income_bands()
-    }
-
-
-def _need_categorical_targets(margin: str) -> tuple[dict, dict]:
-    """(category -> column -> spend target, frs-value -> need-key map).
-
-    Built from the committed NEED resource so the raking and the
-    aggregate_admin anchors share one source of values.
-    """
-
-    need = _load_need_energy_targets()
-    rates = need["source"]["ofgem_q2_2026"]
-    gas_rate = float(rates["gas_gbp_per_kwh"])
-    electricity_rate = float(rates["electricity_gbp_per_kwh"])
-    block = need[margin]
-    if margin == "region":
-        mapping = {name: name for name in block["gas_kwh"]}
-    else:
-        mapping = dict(block["map"])
-    targets = {
-        frs_value: {
-            "gas_consumption": block["gas_kwh"][need_key] * gas_rate,
-            "electricity_consumption": (
-                block["electricity_kwh"][need_key] * electricity_rate
-            ),
-        }
-        for frs_value, need_key in mapping.items()
-    }
-    return targets, mapping
-
-
-def _income_band(values: pd.Series) -> pd.Series:
-    income = _numeric(values)
-    result = pd.Series(index=income.index, dtype=object)
-    for lo, hi, name, _, _ in _need_income_bands():
-        result[(income >= lo) & (income < hi)] = name
-    return result
 
 
 def _encode_consumption_predictors(

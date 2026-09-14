@@ -123,7 +123,7 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "need_energy_targets.json",
+      "path": "ofgem_region_crosswalk.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

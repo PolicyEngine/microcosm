@@ -363,76 +363,124 @@ def test_fuel_flag_evidence_records_both_sides_at_design_weights() -> None:
     }
 
 
-def test_post_imputation_rake_fits_all_four_need_margins() -> None:
+def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
     # Regression for the licensed-build finding: the manifest declares a
     # four-margin post-imputation rake (income -> tenure -> accommodation ->
-    # region), but only the income margin was implemented — the incumbent
-    # hits the tenure/accommodation cells to ~1% and ours was off ±30%.
-    from microcosm.build.uk_runtime.lcfs_consumption import rake_energy_to_need
+    # region); the incumbent hits the tenure/accommodation cells to ~1 %.
+    # Since microcosm#890 the margins are the vendored NEED mean kWh and the
+    # rake runs in kWh at the FY2024-25 cap rates, geography by geography.
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.energy_pricing import (
+        ENGLAND_AND_WALES_GEOGRAPHY_ID,
+        SCOTLAND_GEOGRAPHY_ID,
+        kwh_to_spend,
+        spend_to_kwh,
+    )
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        lcfs_energy_pricing,
+        rake_recipient_energy,
+    )
 
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    energy = lcfs_energy_pricing(stage)
+    assert energy is not None
     rng = np.random.default_rng(3)
-    n = 400
+    n = 600
     household = pd.DataFrame(
         {
-            "household_gross_income": rng.uniform(5e3, 2e5, n),
-            "electricity_consumption": rng.uniform(200.0, 2000.0, n),
-            "gas_consumption": rng.uniform(100.0, 1500.0, n),
+            "electricity_consumption": rng.uniform(400.0, 2000.0, n),
+            "gas_consumption": np.where(
+                rng.random(n) < 0.15, 0.0, rng.uniform(300.0, 1500.0, n)
+            ),
         }
     )
+    income = rng.uniform(5e3, 2e5, n)
     tenure = rng.choice(["OWNED_OUTRIGHT", "RENT_PRIVATELY", "RENT_FROM_COUNCIL"], n)
     accommodation = rng.choice(["HOUSE_DETACHED", "FLAT", "OTHER"], n)
-    region = rng.choice(["LONDON", "WALES", "SCOTLAND"], n)
+    region = rng.choice(["LONDON", "WALES", "SCOTLAND", "NORTHERN_IRELAND"], n)
     weights = rng.uniform(0.5, 2.0, n)
 
-    raked = rake_energy_to_need(
+    raked, receipt = rake_recipient_energy(
         household,
-        weights=weights,
+        energy=energy,
+        region=region,
+        income=income,
         tenure=tenure,
         accommodation=accommodation,
-        region=region,
+        weights=weights,
+        iterations=50,
     )
 
-    import json as json_module
-    from importlib.resources import files
+    def wmean_kwh(spend, fuel, mask):
+        kwh = spend_to_kwh(
+            spend[mask],
+            frs_region=region[mask],
+            fuel=fuel,
+            rates=energy.rates,
+            connected=None if fuel == "electricity" else spend[mask] > 0,
+        )
+        return float((kwh * weights[mask]).sum() / weights[mask].sum())
 
-    need = json_module.loads(
-        files("microcosm.build.uk")
-        .joinpath("need_energy_targets.json")
-        .read_text(encoding="utf-8")
-    )
-    rates = need["source"]["ofgem_q2_2026"]
-
-    def wmean(values, mask):
-        return float((values[mask] * weights[mask]).sum() / weights[mask].sum())
-
-    # Region is the last margin swept, so it fits essentially exactly; the
-    # earlier margins settle within a tight band over 50 iterations.
     elec = raked["electricity_consumption"].to_numpy(dtype=float)
-    target = (
-        need["region"]["electricity_kwh"]["LONDON"] * (rates["electricity_gbp_per_kwh"])
-    )
-    assert abs(wmean(elec, region == "LONDON") - target) / target < 1e-6
     gas = raked["gas_consumption"].to_numpy(dtype=float)
-    tenure_target = need["tenure"]["gas_kwh"]["owner"] * rates["gas_gbp_per_kwh"]
-    assert (
-        abs(wmean(gas, tenure == "OWNED_OUTRIGHT") - tenure_target) / tenure_target
-        < 0.02
+    margins = energy.margins.targets
+    # Region is the last margin swept, so it fits essentially exactly.
+    london = region == "LONDON"
+    target = margins["region"][(ENGLAND_AND_WALES_GEOGRAPHY_ID, "london")][
+        "electricity_kwh"
+    ]
+    assert abs(wmean_kwh(elec, "electricity", london) - target) / target < 1e-6
+    scotland = region == "SCOTLAND"
+    target = margins["region"][(SCOTLAND_GEOGRAPHY_ID, "all_dwellings")]["gas_kwh"]
+    assert abs(wmean_kwh(gas, "gas", scotland) - target) / target < 1e-6
+    # Earlier margins settle within a band over 50 iterations (the synthetic
+    # categories are mutually inconsistent, so the sweep compromises), per
+    # geography: E&W owner-occupiers against the E&W row, not Scotland's.
+    ew_owner = np.isin(region, ["LONDON", "WALES"]) & (tenure == "OWNED_OUTRIGHT")
+    target = margins["tenure"][(ENGLAND_AND_WALES_GEOGRAPHY_ID, "owner_occupied")][
+        "gas_kwh"
+    ]
+    assert abs(wmean_kwh(gas, "gas", ew_owner) - target) / target < 0.15
+    # With tenure as the last margin swept it fits to the sweep's own tolerance.
+    from microcosm.build.uk_runtime.energy_pricing import GAS_KWH, rake_energy_kwh
+    from microcosm.build.uk_runtime.lcfs_consumption import energy_spend_to_kwh
+
+    two_margin, _ = rake_energy_kwh(
+        energy_spend_to_kwh(household, energy=energy, region=region),
+        margins=energy.margins,
+        frs_region=region,
+        income=income,
+        weights=weights,
+        iterations=50,
+        tenure=tenure,
     )
-    accomm_target = (
-        need["accommodation"]["electricity_kwh"]["detached"]
-        * rates["electricity_gbp_per_kwh"]
+    gas_two = two_margin[GAS_KWH].to_numpy(dtype=float)
+    fitted = float(
+        (gas_two[ew_owner] * weights[ew_owner]).sum() / weights[ew_owner].sum()
     )
-    assert (
-        abs(wmean(elec, accommodation == "HOUSE_DETACHED") - accomm_target)
-        / accomm_target
-        < 0.02
+    assert abs(fitted - target) / target < 1e-6
+    # Northern Ireland has no NEED table: untouched by every margin, so its
+    # spend round-trips through the GB-average pricing unchanged.
+    ni = region == "NORTHERN_IRELAND"
+    before_kwh = spend_to_kwh(
+        household["electricity_consumption"].to_numpy()[ni],
+        frs_region=region[ni],
+        fuel="electricity",
+        rates=energy.rates,
     )
-    # Unmapped categories stay outside their margin: SCOTLAND has no NEED
-    # region row and OTHER has no accommodation row, but both still move via
-    # the other margins — assert they were not pinned to any region target.
-    scotland_mean = wmean(elec, region == "SCOTLAND")
-    for kwh in need["region"]["electricity_kwh"].values():
-        assert abs(scotland_mean - kwh * rates["electricity_gbp_per_kwh"]) > 1.0
+    np.testing.assert_allclose(
+        elec[ni],
+        kwh_to_spend(
+            before_kwh, frs_region=region[ni], fuel="electricity", rates=energy.rates
+        ),
+    )
+    # Gas-connected households keep the standing charge; the others stay at zero.
+    zero_gas = household["gas_consumption"].to_numpy() == 0.0
+    assert (gas[zero_gas] == 0.0).all()
+    assert (gas[~zero_gas] > 0.0).all()
+    assert receipt["unit"] == "kwh"
+    assert receipt["margins"] == ["income", "tenure", "accommodation", "region"]
+    assert 0.8 < receipt["gas_connected_share"] < 0.9
 
 
 def _synthetic_lcfs_donor(
@@ -595,7 +643,11 @@ def test_stage_transform_imposes_bus_incidence_and_rakes_fares_to_the_facts() ->
         "has_fuel_consumption",
         "bus_use_incidence",
         "bus_fare_rake",
-    } <= (set(evidence))
+        "energy_pricing",
+        "energy_rake",
+    } <= set(evidence)
+    assert evidence["energy_pricing"]["vat_rate"] == 0.05
+    assert evidence["energy_rake"]["unit"] == "kwh"
     assert "donor_uprating" not in evidence
     # Fuel: no vehicles means no fuel; the fuel-buyer share came from VEH1103.
     no_vehicle = household["num_vehicles"].to_numpy() == 0

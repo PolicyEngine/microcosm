@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "Hand-authored crosswalk from the twelve FRS regions to the Ofgem charge-restriction regions whose cap levels price the imputed energy columns (microcosm#890 F). Each FRS region maps to the charge-restriction region covering most of its households (dominant area); Northern Ireland lies outside the GB cap and takes the GB average level. The Ofgem ids are the vendored ofgem_price_cap_facts.json geography ids.",
+  "source": {
+    "citation": "Ofgem energy price cap: charge-restriction regions (fourteen GB distribution areas) against ONS regions; dominant-area mapping reviewed for microcosm#890.",
+    "urls": [
+      "https://www.ofgem.gov.uk/energy-price-cap"
+    ]
+  },
+  "gb_geography_id": "K03000001",
+  "mapping": {
+    "NORTH_EAST": "ofgem:northern",
+    "NORTH_WEST": "ofgem:north_west",
+    "YORKSHIRE": "ofgem:yorkshire",
+    "EAST_MIDLANDS": "ofgem:east_midlands",
+    "WEST_MIDLANDS": "ofgem:midlands",
+    "EAST_OF_ENGLAND": "ofgem:eastern",
+    "LONDON": "ofgem:london",
+    "SOUTH_EAST": "ofgem:south_east",
+    "SOUTH_WEST": "ofgem:southern_western",
+    "WALES": "ofgem:south_wales",
+    "SCOTLAND": "ofgem:southern_scotland",
+    "NORTHERN_IRELAND": "K03000001"
+  },
+  "notes": [
+    "North Wales and Merseyside (ofgem:n_wales_and_mersey) and Northern Scotland (ofgem:northern_scotland) are not a dominant area for any FRS region and are unused.",
+    "Standing charges differ materially between areas (2024-Q3 electricity GBP 234 in Yorkshire against GBP 142 in London), which is why pricing is regional rather than the GB average."
+  ]
+}

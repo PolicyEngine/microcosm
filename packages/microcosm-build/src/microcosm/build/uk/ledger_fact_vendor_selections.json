@@ -160,9 +160,10 @@
     {
       "resource": "need_energy_facts.json",
       "purpose": "DESNZ NEED 2023 mean and median household gas and electricity consumption (kWh) by property type, tenure, household income band and region for England and Wales, and by property type, tenure and income band for Scotland. Consumed by the LCFS energy rake in place of need_energy_targets.json.",
-      "consumers": [],
+      "consumers": [
+        "uk_runtime.energy_pricing"
+      ],
       "planned_consumers": [
-        "lcfs_consumption",
         "uk_aggregate_admin"
       ],
       "selections": [
@@ -183,9 +184,10 @@
     {
       "resource": "ofgem_price_cap_facts.json",
       "purpose": "Ofgem default tariff cap levels at nil and benchmark consumption for the four charge restriction periods of FY2024-25 (2024-Q2 to 2025-Q1), direct debit, single-rate electricity and gas, every charge restriction region excluding VAT plus the GB average including and excluding VAT; and the benchmark consumption each level is set at. Consumed by the LCFS energy pricing (unit rate = (benchmark - nil) / benchmark consumption; nil = annual standing charge; VAT added from the engine parameter).",
-      "consumers": [],
+      "consumers": [
+        "uk_runtime.energy_pricing"
+      ],
       "planned_consumers": [
-        "lcfs_consumption",
         "uk_aggregate_admin"
       ],
       "selections": [
