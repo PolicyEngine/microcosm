@@ -240,3 +240,51 @@ blocker-reality / supersession-hunt; else supersession-hunt / value-and-cost)
   / 18-nowhere. **#768 is the counterexample that must stay in the report**: both its
   symbols are on main and it is still not closeable, because its contribution is a
   deletion.
+
+## Run 5 (2026-09-14, 23:46 UTC) — the completing run
+
+Run 4's judgment fan-out died on Fable limits (journal `wf_75516d4b-2df`:
+162 agents started, **90 failed**, only 18 returned). Run 5 runs on Opus 5,
+salvages runs 3-4 evidence, and finishes.
+
+### Baseline re-verified from scratch (not assumed)
+
+- `git fetch origin` (exit 0): `origin/main` is **still `18271b28d`**
+  (merge of #904, 2026-09-14 15:53 +0200). Unchanged since run 3.
+- `gh pr list --state open --limit 200` (exit 0): **50** open PRs, the exact
+  same numbers as runs 3 and 4.
+- Head-drift check: **zero drift**. All 50 `refs/heads/triage/<n>` still equal
+  GitHub's `headRefOid`, including #928's `a4e7e131c`. So runs 3-4's git-level
+  numbers were measured against the same 50 heads and the same main.
+- `gh pr view` (25 fields) refreshed for all 50: **50/50 exit 0**.
+- `gh pr checks` for all 50: 28 exit 0, 18 exit 1, 4 exit 8.
+- `mech.py` re-run at run 5 against `origin/main=18271b28d`:
+  **`cherry_equiv=0` for all 50** — confirmed a third time. Not one open PR has
+  a patch-equivalent commit on main.
+
+### What moved since run 4 (19:09 → 23:46 UTC)
+
+- **#928 CLEAN → UNSTABLE** (its CI started after run 4 sampled it).
+- Nothing else changed state. No head moved, no PR opened or closed.
+
+### Refreshed state, run 5
+
+- Mergeability: **26 CONFLICTING/DIRTY · 17 MERGEABLE/CLEAN · 7 MERGEABLE/UNSTABLE**.
+- CI era on the current heads: **23 CURRENT · 16 LEGACY · 11 NONE**.
+- `ci-ok` on the 23 CURRENT-era heads: 12 SUCCESS, 4 FAILURE (#739 #896 #901 #914),
+  7 with no `ci-ok` conclusion yet (#893 #923 #927 #928 still running).
+
+### Salvaged, not re-derived
+
+- Run 3's 30 evidence verdicts (`wf_collected.json`) + run 4's 18
+  (recovered from the workflow journal) = 48 prior opinions, treated as
+  prior opinion and re-verified, never as fact.
+- `owner_spotchecks.md` (18 KB) and `owner_notes_run4.md` (9 KB) — findings the
+  lane owner verified personally with commands.
+- `fold_check.json` (byte identity of every 893-overlapping file),
+  `symsweep_r4.json` (per-PR added-symbol presence on main and in #893).
+
+### Next
+
+- Rebuild packets from run-5 data, run the full judgment fan-out on Opus,
+  adversarially verify, adjudicate, write `out-pr-triage.md` + `pr-dispositions.json`.
