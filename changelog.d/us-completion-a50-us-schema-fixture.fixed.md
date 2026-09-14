@@ -1,1 +1,1 @@
-Construct the completion custody tests' ordinary parent with the shared full US schema while preserving the original invented data and private child-support frames.
+Construct the completion custody tests' ordinary parent with the shared full US schema and explicit invented group sentinel columns for valid graph Slices, while preserving the original invented data and private child-support frames.

@@ -76,14 +76,27 @@ def _full_us_parent_frame(original):
     people = tables[US_SCHEMA.person_entity]
     household_membership = US_SCHEMA.membership_column("household")
     household_ids = original.table("household")[US_SCHEMA.entity_id_column("household")]
+    sentinels = {}
     for group in missing:
         membership = US_SCHEMA.membership_column(group)
         assert membership not in people.columns
         # One invented group per existing cloned household, without assigning
         # actual SPM/family/marital roles or changing any original identifier.
         people[membership] = original.person[household_membership].copy(deep=True)
+        # The actual child graph requires a nonempty Slice for each entity.
+        # These invented cells carry no survey or policy meaning.
+        sentinel_column = f"invented_{group}_custody_sentinel"
+        assert all(
+            sentinel_column not in table.columns for table in tables_before.values()
+        )
+        sentinels[group] = pd.Series(
+            1, index=household_ids.index, dtype="int64", name=sentinel_column
+        )
         tables[group] = pd.DataFrame(
-            {US_SCHEMA.entity_id_column(group): household_ids.copy(deep=True)}
+            {
+                US_SCHEMA.entity_id_column(group): household_ids.copy(deep=True),
+                sentinel_column: sentinels[group].copy(deep=True),
+            }
         )
     full = Frame(
         tables,
@@ -114,7 +127,13 @@ def _full_us_parent_frame(original):
     ]
     for group in missing:
         id_column = US_SCHEMA.entity_id_column(group)
-        assert list(full.table(group).columns) == [id_column]
+        sentinel = sentinels[group]
+        assert sentinel.dtype == "int64" and sentinel.eq(1).all()
+        assert list(full.table(group).columns) == [id_column, sentinel.name]
+        for table in (tables[group], full.table(group)):
+            pd.testing.assert_series_equal(
+                table[sentinel.name], sentinel, check_exact=True
+            )
         pd.testing.assert_series_equal(
             full.table(group)[id_column],
             household_ids.rename(id_column),
