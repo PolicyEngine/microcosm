@@ -128,3 +128,57 @@ only; no tracked file is edited; commits land on the local ref
 - Finish the fan-out (28/50 evidence in at 19:40; verify + adjudicate to follow).
 - Reconcile every agent verdict against `scratchpad/owner_spotchecks.md`.
 - Write `out-pr-triage.md` and `pr-dispositions.json`.
+
+## Run 4 (2026-09-14, evening) — the completing run
+
+### Baseline re-verified, not re-assumed
+
+- `git fetch origin` (exit 0): `origin/main` is **still `18271b28d`** (merge of
+  #904, 2026-09-14 15:53 +0200). Main did **not** move between run 3 and run 4,
+  so every run-3 mechanical number measured against `18271b28d` is still live.
+- Open-PR set re-listed: **50**, identical numbers to run 3.
+- Head drift check: 49 of 50 heads unchanged; **only #928 moved**
+  (`9edfb2707` → `a4e7e131c`). Refetched. All 50 `refs/heads/triage/<n>` now
+  equal `headRefOid` exactly (verified programmatically, zero mismatches).
+
+### Refreshed for run 4 (`scratchpad/r4/`)
+
+- `gh pr view --json` (25 fields incl. body, commits, comments, reviews,
+  closingIssuesReferences, statusCheckRollup, files) for all 50 — 50/50 exit 0.
+- `gh pr checks` for all 50 (28 exit 0, 19 exit 1, 3 exit 8 — non-zero is
+  gh's "not all green / no checks", captured as evidence not error).
+- `mech.py` re-run against `origin/main=18271b28d`: merge-base, ahead/behind,
+  net file set, `--name-status`, overlap with #893's **641-file** set,
+  `git cherry`, per-added-file presence on main (raw or populace→microcosm
+  rename), populace-path count. **`cherry_equiv=0` for all 50** — not one open
+  PR has a patch-equivalent commit on main.
+- `meta.json`: author, draft, base, dates, ages, size, mergeable/mergeState,
+  reviewDecision, comment counts, linked issues.
+- `checks_summary.json`: CI era per PR — 11 NONE (no checks on the head at all),
+  10 LEGACY (only the retired 4-check `test/wheels` quartet, stale green),
+  29 CURRENT.
+- Merged corpus refreshed: 449 merged PRs, 310 since 2026-07-01; latest merged
+  numbers 904/909/910/911/912/913/917/919.
+
+### Base-branch facts established this run
+
+- Six PRs do not target `main`: the QBI chain **#534→#532, #535→#534,
+  #536→#535, #537→#535, #538→#536**, and **#901→#893**.
+- **#339's base `medicaid-chip-take-up` is the head branch of PR #334, which
+  MERGED 2026-07-09.** The branch was never deleted, so #339 reports
+  MERGEABLE/CLEAN against a base that left the repo's history two months ago.
+  That green is meaningless.
+- All six non-main base branches still exist on origin.
+
+### Salvaged from run 3 (not re-derived)
+
+- 30 of 50 evidence-agent verdicts (`wf_collected.json`); 20 missing:
+  734 749 822 824 853 873 888 893 896 901 906 914 916 918 921 923 924 926 927 928.
+- `owner_spotchecks.md` (18 KB of owner-verified findings) and the byte-level
+  fold check `fold_check.json` / `symsweep.json`.
+
+### Next
+
+- Build run-4 packets, run the judgment fan-out for all 50 (fresh evidence for
+  the missing 20, re-verification for the 30), adversarial verify, adjudicate.
+- Write `out-pr-triage.md` + `pr-dispositions.json`.
