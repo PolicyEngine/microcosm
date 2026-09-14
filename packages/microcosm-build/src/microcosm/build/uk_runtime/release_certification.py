@@ -1,24 +1,8 @@
-"""UK release-cut certification: the national battery's runner and composer.
+"""Historical UK split-lane certification verification and shared evidence helpers.
 
-The June national driver retired with microcosm#757 and took the only
-executor of the 16 declared national preflight/terminal gates with it.
-This module is their executable home (issue #757 item B5): a scoped
-``GateBatteryRun`` over ``UK_NATIONAL_GATE_SCOPE`` evaluated against the
-calibrated candidate, plus the **multi-part release certification** the
-2026-08-25 audit (issue comment 5413502559) specified — the spine build's
-battery report, the calibration seam's battery report, and the release-cut
-battery report must union to the full declared gate-entry set with no gap
-and no overlap beyond ``UK_SHARED_GATE_IDS``, each part signed by its
-producer, with the phase and digest checks moving from per-report to
-per-certification. A candidate's shippability verdict comes only from the
-certification, never from a single scoped report.
-
-Evidence adaptation only, never verdict re-implementation: every gate in
-the release-cut battery runs the same ``UK_GATE_REGISTRY`` binding the June
-runner used; this module reconstructs the evidence the retired runner drew
-from live stage objects out of the artifacts the split pipeline persists
-(the spine build sidecar, the seam's diagnostics and build record, the
-per-run licensed input-mass reference).
+Current builds use full_certification: one graph carries the full gate roster.
+The old independent national battery is retired; signed historical receipts
+remain verifiable without introducing a second current build path.
 """
 
 from __future__ import annotations
@@ -37,8 +21,6 @@ from typing import Any
 
 from microcosm.build.country_spec import GatesManifest, load_country_spec
 from microcosm.build.gate_battery import (
-    BlockingMode,
-    EvidenceContext,
     GateBatteryRun,
     gate_signing_key_env,
 )
@@ -51,8 +33,6 @@ from microcosm.build.uk_runtime.calibration_run import (
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
     UK_SPINE_GATE_SCOPE,
-    finalize_uk_scoped_gate_report,
-    uk_aggregate_admin_totals,
     uk_scoped_gate_manifest,
 )
 
@@ -63,7 +43,6 @@ __all__ = [
     "UKReleaseCertificationError",
     "compose_uk_release_certification",
     "rehydrate_uk_fit_weight_records",
-    "run_uk_release_cut_battery",
     "uk_national_gate_manifest",
     "uk_release_cut_scope_exclusions",
     "uk_release_parity_evidence",
@@ -247,78 +226,6 @@ def uk_release_parity_evidence(
         },
         target_relative_errors=target_relative_errors,
     )
-
-
-def run_uk_release_cut_battery(
-    frame: Any,
-    *,
-    report_path: Path,
-    release_id: str,
-    diagnostics_sha256: str,
-    coverage_engine: Any,
-    build_stage_names: Sequence[str],
-    ledger_registries: Mapping[object, Any],
-    local_ledger_registries: Mapping[object, Any],
-    parity_evidence: Any,
-    fit_weight_records: tuple[FitWeightRecord, ...] | None,
-    input_mass_reference: Mapping[str, Any],
-    exclusions_evaluated_on: date,
-    gate_registry: Mapping[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Run the 18 national gates over the calibrated candidate, signed.
-
-    Always release-candidate strict: this battery exists to certify a cut,
-    so an ``evidence_absent`` gap blocks rather than being tolerated, and a
-    blocked phase persists its report and raises before any composition.
-    The local-surface compile gates run here too: the certification is the
-    declared owner of the whole national scope, so the caller supplies both
-    the national and the local compiled registries.
-    """
-
-    battery = GateBatteryRun(
-        uk_national_gate_manifest(),
-        release_id=release_id,
-        report_path=report_path,
-        release_candidate=True,
-        registry=UK_GATE_REGISTRY if gate_registry is None else gate_registry,
-        release_evidence={"calibration_diagnostics_sha256": diagnostics_sha256},
-    )
-    preflight_artifacts: dict[str, Any] = {
-        "coverage_engine": coverage_engine,
-        "build_stage_names": tuple(str(name) for name in build_stage_names),
-        "uk_ledger_compiled_registries": dict(ledger_registries),
-        "uk_ledger_compiled_local_registries": dict(local_ledger_registries),
-    }
-    battery.run_phase("preflight", EvidenceContext(artifacts=preflight_artifacts))
-    battery.enforce("preflight", mode=BlockingMode.BLOCKS_ARTIFACT)
-
-    admin_totals, admin_receipt = uk_aggregate_admin_totals(
-        frame, uk_national_gate_manifest()
-    )
-    terminal_artifacts: dict[str, Any] = {
-        "coverage_engine": coverage_engine,
-        "rules_engine": coverage_engine,
-        "build_stage_names": tuple(str(name) for name in build_stage_names),
-        "exclusions_evaluated_on": exclusions_evaluated_on,
-        "parity_evidence": parity_evidence,
-        "aggregate_admin": admin_totals,
-        "input_mass_reference": input_mass_reference,
-    }
-    if fit_weight_records is not None:
-        terminal_artifacts["fit_weight_records"] = fit_weight_records
-    battery.run_phase(
-        "terminal", EvidenceContext(frame=frame, artifacts=terminal_artifacts)
-    )
-    battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
-    payload = battery.report_payload()
-    finalize_uk_scoped_gate_report(
-        payload,
-        posture=UK_RELEASE_CUT_POSTURE,
-        scope_exclusions=uk_release_cut_scope_exclusions(),
-        aggregate_admin_measurement=admin_receipt,
-    )
-    _write_json(report_path, payload)
-    return payload
 
 
 # ---------------------------------------------------------------------------

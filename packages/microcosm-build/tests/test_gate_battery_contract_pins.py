@@ -400,25 +400,15 @@ class TestDenseLineMirrors:
         )
 
     def test_scoped_digests_mirror_the_live_local_manifest(self) -> None:
-        import importlib.util
-        from pathlib import Path
-
         from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
         from microcosm.build.uk_runtime.release_certification import _scoped_digests
 
-        spec = importlib.util.spec_from_file_location(
-            "build_uk_rowwise_candidate",
-            Path(__file__).resolve().parents[3]
-            / "tools"
-            / "build_uk_rowwise_candidate.py",
-        )
-        builder = importlib.util.module_from_spec(spec)
-        assert spec.loader is not None
-        spec.loader.exec_module(builder)
+        # Archived dense certificates retain their original policy identity;
+        # the retired candidate command no longer owns executable gate policy.
         live = _scoped_digests(
             frozenset(UK_LOCAL_GATE_SCOPE),
             phases=tuple(data_contract._UK_DENSE_GATE_PHASES),
-            policy_suffix=str(builder._LOCAL_GATE_POLICY_SUFFIX),
+            policy_suffix="local_candidate",
         )
         for field, mirrored in data_contract._UK_DENSE_GATE_DIGESTS.items():
             assert mirrored == live[field], field

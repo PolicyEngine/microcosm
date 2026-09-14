@@ -1,291 +1,65 @@
+"""The former national CLI is an alias for the canonical full build."""
+
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from microcosm.build.uk_runtime.ledger_targets import UKLedgerTargetCompilation
-from microcosm.calibrate import TargetRegistry, TargetSpec
-
 
 def _load_driver_module():
-    root = Path(__file__).resolve().parents[3]
-    path = root / "tools" / "calibrate_uk_national_dataset.py"
+    path = (
+        Path(__file__).resolve().parents[3] / "tools/calibrate_uk_national_dataset.py"
+    )
     spec = importlib.util.spec_from_file_location("calibrate_uk_national_dataset", path)
     module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
 
 
-def _registry():
-    return TargetRegistry(
-        [
-            TargetSpec(
-                name="dwp.uc.households",
-                entity="benunit",
-                measure="dwp/uc/households",
-                value=1.0,
-                source="test",
-                metadata={"contract_target_id": "dwp.uc.households"},
-            )
-        ],
-        country="uk",
-    )
-
-
-def _args(tmp_path: Path) -> list[str]:
-    paths = {
-        "input": tmp_path / "input.h5",
-        "ledger": tmp_path / "ledger",
-        "staging": tmp_path / "staging.h5",
-        "diagnostics": tmp_path / "diagnostics.json",
-        "record": tmp_path / "record.json",
-    }
-    paths["ledger"].mkdir(exist_ok=True)
-    for key, path in paths.items():
-        if key != "ledger":
-            path.write_bytes(key.encode())
-    return [
-        "--input-h5",
-        str(paths["input"]),
-        "--input-sha256",
-        "a" * 64,
-        "--ledger-facts",
-        str(paths["ledger"]),
-        "--ledger-facts-sha256",
-        "b" * 64,
-        "--ledger-manifest-sha256",
-        "c" * 64,
-        "--staging-h5",
-        str(paths["staging"]),
-        "--diagnostics-json",
-        str(paths["diagnostics"]),
-        "--build-record-json",
-        str(paths["record"]),
-        "--release-id",
-        "dev-calibration",
-    ]
-
-
-def test_driver_refuses_release_candidate_outright(tmp_path: Path):
-    # The seam's scoped battery covers 6 of the declared entries and must
-    # never sign a shippability claim (the #757 release-cut audit); the
-    # release verdict belongs to the release-cut certification producer.
-    driver = _load_driver_module()
-    with pytest.raises(SystemExit):
-        driver._parse_args(_args(tmp_path) + ["--release-candidate"])
-    # The refusal is unconditional — an otherwise doctrine-clean invocation
-    # is refused too, not just ones with override flags.
-    with pytest.raises(SystemExit):
-        driver._parse_args(_args(tmp_path) + ["--release-candidate", "--epochs", "128"])
-
-
-def test_driver_refuses_canonical_release_ids(tmp_path: Path):
-    # Canonical release ids name shippable candidates; the seam runs under
-    # staging or dev ids only, and redirects canonical ids to the
-    # release-cut producer.
-    driver = _load_driver_module()
-    base = _args(tmp_path)
-    release_index = base.index("--release-id")
-    for canonical in (
-        "populace-uk-2024-frs-k100",
-        "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
-    ):
-        args = [*base]
-        args[release_index + 1] = canonical
-        with pytest.raises(SystemExit):
-            driver._parse_args(args)
-
-
-def test_driver_accepts_operator_exclusions_on_staging_posture(tmp_path: Path):
-    driver = _load_driver_module()
-    exclusions = tmp_path / "operator.json"
-    exclusions.write_text("{}", encoding="utf-8")
-    parsed = driver._parse_args(
-        _args(tmp_path) + ["--measure-exclusions", str(exclusions)]
-    )
-    assert parsed.measure_exclusions == exclusions
-
-
-def test_driver_refuses_bad_sha_and_path_alias(tmp_path: Path):
-    driver = _load_driver_module()
-    base_args = _args(tmp_path)
-    with pytest.raises(SystemExit):
-        driver._parse_args([*base_args[:3], "not-a-sha", *base_args[4:]])
-
-    args = _args(tmp_path)
-    staging_index = args.index("--staging-h5") + 1
-    args[staging_index] = args[args.index("--input-h5") + 1]
-    with pytest.raises(SystemExit, match="distinct paths"):
-        driver._parse_args(args)
-
-
-def test_driver_refuses_feed_outside_the_committed_pin_without_override():
-    driver = _load_driver_module()
-
-    with pytest.raises(SystemExit, match="committed UK national feed pin"):
-        driver._check_committed_ledger_feed_pin(
-            "b" * 64,
-            manifest_sha256=driver.load_uk_national_chronicle_feed().manifest_sha256,
-            allow_unpinned_feed=False,
-        )
-
-    driver._check_committed_ledger_feed_pin(
-        "b" * 64,
-        manifest_sha256="c" * 64,
-        allow_unpinned_feed=True,
-    )
-
-
-@pytest.mark.parametrize("allow_unpinned_feed", [False, True])
-def test_driver_threads_registry_exclusions_resolver_and_overrides(
-    monkeypatch, tmp_path, capsys, allow_unpinned_feed
-):
-    driver = _load_driver_module()
+@pytest.mark.parametrize("selector", [[], ["--target-geographies", "country"]])
+def test_old_command_delegates_without_inventing_a_target_filter(monkeypatch, selector):
     calls = []
-    registry = _registry()
-    pruned_registry = TargetRegistry([], country="uk")
-    pin = driver.load_uk_national_chronicle_feed()
-    artifact = SimpleNamespace(
-        path=tmp_path / "ledger",
-        facts=({"fact": 1},),
-        facts_sha256="b" * 64 if allow_unpinned_feed else pin.facts_sha256,
-        manifest_sha256="c" * 64 if allow_unpinned_feed else pin.manifest_sha256,
+    monkeypatch.setitem(
+        sys.modules,
+        "microcosm.build.uk_runtime.full_build_cli",
+        SimpleNamespace(main=lambda args: calls.append(args) or 7),
     )
-    artifact.path.mkdir()
-    (artifact.path / "consumer_facts.jsonl").write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(
-        driver, "load_ledger_consumer_artifact", lambda *a, **k: artifact
-    )
-    monkeypatch.setattr(
-        driver,
-        "compile_uk_target_registry",
-        lambda facts, target_period: UKLedgerTargetCompilation(registry, ()),
-    )
-    monkeypatch.setattr(
-        driver,
-        "load_uk_frs_release",
-        lambda: SimpleNamespace(calibration_year=2025),
-    )
-    monkeypatch.setattr(
-        driver, "load_uk_calibration_measure_exclusions", lambda path: ()
-    )
-    monkeypatch.setattr(
-        driver,
-        "apply_uk_calibration_measure_exclusions",
-        lambda reg, exclusions: (pruned_registry, {"excluded": "reviewed"}),
-    )
-
-    class FakeResolver:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-    monkeypatch.setattr(driver, "UKMeasureResolver", FakeResolver)
-
-    def fake_run(**kwargs):
-        calls.append(kwargs)
-        return SimpleNamespace(
-            staging_sha256="1" * 64,
-            diagnostics_sha256="2" * 64,
-            terminal_gate_sha256="3" * 64,
-            build_record_sha256="4" * 64,
-            build_record={"gate_summary": {"uk_target_fit": "passed"}},
-        )
-
-    monkeypatch.setattr(driver, "run_uk_calibration", fake_run)
-
-    argv = _args(tmp_path)
-    # The driver verifies the input pin before the resolver reads the H5, so
-    # the threading test must pin the fixture file's real digest.
-    argv[argv.index("--input-sha256") + 1] = driver._sha256_file(
-        Path(argv[argv.index("--input-h5") + 1])
-    )
-    extra = ["--allow-unpinned-feed"] if allow_unpinned_feed else []
-    result = driver.main(argv + ["--epochs", "128", *extra])
-
-    assert result == 0
-    call = calls[0]
-    assert call["register_registry"] is pruned_registry
-    assert call["band_edge_registry"] is registry
-    assert call["calibration_year"] == 2025
-    assert call["exclusion_receipt"] == {"excluded": "reviewed"}
-    assert call["doctrine"].epochs == 128
-    assert call["doctrine_overrides"] == {"epochs": {"default": 256, "effective": 128}}
-    assert isinstance(call["measure_resolver"], FakeResolver)
-    assert (
-        call["measure_resolver"].kwargs["simulation_source"] == call["paths"].input_h5
-    )
-    assert call["source_pins"]["ledger_facts"] == {
-        "sha256": artifact.facts_sha256,
-        "size_bytes": 2,
-    }
-    assert call["run_config_extra"] == {
-        "calibration_year": 2025,
-        "allow_unpinned_feed": allow_unpinned_feed,
-        "national_chronicle_feed_pin": pin.to_dict(),
-    }
-    assert "uk_target_fit" in capsys.readouterr().out
+    arguments = [
+        "--input-h5",
+        "bound-spine.h5",
+        "--ladder",
+        "ladder.zip",
+        "--ledger-facts",
+        "facts.jsonl",
+        *selector,
+    ]
+    assert _load_driver_module().main(arguments) == 7
+    assert calls == [arguments]
 
 
-def test_driver_refuses_the_national_release_id(tmp_path: Path):
-    # The constant national id names a shippable release (ruling 2026-08-27);
-    # the seam runs under staging or dev ids only.
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--staging-h5",
+        "--diagnostics-json",
+        "--build-record-json",
+        "--terminal-gate-json",
+        "--allow-unpinned-feed",
+    ],
+)
+def test_retired_national_output_controls_explain_migration(flag):
+    with pytest.raises(
+        SystemExit, match="independent UK national calibration driver is retired"
+    ):
+        _load_driver_module().main([flag, "old-output"])
+
+
+def test_old_command_cannot_invoke_a_second_solver():
     driver = _load_driver_module()
-    base = _args(tmp_path)
-    args = [*base]
-    args[base.index("--release-id") + 1] = "microcosm-uk-2024-25-national"
-    with pytest.raises(SystemExit):
-        driver._parse_args(args)
-
-
-def test_driver_accepts_the_merged_national_feed_without_local_promotion():
-    from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
-
-    driver = _load_driver_module()
-    driver._check_committed_ledger_feed_pin(
-        "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
-        manifest_sha256="a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
-        allow_unpinned_feed=False,
-    )
-    # The local pin is its own reviewed declaration: microcosm#887 moved it to
-    # the same chronicle ec7169b artifact after a separate local re-pin review,
-    # so the national acceptance above neither reads nor promotes it.
-    assert _LEDGER_FACT_FEED_PIN["facts_sha256"] == (
-        "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5"
-    )
-    assert _LEDGER_FACT_FEED_PIN["manifest_sha256"] == (
-        "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f"
-    )
-    assert _LEDGER_FACT_FEED_PIN["source_commit"] == "ec7169b"
-
-
-@pytest.mark.parametrize("manifest_sha256", ["c" * 64, None])
-def test_driver_refuses_unpinned_national_manifest(manifest_sha256):
-    driver = _load_driver_module()
-    with pytest.raises(SystemExit, match="manifest"):
-        driver._check_committed_ledger_feed_pin(
-            "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
-            manifest_sha256=manifest_sha256,
-            allow_unpinned_feed=False,
-        )
-
-
-def test_driver_checks_loaded_manifest_before_compiling_targets(monkeypatch, tmp_path):
-    driver = _load_driver_module()
-    pin = driver.load_uk_national_chronicle_feed()
-    artifact = SimpleNamespace(facts_sha256=pin.facts_sha256, manifest_sha256="c" * 64)
-    monkeypatch.setattr(
-        driver, "load_ledger_consumer_artifact", lambda *a, **k: artifact
-    )
-    monkeypatch.setattr(
-        driver,
-        "compile_uk_target_registry",
-        lambda *a, **k: pytest.fail(
-            "Targets must not compile from an unpinned artifact"
-        ),
-    )
-    with pytest.raises(SystemExit, match="manifest"):
-        driver.main(_args(tmp_path))
+    assert not hasattr(driver, "run_uk_calibration")
+    assert not hasattr(driver, "UKMeasureResolver")
+    assert not hasattr(driver, "_parse_args")

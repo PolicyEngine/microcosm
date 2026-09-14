@@ -1,9 +1,7 @@
-"""Dated CGT measurements retain base-year rows through both calibration paths."""
+"""Dated CGT measurements retain base-year rows for every full-build target scope."""
 
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -12,8 +10,6 @@ import pytest
 
 from microcosm.build.uk_runtime import measure_simulation
 from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
-from microcosm.build.uk_runtime.national_calibration import UKNationalCalibrationStage
-from microcosm.build.uk_runtime.national_doctrine import UKNationalSolveDoctrine
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     uk_national_frame,
@@ -119,9 +115,9 @@ def _assert_export(original, fitted, path):
     )
 
 
-@pytest.mark.parametrize("route", ["national", "local"])
+@pytest.mark.parametrize("target_scope", ["country", "all"])
 def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
-    monkeypatch, tmp_path, route
+    monkeypatch, tmp_path, target_scope
 ):
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
@@ -139,65 +135,52 @@ def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
             **kwargs, microsimulation_factory=lambda **_: simulation
         )
 
-    registry = _registry()
-    if route == "national":
-        resolver = resolver_factory(
-            frame=original, scratch_dir=tmp_path / "engine", year=2025
-        )
-        stage = UKNationalCalibrationStage(
-            registry,
-            band_edge_registry=registry,
-            period=2025,
-            doctrine=UKNationalSolveDoctrine(epochs=2),
-            measure_resolver=resolver,
-        )
-        fitted = stage(original)
-        receipt = stage.manifest["measure_resolution"]["provider"][
-            "cgt_period_contract"
-        ]
-    else:
-        from microcosm.build.uk_runtime.local_rowwise import (
-            build_uk_rowwise_local_matrix,
-            solve_uk_rowwise_weights_under_doctrine,
-        )
+    from microcosm.build.uk_runtime import full_measure
+    from microcosm.build.uk_runtime.local_rowwise import (
+        build_uk_rowwise_local_matrix,
+        empty_uk_local_problem,
+        solve_uk_rowwise_weights_under_doctrine,
+    )
 
-        spec = importlib.util.spec_from_file_location(
-            "cgt_rowwise_builder",
-            Path(__file__).resolve().parents[3] / "tools/build_uk_rowwise_candidate.py",
+    registry = _registry()
+    monkeypatch.setattr(
+        full_measure,
+        "compute_household_metrics",
+        lambda _sim, _area, *, period, household_ids: pd.DataFrame(
+            {"households": np.ones(len(household_ids))}, index=household_ids
+        ),
+    )
+    prepared, restore, national, metrics, engine_receipt = (
+        full_measure.resolve_uk_full_measures(
+            original,
+            registry,
+            period=2025,
+            scratch_dir=tmp_path / "engine",
+            resolver_factory=resolver_factory,
+            band_edge_registry=registry,
+            local_grains=() if target_scope == "country" else ("constituency",),
         )
-        builder = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(builder)
-        monkeypatch.setattr(
-            builder,
-            "compute_household_metrics",
-            lambda _sim, _area, *, period, household_ids: pd.DataFrame(
-                {"households": np.ones(len(household_ids))}, index=household_ids
-            ),
-        )
-        prepared, restore, national, metrics, engine_receipt = (
-            builder._resolve_candidate_engine_surface(
-                original,
-                registry,
-                period=2025,
-                scratch_dir=tmp_path / "engine",
-                resolver_factory=resolver_factory,
-            )
-        )
-        receipt = engine_receipt["cgt_period_contract"]
+    )
+    receipt = engine_receipt["cgt_period_contract"]
+    if target_scope == "country":
+        local = empty_uk_local_problem((0, 1, 2))
+        bound_families = ["national/hmrc_cgt"]
+    else:
         local = build_uk_rowwise_local_matrix(
             metrics["constituency"],
             pd.Series(["A", "A", "A"], index=[0, 1, 2]),
             pd.DataFrame({"code": ["A"], "households": [20.0]}),
         )
-        result = solve_uk_rowwise_weights_under_doctrine(
-            prepared,
-            local,
-            bound_families=["census_households/constituency", "national/hmrc_cgt"],
-            national_rows=national,
-            restore=restore,
-            epochs=2,
-        )
-        fitted = result.frame
+        bound_families = ["census_households/constituency", "national/hmrc_cgt"]
+    result = solve_uk_rowwise_weights_under_doctrine(
+        prepared,
+        local,
+        bound_families=bound_families,
+        national_rows=national,
+        restore=restore,
+        epochs=2,
+    )
+    fitted = result.frame
     assert all(spec.period == 2025 for spec in registry.specs)
     assert receipt["input_period"] == "2024"
     assert receipt["calibration_period"] == 2025
@@ -215,7 +198,7 @@ def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
         ("capital_gains", 2024),
         ("capital_gains_tax", 2024),
     }
-    _assert_export(original, fitted, tmp_path / f"{route}.h5")
+    _assert_export(original, fitted, tmp_path / f"{target_scope}.h5")
 
 
 @pytest.mark.requires_uk

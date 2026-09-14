@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import importlib.util
 import json
 import sys
 from importlib import metadata
@@ -44,16 +43,11 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.frame import Frame, WeightKind, engine_tables
 
-_TOOL_PATH = Path(__file__).resolve().parents[3] / "tools" / "build_uk_frs_spine.py"
-
 
 def _load_tool():
-    spec = importlib.util.spec_from_file_location("build_uk_frs_spine", _TOOL_PATH)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    from microcosm.build.uk_runtime import spine_build
+
+    return spine_build
 
 
 def _write_tab(root: Path, table: str, rows: list[dict[str, object]]) -> None:
@@ -1222,18 +1216,17 @@ def _patch_spi_spine_driver_runtime(
             self.last_result = SimpleNamespace(replay_report={"report_kind": "fake"})
             return result
 
-    def _write_fake_replay(report, path):
-        output = Path(path)
-        output.write_text(
-            json.dumps({"report_kind": "fake_spine_replay"}) + "\n",
-            encoding="utf-8",
-        )
-        return output
+        def checkpoint_metadata(self):
+            if self.last_result is None:
+                raise RuntimeError("Stage evidence requires completed computation.")
+            return {
+                "evidence": {"stage": self.stage.stage},
+                "replay_payload": {"report_kind": "fake_spine_replay"},
+            }
 
     monkeypatch.setattr(tool, "UKFRSHMRCSpineLeavesStageTransform", _FakeStageTransform)
     monkeypatch.setattr(tool, "UKSPISupportChannelStageTransform", _FakeStageTransform)
     monkeypatch.setattr(tool, "UKSPIIncomeSpineStageTransform", _FakeStageTransform)
-    monkeypatch.setattr(tool, "write_hmrc_replay_report", _write_fake_replay)
     return spi_tab, hmrc_ods
 
 

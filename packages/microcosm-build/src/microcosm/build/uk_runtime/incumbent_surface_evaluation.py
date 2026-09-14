@@ -22,6 +22,7 @@ import json
 import re
 from collections.abc import Iterable, Mapping
 from importlib import resources as importlib_resources
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -556,3 +557,37 @@ def render_markdown(
             + (" …" if len(sub) > 12 else "")
         )
     return "\n".join(lines) + "\n"
+
+
+def candidate_evaluation_manifest(payload: dict) -> dict:
+    """Expose the same measured-byte identity from a canonical candidate package.
+
+    Archived candidate manifests retain their existing schema for historical
+    comparisons. Current full builds use immutable candidate.json; the separate
+    completion marker may subsequently bind a certification readiness artifact.
+    """
+    if payload.get("kind") != "uk_full_build_package":
+        if "outputs" not in payload or "identity" not in payload:
+            raise ValueError(
+                "Evaluation requires an immutable candidate package, not a completion marker."
+            )
+        return payload
+    if payload.get("schema_version") != 1 or payload.get("readback_passed") is not True:
+        raise ValueError("Evaluation requires a checked UK full-build export.")
+    outputs = {}
+    for role, record in (
+        ("dataset", payload["dataset"]),
+        ("calibration_diagnostics", payload["evidence_files"]["diagnostics"]),
+    ):
+        filename = record.get("filename")
+        if not isinstance(filename, str) or Path(filename).name != filename:
+            raise ValueError("Candidate package filenames must be simple components.")
+        outputs[role] = {
+            "path": filename,
+            "sha256": record["sha256"],
+            "bytes": record["size_bytes"],
+        }
+    return {
+        "outputs": outputs,
+        "identity": {"targets": payload["build_bindings"]["targets"]},
+    }

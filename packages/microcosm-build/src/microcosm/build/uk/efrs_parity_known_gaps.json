@@ -632,12 +632,13 @@
  },
  "description": "Canonical UK enhanced-FRS parity debt ledger. A reference-populated loader input appears in known_gaps when neither the sha-pinned certified Microcosm UK candidate nor a pinned post-candidate source-family restoration carries non-default signal on the reviewed minimum share of effective population mass.",
  "exclusion_policy": {
-  "reason": "not yet ported from enhanced FRS pipeline — pending review",
+  "reason": "not yet ported from enhanced FRS pipeline \u2014 pending review",
   "tracking_note": "Tracked in UK_COVERAGE_PROGRESS.md; assign this column to a named source-family restoration milestone before promoting it to required."
  },
  "known_gaps": {},
  "restored_required_columns": {
   "charitable_investment_gifts": {
+   "current_producer_stage": "hmrc_spi_income_spine",
    "effective_signal_mass_share": 0.00028055329260683216,
    "minimum_nondefault_mass_share": 1e-06,
    "positive_mass_signal_rows": 294,
@@ -647,6 +648,7 @@
    "support_channel": "spi"
   },
   "gift_aid": {
+   "current_producer_stage": "hmrc_spi_income_spine",
    "effective_signal_mass_share": 0.01330315665904484,
    "minimum_nondefault_mass_share": 1e-06,
    "positive_mass_signal_rows": 12894,

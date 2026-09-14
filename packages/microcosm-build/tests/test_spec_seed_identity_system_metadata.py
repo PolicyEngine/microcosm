@@ -129,11 +129,18 @@ def audited(diagnostic, monkeypatch):
     return hooks[0], refusals
 
 
-@pytest.mark.parametrize("path", ("/proc/self/maps", "/proc/321/maps"))
-def test_only_logical_and_resolved_own_maps_are_admitted(audited, path):
+@pytest.mark.parametrize("path", ("/proc/self/maps", "/proc/321/maps", "/proc/stat"))
+def test_reviewed_maps_and_cpu_tuple_metadata_are_admitted(audited, path):
     hook, refusals = audited
     hook("open", (path, "r", os.O_RDONLY))
     assert refusals == []
+
+
+def test_cpu_tuple_metadata_is_read_only(diagnostic, audited):
+    hook, refusals = audited
+    with pytest.raises(diagnostic.RefusalError, match="^WRITE_SCOPE$"):
+        hook("open", ("/proc/stat", "w", os.O_WRONLY))
+    assert refusals == ["WRITE_SCOPE"]
 
 
 @pytest.mark.parametrize(

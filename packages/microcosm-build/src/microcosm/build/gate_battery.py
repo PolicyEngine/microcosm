@@ -80,6 +80,8 @@ __all__ = [
     "GatePhaseReport",
     "GateStatus",
     "evaluate_phase",
+    "gate_phase_report_from_payload",
+    "gate_phase_report_payload",
     "gate_signing_key_env",
 ]
 
@@ -541,6 +543,83 @@ class GatePhaseReport:
 # ---------------------------------------------------------------------------
 
 
+def gate_phase_report_payload(
+    report: GatePhaseReport, *, gates: GatesManifest
+) -> dict[str, object]:
+    """Portable numerical verdicts, bound to their exact declared policy.
+
+    Release IDs, signing keys and filesystem paths belong to materialization,
+    and therefore do not enter a cached evaluation artifact.
+    """
+    expected = tuple(entry for entry in gates.gates if entry.phase == report.phase)
+    if (
+        report.phase not in gates.phases
+        or tuple(o.entry for o in report.outcomes) != expected
+    ):
+        raise ValueError("Gate phase outcomes do not match the declared manifest.")
+    return {
+        "schema_version": 1,
+        "gates_manifest_sha256": _canonical_sha256(_gates_manifest_payload(gates)),
+        "phase": report.phase,
+        "outcomes": [
+            {
+                "id": outcome.entry.id,
+                **outcome.to_payload(),
+                "result_name": outcome.result.name
+                if outcome.result is not None
+                else None,
+                "evidence_sha256": outcome.evidence_sha256,
+            }
+            for outcome in report.outcomes
+        ],
+    }
+
+
+def gate_phase_report_from_payload(
+    payload: Mapping[str, object], *, gates: GatesManifest
+) -> GatePhaseReport:
+    """Validate stored outcomes against current entries before report replay."""
+    if payload.get("schema_version") != 1:
+        raise ValueError("Unsupported gate phase report schema.")
+    if payload.get("gates_manifest_sha256") != _canonical_sha256(
+        _gates_manifest_payload(gates)
+    ):
+        raise ValueError("Stored gate report has a different gate manifest.")
+    phase = payload.get("phase")
+    if phase not in gates.phases:
+        raise ValueError("Stored gate report has an undeclared phase.")
+    entries = tuple(entry for entry in gates.gates if entry.phase == phase)
+    rows = payload.get("outcomes")
+    if not isinstance(rows, list) or len(rows) != len(entries):
+        raise ValueError("Stored gate report outcomes do not cover its phase.")
+    outcomes = []
+    for entry, row in zip(entries, rows, strict=True):
+        if not isinstance(row, Mapping) or any(
+            row.get(key) != getattr(entry, key)
+            for key in ("id", "gate", "phase", "criticality")
+        ):
+            raise ValueError("Stored gate report outcomes differ from its manifest.")
+        status = GateStatus(row["status"])
+        result = None
+        if status in (GateStatus.PASSED, GateStatus.FAILED):
+            result = GateResult(
+                name=str(row["result_name"]),
+                passed=status is GateStatus.PASSED,
+                failures=tuple(row["failures"]),
+                details=dict(row["details"]),
+            )
+        outcomes.append(
+            GateOutcome(
+                entry=entry,
+                status=status,
+                result=result,
+                reason=row.get("reason"),
+                evidence_sha256=row.get("evidence_sha256"),
+            )
+        )
+    return GatePhaseReport(phase=str(phase), outcomes=tuple(outcomes))
+
+
 def _evaluate_gate(name: str, evaluator: Callable[[], GateResult]) -> GateResult:
     """Run one evaluator, failing closed on any misbehaviour.
 
@@ -886,9 +965,24 @@ class GateBatteryRun:
                 f"(declared order {list(self._gates.phases)})."
             )
         report = evaluate_phase(self._gates, phase, context, registry=self._registry)
-        self._phase_reports[phase] = report
-        self._write_report()
+        self.record_phase(report)
         return report
+
+    def record_phase(self, report: GatePhaseReport) -> None:
+        """Persist an evaluated or verified cached phase before enforcement.
+
+        This is the same ordered write-then-block boundary as ``run_phase``;
+        it never reruns evaluators and never accepts a different gate policy.
+        """
+        if self._blocked_at_phase is not None:
+            raise ValueError(f"battery blocked at phase {self._blocked_at_phase!r}.")
+        if report.phase != self._next_phase():
+            raise ValueError(
+                f"phase {report.phase!r} is out of order; expected {self._next_phase()!r}."
+            )
+        gate_phase_report_payload(report, gates=self._gates)
+        self._phase_reports[report.phase] = report
+        self._write_report()
 
     def enforce(self, phase: str, *, mode: BlockingMode) -> bool:
         """Apply the phase's blocking verdict, strictly after persistence.

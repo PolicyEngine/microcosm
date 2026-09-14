@@ -6,26 +6,21 @@ import base64
 import hashlib
 import importlib.util
 import json
-from datetime import date
 from pathlib import Path
 
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.gate_battery import gate_signing_key_env
-from microcosm.build.uk_runtime import release_certification
 from microcosm.build.uk_runtime.calibration_run import (
-    UK_CALIBRATION_GATE_SCOPE,
     UK_LOCAL_GATE_SCOPE,
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
-    UK_SPINE_GATE_SCOPE,
 )
 from microcosm.build.uk_runtime.release_certification import (
     UKReleaseCertificationError,
     compose_uk_release_certification,
     rehydrate_uk_fit_weight_records,
-    run_uk_release_cut_battery,
     uk_release_cut_scope_exclusions,
 )
 
@@ -289,39 +284,3 @@ def test_compose_refuses_absent_signing_key(green_certification_inputs, monkeypa
     monkeypatch.delenv(gate_signing_key_env("uk"))
     with pytest.raises(UKReleaseCertificationError, match="must be set"):
         compose_uk_release_certification(**green_certification_inputs)
-
-
-def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr(
-        release_certification,
-        "uk_aggregate_admin_totals",
-        lambda frame, manifest: ({}, {"stub": True}),
-    )
-    report_path = tmp_path / "release_cut_gates.json"
-    payload = run_uk_release_cut_battery(
-        object(),
-        report_path=report_path,
-        release_id="uk-757-first-certified-cut",
-        diagnostics_sha256="a" * 64,
-        coverage_engine=object(),
-        build_stage_names=("frs_spine",),
-        ledger_registries={2023: object(), 2025: object()},
-        local_ledger_registries={2025: object()},
-        parity_evidence=object(),
-        fit_weight_records=None,
-        input_mass_reference={},
-        exclusions_evaluated_on=date(2026, 8, 27),
-        gate_registry=_stub_registry(),
-    )
-    assert payload["posture"] == "release_cut"
-    assert payload["release_candidate"] is True
-    assert payload["shippable"] is True
-    assert set(payload["gates"]) == set(UK_NATIONAL_GATE_SCOPE)
-    assert payload["blocked_at_phase"] is None
-    assert set(payload["scope_exclusions"]) == (
-        set(UK_SPINE_GATE_SCOPE)
-        | set(UK_CALIBRATION_GATE_SCOPE)
-        | set(UK_LOCAL_GATE_SCOPE)
-    ) - set(UK_NATIONAL_GATE_SCOPE)
-    on_disk = json.loads(report_path.read_text(encoding="utf-8"))
-    assert on_disk["attestation"]["signature"] == payload["attestation"]["signature"]

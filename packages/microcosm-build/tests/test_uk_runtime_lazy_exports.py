@@ -18,9 +18,9 @@ _UNRELATED_MODULES = (
     f"{_PACKAGE}.national_calibration",
     f"{_PACKAGE}.firm_generation",
 )
-# SHA256 of compact JSON for all 456 ordered entries from ec3b306f3f9742ff...
+# SHA256 of compact JSON for the 451 maintained entries from 6fd47f7eea2180a5.
 # This includes the existing duplicate ladder_vs_chronicle_household_dispersion.
-_ORDERED_ALL_SHA256 = "282baaa8103b6a68ec916669dc9b96909d6faf0a9beecdbb8359df12f128f66c"
+_ORDERED_ALL_SHA256 = "e2e4cf937553af48ffef1f169d700108a710dd2f0db55131741dec58419bcd8c"
 
 
 def _unrelated_modules() -> set[str]:
@@ -46,7 +46,13 @@ def test_normal_package_and_pure_helper_imports_do_not_load_unrelated_modules():
 
 
 def test_public_from_import_returns_and_caches_the_real_defining_object():
-    from microcosm.build.uk_runtime import assign_household_geography
+    from microcosm.build.uk_runtime import (
+        FRS_HMRC_PAY_COLUMN,
+        assign_household_geography,
+    )
+    from microcosm.build.uk_runtime.frs_hmrc_source import (
+        FRS_HMRC_PAY_COLUMN as DIRECT_PAY_COLUMN,
+    )
     from microcosm.build.uk_runtime.rowwise_geography import (
         assign_household_geography as direct,
     )
@@ -56,6 +62,8 @@ def test_public_from_import_returns_and_caches_the_real_defining_object():
     assert package.assign_household_geography is direct
     assert vars(package)["assign_household_geography"] is direct
     assert package.assign_household_geography is assign_household_geography
+    assert FRS_HMRC_PAY_COLUMN is DIRECT_PAY_COLUMN
+    assert package.FRS_HMRC_PAY_COLUMN is DIRECT_PAY_COLUMN
 
 
 def test_direct_submodule_import_and_from_import_preserve_module_identity():
@@ -89,9 +97,32 @@ def test_discovery_preserves_the_frozen_ordered_export_contract_without_resoluti
 
     discovered = dir(package)
 
-    assert len(package.__all__) == 456
-    assert len(set(package.__all__)) == 455
+    assert len(package.__all__) == 451
+    assert len(set(package.__all__)) == 450
     assert package.__all__.count("ladder_vs_chronicle_household_dispersion") == 2
+    retired = {
+        "FRS_HMRC_RETAINED_LEAVES_STAGE_NAME",
+        "UKFRSHMRCRetainedLeavesResult",
+        "UKFRSHMRCRetainedLeavesStageTransform",
+        "UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE",
+        "retain_uk_frs_hmrc_leaves",
+    }
+    assert retired.isdisjoint(package.__all__)
+    assert retired.isdisjoint(package._EXPORTS)
+    assert set(package._EXPORTS) == set(package.__all__)
+    for name in (
+        "FRS_HMRC_INCPBEN_COLUMN",
+        "FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN",
+        "FRS_HMRC_PAY_COLUMN",
+        "FRS_HMRC_RETAINED_LEAF_COLUMNS",
+        "FRS_HMRC_SRP_REGULAR_CODE5_COLUMN",
+        "FRS_HMRC_UBISJA_COLUMN",
+    ):
+        assert package._EXPORTS[name] == (f"{_PACKAGE}.frs_hmrc_source", name)
+    assert all(
+        module != f"{_PACKAGE}.frs_hmrc_leaves"
+        for module, _ in package._EXPORTS.values()
+    )
     encoded = json.dumps(package.__all__, separators=(",", ":")).encode()
     assert hashlib.sha256(encoded).hexdigest() == _ORDERED_ALL_SHA256
     assert set(package.__all__).issubset(discovered)

@@ -4,6 +4,7 @@ import _csv
 import csv
 import hashlib
 import importlib.util
+import inspect
 import json
 import os
 import struct
@@ -11,6 +12,7 @@ import subprocess
 import sys
 import textwrap
 import traceback
+from contextlib import contextmanager
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -103,8 +105,8 @@ def _fixtures(
         "test_us_asec_person_income_source"
     ).invented_sources(tmp_path, monkeypatch, missing=False)
     if native_ids is not None:
-        _helper("test_us_asec_demographic_source")._repoint_published_households(
-            parent, attachment, monkeypatch, native_ids
+        _changed_parent(
+            parent, attachment, monkeypatch, {"source_household_id": native_ids}
         )
     if person_changes:
         _changed_parent(parent, attachment, monkeypatch, person_changes)
@@ -312,8 +314,11 @@ def test_merged_native_households_refuse_even_with_matching_per_row_coordinates(
 ):
     # The current-money parent already refuses this shape, before coverage
     # issuance. Keep that layering and also test the wrapper's own fence.
-    with pytest.raises(ValueError, match="SOURCE_CONTRACT_REFUSAL"):
+    with pytest.raises(ValueError, match="SOURCE_CONTRACT_REFUSAL") as error:
         _fixtures(tmp_path, monkeypatch, native_ids=[7, 8, 7, 7, 7, 7])
+    assert str(error.value.__context__) == (
+        "ASEC persons disagree on the source key within a household."
+    )
     person = pd.DataFrame(
         {
             "source_year": [2022, 2022],
@@ -901,14 +906,54 @@ def test_csv_binding_helper_bytes_bind_person_capsule(tmp_path, monkeypatch):
         issued.validate()
 
 
+@contextmanager
+def transient_csv_rebinding(target, aliases, moment):
+    """Attack real CSV aliases at the maintained reader's entry or call line."""
+    source, first = inspect.getsourcelines(target)
+    call_line = next(
+        first + i for i, line in enumerate(source) if "csv_reader(handle," in line
+    )
+    original, native, fired, calls = csv.reader, _csv.reader, [], []
+
+    def restore():
+        csv.reader, _csv.reader = original, native
+
+    def replacement(*args, **kwargs):
+        calls.append(True)
+        restore()
+        return original(*args, **kwargs)
+
+    def timing(frame, event, arg):
+        if frame.f_code is target.__code__:
+            trigger = (moment == "entry" and event == "call") or (
+                moment == "before_call"
+                and event == "line"
+                and frame.f_lineno == call_line
+            )
+            if trigger and not fired:
+                fired.append(True)
+                csv.reader = replacement
+                if aliases == "both":
+                    _csv.reader = replacement
+            if event == "return":
+                restore()
+        return timing
+
+    previous = sys.gettrace()
+    sys.settrace(timing)
+    try:
+        yield fired, calls
+    finally:
+        sys.settrace(previous)
+        restore()
+
+
 @pytest.mark.parametrize("aliases", ["csv", "both"])
 @pytest.mark.parametrize("moment", ["entry", "before_call"])
 @pytest.mark.parametrize("stage", ["literal", "header"])
 def test_transient_csv_rebinding_never_supplies_person_cells(
     tmp_path, monkeypatch, aliases, moment, stage
 ):
-    from test_us_asec_household_coverage_fields import transient_csv_rebinding
-
     source, paths = _fixtures(tmp_path, monkeypatch)
     control = _read(source, paths)
     coverage.verify_asec_coverage_parent(control, source)

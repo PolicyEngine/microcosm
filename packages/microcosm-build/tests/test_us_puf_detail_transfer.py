@@ -1020,7 +1020,15 @@ def test_context_strips_only_tax_unit_owned_names(cold):
     tables = {e: table.copy(deep=True) for e, table in context.tables.items()}
     tables["tax_unit"].drop(columns=detail.MASK, inplace=True)
     tables["person"][detail.MASK] = False
-    restored = graph_detail.context_frame(replace(context, tables=tables))
+    # Move the synthetic column's order metadata with its entity ownership.
+    column_order = dict(context.frame_column_order)
+    column_order["tax_unit"] = tuple(
+        column for column in column_order["tax_unit"] if column != detail.MASK
+    )
+    column_order["person"] = (*column_order["person"], detail.MASK)
+    restored = graph_detail.context_frame(
+        replace(context, tables=tables, frame_column_order=column_order)
+    )
     assert detail.MASK in restored.person and detail.MASK not in restored.table(
         "tax_unit"
     )

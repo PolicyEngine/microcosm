@@ -2464,6 +2464,8 @@ def test_strict_leaf_audit_reports_missing_us_extra(
 ) -> None:
     from microcosm.frame.adapters import policyengine_us as adapter_module
 
+    consumer_modes: list[bool] = []
+
     class _MissingMetadataIndex:
         # Mirrors PolicyEngineUSVariableMetadataIndex's keyword-only surface.
         # The audit path constructs it twice: puf_support._formula_owned_engine
@@ -2471,6 +2473,7 @@ def test_strict_leaf_audit_reports_missing_us_extra(
         # constructs it bare, and both must raise the absent-extra ImportError
         # rather than a signature TypeError.
         def __init__(self, *, include_consumers: bool = True) -> None:
+            consumer_modes.append(include_consumers)
             raise ImportError("policyengine-us is absent")
 
     monkeypatch.setattr(
@@ -2487,6 +2490,7 @@ def test_strict_leaf_audit_reports_missing_us_extra(
             {"employment_income"},
             require_known=True,
         )
+    assert consumer_modes == [False, True]
 
 
 def test_all_missing_donor_target_is_refused_without_zero_fill() -> None:

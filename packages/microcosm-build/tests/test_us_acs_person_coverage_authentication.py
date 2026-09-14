@@ -52,6 +52,9 @@ def _csv(rows, *, bom=False, ending="\n"):
 
 @pytest.fixture
 def invented(tmp_path, monkeypatch):
+    pytest.importorskip(
+        "microunit", exc_type=ModuleNotFoundError
+    )  # This fixture builds actual US tax units.
     monkeypatch.setattr(
         custody.shutil, "disk_usage", lambda _p: SimpleNamespace(free=64 * 1024**3)
     )

@@ -232,8 +232,26 @@ def load_uk_size_checkpoint(
     with the losses recomputed on the compiled system.
     """
     directory = Path(directory)
-    arrays_path = directory / SIZE_CHECKPOINT_ARRAYS_FILENAME
-    manifest_path = directory / SIZE_CHECKPOINT_MANIFEST_FILENAME
+    return load_uk_size_checkpoint_files(
+        directory / SIZE_CHECKPOINT_MANIFEST_FILENAME,
+        directory / SIZE_CHECKPOINT_ARRAYS_FILENAME,
+        frame=frame,
+        target_set=target_set,
+        identity=identity,
+    )
+
+
+def load_uk_size_checkpoint_files(
+    manifest_path: Path,
+    arrays_path: Path,
+    *,
+    frame: Frame,
+    target_set: TargetSet,
+    identity: Mapping[str, Any],
+) -> UKSizeCheckpointRestore:
+    """Read the same checkpoint from separately content-verified source paths."""
+    manifest_path, arrays_path = Path(manifest_path), Path(arrays_path)
+    directory = manifest_path.parent
     for required in (arrays_path, manifest_path):
         if not required.is_file():
             raise FileNotFoundError(f"size checkpoint file missing: {required}.")

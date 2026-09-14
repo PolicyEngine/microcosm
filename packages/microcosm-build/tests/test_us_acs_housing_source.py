@@ -431,6 +431,9 @@ class Fixture:
         return self.tmp_path / f"out-{self._output_index}-{label}"
 
     def produce(self, *, output_dir=None, serialnos=None, source_dir=None):
+        # The authenticated producer binds the optional unit-constructor source
+        # inventory even though this source-only test constructs no tax units.
+        pytest.importorskip("microunit", exc_type=ModuleNotFoundError)
         return source.produce_acs_housing_source(
             self.source_dir if source_dir is None else source_dir,
             snapshot_root=self.snapshot_root,
@@ -439,6 +442,9 @@ class Fixture:
         )
 
     def load(self, output_dir, *, serialnos=None, source_dir=None):
+        pytest.importorskip(
+            "microunit", exc_type=ModuleNotFoundError
+        )  # Same attested producer closure as produce.
         return source.load_acs_housing_source(
             self.source_dir if source_dir is None else source_dir,
             output_dir,

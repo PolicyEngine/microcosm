@@ -128,6 +128,67 @@ def test_real_solver_retains_zero_rows_and_returns_weights_only():
 
 
 @pytest.mark.parametrize(
+    "changed_option",
+    [
+        None,
+        ("gate_initialization_supplied", True),
+        ("budget_basis", "open_probability_mass"),
+        ("feasible_draw_pi_hi", 1.0),
+        ("budget_search", {}),
+    ],
+)
+def test_diagnostics_reconstruct_fixed_solver_options(changed_option):
+    value = context()
+    output = stage.SurveyAgeCalibrationKernel().run(value)
+    payload = output.artifacts["diagnostics"]
+    document = json.loads(payload)
+    fixed_options = {
+        "gate_initialization_supplied": False,
+        "budget_basis": "nonzero_count",
+        "feasible_draw_pi_hi": None,
+        "budget_search": None,
+    }
+    assert {name: document["options"][name] for name in fixed_options} == fixed_options
+    arguments = {
+        "counts_payload": value.artifacts["counts"].payload,
+        "bounds_payload": value.artifacts["bounds"].payload,
+        "weights": output.weights.values,
+        "registry": fixture.fixture_registry(),
+        "epochs": value.params["epochs"],
+        "learning_rate": value.params["learning_rate"],
+        "anchors": {
+            name: output.receipt[name]
+            for name in (
+                "budget_sha256",
+                "numeric_bounds_sha256",
+                "counts_sha256",
+                "accepted_weight_sha256",
+                "constraint_digest",
+                "weight_anchor",
+                "cap_enforcement",
+                "fixed_zero_rows",
+            )
+        },
+    }
+    # First validate the real output in every case, so mutation refusals cannot
+    # pass merely because the checker rejects all current solver diagnostics.
+    accepted_weights = output.weights.values.tobytes()
+    checked = diagnostic_check.validate_survey_calibration_diagnostics(
+        payload, **arguments
+    )
+    assert checked.pop("verification")["optimizer_rerun"] is False
+    assert canonical_json(checked) == payload
+    if changed_option is not None:
+        name, changed = changed_option
+        document["options"][name] = changed
+        with pytest.raises(ValueError, match="SURVEY_DIAGNOSTICS_RECOMPUTED_VALUES"):
+            diagnostic_check.validate_survey_calibration_diagnostics(
+                canonical_json(document), **arguments
+            )
+    assert output.weights.values.tobytes() == accepted_weights
+
+
+@pytest.mark.parametrize(
     "change",
     [
         {"protocol": "wrong"},
@@ -251,7 +312,5 @@ def test_survey_diagnostics_recompute_closed_solver_option_values(field, changed
     document = json.loads(raw)
     assert document["options"][field] != changed
     document["options"][field] = changed
-    with pytest.raises(
-        ValueError, match="^SURVEY_DIAGNOSTICS_RECOMPUTED_VALUES$"
-    ):
+    with pytest.raises(ValueError, match="^SURVEY_DIAGNOSTICS_RECOMPUTED_VALUES$"):
         _validated_diagnostics(value, output, canonical_json(document))

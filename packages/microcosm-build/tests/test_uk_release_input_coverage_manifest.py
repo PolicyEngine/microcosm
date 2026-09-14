@@ -89,6 +89,7 @@ def test_known_gap_register_records_post_candidate_restoration_separately() -> N
     assert gaps["exclusion_policy"]["tracking_note"].strip()
     for name, evidence in gaps["restored_required_columns"].items():
         assert evidence["stage"] == "hmrc_spi_income"
+        assert evidence["current_producer_stage"] == "hmrc_spi_income_spine"
         assert evidence["support_channel"] == "spi"
         assert (
             evidence["effective_signal_mass_share"]
@@ -137,52 +138,31 @@ def test_frozen_candidate_retains_its_original_engine_provenance() -> None:
 
 
 def test_hmrc_family_period_fields_come_from_the_bytes_their_hash_names() -> None:
-    # Adversarial-review finding (2026-08-20): the family block renders the
-    # #723 re-mapped period fields from the CANONICAL manifest while the
-    # frozen mirror keeps its June bytes; each field set must bind to the
-    # sha256 of the file it actually came from.
     import hashlib
 
-    manifest = _resource("release_input_coverage_manifest.json")
-    family = manifest["family_coverage"]["hmrc_spi_income"]
-
-    frozen_bytes = (
-        files(_UK_PACKAGE).joinpath("hmrc_income_source_stages.json").read_bytes()
-    )
+    family = _resource("release_input_coverage_manifest.json")["family_coverage"][
+        "hmrc_spi_income"
+    ]
     canonical_bytes = files(_UK_PACKAGE).joinpath("source_stages.json").read_bytes()
-    assert family["source_manifest_sha256"] == hashlib.sha256(frozen_bytes).hexdigest()
+    assert family["source_manifest"] == "source_stages.json"
     assert (
-        family["canonical_source_manifest_sha256"]
-        == hashlib.sha256(canonical_bytes).hexdigest()
+        family["source_manifest_sha256"] == hashlib.sha256(canonical_bytes).hexdigest()
     )
-
-    frozen_stage = json.loads(frozen_bytes)["stages"][0]
-    frozen_surface = next(
-        artifact
-        for artifact in frozen_stage["artifacts"]
-        if artifact.get("role") == "published_fact_surface"
-    )
-    canonical_stage = next(
+    stage = next(
         stage
         for stage in json.loads(canonical_bytes)["stages"]
-        if stage.get("stage") == "hmrc_spi_income"
+        if stage["stage"] == "hmrc_spi_income_spine"
     )
-    canonical_surface = next(
+    surface = next(
         artifact
-        for artifact in canonical_stage["artifacts"]
-        if artifact.get("role") == "published_fact_surface"
+        for artifact in stage["artifacts"]
+        if artifact["role"] == "published_fact_surface"
     )
-    # The re-mapped fields equal the canonical declaration; the frozen mirror
-    # still declares the June mapping (its bytes are pinned elsewhere).
     assert family["source_vintages"]["mapped_build_period"] == str(
-        canonical_surface["mapped_build_period"]
+        surface["mapped_build_period"]
     )
-    assert (
-        family["source_vintages"]["period_mapping"]
-        == canonical_surface["period_mapping"]
-    )
-    assert str(frozen_surface["mapped_build_period"]) == "2023"
-    assert frozen_surface["period_mapping"] == "tax_year_start"
+    assert family["source_vintages"]["period_mapping"] == surface["period_mapping"]
+    assert "canonical_source_manifest" not in family
 
 
 def test_promoted_manifest_requires_the_full_reference_surface() -> None:
@@ -221,7 +201,7 @@ def test_hmrc_stage_is_required_while_the_208_fact_replay_remains_fenced() -> No
 
     assert family["status"] == "required_at_build"
     assert family["restoration_status"] == "adjudicated_partial_replay"
-    assert family["source_manifest"] == "hmrc_income_source_stages.json"
+    assert family["source_manifest"] == "source_stages.json"
     assert len(family["source_manifest_sha256"]) == 64
     assert family["base_candidate_tier"] == "frs"
     assert family["source_vintages"] == {
@@ -231,8 +211,10 @@ def test_hmrc_stage_is_required_while_the_208_fact_replay_remains_fenced() -> No
         "period_mapping": "latest_published_tax_year",
     }
     assert family["spi_prior_national_household_mass_share"] == 0.5
-    assert family["canonical_source_manifest"] == "source_stages.json"
-    assert len(family["canonical_source_manifest_sha256"]) == 64
+    assert family["required_predecessor_stages"] == [
+        "frs_hmrc_spine_leaves",
+        "spi_support_channel",
+    ]
     assert family["required_mass_change_reason"] == (
         "Allocate 50% of certified UK national household prior mass to the "
         "rebuilt 2022-23 SPI support channel; total national mass is conserved."
@@ -329,18 +311,26 @@ def test_manifest_generation_rejects_candidate_tier_drift() -> None:
         generator.build_manifest(reference=reference, known_gaps_payload=gaps)
 
 
-def test_hmrc_family_rejects_source_stage_tier_mismatch(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
+def test_hmrc_family_rejects_canonical_source_contract_drift(
+    monkeypatch, tmp_path
 ) -> None:
     generator = _load_generator()
-    source_stages = _resource("hmrc_income_source_stages.json")
-    source_stages["stages"][0]["base_candidate"]["tier"] = "cps-transfer"
-    drifted = tmp_path / "hmrc_income_source_stages.json"
+    source_stages = _resource("source_stages.json")
+    stage = next(
+        stage
+        for stage in source_stages["stages"]
+        if stage["stage"] == "spi_support_channel"
+    )
+    operation = next(
+        operation
+        for operation in stage["operations"]
+        if operation["kind"] == "allocate_zero_weight_prior_mass"
+    )
+    operation["share"] = 0.1
+    drifted = tmp_path / "source_stages.json"
     drifted.write_text(json.dumps(source_stages), encoding="utf-8")
-    monkeypatch.setattr(generator, "HMRC_SOURCE_STAGES_PATH", drifted)
-
-    with pytest.raises(ValueError, match="disagrees with the certified candidate"):
+    monkeypatch.setattr(generator, "SOURCE_STAGES_PATH", drifted)
+    with pytest.raises(ValueError, match="prior.mass_share"):
         generator._hmrc_family_coverage_contract(candidate_source={"tier": "frs"})
 
 

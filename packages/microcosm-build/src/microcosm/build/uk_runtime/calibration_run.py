@@ -1,4 +1,4 @@
-"""Production UK national calibration seam orchestration."""
+"""UK shared gate scopes, provenance and bound-spine validation helpers."""
 
 from __future__ import annotations
 
@@ -9,55 +9,25 @@ import hmac
 import json
 import os
 import platform
-import time
-import uuid
 from collections.abc import Mapping
-from dataclasses import dataclass
-from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 
 from microcosm.build.country_spec import GatesManifest, load_country_spec
 from microcosm.build.gate_battery import (
-    BlockingMode,
-    EvidenceContext,
-    GateBatteryRun,
-    gate_signing_key_env,
-)
-from microcosm.build.gate_battery import (
     _canonical_json_bytes as gate_battery_canonical_json_bytes,
 )
-from microcosm.build.logbook import canonical_json_bytes
-from microcosm.build.logbook_adoption import (
-    AttemptState,
-    append_phase,
-    apply_error_verdict,
-    error_receipt_path,
-    git_code_pin,
-    local_artifact_reference,
-    record_terminal_attempt,
-    resolve_predecessor,
-    role_pins_digest,
-    write_error_receipt,
-)
-from microcosm.build.target_materialization import assert_calibration_input_finite
-from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
-from microcosm.build.uk_runtime.diagnostics import (
-    uk_target_geography_levels,
-    write_uk_calibration_diagnostics,
+from microcosm.build.gate_battery import (
+    gate_signing_key_env,
 )
 from microcosm.build.uk_runtime.etb_services import (
     UK_NHS_SPENDING_COMPONENT_COLUMNS,
 )
-from microcosm.build.uk_runtime.national_calibration import UKNationalCalibrationStage
 from microcosm.build.uk_runtime.national_frame import (
-    load_uk_national_frame,
     uk_household_weight_kind,
-    write_uk_national_frame,
 )
 from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame
@@ -66,28 +36,6 @@ _REPOSITORY = Path(__file__).resolve().parents[6]
 # The FRS line's spine, staging, imputation and calibration stages share one
 # hash chain (logbook/README.md): the dataset token names the base data, not
 # the build mechanism, so calibration derives the ratified `uk/frs` scope.
-_PIPELINE = "uk-frs-calibration"
-
-
-@dataclass(frozen=True)
-class UKCalibrationRunPaths:
-    input_h5: Path
-    staging_h5: Path
-    diagnostics_json: Path
-    build_record_json: Path
-    terminal_gate_json: Path
-
-
-@dataclass(frozen=True)
-class UKCalibrationRunResult:
-    frame: Frame
-    diagnostics_sha256: str
-    staging_sha256: str
-    build_record_sha256: str
-    terminal_gate_sha256: str
-    logbook_spool: Path
-    gate_report: Mapping[str, object]
-    build_record: Mapping[str, object]
 
 
 UK_CALIBRATION_GATE_SCOPE = (
@@ -249,114 +197,6 @@ def uk_local_gate_scope_exclusions() -> dict[str, str]:
     return exclusions
 
 
-def run_uk_calibration(
-    *,
-    paths: UKCalibrationRunPaths,
-    input_sha256: str,
-    ledger_artifact: Any,
-    register_registry: TargetRegistry,
-    band_edge_registry: TargetRegistry,
-    calibration_year: int,
-    exclusion_receipt: Mapping[str, Mapping[str, str]],
-    doctrine: Any,
-    doctrine_overrides: Mapping[str, Mapping[str, object]],
-    measure_resolver: object | None,
-    source_pins: Mapping[str, Mapping[str, object]],
-    run_config_extra: Mapping[str, object],
-    release_id: str,
-    logbook_prev_row_digest: str | None = None,
-) -> UKCalibrationRunResult:
-    """Run the UK national calibration seam and write its sidecars."""
-
-    started_at = time.perf_counter()
-    started_ts = datetime.now(UTC)
-    # Pure-argument validation precedes every environment probe: an
-    # incoherent register/receipt/band-edge triple must refuse identically
-    # whether or not a git checkout or Logbook chain is reachable.
-    _validate_band_edge_registry(
-        register_registry=register_registry,
-        band_edge_registry=band_edge_registry,
-        exclusion_receipt=exclusion_receipt,
-    )
-    edge_registry = band_edge_registry
-    code_pin = git_code_pin(_REPOSITORY)
-    # Predecessor configuration is validated before anything is written: a
-    # disagreeing chain must refuse with no artifact on disk, not after a
-    # staged H5, diagnostics and a signed gate report already exist.
-    predecessor = resolve_predecessor(logbook_prev_row_digest)
-    run_config = {
-        "pipeline": _PIPELINE,
-        "release_id": release_id,
-        "register_sha256": register_registry.version,
-        "calibration_year": int(calibration_year),
-        "doctrine": _doctrine_payload(doctrine),
-        "doctrine_overrides": dict(doctrine_overrides),
-        # The caller verifies the feed's facts and manifest digests; sealing
-        # the verified identity into run_config carries it through the
-        # identity digest, the build record and the Logbook row, so the run
-        # says which Ledger artifact it was measured against.
-        "ledger": _ledger_provenance(ledger_artifact),
-        **dict(run_config_extra),
-    }
-    run_config["band_edge_register_sha256"] = edge_registry.version
-    state = AttemptState(
-        # Attempts are distinct rows even when they re-run one release: both
-        # the local chain and the store refuse a repeated build id.
-        build_id=_new_calibration_attempt_id(timestamp=started_ts),
-        identity_digest=hashlib.sha256(canonical_json_bytes(run_config)).hexdigest(),
-        input_pins_digest=role_pins_digest(source_pins),
-        phases_reached=["attempt_started"],
-        gate_verdicts={},
-    )
-    spool_dir = paths.staging_h5.parent / "logbook-spool"
-    try:
-        return _run_uk_calibration_attempt(
-            paths=paths,
-            input_sha256=input_sha256,
-            ledger_artifact=ledger_artifact,
-            register_registry=register_registry,
-            band_edge_registry=edge_registry,
-            calibration_year=calibration_year,
-            exclusion_receipt=exclusion_receipt,
-            doctrine=doctrine,
-            doctrine_overrides=doctrine_overrides,
-            measure_resolver=measure_resolver,
-            source_pins=source_pins,
-            release_id=release_id,
-            state=state,
-            run_config=run_config,
-            code_pin=code_pin,
-            started_at=started_at,
-            started_ts=started_ts,
-            predecessor=predecessor,
-            spool_dir=spool_dir,
-        )
-    except BaseException as error:
-        # Every terminal disposition records a row — successful, failed, or
-        # refused (logbook/README.md). A refusal that left no row would be a
-        # silent gap in the chain the run is supposed to evidence.
-        _record_failed_attempt(
-            error=error,
-            state=state,
-            started_at=started_at,
-            started_ts=started_ts,
-            seed=getattr(doctrine, "seed", None),
-            code_pin=code_pin,
-            predecessor=predecessor,
-            receipt_base_dir=paths.staging_h5.parent,
-            spool_dir=spool_dir,
-        )
-        raise
-
-
-def _new_calibration_attempt_id(*, timestamp: datetime) -> str:
-    instant = timestamp.astimezone(UTC)
-    return (
-        "uk-frs-calibration-attempt-"
-        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
-    )
-
-
 def _validate_band_edge_registry(
     *,
     register_registry: TargetRegistry,
@@ -396,267 +236,6 @@ def _registry_spec_names(registry: TargetRegistry) -> set[str]:
     return {str(spec.name) for spec in registry.specs}
 
 
-def _record_failed_attempt(
-    *,
-    error: BaseException,
-    state: AttemptState,
-    started_at: float,
-    started_ts: datetime,
-    seed: int | None,
-    code_pin: str,
-    predecessor: str | None,
-    receipt_base_dir: Path,
-    spool_dir: Path,
-) -> None:
-    if state.spool_path is not None:
-        return
-    error_path = write_error_receipt(
-        error_receipt_path(receipt_base_dir, build_id=state.build_id),
-        state=state,
-        pipeline=_PIPELINE,
-        error=error,
-    )
-    apply_error_verdict(
-        state,
-        f"{local_artifact_reference(error_path, repository_hint=_REPOSITORY)}"
-        "#/error_type",
-    )
-    record_terminal_attempt(
-        state=state,
-        started_at=started_at,
-        started_ts=started_ts,
-        pipeline=_PIPELINE,
-        rung="f100",
-        seed=seed,
-        code_pin=code_pin,
-        # An operator interrupt is a discarded attempt, not a failed one; the
-        # row says which so the chain reads honestly.
-        disposition=("discarded" if isinstance(error, KeyboardInterrupt) else "failed"),
-        predecessor=predecessor,
-        spool_dir=spool_dir,
-    )
-
-
-def _run_uk_calibration_attempt(
-    *,
-    paths: UKCalibrationRunPaths,
-    input_sha256: str,
-    ledger_artifact: Any,
-    register_registry: TargetRegistry,
-    band_edge_registry: TargetRegistry,
-    calibration_year: int,
-    exclusion_receipt: Mapping[str, Mapping[str, str]],
-    doctrine: Any,
-    doctrine_overrides: Mapping[str, Mapping[str, object]],
-    measure_resolver: object | None,
-    source_pins: Mapping[str, Mapping[str, object]],
-    release_id: str,
-    state: AttemptState,
-    run_config: Mapping[str, object],
-    code_pin: str,
-    started_at: float,
-    started_ts: datetime,
-    predecessor: str | None,
-    spool_dir: Path,
-) -> UKCalibrationRunResult:
-    measured_input_sha = _sha256_file(paths.input_h5)
-    if measured_input_sha != input_sha256:
-        raise ValueError(
-            "input H5 sha mismatch: "
-            f"measured {measured_input_sha}, pinned {input_sha256}"
-        )
-    append_phase(state, "input_sha_verified")
-    frame, _provenance = load_uk_national_frame(paths.input_h5)
-    append_phase(state, "input_loaded")
-    spine_sidecar_path = paths.input_h5.with_suffix(".build.json")
-    spine_sidecar = load_bound_spine_sidecar(spine_sidecar_path, frame)
-    append_phase(state, "input_sidecar_bound")
-    assert_calibration_input_finite(frame)
-    append_phase(state, "input_finite")
-
-    stage = UKNationalCalibrationStage(
-        register_registry,
-        # The declared calibration year the register was compiled at — the
-        # stage validates it; there is deliberately no fallback to the input
-        # frame's base-year time_period or any ambient default.
-        period=calibration_year,
-        doctrine=doctrine,
-        measure_resolver=measure_resolver,
-        band_edge_registry=band_edge_registry,
-    )
-    calibrated = stage(frame)
-    append_phase(state, "national_calibration_solved")
-
-    build_block = {
-        "build_id": state.build_id,
-        "code_pin": code_pin,
-        # Captured at solve time and signed with the diagnostics bytes, so a
-        # release assembler can only ever pin the environment that actually
-        # calibrated the candidate — never an invented one.
-        "runtime": _runtime_provenance(),
-        "source_pins": dict(source_pins),
-        "ledger": run_config["ledger"],
-        "input_posture": {
-            "tier": "staging_candidate",
-            "sha256": measured_input_sha,
-            "size_bytes": paths.input_h5.stat().st_size,
-        },
-        "doctrine": _doctrine_payload(doctrine),
-        "doctrine_overrides": dict(doctrine_overrides),
-        "measure_exclusions": dict(exclusion_receipt),
-        "measure_resolution": (
-            stage.manifest.get("measure_resolution")
-            if isinstance(stage.manifest, Mapping)
-            else None
-        ),
-        "register": _register_census(register_registry, exclusion_receipt),
-        "spine_provenance": spine_provenance_from_sidecar(
-            spine_sidecar_path,
-            spine_sidecar,
-        ),
-        "score_vs_enhanced_frs": None,
-    }
-    write_uk_calibration_diagnostics(
-        stage.solve_result,
-        paths.diagnostics_json,
-        calibrated,
-        target_geography_levels=uk_target_geography_levels(stage.registry),
-        target_registry=stage.registry,
-        build=build_block,
-    )
-    diagnostics_sha = _sha256_file(paths.diagnostics_json)
-    append_phase(state, "diagnostics_written")
-
-    gate_report = _run_calibration_gate_battery(
-        calibrated,
-        stage,
-        paths.terminal_gate_json,
-        release_id=release_id,
-        diagnostics_sha256=diagnostics_sha,
-    )
-    append_phase(state, "calibration_gates_evaluated")
-    for gate_id, payload in gate_report["gates"].items():
-        state.gate_verdicts[gate_id] = {
-            "verdict": payload["status"],
-            "receipt": f"local://{paths.terminal_gate_json.name}#/gates/{gate_id}",
-        }
-
-    write_uk_national_frame(calibrated, paths.staging_h5)
-    staging_sha = _sha256_file(paths.staging_h5)
-    append_phase(state, "staging_h5_written")
-
-    record = {
-        "schema_version": 1,
-        "pipeline": _PIPELINE,
-        "build_id": state.build_id,
-        "run_config": run_config,
-        "source_pins": dict(source_pins),
-        "role_pins_digest": role_pins_digest(source_pins),
-        "input_posture": build_block["input_posture"],
-        "spine_provenance": build_block["spine_provenance"],
-        "register": build_block["register"],
-        "calibration": stage.manifest,
-        "gate_summary": _gate_summary(gate_report),
-        # No shippability claim lives here: the calibration-scoped battery
-        # covers 6 of the declared gate entries. The release verdict is the
-        # release-cut certification's, produced over this record.
-        "certification": {
-            "expected_artifact": str(
-                paths.staging_h5.with_suffix(".release_certification.json")
-            ),
-            "producer": "tools/certify_uk_release_cut.py",
-        },
-        "artifacts": {
-            "staging_h5": {"path": str(paths.staging_h5), "sha256": staging_sha},
-            "diagnostics_json": {
-                "path": str(paths.diagnostics_json),
-                "sha256": diagnostics_sha,
-            },
-            "terminal_gate_json": {
-                "path": str(paths.terminal_gate_json),
-                "sha256": _sha256_file(paths.terminal_gate_json),
-            },
-        },
-    }
-    _write_json(paths.build_record_json, record)
-    build_record_sha = _sha256_file(paths.build_record_json)
-    append_phase(state, "build_record_written")
-    state.artifact_location = local_artifact_reference(
-        paths.staging_h5, repository_hint=_REPOSITORY
-    )
-    spool = record_terminal_attempt(
-        state=state,
-        started_at=started_at,
-        started_ts=started_ts,
-        pipeline=_PIPELINE,
-        rung="f100",
-        seed=getattr(doctrine, "seed", None),
-        code_pin=code_pin,
-        disposition="iterating",
-        predecessor=predecessor,
-        spool_dir=spool_dir,
-    )
-    return UKCalibrationRunResult(
-        frame=calibrated,
-        diagnostics_sha256=diagnostics_sha,
-        staging_sha256=staging_sha,
-        build_record_sha256=build_record_sha,
-        terminal_gate_sha256=_sha256_file(paths.terminal_gate_json),
-        logbook_spool=spool,
-        gate_report=gate_report,
-        build_record=record,
-    )
-
-
-def _run_calibration_gate_battery(
-    frame: Frame,
-    stage: UKNationalCalibrationStage,
-    path: Path,
-    *,
-    release_id: str,
-    diagnostics_sha256: str,
-) -> dict[str, object]:
-    manifest = _calibration_gate_manifest()
-    admin_totals, admin_receipt = uk_aggregate_admin_totals(frame, manifest)
-    artifacts = {
-        "national_calibration": stage.manifest,
-        "parity_evidence": SimpleNamespace(
-            target_relative_errors={
-                str(row["name"]): float(row["relative_error"])
-                for row in stage.diagnostics
-            }
-        ),
-        "aggregate_admin": admin_totals,
-        # The target-fit deferral register is evaluated against the run
-        # clock (schema-2 approval windows); the seam supplies today's date
-        # exactly as the rowwise candidate build supplies its start date.
-        "exclusions_evaluated_on": datetime.now(UTC).date(),
-    }
-    battery = GateBatteryRun(
-        manifest,
-        release_id=release_id,
-        # The seam never runs release-candidate posture: its scoped battery
-        # covers 6 of the declared entries and must never sign a
-        # shippability claim (the #757 release-cut audit). Shippability
-        # comes only from the release-cut certification.
-        report_path=path,
-        release_candidate=False,
-        registry=UK_GATE_REGISTRY,
-        release_evidence={"calibration_diagnostics_sha256": diagnostics_sha256},
-    )
-    battery.run_phase("terminal", EvidenceContext(frame=frame, artifacts=artifacts))
-    battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
-    payload = battery.report_payload()
-    finalize_uk_scoped_gate_report(
-        payload,
-        posture="calibration_seam",
-        scope_exclusions=dict(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS),
-        aggregate_admin_measurement=admin_receipt,
-    )
-    _write_json(path, payload)
-    return payload
-
-
 def load_bound_spine_sidecar(path: Path, frame: Frame) -> dict[str, object]:
     if not path.is_file():
         raise ValueError(f"input H5 build sidecar absent: {path}")
@@ -669,6 +248,119 @@ def load_bound_spine_sidecar(path: Path, frame: Frame) -> dict[str, object]:
     _assert_spine_sidecar_binds_frame(sidecar, frame)
     _assert_spine_gate_report_passed(_spine_gate_report_path(path), sidecar)
     return sidecar
+
+
+def load_bound_spine_checkpoint(
+    path: Path,
+    frame: Frame,
+    *,
+    gate_report_path: Path | None = None,
+) -> dict[str, object]:
+    """Authenticate a canonical graph checkpoint, without historical bypasses."""
+    from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+
+    path = Path(path)
+    if not path.is_file():
+        raise ValueError(f"input H5 build sidecar absent: {path}")
+    try:
+        sidecar = json.loads(path.read_bytes())
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise ValueError(f"input H5 build sidecar is invalid JSON: {path}") from exc
+    if not isinstance(sidecar, dict):
+        raise ValueError(f"input H5 build sidecar must be a JSON object: {path}")
+    _assert_spine_sidecar_binds_frame(sidecar, frame)
+    identity = sidecar.get("uk_frame_content_identity")
+    if not isinstance(identity, str) or not identity:
+        raise ValueError("Unbound spine checkpoint: no uk_frame_content_identity.")
+    if identity != uk_frame_content_identity(frame):
+        raise ValueError("Spine checkpoint uk_frame_content_identity mismatch.")
+    _strict_spine_gate_report(path, sidecar, gate_report_path=gate_report_path)
+    return sidecar
+
+
+def _strict_spine_gate_report(
+    path: Path,
+    sidecar: Mapping[str, object],
+    *,
+    gate_report_path: Path | None = None,
+) -> tuple[Path, dict[str, object]]:
+    if sidecar.get("spine_gate_bypass") is not None:
+        raise ValueError("Canonical spine checkpoints do not accept spine_gate_bypass.")
+    report_path = (
+        _spine_gate_report_path(Path(path))
+        if gate_report_path is None
+        else Path(gate_report_path)
+    )
+    binding = sidecar.get("spine_gate_report")
+    if not isinstance(binding, Mapping) or not binding.get("sha256"):
+        raise ValueError("Unbound spine checkpoint: no spine gate report SHA-256.")
+    if not report_path.is_file():
+        raise ValueError(f"input H5 spine gate report absent: {report_path}")
+    report_bytes = report_path.read_bytes()
+    if hashlib.sha256(report_bytes).hexdigest() != binding["sha256"]:
+        raise ValueError("Spine checkpoint gate report SHA-256 mismatch.")
+    _assert_spine_gate_report_passed(report_path, sidecar)
+    report = json.loads(report_bytes)
+    for field, expected in uk_spine_checkpoint_gate_digests().items():
+        if report.get(field) != expected:
+            raise ValueError(
+                f"Spine checkpoint gate report {field} differs from current declarations."
+            )
+    gates = report["gates"]
+    expected = set(UK_SPINE_GATE_SCOPE)
+    if set(gates) != expected or any(
+        not isinstance(gates[gate_id], Mapping) for gate_id in gates
+    ):
+        raise ValueError(
+            "Spine checkpoint gate report differs from the declared spine scope."
+        )
+    declared = {
+        entry.id: entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id in expected
+    }
+    for gate_id, entry in declared.items():
+        outcome = gates[gate_id]
+        if outcome.get("criticality") != entry.criticality:
+            raise ValueError(f"Spine checkpoint gate {gate_id} criticality mismatch.")
+        if (
+            entry.criticality == "release_blocking"
+            and outcome.get("status") != "passed"
+        ):
+            raise ValueError(f"Spine checkpoint gate {gate_id} did not pass.")
+    return report_path, report
+
+
+def uk_spine_checkpoint_gate_digests() -> dict[str, str]:
+    """Declare the current spine gate policy as part of checkpoint identity."""
+    from microcosm.build.uk_runtime.release_certification import _scoped_digests
+
+    return _scoped_digests(
+        frozenset(UK_SPINE_GATE_SCOPE),
+        phases=("assembled", "transferred"),
+        policy_suffix="spine_build_scope",
+    )
+
+
+def strict_spine_provenance_from_sidecar(
+    path: Path,
+    sidecar: Mapping[str, object],
+    *,
+    gate_report_path: Path | None = None,
+) -> dict[str, object]:
+    """Retain exact gate bytes and fit records after strict checkpoint loading."""
+    report_path, report = _strict_spine_gate_report(
+        path, sidecar, gate_report_path=gate_report_path
+    )
+    provenance = spine_provenance_from_sidecar(path, sidecar)
+    provenance["uk_frame_content_identity"] = sidecar["uk_frame_content_identity"]
+    provenance["fit_weight_records"] = dict(sidecar.get("fit_weight_records", {}))
+    provenance["spine_gate_report"] = {
+        "path": str(report_path),
+        "sha256": sidecar["spine_gate_report"]["sha256"],
+        "payload": report,
+    }
+    return provenance
 
 
 def _assert_spine_sidecar_binds_frame(
@@ -1028,47 +720,6 @@ _spine_provenance_from_sidecar = spine_provenance_from_sidecar
 _runtime_provenance = runtime_provenance
 
 
-def _register_census(
-    registry: TargetRegistry, exclusions: Mapping[str, Mapping[str, str]]
-) -> dict[str, object]:
-    return {
-        "country": registry.country,
-        "version": registry.version,
-        "compiled_count": len(registry.specs) + len(exclusions),
-        "excluded_count": len(exclusions),
-        "calibrated_count": len(registry.specs),
-    }
-
-
-def _doctrine_payload(doctrine: Any) -> dict[str, object]:
-    return {
-        key: getattr(doctrine, key)
-        for key in (
-            "epochs",
-            "learning_rate",
-            "max_weight_ratio",
-            "seed",
-            "target_loss_cap",
-            "scale_rule",
-            "target_weight_rule",
-            "mass_rule",
-            "l0_lambda",
-        )
-        if hasattr(doctrine, key)
-    }
-
-
-def _gate_summary(report: Mapping[str, object]) -> dict[str, object]:
-    gates = report.get("gates", {})
-    if not isinstance(gates, Mapping):
-        return {}
-    return {
-        gate_id: payload.get("status")
-        for gate_id, payload in gates.items()
-        if isinstance(payload, Mapping)
-    }
-
-
 def finalize_uk_scoped_gate_report(
     payload: dict[str, object],
     *,
@@ -1128,13 +779,3 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def _write_json(path: Path, payload: Mapping[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(
-        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
-        encoding="utf-8",
-    )
-    temporary.replace(path)

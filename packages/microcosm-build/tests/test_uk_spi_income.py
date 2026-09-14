@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import frs_disability, spi_income
-from microcosm.build.uk_runtime.frs_hmrc_leaves import (
+from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN,
     FRS_HMRC_RETAINED_LEAF_COLUMNS,
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,

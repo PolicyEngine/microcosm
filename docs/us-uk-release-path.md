@@ -257,6 +257,14 @@ does not satisfy today's release battery. See
 [the size evidence](../experiments/355-uk-dataset-size-receipts.md) and
 [the current dense release runbook](uk-dense-release-assembly-runbook-762.md).
 
+The [UK full-build graph](uk-full-build-graph.md) now registers the canonical
+source spine, geographic pool, target compilation, calibration, optional
+exact-count sizing, gates and checked export. `microcosm-build-uk` calibrates all
+applicable geographic levels together by default. An explicit country-only
+target filter uses that same graph; geographic pool copies K, exported household
+count k and target scope remain independent. This registration preserves the
+current UK algorithms and does not establish native candidate acceptance.
+
 The current UK route clones for geographic support and then uses the existing
 OA ladder. It has not adopted the new shared atomic geography graph keyed to
 stable post-clone household identity. Its existing placement after cloning is

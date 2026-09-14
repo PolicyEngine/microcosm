@@ -12,7 +12,7 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.uk_runtime.frs_hmrc_leaves import (
+from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_INCPBEN_COLUMN,
     FRS_HMRC_PAY_COLUMN,
     FRS_HMRC_RETAINED_LEAF_COLUMNS,
@@ -286,11 +286,13 @@ class UKFRSHMRCSpineLeavesStageTransform:
         adult, adult_identity = _read_raw_frs_table(
             self.frs_raw_dir / str(artifacts["adult"]["locator"]),
             expected_filename="adult.tab",
+            source_vintage=str(artifacts["adult"].get("vintage", "unspecified")),
             required_columns=("sernum", "person", "inearns"),
         )
         benefits, benefits_identity = _read_raw_frs_table(
             self.frs_raw_dir / str(artifacts["benefits"]["locator"]),
             expected_filename="benefits.tab",
+            source_vintage=str(artifacts["benefits"].get("vintage", "unspecified")),
             required_columns=("sernum", "person", "benefit", "benamt", "var2"),
         )
         _assert_identity_matches_artifact(adult_identity.evidence(), artifacts["adult"])
@@ -308,7 +310,7 @@ class UKFRSHMRCSpineLeavesStageTransform:
         if missing_ids:
             # A rung sample deliberately drops most source people; restrict
             # the raw surface to the survivors (the full-scale fence above
-            # stays strict — mirrors frs_hmrc_leaves' sampled_rung posture).
+            # stays strict).
             source_leaves = source_leaves.loc[
                 source_leaves.index.isin(person["person_id"].to_numpy())
             ]

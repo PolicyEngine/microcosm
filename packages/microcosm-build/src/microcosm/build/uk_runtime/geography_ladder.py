@@ -328,28 +328,15 @@ def load_uk_oa_ladder(path: str | Path) -> UkOaLadder:
     )
 
 
-def assign_uk_geography_ladder(
+def draw_uk_ladder_locations(
     household: pd.DataFrame,
     ladder: UkOaLadder,
     *,
     seed: int = 0,
     expected_constituency_vintage: str | None = None,
     region_column: str = "region",
-) -> pd.DataFrame:
-    """Assign each household one OA and the derived ladder columns.
-
-    Two seeded draws under the build's seed discipline: a 2024 constituency is
-    sampled within the household's calibrated region proportional to
-    constituency household counts, then an OA is sampled within that
-    constituency proportional to 2021 Census OA population. Every finer and
-    coarser layer then derives from the OA, so the calibrated region marginal
-    is preserved exactly while every grain becomes filterable.
-
-    Requires region assignment to have run first (the FRS carries it). A
-    household region absent from the ladder is an error, never a silent partial
-    join — for an England-&-Wales ladder that is exactly how a Scottish or
-    Northern Irish household is refused until those rungs are pinned.
-    """
+) -> np.ndarray:
+    """Draw the atomic locations using the existing sequential two-stage RNG."""
 
     if region_column not in household.columns:
         raise ValueError(
@@ -371,12 +358,35 @@ def assign_uk_geography_ladder(
         region_column=region_column,
     )
 
-    assigned_index = _sample_oa_indices(
+    return _sample_oa_indices(
         region_codes.to_numpy(),
         ladder=ladder,
         seed=seed,
     )
 
+
+def derive_uk_ladder_locations(
+    household: pd.DataFrame,
+    ladder: UkOaLadder,
+    assigned_index: np.ndarray,
+    *,
+    region_column: str = "region",
+) -> pd.DataFrame:
+    """Derive every geography from a validated, already drawn atomic location."""
+
+    assigned_index = np.asarray(assigned_index)
+    if (
+        assigned_index.shape != (len(household),)
+        or assigned_index.dtype.kind not in "iu"
+        or (assigned_index < 0).any()
+        or (assigned_index >= len(ladder)).any()
+    ):
+        raise ValueError("location indices must align with households and the ladder.")
+    region_codes = _validated_household_ladder_region_codes(
+        household,
+        ladder,
+        region_column=region_column,
+    )
     assigned_region = ladder.region_code[assigned_index]
     mismatched = assigned_region != region_codes.to_numpy()
     if mismatched.any():
@@ -410,6 +420,44 @@ def assign_uk_geography_ladder(
     assigned["itl2_code"] = _itl_prefix(itl3, width=4)
     assigned["itl1_code"] = _itl_prefix(itl3, width=3)
     return assigned
+
+
+def assign_uk_geography_ladder(
+    household: pd.DataFrame,
+    ladder: UkOaLadder,
+    *,
+    seed: int = 0,
+    expected_constituency_vintage: str | None = None,
+    region_column: str = "region",
+) -> pd.DataFrame:
+    """Assign each household one OA and the derived ladder columns.
+
+    Two seeded draws under the build's seed discipline: a 2024 constituency is
+    sampled within the household's calibrated region proportional to
+    constituency household counts, then an OA is sampled within that
+    constituency proportional to 2021 Census OA population. Every finer and
+    coarser layer then derives from the OA, so the calibrated region marginal
+    is preserved exactly while every grain becomes filterable.
+
+    Requires region assignment to have run first (the FRS carries it). A
+    household region absent from the ladder is an error, never a silent partial
+    join — for an England-&-Wales ladder that is exactly how a Scottish or
+    Northern Irish household is refused until those rungs are pinned.
+    """
+
+    assigned_index = draw_uk_ladder_locations(
+        household,
+        ladder,
+        seed=seed,
+        expected_constituency_vintage=expected_constituency_vintage,
+        region_column=region_column,
+    )
+    return derive_uk_ladder_locations(
+        household,
+        ladder,
+        assigned_index,
+        region_column=region_column,
+    )
 
 
 def expected_uk_ladder_area_support(
@@ -453,10 +501,7 @@ def expected_uk_ladder_area_support(
         region_households = float(constituency_weight.sum())
         for constituency_code, household_count in constituency_weight.items():
             expected_rows = (
-                n_clones
-                * int(n_region)
-                * float(household_count)
-                / region_households
+                n_clones * int(n_region) * float(household_count) / region_households
             )
             constituency_key = str(constituency_code)
             constituency_expected[constituency_key] += expected_rows
@@ -504,9 +549,13 @@ def uk_region_mix(
     """Summarize household row and weight shares by normalized UK region."""
 
     if region_column not in household.columns:
-        raise ValueError(f"household table must contain region column {region_column!r}.")
+        raise ValueError(
+            f"household table must contain region column {region_column!r}."
+        )
     if weight_column not in household.columns:
-        raise ValueError(f"household table must contain weight column {weight_column!r}.")
+        raise ValueError(
+            f"household table must contain weight column {weight_column!r}."
+        )
 
     region_codes = _household_region_codes(
         household[region_column],
@@ -518,7 +567,9 @@ def uk_region_mix(
     if not np.isfinite(weights).all() or (weights < 0).any():
         raise ValueError(f"{weight_column} must be finite and non-negative.")
     if len(weights) == 0:
-        raise ValueError("household table must contain at least one row for region mix.")
+        raise ValueError(
+            "household table must contain at least one row for region mix."
+        )
     total_weight = float(weights.sum())
     if total_weight <= 0:
         raise ValueError(f"{weight_column} must carry positive total weight.")

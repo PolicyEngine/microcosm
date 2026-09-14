@@ -112,6 +112,25 @@ calibrated_frame = result.frame          # CALIBRATED weights
 result.fraction_within_10pct             # representation quality
 ```
 
+## Portable graph inputs and results
+
+`microcosm.calibrate.target_selection.select_targets` selects declared
+geography levels from a `TargetRegistry`, keeping all targets by default.
+Country adapters normalize each target's geography metadata. The receipt
+records ordered target IDs and periods, included and excluded rows, sources
+and selection reasons. It does not replace support checks or validation gates.
+
+`microcosm.calibrate.artifacts` encodes ordered CSR problems, solutions and
+completed calibration results as versioned bytes without pickles. Problems
+bind target rows and periods, entity IDs, original typed weights and caller
+metadata. Solutions verify their problem digest and ordered entity axis.
+Completed results retain loss trajectories, loss weights and scales, solver
+options and optional gate probabilities. Decoding uses the public result
+rebuild operation without running optimization. Compiled contribution rows
+stay sparse until the solver consumes each row; source measure closures are
+never serialized. Grouped-constraint results require a separate protocol and
+are explicitly refused by this codec.
+
 ## Why a shard
 
 `microcosm-calibrate` pulls **torch** and sparse/L0 solvers; an analyst doing
