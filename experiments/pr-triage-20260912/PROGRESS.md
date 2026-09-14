@@ -222,3 +222,21 @@ refuters (close-class: unique-work / superseder-reality / dependents;
 MERGE-READY: readiness-audit / supersession-hunt; KEEP-BLOCKED-ON:
 blocker-reality / supersession-hunt; else supersession-hunt / value-and-cost)
 → a per-PR adjudicator that re-runs the deciding command itself.
+
+### Run-4 owner checks, second batch (~21:10 ET)
+
+- **#156 is a clean SUPERSEDED-CLOSE with two MERGED carriers.** Its manifest half
+  landed as **#690** (`51f115102`, 2026-08-14/17) — main's `uk/source_stages.json` is
+  4067 lines vs #156's 1007 — and its row-wise local-geography half as **#541**
+  (`eccedfb40`, 2026-07-25), which is main's `uk_runtime/local_rowwise.py`
+  ("one row per (area, household)") plus `local_doctrine.py`.
+- **#821/#822/#824/#826 all carry unique unmerged work**: 0 `build/nz` paths on main
+  or in #893; `concept_coverage.py` and `inventory_axiom_concepts.py` absent from
+  both; #824's three Belgium target/population-input files absent though the `be/`
+  scaffold exists; #826's `axiom.py` is 1861 lines vs 743 on main AND in #893, with
+  19 of 20 added symbols having zero files on main.
+- **Symbol-presence screen finished for all 50** (`symsweep_r4.txt`). #629, #752 and
+  #817 add zero new symbols; #914 has 0-nowhere / 53-only-in-893; #873 is 40-on-main
+  / 18-nowhere. **#768 is the counterexample that must stay in the report**: both its
+  symbols are on main and it is still not closeable, because its contribution is a
+  deletion.
