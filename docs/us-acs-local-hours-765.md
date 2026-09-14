@@ -52,8 +52,25 @@ the existing producer maps that sentinel to zero in its temporary output.
 This usual-hours repair does not overwrite the separate last-week input.
 At known source age 15+, the dictionary routes nonworkers outside `WKSWORK`
 and `HRSWK`; coherent zero codes represent that routing. Positive weeks must
-have positive usual hours, and vice versa. `WORKYN`, when retained, must agree
-with those codes; it is not a new mandatory source column.
+have positive usual hours, and vice versa.
+
+The [2025 ASEC dictionary, page 6C-20](https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf#page=41)
+distinguishes the initial `WORKYN` answer, its `WTEMP` follow-up about temporary,
+part-time or seasonal work, and the final `WRK_CK` recode. When retained,
+`WRK_CK` must agree with hours and weeks. A yes in either question also requires
+positive hours/weeks; initial no plus follow-up no requires the coherent zero
+pair. Initial `WORKYN=2` alone is not final nonwork evidence when the final
+recode or follow-up is absent. `WTEMP=0` is NIU, not a negative response.
+Present flags are validated, preserved and listed in the qualification receipt;
+none becomes a newly mandatory column.
+
+A source audit of the pinned March 2025 public person CSV (SHA256
+`06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5`)
+found 12 age-15 records with initial `WORKYN=2` and positive hours/weeks.
+All had `WTEMP=1` and `WRK_CK=1`. They are consistent temporary-work cases;
+rejecting them on the initial response alone would discard valid donors.
+This audit does not change any observed hours or the original donor-lineage
+qualification.
 
 An age-15 ACS recipient can use the qualified age-15+ ASEC fallback. Younger
 unresolved recipients fail before fitting by default. A caller can explicitly

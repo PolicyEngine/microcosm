@@ -38,8 +38,8 @@ from microcosm.frame import Frame
 
 _USUAL_HOURS = US_HOURS_WORKED_POOL_OUTPUT_COLUMNS[0]
 ACS_UNDER15_ZERO_POLICY = "us_hours_under15_zero_completion_v1"
-# Census 2024 ASEC dictionary, person-record labor-force fields:
-# https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf
+# Census 2025 ASEC dictionary, person-record labor-force fields, page 6C-20:
+# https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf
 # HRSWK 99 means 99+ hours. A_HRS1 -1 is NIU, mapped to zero only by the
 # existing source producer. Other sentinels and out-of-domain values fail.
 _RAW_HOURS_RANGES = {
@@ -47,6 +47,8 @@ _RAW_HOURS_RANGES = {
     "A_HRS1": (-1, 99),
     "WKSWORK": (0, 52),
     "WORKYN": (1, 2),
+    "WTEMP": (0, 2),
+    "WRK_CK": (1, 2),
 }
 
 
@@ -245,9 +247,10 @@ def prepare_acs_local_hours_donor(
     if not in_universe.all():
         frame = frame.select(in_universe)
         person = frame.person
-    source_columns = (*US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS,)
-    if "WORKYN" in person:
-        source_columns += ("WORKYN",)
+    work_status_columns = tuple(
+        column for column in ("WORKYN", "WTEMP", "WRK_CK") if column in person
+    )
+    source_columns = (*US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS, *work_status_columns)
     for column in source_columns:
         if column not in person:
             raise ValueError(f"Local hours donor requires complete raw ASEC {column}.")
@@ -270,11 +273,26 @@ def prepare_acs_local_hours_donor(
     # At age 15+, the dictionary routes nonworkers outside WKSWORK and
     # HRSWK. Their coherent NIU pair is distinct from children's NIU.
     coherent = (hours.gt(0) & weeks.gt(0)) | (hours.eq(0) & weeks.eq(0))
+    # WRK_CK includes temporary/part-time work established by WTEMP after an
+    # initial WORKYN=2. An initial no alone does not establish final nonwork.
+    if "WRK_CK" in person:
+        final_work = pd.to_numeric(person["WRK_CK"])
+        coherent &= (final_work.eq(1) & weeks.gt(0)) | (final_work.eq(2) & weeks.eq(0))
     if "WORKYN" in person:
-        worked = pd.to_numeric(person["WORKYN"])
-        coherent &= (worked.eq(1) & weeks.gt(0)) | (worked.eq(2) & weeks.eq(0))
+        initial_work = pd.to_numeric(person["WORKYN"])
+        coherent &= ~initial_work.eq(1) | weeks.gt(0)
+        if "WTEMP" in person:
+            temporary_work = pd.to_numeric(person["WTEMP"])
+            final_no = initial_work.eq(2) & temporary_work.eq(2)
+            coherent &= ~final_no | weeks.eq(0)
+    if "WTEMP" in person:
+        temporary_work = pd.to_numeric(person["WTEMP"])
+        # NIU (0), or an absent follow-up column, is not a negative answer.
+        coherent &= ~temporary_work.eq(1) | weeks.gt(0)
     if not coherent.all():
-        raise ValueError("ASEC WORKYN/HRSWK/WKSWORK contradict past-year work status.")
+        raise ValueError(
+            "ASEC WORKYN/WTEMP/WRK_CK and HRSWK/WKSWORK contradict past-year work status."
+        )
 
     # Force the actual source producer to run; its ordinary idempotent path
     # would trust any already nonconstant column. The original is untouched.
@@ -328,8 +346,7 @@ def prepare_acs_local_hours_donor(
         result,
         {
             "source_column": "HRSWK",
-            "universe_columns": [source_age_column, "WKSWORK"]
-            + (["WORKYN"] if "WORKYN" in person else []),
+            "universe_columns": [source_age_column, "WKSWORK", *work_status_columns],
             "excluded_source_universe_rows": excluded_rows,
             "producer": "with_us_hours_worked_inputs",
             "filled_rows": int((~known).sum()),

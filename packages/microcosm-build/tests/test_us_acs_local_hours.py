@@ -26,8 +26,9 @@ from microcosm.build.us_runtime.support_provenance import (
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
-def _frame(weekly=None, *, spines=None, raw=None, role="asec", columns=None) -> Frame:
-    n = 8
+def _frame(
+    weekly=None, *, spines=None, raw=None, role="asec", columns=None, n=8
+) -> Frame:
     ids = np.arange(1, n + 1)
     person = pd.DataFrame({"person_id": ids})
     tables = {"person": person}
@@ -36,12 +37,12 @@ def _frame(weekly=None, *, spines=None, raw=None, role="asec", columns=None) -> 
             continue
         person[f"person_{entity}_id"] = ids
         tables[entity] = pd.DataFrame({f"{entity}_id": ids})
-    person["HRSWK"] = [40, 0, 38, 0, 40, 0, 38, 0]
-    person["A_HRS1"] = [40, 0, 35, 0, 40, 0, 35, 0]
-    person["WKSWORK"] = [52, 0, 50, 0, 52, 0, 50, 0]
+    person["HRSWK"] = np.resize([40, 0, 38, 0], n)
+    person["A_HRS1"] = np.resize([40, 0, 35, 0], n)
+    person["WKSWORK"] = np.resize([52, 0, 50, 0], n)
     person["hours_worked_last_week"] = person["A_HRS1"]
-    person["age"] = [40, 30, 35, 32, 40, 30, 35, 32]
-    person["is_female"] = [False, True] * 4
+    person["age"] = np.resize([40, 30, 35, 32], n)
+    person["is_female"] = np.resize([False, True], n)
     tables["household"]["state_fips"] = 6
     if role is not None:
         for entity, table in tables.items():
@@ -191,11 +192,103 @@ def test_asec_past_year_hours_and_weeks_must_have_coherent_universes(column, val
         prepare_acs_local_hours_donor(_frame(raw={column: value}), seed=3, period=2024)
 
 
-@pytest.mark.parametrize("workyn", [0, 2, np.nan])
-def test_present_workyn_must_agree_with_qualified_asec_hours(workyn):
+@pytest.mark.parametrize("workyn", [0, 3, np.nan])
+def test_present_workyn_requires_valid_in_universe_codes(workyn):
     frame = _frame(columns={"WORKYN": [workyn, 2, 1, 2] * 2})
     with pytest.raises(ValueError, match="WORKYN"):
         prepare_acs_local_hours_donor(frame, seed=3, period=2024)
+
+
+def test_twelve_temporary_workers_preserve_observed_hours_and_raw_history():
+    before = _frame(
+        np.full(12, 10.0),
+        n=12,
+        columns={
+            "A_AGE": 15,
+            "HRSWK": 10,
+            "WKSWORK": 4,
+            "WORKYN": 2,
+            "WTEMP": 1,
+            "WRK_CK": 1,
+        },
+    )
+    snapshots = {
+        entity: before.table(entity).copy(deep=True) for entity in before.entities
+    }
+    prepared, donor, receipt = prepare_acs_local_hours_donor(
+        before, seed=3, period=2024
+    )
+    assert prepared is before
+    assert receipt["filled_rows"] == 0
+    assert receipt["preserved_observed_rows"] == 12
+    assert receipt["universe_columns"] == [
+        "A_AGE",
+        "WKSWORK",
+        "WORKYN",
+        "WTEMP",
+        "WRK_CK",
+    ]
+    pd.testing.assert_frame_equal(donor.person, before.person)
+    for entity, expected in snapshots.items():
+        pd.testing.assert_frame_equal(before.table(entity), expected)
+
+
+@pytest.mark.parametrize("final_code", [None, 1])
+def test_explicit_initial_and_followup_no_refuse_positive_hours(final_code):
+    columns = {"WORKYN": [2, 2, 1, 2] * 2, "WTEMP": [2, 2, 0, 2] * 2}
+    if final_code is not None:
+        columns["WRK_CK"] = [final_code, 2, 1, 2] * 2
+    with pytest.raises(ValueError, match="past-year work status"):
+        prepare_acs_local_hours_donor(_frame(columns=columns), seed=3, period=2024)
+
+
+@pytest.mark.parametrize("row,final_code", [(0, 2), (1, 1)])
+def test_final_work_recode_must_agree_with_hours_and_weeks(row, final_code):
+    flags = np.array([1, 2, 1, 2] * 2)
+    flags[row] = final_code
+    with pytest.raises(ValueError, match="WRK_CK"):
+        prepare_acs_local_hours_donor(
+            _frame(columns={"WRK_CK": flags}), seed=3, period=2024
+        )
+
+
+@pytest.mark.parametrize("followup", [None, 0])
+def test_initial_no_without_final_or_followup_does_not_override_hours(followup):
+    columns = {"WORKYN": [2, 2, 1, 2] * 2}
+    if followup is not None:
+        columns["WTEMP"] = followup
+    before = _frame([40, 0, 38, 0] * 2, columns=columns)
+    prepared, _, receipt = prepare_acs_local_hours_donor(before, seed=3, period=2024)
+    assert prepared is before
+    assert receipt["preserved_observed_rows"] == 8
+
+
+@pytest.mark.parametrize("column", ["WORKYN", "WTEMP"])
+def test_affirmative_initial_or_followup_answer_refuses_zero_hours(column):
+    columns = {"WORKYN": [1, 2, 1, 2] * 2, "WTEMP": [0, 2, 0, 2] * 2}
+    columns[column][1] = 1
+    with pytest.raises(ValueError, match="past-year work status"):
+        prepare_acs_local_hours_donor(_frame(columns=columns), seed=3, period=2024)
+
+
+@pytest.mark.parametrize(
+    "column,value",
+    [
+        ("WTEMP", -1),
+        ("WTEMP", 3),
+        ("WTEMP", np.nan),
+        ("WRK_CK", 0),
+        ("WRK_CK", 3),
+        ("WRK_CK", np.nan),
+    ],
+)
+def test_optional_followup_and_final_recode_require_valid_raw_codes(column, value):
+    values = [0, 2, 0, 2] * 2 if column == "WTEMP" else [1, 2, 1, 2] * 2
+    values[0] = value
+    with pytest.raises(ValueError, match=column):
+        prepare_acs_local_hours_donor(
+            _frame(columns={column: values}), seed=3, period=2024
+        )
 
 
 @pytest.mark.parametrize(
