@@ -37,14 +37,13 @@ def test_policy_anchor_resources_carry_parameter_paths() -> None:
     assert lcfs["source"]["urls"]
     assert vat["source"]["urls"]
     assert services["source"]["urls"]
-    assert lcfs["cpi"]["parameter_path"]
     assert vat["vat"]["standard_rate"]["parameter_path"] == (
         "gov.hmrc.vat.standard_rate"
     )
     assert vat["vat"]["reduced_rate_share"]["value"] == 0.025
-    assert services["rail_fare_index_2023"]["parameter_path"] == (
-        "gov.dft.rail.fare_index"
-    )
+    for key in ("rail_fare_index_2023", "rail_fare_index_2024"):
+        assert services[key]["parameter_path"] == "gov.dft.rail.fare_index"
+    assert services["rail_fare_index_2024"]["period"] == 2024
     assert services["nhs_budget_2025_26"]["value"] == 202_000_000_000
 
 
@@ -67,17 +66,13 @@ def test_policy_anchor_values_lockstep_with_engine_parameter_tree() -> None:
             node = getattr(node, part)
         assert float(node(str(anchor["period"]))) == anchor["value"], name
 
-    services = _load("etb_services_anchors.json")["rail_fare_index_2023"]
-    node = parameters
-    for part in services["parameter_path"].split("."):
-        node = getattr(node, part)
-    assert float(node(str(services["period"]))) == services["value"]
-
-    cpi = _load("lcfs_consumption_anchors.json")["cpi"]
-    node = parameters
-    for part in cpi["parameter_path"].split("."):
-        node = getattr(node, part)
-    assert float(node(str(cpi["start_period"]))) > 0
+    services = _load("etb_services_anchors.json")
+    for key in ("rail_fare_index_2023", "rail_fare_index_2024"):
+        anchor = services[key]
+        node = parameters
+        for part in anchor["parameter_path"].split("."):
+            node = getattr(node, part)
+        assert float(node(str(anchor["period"]))) == anchor["value"], key
 
 
 def test_nhs_consumption_resource_ports_public_csv_rows() -> None:

@@ -416,15 +416,15 @@ def test_vendored_fares_index_refuses_a_foreign_feed(monkeypatch) -> None:
 
     import copy
 
+    from microcosm.build.uk_runtime import ledger_fact_vendoring as vendoring
     from microcosm.build.uk_runtime import ledger_targets as module
-    from microcosm.build.uk_runtime.ledger_fact_vendoring import load_vendored_resource
 
-    committed = load_vendored_resource("dft_bus_value_anchors.json")
+    committed = vendoring.load_vendored_resource("dft_bus_value_anchors.json")
     assert module._vendored_fares_index_rows()
 
     foreign = copy.deepcopy(committed)
     foreign["source_fact_feed"]["facts_sha256"] = "f" * 64
-    monkeypatch.setattr(module, "load_vendored_resource", lambda name: foreign)
+    monkeypatch.setattr(vendoring, "load_vendored_resource", lambda name: foreign)
     with pytest.raises(ValueError, match="different Chronicle feed"):
         module._vendored_fares_index_rows()
 

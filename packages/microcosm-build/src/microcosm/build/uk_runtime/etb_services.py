@@ -12,6 +12,11 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime.donor_uprating import (
+    apply_donor_uprating,
+    donor_uprating_factors,
+    uprating_operation,
+)
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -94,13 +99,17 @@ class UKETBServicesResult:
     frame: Frame
     support_clip: UKSupportClipReceipt
     nhs_cells: dict[str, object] = field(default_factory=dict)
+    donor_uprating: dict[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "stage": UK_ETB_SERVICES_STAGE_NAME,
             "support_clip": self.support_clip.evidence(),
             "nhs_cells": dict(self.nhs_cells),
         }
+        if self.donor_uprating is not None:
+            evidence["donor_uprating"] = dict(self.donor_uprating)
+        return evidence
 
 
 @dataclass
@@ -133,10 +142,12 @@ class UKETBServicesStageTransform:
                 _require_path(self.etb_tab_path), self.stage.artifacts[0]
             )
         )
+        uprating_factors, uprating_receipt = etb_donor_uprating(self.stage)
         donor = clean_etb_services_table(
             raw,
             year=config["year"],
             weeks_in_year=config["weeks_in_year"],
+            uprating=uprating_factors,
         )
         predictors = recipient_predictors(frame, self.engine)
         draws, records = impute_etb_services(
@@ -144,9 +155,7 @@ class UKETBServicesStageTransform:
         )
         clip_result = support_clip_to_donor(draws, donor)
         draws = clip_result.clipped
-        draws["rail_usage"] = (
-            draws["rail_subsidy_spending"] / config["rail_fare_index"]
-        )
+        draws["rail_usage"] = draws["rail_subsidy_spending"] / config["rail_fare_index"]
         household = frame.table("household").copy()
         for column in UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS:
             household[column] = draws[column].to_numpy()
@@ -176,6 +185,7 @@ class UKETBServicesStageTransform:
             frame=result,
             support_clip=clip_result.receipt,
             nhs_cells=nhs_cells,
+            donor_uprating=uprating_receipt,
         )
         return result
 
@@ -189,11 +199,23 @@ class UKETBServicesStageTransform:
         return {"evidence": self.last_result.evidence()}
 
 
+def etb_donor_uprating(
+    stage: SourceStageSpec,
+) -> tuple[dict[str, float], dict[str, object] | None]:
+    """The stage's declared donor uprating factors and receipt (none if undeclared)."""
+
+    parameters = uprating_operation(stage)
+    if parameters is None:
+        return {}, None
+    return donor_uprating_factors(parameters)
+
+
 def clean_etb_services_table(
     raw: pd.DataFrame,
     *,
     year: int | str | None = None,
     weeks_in_year: int = ETB_SERVICES_WEEKS_IN_YEAR,
+    uprating: dict[str, float] | None = None,
 ) -> pd.DataFrame:
     data = raw.replace(r"^\s*$", np.nan, regex=True).copy()
     if "year" not in data:
@@ -240,6 +262,8 @@ def clean_etb_services_table(
     train["dfe_education_spending"] = data["educ"] * weeks_in_year
     train["rail_subsidy_spending"] = data["rail"] * weeks_in_year
     train["bus_subsidy_spending"] = data["bussub"] * weeks_in_year
+    if uprating:
+        train = apply_donor_uprating(train, uprating)
     return train
 
 
@@ -255,17 +279,17 @@ def etb_services_configuration(stage: SourceStageSpec | None = None) -> dict:
     """Load service anchors and derive settings from the committed manifest."""
 
     anchors = load_etb_services_anchors()
+    denominator_key = rail_fare_index_denominator_key(stage)
     config = {
         "year": "max",
         "weeks_in_year": ETB_SERVICES_WEEKS_IN_YEAR,
-        "rail_fare_index": float(anchors["rail_fare_index_2023"]["value"]),
+        "rail_fare_index": float(anchors[denominator_key]["value"]),
+        "rail_fare_index_key": denominator_key,
         "nhs_budget": float(anchors["nhs_budget_2025_26"]["value"]),
     }
     if stage is not None:
         derive = next(
-            operation
-            for operation in stage.operations
-            if operation.kind == "derive"
+            operation for operation in stage.operations if operation.kind == "derive"
         )
         if "year" in derive.parameters:
             config["year"] = derive.parameters["year"]
@@ -274,6 +298,32 @@ def etb_services_configuration(stage: SourceStageSpec | None = None) -> dict:
         if config["year"] != "max":
             raise ValueError("ETB services must select the manifest's maximum year.")
     return config
+
+
+def rail_fare_index_denominator_key(stage: SourceStageSpec | None = None) -> str:
+    """The anchor key the declared ``compute_ratio`` divides rail support by.
+
+    The declaration is authoritative; when no stage is given the committed
+    UK manifest's ``etb_services`` stage is read, so tools and receipts that
+    recompute ``rail_usage`` use the same denominator as the build.
+    """
+
+    if stage is None:
+        from microcosm.build.country_spec import load_country_spec
+
+        spec = load_country_spec("uk")
+        assert spec.sources is not None
+        stage = spec.sources.stage_map()[UK_ETB_SERVICES_STAGE_NAME]
+    for operation in stage.operations:
+        if operation.kind == "compute_ratio" and (
+            operation.parameters.get("output") == "rail_usage"
+        ):
+            key = operation.parameters.get("denominator_key")
+            if isinstance(key, str) and key:
+                return key
+    raise ValueError(
+        "etb_services declares no compute_ratio for rail_usage with a denominator_key."
+    )
 
 
 def household_grain_services_predictors(person_level: pd.DataFrame) -> pd.DataFrame:
@@ -473,9 +523,7 @@ def allocate_nhs_by_age_gender(
     household = household.assign(
         household_weight=np.asarray(household_weights, dtype=float)
     )
-    cells = build_nhs_cell_table(
-        nhs_table, person, household, nhs_budget=nhs_budget
-    )
+    cells = build_nhs_cell_table(nhs_table, person, household, nhs_budget=nhs_budget)
     output = pd.DataFrame(0.0, index=person.index, columns=UK_NHS_OUTPUT_COLUMNS)
     service_to_columns = {
         "A&E": ("a_and_e_visits", "nhs_a_and_e_spending"),

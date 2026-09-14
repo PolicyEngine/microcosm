@@ -10,7 +10,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from microcosm.build.uk_runtime.etb_services import clean_etb_services_table
+from microcosm.build.country_spec import load_country_spec
+from microcosm.build.uk_runtime.etb_services import (
+    clean_etb_services_table,
+    etb_donor_uprating,
+)
 from microcosm.build.uk_runtime.etb_services import (
     donor_realized_ranges as etb_services_ranges,
 )
@@ -18,7 +22,10 @@ from microcosm.build.uk_runtime.etb_vat import clean_etb_vat_table
 from microcosm.build.uk_runtime.etb_vat import (
     donor_realized_ranges as etb_vat_ranges,
 )
-from microcosm.build.uk_runtime.lcfs_consumption import clean_lcfs_consumption_table
+from microcosm.build.uk_runtime.lcfs_consumption import (
+    clean_lcfs_consumption_table,
+    lcfs_donor_uprating,
+)
 from microcosm.build.uk_runtime.lcfs_consumption import (
     donor_realized_ranges as lcfs_ranges,
 )
@@ -27,14 +34,24 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 UK_PACKAGE = REPO_ROOT / "packages/microcosm-build/src/microcosm/build/uk"
 
 
+def _committed_stage(name: str):
+    """The committed UK manifest stage, so bounds use the declared donor uprating."""
+
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    return spec.sources.stage_map()[name]
+
+
 def build_lcfs_support_bounds(
     household_tab: Path, person_tab: Path
 ) -> dict[str, object]:
     hh_sha = _sha256(household_tab)
     person_sha = _sha256(person_tab)
+    uprating, _receipt = lcfs_donor_uprating(_committed_stage("lcfs_consumption"))
     donor = clean_lcfs_consumption_table(
         pd.read_csv(person_tab, sep="\t", low_memory=False),
         pd.read_csv(household_tab, sep="\t", low_memory=False),
+        uprating=uprating,
     )
     return _payload(
         source={
@@ -64,7 +81,10 @@ def build_etb_vat_support_bounds(etb_tab: Path) -> dict[str, object]:
 
 def build_etb_services_support_bounds(etb_tab: Path) -> dict[str, object]:
     sha = _sha256(etb_tab)
-    donor = clean_etb_services_table(pd.read_csv(etb_tab, sep="\t", low_memory=False))
+    uprating, _receipt = etb_donor_uprating(_committed_stage("etb_services"))
+    donor = clean_etb_services_table(
+        pd.read_csv(etb_tab, sep="\t", low_memory=False), uprating=uprating
+    )
     return _payload(
         source={
             "ukds_study_number": 8856,

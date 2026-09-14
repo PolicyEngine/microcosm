@@ -353,10 +353,11 @@ def e6_identity_receipt(
     from microcosm.build.uk_runtime.etb_services import (
         allocate_nhs_by_age_gender,
         load_etb_services_anchors,
+        rail_fare_index_denominator_key,
     )
 
     rail_fare_index = float(
-        load_etb_services_anchors()["rail_fare_index_2023"]["value"]
+        load_etb_services_anchors()[rail_fare_index_denominator_key()]["value"]
     )
 
     def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:

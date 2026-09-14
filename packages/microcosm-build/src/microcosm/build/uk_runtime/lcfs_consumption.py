@@ -18,6 +18,11 @@ from microcosm.build.stochastic_assignment import (
     assign_binary_from_rate,
     stable_identity_uniforms,
 )
+from microcosm.build.uk_runtime.donor_uprating import (
+    apply_donor_uprating,
+    donor_uprating_factors,
+    uprating_operation,
+)
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -186,12 +191,16 @@ class UKLCFSConsumptionResult:
 
     frame: Frame
     support_clip: UKSupportClipReceipt
+    donor_uprating: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "stage": UK_LCFS_CONSUMPTION_STAGE_NAME,
             "support_clip": self.support_clip.evidence(),
         }
+        if self.donor_uprating is not None:
+            evidence["donor_uprating"] = dict(self.donor_uprating)
+        return evidence
 
 
 @dataclass
@@ -247,7 +256,10 @@ class UKLCFSConsumptionStageTransform:
             )
         )
         was = clean_was_household_table(was_raw)
-        donor = clean_lcfs_consumption_table(lcfs_person, lcfs_household)
+        uprating_factors, uprating_receipt = lcfs_donor_uprating(self.stage)
+        donor = clean_lcfs_consumption_table(
+            lcfs_person, lcfs_household, uprating=uprating_factors
+        )
         donor, bridge_record = bridge_has_fuel_to_lcfs(
             donor,
             was,
@@ -311,6 +323,7 @@ class UKLCFSConsumptionStageTransform:
         self.last_result = UKLCFSConsumptionResult(
             frame=result,
             support_clip=clip_result.receipt,
+            donor_uprating=uprating_receipt,
         )
         return result
 
@@ -330,10 +343,30 @@ class UKLCFSConsumptionImputationResult:
     fit_weight_records: tuple[FitWeightRecord, ...]
 
 
+def lcfs_donor_uprating(
+    stage: SourceStageSpec,
+) -> tuple[dict[str, float], dict[str, Any] | None]:
+    """The stage's declared donor uprating factors and receipt (none if undeclared)."""
+
+    parameters = uprating_operation(stage)
+    if parameters is None:
+        return {}, None
+    return donor_uprating_factors(parameters)
+
+
 def clean_lcfs_consumption_table(
-    lcfs_person: pd.DataFrame, lcfs_household: pd.DataFrame
+    lcfs_person: pd.DataFrame,
+    lcfs_household: pd.DataFrame,
+    *,
+    uprating: Mapping[str, float] | None = None,
 ) -> pd.DataFrame:
-    """Return the LCFS donor table with annualized consumption variables."""
+    """Return the LCFS donor table with annualized consumption variables.
+
+    ``uprating`` maps donor columns to the declared factors that move the
+    2023-24 diary to the FRS 2024-25 base year (``uprate_donor_columns``);
+    it is applied after annualisation and before the donor-side NEED rake, so
+    the income bands and the support-clip ranges see base-year values.
+    """
 
     person = _lowercase(lcfs_person).rename(columns=PERSON_LCFS_RENAMES)
     household = _lowercase(lcfs_household).rename(columns=HOUSEHOLD_LCFS_RENAMES)
@@ -368,6 +401,8 @@ def clean_lcfs_consumption_table(
         totals = person.groupby("case")[column].sum()
         household[column] = household["case"].map(totals).fillna(0.0) * WEEKS_IN_YEAR
     household["household_weight"] = _numeric(household["household_weight"]) * 1_000
+    if uprating:
+        household = apply_donor_uprating(household, uprating)
     household = rake_energy_to_need(household, weights=None, iterations=1)
     household["domestic_energy_consumption"] = (
         household["electricity_consumption"] + household["gas_consumption"]
@@ -429,9 +464,7 @@ def bridge_has_fuel_to_lcfs(
     from microcosm.fit import RegimeGatedQRF
 
     if nts_ice_share is None:
-        nts_ice_share = float(
-            load_lcfs_consumption_anchors()["nts_ice_share"]["value"]
-        )
+        nts_ice_share = float(load_lcfs_consumption_anchors()["nts_ice_share"]["value"])
     donor = was.copy()
     donor["has_fuel_consumption"] = (
         (_numeric(donor["num_vehicles"]) > 0)
@@ -439,7 +472,7 @@ def bridge_has_fuel_to_lcfs(
             stable_identity_uniforms(
                 donor.index.to_numpy(), seed=seed, salt="was_has_fuel"
             )
-                < nts_ice_share
+            < nts_ice_share
         )
     ).astype(float)
     # The LCFS frame carries its own names for three of the WAS bridge

@@ -632,6 +632,7 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["lcfs_consumption"].operations] == [
             "derive",
+            "uprate_donor_columns",
             "iterative_proportional_fit",
             "bridge_donor_column_via_qrf",
             "assign_binary_from_rate",
@@ -650,6 +651,7 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["etb_services"].operations] == [
             "derive",
+            "uprate_donor_columns",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
@@ -827,14 +829,14 @@ class TestE3ManifestLockstep:
         )
 
         assert (
-            tuple(stages["etb_services"].operations[1].parameters["predictors"])
+            tuple(stages["etb_services"].operations[2].parameters["predictors"])
             == UK_ETB_SERVICES_ENGINE_VARIABLES
         )
         assert set(
-            stages["etb_services"].operations[1].parameters["derived_predictors"]
+            stages["etb_services"].operations[2].parameters["derived_predictors"]
         ) == set(UK_ETB_SERVICES_EDUCATION_COUNTS)
         assert (
-            tuple(stages["etb_services"].operations[2].parameters["targets"])
+            tuple(stages["etb_services"].operations[3].parameters["targets"])
             == UK_ETB_SERVICES_OUTPUT_COLUMNS[:3]
         )
         rate_keys = [
@@ -928,7 +930,7 @@ class TestE3ManifestLockstep:
             "fit_weighted_qrf_chain": 0,
         }
         assert stages["etb_vat"].operations[2].parameters["seed"] == 0
-        assert stages["etb_services"].operations[2].parameters["seed"] == 0
+        assert stages["etb_services"].operations[3].parameters["seed"] == 0
 
     def test_e7_declared_seed_lockstep(self) -> None:
         spec = load_country_spec("uk")

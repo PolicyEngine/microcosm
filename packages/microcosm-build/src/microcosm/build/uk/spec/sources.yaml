@@ -1113,6 +1113,83 @@ stages:
     - LCFS tenure 4 and 8 -> RENT_PRIVATELY
     - LCFS accommodation 4 and 5 -> FLAT
     logged_dropna_row_count: true
+  - kind: uprate_donor_columns
+    from_period: 2023
+    to_period: 2024
+    instant: january_first
+    columns:
+      food_and_non_alcoholic_beverages_consumption:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      alcohol_and_tobacco_consumption:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      clothing_and_footwear_consumption:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      housing_water_and_electricity_consumption:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      household_furnishings_consumption:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      health_consumption:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      transport_consumption:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      communication_consumption:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      recreation_consumption:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      education_consumption:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      restaurants_and_hotels_consumption:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      miscellaneous_consumption:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      bus_fare_spending:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      employment_income:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.average_earnings
+      self_employment_income:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.per_capita.mixed_income
+      private_pension_income:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.private_pension_index
+      hbai_household_net_income:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.average_earnings
+      household_gross_income:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.average_earnings
+      petrol_spending:
+        basis: vendored_litre_proxy
+        resource: road_fuel_anchors.json
+        price_concept: desnz.road_fuel.annual_ulsp_pump_price
+        litres_concept: hmrc.hydrocarbon_oils.total_petrol_quantity
+        population_concept: ons.mid_year_population_estimate
+        audit_parameter_path: gov.economic_assumptions.indices.obr.petrol_spending_litre_proxy
+      diesel_spending:
+        basis: vendored_litre_proxy
+        resource: road_fuel_anchors.json
+        price_concept: desnz.road_fuel.annual_ulsd_pump_price
+        litres_concept: hmrc.hydrocarbon_oils.total_diesel_quantity
+        population_concept: ons.mid_year_population_estimate
+        audit_parameter_path: gov.economic_assumptions.indices.obr.diesel_spending_litre_proxy
+    exempt:
+    - electricity_consumption
+    - gas_consumption
+    - domestic_energy_consumption
   - kind: iterative_proportional_fit
     columns:
     - electricity_consumption
@@ -1254,7 +1331,7 @@ stages:
   - electricity_consumption
   - gas_consumption
   - has_fuel_consumption
-  notes: Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and identity-keyed seed-0 fuel flags. Energy support clipping is exempt because NEED raking governs those columns. Donor uprating is identity at this vintage (LCFS survey year equals the 2023 build year), so the incumbent's CPI and fuel litre-proxy donor uprating is deliberately not declared here; the machinery lands with the FRS 2024-25 refresh (microcosm#687), where a donor/build year gap first exists. The DESNZ pump-price anchors stay committed as the cited litre-proxy denominators for that refresh.
+  notes: Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and identity-keyed seed-0 fuel flags. Energy support clipping is exempt because NEED raking governs those columns. The 2023-24 diary is uprated to the FRS 2024-25 base year by the declared uprate_donor_columns step (microcosm#890), with consumption columns uprated by the engine's CPI index, income predictors by the engine's earnings, mixed-income and pension indices, petrol and diesel by the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json; the energy columns are exempt because the NEED rake and the FY2024-25 Ofgem pricing set their level.
 - stage: etb_vat
   survey: Effects of Taxes and Benefits 1977-2024
   source: UK Data Service SN 8856 Effects of Taxes and Benefits household tab and cited VAT anchor resource.
@@ -1339,6 +1416,26 @@ stages:
   - kind: derive
     year: max
     annualization_weeks: 52
+  - kind: uprate_donor_columns
+    from_period: 2023
+    to_period: 2024
+    instant: january_first
+    columns:
+      dfe_education_spending:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.consumer_price_index
+      hbai_household_net_income:
+        basis: engine_parameter
+        parameter_path: gov.economic_assumptions.indices.obr.average_earnings
+      rail_subsidy_spending:
+        basis: vendored_ratio
+        resource: orr_rail_facts.json
+        concept: orr.rail.total_government_support
+      bus_subsidy_spending:
+        basis: vendored_ratio
+        resource: dft_bus_value_anchors.json
+        concept: dft.local_bus_total_estimated_net_support
+        geography_id: E92000001
   - kind: materialize_rules_engine_predictors
     predictors:
     - is_adult
@@ -1376,7 +1473,7 @@ stages:
     output: rail_usage
     numerator: rail_subsidy_spending
     denominator_resource: etb_services_anchors.json
-    denominator_key: rail_fare_index_2023
+    denominator_key: rail_fare_index_2024
   - kind: allocate_per_capita_from_cell_table
     resource: nhs_consumption_by_age_gender.json
     budget_resource: etb_services_anchors.json
@@ -1404,7 +1501,7 @@ stages:
   - nhs_a_and_e_spending
   - nhs_admitted_patient_spending
   - nhs_outpatient_spending
-  notes: Ports ETB public-services QRF at household grain, computes rail_usage from the 2023 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage.
+  notes: Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support), computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage.
 - stage: frs_hmrc_spine_leaves
   survey: Family Resources Survey 2024-25
   source: Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input
