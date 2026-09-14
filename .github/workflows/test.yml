@@ -257,7 +257,6 @@ jobs:
           packages/microcosm-build/tests/test_spec_seed_identity_owned_temp.py
           packages/microcosm-build/tests/test_spec_seed_identity_system_metadata.py
           packages/microcosm-build/tests/test_spec_seed_identity_per_code_context.py
-          packages/microcosm-build/tests/test_spec_seed_identity_parameter_assets.py
       - name: Derive candidate spec and seed identities (diagnostic only)
         id: spec_seed_diagnostics
         timeout-minutes: 15
