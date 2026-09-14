@@ -5,6 +5,7 @@ import itertools
 
 import pytest
 
+from microcosm.build.us_runtime import acs_native_coverage_binding as native_owner
 from microcosm.build.us_runtime import acs_person_coverage_authentication as owner
 
 
@@ -155,3 +156,46 @@ def test_exact_resource_refusal_precedence(
         actual = _outcome(owner._records, data, chunk)
         assert actual[1] == code
         assert actual == _outcome(_reference_records, data, chunk)
+
+
+@pytest.mark.parametrize("byte", [b",", b'"', b"\n", b"x"])
+def test_delimiter_dense_blocks_do_not_repeat_suffix_searches(byte, monkeypatch):
+    monkeypatch.setattr(owner, "MAX_TOKEN_BYTES", 8192)
+    monkeypatch.setattr(owner, "MAX_CSV_HEADER_BYTES", 8192)
+    monkeypatch.setattr(owner, "MAX_RECORD_BYTES", 8192)
+    searched = []
+
+    class TracedBlock(bytes):
+        def find(self, delimiter, start=0, end=None):
+            limit = len(self) if end is None else end
+            found = super().find(delimiter, start, limit)
+            searched.append((found + 1 if found >= 0 else limit) - start)
+            return found
+
+    class TracedStream(io.BytesIO):
+        def read(self, size=-1):
+            assert size == 4096
+            return TracedBlock(super().read(size))
+
+    data = byte * 4096
+    assert list(owner._records(TracedStream(data))) == list(
+        _reference_records(io.BytesIO(data))
+    )
+    # Each of four independent delimiter searches covers a byte at most once.
+    assert sum(searched) <= 4 * len(data)
+
+
+def test_reviewed_scanner_is_admitted_by_native_owner_and_old_pin_refuses(monkeypatch):
+    producer = native_owner._producer()
+    assert producer["accepted_age_transform"] == (
+        "literal_numeric_identity_AGEP_to_AGEP_A_AGE_age"
+    )
+    monkeypatch.setitem(
+        native_owner._ACCEPTED,
+        "acs_person_coverage_authentication.py",
+        "475aa795c8a5b49a0dd3405a0877866dddd03012a1f2b9743447fab1fe85bcff",
+    )
+    with pytest.raises(
+        native_owner.ACSNativeCoverageBindingError, match="^UNREVIEWED_PREPARATION$"
+    ):
+        native_owner._producer()

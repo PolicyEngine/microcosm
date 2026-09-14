@@ -35,7 +35,7 @@ _ACCEPTED = {
     "acs_pums.py": "6ecf79f0dfb0c0bc0ad0af6be5fa65bd8c2d1e1968009402e4c8dee347de70dc",
     "acs_inputs.py": "aa4a8aeaba63dfef2f3e04fb89de59766deb088ed7f4d290aeba0425739916da",
     "acs_housing_universe_source.py": "beb46a4a05a13580a868be423809a77946441dcafc3a0f57160561157e93e9a3",
-    "acs_person_coverage_authentication.py": "475aa795c8a5b49a0dd3405a0877866dddd03012a1f2b9743447fab1fe85bcff",
+    "acs_person_coverage_authentication.py": "e0c77030df71de1316c4ade6d7d525a0ca58b6e2704c06c8a447623f2e8a0e3b",
 }
 _TOKEN = object()
 _ISSUED = WeakKeyDictionary()

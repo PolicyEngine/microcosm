@@ -195,7 +195,10 @@ def _records(stream):
     record = bytearray()
     quoted, pending_cr, first, token_bytes = False, False, True, 0
     cap = MAX_CSV_HEADER_BYTES
+    delimiters = (b",", b'"', b"\r", b"\n")
     while block := stream.read(4096):
+        positions = [block.find(delimiter) for delimiter in delimiters]
+        positions = [len(block) if pos < 0 else pos for pos in positions]
         offset = 0
         while offset < len(block):
             byte = block[offset]
@@ -208,16 +211,17 @@ def _records(stream):
                 first, pending_cr, token_bytes = False, False, 0
                 if byte == 10:
                     offset += 1
+                    found = block.find(b"\n", offset)
+                    positions[3] = len(block) if found < 0 else found
                     continue
             cap = MAX_CSV_HEADER_BYTES if first else MAX_RECORD_BYTES
             # Ordinary bytes cannot change quote or record state. Find the next
             # boundary in C, then fence the whole span before copying it. Keep
             # the bytewise refusal order when either ceiling would be crossed.
-            end = len(block)
-            for delimiter in (b",", b'"', b"\r", b"\n"):
-                found = block.find(delimiter, offset)
-                if found >= 0:
-                    end = min(end, found)
+            # Advance a delimiter's search only when it is consumed. Each
+            # search then crosses any byte at most once for that delimiter,
+            # including blocks containing many commas but no quotes/newlines.
+            end = min(positions)
             if end > offset:
                 size = end - offset
                 record_room = max(0, cap - len(record))
@@ -243,6 +247,9 @@ def _records(stream):
                 _require(token_bytes <= MAX_TOKEN_BYTES, "CSV_TOKEN_BYTES")
             record.append(byte)
             offset += 1
+            delimiter_index = (44, 34, 13, 10).index(byte)
+            found = block.find(delimiters[delimiter_index], offset)
+            positions[delimiter_index] = len(block) if found < 0 else found
             if byte == 34:
                 quoted = not quoted
             if not quoted and byte in (10, 13):
