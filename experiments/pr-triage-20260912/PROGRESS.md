@@ -90,7 +90,41 @@ only; no tracked file is edited; commits land on the local ref
 - Byte-compared every 893-overlapping file of all 29 overlapping PRs: only #914
   has substantive identity. Filename overlap alone folded nothing.
 
+### More owner spot checks (2026-09-14 ~19:35 ET)
+
+- **#768 must not be closed**: the constraint it removes,
+  `weeks_requires_positive_unemployment_compensation`, is still live in 8 files on
+  main and in #893. Its only *added* symbol (`replay_checkpoint`) is already on
+  main, so a symbol-only screen would mislabel it.
+- **#873 splits**: its own "Amendment 19: typed artifacts and stable draw
+  coordinates" is superseded by main's merged Amendment 19 (#911) and 20 (#912) -
+  `ArtifactType` (10 files), `artifact_outputs` (11), `artifact_inputs` (12),
+  `keyed_uniform` (5), `SeedSource.KEYED` (4) are all on main, and main's
+  `graph/artifact_edges.py` (210 lines) and `graph/randomness.py` (78) are
+  supersets of #873's (164 / 69). Unique and unmerged: the fit-layer
+  `graph_apply/graph_train/_graph_qrf/graph_models` plus
+  `build/transfer_example.py` (~990 lines), on neither main nor #893.
+- **Frozen-interface sequencing collision**: #918 and #901 both propose lock
+  `11c2abd7…/2df6cc5b…` with amendments 25 and 26; #873 proposes a different lock
+  `8229270f…/07691fb5…`. Nothing else among the 50 touches decl.py or kernel.py.
+  They cannot be gated in parallel.
+- **#916** is green and clean but has **no `changelog.d/` fragment** among its 36
+  files, and its first-time-contributor author's request for review from María is
+  unanswered.
+- **#718 is not superseded**: main still hardcodes `RELEASE_NAMESPACE =
+  "buildo_acs_local"`; none of #923/#924/#926 carries #718's campaign derivation.
+- **ACS-hours cluster mapped**: issue #765 (open) is the defect; #923 is one route
+  (retain WKHP + a spine gate), #924 -> #926 is a second, explicitly chained route
+  (#926's body: "the accepted full ACS recovery sidecar from #924"). #718 shares 3
+  files with #923 but delivers a different feature. Pairwise file overlap among
+  #924/#926/#923 is zero.
+- **#325, #391, #853 carry unique work**: `ai_exposure`/`exposure_crosswalk`/
+  `occupation_target` -> 0 files on main and 0 in #893; main has `ledger_artifact.py`
+  and `ledger_targets.py` but no `ledger_schema.py` and no
+  `schemas/consumer_fact.v1.schema.json`; `root_identity`/`raw_input_hash` -> 0 on main.
+
 ## Next (run 3)
 
-- Finish the fan-out, reconcile against the owner spot checks.
+- Finish the fan-out (28/50 evidence in at 19:40; verify + adjudicate to follow).
+- Reconcile every agent verdict against `scratchpad/owner_spotchecks.md`.
 - Write `out-pr-triage.md` and `pr-dispositions.json`.
