@@ -5008,20 +5008,25 @@ def test_worker_identity_refuses_duplicate_backend_provider_distribution_identit
 
 
 @pytest.mark.usefixtures("live_worker_identity")
-def test_worker_transitive_source_identity_binds_actual_imported_package_resource(
+def test_worker_transitive_source_identity_binds_actual_imported_namespace_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    target_name = "soi_table_2_1_interest_components_ty2015.json"
+    target_resource = "microcosm/build/us_runtime/puf_qrf_chain.py"
     trace = worker_identity_module._clean_worker_import_trace()
+    # E19200 decomposition runs in the parent, outside worker startup.
+    assert all(
+        Path(path).name != "soi_table_2_1_interest_components_ty2015.json"
+        for path in trace["opened_files"]
+    )
+    target_path = Path(
+        trace["module_origins"]["microcosm.build.us_runtime.puf_qrf_chain"]
+    ).resolve()
     before = worker_identity_module._worker_package_resource_rows(trace)
     stdlib_rows = worker_identity_module._worker_stdlib_import_rows(trace)
     assert any(row["module"] == "argparse" for row in stdlib_rows)
-    target_rows = [
-        row for row in before if str(row.get("resource", "")).endswith(target_name)
-    ]
+    target_rows = [row for row in before if row["resource"] == target_resource]
     assert len(target_rows) == 1
-    target_resource = target_rows[0]["resource"]
     target_sha256 = target_rows[0]["sha256"]
     _stub_worker_identity_static_closure(monkeypatch)
     runtime = tmp_path / "libpython-fixture.so"
@@ -5043,7 +5048,7 @@ def test_worker_transitive_source_identity_binds_actual_imported_package_resourc
 
     def changed_resource_bytes(path: Path) -> bytes:
         raw = original_read_bytes(path)
-        if path.name == target_name:
+        if path.resolve() == target_path:
             return raw + b"\n"
         return raw
 
@@ -5066,6 +5071,37 @@ def test_worker_transitive_source_identity_binds_actual_imported_package_resourc
     assert worker_identity_module._canonical_sha256(identity_after) != (
         worker_identity_module._canonical_sha256(identity_before)
     )
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_worker_namespace_trace_hashes_opened_json_and_ignores_unlisted_resource(
+    tmp_path: Path,
+) -> None:
+    trace = _fixture_worker_import_trace(tmp_path)
+    namespace_root = Path(trace["namespace_roots"][0])
+    opened = namespace_root / "build" / "fixture-opened.json"
+    unlisted = namespace_root / "build" / "fixture-unlisted.json"
+    original_bytes = b'{"fixture": 1}\n'
+    changed_bytes = b'{"fixture": 2}\n'
+    opened.write_bytes(original_bytes)
+    unlisted.write_bytes(b'{"unlisted": 1}\n')
+    trace["opened_files"] = (str(opened),)
+    resource = "microcosm/build/fixture-opened.json"
+
+    before = worker_identity_module._worker_package_resource_rows(trace)
+    assert before == [
+        {"resource": resource, "sha256": hashlib.sha256(original_bytes).hexdigest()}
+    ]
+
+    unlisted.write_bytes(b'{"unlisted": 2}\n')
+    assert worker_identity_module._worker_package_resource_rows(trace) == before
+
+    opened.write_bytes(changed_bytes)
+    after = worker_identity_module._worker_package_resource_rows(trace)
+    assert after == [
+        {"resource": resource, "sha256": hashlib.sha256(changed_bytes).hexdigest()}
+    ]
+    assert after != before
 
 
 @pytest.mark.parametrize(

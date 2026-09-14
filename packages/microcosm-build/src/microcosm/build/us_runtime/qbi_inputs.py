@@ -40,6 +40,22 @@ from microcosm.build.us_runtime.support_provenance import (
 from microcosm.build.us_runtime.take_up_contract import load_take_up_contract
 from microcosm.frame import US_SCHEMA, Frame
 
+from .operator_column_contracts import (
+    _GENERAL_QUALIFICATION_FLAGS as _GENERAL_QUALIFICATION_FLAGS,
+)
+from .operator_column_contracts import (
+    _SSTB_QUALIFICATION_FLAG as _SSTB_QUALIFICATION_FLAG,
+)
+from .operator_column_contracts import (
+    US_QBI_BOOLEAN_OUTPUT_COLUMNS as US_QBI_BOOLEAN_OUTPUT_COLUMNS,
+)
+from .operator_column_contracts import (
+    US_QBI_NONNEGATIVE_OUTPUT_COLUMNS as US_QBI_NONNEGATIVE_OUTPUT_COLUMNS,
+)
+from .operator_column_contracts import (
+    US_QBI_OUTPUT_COLUMNS as US_QBI_OUTPUT_COLUMNS,
+)
+
 __all__ = [
     "QBI_ARCHIVED_ASSUMPTIONS_URL",
     "QBI_ARCHIVED_CLONE_URL",
@@ -87,40 +103,6 @@ QBI_ARCHIVED_PUF_ARTIFACT_URL = _ARCHIVED_ROOT + "datasets/puf/puf.py#L1655-L166
 
 US_QBI_STAGE_NAME = "puf_tax_detail"
 
-_GENERAL_QUALIFICATION_FLAGS: tuple[str, ...] = (
-    "estate_income_would_be_qualified",
-    "farm_operations_income_would_be_qualified",
-    "farm_rent_income_would_be_qualified",
-    "partnership_s_corp_income_would_be_qualified",
-    "rental_income_would_be_qualified",
-    "self_employment_income_would_be_qualified",
-)
-_SSTB_QUALIFICATION_FLAG = "sstb_self_employment_income_would_be_qualified"
-US_QBI_BOOLEAN_OUTPUT_COLUMNS: tuple[str, ...] = (
-    *_GENERAL_QUALIFICATION_FLAGS,
-    _SSTB_QUALIFICATION_FLAG,
-    # Keep the classifier last so the chained QRF can condition the SSTB draw
-    # on the qualification flags it must agree with.
-    "business_is_sstb",
-)
-US_QBI_NONNEGATIVE_OUTPUT_COLUMNS: tuple[str, ...] = (
-    "qualified_bdc_income",
-    "qualified_reit_and_ptp_income",
-    "sstb_unadjusted_basis_qualified_property",
-    "sstb_w2_wages_from_qualified_business",
-    "unadjusted_basis_qualified_property",
-    "w2_wages_from_qualified_business",
-)
-US_QBI_OUTPUT_COLUMNS: tuple[str, ...] = (
-    *US_QBI_BOOLEAN_OUTPUT_COLUMNS,
-    "qualified_bdc_income",
-    "qualified_reit_and_ptp_income",
-    "sstb_self_employment_income_before_lsr",
-    "sstb_unadjusted_basis_qualified_property",
-    "sstb_w2_wages_from_qualified_business",
-    "unadjusted_basis_qualified_property",
-    "w2_wages_from_qualified_business",
-)
 US_QBI_NONCONSTANT_PERSON_COLUMNS = US_QBI_OUTPUT_COLUMNS
 
 _SELF_EMPLOYMENT_COLUMN = "self_employment_income_before_lsr"

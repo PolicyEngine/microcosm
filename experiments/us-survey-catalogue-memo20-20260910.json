@@ -1,0 +1,32 @@
+{
+  "code": [
+    {
+      "maintained_sha256": "508d18bac53690f8841e3eb2770bc2aa6079b9180ad0a31c65c5566f3304a206",
+      "path": "packages/microcosm-build/src/microcosm/build/us_runtime/survey_population_preparation.py"
+    },
+    {
+      "maintained_sha256": "8a9742e108347916937317a0901a462c315d688b32795758972ff9554b07d32f",
+      "path": "packages/microcosm-build/tests/test_us_survey_catalogue_immutable_memo.py"
+    }
+  ],
+  "evidence": {
+    "cpu_seconds": 18.188797,
+    "model_sources": 0,
+    "peak_rss_bytes": 405815296,
+    "physical_postcheck_sha256": "fcd8dcdb6b706f65888b1e33add9c042302d51358597973db14901e0c70f17b8",
+    "receipt_sha256": "ee5279f9678d035b0d6ede176704b4d04196d1eea351adfba56510dba973f972",
+    "resources": 12,
+    "source_peer_review_sha256": "c5e0e1188fdac1e84929f46d8e13f5e42e33b286f86a121ddd16aa38222c7e1d",
+    "source_plus_owned": 514,
+    "tests_failed": 0,
+    "tests_passed": 20,
+    "unexpected_refusals": {},
+    "wall_seconds": 18.8203088750015,
+    "xml_sha256": "04dec52f2e8ca14815b8368a7ac2023d2f08f752c94367f9a6d7b2189402077f"
+  },
+  "maintained_full_CI_accepted": false,
+  "native_build_accepted": false,
+  "release_eligible": false,
+  "scope": "Reuse a sealed immutable ACS catalogue value within its issued preparation. All source and producer checks, complete Frame seals and final checks remain; replacing roots or mutable contents takes the original hashing path. Native performance remains to be measured.",
+  "status": "scoped_controls_accepted"
+}

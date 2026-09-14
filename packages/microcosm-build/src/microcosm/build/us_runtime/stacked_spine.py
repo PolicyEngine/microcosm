@@ -26,10 +26,11 @@ weight ``w_i``,
     ``w_i' = w_i * share_s * M_anchor / M_s``
 
 where ``M_s`` is arm ``s``'s incoming household mass and ``M_anchor`` is the
-mass-anchor arm's incoming mass.  For the seeded ACS sample,
-``M_acs_sample ~= fraction * M_acs_full``, so the allocation factor contains
-the inverse-sampling upweighting ``1 / fraction`` automatically; the realized
-per-arm scale factors are receipted rather than assumed.
+mass-anchor arm's incoming mass. Production sampling first normalizes each
+source by its full-source mass divided by its realized sampled mass. For
+unequal source weights, that ratio is not generally the inverse realized
+household inclusion count ``N / n``. Legacy pilot controls allocate directly
+from the sampled ACS mass. Both paths receipt their actual scale factors.
 """
 
 from __future__ import annotations
@@ -40,7 +41,6 @@ import json
 import math
 import os
 import pickle
-import struct
 import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -80,6 +80,12 @@ from microcosm.build.gates import (
 )
 from microcosm.build.serialization_dtypes import canonicalize_table_string_dtypes
 from microcosm.build.source_manifest import load_source_manifest
+from microcosm.build.table_identity import (
+    TABLE_VALUES_DIGEST_CODEC as _LATE_TABLE_DIGEST_CODEC,
+)
+from microcosm.build.table_identity import (
+    table_values_sha256 as _late_table_values_sha256,
+)
 from microcosm.build.us_runtime import (
     post_transfer_calibration as post_transfer_calibration_runtime,
 )
@@ -183,7 +189,13 @@ from microcosm.build.us_runtime.puf_support import (
     puf_tax_detail_tail_bound_quantiles_identity,
     validate_puf_clone_attachment,
 )
-from microcosm.build.us_runtime.spine_assembly import assemble_spines
+from microcosm.build.us_runtime.spine_assembly import (
+    _freeze_context,
+    _validated_spine_inputs,
+    assemble_spines,
+    harmonize_spine_weights,
+    prepare_spines,
+)
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_CLONE_INDEX,
@@ -220,7 +232,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     us_late_producer_schedule_receipt,
 )
 from microcosm.fit import Regime
-from microcosm.frame import US_SCHEMA, Frame, WeightKind
+from microcosm.frame import US_SCHEMA, Frame, MassChangeRecord, WeightKind, Weights
 
 __all__ = [
     "ACS_STACKED_SUPPORT_CHANNEL",
@@ -249,6 +261,11 @@ __all__ = [
     "StackedLateProducerResult",
     "StackedPostPufTransferResult",
     "StackedSpineResult",
+    "StackedSpinePreparation",
+    "StackedSpineHarmonization",
+    "prepare_stacked_spine",
+    "harmonize_stacked_spine_weights",
+    "finish_stacked_spine",
     "assemble_stacked_spine",
     "assert_stacked_tail_cells_preserved",
     "by_origin_battery",
@@ -553,7 +570,47 @@ def _acs_native_group_quarters_receipt(
     }
 
 
-def assemble_stacked_spine(
+@dataclass(frozen=True)
+class _SampledStack:
+    spines: Mapping[str, Frame]
+    shares: Mapping[str, float]
+    incoming_masses: Mapping[str, float]
+    sampling: Mapping[str, object]
+    manifest_version: int
+    mass_anchor_channel: str
+
+
+@dataclass(frozen=True)
+class StackedSpinePreparation:
+    """DESIGN preparation and a distinct pre-harmonization receipt."""
+
+    frame: Frame
+    receipt: Mapping[str, object]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.frame, Frame) or not isinstance(self.receipt, Mapping):
+            raise TypeError(
+                "StackedSpinePreparation requires a Frame and receipt mapping."
+            )
+        object.__setattr__(self, "receipt", _freeze_context(self.receipt))
+        _validate_stacked_preparation(self.frame, self.receipt)
+
+
+@dataclass(frozen=True)
+class StackedSpineHarmonization:
+    """Actual weights and completed context, with ordered legacy history."""
+
+    weights: Weights
+    metadata: Mapping[str, object]
+    receipt: Mapping[str, object]
+    legacy_mass_log: tuple[MassChangeRecord, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "metadata", _freeze_context(self.metadata))
+        object.__setattr__(self, "receipt", _freeze_context(self.receipt))
+
+
+def _sample_stacked_inputs(
     asec: Frame,
     acs: Frame,
     *,
@@ -563,27 +620,8 @@ def assemble_stacked_spine(
     sample_seed: int | None = None,
     household_mass_shares: Mapping[str, float] | None = None,
     mass_anchor_channel: str = BASE_ASEC_SUPPORT_CHANNEL,
-) -> StackedSpineResult:
-    """Assemble uniformly sampled ASEC and ACS survey arms into one spine.
-
-    Production callers provide the single ``sample_fraction`` and
-    ``sample_seed`` scale-ladder controls.  The exact same fraction is applied
-    independently to both survey arms at whole-household grain; each sampled
-    arm is then normalized back to its full-source household mass before the
-    reviewed :func:`assemble_spines` harmonization.  This preserves each arm's
-    composition and prevents the anchor population from shrinking with the
-    rung.  PUF donors are not accepted here and therefore remain unsampled.
-
-    ``acs_sample_fraction``/``acs_sample_seed`` retain the reviewed version-1
-    pilot contract for reproducibility only: ASEC remains full and ACS alone
-    is sampled.  Supplying pilot and production controls together fails
-    closed.
-
-    Returns:
-        A validated :class:`StackedSpineResult` whose receipt mirrors the
-        frozen manifest as a JSON-ready mapping.
-    """
-
+) -> _SampledStack:
+    """Run the unchanged pilot or production sampling/normalization controls."""
     shares = (
         dict(DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES)
         if household_mass_shares is None
@@ -688,6 +726,287 @@ def assemble_stacked_spine(
             },
         }
 
+    return _SampledStack(
+        {
+            BASE_ASEC_SUPPORT_CHANNEL: sampled_asec,
+            ACS_STACKED_SUPPORT_CHANNEL: sampled_acs,
+        },
+        shares,
+        incoming_masses,
+        sampling_manifest,
+        manifest_version,
+        mass_anchor_channel,
+    )
+
+
+def assemble_stacked_spine(
+    asec: Frame,
+    acs: Frame,
+    *,
+    acs_sample_fraction: float | None = None,
+    acs_sample_seed: int | None = None,
+    sample_fraction: float | None = None,
+    sample_seed: int | None = None,
+    household_mass_shares: Mapping[str, float] | None = None,
+    mass_anchor_channel: str = BASE_ASEC_SUPPORT_CHANNEL,
+) -> StackedSpineResult:
+    """Compose actual sampling, stacking and importance harmonization.
+
+    Production controls normalize each sampled source by M_full/M_sample.
+    This ratio is not generally inverse realized household inclusion N/n.
+    Legacy pilot controls and accepted source weight kinds remain unchanged.
+    """
+    sampled = _sample_stacked_inputs(
+        asec,
+        acs,
+        acs_sample_fraction=acs_sample_fraction,
+        acs_sample_seed=acs_sample_seed,
+        sample_fraction=sample_fraction,
+        sample_seed=sample_seed,
+        household_mass_shares=household_mass_shares,
+        mass_anchor_channel=mass_anchor_channel,
+    )
+    if all(
+        frame.weights_for("household").kind is WeightKind.DESIGN
+        for frame in sampled.spines.values()
+    ):
+        return finish_stacked_spine(_prepare_sampled_stack(sampled))
+    # Existing direct callers may supply calibrated or mixed source kinds.
+    # They keep their historical path, never relabeled as a DESIGN anchor.
+    return _finish_legacy_sampled_stack(sampled)
+
+
+def prepare_stacked_spine(
+    asec: Frame,
+    acs: Frame,
+    *,
+    acs_sample_fraction: float | None = None,
+    acs_sample_seed: int | None = None,
+    sample_fraction: float | None = None,
+    sample_seed: int | None = None,
+    household_mass_shares: Mapping[str, float] | None = None,
+    mass_anchor_channel: str = BASE_ASEC_SUPPORT_CHANNEL,
+) -> StackedSpinePreparation:
+    """Sample/normalize actual DESIGN sources and stack them before allocation.
+
+    Returns a dedicated preparation receipt, never an incomplete completed
+    stacked-spine manifest. No harmonized weights are precomputed.
+    """
+    sampled = _sample_stacked_inputs(
+        asec,
+        acs,
+        acs_sample_fraction=acs_sample_fraction,
+        acs_sample_seed=acs_sample_seed,
+        sample_fraction=sample_fraction,
+        sample_seed=sample_seed,
+        household_mass_shares=household_mass_shares,
+        mass_anchor_channel=mass_anchor_channel,
+    )
+    return _prepare_sampled_stack(sampled)
+
+
+def _prepare_sampled_stack(sampled: _SampledStack) -> StackedSpinePreparation:
+    prepared = prepare_spines(
+        sampled.spines,
+        household_mass_shares=sampled.shares,
+        mass_anchor_channel=sampled.mass_anchor_channel,
+    )
+    samples = sampled.sampling.get(
+        "survey_samples",
+        {ACS_STACKED_SUPPORT_CHANNEL: sampled.sampling.get("acs_sample")},
+    )
+    full_masses = {
+        channel: float(samples[channel]["incoming_household_mass"])
+        if channel in samples
+        else float(sampled.incoming_masses[channel])
+        for channel in sampled.spines
+    }
+    receipt = {
+        "schema": "microcosm.us.stacked-spine-preparation.v1",
+        "stacked_manifest_version": sampled.manifest_version,
+        "sampling": sampled.sampling,
+        "full_source_masses": full_masses,
+        "household_mass_shares": sampled.shares,
+        "mass_anchor_channel": sampled.mass_anchor_channel,
+        "assembly_context": prepared.context,
+        "assembly_metadata": prepared.frame.metadata,
+        "acs_native_group_quarters": _acs_native_group_quarters_receipt(
+            sampled.spines[ACS_STACKED_SUPPORT_CHANNEL], prepared.frame
+        ),
+    }
+    return StackedSpinePreparation(prepared.frame, receipt)
+
+
+def _validate_stacked_preparation(frame: Frame, receipt: Mapping[str, object]) -> None:
+    boundary = "stacked spine preparation"
+    if frame.weights_for("household").kind is not WeightKind.DESIGN:
+        raise ValueError("Stacked spine preparation requires actual DESIGN weights.")
+    if STACKED_SPINE_MANIFEST_KEY in frame.metadata:
+        raise ValueError(
+            "A preparation must not carry a completed stacked spine manifest."
+        )
+    validate_assembly_provenance(frame, boundary=boundary)
+    _validate_preparation_receipt(receipt)
+    if _json_ready(receipt["assembly_metadata"]) != _json_ready(frame.metadata):
+        raise ValueError("Prepared assembly metadata differs from the actual frame.")
+    _validated_spine_inputs(
+        frame.table("household"),
+        frame.weights_for("household").values,
+        receipt["assembly_context"],
+    )
+    version, sampling = receipt["stacked_manifest_version"], receipt["sampling"]
+    production = version == _STACKED_SPINE_MANIFEST_VERSION
+    fraction = sampling["sample_fraction" if production else "acs_sample_fraction"]
+    seed = sampling["sample_seed" if production else "acs_sample_seed"]
+    _validate_fraction(fraction)
+    _validate_seed(seed)
+    samples = (
+        sampling["survey_samples"]
+        if production
+        else {ACS_STACKED_SUPPORT_CHANNEL: sampling["acs_sample"]}
+    )
+    expected = (
+        {BASE_ASEC_SUPPORT_CHANNEL, ACS_STACKED_SUPPORT_CHANNEL}
+        if production
+        else {ACS_STACKED_SUPPORT_CHANNEL}
+    )
+    if set(samples) != expected:
+        raise ValueError(
+            "Prepared sampling receipts do not cover their declared sources."
+        )
+    for channel, sample in samples.items():
+        _validate_survey_sample_receipt(
+            frame,
+            channel=channel,
+            fraction=fraction,
+            seed=seed,
+            sample=sample,
+            boundary=boundary,
+            require_normalization=production,
+        )
+        if float(receipt["full_source_masses"][channel]) != float(
+            sample["incoming_household_mass"]
+        ):
+            raise ValueError(
+                "Prepared full-source mass differs from its sampling receipt."
+            )
+    _validate_stacked_clone_role_lifecycle(frame, boundary=boundary)
+    _validated_acs_native_group_quarters_masks(frame, receipt, boundary=boundary)
+
+
+def _validate_preparation_receipt(preparation: Mapping[str, object]) -> None:
+    if (
+        not isinstance(preparation, Mapping)
+        or preparation.get("schema") != "microcosm.us.stacked-spine-preparation.v1"
+    ):
+        raise ValueError("Unsupported stacked-spine preparation receipt.")
+    if (
+        preparation.get("stacked_manifest_version")
+        not in _SUPPORTED_STACKED_SPINE_MANIFEST_VERSIONS
+    ):
+        raise ValueError("Unsupported prepared stacked-spine manifest version.")
+    for field_name in (
+        "sampling",
+        "full_source_masses",
+        "household_mass_shares",
+        "assembly_context",
+        "assembly_metadata",
+        "acs_native_group_quarters",
+    ):
+        if not isinstance(preparation.get(field_name), Mapping):
+            raise ValueError(
+                f"Prepared stacked-spine field {field_name!r} must be a mapping."
+            )
+    context = preparation["assembly_context"]
+    if preparation.get("mass_anchor_channel") != context.get(
+        "mass_anchor_channel"
+    ) or preparation["household_mass_shares"] != context.get("household_mass_shares"):
+        raise ValueError("Prepared stack controls disagree with the assembly context.")
+    if set(preparation["full_source_masses"]) != {
+        BASE_ASEC_SUPPORT_CHANNEL,
+        ACS_STACKED_SUPPORT_CHANNEL,
+    }:
+        raise ValueError("Prepared full-source masses must name ASEC and ACS.")
+
+
+def harmonize_stacked_spine_weights(
+    *,
+    household: pd.DataFrame,
+    weights: Weights,
+    preparation: Mapping[str, object],
+) -> StackedSpineHarmonization:
+    """Compute importance weights and completed metadata from declared views.
+
+    The preparation producer validates full source/person lineage. This helper
+    binds its household views and performs allocation without restacking or
+    reading a precomputed final-weight vector. The returned legacy mass log is
+    distinct from a graph executor's structural transition history.
+    """
+    _validate_preparation_receipt(preparation)
+    result = harmonize_spine_weights(
+        household=household, weights=weights, context=preparation["assembly_context"]
+    )
+    shares = preparation["household_mass_shares"]
+    incoming = preparation["assembly_context"]["incoming_masses"]
+    anchor = preparation["mass_anchor_channel"]
+    harmonization = _harmonization_receipt_from_views(
+        household,
+        result.weights,
+        shares=shares,
+        anchor_mass=incoming[anchor],
+        incoming_masses=incoming,
+    )
+    manifest = {
+        "version": preparation["stacked_manifest_version"],
+        **preparation["sampling"],
+        "household_mass_shares": {
+            channel: float(share) for channel, share in shares.items()
+        },
+        "mass_anchor_channel": anchor,
+        "weight_harmonization": harmonization,
+        "acs_native_group_quarters": preparation["acs_native_group_quarters"],
+    }
+    metadata = {
+        **preparation["assembly_metadata"],
+        STACKED_SPINE_MANIFEST_KEY: manifest,
+    }
+    return StackedSpineHarmonization(
+        result.weights, metadata, _json_ready(manifest), result.mass_log
+    )
+
+
+def finish_stacked_spine(prepared: StackedSpinePreparation) -> StackedSpineResult:
+    """Complete a validated preparation, preserving exact legacy Frame history."""
+    if not isinstance(prepared, StackedSpinePreparation):
+        raise TypeError("finish_stacked_spine requires a StackedSpinePreparation.")
+    _validate_stacked_preparation(prepared.frame, prepared.receipt)
+    result = harmonize_stacked_spine_weights(
+        household=prepared.frame.table("household"),
+        weights=prepared.frame.weights_for("household"),
+        preparation=prepared.receipt,
+    )
+    frame = Frame(
+        {entity: prepared.frame.table(entity) for entity in prepared.frame.entities},
+        prepared.frame.schema,
+        {"household": result.weights},
+        prepared.frame.strata,
+        mass_log=result.legacy_mass_log,
+        metadata=result.metadata,
+    )
+    validated = validate_stacked_spine_frame(
+        frame, boundary="stacked spine assembly output"
+    )
+    return StackedSpineResult(frame, _json_ready(validated))
+
+
+def _finish_legacy_sampled_stack(sampled: _SampledStack) -> StackedSpineResult:
+    sampled_asec, sampled_acs = (
+        sampled.spines[BASE_ASEC_SUPPORT_CHANNEL],
+        sampled.spines[ACS_STACKED_SUPPORT_CHANNEL],
+    )
+    shares, incoming_masses = sampled.shares, sampled.incoming_masses
+    sampling_manifest, manifest_version = sampled.sampling, sampled.manifest_version
+    mass_anchor_channel = sampled.mass_anchor_channel
     assembled = assemble_spines(
         {
             BASE_ASEC_SUPPORT_CHANNEL: sampled_asec,
@@ -1632,9 +1951,25 @@ def _harmonization_receipt(
     anchor_mass: float,
     incoming_masses: Mapping[str, float],
 ) -> dict[str, dict[str, float]]:
-    household = assembled.table("household")
+    return _harmonization_receipt_from_views(
+        assembled.table("household"),
+        assembled.weights_for("household"),
+        shares=shares,
+        anchor_mass=anchor_mass,
+        incoming_masses=incoming_masses,
+    )
+
+
+def _harmonization_receipt_from_views(
+    household: pd.DataFrame,
+    household_weights: Weights,
+    *,
+    shares: Mapping[str, float],
+    anchor_mass: float,
+    incoming_masses: Mapping[str, float],
+) -> dict[str, dict[str, float]]:
     channel_values = household[support_channel_column("household")].astype(str)
-    weights = np.asarray(assembled.weights_for("household").values, dtype=np.float64)
+    weights = np.asarray(household_weights.values, dtype=np.float64)
     receipt: dict[str, dict[str, float]] = {}
     for channel, share in shares.items():
         incoming = float(incoming_masses[channel])
@@ -5104,7 +5439,6 @@ def validate_stacked_post_puf_transfer_receipt(
         )
 
 
-_LATE_TABLE_DIGEST_CODEC = "canonical_scalar_v1"
 _LATE_PRIMARY_QRF_INPUT_BINDING_ARTIFACT_KIND = (
     "populace_us_stacked_late_primary_qrf_input_binding"
 )
@@ -5112,259 +5446,6 @@ _LATE_PRIMARY_QRF_INPUT_BINDING_FILENAME = "late-producer-input-binding.json"
 _LATE_RESOURCE_SEMANTICS_ARTIFACT_KIND = (
     "populace_us_stacked_late_producer_resource_semantics"
 )
-_LATE_TABLE_DIGEST_CHUNK_ROWS = 65_536
-
-
-def _late_digest_part(
-    digest,
-    *,
-    domain: str,
-    payload: bytes | bytearray | memoryview | np.ndarray,
-) -> None:
-    """Append one length-framed, domain-separated byte field to a digest."""
-
-    domain_bytes = domain.encode("utf-8")
-    payload_view = memoryview(payload)
-    if payload_view.format != "B" or payload_view.ndim != 1:
-        payload_view = payload_view.cast("B")
-    digest.update(struct.pack("<I", len(domain_bytes)))
-    digest.update(domain_bytes)
-    digest.update(struct.pack("<Q", payload_view.nbytes))
-    digest.update(payload_view)
-
-
-def _late_little_endian_bytes(values: np.ndarray) -> np.ndarray:
-    """Return a contiguous, explicitly little-endian numeric byte source."""
-
-    array = np.asarray(values)
-    array = array.astype(array.dtype.newbyteorder("<"), copy=False)
-    return np.ascontiguousarray(array)
-
-
-def _late_scalar_bytes(value: object) -> bytes:
-    """Encode one supported object scalar without lossy intermediary hashes."""
-
-    missing = pd.isna(value)
-    if isinstance(missing, (bool, np.bool_)) and bool(missing):
-        return b"null"
-    if isinstance(value, (bool, np.bool_)):
-        return b"bool\x01" if bool(value) else b"bool\x00"
-    if isinstance(value, (int, np.integer)):
-        return b"integer\x00" + str(int(value)).encode("ascii")
-    if isinstance(value, (float, np.floating)):
-        if isinstance(value, np.floating) and value.dtype.itemsize > 8:
-            raise TypeError(
-                "US late-producer content digest does not support object "
-                f"floating scalar {value.dtype!s}."
-            )
-        return b"float64\x00" + struct.pack("<d", float(value))
-    if isinstance(value, (complex, np.complexfloating)):
-        if isinstance(value, np.complexfloating) and value.dtype.itemsize > 16:
-            raise TypeError(
-                "US late-producer content digest does not support object "
-                f"complex scalar {value.dtype!s}."
-            )
-        numeric = complex(value)
-        return b"complex128\x00" + struct.pack("<dd", numeric.real, numeric.imag)
-    if isinstance(value, str):
-        return b"string\x00" + value.encode("utf-8")
-    if isinstance(value, (bytes, np.bytes_)):
-        return b"bytes\x00" + bytes(value)
-    if isinstance(value, (pd.Timestamp, np.datetime64)):
-        timestamp = pd.Timestamp(value)
-        return b"datetime64ns\x00" + struct.pack("<q", timestamp.value)
-    if isinstance(value, (pd.Timedelta, np.timedelta64)):
-        delta = pd.Timedelta(value)
-        return b"timedelta64ns\x00" + struct.pack("<q", delta.value)
-    raise TypeError(
-        "US late-producer content digest received unsupported object scalar "
-        f"{type(value).__name__}."
-    )
-
-
-def _late_digest_variable_width_values(
-    digest,
-    values: Sequence[object],
-    missing: np.ndarray,
-    *,
-    domain: str,
-    strings_only: bool,
-) -> None:
-    """Stream framed string or object scalars in bounded-memory chunks."""
-
-    for chunk_index, start in enumerate(
-        range(0, len(values), _LATE_TABLE_DIGEST_CHUNK_ROWS)
-    ):
-        stop = min(start + _LATE_TABLE_DIGEST_CHUNK_ROWS, len(values))
-        lengths = np.zeros(stop - start, dtype="<u8")
-        payload = bytearray()
-        for local_index, value in enumerate(values[start:stop]):
-            if missing[start + local_index]:
-                encoded = b""
-            elif strings_only:
-                if not isinstance(value, str):
-                    raise TypeError(
-                        "US late-producer string digest received non-string "
-                        f"scalar {type(value).__name__}."
-                    )
-                encoded = value.encode("utf-8")
-            else:
-                encoded = _late_scalar_bytes(value)
-            lengths[local_index] = len(encoded)
-            payload.extend(encoded)
-        chunk_domain = f"{domain}/chunk/{chunk_index}"
-        _late_digest_part(
-            digest,
-            domain=f"{chunk_domain}/lengths",
-            payload=lengths,
-        )
-        _late_digest_part(
-            digest,
-            domain=f"{chunk_domain}/payload",
-            payload=payload,
-        )
-
-
-def _late_digest_series_values(
-    digest,
-    series: pd.Series,
-    *,
-    domain: str,
-) -> None:
-    """Hash one ordered logical Series with explicit dtype and null domains."""
-
-    dtype = series.dtype
-    missing = series.isna().to_numpy(dtype=bool)
-    _late_digest_part(
-        digest,
-        domain=f"{domain}/dtype",
-        payload=str(dtype).encode("utf-8"),
-    )
-    _late_digest_part(
-        digest,
-        domain=f"{domain}/row_count",
-        payload=struct.pack("<Q", len(series)),
-    )
-    _late_digest_part(
-        digest,
-        domain=f"{domain}/null_bitmap",
-        payload=np.ascontiguousarray(missing, dtype=np.uint8),
-    )
-
-    if pd.api.types.is_bool_dtype(dtype):
-        encoded = series.to_numpy(dtype=np.uint8, na_value=0)
-    elif pd.api.types.is_integer_dtype(dtype):
-        numpy_dtype = np.dtype(getattr(dtype, "numpy_dtype", dtype))
-        encoded = series.to_numpy(dtype=numpy_dtype, na_value=0)
-    elif pd.api.types.is_float_dtype(dtype):
-        numpy_dtype = np.dtype(getattr(dtype, "numpy_dtype", dtype))
-        encoded = series.to_numpy(dtype=numpy_dtype, na_value=0.0)
-        if missing.any():
-            encoded = encoded.copy()
-            encoded[missing] = 0.0
-    elif pd.api.types.is_complex_dtype(dtype):
-        numpy_dtype = np.dtype(getattr(dtype, "numpy_dtype", dtype))
-        encoded = series.to_numpy(dtype=numpy_dtype, na_value=0.0j)
-        if missing.any():
-            encoded = encoded.copy()
-            encoded[missing] = 0.0j
-    elif pd.api.types.is_datetime64_any_dtype(dtype):
-        encoded = series.array.asi8.copy()
-        encoded[missing] = 0
-    elif pd.api.types.is_timedelta64_dtype(dtype):
-        encoded = series.array.asi8.copy()
-        encoded[missing] = 0
-    elif isinstance(dtype, pd.StringDtype):
-        _late_digest_variable_width_values(
-            digest,
-            series.array,
-            missing,
-            domain=f"{domain}/strings",
-            strings_only=True,
-        )
-        return
-    else:
-        _late_digest_variable_width_values(
-            digest,
-            series.array,
-            missing,
-            domain=f"{domain}/objects",
-            strings_only=False,
-        )
-        return
-
-    _late_digest_part(
-        digest,
-        domain=f"{domain}/fixed_width_values",
-        payload=_late_little_endian_bytes(encoded),
-    )
-
-
-def _late_table_values_sha256(
-    table: pd.DataFrame,
-    *,
-    normalize_strings: bool = False,
-) -> str:
-    """Hash ordered table scalars directly with typed, null-aware framing."""
-
-    values = (
-        canonicalize_table_string_dtypes(
-            table,
-            boundary="late-producer content digest",
-            table_name="declared_surface",
-        )
-        if normalize_strings
-        else table
-    )
-    if isinstance(values.index, pd.MultiIndex):
-        index_levels = [
-            pd.Series(values.index.get_level_values(level), copy=False)
-            for level in range(values.index.nlevels)
-        ]
-    else:
-        index_levels = [pd.Series(values.index, copy=False)]
-    header = {
-        "codec": _LATE_TABLE_DIGEST_CODEC,
-        "columns": [str(column) for column in values.columns],
-        "dtypes": [
-            str(values.iloc[:, index].dtype) for index in range(values.shape[1])
-        ],
-        "index_type": type(values.index).__name__,
-        "index_dtype": str(values.index.dtype),
-        "index_level_dtypes": [str(level.dtype) for level in index_levels],
-        "index_names": [
-            None if name is None else str(name) for name in values.index.names
-        ],
-    }
-    digest = hashlib.sha256()
-    _late_digest_part(
-        digest,
-        domain="late_table_digest_codec",
-        payload=_LATE_TABLE_DIGEST_CODEC.encode("ascii"),
-    )
-    _late_digest_part(
-        digest,
-        domain="late_table_header_json",
-        payload=json.dumps(
-            header,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        ).encode("utf-8"),
-    )
-    for level_index, level in enumerate(index_levels):
-        _late_digest_series_values(
-            digest,
-            level,
-            domain=f"index_level/{level_index}",
-        )
-    for column_index in range(values.shape[1]):
-        _late_digest_series_values(
-            digest,
-            values.iloc[:, column_index],
-            domain=f"column/{column_index}",
-        )
-    return digest.hexdigest()
 
 
 def _late_virtual_resource_kind(column: str) -> str:

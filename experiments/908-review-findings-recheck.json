@@ -1,0 +1,33 @@
+{
+  "code_1_aggregate_only_metadata": {
+    "candidate_mapping_with_denylisted_person_id_refused": true,
+    "candidate_mapping_with_record_vectors_refused": true,
+    "closed": true,
+    "context_record_vectors_refused": true,
+    "nested_context_refused": true
+  },
+  "code_2_nested_alias": {
+    "caller_context_unchanged": true,
+    "closed": true,
+    "next_snapshot_unchanged": true
+  },
+  "code_3_history_publication": {
+    "a_complete_write_still_publishes": true,
+    "closed": true,
+    "no_leftover_temporary": true,
+    "reader_sees_nothing_after_failure": true,
+    "retained_after_failure": 0,
+    "write_failed": true
+  },
+  "code_4_identity_validation": {
+    "closed": true,
+    "invalid_cases_now_refused": [
+      "epoch_exceeds_epochs",
+      "invalid_timestamp",
+      "invalid_best_metadata",
+      "candidate_id_not_string"
+    ]
+  },
+  "reviewed_head": "bae1887ffc5f6e32edefa9774ec6428568286247",
+  "scope": "The review's four counterexamples replayed against this branch. Invented data only; no optimizer, engine, network or native input."
+}

@@ -67,6 +67,7 @@ unchanged.
 
 from __future__ import annotations
 
+import hashlib
 import math
 import warnings
 from collections.abc import Callable, Mapping
@@ -84,6 +85,7 @@ from microcosm.calibrate.exact_k import (
     exact_k_design_feasibility,
 )
 from microcosm.calibrate.gates import HardConcrete
+from microcosm.calibrate.group_bounds import GroupedUpperBounds
 from microcosm.calibrate.initialization import GateInitialization
 from microcosm.calibrate.matrix import (
     CalibrationProblem,
@@ -91,6 +93,13 @@ from microcosm.calibrate.matrix import (
     build_constraint_matrix,
 )
 from microcosm.calibrate.target import TargetSet
+from microcosm.calibrate.target_snapshots import (
+    ITERATE_BEST_RETAINED,
+    ITERATE_CURRENT,
+    ITERATE_SELECTED,
+    BoundTargetSnapshots,
+    TargetSnapshotObserver,
+)
 from microcosm.frame import Frame, MassChange, WeightKind, Weights
 
 __all__ = [
@@ -299,7 +308,15 @@ class CalibrationResult:
         """
         weights = np.asarray(self.weights, dtype=np.float64)
         initial = np.asarray(self.initial_weights, dtype=np.float64)
-        return float((weights / initial).max())
+        if not self.options.get("grouped_preserve_zeros", {}).get("enabled", False):
+            return float((weights / initial).max())
+        if np.any((initial == 0) & (weights > 0)):
+            return float("inf")
+        ratios = np.zeros_like(weights)
+        np.divide(
+            weights, initial, out=ratios, where=~((initial == 0) & (weights == 0))
+        )
+        return float(ratios.max())
 
     @property
     def top_1pct_weight_share(self) -> float:
@@ -787,7 +804,11 @@ def _optimize(
     temperature: float,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     progress_context: Mapping[str, object] | None = None,
+    snapshots: BoundTargetSnapshots | None = None,
     return_gate_open_probabilities: bool = False,
+    grouped_upper_bounds: GroupedUpperBounds | None = None,
+    grouped_preserve_zeros: bool = False,
+    _post_projection_observer: Callable[[dict[str, object]], None] | None = None,
     selection_receipt: dict[str, object] | None = None,
 ) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray | None]:
     """Run the torch optimization and return weights plus its trajectory.
@@ -798,7 +819,7 @@ def _optimize(
     by projecting the realized weights after each step, so they hold on the
     returned vector exactly, not merely in expectation.
 
-    For deterministic, unregularized free-mass runs, return the best feasible
+    For ungrouped, deterministic, unregularized free-mass runs, return the best feasible
     iterate seen within the requested budget, including the warm start and the
     final update. Constant-step Adam can otherwise discard an earlier better
     fit when it oscillates across the absolute-error kink. Gated, regularized,
@@ -810,6 +831,44 @@ def _optimize(
     callers. The third value is aligned per-record ``pi_i`` for an L0 run and
     ``None`` when no gates were active.
     """
+    _validate_grouped_zero_option(grouped_upper_bounds, grouped_preserve_zeros)
+    if grouped_upper_bounds is not None:
+        if gate_initialization is not None:
+            raise ValueError("grouped upper bounds do not support gate initialization")
+        _validate_grouped_mode(
+            grouped_upper_bounds,
+            method="adam",
+            conserve_mass=conserve_mass,
+            max_weight_ratio=max_weight_ratio,
+            l0_lambda=l0_lambda,
+            l1_lambda=0.0,
+            target_records=target_records,
+        )
+        final, trajectory = _optimize_grouped(
+            matrix,
+            targets,
+            target_loss_weights,
+            target_loss_scales,
+            target_loss_cap,
+            initial_weights,
+            grouped_upper_bounds,
+            warm_start_weights=warm_start_weights,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            l2_lambda=l2_lambda,
+            l2_anchor=l2_anchor,
+            l2_anchor_weights=l2_anchor_weights,
+            progress_callback=progress_callback,
+            progress_context=progress_context,
+            observer=_post_projection_observer,
+            snapshots=snapshots,
+            preserve_zeros=grouped_preserve_zeros,
+        )
+        if return_gate_open_probabilities:
+            return final, trajectory, None
+        return final, trajectory
+    if _post_projection_observer is not None:
+        raise ValueError("post-projection observer requires grouped upper bounds")
     w0 = np.asarray(initial_weights, dtype=np.float64)
     start = _prepare_warm_start_weights(
         w0,
@@ -913,6 +972,32 @@ def _optimize(
                     "loss": trajectory[epoch],
                 }
             )
+        if snapshots is not None and snapshots.emits(epoch + 1, epochs):
+            # The estimate tensor this epoch's loss was computed from, detached
+            # rather than recomputed: re-running the forward pass would redraw
+            # the hard-concrete gates' noise and move the RNG stream, changing
+            # the run. The current values are labelled best_retained only when
+            # they ARE the incumbent best iterate.
+            retained = retain_best and best_log_w is not None
+            snapshots.emit(
+                estimate.detach().numpy(),
+                # Number of completed updates, matching the selection receipt.
+                # Cadence still uses the 1-based evaluation ordinal above.
+                epoch=epoch,
+                epochs=epochs,
+                iterate=(
+                    ITERATE_BEST_RETAINED
+                    if retained and best_epoch == epoch
+                    else ITERATE_CURRENT
+                ),
+                precision="float32",
+                loss=trajectory[epoch],
+                best_retained={
+                    "available": bool(retain_best),
+                    "epoch": best_epoch if retained else None,
+                    "loss": best_loss if retained else None,
+                },
+            )
         total_loss.backward()
         optimizer.step()
 
@@ -1003,6 +1088,271 @@ def _optimize(
     return final, trajectory
 
 
+def _validate_grouped_mode(
+    groups: GroupedUpperBounds,
+    *,
+    method: str,
+    conserve_mass: bool,
+    max_weight_ratio: float | None,
+    l0_lambda: float,
+    l1_lambda: float,
+    target_records: int | None,
+) -> None:
+    if not isinstance(groups, GroupedUpperBounds):
+        raise ValueError("grouped_upper_bounds must be GroupedUpperBounds")
+    if max_weight_ratio is not None:
+        raise ValueError(
+            "grouped upper bounds refuse simultaneous scalar max_weight_ratio"
+        )
+    if (
+        method != "adam"
+        or conserve_mass
+        or l0_lambda != 0
+        or l1_lambda != 0
+        or target_records is not None
+    ):
+        raise ValueError(
+            "grouped upper bounds require Adam free mass without prox, L0, or exact-k selection"
+        )
+
+
+def _validate_grouped_zero_option(
+    groups: GroupedUpperBounds | None, preserve_zeros: bool
+) -> None:
+    if type(preserve_zeros) is not bool:
+        raise ValueError("grouped_preserve_zeros must be a boolean")
+    if preserve_zeros and groups is None:
+        raise ValueError("grouped_preserve_zeros requires grouped upper bounds")
+
+
+def _check_fixed_support(
+    weights: np.ndarray, initial: np.ndarray, groups: GroupedUpperBounds
+) -> np.ndarray:
+    """Validate the complete vector, preserving the initial zero coordinates."""
+    totals = groups.check(weights)
+    active = initial > 0
+    if not active.any():
+        raise ValueError("grouped fixed support requires a positive initial weight")
+    if weights[~active].tobytes() != initial[~active].tobytes():
+        raise ValueError("grouped weights must preserve the frozen zero support")
+    if (weights[active] <= 0).any():
+        raise ValueError("grouped active support must remain strictly positive")
+    return totals
+
+
+def _check_grouped_household_ids(frame: Frame, expected: tuple[int | str, ...]) -> None:
+    actual = tuple(
+        frame.table("household")[frame.schema.entity_id_column("household")].tolist()
+    )
+    if actual != expected:
+        raise ValueError("stored group household IDs must preserve the ordered IDs")
+
+
+def _grouped_snapshot_selection(preserve_zeros: bool) -> dict[str, object]:
+    """The bounded aggregate labels identifying a grouped snapshot's solver.
+
+    Grouped Adam is a closing-state algorithm: it never runs the retain-best
+    rule, so every grouped snapshot carries ``best_retained.available: False``.
+    Without a label saying which solver produced it, that is indistinguishable
+    from an ordinary run whose retain-best rule happened to be off, and a
+    consumer would read the two the same way. These are three JSON scalars
+    describing the run's mode -- no household IDs, no group membership, no
+    bounds vector, and nothing of record length.
+    """
+    return {
+        "rule": "closing_state",
+        "constraint_mode": "grouped_upper_bounds",
+        "grouped_preserve_zeros": bool(preserve_zeros),
+    }
+
+
+def _optimize_grouped(
+    matrix: torch.Tensor,
+    targets: torch.Tensor,
+    target_loss_weights: torch.Tensor | None,
+    target_loss_scales: torch.Tensor,
+    target_loss_cap: float,
+    initial_weights: np.ndarray,
+    groups: GroupedUpperBounds,
+    *,
+    warm_start_weights: np.ndarray | None,
+    epochs: int,
+    learning_rate: float,
+    l2_lambda: float,
+    l2_anchor: str,
+    l2_anchor_weights: np.ndarray | None,
+    progress_callback: Callable[[dict[str, object]], None] | None,
+    progress_context: Mapping[str, object] | None,
+    observer: Callable[[dict[str, object]], None] | None,
+    snapshots: BoundTargetSnapshots | None = None,
+    preserve_zeros: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Free-mass Adam on positive coordinates, with full float64 accepted state.
+
+    ``snapshots`` is the public aggregate observer (microcosm#908), off by
+    default and strictly separate from the private ``observer`` proof seam:
+    the latter carries record-length accepted weights, household IDs, the
+    group map and the bounds vector, none of which a public snapshot may ever
+    hold. Snapshots read the estimate tensor this epoch's loss was already
+    computed from, so enabling them adds no matrix evaluation, no model
+    evaluation and no RNG advance, and the returned weights and trajectory are
+    bit-identical to the same run with snapshots off.
+    """
+    if (
+        matrix.dtype != torch.float32
+        or targets.dtype != torch.float32
+        or target_loss_scales.dtype != torch.float32
+    ):
+        raise ValueError("grouped loss matrix, targets and scales must remain float32")
+    w0 = np.array(initial_weights, dtype=np.float64, copy=True)
+    groups.check(w0, positive=not preserve_zeros)
+    if preserve_zeros:
+        _check_fixed_support(w0, w0, groups)
+        active = w0 > 0
+        accepted = (
+            w0.copy()
+            if warm_start_weights is None
+            else np.array(warm_start_weights, dtype=np.float64, copy=True)
+        )
+        _check_fixed_support(accepted, w0, groups)
+        active_indices = torch.tensor(np.flatnonzero(active), dtype=torch.int64)
+        zero_template = w0.copy()
+        zero_template[active] = 0.0
+        zero_template_t = torch.tensor(zero_template, dtype=torch.float64)
+    else:
+        active = np.ones(w0.shape, dtype=bool)
+        accepted = _prepare_warm_start_weights(
+            w0,
+            warm_start_weights,
+            conserve_mass=False,
+            max_weight_ratio=None,
+        )
+        groups.check(accepted, positive=True)
+
+    def observe(epoch: int, corrected: int) -> None:
+        totals = (
+            _check_fixed_support(accepted, w0, groups)
+            if preserve_zeros
+            else groups.check(accepted, positive=True)
+        )
+        if observer is not None:
+            observer(
+                {
+                    "kind": "grouped_accepted_weights",
+                    "epoch": epoch,
+                    "weights": accepted.copy(),
+                    "household_ids": groups.household_ids,
+                    "group_indices": groups.group_indices.copy(),
+                    "absolute_bounds": groups.absolute_bounds.copy(),
+                    "group_totals": totals.copy(),
+                    "corrected_group_count": corrected,
+                }
+            )
+
+    # Admission and initial observer precede even optimizer construction.
+    observe(0, 0)
+    log_w = torch.tensor(
+        np.log(accepted[active]), dtype=torch.float64, requires_grad=True
+    )
+    optimizer = torch.optim.Adam([log_w], lr=learning_rate)
+    anchor_t = None
+    if l2_lambda > 0:
+        anchor = (
+            l2_anchor_weights
+            if l2_anchor_weights is not None
+            else (w0 if l2_anchor == "initial" else np.full_like(w0, w0.mean()))
+        )
+        anchor_t = torch.tensor(anchor[active], dtype=torch.float64)
+    trajectory = np.empty(epochs, dtype=np.float64)
+    selection_labels = (
+        None if snapshots is None else _grouped_snapshot_selection(preserve_zeros)
+    )
+    for epoch in range(epochs):
+        optimizer.zero_grad()
+        # This is an internal candidate, not an accepted population vector.
+        active_weights = torch.exp(log_w)
+        weights = (
+            zero_template_t.index_copy(0, active_indices, active_weights)
+            if preserve_zeros
+            else active_weights
+        )
+        estimate = _apply_constraint(matrix, weights.to(dtype=torch.float32))
+        loss = _relative_error_loss(
+            estimate,
+            targets,
+            target_loss_weights,
+            target_loss_scales,
+            target_loss_cap,
+        )
+        trajectory[epoch] = float(loss.item())
+        if anchor_t is None:
+            total_loss = loss
+        elif preserve_zeros:
+            total_loss = loss + l2_lambda * (
+                (active_weights / anchor_t) ** 2
+            ).sum() / len(w0)
+        else:
+            total_loss = loss + l2_lambda * ((weights / anchor_t) ** 2).mean()
+        if progress_callback is not None:
+            progress_callback(
+                {
+                    **dict(progress_context or {}),
+                    "kind": "calibration_epoch",
+                    "epoch": epoch + 1,
+                    "epochs": epochs,
+                    "loss": trajectory[epoch],
+                }
+            )
+        if snapshots is not None and snapshots.emits(epoch + 1, epochs):
+            # The exact estimate tensor this epoch's loss was computed from,
+            # detached rather than recomputed: recomputing would add a matrix
+            # evaluation, and the truthful numerical basis for trajectory
+            # [epoch] is the float32 forward pass that produced it, even
+            # though the accepted state is float64.
+            #
+            # This is a PRE-update loss-evaluation snapshot, the same
+            # convention the ordinary Adam loop above uses. It is deliberately
+            # not the post-update projected accepted vector the private
+            # observer reports at observe(epoch + 1): those are different
+            # vectors, and producing target totals for the accepted one would
+            # need the extra evaluation this design forbids.
+            snapshots.emit(
+                estimate.detach().cpu().numpy(),
+                # Completed updates, as in ordinary Adam and proximal snapshots.
+                # Cadence above retains the 1-based evaluation ordinal.
+                epoch=epoch,
+                epochs=epochs,
+                iterate=ITERATE_CURRENT,
+                precision="float32",
+                loss=trajectory[epoch],
+                # Grouped Adam retains no best iterate at all, so this is the
+                # closed "no retain-best rule is running" triple, not a
+                # not-yet-recorded incumbent.
+                best_retained={"available": False, "epoch": None, "loss": None},
+                selection=selection_labels,
+            )
+        total_loss.backward()
+        optimizer.step()
+        with torch.no_grad():
+            active_candidate = torch.exp(log_w).detach().cpu().numpy().copy()
+            if preserve_zeros:
+                candidate = zero_template.copy()
+                candidate[active] = active_candidate
+                accepted, corrected = groups.project(candidate, positive=False)
+                _check_fixed_support(accepted, w0, groups)
+            else:
+                accepted, corrected = groups.project(active_candidate)
+            # Exactly one overwrite for the next update; no reconstruction loop.
+            log_w.copy_(torch.from_numpy(np.log(accepted[active])))
+        observe(epoch + 1, corrected)
+    closing, _ = groups.project(accepted, positive=not preserve_zeros)
+    if preserve_zeros:
+        _check_fixed_support(closing, w0, groups)
+    if closing.tobytes() != accepted.tobytes():
+        raise ValueError("final grouped projection must preserve accepted weight bytes")
+    return accepted, trajectory
+
+
 def _optimize_proximal(
     matrix: torch.Tensor,
     targets: torch.Tensor,
@@ -1020,6 +1370,7 @@ def _optimize_proximal(
     prune_atol: float,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     progress_context: Mapping[str, object] | None = None,
+    snapshots: BoundTargetSnapshots | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Proximal gradient (ISTA-style) on weight ratios -- the L1 selection path.
 
@@ -1074,6 +1425,17 @@ def _optimize_proximal(
                     "epochs": epochs,
                     "loss": trajectory[epoch],
                 }
+            )
+        if snapshots is not None and snapshots.emits(epoch + 1, epochs):
+            # The proximal path retains no best iterate (its selection is the
+            # closing state), so every in-loop snapshot here is `current`.
+            snapshots.emit(
+                estimate.detach().numpy(),
+                epoch=epoch,
+                epochs=epochs,
+                iterate=ITERATE_CURRENT,
+                precision="float32",
+                loss=trajectory[epoch],
             )
         loss.backward()
         with torch.no_grad():
@@ -1141,6 +1503,7 @@ def _search_l0_lambda_for_budget(
     prune_atol: float,
     initial_lambda: float | None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    snapshots: BoundTargetSnapshots | None = None,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
     return_gate_open_probabilities: bool = False,
     budget_basis: str = BUDGET_BASIS_NONZERO_COUNT,
@@ -1270,6 +1633,17 @@ def _search_l0_lambda_for_budget(
                 "budget_iters": budget_iters,
                 "l0_lambda": lam,
             },
+            # Each probe is a full reseeded optimization whose epoch numbering
+            # restarts, so its snapshots carry the probe's own identity.
+            "snapshots": (
+                None
+                if snapshots is None
+                else snapshots.with_search(
+                    budget_iteration=evaluation,
+                    budget_iters=budget_iters,
+                    l0_lambda=lam,
+                )
+            ),
         }
         if gate_initialization is not None:
             optimize_kwargs["gate_initialization"] = gate_initialization
@@ -1313,6 +1687,7 @@ def _search_l0_lambda_for_budget(
     # (0 for a feasible/unconstrained probe, 1 for an infeasible one; distance
     # to the budget): feasible probes always beat infeasible ones.
     best_key: tuple[int, int] | None = None
+    best_evaluation: int | None = None
     probes: list[dict[str, object]] = []
     # Sentinel: a probe whose penalty over-pruned past the cap-feasible floor
     # (the conserve+cap projection raised). It is *more* pruning than feasible,
@@ -1325,7 +1700,7 @@ def _search_l0_lambda_for_budget(
     _steer_stop = "stop"
 
     def consider(lam: float) -> tuple[int, str]:
-        nonlocal best, best_key
+        nonlocal best, best_key, best_evaluation
         try:
             weights, trajectory, n_nonzero, gate_open_probabilities = evaluate(lam)
         except ValueError as exc:
@@ -1390,6 +1765,7 @@ def _search_l0_lambda_for_budget(
                 gate_open_probabilities,
             )
             best_key = key
+            best_evaluation = evaluation
         return n_nonzero, verdict
 
     def steer(n_nonzero: int, verdict: str) -> str:
@@ -1456,6 +1832,7 @@ def _search_l0_lambda_for_budget(
                     "acceptable_within_tolerance" if settled() else "budget_exhausted"
                 ),
                 "selected_l0_lambda": None if best is None else float(best[2]),
+                "selected_budget_iteration": best_evaluation,
                 "selected_measure": None if best is None else int(best[3]),
                 "selected_feasible": (
                     None
@@ -1475,6 +1852,7 @@ def _search_l0_lambda_for_budget(
                 "evaluations": int(evaluation),
                 "probes": probes,
                 "selected_l0_lambda": None if best is None else float(best[2]),
+                "selected_budget_iteration": best_evaluation,
                 "selected_measure": None if best is None else int(best[3]),
                 "selected_feasible": (
                     None
@@ -1614,6 +1992,10 @@ def calibrate(
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
     warm_start_weights: np.ndarray | None = None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    target_snapshots: TargetSnapshotObserver | None = None,
+    grouped_upper_bounds: GroupedUpperBounds | None = None,
+    grouped_preserve_zeros: bool = False,
+    _post_projection_observer: Callable[[dict[str, object]], None] | None = None,
 ) -> CalibrationResult:
     """Calibrate ``weight_entity``'s weights to ``targets`` over ``frame``.
 
@@ -1629,8 +2011,9 @@ def calibrate(
             ``"household"``).
         method: Optimization method. ``"adam"`` (default) runs the torch Adam
             optimizer on the log-weights described above (weights stay strictly
-            positive by construction). Unregularized free-mass runs retain their
-            best feasible fit within the requested epoch budget. ``"prox"`` runs proximal
+            positive by construction). Ungrouped unregularized free-mass runs
+            retain their best feasible fit within the requested epoch budget.
+            ``"prox"`` runs proximal
             gradient (ISTA) on raw non-negative weight ratios with a
             soft-threshold step, the optimizer required for the nonsmooth
             ``l1_lambda`` penalty: it drives unneeded records to exact zero, so
@@ -1652,6 +2035,23 @@ def calibrate(
             appends no record.
         max_weight_ratio: If given, a hard per-record cap: no calibrated weight
             exceeds ``max_weight_ratio * initial_weight``. The landmine guard.
+        grouped_upper_bounds: Optional exhaustive ordered household grouping
+            with frozen absolute bounds. This positive-only Adam/free-mass path
+            refuses scalar row caps, prox, L0 and record selection. Both input
+            and effective warm-start weights must already be feasible. Accepted
+            float64 vectors use stable-ID ``math.fsum`` and direct weight-space
+            projection; float32 matrix/loss arithmetic remains differentiable.
+        grouped_preserve_zeros: Opt in to fixed initial zero support for grouped
+            Adam. Zero rows remain in the full Frame at their original zero
+            values; only positive coordinates receive log parameters. Both
+            warm starts and every accepted/stored vector must preserve that
+            support exactly. An entirely zero initial vector is refused. The
+            L2 penalty sums positive-coordinate contributions divided by the
+            full row count; zero coordinates contribute zero. The default
+            retains the existing strictly positive grouped contract.
+        _post_projection_observer: Private grouped proof seam, called with
+            independent copies of the validated initial and every accepted
+            post-update vector, IDs, group map, bounds and exact group totals.
         target_records: If given, enable L0 pruning with **budget control**: the
             solver searches ``l0_lambda`` (a bisection on its log, ``budget_iters``
             optimizations) so the achieved non-zero count tracks this budget, and
@@ -1731,6 +2131,24 @@ def calibrate(
             "calibration_epoch", "epoch": 1, "epochs": 256, "loss": ...}``.
             Build drivers use this to publish staging telemetry; calibration
             results are unchanged.
+        target_snapshots: Optional
+            :class:`~microcosm.calibrate.target_snapshots.TargetSnapshotObserver`
+            receiving aggregate-only per-target estimate snapshots at its own
+            cadence while the run is in flight (microcosm#908). Off by default;
+            enabling it does not change the weights, the trajectory, or the
+            RNG stream — in-loop snapshots read the estimate tensor the epoch's
+            loss was already computed from. The closing ``selected`` snapshot
+            describes the weights calibration actually returns.
+
+            ``grouped_upper_bounds`` runs are instrumented the same way and at
+            the same seams. Because grouped Adam is a closing-state algorithm,
+            every grouped snapshot reports ``best_retained.available: False``
+            and carries the bounded ``selection`` labels ``rule``,
+            ``constraint_mode`` and ``grouped_preserve_zeros`` so a consumer
+            can tell "this solver retains no best iterate" from "retain-best
+            was switched off". The private ``_post_projection_observer`` proof
+            seam stays entirely separate: its record-length weights, household
+            IDs, group map and bounds never reach a snapshot.
 
     Returns:
         A :class:`CalibrationResult` with the calibrated frame, per-target
@@ -1745,6 +2163,11 @@ def calibrate(
             ``method="prox"`` is combined with L0/budget pruning or
             ``l2_lambda``, or if no targets compile (from the matrix build).
     """
+    _validate_grouped_zero_option(grouped_upper_bounds, grouped_preserve_zeros)
+    # Normalize and value-check method/mass before grouped-mode validation:
+    # grouped bounds are documented as Adam with free mass, so the deprecated
+    # 'apg' alias must reach that check as 'adam', and an invalid mass string
+    # must report itself rather than be read as a mass-conserving request.
     if method == "apg":
         warnings.warn(
             "method='apg' is deprecated and now aliases method='adam'; result "
@@ -1763,6 +2186,39 @@ def calibrate(
         raise ValueError(
             f"mass must be {FREE_MASS!r} or {CONSERVE_MASS!r}, got {mass!r}."
         )
+    if grouped_upper_bounds is not None:
+        _validate_grouped_mode(
+            grouped_upper_bounds,
+            method=method,
+            conserve_mass=(mass != FREE_MASS),
+            max_weight_ratio=max_weight_ratio,
+            l0_lambda=l0_lambda,
+            l1_lambda=l1_lambda,
+            target_records=target_records,
+        )
+        if weight_entity != "household":
+            raise ValueError("grouped upper bounds require household weights")
+        actual_ids = tuple(
+            frame.table(weight_entity)[
+                frame.schema.entity_id_column(weight_entity)
+            ].tolist()
+        )
+        if actual_ids != grouped_upper_bounds.household_ids:
+            raise ValueError(
+                "group household IDs must exactly match the frame's ordered IDs"
+            )
+    elif _post_projection_observer is not None:
+        raise ValueError("post-projection observer requires grouped upper bounds")
+    last_group_correction = 0
+
+    def grouped_observer(payload: dict[str, object]) -> None:
+        nonlocal last_group_correction
+        _check_grouped_household_ids(frame, actual_ids)
+        last_group_correction = int(payload["corrected_group_count"])
+        if _post_projection_observer is not None:
+            _post_projection_observer(payload)
+        _check_grouped_household_ids(frame, actual_ids)
+
     if mass_reason is not None:
         if mass != FREE_MASS:
             raise ValueError(
@@ -1883,6 +2339,11 @@ def calibrate(
         )
     )
     problem = build_constraint_matrix(frame, targets, weight_entity)
+    snapshots = (
+        None
+        if target_snapshots is None
+        else target_snapshots.bind(names=problem.names, targets=problem.target_vector)
+    )
     initial = problem.initial_weights
     w0 = initial.values
     prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
@@ -1958,6 +2419,7 @@ def calibrate(
             l1_lambda=l1_lambda,
             prune_atol=prune_atol,
             progress_callback=progress_callback,
+            snapshots=snapshots,
         )
         n_nonzero = int((final_weights > prune_atol).sum())
         if n_nonzero == 0:
@@ -2004,6 +2466,7 @@ def calibrate(
             prune_atol=prune_atol,
             initial_lambda=(l0_lambda if l0_lambda > 0.0 else None),
             progress_callback=progress_callback,
+            snapshots=snapshots,
             budget_iters=budget_iters,
             budget_basis=budget_basis,
             feasible_draw_pi_hi=feasible_draw_pi_hi,
@@ -2037,8 +2500,14 @@ def calibrate(
             init_mean=init_mean,
             temperature=temperature,
             progress_callback=progress_callback,
+            snapshots=snapshots,
             return_gate_open_probabilities=True,
             selection_receipt=iterate_selection_receipt,
+            grouped_upper_bounds=grouped_upper_bounds,
+            grouped_preserve_zeros=grouped_preserve_zeros,
+            _post_projection_observer=grouped_observer
+            if grouped_upper_bounds is not None
+            else None,
             **(
                 {}
                 if gate_initialization is None
@@ -2059,6 +2528,9 @@ def calibrate(
                 "control, which adapts the penalty to a survivor count."
             )
 
+    accepted_weight_bytes = (
+        final_weights.tobytes() if grouped_upper_bounds is not None else None
+    )
     calibrated = initial.with_values(final_weights, kind=WeightKind.CALIBRATED)
     new_frame = _apply_weights(
         frame,
@@ -2069,26 +2541,88 @@ def calibrate(
         targets,
         mass_reason=mass_reason,
     )
-
     diagnostics = _build_diagnostics(problem, frame, w0, final_weights)
     # One closing eval-mode loss on the RETURNED weights (Finding 8): the same
     # capped weighted-MAPE loss the optimizer minimizes, evaluated after the closing
     # mass/cap projections — so final_loss describes
     # what calibrate returns, not the trajectory's pre-projection tail.
+    final_estimates = problem.estimates(final_weights)
     closing_loss = relative_error_loss(
-        problem.estimates(final_weights),
+        final_estimates,
         problem.target_vector,
         target_loss_weights=target_loss_weights_np,
         target_loss_scales=target_loss_scales_np,
         target_loss_cap=target_loss_cap,
     )
+    if snapshots is not None:
+        # The selected snapshot describes the weights calibration RETURNS,
+        # read off the same float64 estimates the final diagnostics use — not
+        # the last in-loop iterate, which the optimizer may have discarded in
+        # favour of an earlier better one or changed by a closing projection.
+        #
+        # Grouped Adam is a closing-state algorithm. It returns the accepted
+        # vector of its last projection and never runs the retain-best rule,
+        # so its retain-best answer is read off the solver it actually used,
+        # not inferred from an empty receipt. Inferring it would make a later
+        # change that populated a grouped receipt silently claim the grouped
+        # solver had retained a best iterate.
+        grouped_run = grouped_upper_bounds is not None
+        selected_epoch = (
+            None if grouped_run else iterate_selection_receipt.get("selected_epoch")
+        )
+        # A non-empty receipt means the optimizer ran the retain-best rule. It
+        # records the epoch it selected, which IS the best iterate's epoch when
+        # an earlier iterate won; when the closing iterate won, no separate best
+        # epoch was recorded, so the snapshot says "retained, epoch unrecorded"
+        # instead of inventing one.
+        retained_best = (not grouped_run) and bool(iterate_selection_receipt)
+        best_is_earlier = (
+            retained_best
+            and isinstance(selected_epoch, int)
+            and selected_epoch < epochs
+        )
+        selected_snapshots = snapshots
+        if budget_search is not None:
+            selected_snapshots = snapshots.with_search(
+                budget_iteration=budget_search["selected_budget_iteration"],
+                budget_iters=budget_search["budget_iters"],
+                l0_lambda=budget_search["selected_l0_lambda"],
+            )
+        selected_snapshots.emit(
+            final_estimates,
+            # The epoch whose iterate was actually selected, not the last one
+            # executed: a retained-best run returns an earlier iterate, and
+            # stamping the closing epoch on it would misattribute the values.
+            epoch=(int(selected_epoch) if isinstance(selected_epoch, int) else epochs),
+            epochs=epochs,
+            iterate=ITERATE_SELECTED,
+            precision="float64",
+            loss=float(closing_loss),
+            best_retained={
+                "available": retained_best,
+                "epoch": int(selected_epoch) if best_is_earlier else None,
+                "loss": (
+                    iterate_selection_receipt.get("selected_loss_float32")
+                    if best_is_earlier
+                    else None
+                ),
+            },
+            # The grouped receipt stays empty by design, so the grouped
+            # selection identity is the bounded mode label instead. Both are
+            # aggregate scalars; neither carries record-level content.
+            selection=(
+                _grouped_snapshot_selection(grouped_preserve_zeros)
+                if grouped_run
+                else (dict(iterate_selection_receipt) or None)
+            ),
+        )
     effective_target_loss_weights = (
         np.ones(problem.target_vector.shape, dtype=np.float64)
         if target_loss_weights_np is None
         else target_loss_weights_np.copy()
     )
 
-    return CalibrationResult(
+    result = CalibrationResult(
         frame=new_frame,
         weight_entity=weight_entity,
         weights=final_weights,
@@ -2108,12 +2642,35 @@ def calibrate(
             "budget_basis": budget_basis,
             "feasible_draw_pi_hi": feasible_draw_pi_hi,
             "budget_search": budget_search,
+            **(
+                {
+                    "grouped_preserve_zeros": {
+                        "enabled": True,
+                        "fixed_zero_count": int(np.count_nonzero(w0 == 0)),
+                        "ordered_zero_mask_sha256": hashlib.sha256(
+                            np.asarray(w0 == 0, dtype=np.uint8).tobytes()
+                        ).hexdigest(),
+                    }
+                }
+                if grouped_preserve_zeros
+                else {}
+            ),
+            **(
+                {
+                    "grouped_upper_bounds": grouped_upper_bounds.diagnostics(
+                        final_weights, last_group_correction
+                    )
+                }
+                if grouped_upper_bounds is not None
+                else {}
+            ),
             "method": method,
             "epochs": epochs,
             "learning_rate": learning_rate,
             "iterate_selection": (
                 "best_feasible_loss"
-                if method == "adam"
+                if grouped_upper_bounds is None
+                and method == "adam"
                 and mass == FREE_MASS
                 and l0_lambda == 0.0
                 and l2_lambda == 0.0
@@ -2154,6 +2711,28 @@ def calibrate(
         },
         gate_open_probabilities=gate_open_probabilities,
     )
+    if grouped_upper_bounds is not None:
+        # Admission is last, after diagnostics/options and their possible hooks.
+        # Frozen accepted bytes precede materialization, so changing two live
+        # vector aliases cannot make a changed result validate itself.
+        stored = result.frame.resolve_weights(weight_entity).values
+        closing, _ = grouped_upper_bounds.project(
+            stored, positive=not grouped_preserve_zeros
+        )
+        if grouped_preserve_zeros:
+            _check_fixed_support(stored, w0, grouped_upper_bounds)
+            _check_fixed_support(closing, w0, grouped_upper_bounds)
+        if (
+            result.weights.tobytes() != accepted_weight_bytes
+            or stored.tobytes() != accepted_weight_bytes
+            or closing.tobytes() != accepted_weight_bytes
+        ):
+            raise ValueError(
+                "stored grouped weights must preserve exact final accepted bytes"
+            )
+        _check_grouped_household_ids(frame, actual_ids)
+        _check_grouped_household_ids(result.frame, actual_ids)
+    return result
 
 
 def rebuild_calibration_result(
@@ -2183,7 +2762,15 @@ def rebuild_calibration_result(
     need only the solve's outputs. ``closing_loss``, when supplied, must agree
     with the recomputed loss to a relative 1e-9; a mismatch means the frame,
     the targets or the weights are not the ones the outputs were cut from.
+
+    Grouped solves cannot use this seam: their diagnostics do not contain the
+    original aligned constraints needed to recheck group caps and fixed zeros.
     """
+    if "grouped_upper_bounds" in options or "grouped_preserve_zeros" in options:
+        raise ValueError(
+            "cannot rebuild a result with grouped upper bounds or fixed zeros "
+            "without the original aligned constraints"
+        )
     problem = build_constraint_matrix(frame, targets, weight_entity)
     if problem.skipped:
         names = ", ".join(skipped.target.name for skipped in problem.skipped[:5])
@@ -2315,6 +2902,16 @@ def _phase_callback(
     return callback
 
 
+def _phase_snapshots(
+    target_snapshots: TargetSnapshotObserver | None,
+    phase: str,
+) -> TargetSnapshotObserver | None:
+    """The ``_phase_callback`` analogue for the snapshot observer."""
+    if target_snapshots is None:
+        return None
+    return target_snapshots.with_phase(phase)
+
+
 def _selected_person_mask(
     frame: Frame,
     weight_entity: str,
@@ -2403,6 +3000,7 @@ def refit_l0_selection(
     target_loss_scales: np.ndarray | None = None,
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    target_snapshots: TargetSnapshotObserver | None = None,
 ) -> L0RefitResult:
     """Refit ordinary calibration on a frozen support from an L0 solve.
 
@@ -2581,6 +3179,7 @@ def refit_l0_selection(
         target_loss_scales=target_loss_scales,
         target_loss_cap=target_loss_cap,
         progress_callback=progress_callback,
+        target_snapshots=target_snapshots,
     )
     return L0RefitResult(
         selection=selection,
@@ -2617,6 +3216,7 @@ def calibrate_l0_refit(
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
     warm_start_weights: np.ndarray | None = None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    target_snapshots: TargetSnapshotObserver | None = None,
 ) -> L0RefitResult:
     """Select a sparse support with L0 gates, then refit ordinary calibration.
 
@@ -2690,6 +3290,7 @@ def calibrate_l0_refit(
         target_loss_cap=target_loss_cap,
         warm_start_weights=warm_start_weights,
         progress_callback=_phase_callback(progress_callback, "l0_selection"),
+        target_snapshots=_phase_snapshots(target_snapshots, "l0_selection"),
     )
     return refit_l0_selection(
         frame,
@@ -2712,4 +3313,5 @@ def calibrate_l0_refit(
         target_loss_scales=target_loss_scales,
         target_loss_cap=target_loss_cap,
         progress_callback=_phase_callback(progress_callback, "post_l0_refit"),
+        target_snapshots=_phase_snapshots(target_snapshots, "post_l0_refit"),
     )

@@ -4,25 +4,17 @@ The US ACS artifact's geography spine is anchored at the 2020 Public Use
 Microdata Area — the finest geography the ACS PUMS publishes. A household that
 already knows its PUMA (an ACS-spine record) keeps it; a household that knows
 only its state (an ASEC-spine record) is assigned a PUMA within that state,
-sampled proportional to 2020 PUMA population. Every coarser layer of the
-ladder then derives from the PUMA by a population-weighted draw over the
-PUMA's overlap with that layer:
+sampled proportional to 2020 PUMA population. The derived geography is one
+population-weighted draw from the actual ``(PUMA, tract, 119th CD)`` block
+join. County is the selected tract's prefix, so county and CD always have
+joint source support. The retained marginal tables validate this joint
+population; assignment never multiplies their probabilities.
 
-- **congressional district (119th)** — sampled within the PUMA proportional to
-  the ``(PUMA, CD)`` block-population overlap (a 2020 PUMA can span several
-  districts and a district several PUMAs; they do not nest).
-- **county** — sampled within the PUMA proportional to the ``(PUMA, county)``
-  block-population overlap.
-- **tract** (behind ``assign_tract``) — sampled within the PUMA proportional to
-  the ``(PUMA, tract)`` block-population overlap; when tract is assigned the
-  county derives structurally from it (``county = tract // 10**6``) so the two
-  never disagree. Congressional district, county and state are the launch
-  requirement; tract is the stretch rung.
-
-One national dataset, filter by geography, at any grain (microcosm #275; no
-per-area files, the standing rule): the dense ACS-spine artifact is filtered to
-state / congressional district / county for local analysis because every record
-carries them.
+The internal tract identifies a supported crosswalk cell, not an observed
+residence. ``assign_tract`` controls whether that assigned tract is exported;
+it does not change the PUMA, county or CD draw. National/CD analysis still
+requires its separate calibration, vintage and coverage gates. An assigned
+county or tract is not certification for analysis at that grain.
 
 Vintage discipline follows the country-spec geography-spine schema
 (``vintage_policy: "error"``): the artifact records one vintage per derived
@@ -45,6 +37,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +52,7 @@ from microcosm.build.us_runtime.geography_ladder import US_NYC_COUNTY_FIPS
 from microcosm.build.us_runtime.puma_ladder_sources import (
     COUNTY_FROM_TRACT_DIVISOR,
     PUMA_GEOID_STATE_DIVISOR,
+    US_PUMA_LADDER_SCHEMA_VERSION,
 )
 from microcosm.frame import Frame
 
@@ -81,7 +75,6 @@ US_PUMA_LADDER_COLUMNS = (
 #: The finer tract rung, written only when ``assign_tract=True``.
 US_PUMA_LADDER_TRACT_COLUMN = "tract_geoid"
 
-US_PUMA_LADDER_SCHEMA_VERSION = 1
 US_PUMA_LADDER_KIND = "us_puma_ladder"
 
 PUMA_LADDER_ARTIFACT_SHA256_ATTR = "populace_puma_ladder_artifact_sha256"
@@ -108,14 +101,18 @@ _OVERLAP_KEYS = {
 _REQUIRED_ARRAY_KEYS = (
     *_ANCHOR_KEYS,
     *(key for keys in _OVERLAP_KEYS.values() for key in keys),
+    "joint_overlap_puma",
+    "joint_overlap_tract",
+    "joint_overlap_cd",
+    "joint_overlap_population",
 )
 
 
 @dataclass(frozen=True)
 class UsPumaLadder:
     """The national PUMA ladder: one anchor row per populated 2020 PUMA plus
-    three ``(PUMA, layer_value, population)`` overlap tables sorted by
-    ``(puma, layer_value)``.
+    three marginal overlap tables and the actual joint ``(PUMA, tract, CD,
+    population)`` table. Joint rows are unique and sorted by ``(puma, tract, CD)``.
 
     Attributes:
         puma: 2020 PUMA geoids (``state_fips * 10**5 + PUMA5CE``) as ``int64``,
@@ -134,7 +131,10 @@ class UsPumaLadder:
             the ``(PUMA, tract)`` population overlap; tract geoids are the
             11-digit ``state+county+tract`` integer.
         metadata: the artifact's embedded metadata, including one vintage per
-            derived layer.
+            derived layer. Schema v2 requires the joint source table.
+        joint_overlap_puma / joint_overlap_tract / joint_overlap_cd /
+            joint_overlap_population: the supported populated-block join,
+            aggregated to unique PUMA/tract/CD cells; county is a tract prefix.
     """
 
     puma: np.ndarray
@@ -149,6 +149,10 @@ class UsPumaLadder:
     tract_overlap_tract: np.ndarray
     tract_overlap_population: np.ndarray
     metadata: Mapping[str, Any]
+    joint_overlap_puma: np.ndarray
+    joint_overlap_tract: np.ndarray
+    joint_overlap_cd: np.ndarray
+    joint_overlap_population: np.ndarray
 
     def __len__(self) -> int:
         return len(self.puma)
@@ -186,6 +190,17 @@ def load_us_puma_ladder(path: str | Path) -> UsPumaLadder:
     source = Path(path)
     if not source.exists():
         raise FileNotFoundError(f"US PUMA ladder artifact not found: {source}")
+    return _decode_us_puma_ladder_archive(source)
+
+
+def decode_us_puma_ladder(payload: bytes) -> UsPumaLadder:
+    """Validate the same NPZ contract from immutable graph artifact bytes."""
+    if not isinstance(payload, bytes):
+        raise TypeError("US PUMA ladder payload must be immutable bytes.")
+    return _decode_us_puma_ladder_archive(BytesIO(payload))
+
+
+def _decode_us_puma_ladder_archive(source: Path | BytesIO) -> UsPumaLadder:
     with np.load(source, allow_pickle=False) as payload:
         missing = [key for key in _REQUIRED_ARRAY_KEYS if key not in payload.files]
         if missing:
@@ -274,7 +289,7 @@ def load_us_puma_ladder(path: str | Path) -> UsPumaLadder:
         raise ValueError("tract_overlap_tract geoids must be unique (tracts nest).")
     _assert_conservation(puma, population, tract_puma, tract_pop, layer="tract")
 
-    return UsPumaLadder(
+    ladder = UsPumaLadder(
         puma=puma,
         puma_population=population,
         cd_overlap_puma=cd_puma,
@@ -287,7 +302,13 @@ def load_us_puma_ladder(path: str | Path) -> UsPumaLadder:
         tract_overlap_tract=tract_value,
         tract_overlap_population=tract_pop,
         metadata=metadata,
+        joint_overlap_puma=arrays["joint_overlap_puma"],
+        joint_overlap_tract=arrays["joint_overlap_tract"],
+        joint_overlap_cd=arrays["joint_overlap_cd"],
+        joint_overlap_population=arrays["joint_overlap_population"],
     )
+    _validated_joint_support(ladder)
+    return ladder
 
 
 def assign_us_puma_ladder(
@@ -304,10 +325,11 @@ def assign_us_puma_ladder(
 
     Records that already carry a valid ``puma`` (the ACS spine) keep it; records
     that carry none (the ASEC spine) draw a PUMA within their ``state_fips``
-    proportional to 2020 PUMA population. Every record then draws a congressional
-    district and a county within its PUMA proportional to the block-population
-    overlap, and — when ``assign_tract`` — a tract from which the county derives
-    structurally. Draws are consumed from one seeded generator in a fixed sorted
+    proportional to 2020 PUMA population. Every record then draws one supported
+    joint tract/CD cell within its PUMA proportional to block population. County
+    derives from that tract. The tract is written only when ``assign_tract`` is
+    true; changing that flag leaves the same PUMA/county/CD assignments.
+    Draws are consumed from one seeded generator in a fixed sorted
     order (states, then PUMAs), so the result is reproducible from ``seed``.
 
     A household ``puma`` absent from the ladder, or a household ``state_fips``
@@ -319,6 +341,9 @@ def assign_us_puma_ladder(
             f"household table must contain {state_fips_column!r} before PUMA-"
             "ladder assignment."
         )
+    joint_puma, joint_tract, joint_cd, joint_population = _validated_joint_support(
+        ladder
+    )
     if expected_congressional_district_vintage is not None:
         ladder_cd_vintage = ladder.layer_vintages["congressional_district"]
         if ladder_cd_vintage != expected_congressional_district_vintage:
@@ -343,23 +368,17 @@ def assign_us_puma_ladder(
     if unknown_mask.any():
         _draw_puma_within_state(row_puma, unknown_mask, state_ints, ladder, rng)
 
-    cd_puma, cd_value, cd_pop = ladder._overlap("congressional_district")
-    cd_values = _draw_layer_values(
-        row_puma, cd_puma, cd_value, cd_pop, rng, layer="congressional_district"
+    joint_rows = _draw_layer_values(
+        row_puma,
+        joint_puma,
+        np.arange(len(joint_puma), dtype=np.int64),
+        joint_population,
+        rng,
+        layer="joint tract/congressional_district",
     )
-
-    tract_values: np.ndarray | None = None
-    if assign_tract:
-        tract_puma, tract_value, tract_pop = ladder._overlap("tract")
-        tract_values = _draw_layer_values(
-            row_puma, tract_puma, tract_value, tract_pop, rng, layer="tract"
-        )
-        county_values = tract_values // COUNTY_FROM_TRACT_DIVISOR
-    else:
-        county_puma, county_value, county_pop = ladder._overlap("county")
-        county_values = _draw_layer_values(
-            row_puma, county_puma, county_value, county_pop, rng, layer="county"
-        )
+    cd_values = joint_cd[joint_rows]
+    county_values = joint_tract[joint_rows] // COUNTY_FROM_TRACT_DIVISOR
+    tract_values = joint_tract[joint_rows] if assign_tract else None
 
     _assert_row_state_consistency(
         state_ints,
@@ -381,6 +400,213 @@ def assign_us_puma_ladder(
             [f"{value:011d}" for value in tract_values.tolist()], dtype=object
         )
     return assigned
+
+
+def _validated_joint_support(
+    ladder: UsPumaLadder,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Require real joint support and exact agreement with every marginal.
+
+    A frozen dataclass does not make its arrays immutable. Check the current
+    arrays when assigning or verifying, including normally constructed ladders.
+    Nothing in this function manufactures joint rows from marginal weights.
+    """
+
+    _validate_ladder_metadata(ladder.metadata)
+    if ladder.metadata.get("puma_vintage") != "2020_puma":
+        raise ValueError(
+            "Joint PUMA assignment requires the observed 2020 PUMA vintage."
+        )
+    if any(
+        ladder.layer_vintages[layer] != "2020_census" for layer in ("county", "tract")
+    ):
+        raise ValueError(
+            "Joint PUMA assignment requires 2020 Census county/tract vintages."
+        )
+    anchor = _int64_array(ladder.puma, label="puma")
+    if (
+        not len(anchor)
+        or (np.diff(anchor) <= 0).any()
+        or (
+            (anchor // PUMA_GEOID_STATE_DIVISOR < 1)
+            | (anchor // PUMA_GEOID_STATE_DIVISOR > 56)
+        ).any()
+    ):
+        raise ValueError(
+            "Joint PUMA anchors must be unique, sorted and within states 01–56."
+        )
+    columns = tuple(
+        _int64_array(getattr(ladder, name), label=name)
+        for name in (
+            "joint_overlap_puma",
+            "joint_overlap_tract",
+            "joint_overlap_cd",
+            "joint_overlap_population",
+        )
+    )
+    puma, tract, cd, population = columns
+    if not len(puma) or any(len(value) != len(puma) for value in columns):
+        raise ValueError("Joint PUMA overlap arrays must be nonempty and aligned.")
+    if (population <= 0).any():
+        raise ValueError(
+            "Joint PUMA overlap populations must be positive integer counts."
+        )
+    rows = list(zip(puma.tolist(), tract.tolist(), cd.tolist(), strict=True))
+    if rows != sorted(set(rows)):
+        raise ValueError(
+            "Joint PUMA overlap rows must be unique and sorted by PUMA/tract/CD."
+        )
+    tract_owner: dict[int, int] = {}
+    for row_puma, row_tract, _ in rows:
+        if tract_owner.setdefault(row_tract, row_puma) != row_puma:
+            raise ValueError("Joint PUMA overlap assigns one tract to multiple PUMAs.")
+    if ((tract < 10**9) | (tract >= 10**11)).any() or ((cd < 100) | (cd > 9999)).any():
+        raise ValueError("Joint PUMA overlap contains an invalid tract or CD geoid.")
+    _assert_layer_state_matches(
+        puma, tract // COUNTY_FROM_TRACT_DIVISOR // 1000, layer="joint tract"
+    )
+    _assert_layer_state_matches(puma, cd // 100, layer="joint CD")
+
+    def counts(keys: list[tuple[int, ...]], values: np.ndarray, label: str) -> dict:
+        values = np.asarray(values)
+        if values.ndim != 1 or len(values) != len(keys):
+            raise ValueError(f"{label} population must align with its keys.")
+        result: dict[tuple[int, ...], int] = {}
+        for key, value in zip(keys, values.tolist(), strict=True):
+            if (
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not np.isfinite(value)
+                or value <= 0
+                or int(value) != value
+            ):
+                raise ValueError(
+                    f"{label} population must contain positive integer counts."
+                )
+            result[key] = result.get(key, 0) + int(value)
+        return result
+
+    marginals = {
+        "anchor": [(int(key),) for key in puma],
+        "congressional_district": [
+            (int(key), int(value)) for key, value in zip(puma, cd, strict=True)
+        ],
+        "county": [
+            (int(key), int(value))
+            for key, value in zip(puma, tract // COUNTY_FROM_TRACT_DIVISOR, strict=True)
+        ],
+        "tract": [
+            (int(key), int(value)) for key, value in zip(puma, tract, strict=True)
+        ],
+    }
+    for layer, keys in marginals.items():
+        if layer == "anchor":
+            reference_keys = [(int(key),) for key in anchor]
+            reference_pop = ladder.puma_population
+        else:
+            source_puma, source_value, reference_pop = ladder._overlap(layer)
+            source_puma = _int64_array(source_puma, label=layer + "_overlap_puma")
+            source_value = _int64_array(source_value, label=layer + "_overlap_value")
+            if len(source_puma) != len(source_value):
+                raise ValueError(f"{layer} overlap keys must align.")
+            reference_keys = list(
+                zip(source_puma.tolist(), source_value.tolist(), strict=True)
+            )
+        if counts(keys, population, "joint") != counts(
+            reference_keys, reference_pop, layer
+        ):
+            raise ValueError(
+                f"Joint PUMA overlap does not exactly reproduce the {layer} marginal."
+            )
+    return columns
+
+
+def us_puma_ladder_joint_support_gate(
+    household: pd.DataFrame,
+    ladder: UsPumaLadder,
+    *,
+    assign_tract: bool = False,
+    expected_congressional_district_vintage: str | None = None,
+) -> GateResult:
+    """Check current assigned rows against actual joint Census support.
+
+    This structural support gate is independent of the national NYC mass gate
+    and of national/CD calibration; zero-weight clone rows must also be valid.
+    """
+
+    failures: list[str] = []
+    details: dict[str, object] = {"household_rows": len(household)}
+    try:
+        puma, tract, cd, _ = _validated_joint_support(ladder)
+        if (
+            expected_congressional_district_vintage is not None
+            and ladder.layer_vintages["congressional_district"]
+            != expected_congressional_district_vintage
+        ):
+            raise ValueError(
+                "Joint-support congressional-district vintage does not match the expected vintage."
+            )
+        columns = ["puma", "county_fips", CONGRESSIONAL_DISTRICT_GEOID_COLUMN]
+        if assign_tract:
+            columns.append(US_PUMA_LADDER_TRACT_COLUMN)
+        missing = [name for name in columns if name not in household]
+        if missing:
+            raise ValueError(f"Joint support requires geography columns: {missing}.")
+        values = []
+        for name in columns:
+            numeric = pd.to_numeric(household[name], errors="coerce").to_numpy(
+                dtype=np.float64, na_value=np.nan
+            )
+            if not (
+                np.isfinite(numeric)
+                & (numeric > 0)
+                & (numeric < 2**53)
+                & (numeric == np.floor(numeric))
+            ).all():
+                raise ValueError(
+                    f"Joint support requires positive integral {name} geoids."
+                )
+            values.append(numeric.astype(np.int64))
+        support = set(
+            zip(
+                puma.tolist(),
+                (tract // COUNTY_FROM_TRACT_DIVISOR).tolist(),
+                cd.tolist(),
+                strict=True,
+            )
+        )
+        if assign_tract:
+            support = set(
+                zip(
+                    puma.tolist(),
+                    (tract // COUNTY_FROM_TRACT_DIVISOR).tolist(),
+                    cd.tolist(),
+                    tract.tolist(),
+                    strict=True,
+                )
+            )
+        unsupported = [
+            index
+            for index, row in enumerate(
+                zip(*(value.tolist() for value in values), strict=True)
+            )
+            if row not in support
+        ]
+        details["unsupported_rows"] = len(unsupported)
+        if unsupported:
+            failures.append(
+                f"{len(unsupported)} household row(s) have no joint PUMA/county/CD support; row positions {unsupported[:5]}."
+            )
+        details["joint_support_rows"] = len(puma)
+        details["layer_vintages"] = ladder.layer_vintages
+    except (TypeError, ValueError) as error:
+        failures.append(str(error))
+    return GateResult(
+        name="us_puma_ladder_joint_support",
+        passed=not failures,
+        failures=tuple(failures),
+        details=details,
+    )
 
 
 def with_household_us_puma_ladder(
@@ -850,8 +1076,12 @@ def _assert_conservation(
 
 def _int64_array(values: np.ndarray, *, label: str) -> np.ndarray:
     array = np.asarray(values)
+    if array.ndim != 1:
+        raise ValueError(f"{label} must be a one-dimensional integer array.")
     if array.dtype.kind not in ("i", "u"):
         raise ValueError(f"{label} must be an integer array, got dtype {array.dtype}.")
+    if array.dtype.kind == "u" and (array > np.iinfo(np.int64).max).any():
+        raise ValueError(f"{label} contains an integer outside signed int64.")
     return array.astype(np.int64, copy=False)
 
 
@@ -898,5 +1128,6 @@ __all__ = [
     "load_us_puma_ladder",
     "us_puma_ladder_assignment_summary",
     "us_puma_ladder_gate",
+    "us_puma_ladder_joint_support_gate",
     "with_household_us_puma_ladder",
 ]

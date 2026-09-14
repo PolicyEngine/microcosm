@@ -38,6 +38,9 @@ from microcosm.frame.adapters._policyengine_us_source_index import (
 from microcosm.frame.adapters._policyengine_us_source_index import (
     _index_policyengine_us_sources as _build_policyengine_us_source_index,
 )
+from microcosm.frame.adapters._policyengine_us_source_index import (
+    _index_policyengine_us_variable_sources as _build_policyengine_us_variable_index,
+)
 from microcosm.frame.bundle import Frame
 from microcosm.frame.materialize import (
     engine_tables,
@@ -195,9 +198,9 @@ def _index_policyengine_us_sources(
 def _index_policyengine_us_variable_sources(
     variables_root: Path,
 ) -> Mapping[str, _SourceVariableDefinition]:
-    """Compatibility metadata view over the combined source index."""
+    """Shared declaration parser without parameter-dependent consumer work."""
 
-    return _index_policyengine_us_sources(variables_root).definitions
+    return _build_policyengine_us_variable_index(variables_root)
 
 
 def _index_policyengine_us_generated_variable_sources(
@@ -247,8 +250,7 @@ def _index_policyengine_us_generated_variable_sources(
     return MappingProxyType(definitions)
 
 
-@lru_cache(maxsize=1)
-def _installed_policyengine_us_variable_sources() -> _PolicyEngineUSSourceIndex:
+def _installed_policyengine_us_source_parts():
     try:
         package = distribution("policyengine-us")
     except PackageNotFoundError as exc:
@@ -267,11 +269,11 @@ def _installed_policyengine_us_variable_sources() -> _PolicyEngineUSSourceIndex:
         package_root,
         version=package.version,
     )
-    source_index = _index_policyengine_us_sources(
-        variables_root,
-        parameters_root=package_root / "parameters",
-    )
-    definitions = dict(source_index.definitions)
+    return package_root, variables_root, generated
+
+
+def _merge_installed_variable_definitions(ordinary, generated):
+    definitions = dict(ordinary)
     duplicates = sorted(set(definitions) & set(generated))
     if duplicates:
         raise RuntimeError(
@@ -279,8 +281,29 @@ def _installed_policyengine_us_variable_sources() -> _PolicyEngineUSSourceIndex:
             f"classes: {duplicates}."
         )
     definitions.update(generated)
+    return MappingProxyType(definitions)
+
+
+@lru_cache(maxsize=1)
+def _installed_policyengine_us_variable_definitions():
+    """Installed ordinary/generated ownership metadata, with the same audits."""
+    _, variables_root, generated = _installed_policyengine_us_source_parts()
+    return _merge_installed_variable_definitions(
+        _index_policyengine_us_variable_sources(variables_root), generated
+    )
+
+
+@lru_cache(maxsize=1)
+def _installed_policyengine_us_variable_sources() -> _PolicyEngineUSSourceIndex:
+    package_root, variables_root, generated = _installed_policyengine_us_source_parts()
+    source_index = _index_policyengine_us_sources(
+        variables_root,
+        parameters_root=package_root / "parameters",
+    )
     return _PolicyEngineUSSourceIndex(
-        definitions=MappingProxyType(definitions),
+        definitions=_merge_installed_variable_definitions(
+            source_index.definitions, generated
+        ),
         consumers=source_index.consumers,
     )
 
@@ -297,11 +320,27 @@ class PolicyEngineUSVariableMetadataIndex:
     an unreviewed wheel version or source change fails closed.
     """
 
-    def __init__(self) -> None:
-        source_index = _installed_policyengine_us_variable_sources()
-        self._definitions = source_index.definitions
-        self._consumers = source_index.consumers
+    def __init__(self, *, include_consumers: bool = True) -> None:
+        if type(include_consumers) is not bool:
+            raise TypeError("include_consumers must be an explicit boolean.")
+        if include_consumers:
+            source_index = _installed_policyengine_us_variable_sources()
+            self._definitions = source_index.definitions
+            self._consumers = source_index.consumers
+        else:
+            self._definitions = _installed_policyengine_us_variable_definitions()
+            self._consumers = None
         self._engine_version = distribution("policyengine-us").version
+
+    def _consumer_index(self):
+        if self._consumers is None:
+            source_index = _installed_policyengine_us_variable_sources()
+            if source_index.definitions != self._definitions:
+                raise RuntimeError(
+                    "PolicyEngine-US definitions changed before consumer indexing."
+                )
+            self._consumers = source_index.consumers
+        return self._consumers
 
     def variable_metadata(self, name: str) -> VariableMetadata:
         definition = self._definitions.get(name)
@@ -322,7 +361,7 @@ class PolicyEngineUSVariableMetadataIndex:
 
         if name not in self._definitions:
             raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
-        return self._consumers.get(name, ())
+        return self._consumer_index().get(name, ())
 
     def variable_dependency_closure(self, name: str) -> VariableDependencyClosure:
         """Return the statically authenticated transitive graph for ``name``.
@@ -338,7 +377,7 @@ class PolicyEngineUSVariableMetadataIndex:
             raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
 
         dependencies: dict[str, set[str]] = {}
-        for target, receipts in self._consumers.items():
+        for target, receipts in self._consumer_index().items():
             for receipt in receipts:
                 if receipt.consumer in self._definitions:
                     dependencies.setdefault(receipt.consumer, set()).add(target)

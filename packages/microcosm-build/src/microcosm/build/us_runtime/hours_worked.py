@@ -59,7 +59,7 @@ from microcosm.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
-from microcosm.frame import Frame
+from microcosm.frame import Frame, Weights
 from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
@@ -70,10 +70,13 @@ __all__ = [
     "US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS",
     "US_HOURS_WORKED_STAGE_NAME",
     "derive_us_hours_worked_from_manifest",
+    "us_hours_worked_gate_from_summary",
+    "us_hours_worked_person_summary",
     "us_hours_worked_signal_gate",
     "us_hours_worked_summary",
     "us_hours_worked_stage_spec",
     "with_us_hours_worked_inputs",
+    "with_us_hours_worked_person",
 ]
 
 US_HOURS_WORKED_STAGE_NAME = "hours_worked"
@@ -233,8 +236,36 @@ def with_us_hours_worked_inputs(frame: Frame, *, seed: int, time_period: int) ->
     if have_all and _weekly_hours_carry_signal(person):
         return frame
 
+    produced = with_us_hours_worked_person(
+        person,
+        weights=frame.resolve_weights("person"),
+        seed=seed,
+        time_period=time_period,
+    )
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = produced
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def with_us_hours_worked_person(
+    person: pd.DataFrame, *, weights: Weights, seed: int, time_period: int
+) -> pd.DataFrame:
+    """Run the same manifest handler on a declared person view and typed weights."""
+    if len(weights.values) != len(person):
+        raise ValueError("US hours-worked person weights are not row-aligned.")
+    if all(column in person for column in US_HOURS_WORKED_OUTPUT_COLUMNS) and (
+        _weekly_hours_carry_signal(person)
+    ):
+        return person
     stage_person = person.copy(deep=True)
-    stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
+    stage_person[_PERSON_WEIGHT_COLUMN] = weights.values
     output = run_source_stage(
         us_hours_worked_stage_spec(),
         tables={"person": stage_person},
@@ -251,24 +282,27 @@ def with_us_hours_worked_inputs(frame: Frame, *, seed: int, time_period: int) ->
                 f"{column!r}."
             )
 
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    produced = person.copy()
     for column in US_HOURS_WORKED_OUTPUT_COLUMNS:
-        tables["person"][column] = aligned[column].to_numpy(dtype=np.float64)
-    return Frame(
-        tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-        mass_log=frame.mass_log,
-        metadata=frame.metadata,
-    )
+        produced[column] = aligned[column].to_numpy(dtype=np.float64)
+    return produced
 
 
 def us_hours_worked_summary(frame: Frame) -> dict[str, object]:
     """Weighted hours-distribution summary for gates and release manifests."""
 
-    person = frame.table("person")
-    weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
+    return us_hours_worked_person_summary(
+        frame.table("person"), weights=frame.resolve_weights("person")
+    )
+
+
+def us_hours_worked_person_summary(
+    person: pd.DataFrame, *, weights: Weights
+) -> dict[str, object]:
+    """Observe the actual person view with canonically resolved, aligned weights."""
+    if len(weights.values) != len(person):
+        raise ValueError("US hours-worked person weights are not row-aligned.")
+    weights = np.asarray(weights.values, dtype=np.float64)
     weekly = pd.to_numeric(
         person["weekly_hours_worked_before_lsr"], errors="coerce"
     ).fillna(0.0)
@@ -306,7 +340,6 @@ def us_hours_worked_signal_gate(frame: Frame) -> GateResult:
     """
 
     person = frame.table("person")
-    failures: list[str] = []
     missing = [
         column
         for column in US_HOURS_WORKED_OUTPUT_COLUMNS
@@ -321,7 +354,40 @@ def us_hours_worked_signal_gate(frame: Frame) -> GateResult:
         )
 
     summary = us_hours_worked_summary(frame)
-    for column, count in summary["unique_counts"].items():
+    return us_hours_worked_gate_from_summary(summary)
+
+
+def us_hours_worked_gate_from_summary(summary: dict[str, object]) -> GateResult:
+    """Apply the original signal checks to actual typed producer observations."""
+    if (
+        not isinstance(summary, dict)
+        or set(summary)
+        != {
+            "worked_share",
+            "mean_weekly_hours_workers",
+            "worked_share_band",
+            "mean_weekly_hours_band",
+            "unique_counts",
+        }
+        or summary["worked_share_band"] != list(_WORKED_SHARE_BAND)
+        or summary["mean_weekly_hours_band"] != list(_MEAN_WEEKLY_HOURS_BAND)
+        or not isinstance(summary["unique_counts"], dict)
+        or set(summary["unique_counts"]) != set(US_HOURS_WORKED_OUTPUT_COLUMNS)
+        or any(
+            type(value) is not int or value < 0
+            for value in summary["unique_counts"].values()
+        )
+        or any(
+            type(summary[name]) not in (int, float) or not np.isfinite(summary[name])
+            for name in ("worked_share", "mean_weekly_hours_workers")
+        )
+    ):
+        raise ValueError("US hours-worked gate requires the complete original summary.")
+    failures: list[str] = []
+    # Canonical artifact JSON sorts mappings; failure order remains the
+    # original declared output order, including after a cache roundtrip.
+    for column in US_HOURS_WORKED_OUTPUT_COLUMNS:
+        count = summary["unique_counts"][column]
         if count < 2:
             failures.append(
                 f"{column}: constant column (one observed value) — the hours "

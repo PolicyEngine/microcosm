@@ -1,0 +1,1 @@
+Seal child-property donor and recipient Frames using their private support schema and complete physical contents across the final owner callback. Keep the receiving US population's strict source identity checks unchanged.

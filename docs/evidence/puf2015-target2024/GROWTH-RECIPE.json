@@ -1,0 +1,447 @@
+{
+  "schema": "microcosm.us.puf2015_target2024_growth/1",
+  "input_money_year": 2015,
+  "output_money_year": 2024,
+  "output_profile": "puf59_scf_mortgage_v1",
+  "ordered_targets": [
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "taxable_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "tax_exempt_interest_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains_before_response",
+    "long_term_capital_gains_on_collectibles",
+    "non_sch_d_capital_gains",
+    "taxable_private_pension_income",
+    "taxable_ira_distributions",
+    "social_security_retirement",
+    "social_security_disability",
+    "social_security_dependents",
+    "social_security_survivors",
+    "alimony_income",
+    "alimony_expense",
+    "salt_refund_income",
+    "charitable_cash_donations",
+    "charitable_non_cash_donations",
+    "real_estate_taxes",
+    "home_mortgage_interest",
+    "investment_interest_expense",
+    "investment_income_elected_form_4952",
+    "student_loan_interest",
+    "educator_expense",
+    "qualified_tuition_expenses",
+    "casualty_loss",
+    "unreimbursed_business_employee_expenses",
+    "traditional_ira_contributions_desired",
+    "self_employed_pension_contributions_desired",
+    "rental_income",
+    "estate_income",
+    "farm_income",
+    "farm_operations_income",
+    "farm_rent_income",
+    "miscellaneous_income",
+    "partnership_income",
+    "s_corp_income",
+    "partnership_self_employment_net_earnings",
+    "estate_income_would_be_qualified",
+    "farm_operations_income_would_be_qualified",
+    "farm_rent_income_would_be_qualified",
+    "partnership_s_corp_income_would_be_qualified",
+    "rental_income_would_be_qualified",
+    "self_employment_income_would_be_qualified",
+    "sstb_self_employment_income_would_be_qualified",
+    "business_is_sstb",
+    "qualified_bdc_income",
+    "qualified_reit_and_ptp_income",
+    "sstb_self_employment_income_before_lsr",
+    "sstb_unadjusted_basis_qualified_property",
+    "sstb_w2_wages_from_qualified_business",
+    "unadjusted_basis_qualified_property",
+    "w2_wages_from_qualified_business",
+    "domestic_production_ald",
+    "unrecaptured_section_1250_gain",
+    "health_savings_account_ald"
+  ],
+  "money_fields": {
+    "employment_income_before_lsr": {
+      "positive_family": "awi",
+      "negative_family": "awi",
+      "positive_factor": "1.452153003110483604210764423019948801037",
+      "negative_factor": "1.452153003110483604210764423019948801037",
+      "assumption": "Average-worker wage index proxy; modeled QBI W2 amounts follow the same wage index."
+    },
+    "w2_wages_from_qualified_business": {
+      "positive_family": "awi",
+      "negative_family": "awi",
+      "positive_factor": "1.452153003110483604210764423019948801037",
+      "negative_factor": "1.452153003110483604210764423019948801037",
+      "assumption": "Average-worker wage index proxy; modeled QBI W2 amounts follow the same wage index."
+    },
+    "sstb_w2_wages_from_qualified_business": {
+      "positive_family": "awi",
+      "negative_family": "awi",
+      "positive_factor": "1.452153003110483604210764423019948801037",
+      "negative_factor": "1.452153003110483604210764423019948801037",
+      "assumption": "Average-worker wage index proxy; modeled QBI W2 amounts follow the same wage index."
+    },
+    "self_employment_income_before_lsr": {
+      "positive_family": "business_profit",
+      "negative_family": "business_loss",
+      "positive_factor": "1.222517420922031096142334753675412822692",
+      "negative_factor": "1.718898116890934040328182671660914217539",
+      "assumption": "Both modeled Schedule C branches use the same sign-specific family factors, preserving the base/SSTB partition."
+    },
+    "sstb_self_employment_income_before_lsr": {
+      "positive_family": "business_profit",
+      "negative_family": "business_loss",
+      "positive_factor": "1.222517420922031096142334753675412822692",
+      "negative_factor": "1.718898116890934040328182671660914217539",
+      "assumption": "Both modeled Schedule C branches use the same sign-specific family factors, preserving the base/SSTB partition."
+    },
+    "taxable_interest_income": {
+      "positive_family": "taxable_interest",
+      "negative_family": "taxable_interest",
+      "positive_factor": "2.599750625636417399355437523686408804619",
+      "negative_factor": "2.599750625636417399355437523686408804619",
+      "assumption": "Reporting-return mean transport; 2023\u21922024 stable-real-amount bridge; no unchanged reporting incidence claim."
+    },
+    "tax_exempt_interest_income": {
+      "positive_family": "tax_exempt_interest",
+      "negative_family": "tax_exempt_interest",
+      "positive_factor": "0.9295395824924337172788943063597248917385",
+      "negative_factor": "0.9295395824924337172788943063597248917385",
+      "assumption": "Reporting-return mean transport; 2023\u21922024 stable-real-amount bridge; no unchanged reporting incidence claim."
+    },
+    "qualified_dividend_income": {
+      "positive_family": "qualified_dividends",
+      "negative_family": "qualified_dividends",
+      "positive_factor": "1.409891045424454325551259680558160347719",
+      "negative_factor": "1.409891045424454325551259680558160347719",
+      "assumption": "Reporting-return mean transport; 2023\u21922024 stable-real-amount bridge; no unchanged reporting incidence claim."
+    },
+    "non_qualified_dividend_income": {
+      "positive_family": "nonqualified_dividends",
+      "negative_family": "nonqualified_dividends",
+      "positive_factor": "2.483795459689869824933006427197633652403",
+      "negative_factor": "2.483795459689869824933006427197633652403",
+      "assumption": "Reporting-return mean transport; 2023\u21922024 stable-real-amount bridge; no unchanged reporting incidence claim."
+    },
+    "non_sch_d_capital_gains": {
+      "positive_family": "non_schedule_d_distributions",
+      "negative_family": "non_schedule_d_distributions",
+      "positive_factor": "1.120350061633613230084419890940102481805",
+      "negative_factor": "1.120350061633613230084419890940102481805",
+      "assumption": "Reporting-return mean transport; 2023\u21922024 stable-real-amount bridge; no unchanged reporting incidence claim."
+    },
+    "taxable_private_pension_income": {
+      "positive_family": "taxable_pensions",
+      "negative_family": "taxable_pensions",
+      "positive_factor": "1.327588034973940867230285994253866499704",
+      "negative_factor": "1.327588034973940867230285994253866499704",
+      "assumption": "Reporting-return mean transport; 2023\u21922024 stable-real-amount bridge; no unchanged reporting incidence claim."
+    },
+    "taxable_ira_distributions": {
+      "positive_family": "ira_distributions",
+      "negative_family": "ira_distributions",
+      "positive_factor": "1.510871073557979130794209158828995676924",
+      "negative_factor": "1.510871073557979130794209158828995676924",
+      "assumption": "Reporting-return mean transport; 2023\u21922024 stable-real-amount bridge; no unchanged reporting incidence claim."
+    },
+    "alimony_income": {
+      "positive_family": "alimony_income",
+      "negative_family": "alimony_income",
+      "positive_factor": "1.542033706590010885068081742929926580179",
+      "negative_factor": "1.542033706590010885068081742929926580179",
+      "assumption": "Reporting-return mean transport; 2023\u21922024 stable-real-amount bridge; no unchanged reporting incidence claim."
+    },
+    "salt_refund_income": {
+      "positive_family": "state_tax_refund",
+      "negative_family": "state_tax_refund",
+      "positive_factor": "0.9296526775720357466732616002244135476521",
+      "negative_factor": "0.9296526775720357466732616002244135476521",
+      "assumption": "Reporting-return mean transport; 2023\u21922024 stable-real-amount bridge; no unchanged reporting incidence claim."
+    },
+    "short_term_capital_gains": {
+      "positive_family": "short_current_gain",
+      "negative_family": "short_current_loss",
+      "positive_factor": "2.042865587775988756504710527637911842775",
+      "negative_factor": "1.738139193325432816803529458382722438642",
+      "assumption": "Current-year gross gains/loss components per all return proxy for signed net PUF amount; carried losses are excluded."
+    },
+    "long_term_capital_gains_before_response": {
+      "positive_family": "long_current_gain",
+      "negative_family": "long_current_loss",
+      "positive_factor": "1.283710381837894882785950440755768785471",
+      "negative_factor": "2.262384673681395979556694950087192296750",
+      "assumption": "Current-year gross long-term components proxy for signed net amounts and narrower collectibles/1250 subfamilies; carried losses are excluded."
+    },
+    "long_term_capital_gains_on_collectibles": {
+      "positive_family": "long_current_gain",
+      "negative_family": "long_current_loss",
+      "positive_factor": "1.283710381837894882785950440755768785471",
+      "negative_factor": "2.262384673681395979556694950087192296750",
+      "assumption": "Current-year gross long-term components proxy for signed net amounts and narrower collectibles/1250 subfamilies; carried losses are excluded."
+    },
+    "unrecaptured_section_1250_gain": {
+      "positive_family": "long_current_gain",
+      "negative_family": "long_current_loss",
+      "positive_factor": "1.283710381837894882785950440755768785471",
+      "negative_factor": "2.262384673681395979556694950087192296750",
+      "assumption": "Current-year gross long-term components proxy for signed net amounts and narrower collectibles/1250 subfamilies; carried losses are excluded."
+    },
+    "social_security_retirement": {
+      "positive_family": "cola",
+      "negative_family": "cola",
+      "positive_factor": "1.285886314567344447728640",
+      "negative_factor": "1.285886314567344447728640",
+      "assumption": "Cash-year COLA transport of fixed entitlement; carrier component convention remains modeled upstream."
+    },
+    "social_security_disability": {
+      "positive_family": "cola",
+      "negative_family": "cola",
+      "positive_factor": "1.285886314567344447728640",
+      "negative_factor": "1.285886314567344447728640",
+      "assumption": "Cash-year COLA transport of fixed entitlement; carrier component convention remains modeled upstream."
+    },
+    "social_security_dependents": {
+      "positive_family": "cola",
+      "negative_family": "cola",
+      "positive_factor": "1.285886314567344447728640",
+      "negative_factor": "1.285886314567344447728640",
+      "assumption": "Cash-year COLA transport of fixed entitlement; carrier component convention remains modeled upstream."
+    },
+    "social_security_survivors": {
+      "positive_family": "cola",
+      "negative_family": "cola",
+      "positive_factor": "1.285886314567344447728640",
+      "negative_factor": "1.285886314567344447728640",
+      "assumption": "Cash-year COLA transport of fixed entitlement; carrier component convention remains modeled upstream."
+    },
+    "rental_income": {
+      "positive_family": "rental_royalty_profit",
+      "negative_family": "rental_royalty_loss",
+      "positive_factor": "1.476663829685885394438774259073237903799",
+      "negative_factor": "1.690793641559507564235995133214906035185",
+      "assumption": "Related rental/royalty reporting-return mean proxy; published total family includes farm rent and does not exactly equal E25850/E25860 component definitions."
+    },
+    "estate_income": {
+      "positive_family": "estate_profit",
+      "negative_family": "estate_loss",
+      "positive_factor": "1.476331638358104936021886589313386353228",
+      "negative_factor": "1.582810027948011789708036602150526302352",
+      "assumption": ""
+    },
+    "farm_operations_income": {
+      "positive_family": "farm_profit",
+      "negative_family": "farm_loss",
+      "positive_factor": "1.444720208215047581256304812994467826979",
+      "negative_factor": "1.728383897337776476443532509645504817056",
+      "assumption": "Schedule F family; elected farm income T27800 is a selected subfamily proxy, not general farm income."
+    },
+    "farm_income": {
+      "positive_family": "farm_profit",
+      "negative_family": "farm_loss",
+      "positive_factor": "1.444720208215047581256304812994467826979",
+      "negative_factor": "1.728383897337776476443532509645504817056",
+      "assumption": "Schedule F family; elected farm income T27800 is a selected subfamily proxy, not general farm income."
+    },
+    "farm_rent_income": {
+      "positive_family": "farm_rent_profit",
+      "negative_family": "farm_rent_loss",
+      "positive_factor": "1.629452810459537374541656575493532799084",
+      "negative_factor": "1.150378978298943195689490419607276484593",
+      "assumption": ""
+    },
+    "miscellaneous_income": {
+      "positive_family": "other_property_gain",
+      "negative_family": "other_property_loss",
+      "positive_factor": "1.738242164922618767195190248113271033066",
+      "negative_factor": "1.411645744283618865226902643798237455207",
+      "assumption": "Canonical source E01200 is other property gains/losses, not Table1.4 other income."
+    },
+    "partnership_income": {
+      "positive_family": "partnership_s_corp_profit",
+      "negative_family": "partnership_s_corp_loss",
+      "positive_factor": "1.595257264233857504616939193376066035754",
+      "negative_factor": "1.968942227400735507640732147170530268700",
+      "assumption": "Combined component dollars per all return; reporting counts overlap and are never summed. Active partnership earnings use this same explicitly related-family proxy."
+    },
+    "s_corp_income": {
+      "positive_family": "partnership_s_corp_profit",
+      "negative_family": "partnership_s_corp_loss",
+      "positive_factor": "1.595257264233857504616939193376066035754",
+      "negative_factor": "1.968942227400735507640732147170530268700",
+      "assumption": "Combined component dollars per all return; reporting counts overlap and are never summed. Active partnership earnings use this same explicitly related-family proxy."
+    },
+    "partnership_self_employment_net_earnings": {
+      "positive_family": "partnership_s_corp_profit",
+      "negative_family": "partnership_s_corp_loss",
+      "positive_factor": "1.595257264233857504616939193376066035754",
+      "negative_factor": "1.968942227400735507640732147170530268700",
+      "assumption": "Combined component dollars per all return; reporting counts overlap and are never summed. Active partnership earnings use this same explicitly related-family proxy."
+    },
+    "qualified_bdc_income": {
+      "positive_family": "nonqualified_dividends",
+      "negative_family": "nonqualified_dividends",
+      "positive_factor": "2.483795459689869824933006427197633652403",
+      "negative_factor": "2.483795459689869824933006427197633652403",
+      "assumption": "Modeled BDC component follows its parent nonqualified dividend pool; no independent source observation."
+    },
+    "qualified_reit_and_ptp_income": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real proxy for the combined modeled REIT/PTP output, which mixes nonqualified-dividend and pass-through components. No claim that this is a pure dividend pool."
+    },
+    "alimony_expense": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "charitable_cash_donations": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "charitable_non_cash_donations": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "real_estate_taxes": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "home_mortgage_interest": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "investment_interest_expense": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "investment_income_elected_form_4952": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "student_loan_interest": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "educator_expense": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "qualified_tuition_expenses": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "casualty_loss": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "unreimbursed_business_employee_expenses": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "traditional_ira_contributions_desired": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "self_employed_pension_contributions_desired": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "domestic_production_ald": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "health_savings_account_ald": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "unadjusted_basis_qualified_property": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    },
+    "sstb_unadjusted_basis_qualified_property": {
+      "positive_family": "cpi",
+      "negative_family": "cpi",
+      "positive_factor": "1.323487344789614247079323424058189918867",
+      "negative_factor": "1.323487344789614247079323424058189918867",
+      "assumption": "Explicit constant-real-amount proxy. Realized deductions/desires and UBIA are upstream models; this is not a statutory limit, current eligibility, loan turnover, interest-rate, or asset-price model."
+    }
+  },
+  "return_incidence_fields": [
+    "business_is_sstb",
+    "estate_income_would_be_qualified",
+    "farm_operations_income_would_be_qualified",
+    "farm_rent_income_would_be_qualified",
+    "partnership_s_corp_income_would_be_qualified",
+    "rental_income_would_be_qualified",
+    "self_employment_income_would_be_qualified",
+    "sstb_self_employment_income_would_be_qualified"
+  ],
+  "source_pins": {
+    "NATIONAL-GROWTH-EXTRACT.json": "775d89d3fe7a3b1eb9a09c50f6077d41bf838cdb80d9e4aaa9f0ab80ada4e0c8",
+    "INDEX-VALUES.json": "221f3786a462fe105d3da15df3624de5ad3e3f921b4d0205e096067685fd59b3",
+    "extract_national.py": "b6c3a8e4fea52653c01d801d6efe9620cdba4a489d6d7ae8c95cf00ee6dfbe1b",
+    "ACQUISITION.json": "e9a2c34c2ca06a229b2a790ed2987f25d31996653490f342b4b54af37d5f098c"
+  },
+  "sensitivity_cpi_factor": "1.323487344789614247079323424058189918867",
+  "provenance": "All growth applications are modeled distribution transport from observed national series; source observed/derived/modeled flags remain separate.",
+  "operation_order": "Decode source statistical2015 \u2192 source canonical transformations \u2192 QBI2015 model (all16 outputs) \u2192 this growth transform once \u2192 2024 canonical donor. Monetary recipient predictors remain 2024.",
+  "noninterference": "RECID, S006, raw FLPDYR/FLPDMO, raw money, count source fields and actual survey membership are separate inputs and are not accepted or mutated by this transform.",
+  "sensitivities": "cpi_only uses exactly the same source cohort, zeros, signs and return incidence; no new policy evaluation or calibration authority."
+}

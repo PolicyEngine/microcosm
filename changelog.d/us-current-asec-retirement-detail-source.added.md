@@ -1,0 +1,1 @@
+Qualify current ASEC pension, disability and survivor source details with exact original-person joins, preserved unknownness and unallocated aggregate comparisons. New literal fields remain separate from retained money; no retirement regularity, taxability or ACS component mapping is inferred.

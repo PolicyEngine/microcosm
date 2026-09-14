@@ -1,0 +1,1 @@
+Add deterministic original-person property completion routing, independent interest/dividend knownness, exact clone identity diagnostics and original DESIGN support summaries. The pure operation assigns no amounts and grants no source or release authority; host artifact wiring remains separate.

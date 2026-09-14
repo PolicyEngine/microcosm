@@ -1,0 +1,1 @@
+Add a dedicated all-row survey completion receiving operation and an optional typed child-verification dependency for property tax rebasing. Default declarations and split calculations remain unchanged; source and complete-parent authority stay with the country host.

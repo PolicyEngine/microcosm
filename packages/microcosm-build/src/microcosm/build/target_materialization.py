@@ -716,6 +716,10 @@ def _expression(adapter: Any, entity: str, expression: str) -> np.ndarray:
     total: np.ndarray | None = None
     for part in parts:
         values = _column(adapter, entity, part)
+        # NumPy adds bool arrays with logical-OR semantics. A sum of indicator
+        # terms counts their True values, so widen only boolean operands.
+        if values.dtype.kind == "b":
+            values = values.astype(np.int64)
         total = values.copy() if total is None else total + values
     if total is None:
         raise ValueError(f"unsupported value_expression {expression!r}")

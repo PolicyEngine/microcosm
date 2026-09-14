@@ -1,0 +1,1 @@
+Update the AM, BE and UK country-bundle identity checks after the reviewed calibration snapshot metadata changes. Their authored resources and draw-site bindings remain unchanged; their resolved spec digests include the shared solver source attestation.
