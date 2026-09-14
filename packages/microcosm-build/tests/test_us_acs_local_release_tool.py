@@ -225,6 +225,34 @@ def test_do_finalize_requires_calibration_diagnostics(tmp_path: Path) -> None:
         module.do_finalize(args)
 
 
+def test_local_hours_gate_refuses_missing_source_audit() -> None:
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match="staging input-null audit"):
+        module._require_local_hours(None, {})
+
+
+def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None:
+    from microcosm.build.gates import GateResult
+
+    module = _load_tool_module()
+    seen = []
+
+    def failed_gate(frame, *, source_null_audit):
+        seen.append((frame, source_null_audit))
+        return GateResult(
+            name="acs_local_hours_signal",
+            passed=False,
+            failures=("acs_2024_1yr: unresolved hours",),
+        )
+
+    monkeypatch.setattr(module, "acs_local_hours_signal_gate", failed_gate)
+    marker = object()
+    audit = [{"entity": "person", "column": "weekly_hours_worked_before_lsr"}]
+    with pytest.raises(SystemExit, match="acs_2024_1yr: unresolved hours"):
+        module._require_local_hours(marker, {"reviewed_engine_input_nulls": audit})
+    assert seen == [(marker, audit)]
+
+
 def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     """Absent evidence must refuse packaging, never read as vacuously green."""
 
