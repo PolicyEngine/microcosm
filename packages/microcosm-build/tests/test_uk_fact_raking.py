@@ -166,7 +166,9 @@ def test_person_income_quintiles_rank_people_not_households() -> None:
     # The last household's 100 persons dominate once it is in the mask: it
     # spans every quintile boundary, so all four edges sit at its income and
     # the five one-person households all fall in the lowest quintile.
-    labels, edges = person_income_quintiles(income, persons, weights, mask=np.ones(6, bool))
+    labels, edges = person_income_quintiles(
+        income, persons, weights, mask=np.ones(6, bool)
+    )
     assert edges == [60.0, 60.0, 60.0, 60.0]
     assert labels.tolist()[:5] == ["lowest"] * 5
 
@@ -320,6 +322,43 @@ def test_joint_cell_scales_both_columns_by_one_factor() -> None:
     assert (
         raked["rail_subsidy_spending"][~ni] == frame["rail_subsidy_spending"][~ni]
     ).all()
+
+
+def test_rake_skips_a_cell_whose_regions_are_absent_from_the_frame() -> None:
+    frame, inputs = _synthetic()
+    cells = [
+        FactCell("london", ("LONDON",), 1_000.0, "uniform", None, (), {}),
+        FactCell("atlantis", ("ATLANTIS",), 5_000.0, "uniform", None, (), {}),
+        FactCell(
+            "joint_atlantis",
+            ("LEMURIA",),
+            7_000.0,
+            "uniform",
+            None,
+            ("bus_subsidy_spending", "rail_subsidy_spending"),
+            {},
+        ),
+    ]
+    raked, receipt = rake_to_facts(
+        frame,
+        columns=["bus_fare_spending"],
+        cells=cells,
+        region=inputs["region"],
+        weights=inputs["weights"],
+        scope="all",
+    )
+    london = inputs["region"] == "LONDON"
+    assert float(
+        np.dot(raked["bus_fare_spending"].to_numpy()[london], inputs["weights"][london])
+    ) == pytest.approx(1_000.0)
+    assert [cell["cell"] for cell in receipt["skipped_cells"]] == [
+        "atlantis",
+        "joint_atlantis",
+    ]
+    assert (
+        receipt["skipped_cells"][0]["reason"] == "no households in the cell's regions"
+    )
+    assert receipt["joint_fits"] == []
 
 
 def test_rake_refuses_a_cell_with_published_mass_but_nobody_in_scope() -> None:

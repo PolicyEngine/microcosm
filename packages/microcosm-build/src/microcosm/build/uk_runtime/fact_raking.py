@@ -316,9 +316,24 @@ def rake_to_facts(
     targets: dict[str, dict[str, float]] = {}
     cell_receipts: list[dict[str, Any]] = []
     joint_receipts: list[dict[str, Any]] = []
+    skipped_cells: list[dict[str, Any]] = []
     for cell in cells:
         member = np.isin(region_values, list(cell.regions))
         population = member & in_scope
+        if not member.any():
+            # No household of the frame lives in the cell's regions (a partial
+            # or synthetic frame): the published mass has nowhere to go and the
+            # cell is skipped, receipted, like an empty IPF cell. A populated
+            # region with nobody in scope is refused below instead.
+            skipped_cells.append(
+                {
+                    "cell": cell.label,
+                    "regions": list(cell.regions),
+                    "target_total": cell.value,
+                    "reason": "no households in the cell's regions",
+                }
+            )
+            continue
         if cell.joint_columns:
             frame, receipt = _rake_joint(
                 frame, cell, population, weight_values, list(cell.joint_columns)
@@ -421,6 +436,7 @@ def rake_to_facts(
         "cells": [cell.receipt for cell in cells],
         "fits": cell_receipts,
         "joint_fits": joint_receipts,
+        "skipped_cells": skipped_cells,
     }
     return raked, receipt
 
