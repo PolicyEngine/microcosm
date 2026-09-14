@@ -182,3 +182,43 @@ only; no tracked file is edited; commits land on the local ref
 - Build run-4 packets, run the judgment fan-out for all 50 (fresh evidence for
   the missing 20, re-verification for the 30), adversarial verify, adjudicate.
 - Write `out-pr-triage.md` + `pr-dispositions.json`.
+
+### Run-4 owner checks, run independently of the agents (~20:30 ET)
+
+Recorded in full at `scratchpad/r4/owner_notes_run4.md`. Headlines:
+
+- **#739's red is a real but small packaging break.** `gh run view 33809721645
+  --log-failed`: 5 FAILED in `test_us_exact_k_ladder_launcher.py`, all
+  `ModuleNotFoundError: No module named 'tables'`, **wheels lane only**. Cause read
+  from the diff: #739's new `_write_packaged_release` helper calls
+  `pd.DataFrame(...).to_hdf(..., format="table")`, needing PyTables, which the
+  wheels lane's clean venv does not have. 4 of the 5 failing tests are NEW in #739.
+  Fix is a `requires_us` marker or `importorskip("tables")`.
+- **#896's red is its own test and is from today.**
+  `test_uk_frs_spine.py::test_driver_marks_full_fixture_smoke_outputs_non_release`
+  `assert 1 == 0` at line 1825, wheels 3.13+3.14, runs at 2026-09-14 21:38/21:43 —
+  the freshest CI in the set.
+- **Frozen-interface collision confirmed from the lock blobs.** Only #873, #901,
+  #918 touch decl.py/kernel.py/the lock (#893 does NOT — its lock blob equals
+  main's). #918 and #901 propose the **identical** lock `11c2abd7…/2df6cc5b…` and
+  their decl.py/kernel.py/weight_update.py blobs are byte-identical to each other;
+  both add amendments **25** and **26**. #873 proposes a different lock and numbers
+  its amendment **19**, a slot main filled with "Typed opaque artifacts" (its list
+  runs **through 24**). So #873's charter half is numbered into occupied slots.
+- **ACS-hours cluster measured**: `#923∩#924 = #923∩#926 = #924∩#926 = 0`;
+  `#718∩#923 = 3` files. Issue **#765 is OPEN**. Two independent routes, plus #718
+  as a separate feature.
+- **#718 is not superseded and its blocker cleared**: main still has
+  `RELEASE_NAMESPACE = "buildo_acs_local"` hardcoded at
+  `tools/build_us_acs_local_release.py:71`; #718's `release_campaign()` derivation is
+  on neither main nor #923/#924/#926. Its body holds it behind **#600, which MERGED**.
+- **#339's MERGEABLE/CLEAN is an artifact**: its base `medicaid-chip-take-up` is
+  PR #334's head, MERGED 2026-07-09 **without** #339's commit.
+
+### Fan-out launched (run 4)
+
+Workflow `wf_75516d4b-2df`: 50 evidence agents → lens-specific adversarial
+refuters (close-class: unique-work / superseder-reality / dependents;
+MERGE-READY: readiness-audit / supersession-hunt; KEEP-BLOCKED-ON:
+blocker-reality / supersession-hunt; else supersession-hunt / value-and-cost)
+→ a per-PR adjudicator that re-runs the deciding command itself.
