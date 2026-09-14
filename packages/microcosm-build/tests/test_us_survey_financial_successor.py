@@ -172,7 +172,11 @@ def test_final_budget_support_borrow_cannot_mutate_financial_run(admitted_financ
     sys.setprofile(profile)
     try:
         with pytest.raises(
-            ValueError, match="FINANCIAL_RUN_(POPULATION|ATTACHED_POPULATION)_CHANGED"
+            ValueError,
+            match=(
+                "FINANCIAL_NODE_POPULATION_CHANGED"
+                "|FINANCIAL_RUN_(POPULATION|ATTACHED_POPULATION)_CHANGED"
+            ),
         ):
             binding.checked_view()
     finally:

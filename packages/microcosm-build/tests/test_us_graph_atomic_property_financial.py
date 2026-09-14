@@ -288,6 +288,7 @@ def test_retained_host_lifetime_rejects_mutation(actual_property_host, defect):
                 ValueError,
                 match=(
                     "PROPERTY_OPTIONS_OR_LEGACY_POPULATION_CHANGED"
+                    "|FINANCIAL_NODE_POPULATION_CHANGED"
                     "|FINANCIAL_RUN_POPULATION_CHANGED"
                     "|FINANCIAL_RUN_ATTACHED_POPULATION_CHANGED"
                 ),
