@@ -23,10 +23,12 @@ Feed rebuilt from `PolicyEngine/chronicle` main `c6f9361492056b9fab7b8535a2be77e
 Effect on the committed national surface before any binding change: none. 415 active, 7
 deferred, 8 signed out, no resolved value or fact key moved; the compile-parity receipts
 regenerate byte-identical. Only the membership feed label moves
-(`chronicle-uk-ec7169b5-consumer-facts` → `chronicle-uk-c6f93614-consumer-facts`). The local
-census, validation levels and local reference surfaces keep their separately reviewed
-`ec7169b` pin; the local regeneration test now reads its own default file
-(`.codex-work/consumer_facts_uk_local.jsonl`).
+(`chronicle-uk-ec7169b5-consumer-facts` → `chronicle-uk-c6f93614-consumer-facts`). As written
+in round 1 the local surfaces kept a separate `ec7169b` pin with their own default feed file;
+round 2 (María's ruling) unified both surfaces on one pin, `uk/chronicle_feed.json`, and the
+feed-gated tests read one artifact (`.codex-work/consumer_facts_uk.jsonl`, or the
+`.codex-work/uk-artifact/` directory for the runtime compile), skipping when absent; Part I
+records the later move of that single pin to `474a0ae`.
 
 ### Part B — vendored Chronicle facts (`tools/vendor_uk_ledger_facts.py`)
 
