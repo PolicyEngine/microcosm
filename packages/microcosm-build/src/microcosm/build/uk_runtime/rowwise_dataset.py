@@ -296,27 +296,36 @@ class UKLadderRowwiseDatasetResult:
     output_path: Path | None = None
 
 
-def clone_uk_dataset_tables_with_ladder_geography(
+@dataclass(frozen=True)
+class UKGeographicPool:
+    """Linked geographic copies before any location draw.
+
+    ``n_clones`` is the total copies K, independent of output household size.
+    Source IDs, replicate IDs and the original SPI/CGT ancestry stay distinct.
+    """
+
+    frame: Frame
+    n_clones: int
+    id_multiplier: int
+
+
+def expand_uk_geographic_pool(
     *,
     person: pd.DataFrame,
     benunit: pd.DataFrame,
     household: pd.DataFrame,
-    ladder: UkOaLadder,
     n_clones: int = 1,
-    seed: int = 42,
     time_period: int | str | None = None,
     source_year: int | None = None,
     id_multiplier: int | None = None,
-    expected_constituency_vintage: str | None = None,
-    region_column: str = "region",
     household_weight_kind: WeightKind = WeightKind.DESIGN,
     mass_log: tuple[MassChangeRecord, ...] = (),
     source_lineage_modulus: int | None = None,
-) -> UKLadderRowwiseDatasetResult:
-    """Clone UK tables and assign geography through the OA ladder.
+) -> UKGeographicPool:
+    """Prepare lineage and expand linked entities using shared clone operations.
 
-    The result carries a validated UK national frame; clone indices land on
-    the canonical per-entity :func:`ladder_clone_index_column` names.
+    The existing clone-major row order, ID multiplier and weight split are
+    preserved. This operation consumes no randomness.
     """
 
     _validate_weight_metadata(household_weight_kind, mass_log)
@@ -410,16 +419,8 @@ def clone_uk_dataset_tables_with_ladder_geography(
 
     _assert_clone_link_alignment(cloned_person, cloned_household)
 
-    assigned = assign_uk_geography_ladder(
-        cloned_household,
-        ladder,
-        seed=seed,
-        expected_constituency_vintage=expected_constituency_vintage,
-        region_column=region_column,
-    ).reset_index(drop=True)
-
     output_total = float(
-        np.asarray(assigned["household_weight"], dtype=np.float64).sum()
+        np.asarray(cloned_household["household_weight"], dtype=np.float64).sum()
     )
     _assert_household_mass_conserved(input_total, output_total)
     clone_record = MassChangeRecord(
@@ -434,9 +435,59 @@ def clone_uk_dataset_tables_with_ladder_geography(
         ),
     )
 
+    return UKGeographicPool(
+        frame=uk_national_frame(
+            person=cloned_person,
+            benunit=cloned_benunit,
+            household=cloned_household,
+            time_period=_normalise_time_period(time_period, source_year=source_year),
+            weight_kind=household_weight_kind,
+            mass_log=(*mass_log, clone_record),
+        ),
+        n_clones=n_clones,
+        id_multiplier=id_multiplier,
+    )
+
+
+def assign_uk_geographic_pool(
+    pool: UKGeographicPool,
+    ladder: UkOaLadder,
+    *,
+    seed: int = 42,
+    expected_constituency_vintage: str | None = None,
+    region_column: str = "region",
+) -> Frame:
+    """Draw and derive current ladder geography, retaining legacy RNG order."""
+
+    frame = pool.frame
+    assigned = assign_uk_geography_ladder(
+        frame.table("household"),
+        ladder,
+        seed=seed,
+        expected_constituency_vintage=expected_constituency_vintage,
+        region_column=region_column,
+    ).reset_index(drop=True)
+    return uk_national_frame(
+        person=frame.table("person"),
+        benunit=frame.table("benunit"),
+        household=assigned,
+        time_period=uk_time_period(frame),
+        weight_kind=frame.weights_for("household").kind,
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
+    )
+
+
+def validate_uk_geographic_pool(
+    frame: Frame,
+    *,
+    region_column: str = "region",
+) -> GateResult:
+    """Check assigned geography and entity links before contributions compile."""
+
     gate = uk_geography_ladder_gate(
-        assigned,
-        np.asarray(assigned["household_weight"], dtype=np.float64),
+        frame.table("household"),
+        frame.weights_for("household").values,
         region_column=region_column,
     )
     if not gate.passed:
@@ -444,23 +495,60 @@ def clone_uk_dataset_tables_with_ladder_geography(
             "UK geography ladder gate failed on the cloned assignment: "
             + "; ".join(gate.failures)
         )
-
-    validate_uk_ladder_rowwise_dataset_tables(cloned_person, cloned_benunit, assigned)
-    # The frame construction re-runs linkage validation and binds the typed
-    # household weights, the mass log, and the time period to the carrier.
-    frame = uk_national_frame(
-        person=cloned_person,
-        benunit=cloned_benunit,
-        household=assigned,
-        time_period=_normalise_time_period(time_period, source_year=source_year),
-        weight_kind=household_weight_kind,
-        mass_log=(*mass_log, clone_record),
+    validate_uk_ladder_rowwise_dataset_tables(
+        frame.table("person"), frame.table("benunit"), frame.table("household")
     )
+    return gate
+
+
+def clone_uk_dataset_tables_with_ladder_geography(
+    *,
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    household: pd.DataFrame,
+    ladder: UkOaLadder,
+    n_clones: int = 1,
+    seed: int = 42,
+    time_period: int | str | None = None,
+    source_year: int | None = None,
+    id_multiplier: int | None = None,
+    expected_constituency_vintage: str | None = None,
+    region_column: str = "region",
+    household_weight_kind: WeightKind = WeightKind.DESIGN,
+    mass_log: tuple[MassChangeRecord, ...] = (),
+    source_lineage_modulus: int | None = None,
+) -> UKLadderRowwiseDatasetResult:
+    """Clone UK tables and assign geography through the OA ladder.
+
+    The result carries a validated UK national frame; clone indices land on
+    the canonical per-entity :func:`ladder_clone_index_column` names.
+    """
+
+    pool = expand_uk_geographic_pool(
+        person=person,
+        benunit=benunit,
+        household=household,
+        n_clones=n_clones,
+        time_period=time_period,
+        source_year=source_year,
+        id_multiplier=id_multiplier,
+        household_weight_kind=household_weight_kind,
+        mass_log=mass_log,
+        source_lineage_modulus=source_lineage_modulus,
+    )
+    frame = assign_uk_geographic_pool(
+        pool,
+        ladder,
+        seed=seed,
+        expected_constituency_vintage=expected_constituency_vintage,
+        region_column=region_column,
+    )
+    gate = validate_uk_geographic_pool(frame, region_column=region_column)
     return UKLadderRowwiseDatasetResult(
         frame=frame,
         gate=gate,
         n_clones=n_clones,
-        id_multiplier=id_multiplier,
+        id_multiplier=pool.id_multiplier,
     )
 
 

@@ -10,7 +10,6 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime.graph import (
-    UK_SPINE_EXCLUSIONS,
     UK_SPINE_STRUCTURAL_STAGES,
     uk_registry,
     uk_spine_graph,
@@ -152,27 +151,19 @@ def test_uk_expand_contract_rejects_unknown_source_ids() -> None:
         patch(_expand_population(), _expand_node(), _expand_result(bad_source=True))
 
 
-def test_uk_spine_graph_contains_manifest_stages_and_named_exclusions() -> None:
+def test_uk_spine_graph_contains_all_canonical_manifest_stages() -> None:
     spec = load_country_spec("uk")
     assert spec.sources is not None
-    expected = tuple(
-        stage.stage
-        for stage in spec.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    )
+    expected = tuple(stage.stage for stage in spec.sources.stages)
     graph = uk_spine_graph(spec)
     ids = {node.id for node in graph.nodes}
 
     # 29 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes and
-    # #791 frs_relationships stages; the two named exclusions are the
-    # certified-pair alternatives, not steps of this pipeline.
+    # #791 frs_relationships stages; the retained-leaves / SPI pair is retired.
     assert len(expected) == 29
-    assert UK_SPINE_EXCLUSIONS == {
-        "frs_hmrc_retained_leaves",
-        "hmrc_spi_income",
-    }
     assert set(expected) <= ids
-    assert not (UK_SPINE_EXCLUSIONS & ids)
+    assert "frs_hmrc_retained_leaves" not in ids
+    assert "hmrc_spi_income" not in ids
     root_dtypes = {
         (owned.entity, owned.column): owned.dtype
         for owned in graph.node("create_uk_frs").outputs
@@ -186,11 +177,7 @@ def test_uk_spine_graph_contains_manifest_stages_and_named_exclusions() -> None:
 def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     spec = load_country_spec("uk")
     assert spec.sources is not None
-    expected = tuple(
-        stage.stage
-        for stage in spec.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    )
+    expected = tuple(stage.stage for stage in spec.sources.stages)
     compiled = compile_graph(uk_spine_graph(spec))
     stage_order = tuple(node_id for node_id in compiled.order if node_id in expected)
 
@@ -512,6 +499,7 @@ def test_spi_support_fixture_changes_person_mass_and_conserves_household_mass() 
 
 
 @pytest.mark.requires_uk
+@pytest.mark.requires_uk
 def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
     tmp_path,
 ) -> None:
@@ -525,41 +513,84 @@ def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
     in CI's engine lane instead.
     """
 
-    import importlib.util
+    import json
     from pathlib import Path
 
+    from microcosm.build.gate_battery import (
+        EvidenceContext,
+        evaluate_phase,
+        gate_phase_report_payload,
+    )
+    from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+    from microcosm.build.uk_runtime.graph_evidence import (
+        add_uk_spine_gate_nodes,
+        register_spine_gate_kernel,
+        uk_spine_gate_artifacts,
+        uk_spine_gate_manifest,
+    )
     from microcosm.build.uk_runtime.graph_kernels import fixture_stage_plan_inputs
+    from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
     from microcosm.graph import ContentStore, run_graph
 
     root = Path(__file__).resolve().parents[3]
     fixture = root / "packages/microcosm-graph/tests/fixtures/parity/uk_spine"
     if not fixture.exists():
         pytest.skip("UK spine parity fixture is not present")
-    spec = importlib.util.spec_from_file_location(
-        "build_uk_frs_spine", root / "tools" / "build_uk_frs_spine.py"
-    )
-    driver = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(driver)
+    from microcosm.build.uk_runtime import spine_build as driver
 
     country = load_country_spec("uk")
-    stages = [
-        stage
-        for stage in country.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    ]
+    stages = [stage for stage in country.sources.stages]
     _, implementations = fixture_stage_plan_inputs(fixture / "sources")
-    graph = uk_spine_graph()
+    graph = add_uk_spine_gate_nodes(
+        uk_spine_graph(), spec=country, engine_identity="fixture-engine"
+    )
     compiled = compile_graph(graph)
     store = ContentStore(tmp_path / "store")
+    engine = PolicyEngineUKEngine()
+    registry = uk_registry(dict(implementations), graph=graph)
+    register_spine_gate_kernel(
+        registry, spec=country, engine=engine, engine_identity="fixture-engine"
+    )
     manifest = run_graph(
         compiled,
         sources={"frs": fixture / "sources"},
         store=store,
-        kernels=uk_registry(dict(implementations)),
+        kernels=registry,
         resume="forbid",
         decisions=(),
     )
-    final = manifest.population(compiled.versions[compiled.order[-1]])
+    final = manifest.population(compiled.versions[stages[-1].stage])
+
+    # The new stored gate nodes must reproduce the maintained evaluators on
+    # the checkpoint populations and live transform evidence they used before.
+    gates = uk_spine_gate_manifest(country)
+    names = tuple(stage.stage for stage in stages)
+    for phase, stage_names, population in (
+        (
+            "assembled",
+            names[: names.index("frs_brma") + 1],
+            manifest.population(compiled.versions["frs_brma"]),
+        ),
+        ("transferred", names, final),
+    ):
+        key = manifest.nodes[f"spine.gates.{phase}"].opaque_artifacts["gate_report"]
+        stored = json.loads(store.load_bytes(key))
+        expected = evaluate_phase(
+            gates,
+            phase,
+            EvidenceContext(
+                frame=population,
+                artifacts={
+                    "stage_evidence": driver._collect_stage_evidence(
+                        stage_names=stage_names,
+                        implementations=implementations,
+                    ),
+                    **uk_spine_gate_artifacts(engine),
+                },
+            ),
+            registry=UK_GATE_REGISTRY,
+        )
+        assert stored == gate_phase_report_payload(expected, gates=gates)
 
     records = driver._graph_stage_records(
         manifest=manifest, store=store, stages=stages, frame=final

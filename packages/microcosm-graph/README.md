@@ -32,3 +32,15 @@ Module map:
 
 The shard depends on `microcosm-frame` only. Kernels that wrap fit,
 calibrate, or a rules engine live in those shards and register here.
+
+Same-kind normalization uses `WeightUpdate`, with a reason, a conserved or
+declared mass policy, and `weight_update_receipt(ordered_entity_ids)` in the
+kernel receipt. The runtime checks the exact row axis and preserves the
+original design-weight ancestry. `WeightTransition` continues to require a
+forward change of kind.
+
+Kernels receive immutable Frame metadata, legacy mass records and the
+original order of their projected columns through `KernelContext`. Complete
+legacy evidence requires an explicit structural checkpoint or artifact
+dependency. The executor's population mass ledger remains the authority for
+graph mass checks.

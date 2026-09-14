@@ -270,6 +270,9 @@ def test_live_check_reads_source_twice_even_after_warming(tmp_path, monkeypatch)
 
 
 def test_real_producer_keeps_read_counts_and_full_evidence_on_warm_cache():
+    pytest.importorskip(
+        "microunit", exc_type=ModuleNotFoundError
+    )  # Included in the real ACS producer closure.
     # Settle unrelated import/manifest memoization, then compare only compile
     # cache cold versus warm with the real producer and unchanged source files.
     native._producer()

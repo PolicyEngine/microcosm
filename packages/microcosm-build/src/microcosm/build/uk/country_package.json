@@ -118,11 +118,6 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "hmrc_income_source_stages.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
       "path": "need_energy_targets.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

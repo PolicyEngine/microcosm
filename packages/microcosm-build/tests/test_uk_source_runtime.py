@@ -112,8 +112,6 @@ def test_uk_stage_implementations_names_whole_stage_transforms() -> None:
         return frame
 
     assert uk_stage_implementations(
-        retained_leaves_transform=retained,
-        hmrc_income_transform=hmrc,
         was_wealth_transform=retained,
         uc_deduction_attributes_transform=hmrc,
         regional_property_uprating_transform=hmrc,
@@ -126,8 +124,6 @@ def test_uk_stage_implementations_names_whole_stage_transforms() -> None:
         salary_sacrifice_transform=hmrc,
         student_loans_transform=retained,
     ) == {
-        "frs_hmrc_retained_leaves": retained,
-        "hmrc_spi_income": hmrc,
         "was_wealth": retained,
         "uc_deduction_attributes": hmrc,
         "regional_property_uprating": hmrc,
@@ -231,3 +227,16 @@ def test_materialize_rules_engine_predictors_refuses_an_unknown_year_rule() -> N
 
     with pytest.raises(SourceRuntimeError, match="Unknown UK year_rule"):
         handler(None, operation, _context(engine=_PeriodRecordingEngine()))
+
+
+def test_canonical_source_roster_has_no_candidate_migration_stages() -> None:
+    from microcosm.build.country_spec import load_country_spec
+
+    stages = load_country_spec("uk").sources.stage_map()
+    assert "frs_hmrc_retained_leaves" not in stages
+    assert "hmrc_spi_income" not in stages
+    assert {
+        "frs_hmrc_spine_leaves",
+        "spi_support_channel",
+        "hmrc_spi_income_spine",
+    } <= stages.keys()

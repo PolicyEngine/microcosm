@@ -58,7 +58,7 @@ AM_SPEC_SHA256 = "ab8458f8520ffe8325bf9193a7c4f3cb76bade3944522fba5f9ab3f9c4b235
         ),
         (
             "uk",
-            "fcaa57d66c3831e174917e64319cd7c651b5d8aad89dd13327ad6f7b4d5c85f3",
+            "cbdbda2b6335f70c281382263ba189d93d323ab32bc0e89db7d6d9c845e6353d",
             {
                 "benunit.benunit_id",
                 "household.household_id",
@@ -137,7 +137,7 @@ def test_country_kernel_contract_ids_are_closed_in_the_compiler_registry() -> No
         "silc_load",
         "clone_assign_communes",
         "be_commune_geography_gate",
-        "load_uk_national_frame",
+        "build_uk_frs_spine",
         "assign_uk_geography_ladder",
         "uk_geography_ladder_gate",
     }

@@ -49,8 +49,6 @@ UK_NONNEGATIVE_SOURCE_OUTPUTS = tuple(
 
 def uk_stage_implementations(
     *,
-    retained_leaves_transform: Callable[[Frame], Frame],
-    hmrc_income_transform: Callable[[Frame], Frame],
     frs_spine_transform: Callable[[Frame], Frame] | None = None,
     frs_relationships_transform: Callable[[Frame], Frame] | None = None,
     frs_employment_transform: Callable[[Frame], Frame] | None = None,
@@ -81,10 +79,6 @@ def uk_stage_implementations(
     """Return the whole-stage implementation map for the UK source plan."""
 
     implementations = {
-        "frs_hmrc_retained_leaves": retained_leaves_transform,
-        "hmrc_spi_income": hmrc_income_transform,
-    }
-    optional = {
         "frs_spine": frs_spine_transform,
         "frs_relationships": frs_relationships_transform,
         "frs_employment": frs_employment_transform,
@@ -112,14 +106,11 @@ def uk_stage_implementations(
         "salary_sacrifice": salary_sacrifice_transform,
         "student_loans": student_loans_transform,
     }
-    implementations.update(
-        {
-            name: transform
-            for name, transform in optional.items()
-            if transform is not None
-        }
-    )
-    return implementations
+    return {
+        name: transform
+        for name, transform in implementations.items()
+        if transform is not None
+    }
 
 
 def uk_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:

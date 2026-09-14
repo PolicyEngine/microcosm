@@ -1,9 +1,10 @@
 # Re-pin the UK Chronicle consumer feed
 
 The national and local target surfaces have independently reviewed Chronicle
-artifact pins. National calibration reads `uk/national_chronicle_feed.json`;
-local calibration and validation retain their existing pins. A national
-update does not authorize changes to local census membership or values.
+artifact pins. The full build reads `uk/national_chronicle_feed.json` for
+national targets and the separate local declarations for local targets and
+validation. Updating one pin does not authorize changes to the other surface's
+membership or values.
 
 Rebuild the complete UK bundle and consumer artifact in
 `PolicyEngine/chronicle` at the declared commit. Keep the resulting
@@ -28,9 +29,11 @@ parity receipts affected by that update with
 local regeneration test accepts either the default `.codex-work` files or a
 `CHRONICLE_UK_LOCAL_FACTS` override and skips only when neither is present.
 
-The national calibration runner refuses a feed whose facts or manifest digest
-differs from its committed pin. `--allow-unpinned-feed` is an explicit diagnostic override and
-is recorded in the run manifest; it is not a re-pin procedure.
+The canonical `tools/build_uk_full.py` command refuses a feed whose facts or
+manifest digest differs from either reviewed declaration. Omitting explicit
+CLI hashes uses the committed pins. A country-only target selector retains
+those source checks. There is no `--allow-unpinned-feed` bypass in the full
+build; changes require the reviewed re-pin procedure above.
 
 After the `ec7169b` re-pin, census household targets use the same Chronicle
 compile path as every other bound UK local family. The OA ladder now supplies

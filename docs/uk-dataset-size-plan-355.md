@@ -76,7 +76,7 @@ Use the inputs and environment from the existing
 Pass the same pinned source arguments to the existing driver and add:
 
 ```bash
-uv run python tools/build_uk_rowwise_candidate.py \
+uv run python tools/build_uk_full.py \
   --input-h5 "$UK_SPINE_H5" --input-sha256 "$UK_SPINE_SHA256" \
   --ladder "$UK_LADDER_NPZ" --ladder-sha256 "$UK_LADDER_SHA256" \
   --ledger-facts "$UK_LEDGER_FACTS" \

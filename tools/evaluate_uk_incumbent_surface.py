@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import collections
 import hashlib
-import importlib.util
 import json
 import sys
 import tempfile
@@ -29,8 +28,10 @@ import pandas as pd
 
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+from microcosm.build.uk_runtime.full_measure import resolve_uk_full_measures
 from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
     GSS_REGION_CODES,
+    candidate_evaluation_manifest,
     classify_local_rows,
     classify_national_rows,
     evaluation_summary,
@@ -54,17 +55,6 @@ from microcosm.build.uk_runtime.rowwise_dataset import load_uk_rowwise_dataset
 from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.data.contract import uk_incumbent_surface_assessment
-
-
-def _driver():
-    spec = importlib.util.spec_from_file_location(
-        "build_uk_rowwise_candidate",
-        Path(__file__).resolve().with_name("build_uk_rowwise_candidate.py"),
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
 
 
 def _parse_args(argv):
@@ -103,7 +93,6 @@ def _check_candidate_chronicle_identity(
 
 def main(argv=None) -> int:
     args = _parse_args(argv)
-    driver = _driver()
     artifact = load_ledger_consumer_artifact(
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
@@ -150,7 +139,9 @@ def main(argv=None) -> int:
     resolver_registry = TargetRegistry(
         [s for s in registry.specs if s.name not in unresolvable], country="uk"
     )
-    manifest = json.loads(args.candidate_manifest.read_text())
+    manifest = candidate_evaluation_manifest(
+        json.loads(args.candidate_manifest.read_text())
+    )
     diagnostics_path = Path(str(manifest["outputs"]["calibration_diagnostics"]["path"]))
     if not diagnostics_path.is_absolute():
         diagnostics_path = args.candidate_manifest.parent / diagnostics_path
@@ -206,7 +197,7 @@ def main(argv=None) -> int:
     print("resolving the engine over the frame ...", file=sys.stderr, flush=True)
     with tempfile.TemporaryDirectory(prefix="uk-incumbent-eval-") as scratch:
         prepared_frame, _restore, national_rows, local_metrics, resolution = (
-            driver._resolve_candidate_engine_surface(
+            resolve_uk_full_measures(
                 frame,
                 resolver_registry,
                 period=period,

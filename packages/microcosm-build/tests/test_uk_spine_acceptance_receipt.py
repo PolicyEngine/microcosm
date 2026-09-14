@@ -14,10 +14,7 @@ import json
 from importlib.resources import files
 
 from microcosm.build.country_spec import load_country_spec
-from microcosm.build.uk_runtime.graph import (
-    UK_SPINE_EXCLUSIONS,
-    uk_spine_graph,
-)
+from microcosm.build.uk_runtime.graph import uk_spine_graph
 from microcosm.graph import compile_graph
 
 
@@ -32,11 +29,8 @@ def _receipt() -> dict:
 def _production_graph_stage_names() -> tuple[str, ...]:
     spec = load_country_spec("uk")
     assert spec.sources is not None
-    declared = {
-        stage.stage
-        for stage in spec.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    }
+    declared = {stage.stage for stage in spec.sources.stages}
+    assert declared.isdisjoint({"frs_hmrc_retained_leaves", "hmrc_spi_income"})
     compiled = compile_graph(uk_spine_graph(spec))
     return tuple(node_id for node_id in compiled.order if node_id in declared)
 

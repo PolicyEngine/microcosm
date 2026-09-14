@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import copy
 import json
 from collections.abc import Mapping, Sequence
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
-from microcosm.build.uk_runtime.frs_hmrc_leaves import (
+from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_RETAINED_LEAF_COLUMNS,
     FRS_HMRC_RETAINED_LEAF_SOURCE_EVIDENCE,
 )
@@ -31,7 +30,6 @@ from microcosm.build.uk_runtime.hmrc_replay import (
     CANONICAL_HMRC_FACT_FENCES,
     FULL_FRS_TI_BAND_FENCE_ID,
 )
-from microcosm.build.uk_runtime.release_identity import UK_RELEASE_TIER_FRS
 from microcosm.build.uk_runtime.spi_income import (
     DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     SPI_DERIVED_POLICYENGINE_SOURCE_COLUMNS,
@@ -59,35 +57,19 @@ from microcosm.build.uk_runtime.spi_support import (
     FRS_ONLY_SPI_FILL_PREDICTOR_COLUMNS,
     SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
-    SPI_PRIOR_MASS_CHANGE_REASON,
-    SPI_REPLACEMENT_STRATA_COLUMNS,
 )
 
 __all__ = [
-    "CERTIFIED_UK_CANDIDATE_FILENAME",
-    "CERTIFIED_UK_CANDIDATE_REVISION",
-    "CERTIFIED_UK_CANDIDATE_SHA256",
-    "CERTIFIED_UK_CANDIDATE_SIZE_BYTES",
-    "CERTIFIED_UK_CANDIDATE_TIER",
     "HMRC_DISTRIBUTIONAL_INPUTS",
-    "UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE",
     "assert_uk_hmrc_income_source_contract_current",
     "uk_hmrc_weighted_qrf_output_columns",
 ]
 
-UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE = "hmrc_income_source_stages.json"
 UK_CANONICAL_SOURCE_STAGES_RESOURCE = "source_stages.json"
 HMRC_DISTRIBUTIONAL_INPUTS = (
     "gift_aid",
     "charitable_investment_gifts",
 )
-CERTIFIED_UK_CANDIDATE_FILENAME = "populace_uk_2023.h5"
-CERTIFIED_UK_CANDIDATE_REVISION = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
-CERTIFIED_UK_CANDIDATE_TIER = UK_RELEASE_TIER_FRS
-CERTIFIED_UK_CANDIDATE_SHA256 = (
-    "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833"
-)
-CERTIFIED_UK_CANDIDATE_SIZE_BYTES = 1_315_880_118
 _STAGE2_SOURCE_FAITHFUL_INCOME_PREDICTORS = (
     "employment_income",
     "self_employment_income",
@@ -113,13 +95,16 @@ _STAGE2_REVIEWED_ABSENT_PREDICTORS = {
 }
 
 _EXPECTED_OPERATION_KINDS = (
-    "verify_certified_candidate",
     "retain_adjudicated_frs_hmrc_leaves",
+    "derive",
+    "stack_zero_weight_donors",
+    "gate_zero_weight_strata",
+    "allocate_zero_weight_prior_mass",
     "verify_pinned_hmrc_source_pair",
-    "replace_zero_weight_spi_support",
     "strict_read_private_table",
     "fit_weighted_qrf_stage1",
     "fit_weighted_qrf_stage2",
+    "redraw_columns_from_fitted_qrf",
     "materialize_hmrc_income_bands_fail_closed",
     "classify_hmrc_income_facts_with_reviewed_fences",
     "gate_distributional_effective_mass",
@@ -141,46 +126,8 @@ def assert_uk_hmrc_income_source_contract_current(
         failures.append(f"stages: expected exactly one stage, got {len(stages)}")
         _raise_failures(failures)
     stage = stages[0]
-    _expect(failures, "stage.stage", stage.get("stage"), "hmrc_spi_income")
+    _expect(failures, "stage.stage", stage.get("stage"), "hmrc_spi_income_spine")
     _expect(failures, "stage.grain", stage.get("grain"), "person")
-
-    base = _mapping(stage.get("base_candidate"), "base_candidate", failures)
-    _expect(
-        failures,
-        "base_candidate.filename",
-        base.get("filename"),
-        CERTIFIED_UK_CANDIDATE_FILENAME,
-    )
-    _expect(
-        failures,
-        "base_candidate.tier",
-        base.get("tier"),
-        CERTIFIED_UK_CANDIDATE_TIER,
-    )
-    _expect(
-        failures,
-        "base_candidate.revision",
-        base.get("revision"),
-        CERTIFIED_UK_CANDIDATE_REVISION,
-    )
-    _expect(
-        failures,
-        "base_candidate.sha256",
-        base.get("sha256"),
-        CERTIFIED_UK_CANDIDATE_SHA256,
-    )
-    _expect(
-        failures,
-        "base_candidate.size_bytes",
-        base.get("size_bytes"),
-        CERTIFIED_UK_CANDIDATE_SIZE_BYTES,
-    )
-    _expect(
-        failures,
-        "base_candidate.runtime_sha256_required",
-        base.get("runtime_sha256_required"),
-        True,
-    )
 
     artifacts = _keyed_items(
         stage.get("artifacts"),
@@ -303,10 +250,6 @@ def assert_uk_hmrc_income_source_contract_current(
         _EXPECTED_OPERATION_KINDS,
     )
 
-    verify = operations.get("verify_certified_candidate", {})
-    _expect(failures, "verify.artifact", verify.get("artifact"), "base_candidate")
-    _expect(failures, "verify.fail_on_mismatch", verify.get("fail_on_mismatch"), True)
-
     frs_leaves = operations.get("retain_adjudicated_frs_hmrc_leaves", {})
     _expect(
         failures,
@@ -416,55 +359,20 @@ def assert_uk_hmrc_income_source_contract_current(
     ):
         _expect(failures, f"source_pair.{flag}", source_pair.get(flag), True)
 
-    prior = operations.get("replace_zero_weight_spi_support", {})
-    _expect(failures, "prior.existing_channel", prior.get("existing_channel"), "spi")
+    prior = operations.get("allocate_zero_weight_prior_mass", {})
     _expect(
-        failures,
-        "prior.require_existing_weight",
-        prior.get("require_existing_weight"),
-        0,
+        failures, "prior.mass_share", prior.get("share"), DEFAULT_SPI_PRIOR_MASS_SHARE
     )
+    _expect(failures, "prior.strata", tuple(prior.get("strata", ())), ("region",))
     _expect(
-        failures,
-        "prior.replacement_strata",
-        tuple(prior.get("replacement_strata", ())),
-        SPI_REPLACEMENT_STRATA_COLUMNS,
+        failures, "prior.output_weight_kind", prior.get("weight_kind_out"), "importance"
     )
+    _expect(failures, "prior.conservation", prior.get("conservation"), "exact_total")
     _expect(
         failures,
-        "prior.mass_share",
-        prior.get("spi_prior_national_household_mass_share"),
-        DEFAULT_SPI_PRIOR_MASS_SHARE,
-    )
-    _expect(
-        failures,
-        "prior.output_weight_kind",
-        prior.get("output_weight_kind"),
-        "importance",
-    )
-    _expect(
-        failures,
-        "prior.preserve_total_household_mass",
-        prior.get("preserve_total_household_mass"),
-        True,
-    )
-    _expect(
-        failures,
-        "prior.require_mass_change_record",
-        prior.get("require_mass_change_record"),
-        True,
-    )
-    _expect(
-        failures,
-        "prior.mass_change_reason",
-        prior.get("mass_change_reason"),
-        SPI_PRIOR_MASS_CHANGE_REASON,
-    )
-    _expect(
-        failures,
-        "prior.fail_on_live_existing_spi_mass",
-        prior.get("fail_on_live_existing_spi_mass"),
-        True,
+        "frs_leaves.population",
+        frs_leaves.get("population"),
+        "uk_frs_raw_spine",
     )
 
     strict = operations.get("strict_read_private_table", {})
@@ -629,7 +537,7 @@ def assert_uk_hmrc_income_source_contract_current(
         failures,
         "stage2.predictors",
         tuple(stage2.get("predictors", ())),
-        _STAGE2_SOURCE_FAITHFUL_PREDICTORS,
+        (*_STAGE2_SOURCE_FAITHFUL_PREDICTORS, "state_pension_receipt"),
     )
     _expect(
         failures,
@@ -900,32 +808,35 @@ def assert_uk_hmrc_income_source_contract_current(
         failures, "effective.fail_below_floor", effective.get("fail_below_floor"), True
     )
 
-    _expect(
-        failures,
-        "stage.official_table_components",
-        tuple(stage.get("official_table_components", ())),
-        HMRC_SPI_INCOME_COMPONENTS,
+    # The current spine declares new columns separately from rewrites; the
+    # legacy candidate stage's flat output list is not an ownership contract.
+    from microcosm.build.source_manifest import SourceStageSpec
+    from microcosm.build.uk_runtime.spi_spine import (
+        UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS,
+        UK_SPI_INCOME_SPINE_REWRITE_COLUMNS,
+        _assert_income_stage_parameters,
+        _support_stage_parameters,
     )
-    _expect(
-        failures,
-        "stage.donor_relief_outputs",
-        tuple(stage.get("donor_relief_outputs", ())),
-        HMRC_DISTRIBUTIONAL_INPUTS,
-    )
+
+    declared = set(stage.get("outputs", ())) | set(stage.get("rewrites", ()))
     _expect(
         failures,
         "stage.outputs",
-        tuple(stage.get("outputs", ())),
-        (
-            *(
-                "hmrc_spi_state_pension_income"
-                if component == "state_pension"
-                else component
-                for component in HMRC_SPI_INCOME_COMPONENTS
-            ),
-            *HMRC_DISTRIBUTIONAL_INPUTS,
-            *SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
-        ),
+        declared,
+        set(UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS)
+        | set(UK_SPI_INCOME_SPINE_REWRITE_COLUMNS),
+    )
+    _raise_failures(failures)
+    declared_stages = payload["source_stages"]
+    _support_stage_parameters(
+        SourceStageSpec.from_mapping(declared_stages["spi_support_channel"]),
+        seed=42,
+    )
+    _assert_income_stage_parameters(
+        SourceStageSpec.from_mapping(declared_stages["hmrc_spi_income_spine"]),
+        seed=42,
+        qrf_estimators=100,
+        donor_sample_size=DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     )
 
     _raise_failures(failures)
@@ -988,71 +899,46 @@ def uk_hmrc_weighted_qrf_output_columns(
 
 
 def _load_payload(resource: Any | None) -> Mapping[str, Any]:
-    if resource is None:
-        frozen_payload = json.loads(
-            files("microcosm.build.uk")
-            .joinpath(UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE)
-            .read_text(encoding="utf-8")
-        )
-        if not isinstance(frozen_payload, Mapping):
-            raise ValueError("UK HMRC source manifest root must be a JSON object.")
-        frozen_stages = frozen_payload.get("stages")
-        if not isinstance(frozen_stages, Sequence) or isinstance(
-            frozen_stages, (str, bytes)
-        ):
-            raise ValueError("UK HMRC source manifest stages must be a list.")
-        if len(frozen_stages) != 1 or not isinstance(frozen_stages[0], Mapping):
-            raise ValueError(
-                "UK HMRC source manifest must contain exactly one source stage."
-            )
-        payload = json.loads(
-            files("microcosm.build.uk")
-            .joinpath(UK_CANONICAL_SOURCE_STAGES_RESOURCE)
-            .read_text(encoding="utf-8")
-        )
-        if not isinstance(payload, Mapping):
-            raise ValueError("UK source manifest root must be a JSON object.")
-        stages = payload.get("stages")
-        if not isinstance(stages, Sequence) or isinstance(stages, (str, bytes)):
-            raise ValueError("UK source manifest stages must be a list.")
-        retained = [
-            stage
-            for stage in stages
-            if isinstance(stage, Mapping)
-            and stage.get("stage") == "frs_hmrc_retained_leaves"
-        ]
-        hmrc = [
-            stage
-            for stage in stages
-            if isinstance(stage, Mapping) and stage.get("stage") == "hmrc_spi_income"
-        ]
-        if len(retained) != 1 or len(hmrc) != 1:
-            raise ValueError(
-                "UK source manifest must contain exactly one "
-                "frs_hmrc_retained_leaves stage and one hmrc_spi_income stage."
-            )
-        stage = copy.deepcopy(dict(hmrc[0]))
-        stage["base_candidate"] = copy.deepcopy(
-            dict(frozen_stages[0].get("base_candidate", {}))
-        )
-        stage["operations"] = [
-            *copy.deepcopy(list(retained[0].get("operations", ()))),
-            *copy.deepcopy(list(hmrc[0].get("operations", ()))),
-        ]
-        return {
-            "country": payload.get("country"),
-            "version": payload.get("version"),
-            "stages": [stage],
-        }
-    target = resource
-    if hasattr(target, "read_text"):
-        raw = target.read_text(encoding="utf-8")
-    else:
-        raw = Path(target).read_text(encoding="utf-8")
+    target = (
+        files("microcosm.build.uk").joinpath(UK_CANONICAL_SOURCE_STAGES_RESOURCE)
+        if resource is None
+        else resource
+    )
+    raw = (
+        target.read_text(encoding="utf-8")
+        if hasattr(target, "read_text")
+        else Path(target).read_text(encoding="utf-8")
+    )
     payload = json.loads(raw)
     if not isinstance(payload, Mapping):
-        raise ValueError("UK HMRC source manifest root must be a JSON object.")
-    return payload
+        raise ValueError("UK source manifest root must be a JSON object.")
+    stages = payload.get("stages")
+    if not isinstance(stages, list) or not all(
+        isinstance(stage, Mapping) for stage in stages
+    ):
+        raise ValueError("UK source manifest stages must be a list of objects.")
+    names = ("frs_hmrc_spine_leaves", "spi_support_channel", "hmrc_spi_income_spine")
+    selected = {}
+    for name in names:
+        matches = [stage for stage in stages if stage.get("stage") == name]
+        if len(matches) != 1:
+            raise ValueError(
+                f"UK source manifest must contain exactly one {name} stage."
+            )
+        selected[name] = matches[0]
+    # Audit the connected income family without inventing an executable stage.
+    income = dict(selected["hmrc_spi_income_spine"])
+    income["operations"] = [
+        operation
+        for name in names
+        for operation in selected[name].get("operations", ())
+    ]
+    return {
+        "country": payload.get("country"),
+        "version": payload.get("version"),
+        "stages": [income],
+        "source_stages": selected,
+    }
 
 
 def _mapping(value: object, label: str, failures: list[str]) -> Mapping[str, Any]:

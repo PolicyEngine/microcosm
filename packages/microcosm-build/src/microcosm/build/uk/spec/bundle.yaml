@@ -2,7 +2,8 @@ country: uk
 identity_generation: 1
 seed_protocol: legacy-v1
 dataset_run:
-  target_period: 2023
+  target_period: 2025
 status: >-
-  Compiler walking skeleton over the pinned UK national candidate. It does not
-  replace the generation-0 national, HMRC, calibration, or release drivers.
+  Raw FRS and canonical source-stage declarations consumed by the UK full-build
+  country adapter. The shared F0 IR remains a static schema/identity projection;
+  executable population and calibration stages use uk_full_graph.

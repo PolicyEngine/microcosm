@@ -1,5 +1,6 @@
 """Exact household-count UK candidates on a fixed, materialized target surface."""
 
+import hashlib
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -51,6 +52,78 @@ class UKSizeSelection:
     learning_rate: float
     seed: int
     search_pi_hi: float
+
+
+@dataclass(frozen=True)
+class UKSizeDraw:
+    """An executed exact-count draw, independently reusable by the refit."""
+
+    support: np.ndarray
+    sampling: dict[str, object]
+    inclusion_probabilities: np.ndarray
+    feasibility: dict[str, object]
+    seed: int
+    pi_hi: float
+    probabilities_sha256: str
+
+
+def _probability_digest(probabilities: np.ndarray) -> str:
+    return hashlib.sha256(np.asarray(probabilities, dtype="<f8").tobytes()).hexdigest()
+
+
+def draw_uk_dataset_size(
+    frame: Frame,
+    dense: CalibrationResult,
+    *,
+    selection: UKSizeSelection,
+    households: int,
+    seed: int,
+    pi_hi: float = 1.0,
+) -> UKSizeDraw:
+    """Execute only the existing exact-count draw, without search or refit."""
+    n = _check_size_inputs(frame, dense, households)
+    pi_hi = _check_pi_hi(pi_hi)
+    probabilities = selection.selection.gate_open_probabilities
+    if (
+        selection.households != households
+        or selection.seed != seed
+        or probabilities is None
+        or len(probabilities) != n
+        or len(selection.protected) != n
+    ):
+        raise ValueError("Exact-count draw requires its aligned selection and seed.")
+    search_result = selection.selection
+    feasibility = selection_feasibility(
+        probabilities,
+        households,
+        protected=selection.protected,
+        n_nonzero=int(search_result.n_nonzero),
+        l0_lambda=float(search_result.l0_lambda),
+        requested_pi_hi=pi_hi,
+        budget_search=search_result.options.get("budget_search"),
+        search_pi_hi=selection.search_pi_hi,
+    )
+    try:
+        support, sampling, q = select_exact_k(
+            probabilities, households, pi_hi=pi_hi, seed=seed
+        )
+    except ValueError as error:
+        raise ValueError(
+            f"{error} Selection feasibility (requested pi_hi={pi_hi:g}): "
+            f"{json.dumps(feasibility, sort_keys=True)}"
+        ) from error
+    support = assert_exact_k_support(support, households, pool_size=n)
+    if not np.isin(np.flatnonzero(selection.protected), support).all():
+        raise RuntimeError("exact-count selection lost a protected carrier.")
+    return UKSizeDraw(
+        support,
+        sampling,
+        q,
+        feasibility,
+        seed,
+        pi_hi,
+        _probability_digest(probabilities),
+    )
 
 
 ProgressCallback = Callable[[dict[str, object]], None]
@@ -204,6 +277,7 @@ def refit_uk_dataset_size(
     seed: int,
     pi_hi: float = 1.0,
     selection: UKSizeSelection | None = None,
+    draw: UKSizeDraw | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> UKDatasetSize:
     """Run informed L0, a fixed-size draw, and refit under the dense doctrine.
@@ -224,6 +298,8 @@ def refit_uk_dataset_size(
     :class:`UKSizeSelection` (a checkpoint restored by
     :mod:`microcosm.build.uk_runtime.size_checkpoint`); it must have been
     searched for the same size, epochs, learning rate and seed on this pool.
+    ``draw`` additionally reuses an authenticated completed draw without
+    consuming its random stream again; the probability binding must match.
     """
     n = _check_size_inputs(frame, dense, households)
     pi_hi = _check_pi_hi(pi_hi)
@@ -287,28 +363,34 @@ def refit_uk_dataset_size(
     probabilities = selection.selection.gate_open_probabilities
     assert probabilities is not None
     search_result = selection.selection
-    feasibility = selection_feasibility(
-        probabilities,
-        households,
-        protected=init_protected,
-        n_nonzero=int(search_result.n_nonzero),
-        l0_lambda=float(search_result.l0_lambda),
-        requested_pi_hi=pi_hi,
-        budget_search=search_result.options.get("budget_search"),
-        search_pi_hi=selection.search_pi_hi,
-    )
-    try:
-        support, sampling, q = select_exact_k(
-            probabilities, households, pi_hi=pi_hi, seed=seed
+    if draw is None:
+        draw = draw_uk_dataset_size(
+            frame,
+            dense,
+            selection=selection,
+            households=households,
+            seed=seed,
+            pi_hi=pi_hi,
         )
-    except ValueError as error:
-        # The draw refuses rather than clamps; carry the measured gate mass
-        # with the refusal so the ruling it needs can be made from the receipt.
-        raise ValueError(
-            f"{error} Selection feasibility (requested pi_hi={pi_hi:g}): "
-            f"{json.dumps(feasibility, sort_keys=True)}"
-        ) from error
-    support = assert_exact_k_support(support, households, pool_size=n)
+    if (
+        draw.seed != seed
+        or draw.pi_hi != pi_hi
+        or draw.probabilities_sha256 != _probability_digest(probabilities)
+    ):
+        raise ValueError("Reused exact-count draw differs from its selection or seed.")
+    support = assert_exact_k_support(draw.support, households, pool_size=n)
+    sampling, q, feasibility = (
+        draw.sampling,
+        draw.inclusion_probabilities,
+        draw.feasibility,
+    )
+    if (
+        np.asarray(q).shape != (households,)
+        or not np.isfinite(q).all()
+        or (q <= 0).any()
+        or (q > 1).any()
+    ):
+        raise ValueError("Reused exact-count draw has invalid inclusion probabilities.")
     if not np.isin(np.flatnonzero(init_protected), support).all():
         raise RuntimeError("exact-count selection lost a protected carrier.")
     frozen = _frozen_targets(frame, dense, support)

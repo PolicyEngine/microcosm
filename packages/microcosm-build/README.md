@@ -58,9 +58,18 @@ Country namespaces under `microcosm.build.us` and `microcosm.build.uk` are
 resource packages only. They may contain specs and data artifacts, but no Python
 modules; guard tests enforce this so country content stays declarative.
 
-## UK local-geography path
+## UK full-build graph
 
-`microcosm.build.uk_runtime.local_rowwise` is the UK local-solve surface: one
+The canonical command is `microcosm-build-uk` (or `tools/build_uk_full.py`).
+It builds or resumes the canonical FRS spine and calibrates all applicable
+geographies together by default. Country-only calibration is an explicit
+`--target-geographies country` filter in the same graph. Pool copies K and
+exact exported household count k remain independent. See the
+[full-build runbook](../../docs/uk-full-build-graph.md) for raw inputs, checkpoint
+binding, exact-count sizing, replay, diagnostics and certification readiness.
+
+`microcosm.build.uk_runtime.local_rowwise` supplies the local contribution and
+solve helpers used by the full graph: one
 weight per cloned household, each household assigned to exactly one area by
 the OA geography ladder, so an area's target rows draw support only from the
 households assigned there. The ladder supplies assignment and diagnostic
@@ -110,24 +119,6 @@ HMRC net VAT liability by SIC. VAT liability is now an explicit rule-evaluator
 input to generation; production runs should provide an Axiom RuleSpec artifact
 through `AxiomVATRuleEvaluator`. The processed-table reader remains only for
 paper-repository migration comparisons.
-
-Build the row-wise local-geography H5 from a compact Microcosm UK H5 with:
-
-```bash
-uv run --project packages/microcosm-build --extra uk python \
-  tools/build_uk_rowwise_dataset.py \
-  --input-h5 /path/to/populace_uk_2023.h5 \
-  --out /tmp/populace-uk-rowwise \
-  --n-clones 2 \
-  --constituency-codes /path/to/constituencies_2024.csv \
-  --la-codes /path/to/local_authorities_2021.csv
-```
-
-If `--crosswalk` is omitted, the driver builds
-`uk_official_geography_crosswalk.csv.gz` from public ONS, NRS, NISRA, and
-postcode sources. It writes the cloned row-wise H5, a geography coverage CSV,
-and `rowwise_build_manifest.json` with input/output hashes, row counts, target
-coverage, weight preservation, and weakest local-support diagnostics.
 
 ## US plan status
 

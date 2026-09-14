@@ -194,9 +194,9 @@ def _run_battery(tables, *, parity=None, fit_records=None, armed=True, clock=CLO
     artifacts: dict[str, object] = {
         "coverage_engine": object(),
         "exclusions_evaluated_on": clock,
-        # The staging pipeline's two scheduled stages declare no nonnegative
-        # outputs, so the nonnegative gate passes with zero required columns.
-        "build_stage_names": ("frs_hmrc_retained_leaves", "hmrc_spi_income"),
+        # This binding fixture schedules a stage with no declared nonnegative
+        # outputs; canonical family completeness has dedicated tests.
+        "build_stage_names": ("frs_household_draws",),
     }
     if fit_records is not None:
         artifacts["fit_weight_records"] = fit_records
@@ -427,18 +427,12 @@ class TestUKSurfaceAdapter:
         assert result.passed is True
 
     def test_nonnegative_binding_does_not_demand_unscheduled_stages(self) -> None:
-        # The national staging build schedules only the two HMRC stages,
-        # which declare no nonnegative outputs — the gate passes honestly
-        # with zero required columns rather than by silent pre-filtering.
+        # This isolated stage declares no nonnegative outputs. Outputs of
+        # unscheduled employment and income stages must not be demanded.
         binding = UK_GATE_REGISTRY["nonnegative_columns"]
         context = EvidenceContext(
             frame=self._nonnegative_frame(sic=None),
-            artifacts={
-                "build_stage_names": (
-                    "frs_hmrc_retained_leaves",
-                    "hmrc_spi_income",
-                )
-            },
+            artifacts={"build_stage_names": ("frs_household_draws",)},
         )
 
         result = binding.evaluate(context, {})

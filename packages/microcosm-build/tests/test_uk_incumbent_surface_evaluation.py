@@ -410,6 +410,43 @@ def test_evaluator_cli_rejects_blocks_before_opening_inputs(blocks):
     assert "Traceback" not in result.stderr
 
 
+def test_full_candidate_package_preserves_measured_byte_bindings():
+    from microcosm.build.uk_runtime.incumbent_surface_evaluation import (
+        candidate_evaluation_manifest,
+    )
+
+    package = {
+        "schema_version": 1,
+        "kind": "uk_full_build_package",
+        "readback_passed": True,
+        "dataset": {"filename": "full.h5", "sha256": "a" * 64, "size_bytes": 42},
+        "evidence_files": {
+            "diagnostics": {
+                "filename": "full.diagnostics.json",
+                "sha256": "b" * 64,
+                "size_bytes": 21,
+            }
+        },
+        "build_bindings": {
+            "targets": {
+                "chronicle": {"facts_sha256": "c" * 64, "manifest_sha256": "d" * 64},
+                "paired_ladder_sha256": "e" * 64,
+            }
+        },
+    }
+    result = candidate_evaluation_manifest(package)
+    assert result["outputs"]["dataset"] == {
+        "path": "full.h5",
+        "sha256": "a" * 64,
+        "bytes": 42,
+    }
+    assert result["outputs"]["calibration_diagnostics"]["sha256"] == "b" * 64
+    assert result["identity"]["targets"] == package["build_bindings"]["targets"]
+    package["dataset"]["filename"] = "../other.h5"
+    with pytest.raises(ValueError, match="filenames"):
+        candidate_evaluation_manifest(package)
+
+
 def test_evaluator_requires_new_chronicle_target_identity() -> None:
     import importlib.util
     from pathlib import Path

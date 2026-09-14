@@ -3,8 +3,8 @@ name: Tests
 on:
   push:
     branches: [main]
+  # Stacked pull requests need the same acceptance checks as main-bound work.
   pull_request:
-    branches: [main]
 
 # Cancel outdated PR runs; give each main push its own independent group.
 concurrency:

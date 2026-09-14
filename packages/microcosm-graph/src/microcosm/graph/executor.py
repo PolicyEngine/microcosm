@@ -18,7 +18,7 @@ from types import MappingProxyType
 import numpy as np
 import pandas as pd
 
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import Frame, MassChangeRecord, WeightKind, Weights
 
 from . import keys as graph_keys
 from .artifact_edges import scope_payload, typed_contracts, value_from_descriptor
@@ -79,6 +79,7 @@ from .store import (
     StoreCorrupt,
     StoreMiss,
     StoreUnavailable,
+    _encode_frame_metadata,
 )
 
 __all__ = ["NodeRejected", "NodeRejectedError", "run_graph"]
@@ -352,6 +353,25 @@ def _freeze_frame(table: pd.DataFrame) -> pd.DataFrame:
     return frozen
 
 
+def _detached_record(record):
+    """Rebuild one frozen record with independently copied field values.
+
+    Reconstructed through the dataclass constructor rather than by a
+    reflective copy of its namespace, because source identities may seal
+    these classes. A frozen dataclass is not immune to ``object.__setattr__``,
+    so a record handed out by reference is a live handle on whatever holds
+    it; every hand-out goes through here.
+    """
+
+    return replace(
+        record,
+        **{
+            field.name: deepcopy(getattr(record, field.name))
+            for field in fields(record)
+        },
+    )
+
+
 def _observer_snapshot(population: Population) -> Population:
     """Detach every observation from the executable population and its cache.
 
@@ -370,22 +390,12 @@ def _observer_snapshot(population: Population) -> Population:
     tables = {name: frame.table(name) for name in frame.entities}
     tables.update({name: frame.link(name) for name in frame.links})
     tables, strata = pickle.loads(pickle.dumps((tables, frame.strata), protocol=5))
-
-    def copied_record(record):
-        return replace(
-            record,
-            **{
-                field.name: deepcopy(getattr(record, field.name))
-                for field in fields(record)
-            },
-        )
-
     snapshot = Frame(
         tables,
         replace(
             frame.schema,
             group_entities=deepcopy(frame.schema.group_entities),
-            links=tuple(copied_record(link) for link in frame.schema.links),
+            links=tuple(_detached_record(link) for link in frame.schema.links),
         ),
         {
             entity: Weights(
@@ -394,7 +404,9 @@ def _observer_snapshot(population: Population) -> Population:
             for entity in frame.weighted_entities
         },
         strata,
-        mass_log=tuple(copied_record(record) for record in frame.mass_log),
+        mass_log=tuple(_detached_record(record) for record in frame.mass_log),
+        # ``Frame.__init__`` re-freezes metadata, which rebuilds every nested
+        # mapping, so the snapshot shares no metadata object with its parent.
         metadata=frame.metadata,
     )
     return Population(
@@ -402,7 +414,9 @@ def _observer_snapshot(population: Population) -> Population:
         population.version,
         dict(population.owners),
         dict(population.weight_kind),
-        mass_ledger=tuple(copied_record(record) for record in population.mass_ledger),
+        mass_ledger=tuple(
+            _detached_record(record) for record in population.mass_ledger
+        ),
         design_weights=population.design_weights,
     )
 
@@ -492,7 +506,56 @@ def _context_digest(context: KernelContext) -> bytes:
         )
         digest.update(len(value.payload).to_bytes(8, "little"))
         digest.update(value.payload)
+    # The amendment-26 frame fields are kernel inputs like any other, so B4's
+    # before/after comparison covers them too. They are handed out detached
+    # (`_project_context`), so a kernel that rewrites one cannot reach the
+    # live version -- but it can still make its own node's output a function
+    # of something other than what it was given, and that is what this
+    # catches.
+    digest.update(b"frame-metadata\0")
+    digest.update(_frame_metadata_payload(context.frame_metadata))
+    digest.update(b"frame-column-order\0")
+    # Frame both levels: flattening entity names and columns lets a changed
+    # mapping reinterpret an entity name as a column without changing bytes.
+    digest.update(len(context.frame_column_order).to_bytes(8, "little"))
+    for entity, columns in context.frame_column_order.items():
+        _update_scalar(digest, entity)
+        digest.update(len(columns).to_bytes(8, "little"))
+        for column in columns:
+            _update_scalar(digest, column)
+    digest.update(b"frame-mass-log\0")
+    for record in context.frame_mass_log:
+        for value in (
+            getattr(record, "entity", None),
+            getattr(record, "old_total", None),
+            getattr(record, "new_total", None),
+            getattr(record, "declared_factor", None),
+            getattr(record, "reason", None),
+        ):
+            _update_scalar(digest, value)
     return digest.digest()
+
+
+#: What a metadata tree digests to when the store codec cannot encode it.
+#: Reached only after a kernel has replaced a value with something ``Frame``
+#: would never have admitted, which is itself the mutation being reported.
+_UNCODABLE_FRAME_METADATA = b"<frame metadata outside the store codec>"
+
+
+def _frame_metadata_payload(metadata: Mapping[str, object]) -> bytes:
+    """Digest bytes for a frame-metadata view, without trusting its contents.
+
+    ``store._encode_frame_metadata`` is the codec the frame format already
+    uses, so an unchanged view digests exactly as it persists. It is a codec
+    for *valid* metadata, though, and this runs a second time after a kernel
+    has held the object: it has to report a mutation rather than raise while
+    computing the comparison that would report it.
+    """
+
+    try:
+        return canonical_json(_encode_frame_metadata(metadata))
+    except (TypeError, ValueError, RecursionError):
+        return _UNCODABLE_FRAME_METADATA
 
 
 def _structural_columns(frame: Frame, entity: str) -> list[str]:
@@ -568,7 +631,17 @@ def _project_context(
     tolerances: Mapping[tuple[str, str], Tolerance | None],
     numerics: Mapping[tuple[str, str], NumericScope],
     artifacts: Mapping[str, ArtifactValue] | None = None,
+    mass_log: tuple[MassChangeRecord, ...] = (),
 ) -> KernelContext:
+    """Project one node's frozen inputs out of the population it reads.
+
+    ``mass_log`` is the ``Frame`` mass log this node's *key* binds, which is
+    not in general the cumulative log carried by ``population``: see the
+    boundary selection in :func:`run_graph`.  It defaults to the empty log,
+    so a caller that projects a context outside the executor states no mass
+    history rather than inheriting one it never bound (amendment 26).
+    """
+
     if population is None:
         return KernelContext(
             node=node,
@@ -662,6 +735,16 @@ def _project_context(
     )
     strata = frame.strata.loc[person_mask].copy()
     _freeze_series(strata)
+    # The projection above orders each table by declaration, not by the
+    # version's own layout, so a consumer rebuilding the version's tables
+    # needs that layout separately -- restricted to what it was given, so it
+    # never learns the name of a column it cannot read (amendment 26).
+    column_order: dict[str, tuple[str, ...]] = {}
+    for entity, table in tables.items():
+        projected = set(table.columns)
+        column_order[entity] = tuple(
+            column for column in frame.table(entity).columns if column in projected
+        )
     return KernelContext(
         node=node,
         tables=MappingProxyType(tables),
@@ -671,6 +754,14 @@ def _project_context(
         rng=np.random.default_rng(seed(key)),
         sources=MappingProxyType({name: sources[name] for name in node.sources}),
         artifacts={} if artifacts is None else artifacts,
+        # Detached before the kernel sees them: a frozen dataclass still
+        # yields to ``object.__setattr__``, so passing the version's own
+        # ``_FrozenMapping`` leaves and mass records by reference would make
+        # every kernel -- and anything that retains a context past its own
+        # mutation check -- a live handle on the population (amendment 26).
+        frame_metadata=deepcopy(frame.metadata),
+        frame_mass_log=tuple(_detached_record(record) for record in mass_log),
+        frame_column_order=MappingProxyType(column_order),
         tolerances=tolerances,
         numerics=numerics,
     )
@@ -2291,6 +2382,11 @@ def run_graph(
         _preflight_require(compiled, store, keys, implementations, kernels)
 
     populations: dict[str, Population] = {}
+    # Each structural version's ``Frame`` mass log as that version was
+    # admitted.  ``populations`` cannot answer this: an ordinary member
+    # replaces its version's entry there, so by the time a later member runs
+    # the boundary state is gone.
+    boundary_mass_logs: dict[str, tuple[MassChangeRecord, ...]] = {}
     receipts: dict[str, NodeReceipt] = {}
     receipt_payloads: dict[str, Mapping[str, object]] = {}
     for node_id in compiled.order:
@@ -2411,6 +2507,25 @@ def run_graph(
                 )
                 for binding in node.artifact_inputs
             }
+            if incumbent is None:
+                incoming_mass_log: tuple[MassChangeRecord, ...] = ()
+            elif node.structural is StructuralDelta.NONE:
+                # An ordinary node's key binds its version's structural
+                # boundary and the owners of the columns it declared
+                # (``population_input`` and ``input_artifacts`` in keys.py) --
+                # never a sibling that merely ran earlier in the same version
+                # and appended a mass record.  Projecting the cumulative log
+                # would hand the kernel an input its own key does not bind, so
+                # adding or re-parameterising that sibling would change what a
+                # node sees while its key, and therefore its cache entry,
+                # stayed put.  It is projected from the boundary instead.
+                incoming_mass_log = boundary_mass_logs[compiled.versions[node_id]]
+            else:
+                # A structural node's key binds its base *and* every ordinary
+                # member of that version (``members`` in keys.py, built from
+                # ``compiled.predecessors``), so the base version's cumulative
+                # log is bound by the key that will name its cache entry.
+                incoming_mass_log = incumbent.frame.mass_log
             context = _project_context(
                 node,
                 incumbent,
@@ -2419,6 +2534,7 @@ def run_graph(
                 tolerances=input_tolerances,
                 numerics=input_numerics,
                 artifacts=artifact_values,
+                mass_log=incoming_mass_log,
             )
             before = _context_digest(context)
             try:
@@ -2564,6 +2680,9 @@ def run_graph(
             populations[compiled.versions[node_id]] = updated
         else:
             populations[node.id] = updated
+            # Captured at admission, so cold execution and a restored cache
+            # hit record the same boundary: both reach this line.
+            boundary_mass_logs[node.id] = updated.frame.mass_log
 
         if _population_observer is not None:
             _population_observer(node_id, _observer_snapshot(updated))

@@ -95,17 +95,18 @@ def test_receipt_reason_matches_the_stage_constant() -> None:
     assert receipt["declared_factor"] == 1.0
 
 
-def test_family_coverage_carries_the_stage_as_required_at_build() -> None:
+def test_family_coverage_requires_the_canonical_spine_stage() -> None:
     manifest = load_uk_release_input_coverage_manifest()
-    family = manifest.family_coverage[UK_CGT_IMPUTATION_STAGE_NAME]
-
+    family = manifest.family_coverage["hmrc_cgt_gains_spine"]
     assert family["status"] == "required_at_build"
-    assert family["source_manifest"] == _MANIFEST_PATH.name
+    assert family["source_manifest"] == "source_stages.json"
     assert family["calibration_permitted"] is False
-    assert family["outputs"] == ["capital_gains"]
+    assert "capital_gains" in (*family["outputs"], *family["rewrites"])
     assert family["output_weight_kind"] == "importance"
-    assert family["required_mass_change_reason"] == UK_CGT_MASS_CONSERVATION_REASON
-    assert UK_CGT_IMPUTATION_STAGE_NAME in manifest.required_build_stages
+    assert (
+        family["required_mass_change_reason"] == UK_CGT_SPINE_MASS_CONSERVATION_REASON
+    )
+    assert "hmrc_cgt_gains_spine" in manifest.required_build_stages
 
 
 def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
@@ -215,12 +216,14 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
     )
 
 
-def test_certified_and_spine_families_require_distinct_receipts() -> None:
-    """One record must never satisfy both CGT families (review finding)."""
-    manifest = load_uk_release_input_coverage_manifest()
-    families = manifest.family_coverage
-    certified = families["hmrc_cgt_gains"]["required_mass_change_reason"]
-    spine = families["hmrc_cgt_gains_spine"]["required_mass_change_reason"]
-    assert certified == UK_CGT_MASS_CONSERVATION_REASON
-    assert spine == UK_CGT_SPINE_MASS_CONSERVATION_REASON
-    assert certified != spine
+def test_legacy_cgt_family_is_absent_from_the_executable_contract() -> None:
+    families = load_uk_release_input_coverage_manifest().family_coverage
+    assert "hmrc_cgt_gains" not in families
+    assert (
+        families["hmrc_cgt_gains_spine"]["required_mass_change_reason"]
+        == UK_CGT_SPINE_MASS_CONSERVATION_REASON
+    )
+    assert (
+        families["hmrc_cgt_gains_spine"]["required_mass_change_reason"]
+        != UK_CGT_MASS_CONSERVATION_REASON
+    )

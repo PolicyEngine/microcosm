@@ -289,9 +289,18 @@ def test_actual_current_sources_cold_and_replayed_host(tmp_path, monkeypatch):
         del missing[next(iter(missing))]
         extra = {**values, "__extra_entity__": next(iter(values.values()))}
         for changed_values in (missing, extra):
+            changes = {field: changed_values}
+            if field == "tables":
+                # Keep this synthetic projection internally consistent so the
+                # host, rather than KernelContext construction, rejects its
+                # missing or extra entity.
+                changes["frame_column_order"] = {
+                    entity: context.frame_column_order.get(entity, tuple(table.columns))
+                    for entity, table in changed_values.items()
+                }
             with pytest.raises(ValueError, match="^" + reason + "$"):
                 bridge._current_context_frame(
-                    replace(context, **{field: changed_values}), expanded.frame
+                    replace(context, **changes), expanded.frame
                 )
 
     person = context.tables[expanded.frame.schema.person_entity]

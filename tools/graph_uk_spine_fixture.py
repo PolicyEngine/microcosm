@@ -63,7 +63,7 @@ from microcosm.build.uk_runtime.frs_spine import (
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
-from microcosm.build.uk_runtime.graph import UK_SPINE_EXCLUSIONS, uk_spine_graph
+from microcosm.build.uk_runtime.graph import uk_spine_graph
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_GAIN_BAND_LOWER_BOUNDS,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
@@ -835,8 +835,6 @@ def _fixture_stages(
     assert spec.sources is not None
     stages: list[SourceStageSpec] = []
     for committed in spec.sources.stages:
-        if committed.stage in UK_SPINE_EXCLUSIONS:
-            continue
         artifacts = [
             dict(frs_artifacts[str(artifact["table"])])
             if artifact.get("table") in frs_artifacts

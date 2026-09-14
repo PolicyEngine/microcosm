@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import importlib
 import importlib.machinery
 import importlib.util
@@ -22,6 +23,45 @@ def diagnostic():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _maintained_seed_modules(diagnostic):
+    """Read literal attestations without importing their scientific modules."""
+    source = (
+        Path(diagnostic.__file__).resolve().parents[1]
+        / "packages/microcosm-build/src/microcosm/build/spec_engine/seeds.py"
+    )
+    names = {"_DIRECT_KERNEL_MODULES", "_QRF_KERNEL_MODULES"}
+    declarations = {
+        node.targets[0].id: ast.literal_eval(node.value)
+        for node in ast.parse(source.read_text()).body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id in names
+    }
+    assert set(declarations) == names
+    return tuple(
+        sorted({name for modules in declarations.values() for name in modules})
+    )
+
+
+def test_diagnostic_roster_exactly_covers_maintained_seed_attestations(diagnostic):
+    assert diagnostic.SEED_MODULES == _maintained_seed_modules(diagnostic)
+    assert len(set(diagnostic.SEED_MODULES)) == len(diagnostic.SEED_MODULES)
+
+
+def test_each_attested_seed_module_has_an_explicit_source_stamp(diagnostic):
+    paths = {
+        "packages/microcosm-"
+        + module.split(".")[1]
+        + "/src/"
+        + module.replace(".", "/")
+        + ".py"
+        for module in _maintained_seed_modules(diagnostic)
+    }
+    assert not paths.difference(diagnostic.SOURCE_PATHS)
+    assert len(set(diagnostic.SOURCE_PATHS)) == len(diagnostic.SOURCE_PATHS)
 
 
 @pytest.fixture

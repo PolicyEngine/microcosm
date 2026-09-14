@@ -32,6 +32,9 @@ def csv_bytes(rows):
 
 @pytest.fixture
 def invented(tmp_path, monkeypatch):
+    # Source issuance authenticates the optional unit-constructor source tree.
+    # Resolve that dependency before tests install their no-construction traces.
+    pytest.importorskip("microunit", exc_type=ModuleNotFoundError)
     source, snapshots = tmp_path / "source", tmp_path / "snapshots"
     source.mkdir()
     snapshots.mkdir()
