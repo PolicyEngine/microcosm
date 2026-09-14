@@ -60,6 +60,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
+
 _TOOLS_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _TOOLS_DIR.parent
 if str(_TOOLS_DIR) not in sys.path:
@@ -771,6 +773,7 @@ def do_materialize(args) -> None:
     staging_sha = _sha256(args.staging_h5)
     ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
+    _require_local_hours(frame, _load_json(summary_path))
     log(
         f"loaded staging frame households={frame.n('household')} "
         f"({time.time() - started:.1f}s)"
@@ -1093,6 +1096,7 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
     from microcosm.frame import Frame, WeightKind, Weights
 
     frame = _load_staging_frame(args.staging_h5)
+    _require_local_hours(frame, _load_json(_staging_summary_path(args)))
     staging_ids = frame.table("household")["household_id"].to_numpy()
     with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
         lean_ids = store["household"]["household_id"].to_numpy()
@@ -1429,6 +1433,19 @@ def finalize_reviewed_limitations(
     return list(deduped.values())
 
 
+def _local_hours_gate(frame, staging_summary: dict):
+    audit = staging_summary.get("reviewed_engine_input_nulls")
+    if not isinstance(audit, list) or not all(isinstance(item, dict) for item in audit):
+        raise SystemExit("Local hours gate requires the staging input-null audit.")
+    return acs_local_hours_signal_gate(frame, source_null_audit=audit)
+
+
+def _require_local_hours(frame, staging_summary: dict) -> None:
+    gate = _local_hours_gate(frame, staging_summary)
+    if not gate.passed:
+        raise SystemExit("Local hours coverage failed: " + "; ".join(gate.failures))
+
+
 def do_finalize(args) -> None:
     from microcosm.build.us_runtime.puma_ladder import (
         load_us_puma_ladder,
@@ -1456,6 +1473,7 @@ def do_finalize(args) -> None:
     consumer_export = _load_json(args.checkpoint_dir / "consumer_export.json")
 
     frame = _load_staging_frame(args.out_h5)
+    hours_gate = _local_hours_gate(frame, staging_summary)
     households = frame.table("household")
     weights = np.asarray(frame.weights_for("household").values, dtype=np.float64)
     load_us_puma_ladder(args.ladder)
@@ -1485,6 +1503,11 @@ def do_finalize(args) -> None:
 
     mass = diagnostics.get("mass_conserved_ratio", 0.0)
     gates = {
+        "acs_local_hours_signal": {
+            "passed": hours_gate.passed,
+            "failures": list(hours_gate.failures),
+            "detail": dict(hours_gate.details),
+        },
         "us_puma_ladder_gate": {
             "passed": bool(ladder_gate.passed),
             "failures": list(ladder_gate.failures),
@@ -1573,7 +1596,12 @@ def do_finalize(args) -> None:
     limitations = finalize_reviewed_limitations(staging_summary, diagnostics, spine_qa)
     hard_failures = [
         name
-        for name in ("us_puma_ladder_gate", "calibration", "consumer_ready")
+        for name in (
+            "us_puma_ladder_gate",
+            "calibration",
+            "consumer_ready",
+            "acs_local_hours_signal",
+        )
         if not gates[name]["passed"]
     ]
     updated_summary = dict(staging_summary)
@@ -1663,6 +1691,12 @@ def do_package(args) -> dict:
             f"certified ({h5_sha[:12]}… vs {str(qa_sha)[:12]}…). Re-run "
             "--stage qa and --stage finalize against the current artifact."
         )
+    # Old summaries can say simulation_ready despite #765. Recheck the
+    # actual artifact and the source-null evidence before packaging it.
+    hours_frame = _load_staging_frame(calibrated_h5)
+    _require_local_hours(hours_frame, staging_summary)
+    del hours_frame
+    gc.collect()
     dropped_cells = identity.get("population_cells_dropped") or []
     if dropped_cells:
         raise SystemExit(

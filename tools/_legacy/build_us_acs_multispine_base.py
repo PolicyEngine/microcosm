@@ -28,6 +28,12 @@ from microcosm.build import (
     weights_audit_gate,
 )
 from microcosm.build.us_runtime import acs_sources
+from microcosm.build.us_runtime.acs_local_hours import (
+    ACS_UNDER15_ZERO_POLICY,
+    acs_local_hours_signal_gate,
+    acs_local_transfer_target_families,
+    prepare_acs_local_hours_donor,
+)
 from microcosm.build.us_runtime.acs_multispine import (
     AcsMultispineResult,
     build_optional_acs_multispine,
@@ -128,6 +134,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--chunksize", default=DEFAULT_CHUNKSIZE, type=_positive_int)
     parser.add_argument("--acs-share", default=0.5, type=_open_unit_interval)
     parser.add_argument("--seed", default=0, type=_nonnegative_int)
+    parser.add_argument(
+        "--hours-under15-policy",
+        choices=[ACS_UNDER15_ZERO_POLICY],
+        default=None,
+        help="Explicit modeled hours completion for unresolved ACS children; disabled by default.",
+    )
     parser.add_argument(
         "--geography-seed",
         default=0,
@@ -252,6 +264,10 @@ def main(argv: list[str] | None = None) -> int:
         chunksize=args.chunksize,
         acs_share=args.acs_share,
         target_families=transfer_plan,
+        hours_donor_factory=lambda donor: prepare_acs_local_hours_donor(
+            donor, seed=args.seed, period=args.period
+        ),
+        hours_under15_policy=args.hours_under15_policy,
         donor_channel=args.donor_channel,
         seed=args.seed,
         n_estimators=args.n_estimators,
@@ -264,7 +280,7 @@ def main(argv: list[str] | None = None) -> int:
     transfer_coverage = _require_default_transfer_coverage(
         result,
         base,
-        target_families=transfer_plan,
+        target_families=acs_local_transfer_target_families(),
     )
     weights_audit = _audit_fits(result)
 
@@ -275,6 +291,13 @@ def main(argv: list[str] | None = None) -> int:
     gc.collect()
     input_null_audit = _engine_input_null_audit(result.frame)
     gc.collect()
+    hours_gate = acs_local_hours_signal_gate(
+        result.frame, source_null_audit=input_null_audit
+    )
+    if not hours_gate.passed:
+        raise SystemExit(
+            "Local staging hours gate failed: " + "; ".join(hours_gate.failures)
+        )
 
     args.out_h5.parent.mkdir(parents=True, exist_ok=True)
     staging_export_peak_bytes = _preflight_staging_export(result.frame)
@@ -298,6 +321,13 @@ def main(argv: list[str] | None = None) -> int:
         puma_ladder=puma_ladder,
         puma_ladder_sha256=puma_ladder_sha256,
     )
+    summary["local_hours_source"] = result.provenance.get("local_hours_source")
+    summary["local_hours_gate"] = {
+        "name": hours_gate.name,
+        "passed": hours_gate.passed,
+        "failures": list(hours_gate.failures),
+        "details": dict(hours_gate.details),
+    }
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n"
     summary_path.write_text(rendered, encoding="utf-8")
@@ -520,7 +550,43 @@ def _require_default_transfer_coverage(
         [item for item in raw_imputed if isinstance(item, dict) and "column" in item]
     ):
         raise SystemExit("ACS imputed-input provenance contains duplicate columns.")
-    missing = sorted(set(expected) - set(entries))
+    # WKHP plus an explicitly recorded completion can legitimately need no
+    # fit. Keep this exception narrow: other default targets still require
+    # transfer receipts; any remaining hours gaps require a fallback receipt.
+    native_hours_column = "weekly_hours_worked_before_lsr"
+    native_inputs = result.provenance.get("native_inputs", {})
+    native_hours = (
+        native_inputs.get(native_hours_column, {})
+        if isinstance(native_inputs, dict)
+        else {}
+    )
+    modeled = result.provenance.get("hours_modeled_completion")
+    modeled_rows = 0
+    if modeled is not None:
+        if not (
+            isinstance(modeled, dict)
+            and modeled.get("policy") == ACS_UNDER15_ZERO_POLICY
+            and modeled.get("version") == 1
+            and modeled.get("provenance") == "modeled_assumption"
+            and modeled.get("column") == native_hours_column
+            and type(modeled.get("modeled_rows")) is int
+            and modeled["modeled_rows"] >= 0
+        ):
+            raise SystemExit("Invalid ACS modeled hours completion receipt.")
+        modeled_rows = modeled["modeled_rows"]
+    native_complete: dict[str, dict] = {}
+    if (
+        native_hours_column in expected
+        and isinstance(native_hours, dict)
+        and native_hours.get("entity") == "person"
+        and native_hours.get("provenance") == "acs_2024_1yr_native"
+        and isinstance(native_hours.get("source_columns"), list)
+        and "WKHP" in native_hours["source_columns"]
+        and type(native_hours.get("missing_rows")) is int
+        and native_hours["missing_rows"] == modeled_rows
+    ):
+        native_complete[native_hours_column] = native_hours
+    missing = sorted(set(expected) - set(entries) - set(native_complete))
     if missing:
         raise SystemExit(
             "ACS default transfer omitted donor-observed model input(s): "
@@ -545,7 +611,15 @@ def _require_default_transfer_coverage(
             raise SystemExit(f"Combined staging frame has no ACS rows on {entity!r}.")
         missing_mask = table[column].isna() & acs_mask
         missing_rows = int(missing_mask.sum())
-        raw_unmodeled = entries[column].get("unmodeled_recipient_rows", 0)
+        if column in entries:
+            raw_unmodeled = entries[column].get("unmodeled_recipient_rows", 0)
+        else:
+            receipt = native_complete[column]
+            if type(receipt.get("observed_rows")) is not int or receipt[
+                "observed_rows"
+            ] + modeled_rows != int(acs_mask.sum()):
+                raise SystemExit("ACS native hours receipt has incorrect row coverage.")
+            raw_unmodeled = receipt["missing_rows"] - modeled_rows
         if type(raw_unmodeled) is not int or raw_unmodeled < 0:
             raise SystemExit(
                 f"ACS imputation provenance for {column!r} has invalid "
@@ -579,11 +653,16 @@ def _require_default_transfer_coverage(
             }
         )
 
-    return {
+    coverage = {
         "expected_inputs": sorted(expected),
         "registered_inputs": sorted(entries),
         "structural_pending": structural_pending,
     }
+    if native_complete:
+        coverage["native_registered_inputs"] = sorted(native_complete)
+    if modeled is not None:
+        coverage["modeled_hours_rows"] = modeled_rows
+    return coverage
 
 
 def _acs_group_quarters_person_mask(frame: Frame) -> pd.Series:
