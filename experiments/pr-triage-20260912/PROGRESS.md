@@ -41,9 +41,34 @@ only; no tracked file is edited; commits land on the local ref
 - #893 itself moved: 404 changed files on 9/11 -> 691 on 9/14, so its overlap
   set is recomputed from the new head.
 
+### Mechanical evidence complete for all 50 (2026-09-14 ~18:50 ET)
+
+- `gh pr view --json` refreshed for all 50; `mergeable`/`mergeStateStatus` now
+  computed for every one (run 1 left 35 at UNKNOWN). Main moving turned many
+  MERGEABLE rows CONFLICTING: 22 of 50 are now CONFLICTING/DIRTY.
+- All 50 heads refetched to `refs/heads/triage/<n>`; every local SHA verified
+  equal to `headRefOid`.
+- `gh pr checks` + head-attached `statusCheckRollup` for all 50. CI eras:
+  10 LEGACY (only the retired `test/wheels` quartet - stale green),
+  11 NONE (no checks on the head at all), 29 CURRENT.
+- Recomputed per PR against `origin/main=18271b28d`: merge-base, ahead/behind,
+  net changed files, overlap with #893's **new 641-file** set, `git cherry`
+  patch-equivalence (again **0 of 50** have a patch-equivalent commit on main),
+  added-file presence on main raw/under the populace->microcosm rename, and the
+  count of paths still under the pre-rename `packages/populace-build/` tree.
+- #893 is now **rebased onto current main** (merge-base == `18271b28d`,
+  0 behind, 281 commits ahead, 641 files in the net diff; GitHub reports 691
+  changedFiles - the gap is GitHub's per-commit union vs the net diff).
+  Its 11 named `Stage integration layer NN` commits are indexed, plus 270 later
+  commits; 877 distinct files mapped to the commit that touches them.
+- #906 was **retargeted to main** after #904 merged and is now MERGEABLE/CLEAN
+  with `ci-ok` SUCCESS - the brief's "#906 is based on #904's branch" is stale.
+- 90 of the 95 issue numbers referenced by PR bodies resolved; 5 (#1791 #9306
+  #9311 #9346 #9405) are not issues in this repo (they are policyengine-us /
+  policyengine-uk numbers).
+- Packets rebuilt for all 50 at `scratchpad/packets/<n>.md`.
+
 ## Next (run 3)
 
-- Refresh `gh pr view`/`gh pr checks` for all 50; refetch all 50 heads.
-- Recompute mechanical evidence against the new `origin/main` and new #893 set.
-- Rebuild packets for all 50; fan out evidence + adversarial verification.
+- Fan out per-PR evidence + adversarial verification (workflow).
 - Write `out-pr-triage.md` and `pr-dispositions.json`.
