@@ -172,6 +172,16 @@ UK_LCFS_RAKED_COLUMNS = frozenset(
     }
 )
 UK_LCFS_ICE_SHARE_RULE = "one_minus_zero_emission_share"
+#: The litres audit (microcosm#890 C7) reads these vendored concepts beside the
+#: declared litre-proxy price concepts: HMRC clearances are all road users, the
+#: OBR receipts split names the cars share of them.
+UK_HMRC_LITRES_CONCEPTS = {
+    "petrol_spending": "hmrc.hydrocarbon_oils.total_petrol_quantity",
+    "diesel_spending": "hmrc.hydrocarbon_oils.total_diesel_quantity",
+}
+UK_OBR_FUEL_DUTY_RECEIPTS_CONCEPT = "obr.fuel_duty.receipts"
+UK_OBR_CARS_CATEGORY = "cars"
+UK_OBR_TOTAL_CATEGORY = "total"
 #: Identity-keyed uniforms for the positive-regime bus fare draw of user
 #: households the chain drew at zero (salted apart from the incidence draw).
 UK_LCFS_BUS_FARE_POSITIVE_SALT = "lcfs_bus_fare_positive"
@@ -240,6 +250,7 @@ class UKLCFSConsumptionResult:
     bus_fare_rake: Mapping[str, Any] | None = None
     energy_pricing: Mapping[str, Any] | None = None
     energy_rake: Mapping[str, Any] | None = None
+    fuel_litres_audit: Mapping[str, Any] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -258,6 +269,8 @@ class UKLCFSConsumptionResult:
             evidence["energy_pricing"] = dict(self.energy_pricing)
         if self.energy_rake is not None:
             evidence["energy_rake"] = dict(self.energy_rake)
+        if self.fuel_litres_audit is not None:
+            evidence["fuel_litres_audit"] = dict(self.fuel_litres_audit)
         return evidence
 
 
@@ -371,6 +384,9 @@ class UKLCFSConsumptionStageTransform:
             ~recipient["has_fuel_consumption"].astype(bool),
             ["petrol_spending", "diesel_spending"],
         ] = 0.0
+        litres_audit = fuel_litres_audit(
+            household_draws, weights=weights, stage=self.stage
+        )
         household = frame.table("household").copy()
         for column in UK_LCFS_CONSUMPTION_TARGET_COLUMNS:
             household[column] = household_draws[column].to_numpy()
@@ -399,6 +415,7 @@ class UKLCFSConsumptionStageTransform:
             bus_fare_rake=bus_fare_rake_receipt,
             energy_pricing=None if energy is None else energy.receipt,
             energy_rake=energy_rake_receipt,
+            fuel_litres_audit=litres_audit,
         )
         return result
 
@@ -417,6 +434,110 @@ class UKLCFSConsumptionImputationResult:
     draws: pd.DataFrame
     fit_weight_records: tuple[FitWeightRecord, ...]
     bus_fare_receipt: Mapping[str, Any] = field(default_factory=dict)
+
+
+def fuel_litres_audit(
+    household_draws: pd.DataFrame,
+    *,
+    weights: Sequence[float],
+    stage: SourceStageSpec,
+) -> dict[str, Any] | None:
+    """Frame road-fuel litres against HMRC clearances times the OBR cars share.
+
+    Diagnostic only (microcosm#890 C7): for each fuel column the declared
+    uprating moves by the vendored litre proxy, the frame's design-weighted
+    spend is divided by the DESNZ pump price of the uprating's target year and
+    compared with the HMRC fiscal-year litres scaled by the OBR cars share of
+    fuel duty receipts (the household frame carries cars, not lorries or
+    vans). Recorded in the stage evidence; nothing is gated on it.
+    """
+
+    parameters = uprating_operation(stage)
+    if parameters is None:
+        return None
+    to_period = int(parameters["to_period"])
+    weight_values = np.asarray(weights, dtype=float)
+    fuels: dict[str, Any] = {}
+    resource = None
+    for column, spec in parameters["columns"].items():
+        if spec.get("basis") != "vendored_litre_proxy" or column not in household_draws:
+            continue
+        resource = str(spec["resource"])
+        price_rows = vendored_rows(
+            resource,
+            concept=str(spec["price_concept"]),
+            period_type="calendar_year",
+            period_value=to_period,
+        )
+        litre_rows = vendored_rows(
+            resource,
+            concept=UK_HMRC_LITRES_CONCEPTS[str(column)],
+            fiscal_start=f"{to_period}-04-01",
+        )
+        if len(price_rows) != 1 or len(litre_rows) != 1:
+            raise ValueError(
+                f"{resource}: litres audit needs one price and one litres row."
+            )
+        price_pence = float(price_rows[0]["value"])
+        hmrc_litres = float(litre_rows[0]["value"])
+        spend = _numeric(household_draws[column]).to_numpy(dtype=float)
+        spend_total = float(np.dot(spend, weight_values))
+        frame_litres = spend_total / (price_pence / 100.0)
+        fuels[str(column)] = {
+            "price_concept": spec["price_concept"],
+            "price_pence_per_litre": price_pence,
+            "weighted_spend_gbp": spend_total,
+            "frame_litres": frame_litres,
+            "hmrc_concept": UK_HMRC_LITRES_CONCEPTS[str(column)],
+            "hmrc_litres_all_road_users": hmrc_litres,
+        }
+    if not fuels:
+        return None
+    assert resource is not None
+
+    def receipts(category: str) -> float:
+        rows = vendored_rows(
+            resource,
+            concept=UK_OBR_FUEL_DUTY_RECEIPTS_CONCEPT,
+            fiscal_start=f"{to_period}-04-01",
+            dimensions={"vehicle_category": category},
+        )
+        if len(rows) != 1:
+            raise ValueError(
+                f"{resource}: litres audit needs one OBR {category!r} row."
+            )
+        return float(rows[0]["value"])
+
+    cars, total = receipts(UK_OBR_CARS_CATEGORY), receipts(UK_OBR_TOTAL_CATEGORY)
+    cars_share = cars / total
+    for entry in fuels.values():
+        entry["cars_litres_benchmark"] = (
+            entry["hmrc_litres_all_road_users"] * cars_share
+        )
+        entry["frame_over_cars_benchmark"] = (
+            entry["frame_litres"] / entry["cars_litres_benchmark"]
+            if entry["cars_litres_benchmark"] > 0
+            else None
+        )
+    frame_total = sum(entry["frame_litres"] for entry in fuels.values())
+    benchmark_total = sum(entry["cars_litres_benchmark"] for entry in fuels.values())
+    return {
+        "resource": resource,
+        "period_value": to_period,
+        "fiscal_start": f"{to_period}-04-01",
+        "obr_fuel_duty_receipts": {
+            "cars_gbp": cars,
+            "total_gbp": total,
+            "cars_share": cars_share,
+        },
+        "fuels": fuels,
+        "frame_litres_total": frame_total,
+        "cars_litres_benchmark_total": benchmark_total,
+        "frame_over_cars_benchmark": (
+            frame_total / benchmark_total if benchmark_total > 0 else None
+        ),
+        "gated": False,
+    }
 
 
 @dataclass(frozen=True)

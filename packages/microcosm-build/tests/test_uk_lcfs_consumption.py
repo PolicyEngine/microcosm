@@ -648,6 +648,8 @@ def test_stage_transform_imposes_bus_incidence_and_rakes_fares_to_the_facts() ->
     } <= set(evidence)
     assert evidence["energy_pricing"]["vat_rate"] == 0.05
     assert evidence["energy_rake"]["unit"] == "kwh"
+    # The uprating step is dropped in this engine-free run, so no litres audit.
+    assert "fuel_litres_audit" not in evidence
     assert "donor_uprating" not in evidence
     # Fuel: no vehicles means no fuel; the fuel-buyer share came from VEH1103.
     no_vehicle = household["num_vehicles"].to_numpy() == 0
@@ -696,3 +698,56 @@ def test_stage_transform_imposes_bus_incidence_and_rakes_fares_to_the_facts() ->
         "scotland",
         "northern_ireland",
     }
+
+
+def test_fuel_litres_audit_reads_the_vendored_prices_litres_and_obr_split() -> None:
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.lcfs_consumption import fuel_litres_audit
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    draws = pd.DataFrame(
+        {"petrol_spending": [1000.0, 0.0, 500.0], "diesel_spending": [0.0, 300.0, 0.0]}
+    )
+    weights = np.array([2.0, 1.0, 1.0])
+
+    audit = fuel_litres_audit(draws, weights=weights, stage=stage)
+
+    assert audit is not None
+    assert audit["period_value"] == 2024 and audit["fiscal_start"] == "2024-04-01"
+    price = float(
+        vendored_rows(
+            "road_fuel_anchors.json",
+            concept="desnz.road_fuel.annual_ulsp_pump_price",
+            period_type="calendar_year",
+            period_value=2024,
+        )[0]["value"]
+    )
+    petrol = audit["fuels"]["petrol_spending"]
+    assert petrol["weighted_spend_gbp"] == pytest.approx(2500.0)
+    assert petrol["frame_litres"] == pytest.approx(2500.0 / (price / 100.0))
+    hmrc = float(
+        vendored_rows(
+            "road_fuel_anchors.json",
+            concept="hmrc.hydrocarbon_oils.total_petrol_quantity",
+            fiscal_start="2024-04-01",
+        )[0]["value"]
+    )
+    assert petrol["hmrc_litres_all_road_users"] == hmrc
+    # OBR FY2024-25: cars GBP 14.4bn of GBP 24.7bn fuel duty.
+    assert audit["obr_fuel_duty_receipts"]["cars_share"] == pytest.approx(
+        14.4 / 24.7, abs=1e-3
+    )
+    assert petrol["cars_litres_benchmark"] == pytest.approx(
+        hmrc * audit["obr_fuel_duty_receipts"]["cars_share"]
+    )
+    assert petrol["frame_over_cars_benchmark"] == pytest.approx(
+        petrol["frame_litres"] / petrol["cars_litres_benchmark"]
+    )
+    assert set(audit["fuels"]) == {"petrol_spending", "diesel_spending"}
+    assert audit["gated"] is False
+
+    class Stage:
+        operations = ()
+
+    assert fuel_litres_audit(draws, weights=weights, stage=Stage()) is None
