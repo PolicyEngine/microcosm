@@ -486,17 +486,49 @@ def require_complete_property_taxes(run):
         )
 
 
-def _manifest_population_seals(manifest, compiled):
+def _node_population_stamp(
+    compiled, node_id, population, completion_boundary=None, *, manifest=False
+):
+    if completion_boundary is None:
+        return reconstruction._population_stamp(population)
+    # Dispatch through the maintained module, never an arbitrary boundary method.
+    return _completion_module()._population_stamp(
+        completion_boundary, compiled, node_id, population, manifest=manifest
+    )
+
+
+def _node_population_seals(compiled, node_populations, completion_boundary=None):
+    """Retain the existing pair format with an exact compiled-order binding."""
+    if not node_populations and completion_boundary is None:
+        return ()  # Preserve the existing optional path for non-completion runs.
+    require(
+        node_populations is not None and tuple(node_populations) == compiled.order,
+        "FINANCIAL_NODE_POPULATION_ROSTER",
+    )
+    return tuple(
+        (
+            population,
+            _node_population_stamp(compiled, node_id, population, completion_boundary),
+        )
+        for node_id, population in node_populations.items()
+    )
+
+
+def _manifest_population_seals(manifest, compiled, *, completion_boundary=None):
     """Include transient attached Frames, which portable JSON deliberately omits."""
     return tuple(
         (
             version,
-            reconstruction._population_stamp(
+            _node_population_stamp(
+                compiled,
+                version,  # A structural version is the exact node that created it.
                 Population.from_frame(
                     manifest.population(version),
                     version,
                     mass_ledger=manifest.mass_ledger(version),
-                )
+                ),
+                completion_boundary,
+                manifest=True,
             ),
         )
         for version in sorted(set(compiled.versions.values()))
@@ -640,9 +672,21 @@ def _pure_run(run, entry):
         tuple(run.kernels.as_mapping().items()) == state.registry,
         "FINANCIAL_KERNEL_REGISTRY_CHANGED",
     )
-    for population, stamp in state.node_populations:
+    require(
+        (not state.node_populations and state.completion_boundary is None)
+        or len(state.node_populations) == len(state.compiled.order),
+        "FINANCIAL_NODE_POPULATION_ROSTER",
+    )
+    for node_id, (population, stamp) in zip(
+        state.compiled.order if state.node_populations else (),
+        state.node_populations,
+        strict=True,
+    ):
         require(
-            reconstruction._population_stamp(population) == stamp,
+            _node_population_stamp(
+                state.compiled, node_id, population, state.completion_boundary
+            )
+            == stamp,
             "FINANCIAL_NODE_POPULATION_CHANGED",
         )
     if state.node_states is not None:
@@ -685,7 +729,9 @@ def _pure_run(run, entry):
         "FINANCIAL_RUN_BINDINGS_CHANGED",
     )
     require(
-        _manifest_population_seals(run.manifest, run.compiled)
+        _manifest_population_seals(
+            run.manifest, run.compiled, completion_boundary=state.completion_boundary
+        )
         == state.manifest_populations
         and _manifest_population_seals(prefix.manifest, prefix.compiled)
         == state.prefix_manifest_populations,
@@ -940,7 +986,9 @@ def _issue_run(
                 for (node, name), payload in loaded.items()
             )
         ),
-        _manifest_population_seals(result.manifest, result.compiled),
+        _manifest_population_seals(
+            result.manifest, result.compiled, completion_boundary=completion_boundary
+        ),
         _manifest_population_seals(prefix.manifest, prefix.compiled),
         live,
         property_income,
@@ -960,10 +1008,7 @@ def _issue_run(
         person_status_boundary,
         completion_boundary,
         None if completion_boundary is None else completion_boundary.attestation(),
-        tuple(
-            (population, reconstruction._population_stamp(population))
-            for population in (node_populations or {}).values()
-        ),
+        _node_population_seals(result.compiled, node_populations, completion_boundary),
         node_states,
         tuple(result.kernels.as_mapping().items()),
     )

@@ -12,6 +12,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 from types import FunctionType
 
+from microcosm.frame import Frame
 from microcosm.graph import (
     ArtifactInput,
     ArtifactValue,
@@ -22,6 +23,7 @@ from microcosm.graph import (
 from microcosm.graph.artifact_edges import numeric_scope
 from microcosm.graph.executor import _all_node_keys, _apply_result, _project_context
 from microcosm.graph.keys import opaque_artifact_key
+from microcosm.graph.manifest import PopulationView
 from microcosm.graph.population import Population
 from microcosm.graph.serialize import graph_to_json
 
@@ -62,6 +64,12 @@ def _live(household_roles):
                         result[module.__name__, name, method] = (
                             host.values.source._function_seal(function)
                         )
+    result["support_view_classes"] = (Frame, PopulationView)
+    result["support_view_slots"] = (
+        Frame.__slots__,
+        PopulationView.__slots__,
+        tuple((name, vars(Frame)[name]) for name in Frame.__slots__),
+    )
     result["receiving_contract"] = host.values.source._runtime_marker(
         (
             receiving.PROTOCOL,
@@ -208,6 +216,91 @@ def _checked_final_io(run, *, source_keys, keys, implementations, loaded):
     return final_source_keys, final_loaded
 
 
+def _manifest_support_frame(frame):
+    """Inverse of PopulationView's slot view, solely for exact support admission.
+
+    Keep every slot reference, including hidden rosters and backing storage. No
+    Frame constructor, copy or normalization can mask a mutation. The caller
+    separately seals the actual PopulationView-backed Population.
+    """
+    require(type(frame) is PopulationView, "COMPLETION_MANIFEST_SUPPORT_VIEW")
+    admitted = object.__new__(Frame)
+    for name in Frame.__slots__:
+        object.__setattr__(admitted, name, object.__getattribute__(frame, name))
+    return admitted
+
+
+def _population_stamp(boundary, compiled, node_id, population, *, manifest=False):
+    """Seal exact declared support roles; all receiving/source nodes stay US-only.
+
+    This is an internal custody operation, not an alternate owner issuer. The
+    caller retains the actual boundary and checks its live/source/parent fences.
+    No caller-supplied stamper or schema-based dispatch is accepted.
+    """
+    require(
+        type(boundary) is _CompletionHost
+        and type(manifest) is bool
+        and not boundary.revoked
+        and compiled is boundary.compiled
+        and type(boundary.child) is child.ChildPropertyBoundary,
+        "COMPLETION_STAMP_BOUNDARY",
+    )
+    require(
+        node_id in compiled.versions
+        and type(population) is Population
+        and population.version == compiled.versions[node_id],
+        "COMPLETION_STAMP_VERSION",
+    )
+    if node_id not in (child.DONOR, child.RECIPIENT, child.FIT, child.DRAW):
+        return host.reconstruction._population_stamp(population)
+    nodes = boundary.child.nodes
+    _require_fragment_roster(
+        nodes,
+        (
+            child.DONOR,
+            child.RECIPIENT,
+            child.FIT,
+            child.DRAW,
+            child.ATTACH,
+            child.VERIFY,
+        ),
+    )
+    require(
+        tuple(node.normative() for node in nodes) == boundary.child.declaration
+        and all(compiled.graph.node(node.id) == node for node in nodes),
+        "COMPLETION_SUPPORT_DECLARATION",
+    )
+    version = child.DONOR if node_id in (child.DONOR, child.FIT) else child.RECIPIENT
+    require(
+        compiled.versions[node_id] == version
+        and compiled.versions[version] == version
+        and compiled.graph.node(version).structural is StructuralDelta.CREATE,
+        "COMPLETION_SUPPORT_VERSION",
+    )
+    # Admission checks hidden table/weight rosters and links. Its temporary
+    # wrapper is NOT the actual population: also seal actual version, owners,
+    # ledger and design anchors without copying or normalizing the object.
+    require(not manifest or node_id == version, "COMPLETION_MANIFEST_SUPPORT_VERSION")
+    admitted = (
+        _manifest_support_frame(population.frame) if manifest else population.frame
+    )
+    return (
+        child._support_frame_stamp(admitted),
+        child.child.physical._population_stamp(population),
+    )
+
+
+def _observe_population(boundary, compiled, observed, stamps, node_id, population):
+    """A refused observation cannot leave a usable completion owner behind."""
+    try:
+        require(node_id not in observed, "COMPLETION_OBSERVER_DUPLICATE")
+        stamp = _population_stamp(boundary, compiled, node_id, population)
+        observed[node_id], stamps[node_id] = population, stamp
+    except Exception:
+        _CompletionHost.revoke(boundary)
+        raise
+
+
 class _CompletionHost:
     """Retained successor values; authority remains with the original base run."""
 
@@ -229,6 +322,7 @@ class _CompletionHost:
         self.role_nodes = ()
         self.child = None
         self.completed = None
+        self.compiled = None
         self.observed = None
         self.observed_stamps = None
         self.final_states = None
@@ -397,6 +491,14 @@ class _CompletionHost:
                 id(self.base_entry),
                 id(self.kernels),
                 id(self.child),
+                None
+                if self.compiled is None
+                else (
+                    id(self.compiled),
+                    graph_to_json(self.compiled.graph),
+                    self.compiled.order,
+                    tuple(self.compiled.versions.items()),
+                ),
                 self.household_roles,
                 self.options_bytes,
                 self.options.document(),
@@ -415,6 +517,19 @@ class _CompletionHost:
                 else _roles().household_role_projection_seal(self.role_qualified),
             )
         )
+
+    def bind_compiled(self, compiled):
+        """Bind the actual union once, before any observer receives a population."""
+        _CompletionHost.pure(self)
+        require(self.compiled is None, "COMPLETION_COMPILED_ALREADY_BOUND")
+        require(
+            compiled == host.compile_graph(compiled.graph)
+            and all(compiled.graph.node(node.id) == node for node in self.child.nodes),
+            "COMPLETION_COMPILED_DECLARATION",
+        )
+        self.compiled = compiled
+        self.anchor = _CompletionHost._seal(self)
+        _CompletionHost.pure(self)
 
     def attestation(self):
         """Issuer-retained identity fence over every actually observed object."""
@@ -447,7 +562,7 @@ class _CompletionHost:
             if self.observed is not None:
                 require(
                     tuple(
-                        (n, host.reconstruction._population_stamp(p))
+                        (n, _population_stamp(self, self.compiled, n, p))
                         for n, p in self.observed.items()
                     )
                     == self.observed_stamps,
@@ -648,6 +763,7 @@ def _extend(boundary, *, resume):
         len(compiled.order) == len(base.compiled.order) + len(nodes),
         "COMPLETION_UNION_ROSTER",
     )
+    _CompletionHost.bind_compiled(boundary, compiled)
     tax = host._tax_module()
     for cls in (
         tax.PropertyTaxReceivingKernel,
@@ -665,9 +781,7 @@ def _extend(boundary, *, resume):
     observed, stamps = {}, {}
 
     def observe(node_id, population):
-        require(node_id not in observed, "COMPLETION_OBSERVER_DUPLICATE")
-        observed[node_id] = population
-        stamps[node_id] = host.reconstruction._population_stamp(population)
+        _observe_population(boundary, compiled, observed, stamps, node_id, population)
 
     manifest = host.run_graph(
         compiled,
@@ -735,7 +849,9 @@ def _extend(boundary, *, resume):
         base.matrix,
     )
     manifest_bytes = manifest.to_json_bytes()
-    manifest_populations = host._manifest_population_seals(manifest, compiled)
+    manifest_populations = host._manifest_population_seals(
+        manifest, compiled, completion_boundary=boundary
+    )
     registry = tuple(kernels.as_mapping().items())
     # Last implementation/source/store I/O comes before all final pure seals.
     source_keys, final_loaded = _checked_final_io(
@@ -749,7 +865,10 @@ def _extend(boundary, *, resume):
     boundary.pure()
     require(
         manifest.to_json_bytes() == manifest_bytes
-        and host._manifest_population_seals(manifest, compiled) == manifest_populations
+        and host._manifest_population_seals(
+            manifest, compiled, completion_boundary=boundary
+        )
+        == manifest_populations
         and tuple(kernels.as_mapping().items()) == registry,
         "COMPLETION_FINAL_MANIFEST_CHANGED",
     )

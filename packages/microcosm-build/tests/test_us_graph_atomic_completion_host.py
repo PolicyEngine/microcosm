@@ -376,9 +376,73 @@ def test_roles_disabled_status_enabled_49_cold_required_and_output_identity(tmp_
         cold.checked_view()
 
 
+def _assert_private_support_custody(run):
+    """Actual executor observations and manifest views keep distinct full seals."""
+    state = host._run_entry(run)[2]
+    boundary = state.completion_boundary
+    retained = dict(zip(run.compiled.order, state.node_populations, strict=True))
+    for node_id in (child.DONOR, child.RECIPIENT, child.FIT, child.DRAW):
+        actual = boundary.observed[node_id]
+        expected_version = (
+            child.DONOR if node_id in (child.DONOR, child.FIT) else child.RECIPIENT
+        )
+        assert actual.version == run.compiled.versions[node_id] == expected_version
+        stamp = extension._population_stamp(boundary, run.compiled, node_id, actual)
+        assert stamp == dict(boundary.observed_stamps)[node_id]
+        assert retained[node_id][0] is actual and retained[node_id][1] == stamp
+        assert stamp[1] == child.child.physical._population_stamp(actual)
+        with pytest.raises(ValueError, match="^FRAME_TYPE$"):
+            host.reconstruction._population_stamp(actual)
+    for version in (child.DONOR, child.RECIPIENT):
+        attached = run.manifest.population(version)
+        assert type(attached) is extension.PopulationView
+        assert attached is not boundary.observed[version].frame
+        actual = host.Population.from_frame(
+            attached, version, mass_ledger=run.manifest.mass_ledger(version)
+        )
+        assert (
+            extension._population_stamp(
+                boundary, run.compiled, version, actual, manifest=True
+            )
+            == dict(state.manifest_populations)[version]
+        )
+
+
 def test_roles_disabled_status_disabled_45_cold_required(tmp_path):
     with pytest.MonkeyPatch.context() as patch:
-        _roles_disabled_pair(tmp_path, patch, person_status=False, count=45)
+        cold, warm = _roles_disabled_pair(
+            tmp_path, patch, person_status=False, count=45
+        )
+        for run in (cold, warm):
+            _assert_private_support_custody(run)
+        # All original positive cold/required checks finish before either issued
+        # handle is deliberately poisoned. The observer is detached from the
+        # manifest; both actual custody paths need their own refusal.
+        for run, surface, reason in (
+            (cold, "observed_fit", "COMPLETION_OBSERVED_CHANGED"),
+            (warm, "manifest_recipient", "FINANCIAL_RUN_ATTACHED_POPULATION_CHANGED"),
+        ):
+            boundary = host._run_entry(run)[2].completion_boundary
+            frame = (
+                boundary.observed[child.FIT].frame
+                if surface == "observed_fit"
+                else run.manifest.population(child.RECIPIENT)
+            )
+            original = frame.person["source_year"].copy(deep=True)
+            frame.person.loc[0, "source_year"] += 1
+            try:
+                with pytest.raises(
+                    ValueError, match="^CURRENT_SURVEY_PREDICTOR_" + reason + "$"
+                ):
+                    run.checked_view()
+            finally:
+                frame.person["source_year"] = original
+            assert boundary.revoked and boundary.child.revoked
+            with pytest.raises(
+                ValueError, match="^CURRENT_SURVEY_PREDICTOR_COMPLETION_HOST_REVOKED$"
+            ):
+                run.checked_view()
+            boundary.base.checked_view()
 
 
 def test_disabled_signature_and_serialized_option_parity(completion_host):
