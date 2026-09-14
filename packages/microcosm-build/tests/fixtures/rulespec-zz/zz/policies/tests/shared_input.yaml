@@ -1,0 +1,28 @@
+format: rulespec/v1
+module:
+  summary: Synthetic input-identity regression fixture; no tax or benefit computation.
+units:
+  - name: EUR
+    kind: currency
+    minor_units: 2
+rules:
+  - name: person_echo
+    kind: derived
+    entity: Person
+    dtype: Money
+    unit: EUR
+    period: Year
+    source: synthetic review fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: shared_input
+  - name: household_echo
+    kind: derived
+    entity: Household
+    dtype: Money
+    unit: EUR
+    period: Year
+    source: synthetic review fixture
+    versions:
+      - effective_from: '2025-01-01'
+        formula: shared_input
