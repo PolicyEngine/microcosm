@@ -613,6 +613,7 @@ def test_scored_column_contract_refuses_silently_missing_columns() -> None:
         )
 
 
+@pytest.mark.requires_us
 def test_incumbent_and_candidate_h5_loaders_preserve_scored_contract(
     tmp_path: Path,
 ) -> None:
@@ -672,6 +673,7 @@ def test_incumbent_and_candidate_h5_loaders_preserve_scored_contract(
         )
 
 
+@pytest.mark.requires_us
 def test_historical_formula_owned_h5_scores_with_drop_receipt(
     monkeypatch,
     tmp_path: Path,
@@ -709,6 +711,7 @@ def test_historical_formula_owned_h5_scores_with_drop_receipt(
     assert "`person`: `has_marketplace_health_coverage`" in markdown
 
 
+@pytest.mark.requires_us
 def test_historical_formula_owned_h5_refuses_missing_leaf(tmp_path: Path) -> None:
     pytest.importorskip("tables")
     module = _load_head_to_head_module()
@@ -732,6 +735,7 @@ def test_historical_formula_owned_h5_refuses_missing_leaf(tmp_path: Path) -> Non
     assert "required input leaves are absent" in message
 
 
+@pytest.mark.requires_us
 def test_clean_historical_h5_scores_with_empty_drop_receipt(
     monkeypatch,
     tmp_path: Path,
