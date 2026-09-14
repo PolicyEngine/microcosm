@@ -288,3 +288,79 @@ salvages runs 3-4 evidence, and finishes.
 
 - Rebuild packets from run-5 data, run the full judgment fan-out on Opus,
   adversarially verify, adjudicate, write `out-pr-triage.md` + `pr-dispositions.json`.
+
+### Run-5 owner checks, run independently of the agents (~00:20 UTC)
+
+All re-verified by me this run, not inherited:
+
+- **Frozen-interface collision, read from the lock blobs.** main
+  `ed0a859a…`/`dbf57c13…`; **#901 and #918 propose the identical lock
+  `11c2abd7…`/`2df6cc5b…`** and both add amendments **25** and **26**;
+  **#873 proposes a different lock `8229270f…`/`07691fb5…`** and numbers its
+  amendment **19** — a slot main filled two days ago (main's numbered list ends
+  at **24. Population observers cannot change computation**). **#893's lock blob
+  equals main's**: it does not touch the frozen interface at all.
+- **#901's red is its OWN new invariant, not a flake and not #893's fault
+  alone.** `gh run view 34851805402 --log-failed` (14.6 MB): the string
+  `KernelContext.frame_column_order must order exactly the projected columns of
+  each entity` appears **816 times**, `NodeRejectedError` 612 times, across
+  **46 distinct failing tests**, nearly all `test_us_graph_*`.
+  `git grep -l frame_column_order` → **13 files on #901, 9 on #918, ZERO on main
+  and ZERO in #893**. So amendment 26's new column-order contract rejects #893's
+  existing 19-node US graph. #918 carries the same contract and is green,
+  because it lands the contract without #893's US nodes. This is real
+  integration work, and it sequences #918 → (#893 nodes declare order) → #901.
+- **#916 fails MERGE-READY on two counts I checked myself**: `git diff
+  --name-only` shows **zero `changelog.d/` fragments** among its 36 files
+  despite **11 changed source `.py` files**, and its author (`hua7450`,
+  first-timer) asked `@juaristi22` on 2026-09-14 17:14 for a critical review —
+  `reviewDecision` is empty and there are **0 reviews**.
+- **#822 is unique, and the near-miss is worth recording**: `git grep -l
+  concept_coverage origin/main` returns 3 files, but all three are
+  `_validate_imputation_concept_coverage` inside `spec_engine/resolver.py` — a
+  different function. `build/concept_coverage.py` itself: absent from main.
+- **#391 is unique, same pattern**: `consumer_fact.v1` appears in 15 main files
+  as a schema *name*, but `schemas/consumer_fact.v1.schema.json` and
+  `ledger_schema.py` are not in `git ls-tree origin/main`.
+- **#752 superseded, verified end to end**: main's `uv.lock` already carries
+  `policyengine-us 1.819.0`; `git log -S'1.819.0' origin/main -- uv.lock` →
+  `05d254aa2`, whose merge is `7b90bb188 Merge pull request #756`. #752's whole
+  diff is `1.764.6→1.819.0` + `core 3.26.11→3.31.0` + a test comment.
+- **#153 / #181 / #156 carriers confirmed by merge commit**: `e5035414b` →
+  `0f49bf1e8 Merge pull request #714`; `51f115102` → `d3c7d5e07 Merge pull
+  request #690`; `eccedfb40` is the squash of **#541**. main's
+  `uk/source_stages.json` is 4067 lines vs #156's 1007.
+- **#914's fold re-measured**: 12 of 20 files byte-identical to #893;
+  `target_snapshot` → **0 files on main, 9 in #893**; #893 commit **136** is
+  "Merge the completed #908 snapshot slice and re-pin identities on the merge
+  ref", with 11 more snapshot commits around it.
+- **#768 re-confirmed as the do-not-close counterexample**:
+  `weeks_requires_positive_unemployment_compensation` still in **8 files on main
+  and 8 in #893**; #768's diff MODIFIES exactly those files to remove it.
+- **#718 re-confirmed unique**: `RELEASE_NAMESPACE = "buildo_acs_local"` still
+  hardcoded at `tools/build_us_acs_local_release.py:71` on main;
+  `release_campaign` → **0 files on main**. Its declared blocker **#600 is MERGED**.
+- **#339 re-confirmed**: `git merge-base --is-ancestor triage/339 origin/main`
+  exits 1. Its base `medicaid-chip-take-up` is PR **#334, MERGED 2026-07-09**.
+- **#734 / #745 / #769 / #853 all carry unique work**: every added file MISSING
+  on main (17/17, 5/5, 10/11, 4/4); `qbi_passive_passthrough`,
+  `work_experience_inputs`, `realized_regime`, `microdata_pins_pending` → 0 files
+  on main AND 0 in #893. #734's and #745's only main hits are the engine ABI
+  declaration `us/engine_abi.lock.json` — a declaration, not an implementation.
+- **#642 / #888 / #675 / #167 / #413 / #325 re-confirmed unique**: `sld_local`,
+  `orrery`, `_validate_late_transfer_donor_comparator_alignment`,
+  `healthcare_state_target`, `snap_release_acceptance`, `ai_exposure` → 0 on main.
+- **Changelog-fragment audit across all 50**: 11 PRs change source `.py` with no
+  `changelog.d/` fragment — #153 #156 #241 #391 #413 #629 #642 #675 #718 #768 **#916**.
+- **Linked-issue sweep**: #718's #600 MERGED (blocker cleared); #509's #507/#508
+  CLOSED; #181's #180 CLOSED; #926 explicitly refs open PR #924; #918↔#901 refer
+  to each other; #923 refs OPEN issue #765.
+- **Collision matrix computed** (`collisions.txt`, journal files excluded):
+  #901∩#918=23, #901∩#927=15, #873∩#901=12, #537∩#538=12, #906∩#921=11,
+  #779∩#916=11, #896∩#901=10, #873∩#918=10.
+
+### Fan-out status
+
+Workflow `wf_957cf79e-597` launched: 50 evidence agents (effort high) →
+lens-specific adversarial refuters → per-PR adjudicators that re-run the
+deciding command. Running on Opus.
