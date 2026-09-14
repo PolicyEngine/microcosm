@@ -22,7 +22,15 @@ from test_us_child_property_income_graph import (
 from microcosm.build.us_runtime import graph_atomic_survey_financial as host
 from microcosm.build.us_runtime import graph_child_property_income as child
 from microcosm.build.us_runtime import graph_survey_completion_host as extension
-from microcosm.frame import EntitySchema, Frame, MassChangeRecord, WeightKind, Weights
+from microcosm.frame import (
+    US_GROUP_ENTITIES,
+    US_SCHEMA,
+    EntitySchema,
+    Frame,
+    MassChangeRecord,
+    WeightKind,
+    Weights,
+)
 from microcosm.graph import (
     ArtifactOutput,
     Graph,
@@ -37,10 +45,103 @@ from microcosm.graph.manifest import PopulationView, RunManifest
 from microcosm.graph.population import MassRecord, Population, token_for_dtype
 
 
+def _full_us_parent_frame(original):
+    """Extend only this invented parent; private child support stays unchanged."""
+    tables_before = {
+        entity: original.table(entity).copy(deep=True) for entity in original.entities
+    }
+    weights = {
+        entity: original.weights_for(entity) for entity in original.weighted_entities
+    }
+    weight_bytes = {
+        entity: weight.values.tobytes() for entity, weight in weights.items()
+    }
+    strata_before = original.strata.copy(deep=True)
+    metadata_before, mass_log_before = original.metadata, original.mass_log
+    nullable_before = {
+        (entity, column): (series.array._data.tobytes(), series.array._mask.tobytes())
+        for entity in original.entities
+        for column, series in original.table(entity).items()
+        if isinstance(series.dtype, pd.BooleanDtype)
+    }
+    assert set(original.schema.group_entities) <= set(US_GROUP_ENTITIES)
+    assert original.schema.person_entity == US_SCHEMA.person_entity
+    assert not original.links and not original._link_tables
+    missing = tuple(
+        group
+        for group in US_GROUP_ENTITIES
+        if group not in original.schema.group_entities
+    )
+    tables = {entity: table.copy(deep=True) for entity, table in tables_before.items()}
+    people = tables[US_SCHEMA.person_entity]
+    household_membership = US_SCHEMA.membership_column("household")
+    household_ids = original.table("household")[US_SCHEMA.entity_id_column("household")]
+    for group in missing:
+        membership = US_SCHEMA.membership_column(group)
+        assert membership not in people.columns
+        # One invented group per existing cloned household, without assigning
+        # actual SPM/family/marital roles or changing any original identifier.
+        people[membership] = original.person[household_membership].copy(deep=True)
+        tables[group] = pd.DataFrame(
+            {US_SCHEMA.entity_id_column(group): household_ids.copy(deep=True)}
+        )
+    full = Frame(
+        tables,
+        US_SCHEMA,
+        weights,
+        strata=original.strata,
+        mass_log=original.mass_log,
+        metadata=original.metadata,
+    )
+
+    assert full.schema is US_SCHEMA and full.entities == US_SCHEMA.entities
+    assert set(full._tables) == set(full.entities)
+    assert not full.links and not full._link_tables
+    assert full.weighted_entities == original.weighted_entities
+    assert set(full._weights) == set(weights)
+    for entity, before in tables_before.items():
+        pd.testing.assert_frame_equal(original.table(entity), before, check_exact=True)
+        pd.testing.assert_frame_equal(
+            full.table(entity).loc[:, before.columns], before, check_exact=True
+        )
+    for (entity, column), backing in nullable_before.items():
+        for frame in (original, full):
+            array = frame.table(entity)[column].array
+            assert (array._data.tobytes(), array._mask.tobytes()) == backing
+    assert list(full.person.columns) == [
+        *original.person.columns,
+        *(US_SCHEMA.membership_column(group) for group in missing),
+    ]
+    for group in missing:
+        id_column = US_SCHEMA.entity_id_column(group)
+        assert list(full.table(group).columns) == [id_column]
+        pd.testing.assert_series_equal(
+            full.table(group)[id_column],
+            household_ids.rename(id_column),
+            check_exact=True,
+        )
+        pd.testing.assert_series_equal(
+            full.person[US_SCHEMA.membership_column(group)],
+            original.person[household_membership].rename(
+                US_SCHEMA.membership_column(group)
+            ),
+            check_exact=True,
+        )
+    for entity, weight in weights.items():
+        assert full.weights_for(entity) is original.weights_for(entity) is weight
+        assert weight.values.tobytes() == weight_bytes[entity]
+        assert full.weights_for(entity).kind is weight.kind
+    for frame in (original, full):
+        pd.testing.assert_series_equal(frame.strata, strata_before, check_exact=True)
+        assert frame.metadata == metadata_before and frame.mass_log == mass_log_before
+    assert original.metadata is metadata_before and original.mass_log is mass_log_before
+    return full
+
+
 def _case():
     qualified, origins = _qualified()
     parent = Population.from_frame(
-        _receiving_frame(qualified, origins), "test.allocated"
+        _full_us_parent_frame(_receiving_frame(qualified, origins)), "test.allocated"
     )
     edge, _, pins = _ordering()
     nodes = child.child_property_nodes(
