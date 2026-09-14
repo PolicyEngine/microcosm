@@ -1,0 +1,1 @@
+Gate pool orchestration tests that require US engine metadata, preserve source-enrichment checkout rejection in wheel tests, and isolate invented UK calibration code-pin fixtures while retaining refusal before I/O.
