@@ -4,9 +4,10 @@
   "kind": "uk_vendored_ledger_facts",
   "resource": "need_energy_facts.json",
   "purpose": "DESNZ NEED 2023 mean and median household gas and electricity consumption (kWh) by property type, tenure, household income band and region for England and Wales, and by property type, tenure and income band for Scotland. Consumed by the LCFS energy rake in place of need_energy_targets.json.",
-  "consumers": [],
+  "consumers": [
+    "uk_runtime.energy_pricing"
+  ],
   "planned_consumers": [
-    "lcfs_consumption",
     "uk_aggregate_admin"
   ],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",

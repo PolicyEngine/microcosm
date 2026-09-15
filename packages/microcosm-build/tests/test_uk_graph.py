@@ -236,7 +236,6 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
     assert graph.node("lcfs_consumption").sources == (
         "lcfs_household",
         "lcfs_person",
-        "was",
     )
     assert graph.node("hmrc_spi_income_spine").sources == (
         "spi",

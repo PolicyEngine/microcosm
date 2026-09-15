@@ -31,13 +31,8 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
-from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
 from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
-from microcosm.build.uk_runtime.ledger_fact_vendoring import (
-    feed_identity,
-    load_vendored_resource,
-    rows_matching,
-)
+from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.local_target_census import family_for_metric
 from microcosm.build.uk_runtime.local_targets import (
     AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
@@ -492,16 +487,10 @@ UK_DFT_BUS_FARE_INDEX_BASIS = (
 def _vendored_fares_index_rows() -> list[Mapping[str, Any]]:
     """BUS0415 rows from the vendored resource, refused if it lags the feed pin."""
 
-    payload = load_vendored_resource(UK_DFT_BUS_FARES_INDEX_RESOURCE)
-    expected = feed_identity(load_uk_chronicle_feed())
-    if payload.get("source_fact_feed") != expected:
-        raise ValueError(
-            f"{UK_DFT_BUS_FARES_INDEX_RESOURCE} was vendored from a different "
-            "Chronicle feed than uk/chronicle_feed.json declares; regenerate it "
-            "with tools/vendor_uk_ledger_facts.py before compiling."
-        )
-    return rows_matching(
-        payload, concept=UK_DFT_BUS_FARES_INDEX_CONCEPT, period_type="month"
+    return vendored_rows(
+        UK_DFT_BUS_FARES_INDEX_RESOURCE,
+        concept=UK_DFT_BUS_FARES_INDEX_CONCEPT,
+        period_type="month",
     )
 
 

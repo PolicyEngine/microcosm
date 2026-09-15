@@ -1750,7 +1750,6 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "lcfs_person_tab",
         "published_fact_surface",
         "qrf_donor",
-        "was_bridge_donor",
         "was_qrf_donor",
     }
     for pin in pins.values():
@@ -1786,6 +1785,11 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     )
 
     assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
+    assert declared["lcfs_consumption"] == {
+        "has_fuel_consumption": 0,
+        "uses_local_bus": 0,
+        "lcfs_consumption": 0,
+    }
     assert declared["uc_capital_coherence"] == {"frs_benunit_capital": 0}
     assert declared["uc_deduction_attributes"] == {
         "uc_deduction_random_draw": 0,

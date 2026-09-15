@@ -406,6 +406,29 @@ def test_fare_receipts_align_with_the_bus0415_series_and_support_does_not() -> N
         apply_declared_uk_uprating(unknown, fares)
 
 
+def test_vendored_fares_index_refuses_a_foreign_feed(monkeypatch) -> None:
+    """The BUS0415 series is read only from a resource vendored from the pinned feed.
+
+    Vahid's #904 review: the refusal existed but no test fed it a mismatched
+    identity. The committed payload passes; the same payload stamped with
+    another feed digest is refused before any row is read.
+    """
+
+    import copy
+
+    from microcosm.build.uk_runtime import ledger_fact_vendoring as vendoring
+    from microcosm.build.uk_runtime import ledger_targets as module
+
+    committed = vendoring.load_vendored_resource("dft_bus_value_anchors.json")
+    assert module._vendored_fares_index_rows()
+
+    foreign = copy.deepcopy(committed)
+    foreign["source_fact_feed"]["facts_sha256"] = "f" * 64
+    monkeypatch.setattr(vendoring, "load_vendored_resource", lambda name: foreign)
+    with pytest.raises(ValueError, match="different Chronicle feed"):
+        module._vendored_fares_index_rows()
+
+
 def test_bus0415_alignment_from_the_vendored_series() -> None:
     """The production factors reproduce without the licensed feed.
 

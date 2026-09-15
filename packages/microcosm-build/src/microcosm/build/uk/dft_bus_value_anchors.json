@@ -5,12 +5,11 @@
   "resource": "dft_bus_value_anchors.json",
   "purpose": "DfT BUS05i passenger fare receipts and total estimated net support for England, London and England outside London (year-ending-March labels 2023 to 2025); BUS0415 local bus fares index quarter-end months for the same three areas; NTS0705a local bus trips per person by household income quintile, both series, 2023 and 2024. Consumed by the LCFS and ETB bus-fare and bus-support rakes and by the BUS0415 period-alignment pass.",
   "consumers": [
-    "uk_runtime.ledger_targets"
+    "uk_runtime.ledger_targets",
+    "uk_runtime.lcfs_consumption",
+    "uk_runtime.etb_services"
   ],
-  "planned_consumers": [
-    "lcfs_consumption",
-    "etb_services"
-  ],
+  "planned_consumers": [],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
   "generator": {
     "tool": "tools/vendor_uk_ledger_facts.py",

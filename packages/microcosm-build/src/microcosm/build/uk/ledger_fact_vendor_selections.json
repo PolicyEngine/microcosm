@@ -8,12 +8,11 @@
       "resource": "dft_bus_value_anchors.json",
       "purpose": "DfT BUS05i passenger fare receipts and total estimated net support for England, London and England outside London (year-ending-March labels 2023 to 2025); BUS0415 local bus fares index quarter-end months for the same three areas; NTS0705a local bus trips per person by household income quintile, both series, 2023 and 2024. Consumed by the LCFS and ETB bus-fare and bus-support rakes and by the BUS0415 period-alignment pass.",
       "consumers": [
-        "uk_runtime.ledger_targets"
+        "uk_runtime.ledger_targets",
+        "uk_runtime.lcfs_consumption",
+        "uk_runtime.etb_services"
       ],
-      "planned_consumers": [
-        "lcfs_consumption",
-        "etb_services"
-      ],
+      "planned_consumers": [],
       "selections": [
         {
           "label": "bus05ai_fare_receipts",
@@ -74,9 +73,10 @@
     {
       "resource": "road_fuel_anchors.json",
       "purpose": "HMRC Hydrocarbon Oils Bulletin petrol and diesel quantities released for consumption by fiscal year; DESNZ annual average ULSP and ULSD pump prices; OBR fuel duty receipts by vehicle category; ONS mid-year UK population totals. Consumed by the LCFS donor litre-proxy uprating and the household-incidence fuel diagnostics.",
-      "consumers": [],
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
+      ],
       "planned_consumers": [
-        "lcfs_consumption",
         "uk_aggregate_admin"
       ],
       "selections": [
@@ -128,10 +128,10 @@
     {
       "resource": "licensed_cars_fuel_type.json",
       "purpose": "DfT VEH1103a licensed cars by fuel type, Great Britain, end-year stock 2023 to 2025. Consumed by the LCFS stage's ICE share in place of the nts_ice_share anchor.",
-      "consumers": [],
-      "planned_consumers": [
-        "lcfs_consumption"
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
       ],
+      "planned_consumers": [],
       "selections": [
         {
           "label": "veh1103_licensed_cars_by_fuel_type",
@@ -160,9 +160,10 @@
     {
       "resource": "need_energy_facts.json",
       "purpose": "DESNZ NEED 2023 mean and median household gas and electricity consumption (kWh) by property type, tenure, household income band and region for England and Wales, and by property type, tenure and income band for Scotland. Consumed by the LCFS energy rake in place of need_energy_targets.json.",
-      "consumers": [],
+      "consumers": [
+        "uk_runtime.energy_pricing"
+      ],
       "planned_consumers": [
-        "lcfs_consumption",
         "uk_aggregate_admin"
       ],
       "selections": [
@@ -183,9 +184,10 @@
     {
       "resource": "ofgem_price_cap_facts.json",
       "purpose": "Ofgem default tariff cap levels at nil and benchmark consumption for the four charge restriction periods of FY2024-25 (2024-Q2 to 2025-Q1), direct debit, single-rate electricity and gas, every charge restriction region excluding VAT plus the GB average including and excluding VAT; and the benchmark consumption each level is set at. Consumed by the LCFS energy pricing (unit rate = (benchmark - nil) / benchmark consumption; nil = annual standing charge; VAT added from the engine parameter).",
-      "consumers": [],
+      "consumers": [
+        "uk_runtime.energy_pricing"
+      ],
       "planned_consumers": [
-        "lcfs_consumption",
         "uk_aggregate_admin"
       ],
       "selections": [
@@ -233,10 +235,11 @@
     {
       "resource": "nts_bus_use_frequency.json",
       "purpose": "DfT NTS0313 shares of people by frequency of local bus use (all ages, England) and NTS0621 the same bands for people aged 60 and over, 2023 to 2025, with the unweighted sample sizes. Consumed by the LCFS bus-use incidence calibration.",
-      "consumers": [],
-      "planned_consumers": [
-        "lcfs_consumption"
+      "consumers": [
+        "uk_runtime.lcfs_consumption",
+        "uk_runtime.bus_use_incidence"
       ],
+      "planned_consumers": [],
       "selections": [
         {
           "label": "nts0313_local_bus_all_ages",
@@ -280,11 +283,11 @@
     {
       "resource": "devolved_bus_finance.json",
       "purpose": "Scotland bus and coach statistics (2024 and 2025 editions: journeys, passenger revenue, operator revenue, government support components, fare index); Welsh local authority roads and transport revenue outturn public transport lines for the Wales total; Northern Ireland Transport Holding Company transactions with DfI; DfI Translink bus journeys and passenger receipts by service. Consumed by the devolved cells of the bus-fare and bus-support rakes and the country-leg bus targets.",
-      "consumers": [],
-      "planned_consumers": [
-        "lcfs_consumption",
-        "etb_services"
+      "consumers": [
+        "uk_runtime.lcfs_consumption",
+        "uk_runtime.etb_services"
       ],
+      "planned_consumers": [],
       "selections": [
         {
           "label": "scotland_bus_and_coach_statistics",
@@ -340,7 +343,9 @@
     {
       "resource": "orr_rail_facts.json",
       "purpose": "ORR rail industry finance: total government support to the rail industry (table 7270), government support by funding source (7271), franchised operator fare income (7223) and the rail fares index (7180). Consumed by the rail support target diagnostics and the fare-index lockstep check.",
-      "consumers": [],
+      "consumers": [
+        "uk_runtime.etb_services"
+      ],
       "planned_consumers": [
         "uk_aggregate_admin"
       ],

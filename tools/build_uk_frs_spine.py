@@ -460,8 +460,6 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["stage1"] = seed
                 elif operation.kind == "fit_weighted_qrf_stage2":
                     stage_seeds["stage2"] = seed
-                elif operation.kind == "bridge_donor_column_via_qrf":
-                    stage_seeds["bridge_donor_column_via_qrf"] = seed
                 elif operation.kind == "assign_binary_from_rate":
                     target = operation.parameters.get("target")
                     if isinstance(target, str):
@@ -1050,7 +1048,6 @@ def main(argv: list[str] | None = None) -> int:
                 for flag, value in (
                     ("--lcfs-hh-tab", args.lcfs_hh_tab),
                     ("--lcfs-person-tab", args.lcfs_person_tab),
-                    ("--was-tab", args.was_tab),
                 )
                 if value is None
             ]
@@ -1184,7 +1181,6 @@ def main(argv: list[str] | None = None) -> int:
                     engine=engine,
                     lcfs_hh_tab_path=sources["lcfs_household"],
                     lcfs_person_tab_path=sources["lcfs_person"],
-                    was_tab_path=sources["was"],
                 )
             )
         if "etb_vat" in stage_names:
@@ -1285,7 +1281,7 @@ def main(argv: list[str] | None = None) -> int:
             else args.spine_h5.parent / f".{args.spine_h5.stem}.checkpoints"
         )
         graph_sources = {"frs": args.frs_raw_dir}
-        if "was_wealth" in stage_names or "lcfs_consumption" in stage_names:
+        if "was_wealth" in stage_names:
             graph_sources["was"] = args.was_tab
         if "lcfs_consumption" in stage_names:
             graph_sources["lcfs_household"] = args.lcfs_hh_tab

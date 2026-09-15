@@ -4,10 +4,10 @@
   "kind": "uk_vendored_ledger_facts",
   "resource": "licensed_cars_fuel_type.json",
   "purpose": "DfT VEH1103a licensed cars by fuel type, Great Britain, end-year stock 2023 to 2025. Consumed by the LCFS stage's ICE share in place of the nts_ice_share anchor.",
-  "consumers": [],
-  "planned_consumers": [
-    "lcfs_consumption"
+  "consumers": [
+    "uk_runtime.lcfs_consumption"
   ],
+  "planned_consumers": [],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
   "generator": {
     "tool": "tools/vendor_uk_ledger_facts.py",

@@ -6284,7 +6284,6 @@
        "enum": [
         "allocate_per_capita_from_cell_table",
         "assign_binary_from_rate",
-        "bridge_donor_column_via_qrf",
         "compute_ratio",
         "derive",
         "iterative_proportional_fit",
@@ -6421,6 +6420,44 @@
       },
       "lowercase_columns": {
        "type": "boolean"
+      },
+      "rate_resource": {
+       "type": "string"
+      },
+      "rate_rule": {
+       "const": "one_minus_zero_emission_share"
+      },
+      "period_value": {
+       "type": "integer"
+      },
+      "geography_id": {
+       "type": "string"
+      },
+      "zero_emission_fuel_types": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "margins_resource": {
+       "type": "string"
+      },
+      "mappings": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "clip": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {
+         "type": "number"
+        }
+       }
       }
      }
     },
@@ -7822,6 +7859,378 @@
       },
       "runtime_sha256_required": {
        "type": "boolean"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "from_period",
+      "to_period",
+      "columns"
+     ],
+     "properties": {
+      "kind": {
+       "const": "uprate_donor_columns"
+      },
+      "from_period": {
+       "type": "integer"
+      },
+      "to_period": {
+       "type": "integer"
+      },
+      "columns": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "basis"
+        ],
+        "properties": {
+         "basis": {
+          "enum": [
+           "engine_parameter",
+           "vendored_litre_proxy",
+           "vendored_ratio"
+          ]
+         },
+         "parameter_path": {
+          "type": "string"
+         },
+         "resource": {
+          "type": "string"
+         },
+         "price_concept": {
+          "type": "string"
+         },
+         "litres_concept": {
+          "type": "string"
+         },
+         "population_concept": {
+          "type": "string"
+         },
+         "concept": {
+          "type": "string"
+         },
+         "numerator_period": {
+          "type": "string"
+         },
+         "denominator_period": {
+          "type": "string"
+         },
+         "dimension_values": {
+          "type": "object",
+          "additionalProperties": {
+           "type": "string"
+          }
+         },
+         "geography_id": {
+          "type": "string"
+         },
+         "audit_parameter_path": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "exempt": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "instant": {
+       "const": "january_first"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "seed",
+      "resource",
+      "period_value",
+      "age_threshold",
+      "bands",
+      "non_user_band",
+      "share_geography",
+      "share_age_coverage",
+      "applied_to"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_bus_use_incidence"
+      },
+      "output": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "period_value": {
+       "type": "integer"
+      },
+      "transport_mode_groupby_value_id": {
+       "type": "string"
+      },
+      "older_age_band": {
+       "type": "string"
+      },
+      "age_threshold": {
+       "type": "integer"
+      },
+      "non_user_band": {
+       "type": "string"
+      },
+      "bands": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "id",
+         "trips_per_year",
+         "labels"
+        ],
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "trips_per_year": {
+          "type": "number"
+         },
+         "labels": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      },
+      "user_definition": {
+       "const": "at_least_once_a_year"
+      },
+      "share_geography": {
+       "type": "string"
+      },
+      "share_age_coverage": {
+       "enum": [
+        "all_ages"
+       ]
+      },
+      "applied_to": {
+       "enum": [
+        "fare_rake_regions"
+       ]
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "columns",
+      "cells",
+      "iterations",
+      "weighted",
+      "scope"
+     ],
+     "properties": {
+      "kind": {
+       "const": "rake_to_vendored_facts"
+      },
+      "columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "iterations": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "weighted": {
+       "type": "boolean"
+      },
+      "scope": {
+       "enum": [
+        "users_only",
+        "all"
+       ]
+      },
+      "quintile_income": {
+       "type": "string"
+      },
+      "cells": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "label",
+         "regions",
+         "resource",
+         "selector",
+         "allocation"
+        ],
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "regions": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "resource": {
+          "type": "string"
+         },
+         "selector": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "concept",
+           "fiscal_start"
+          ],
+          "properties": {
+           "concept": {
+            "type": "string"
+           },
+           "fiscal_start": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "groupby_value_id": {
+            "type": "string"
+           },
+           "dimension_values": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           },
+           "sum_over": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         },
+         "allocation": {
+          "enum": [
+           "uniform",
+           "income_quintile_trips"
+          ]
+         },
+         "allocation_resource": {
+          "type": "string"
+         },
+         "allocation_concept": {
+          "type": "string"
+         },
+         "allocation_period_value": {
+          "type": "integer"
+         },
+         "joint_columns": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "resource",
+      "crosswalk_resource",
+      "fiscal_start",
+      "payment_method",
+      "electricity_fuel",
+      "vat_parameter_path",
+      "columns",
+      "vat_rate"
+     ],
+     "properties": {
+      "kind": {
+       "const": "price_energy_at_cap"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "crosswalk_resource": {
+       "type": "string"
+      },
+      "fiscal_start": {
+       "type": "string"
+      },
+      "payment_method": {
+       "type": "string"
+      },
+      "electricity_fuel": {
+       "type": "string"
+      },
+      "vat_parameter_path": {
+       "type": "string"
+      },
+      "vat_period": {
+       "type": "integer"
+      },
+      "columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "electricity",
+        "gas"
+       ],
+       "properties": {
+        "electricity": {
+         "type": "string"
+        },
+        "gas": {
+         "type": "string"
+        }
+       }
+      },
+      "gas_connected": {
+       "enum": [
+        "positive_gas_spend"
+       ]
+      },
+      "margins_resource": {
+       "type": "string"
+      },
+      "vat_rate": {
+       "type": "number",
+       "minimum": 0,
+       "exclusiveMaximum": 1
       }
      }
     }

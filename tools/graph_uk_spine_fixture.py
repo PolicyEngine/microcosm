@@ -611,6 +611,7 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
         "g018": 1 + rows.astype(int) % 3,
         "g019": rows.astype(int) % 3,
         "gorx": 1 + rows.astype(int) % 12,
+        "a124": rows.astype(int) % 4,
         "p389p": 100.0 + rows * 10.0,
         "p344p": 150.0 + rows * 10.0,
         "weighta": 1.0 + rows % 7 / 10.0,
@@ -854,9 +855,6 @@ def _fixture_stages(
             stage = _replace_operation(
                 stage, "fit_weighted_qrf_chain", n_estimators=_QRF_ESTIMATORS
             )
-            stage = _replace_operation(
-                stage, "bridge_donor_column_via_qrf", n_estimators=_QRF_ESTIMATORS
-            )
         elif stage.stage == "hmrc_spi_income_spine":
             stage = _replace_operation(
                 stage,
@@ -1083,7 +1081,6 @@ def _build_implementations(
             engine=engine,
             lcfs_household=lcfs_household,
             lcfs_person=lcfs_person,
-            was_donor=was,
         ),
         "etb_vat": UKETBVATStageTransform(
             stage=stages["etb_vat"], engine=engine, donor=etb
