@@ -91,6 +91,13 @@ from microcosm.calibrate.matrix import (
     build_constraint_matrix,
 )
 from microcosm.calibrate.target import TargetSet
+from microcosm.calibrate.target_snapshots import (
+    ITERATE_BEST_RETAINED,
+    ITERATE_CURRENT,
+    ITERATE_SELECTED,
+    BoundTargetSnapshots,
+    TargetSnapshotObserver,
+)
 from microcosm.frame import Frame, MassChange, WeightKind, Weights
 
 __all__ = [
@@ -787,6 +794,7 @@ def _optimize(
     temperature: float,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     progress_context: Mapping[str, object] | None = None,
+    snapshots: BoundTargetSnapshots | None = None,
     return_gate_open_probabilities: bool = False,
     selection_receipt: dict[str, object] | None = None,
 ) -> tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray | None]:
@@ -913,6 +921,32 @@ def _optimize(
                     "loss": trajectory[epoch],
                 }
             )
+        if snapshots is not None and snapshots.emits(epoch + 1, epochs):
+            # The estimate tensor this epoch's loss was computed from, detached
+            # rather than recomputed: re-running the forward pass would redraw
+            # the hard-concrete gates' noise and move the RNG stream, changing
+            # the run. The current values are labelled best_retained only when
+            # they ARE the incumbent best iterate.
+            retained = retain_best and best_log_w is not None
+            snapshots.emit(
+                estimate.detach().numpy(),
+                # Number of completed updates, matching the selection receipt.
+                # Cadence still uses the 1-based evaluation ordinal above.
+                epoch=epoch,
+                epochs=epochs,
+                iterate=(
+                    ITERATE_BEST_RETAINED
+                    if retained and best_epoch == epoch
+                    else ITERATE_CURRENT
+                ),
+                precision="float32",
+                loss=trajectory[epoch],
+                best_retained={
+                    "available": bool(retain_best),
+                    "epoch": best_epoch if retained else None,
+                    "loss": best_loss if retained else None,
+                },
+            )
         total_loss.backward()
         optimizer.step()
 
@@ -1020,6 +1054,7 @@ def _optimize_proximal(
     prune_atol: float,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
     progress_context: Mapping[str, object] | None = None,
+    snapshots: BoundTargetSnapshots | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Proximal gradient (ISTA-style) on weight ratios -- the L1 selection path.
 
@@ -1074,6 +1109,17 @@ def _optimize_proximal(
                     "epochs": epochs,
                     "loss": trajectory[epoch],
                 }
+            )
+        if snapshots is not None and snapshots.emits(epoch + 1, epochs):
+            # The proximal path retains no best iterate (its selection is the
+            # closing state), so every in-loop snapshot here is `current`.
+            snapshots.emit(
+                estimate.detach().numpy(),
+                epoch=epoch,
+                epochs=epochs,
+                iterate=ITERATE_CURRENT,
+                precision="float32",
+                loss=trajectory[epoch],
             )
         loss.backward()
         with torch.no_grad():
@@ -1141,6 +1187,7 @@ def _search_l0_lambda_for_budget(
     prune_atol: float,
     initial_lambda: float | None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    snapshots: BoundTargetSnapshots | None = None,
     budget_iters: int = _DEFAULT_BUDGET_ITERS,
     return_gate_open_probabilities: bool = False,
     budget_basis: str = BUDGET_BASIS_NONZERO_COUNT,
@@ -1270,6 +1317,17 @@ def _search_l0_lambda_for_budget(
                 "budget_iters": budget_iters,
                 "l0_lambda": lam,
             },
+            # Each probe is a full reseeded optimization whose epoch numbering
+            # restarts, so its snapshots carry the probe's own identity.
+            "snapshots": (
+                None
+                if snapshots is None
+                else snapshots.with_search(
+                    budget_iteration=evaluation,
+                    budget_iters=budget_iters,
+                    l0_lambda=lam,
+                )
+            ),
         }
         if gate_initialization is not None:
             optimize_kwargs["gate_initialization"] = gate_initialization
@@ -1313,6 +1371,7 @@ def _search_l0_lambda_for_budget(
     # (0 for a feasible/unconstrained probe, 1 for an infeasible one; distance
     # to the budget): feasible probes always beat infeasible ones.
     best_key: tuple[int, int] | None = None
+    best_evaluation: int | None = None
     probes: list[dict[str, object]] = []
     # Sentinel: a probe whose penalty over-pruned past the cap-feasible floor
     # (the conserve+cap projection raised). It is *more* pruning than feasible,
@@ -1325,7 +1384,7 @@ def _search_l0_lambda_for_budget(
     _steer_stop = "stop"
 
     def consider(lam: float) -> tuple[int, str]:
-        nonlocal best, best_key
+        nonlocal best, best_key, best_evaluation
         try:
             weights, trajectory, n_nonzero, gate_open_probabilities = evaluate(lam)
         except ValueError as exc:
@@ -1390,6 +1449,7 @@ def _search_l0_lambda_for_budget(
                 gate_open_probabilities,
             )
             best_key = key
+            best_evaluation = evaluation
         return n_nonzero, verdict
 
     def steer(n_nonzero: int, verdict: str) -> str:
@@ -1456,6 +1516,7 @@ def _search_l0_lambda_for_budget(
                     "acceptable_within_tolerance" if settled() else "budget_exhausted"
                 ),
                 "selected_l0_lambda": None if best is None else float(best[2]),
+                "selected_budget_iteration": best_evaluation,
                 "selected_measure": None if best is None else int(best[3]),
                 "selected_feasible": (
                     None
@@ -1475,6 +1536,7 @@ def _search_l0_lambda_for_budget(
                 "evaluations": int(evaluation),
                 "probes": probes,
                 "selected_l0_lambda": None if best is None else float(best[2]),
+                "selected_budget_iteration": best_evaluation,
                 "selected_measure": None if best is None else int(best[3]),
                 "selected_feasible": (
                     None
@@ -1614,6 +1676,7 @@ def calibrate(
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
     warm_start_weights: np.ndarray | None = None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    target_snapshots: TargetSnapshotObserver | None = None,
 ) -> CalibrationResult:
     """Calibrate ``weight_entity``'s weights to ``targets`` over ``frame``.
 
@@ -1731,6 +1794,14 @@ def calibrate(
             "calibration_epoch", "epoch": 1, "epochs": 256, "loss": ...}``.
             Build drivers use this to publish staging telemetry; calibration
             results are unchanged.
+        target_snapshots: Optional
+            :class:`~microcosm.calibrate.target_snapshots.TargetSnapshotObserver`
+            receiving aggregate-only per-target estimate snapshots at its own
+            cadence while the run is in flight (microcosm#908). Off by default;
+            enabling it does not change the weights, the trajectory, or the
+            RNG stream — in-loop snapshots read the estimate tensor the epoch's
+            loss was already computed from. The closing ``selected`` snapshot
+            describes the weights calibration actually returns.
 
     Returns:
         A :class:`CalibrationResult` with the calibrated frame, per-target
@@ -1883,6 +1954,11 @@ def calibrate(
         )
     )
     problem = build_constraint_matrix(frame, targets, weight_entity)
+    snapshots = (
+        None
+        if target_snapshots is None
+        else target_snapshots.bind(names=problem.names, targets=problem.target_vector)
+    )
     initial = problem.initial_weights
     w0 = initial.values
     prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
@@ -1958,6 +2034,7 @@ def calibrate(
             l1_lambda=l1_lambda,
             prune_atol=prune_atol,
             progress_callback=progress_callback,
+            snapshots=snapshots,
         )
         n_nonzero = int((final_weights > prune_atol).sum())
         if n_nonzero == 0:
@@ -2004,6 +2081,7 @@ def calibrate(
             prune_atol=prune_atol,
             initial_lambda=(l0_lambda if l0_lambda > 0.0 else None),
             progress_callback=progress_callback,
+            snapshots=snapshots,
             budget_iters=budget_iters,
             budget_basis=budget_basis,
             feasible_draw_pi_hi=feasible_draw_pi_hi,
@@ -2037,6 +2115,7 @@ def calibrate(
             init_mean=init_mean,
             temperature=temperature,
             progress_callback=progress_callback,
+            snapshots=snapshots,
             return_gate_open_probabilities=True,
             selection_receipt=iterate_selection_receipt,
             **(
@@ -2075,13 +2154,59 @@ def calibrate(
     # capped weighted-MAPE loss the optimizer minimizes, evaluated after the closing
     # mass/cap projections — so final_loss describes
     # what calibrate returns, not the trajectory's pre-projection tail.
+    final_estimates = problem.estimates(final_weights)
     closing_loss = relative_error_loss(
-        problem.estimates(final_weights),
+        final_estimates,
         problem.target_vector,
         target_loss_weights=target_loss_weights_np,
         target_loss_scales=target_loss_scales_np,
         target_loss_cap=target_loss_cap,
     )
+    if snapshots is not None:
+        # The selected snapshot describes the weights calibration RETURNS,
+        # read off the same float64 estimates the final diagnostics use — not
+        # the last in-loop iterate, which the optimizer may have discarded in
+        # favour of an earlier better one or changed by a closing projection.
+        selected_epoch = iterate_selection_receipt.get("selected_epoch")
+        # A non-empty receipt means the optimizer ran the retain-best rule. It
+        # records the epoch it selected, which IS the best iterate's epoch when
+        # an earlier iterate won; when the closing iterate won, no separate best
+        # epoch was recorded, so the snapshot says "retained, epoch unrecorded"
+        # instead of inventing one.
+        retained_best = bool(iterate_selection_receipt)
+        best_is_earlier = (
+            retained_best
+            and isinstance(selected_epoch, int)
+            and selected_epoch < epochs
+        )
+        selected_snapshots = snapshots
+        if budget_search is not None:
+            selected_snapshots = snapshots.with_search(
+                budget_iteration=budget_search["selected_budget_iteration"],
+                budget_iters=budget_search["budget_iters"],
+                l0_lambda=budget_search["selected_l0_lambda"],
+            )
+        selected_snapshots.emit(
+            final_estimates,
+            # The epoch whose iterate was actually selected, not the last one
+            # executed: a retained-best run returns an earlier iterate, and
+            # stamping the closing epoch on it would misattribute the values.
+            epoch=(int(selected_epoch) if isinstance(selected_epoch, int) else epochs),
+            epochs=epochs,
+            iterate=ITERATE_SELECTED,
+            precision="float64",
+            loss=float(closing_loss),
+            best_retained={
+                "available": retained_best,
+                "epoch": int(selected_epoch) if best_is_earlier else None,
+                "loss": (
+                    iterate_selection_receipt.get("selected_loss_float32")
+                    if best_is_earlier
+                    else None
+                ),
+            },
+            selection=dict(iterate_selection_receipt) or None,
+        )
     effective_target_loss_weights = (
         np.ones(problem.target_vector.shape, dtype=np.float64)
         if target_loss_weights_np is None
@@ -2315,6 +2440,16 @@ def _phase_callback(
     return callback
 
 
+def _phase_snapshots(
+    target_snapshots: TargetSnapshotObserver | None,
+    phase: str,
+) -> TargetSnapshotObserver | None:
+    """The ``_phase_callback`` analogue for the snapshot observer."""
+    if target_snapshots is None:
+        return None
+    return target_snapshots.with_phase(phase)
+
+
 def _selected_person_mask(
     frame: Frame,
     weight_entity: str,
@@ -2403,6 +2538,7 @@ def refit_l0_selection(
     target_loss_scales: np.ndarray | None = None,
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    target_snapshots: TargetSnapshotObserver | None = None,
 ) -> L0RefitResult:
     """Refit ordinary calibration on a frozen support from an L0 solve.
 
@@ -2581,6 +2717,7 @@ def refit_l0_selection(
         target_loss_scales=target_loss_scales,
         target_loss_cap=target_loss_cap,
         progress_callback=progress_callback,
+        target_snapshots=target_snapshots,
     )
     return L0RefitResult(
         selection=selection,
@@ -2617,6 +2754,7 @@ def calibrate_l0_refit(
     target_loss_cap: float = _DEFAULT_TARGET_LOSS_CAP,
     warm_start_weights: np.ndarray | None = None,
     progress_callback: Callable[[dict[str, object]], None] | None = None,
+    target_snapshots: TargetSnapshotObserver | None = None,
 ) -> L0RefitResult:
     """Select a sparse support with L0 gates, then refit ordinary calibration.
 
@@ -2690,6 +2828,7 @@ def calibrate_l0_refit(
         target_loss_cap=target_loss_cap,
         warm_start_weights=warm_start_weights,
         progress_callback=_phase_callback(progress_callback, "l0_selection"),
+        target_snapshots=_phase_snapshots(target_snapshots, "l0_selection"),
     )
     return refit_l0_selection(
         frame,
@@ -2712,4 +2851,5 @@ def calibrate_l0_refit(
         target_loss_scales=target_loss_scales,
         target_loss_cap=target_loss_cap,
         progress_callback=_phase_callback(progress_callback, "post_l0_refit"),
+        target_snapshots=_phase_snapshots(target_snapshots, "post_l0_refit"),
     )
