@@ -1043,8 +1043,38 @@ def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
                 f"{crosswalk_resource} level {geography_level!r} must expose area_ids."
             )
         for metric_name in metric_names(area_type):
-            expected.update(f"{metric_name}@{area_id}" for area_id in area_ids)
+            scoped = _metric_area_scope(metric_name, geography_level)
+            expected.update(
+                f"{metric_name}@{area_id}"
+                for area_id in area_ids
+                if scoped is None or str(area_id).startswith(scoped)
+            )
     return frozenset(expected)
+
+
+def _metric_area_scope(
+    metric_name: str, geography_level: str
+) -> tuple[str, ...] | None:
+    """GSS prefixes the metric's contract targets cover at this level, or None.
+
+    A metric that nation-scoped targets share (the council-tax stock by_area
+    rows, microcosm#929) has cells only where one of its targets declares an
+    ``area_scope``; the default surface expects nothing elsewhere. A metric
+    with an unscoped target expects every roster area.
+    """
+
+    from microcosm.build.uk_runtime.ledger_targets import _uk_local_metric_targets
+
+    sharers = _uk_local_metric_targets().get(metric_name)
+    if not sharers:
+        return None
+    prefixes: list[str] = []
+    for _, target_prefixes in sharers:
+        if not target_prefixes:
+            return None
+        prefixes.extend(target_prefixes)
+    del geography_level
+    return tuple(dict.fromkeys(prefixes))
 
 
 def _local_default_reviewed_exclusions(

@@ -158,7 +158,11 @@
   "method": "level-union name-dedup per build_loss_matrix.create_target_matrix:93-103; values via build_loss_matrix._resolve_value at years 2025 and 2026; network-dependent get_targets() sources fetched live at extraction time",
   "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
   "runtime_version": "3.13.14",
-  "source_repository": "retired UK data package"
+  "source_repository": "retired UK data package",
+  "contract_target_id_relabel": {
+   "date": "2026-09-15",
+   "reason": "microcosm#929: the 90 voa/council_tax/<REGION>/<band> rows follow registry_parity.mapped onto mhclg.council_tax_stock.* (English regions) and welshgov.council_tax_stock.* (Wales); values untouched."
+  }
  },
  "rows": [
   {
@@ -8493,7 +8497,7 @@
    "value": 302000.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_a",
+   "contract_target_id": "mhclg.council_tax_stock.band_a",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8509,7 +8513,7 @@
    "value": 667540.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_b",
+   "contract_target_id": "mhclg.council_tax_stock.band_b",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8525,7 +8529,7 @@
    "value": 206790.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_c",
+   "contract_target_id": "mhclg.council_tax_stock.band_c",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8541,7 +8545,7 @@
    "value": 196180.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_d",
+   "contract_target_id": "mhclg.council_tax_stock.band_d",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8557,7 +8561,7 @@
    "value": 113460.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_e",
+   "contract_target_id": "mhclg.council_tax_stock.band_e",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8573,7 +8577,7 @@
    "value": 61090.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_f",
+   "contract_target_id": "mhclg.council_tax_stock.band_f",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8589,7 +8593,7 @@
    "value": 26600.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_g",
+   "contract_target_id": "mhclg.council_tax_stock.band_g",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8605,7 +8609,7 @@
    "value": 14600.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_h",
+   "contract_target_id": "mhclg.council_tax_stock.band_h",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8621,7 +8625,7 @@
    "value": 1570.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.total",
+   "contract_target_id": "mhclg.council_tax_stock.total",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8637,7 +8641,7 @@
    "value": 1287830.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_a",
+   "contract_target_id": "mhclg.council_tax_stock.band_a",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8653,7 +8657,7 @@
    "value": 1386260.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_b",
+   "contract_target_id": "mhclg.council_tax_stock.band_b",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8669,7 +8673,7 @@
    "value": 705450.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_c",
+   "contract_target_id": "mhclg.council_tax_stock.band_c",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8685,7 +8689,7 @@
    "value": 616070.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_d",
+   "contract_target_id": "mhclg.council_tax_stock.band_d",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8701,7 +8705,7 @@
    "value": 363970.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_e",
+   "contract_target_id": "mhclg.council_tax_stock.band_e",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8717,7 +8721,7 @@
    "value": 216990.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_f",
+   "contract_target_id": "mhclg.council_tax_stock.band_f",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8733,7 +8737,7 @@
    "value": 104330.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_g",
+   "contract_target_id": "mhclg.council_tax_stock.band_g",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8749,7 +8753,7 @@
    "value": 65750.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_h",
+   "contract_target_id": "mhclg.council_tax_stock.band_h",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8765,7 +8769,7 @@
    "value": 7350.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.total",
+   "contract_target_id": "mhclg.council_tax_stock.total",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8781,7 +8785,7 @@
    "value": 3466140.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_a",
+   "contract_target_id": "mhclg.council_tax_stock.band_a",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8797,7 +8801,7 @@
    "value": 1070830.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_b",
+   "contract_target_id": "mhclg.council_tax_stock.band_b",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8813,7 +8817,7 @@
    "value": 514190.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_c",
+   "contract_target_id": "mhclg.council_tax_stock.band_c",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8829,7 +8833,7 @@
    "value": 432290.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_d",
+   "contract_target_id": "mhclg.council_tax_stock.band_d",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8845,7 +8849,7 @@
    "value": 249530.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_e",
+   "contract_target_id": "mhclg.council_tax_stock.band_e",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8861,7 +8865,7 @@
    "value": 158600.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_f",
+   "contract_target_id": "mhclg.council_tax_stock.band_f",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8877,7 +8881,7 @@
    "value": 75690.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_g",
+   "contract_target_id": "mhclg.council_tax_stock.band_g",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8893,7 +8897,7 @@
    "value": 42180.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_h",
+   "contract_target_id": "mhclg.council_tax_stock.band_h",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8909,7 +8913,7 @@
    "value": 3770.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.total",
+   "contract_target_id": "mhclg.council_tax_stock.total",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8925,7 +8929,7 @@
    "value": 2547080.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_a",
+   "contract_target_id": "mhclg.council_tax_stock.band_a",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8941,7 +8945,7 @@
    "value": 804340.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_b",
+   "contract_target_id": "mhclg.council_tax_stock.band_b",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8957,7 +8961,7 @@
    "value": 505610.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_c",
+   "contract_target_id": "mhclg.council_tax_stock.band_c",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8973,7 +8977,7 @@
    "value": 403840.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_d",
+   "contract_target_id": "mhclg.council_tax_stock.band_d",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -8989,7 +8993,7 @@
    "value": 247850.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_e",
+   "contract_target_id": "mhclg.council_tax_stock.band_e",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9005,7 +9009,7 @@
    "value": 154970.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_f",
+   "contract_target_id": "mhclg.council_tax_stock.band_f",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9021,7 +9025,7 @@
    "value": 73920.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_g",
+   "contract_target_id": "mhclg.council_tax_stock.band_g",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9037,7 +9041,7 @@
    "value": 39400.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_h",
+   "contract_target_id": "mhclg.council_tax_stock.band_h",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9053,7 +9057,7 @@
    "value": 3480.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.total",
+   "contract_target_id": "mhclg.council_tax_stock.total",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9069,7 +9073,7 @@
    "value": 2233400.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_a",
+   "contract_target_id": "mhclg.council_tax_stock.band_a",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9085,7 +9089,7 @@
    "value": 786010.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_b",
+   "contract_target_id": "mhclg.council_tax_stock.band_b",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9101,7 +9105,7 @@
    "value": 654140.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_c",
+   "contract_target_id": "mhclg.council_tax_stock.band_c",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9117,7 +9121,7 @@
    "value": 526260.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_d",
+   "contract_target_id": "mhclg.council_tax_stock.band_d",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9133,7 +9137,7 @@
    "value": 302500.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_e",
+   "contract_target_id": "mhclg.council_tax_stock.band_e",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9149,7 +9153,7 @@
    "value": 193700.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_f",
+   "contract_target_id": "mhclg.council_tax_stock.band_f",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9165,7 +9169,7 @@
    "value": 105630.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_g",
+   "contract_target_id": "mhclg.council_tax_stock.band_g",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9181,7 +9185,7 @@
    "value": 62780.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_h",
+   "contract_target_id": "mhclg.council_tax_stock.band_h",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9197,7 +9201,7 @@
    "value": 6170.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.total",
+   "contract_target_id": "mhclg.council_tax_stock.total",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9213,7 +9217,7 @@
    "value": 2637190.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_a",
+   "contract_target_id": "mhclg.council_tax_stock.band_a",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9229,7 +9233,7 @@
    "value": 403180.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_b",
+   "contract_target_id": "mhclg.council_tax_stock.band_b",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9245,7 +9249,7 @@
    "value": 598950.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_c",
+   "contract_target_id": "mhclg.council_tax_stock.band_c",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9261,7 +9265,7 @@
    "value": 739570.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_d",
+   "contract_target_id": "mhclg.council_tax_stock.band_d",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9277,7 +9281,7 @@
    "value": 506540.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_e",
+   "contract_target_id": "mhclg.council_tax_stock.band_e",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9293,7 +9297,7 @@
    "value": 313840.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_f",
+   "contract_target_id": "mhclg.council_tax_stock.band_f",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9309,7 +9313,7 @@
    "value": 172960.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_g",
+   "contract_target_id": "mhclg.council_tax_stock.band_g",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9325,7 +9329,7 @@
    "value": 113720.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_h",
+   "contract_target_id": "mhclg.council_tax_stock.band_h",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9341,7 +9345,7 @@
    "value": 14830.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.total",
+   "contract_target_id": "mhclg.council_tax_stock.total",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9357,7 +9361,7 @@
    "value": 2863600.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_a",
+   "contract_target_id": "mhclg.council_tax_stock.band_a",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9373,7 +9377,7 @@
    "value": 144550.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_b",
+   "contract_target_id": "mhclg.council_tax_stock.band_b",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9389,7 +9393,7 @@
    "value": 499130.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_c",
+   "contract_target_id": "mhclg.council_tax_stock.band_c",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9405,7 +9409,7 @@
    "value": 1040280.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_d",
+   "contract_target_id": "mhclg.council_tax_stock.band_d",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9421,7 +9425,7 @@
    "value": 975750.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_e",
+   "contract_target_id": "mhclg.council_tax_stock.band_e",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9437,7 +9441,7 @@
    "value": 585130.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_f",
+   "contract_target_id": "mhclg.council_tax_stock.band_f",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9453,7 +9457,7 @@
    "value": 298920.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_g",
+   "contract_target_id": "mhclg.council_tax_stock.band_g",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9469,7 +9473,7 @@
    "value": 225170.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_h",
+   "contract_target_id": "mhclg.council_tax_stock.band_h",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9485,7 +9489,7 @@
    "value": 68500.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.total",
+   "contract_target_id": "mhclg.council_tax_stock.total",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9501,7 +9505,7 @@
    "value": 3837430.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_a",
+   "contract_target_id": "mhclg.council_tax_stock.band_a",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9517,7 +9521,7 @@
    "value": 367610.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_b",
+   "contract_target_id": "mhclg.council_tax_stock.band_b",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9533,7 +9537,7 @@
    "value": 687430.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_c",
+   "contract_target_id": "mhclg.council_tax_stock.band_c",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9549,7 +9553,7 @@
    "value": 1075940.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_d",
+   "contract_target_id": "mhclg.council_tax_stock.band_d",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9565,7 +9569,7 @@
    "value": 843560.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_e",
+   "contract_target_id": "mhclg.council_tax_stock.band_e",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9581,7 +9585,7 @@
    "value": 551730.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_f",
+   "contract_target_id": "mhclg.council_tax_stock.band_f",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9597,7 +9601,7 @@
    "value": 337260.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_g",
+   "contract_target_id": "mhclg.council_tax_stock.band_g",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9613,7 +9617,7 @@
    "value": 265610.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_h",
+   "contract_target_id": "mhclg.council_tax_stock.band_h",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9629,7 +9633,7 @@
    "value": 40390.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.total",
+   "contract_target_id": "mhclg.council_tax_stock.total",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9645,7 +9649,7 @@
    "value": 4169520.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_a",
+   "contract_target_id": "mhclg.council_tax_stock.band_a",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9661,7 +9665,7 @@
    "value": 473020.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_b",
+   "contract_target_id": "mhclg.council_tax_stock.band_b",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9677,7 +9681,7 @@
    "value": 644890.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_c",
+   "contract_target_id": "mhclg.council_tax_stock.band_c",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9693,7 +9697,7 @@
    "value": 624030.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_d",
+   "contract_target_id": "mhclg.council_tax_stock.band_d",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9709,7 +9713,7 @@
    "value": 432070.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_e",
+   "contract_target_id": "mhclg.council_tax_stock.band_e",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9725,7 +9729,7 @@
    "value": 292090.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_f",
+   "contract_target_id": "mhclg.council_tax_stock.band_f",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9741,7 +9745,7 @@
    "value": 147920.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_g",
+   "contract_target_id": "mhclg.council_tax_stock.band_g",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9757,7 +9761,7 @@
    "value": 81960.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_h",
+   "contract_target_id": "mhclg.council_tax_stock.band_h",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9773,7 +9777,7 @@
    "value": 8430.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.total",
+   "contract_target_id": "mhclg.council_tax_stock.total",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9789,7 +9793,7 @@
    "value": 2704390.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_a",
+   "contract_target_id": "welshgov.council_tax_stock.band_a",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9805,7 +9809,7 @@
    "value": 215380.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_b",
+   "contract_target_id": "welshgov.council_tax_stock.band_b",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9821,7 +9825,7 @@
    "value": 307070.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_c",
+   "contract_target_id": "welshgov.council_tax_stock.band_c",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9837,7 +9841,7 @@
    "value": 323220.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_d",
+   "contract_target_id": "welshgov.council_tax_stock.band_d",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9853,7 +9857,7 @@
    "value": 241220.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_e",
+   "contract_target_id": "welshgov.council_tax_stock.band_e",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9869,7 +9873,7 @@
    "value": 200840.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_f",
+   "contract_target_id": "welshgov.council_tax_stock.band_f",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9885,7 +9889,7 @@
    "value": 122650.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_g",
+   "contract_target_id": "welshgov.council_tax_stock.band_g",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9901,7 +9905,7 @@
    "value": 55190.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.band_h",
+   "contract_target_id": "welshgov.council_tax_stock.band_h",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",
@@ -9917,7 +9921,7 @@
    "value": 13190.0
   },
   {
-   "contract_target_id": "voa.council_tax_stock.total",
+   "contract_target_id": "welshgov.council_tax_stock.total",
    "entity": "household",
    "family": "voa",
    "geographic_level": "region",

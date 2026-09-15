@@ -40,7 +40,11 @@ LA_EXTRA_METRICS = (
     "tenure/social_rent",
     "rent/private_rent",
 )
-COUNCIL_TAX_BANDS = tuple("ABCDEFGH")
+#: Bands A-H are the England and Scotland systems; band I exists in Wales only
+#: (the 2005 revaluation) and is carried by the spine (FRS ``ctband`` 9) and
+#: the engine enum, so it binds the Welsh cells that publish it. Appended
+#: last, so the positional metric indices of A-H are unchanged.
+COUNCIL_TAX_BANDS = tuple("ABCDEFGHI")
 COUNTRY_TO_REGION = {
     "England": "SOUTH_EAST",
     "Scotland": "SCOTLAND",
@@ -115,6 +119,8 @@ def metric_names_from_target_profile(
     _validate_area_type(area_type)
     geography_level = AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL[area_type]
     names: list[str] = []
+    scopes_by_name: dict[str, list[frozenset[str] | None]] = {}
+    duplicate_names: set[str] = set()
     for target in _profile_targets(target_profile):
         geography_levels = tuple(_profile_get(target, "geography_levels", ()))
         if geography_level not in geography_levels:
@@ -127,22 +133,52 @@ def metric_names_from_target_profile(
                 f"Ledger target profile row {target_id!r} has no non-empty "
                 f"{backend!r} metric_name binding."
             )
-        names.append(metric_name)
+        scope = _profile_area_scope_prefixes(target, geography_level)
+        if metric_name not in scopes_by_name:
+            scopes_by_name[metric_name] = [scope]
+            names.append(metric_name)
+            continue
+        # One metric bound by several nation-scoped families is one column
+        # (microcosm#929: the council-tax bands come from MHCLG, StatsWales
+        # and CTAXBASE, each scoped to its nation's GSS prefix); the area's
+        # prefix selects the target at bind time. Two rows that could claim
+        # the same area are still a duplicate.
+        if scope is None or any(
+            seen is None or seen & scope for seen in scopes_by_name[metric_name]
+        ):
+            duplicate_names.add(metric_name)
+        scopes_by_name[metric_name].append(scope)
 
     if not names:
         raise ValueError(
             f"Ledger target profile has no {backend!r} metrics for "
             f"area_type {area_type!r}."
         )
-    duplicate_names = sorted(
-        name for name in set(names) if sum(candidate == name for candidate in names) > 1
-    )
     if duplicate_names:
         raise ValueError(
             "Ledger target profile declares duplicate metric binding(s): "
-            f"{duplicate_names}."
+            f"{sorted(duplicate_names)}."
         )
     return tuple(names)
+
+
+def _profile_area_scope_prefixes(
+    target: Mapping[str, Any] | Any, geography_level: str
+) -> frozenset[str] | None:
+    """The GSS prefixes a profile row's ``area_scope`` claims at one level.
+
+    ``None`` when the row declares no scope for the level (it claims every
+    area of the level).
+    """
+
+    area_scope = _profile_get(target, "area_scope", None)
+    if not isinstance(area_scope, Mapping):
+        return None
+    level_scope = area_scope.get(geography_level)
+    if not isinstance(level_scope, Mapping):
+        return None
+    prefixes = frozenset(str(prefix) for prefix in level_scope.get("gss_prefixes", ()))
+    return prefixes or None
 
 
 def area_groups_from_codes(

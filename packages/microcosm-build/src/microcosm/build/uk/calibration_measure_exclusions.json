@@ -425,7 +425,7 @@
       "expires_on": "2026-12-08"
     },
     {
-      "name": "voa.council_tax_stock.band_h@E12000001",
+      "name": "mhclg.council_tax_stock.band_h@E12000001",
       "reason": "Spine support absent for band H in the North East region-tier cell: the spine carries no council-tax band-H household there (spine-m held 170 band-H households from 49 raw FRS households, none in the North East, North West or Yorkshire and the Humber; microcosm#762 A14), so the cell measures 0 against the VOA stock (-100% on the #905 spine-q comparison, docs/evidence/uk-region-tier-905/calibration-comparison.json) while the other 78 VOA region cells fit within 5%. The same class is signed for the local band-H family under council_tax_band_h_spine_support_absent; the cell binds when a spine vintage carries broader band-H support.",
       "tracking": "microcosm#796",
       "approved_by": "juaristi22",
@@ -434,7 +434,7 @@
       "expires_on": "2026-11-26"
     },
     {
-      "name": "voa.council_tax_stock.band_h@E12000002",
+      "name": "mhclg.council_tax_stock.band_h@E12000002",
       "reason": "Spine support absent for band H in the North West region-tier cell: the spine carries no council-tax band-H household there (spine-m held 170 band-H households from 49 raw FRS households, none in the North East, North West or Yorkshire and the Humber; microcosm#762 A14), so the cell measures 0 against the VOA stock (-100% on the #905 spine-q comparison, docs/evidence/uk-region-tier-905/calibration-comparison.json) while the other 78 VOA region cells fit within 5%. The same class is signed for the local band-H family under council_tax_band_h_spine_support_absent; the cell binds when a spine vintage carries broader band-H support.",
       "tracking": "microcosm#796",
       "approved_by": "juaristi22",
@@ -443,7 +443,7 @@
       "expires_on": "2026-11-26"
     },
     {
-      "name": "voa.council_tax_stock.band_h@E12000003",
+      "name": "mhclg.council_tax_stock.band_h@E12000003",
       "reason": "Spine support absent for band H in the Yorkshire and The Humber region-tier cell: the spine carries no council-tax band-H household there (spine-m held 170 band-H households from 49 raw FRS households, none in the North East, North West or Yorkshire and the Humber; microcosm#762 A14), so the cell measures 0 against the VOA stock (-100% on the #905 spine-q comparison, docs/evidence/uk-region-tier-905/calibration-comparison.json) while the other 78 VOA region cells fit within 5%. The same class is signed for the local band-H family under council_tax_band_h_spine_support_absent; the cell binds when a spine vintage carries broader band-H support.",
       "tracking": "microcosm#796",
       "approved_by": "juaristi22",

@@ -84,12 +84,13 @@ def _registry_for(prefix: str) -> tuple[list, TargetRegistry]:
     return refs, registry
 
 
-def test_national_voa_matrix_counts_only_its_region_for_every_band_and_total() -> None:
-    """Each region cell must count only that region's English band households.
+def test_national_mhclg_region_cells_count_only_their_region_for_every_band() -> None:
+    """Each composed region cell must count only that region's English band households.
 
-    The English VOA stock fans out over the nine English regions
-    (microcosm#905); a Welsh, Scottish or Northern Irish household never
-    enters any cell, and a Londoner never enters the North East's.
+    The English stock family binds the MHCLG taxbase authority rows composed
+    per region (microcosm#929, on the microcosm#905 tier); a Welsh, Scottish
+    or Northern Irish household never enters any cell, and a Londoner never
+    enters the North East's.
     """
 
     areas = (
@@ -101,12 +102,17 @@ def test_national_voa_matrix_counts_only_its_region_for_every_band_and_total() -
         ("NORTHERN_IRELAND", "NORTHERN_IRELAND"),
     )
     rows = [(country, region, band) for country, region in areas for band in "ABCDEFGH"]
-    refs, registry = _registry_for("voa.council_tax_stock.")
+    refs, registry = _registry_for("mhclg.council_tax_stock.")
     assert len(refs) == 81
-    assert {r.ledger_selector["geography_level"] for r in refs} == {"region"}
-    assert sorted({r.ledger_selector["geography_id"] for r in refs}) == [
+    assert {r.metadata["geography_level"] for r in refs} == {"region"}
+    assert sorted({r.metadata["geography_id"] for r in refs}) == [
         f"E1200000{index}" for index in range(1, 10)
     ]
+    # A composed cell selects its authorities' rows and declares the count.
+    assert {r.ledger_selector["geography_level"] for r in refs} == {"local_authority"}
+    assert {r.metadata["composed_from_level"] for r in refs} == {"local_authority"}
+    assert {r.value_operation for r in refs} == {"linear_combination"}
+    assert sum(int(r.metadata["composed_member_count"]) for r in refs) == 9 * 296
     adapter = UKFrameTargetAdapter(_region_frame(rows))
     result = materialize_uk_ledger_targets(
         adapter, registry, period=2025, band_edge_registry=registry
@@ -124,6 +130,36 @@ def test_national_voa_matrix_counts_only_its_region_for_every_band_and_total() -
         expected = [
             country == "ENGLAND" and r == region and (band is None or b == band)
             for country, r, b in rows
+        ]
+        np.testing.assert_array_equal(values, expected, err_msg=name)
+
+
+def test_national_welsh_country_rows_count_only_welsh_households_by_band() -> None:
+    """The StatsWales CT1 rows are one country control per band A-I."""
+
+    areas = (("ENGLAND", "LONDON"), ("WALES", "WALES"), ("SCOTLAND", "SCOTLAND"))
+    rows = [
+        (country, region, band) for country, region in areas for band in "ABCDEFGHI"
+    ]
+    refs, registry = _registry_for("welshgov.council_tax_stock.")
+    assert len(refs) == 10
+    assert {r.ledger_selector["geography_id"] for r in refs} == {"W92000004"}
+    assert {r.value_operation for r in refs} == {"linear_combination"}
+    adapter = UKFrameTargetAdapter(_region_frame(rows))
+    result = materialize_uk_ledger_targets(
+        adapter, registry, period=2025, band_edge_registry=registry
+    )
+    assert not result.skipped
+    problem = build_constraint_matrix(
+        adapter.to_frame(), registry.to_target_set(), weight_entity="household"
+    )
+    for name, values in zip(problem.names, problem.matrix.toarray(), strict=True):
+        target_id = name.split("@")[0]
+        band = (
+            target_id.rsplit("band_", 1)[-1].upper() if "band_" in target_id else None
+        )
+        expected = [
+            r == "WALES" and (band is None or b == band) for country, r, b in rows
         ]
         np.testing.assert_array_equal(values, expected, err_msg=name)
 
@@ -181,23 +217,33 @@ def test_national_ons_region_cells_count_only_their_region_at_person_grain() -> 
 
 def test_council_tax_band_cells_activate_and_defer_as_measured() -> None:
     membership = _membership()
-    expected_active = {
-        "a": 294,
-        "b": 294,
-        "c": 294,
-        "d": 294,
-        "e": 294,
-        "f": 294,
-        "g": 294,
-        "h": 0,
+    expected = {
+        "mhclg": ("abcdefgh", 296, {"h": 0}, 294),
+        "welshgov": ("abcdefghi", 22, {}, 22),
+        # Shetland band H has no band-H clone at K=15 (support deferral).
+        "scotgov": ("abcdefgh", 32, {"h": 31}, 32),
     }
-    for band, active_count in expected_active.items():
-        target_id = f"voa.council_tax_stock.by_area.band_{band}"
-        candidates = membership["targets"][target_id]["geography_levels"][
-            "local_authority"
-        ]["candidates"]
-        assert len(candidates) == 361
-        assert sum(row["status"] == "active" for row in candidates) == active_count
+    for source, (bands, roster, overrides, active_default) in expected.items():
+        for band in bands:
+            target_id = f"{source}.council_tax_stock.by_area.band_{band}"
+            level = membership["targets"][target_id]["geography_levels"][
+                "local_authority"
+            ]
+            candidates = level["candidates"]
+            # Each family is scoped to its nation's roster (microcosm#929).
+            assert len(candidates) == roster, target_id
+            assert sum(row["status"] == "active" for row in candidates) == (
+                overrides.get(band, active_default)
+            ), target_id
+    scopes = membership["area_scope_by_target_id"]
+    assert (
+        len(scopes["mhclg.council_tax_stock.by_area.band_a"]["local_authority"]) == 296
+    )
+    assert scopes["welshgov.council_tax_stock.by_area.band_i"]["local_authority"] == [
+        area_id
+        for area_id in _crosswalk()["levels"]["local_authority"]["area_ids"]
+        if area_id.startswith("W")
+    ]
 
 
 def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
@@ -207,63 +253,68 @@ def test_council_tax_signed_deferrals_pin_exact_gaps() -> None:
         if row["reason_id"].startswith("council_tax_"):
             by_reason.setdefault(row["reason_id"], []).append(row)
 
-    assert len(by_reason["council_tax_voa_scotland_absent"]) == 8
-    assert {
-        len(row["area_ids"]) for row in by_reason["council_tax_voa_scotland_absent"]
-    } == {32}
-    assert len(by_reason["council_tax_ni_domestic_rates"]) == 8
-    assert {
-        len(row["area_ids"]) for row in by_reason["council_tax_ni_domestic_rates"]
-    } == {11}
-    assert by_reason["council_tax_city_of_london_band_a_suppressed"][0]["area_ids"] == [
-        "E09000001"
-    ]
-    wales = by_reason["council_tax_wales_country_control_absent"]
-    expected_wales = tuple(
-        area_id
-        for area_id in _crosswalk()["levels"]["local_authority"]["area_ids"]
-        if area_id.startswith("W")
-    )
-    assert len(wales) == 8
-    assert {row["target_id"] for row in wales} == {
-        f"voa.council_tax_stock.by_area.band_{band}" for band in "abcdefgh"
-    }
-    assert {tuple(row["area_ids"]) for row in wales} == {expected_wales}
-    assert len(expected_wales) == 22
-    assert {row["defer_if_compiles"] for row in wales} == {True}
-    assert {
-        "no Wales country-level council-tax stock-by-band fact" in row["rationale"]
-        for row in wales
-    } == {True}
+    # The Scottish, Northern Irish, Welsh and City-of-London masks retired with
+    # the taxbase basis (microcosm#929): Scotland and Wales bind their own
+    # returns, Northern Ireland is outside every family's roster, and MHCLG
+    # publishes the City's band A.
+    assert set(by_reason) == {"council_tax_band_h_spine_support_absent"}
     band_h = by_reason["council_tax_band_h_spine_support_absent"]
     expected_english = tuple(
         area_id
         for area_id in _crosswalk()["levels"]["local_authority"]["area_ids"]
         if area_id.startswith("E")
     )
-    assert len(band_h) == 1
+    # England is wholly deferred (A14); Scotland defers the one council the
+    # rowwise support check refuses at K=15 (Shetland), the other 31 bind.
+    assert [(row["target_id"], len(row["area_ids"])) for row in band_h] == [
+        ("mhclg.council_tax_stock.by_area.band_h", 296),
+        ("scotgov.council_tax_stock.by_area.band_h", 1),
+    ]
     assert tuple(band_h[0]["area_ids"]) == expected_english
     assert len(expected_english) == 296
-    assert band_h[0]["defer_if_compiles"] is True
+    assert all(row["defer_if_compiles"] is True for row in band_h)
     assert "170 band-H households from 49 raw FRS households" in band_h[0]["rationale"]
+    assert band_h[1]["area_ids"] == ["S12000027"]
+    assert "zero household support" in band_h[1]["rationale"]
     # K=15 is the ruled clone count; the K=10 figure rides as history.
     assert (
         "76 of the 296 authorities draw no band-H household" in band_h[0]["rationale"]
     )
     assert "84 of 296 at K=10" in band_h[0]["rationale"]
-    assert "council_tax_wales_band_h_absent" not in by_reason
 
 
-def test_council_tax_activation_adds_2058_references() -> None:
+def test_council_tax_activation_binds_2511_references() -> None:
     membership = _membership()
     active = 0
-    for band in "abcdefgh":
-        target_id = f"voa.council_tax_stock.by_area.band_{band}"
-        candidates = membership["targets"][target_id]["geography_levels"][
-            "local_authority"
-        ]["candidates"]
+    for target_id, payload in membership["targets"].items():
+        if ".council_tax_stock.by_area." not in target_id:
+            continue
+        candidates = payload["geography_levels"]["local_authority"]["candidates"]
         active += sum(row["status"] == "active" for row in candidates)
-    assert active == 2_058
+    # 2,058 English A-G cells (microcosm#762) + 198 Welsh A-I + 256 Scottish
+    # A-H (microcosm#929); the 296 English band-H cells stay deferred.
+    assert active == 2_511
+
+
+def test_barnsley_and_sheffield_bind_their_2025_rows_through_the_code_aliases() -> None:
+    membership = _membership()
+    level = membership["targets"]["mhclg.council_tax_stock.by_area.band_a"][
+        "geography_levels"
+    ]["local_authority"]
+    by_area = {row["geography_id"]: row for row in level["candidates"]}
+    for area_id in ("E08000016", "E08000019"):
+        assert by_area[area_id]["status"] == "active"
+        assert by_area[area_id]["resolved_fact_period"] == "2025-10"
+    holds = [
+        row
+        for row in membership["uprating_holds"]
+        if row["target_id"].startswith("mhclg.council_tax_stock.by_area.")
+        and row["geography_id"] in ("E08000016", "E08000019")
+    ]
+    assert {row["from"] for row in holds} == {"2025-10"}
+    aliases = _crosswalk()["levels"]["local_authority"]["code_aliases"]
+    assert aliases["E08000016"]["alias_codes"] == ["E08000038"]
+    assert aliases["E08000019"]["alias_codes"] == ["E08000039"]
 
 
 def test_support_floor_deferrals_cover_the_two_authorities_remaining_cells() -> None:
@@ -272,14 +323,22 @@ def test_support_floor_deferrals_cover_the_two_authorities_remaining_cells() -> 
         for row in _membership()["signed_deferrals"]
         if row["reason_id"] == "local_authority_support_floor_excluded"
     ]
-    assert len(rows) == 24
-    assert sum(len(row["area_ids"]) for row in rows) == 43
+    # 24 local targets before microcosm#929; the three council-tax families
+    # add 25 by_area targets and retire eight, and the City's band A is no
+    # longer a separate suppression.
+    assert len(rows) == 41
+    assert sum(len(row["area_ids"]) for row in rows) == 78
     assert {
         area_id: sum(area_id in row["area_ids"] for row in rows)
         for area_id in ("E06000053", "E09000001")
-    } == {"E06000053": 20, "E09000001": 23}
+    } == {"E06000053": 37, "E09000001": 41}
     assert all(row["defer_if_compiles"] is True for row in rows)
-    assert all(not row["target_id"].endswith("band_h") for row in rows)
+    # The English band-H family is wholly deferred on spine support, so it
+    # carries no support-floor row; the Welsh and Scottish band-H targets do
+    # (the two English areas are outside their scope, so the rows are inert).
+    assert "mhclg.council_tax_stock.by_area.band_h" not in {
+        row["target_id"] for row in rows
+    }
     assert {
         "their rows stay in the solve through the constituency families and "
         "the national rows" in row["rationale"]
@@ -299,35 +358,38 @@ def test_a14_deferral_declarations_cover_only_currently_active_cells() -> None:
         for area_id in _crosswalk()["levels"]["local_authority"]["area_ids"]
         if area_id.startswith("E")
     )
-    assert len(band_h) == 1
-    assert band_h[0].target_id == "voa.council_tax_stock.by_area.band_h"
-    assert band_h[0].area_ids == expected_english
+    assert [(row.target_id, row.area_ids) for row in band_h] == [
+        ("mhclg.council_tax_stock.by_area.band_h", expected_english),
+        ("scotgov.council_tax_stock.by_area.band_h", ("S12000027",)),
+    ]
     assert len(expected_english) == 296
-    assert band_h[0].defer_if_compiles is True
+    assert all(row.defer_if_compiles for row in band_h)
 
     support = [
         row
         for row in declarations
         if row.reason_id == "local_authority_support_floor_excluded"
     ]
-    assert len(support) == 24
-    assert sum(len(row.area_ids) for row in support) == 43
+    assert len(support) == 41
+    assert sum(len(row.area_ids) for row in support) == 78
     by_area = {
         area_id: sum(area_id in row.area_ids for row in support)
         for area_id in ("E06000053", "E09000001")
     }
-    assert by_area == {"E06000053": 20, "E09000001": 23}
+    assert by_area == {"E06000053": 37, "E09000001": 41}
     assert all(row.defer_if_compiles for row in support)
-    assert all(not row.target_id.endswith("band_h") for row in support)
+    assert "mhclg.council_tax_stock.by_area.band_h" not in {
+        row.target_id for row in support
+    }
 
 
 def test_declared_deferral_roster_matching_no_crosswalk_area_refuses() -> None:
     crosswalk = copy.deepcopy(_crosswalk())
-    area_ids = crosswalk["levels"]["local_authority"]["area_ids"]
-    area_ids.remove("E09000001")
-    area_ids.append("E09999999")
+    area_ids = crosswalk["levels"]["constituency"]["area_ids"]
+    area_ids.remove("E14001416")
+    area_ids.append("E14999999")
 
-    with pytest.raises(ValueError, match="unmatched area id.*E09000001"):
+    with pytest.raises(ValueError, match="unmatched area id.*E14001416"):
         _area_signed_deferrals(load_uk_population_contract(), crosswalk)
 
 
