@@ -161,6 +161,11 @@
       "path": "tax_expenditure_reforms.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
+    },
+    {
+      "path": "childcare_attendance_source.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
     }
   ]
 }

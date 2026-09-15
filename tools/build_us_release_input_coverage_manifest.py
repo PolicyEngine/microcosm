@@ -39,6 +39,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from microcosm.build.us_runtime.childcare_attendance import (
+    US_CHILDCARE_ATTENDANCE_COLUMNS,
+)
+
 US_PACKAGE_DIR = (
     Path(__file__).resolve().parents[1]
     / "packages"
@@ -67,6 +71,7 @@ SSI_COUNTABLE_RESOURCE_ASSETS = (
 # Schedule-D leg. These later inputs are hard requirements because the
 # shipped validation provisions must bind.
 POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
+    *US_CHILDCARE_ATTENDANCE_COLUMNS,
     "fsla_overtime_premium",
     "qualified_passenger_vehicle_loan_interest",
     "traditional_401k_contributions_desired",
@@ -1464,6 +1469,10 @@ def build_manifest() -> dict:
                     "gate fails until the asset stage is restored (Deliverable "
                     "2). Currently absent — this is the intended red gate."
                 )
+            elif name in US_CHILDCARE_ATTENDANCE_COLUMNS:
+                column["note"] = (
+                    "Person-level NSECE attendance source extension (#915): requires persisted signal; missing inputs must not silently become engine defaults. The modeled age domain and outside-domain baseline policy are recorded in source coverage."
+                )
             elif name in POST_REFERENCE_COLUMN_NOTES:
                 column["note"] = POST_REFERENCE_COLUMN_NOTES[name]
             columns[name] = column
@@ -1517,7 +1526,7 @@ def build_manifest() -> dict:
             "qualified_passenger_vehicle_loan_interest, five desired "
             "retirement-contribution inputs, "
             "meets_ssi_disability_criteria required by shipped validation "
-            "probes, and the #282 Schedule-D capital-gain-distributions "
+            "probes, the three NSECE child attendance inputs (#915), and the #282 Schedule-D capital-gain-distributions "
             "route leg schedule_d_capital_gain_distributions "
             "(PolicyEngine/microcosm#462). "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "

@@ -1,0 +1,156 @@
+{
+  "candidate_checkpoint_sha256": "882c2ae6b683e2a04ce6c94f5f694f70750a8c2876e8108e3715a7f7095d1f66",
+  "engine_version": "1.819.0",
+  "scope": "January 2026 diagnostic; fixed parent ages and income",
+  "states": {
+    "CA": {
+      "ca_capp_eligible": {
+        "period": "2026-01",
+        "units": 2828,
+        "positive_units": 341,
+        "unique_counts": {
+          "False": 2487,
+          "True": 341
+        }
+      },
+      "ca_calworks_child_care_days_per_month": {
+        "period": "2026-01",
+        "units": 7866,
+        "positive_units": 0,
+        "unique_counts": {
+          "0": 7866
+        }
+      },
+      "ca_calworks_child_care_weeks_per_month": {
+        "period": "2026-01",
+        "units": 7866,
+        "positive_units": 0,
+        "unique_counts": {
+          "0": 7866
+        }
+      },
+      "ca_calworks_child_care_time_coefficient": {
+        "period": "2026-01",
+        "units": 7866,
+        "positive_units": 0,
+        "unique_counts": {
+          "0.0": 7866
+        }
+      },
+      "ca_calworks_child_care_payment_standard": {
+        "period": "2026-01",
+        "units": 7866,
+        "positive_units": 1531,
+        "unique_counts": {
+          "0.0": 6335,
+          "139.94": 886,
+          "227.58": 207,
+          "277.15": 83,
+          "277.58": 111,
+          "309.93": 188,
+          "406.72": 56
+        }
+      },
+      "ca_capp_payment": {
+        "period": "2026-01",
+        "units": 7866,
+        "positive_units": 0,
+        "unique_counts": {
+          "0.0": 7866
+        }
+      },
+      "pre_subsidy_childcare_expenses": {
+        "period": "2026",
+        "units": 7866,
+        "positive_units": 313,
+        "max": 90000.0
+      }
+    },
+    "MD": {
+      "md_ccs_eligible": {
+        "period": "2026-01",
+        "units": 1193,
+        "positive_units": 115,
+        "unique_counts": {
+          "False": 1078,
+          "True": 115
+        }
+      },
+      "md_ccs_provider_type": {
+        "period": "2026-01",
+        "units": 3268,
+        "positive_units": null,
+        "unique_counts": {
+          "NONE": 3268
+        }
+      },
+      "md_ccs_payment_rate": {
+        "period": "2026-01",
+        "units": 3268,
+        "positive_units": 0,
+        "unique_counts": {
+          "0.0": 3268
+        }
+      },
+      "md_ccs": {
+        "period": "2026-01",
+        "units": 1193,
+        "positive_units": 0,
+        "unique_counts": {
+          "0.0": 1193
+        }
+      }
+    },
+    "NV": {
+      "meets_ccdf_activity_test": {
+        "period": "2026",
+        "units": 1011,
+        "positive_units": 0,
+        "unique_counts": {
+          "False": 1011
+        }
+      },
+      "nv_ccdp_activity_eligible": {
+        "period": "2026-01",
+        "units": 1011,
+        "positive_units": 0,
+        "unique_counts": {
+          "False": 1011
+        }
+      },
+      "nv_ccdp_income_eligible": {
+        "period": "2026-01",
+        "units": 1011,
+        "positive_units": 149,
+        "unique_counts": {
+          "False": 862,
+          "True": 149
+        }
+      },
+      "is_ccdf_asset_eligible": {
+        "period": "2026",
+        "units": 1011,
+        "positive_units": 1011,
+        "unique_counts": {
+          "True": 1011
+        }
+      },
+      "nv_ccdp_eligible": {
+        "period": "2026-01",
+        "units": 1011,
+        "positive_units": 0,
+        "unique_counts": {
+          "False": 1011
+        }
+      },
+      "nv_ccdp": {
+        "period": "2026-01",
+        "units": 1011,
+        "positive_units": 0,
+        "unique_counts": {
+          "0.0": 1011
+        }
+      }
+    }
+  }
+}

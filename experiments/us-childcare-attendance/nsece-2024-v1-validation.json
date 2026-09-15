@@ -1,0 +1,412 @@
+{
+  "source": {
+    "study": "ICPSR39466.v1",
+    "source_year": 2024,
+    "measurement": "union_of_ECE_calendar_blocks_excluding_K8",
+    "monthly_conversion": "floor(days_per_week * 52 / 12 + 0.5)",
+    "national_representativeness_validated": false,
+    "artifacts": [
+      {
+        "sha256": "b42c69874de627273cdf698e4b8cdd39d3d4fdfef7d1295c239772cbc4e6c5a2",
+        "size_bytes": 122764947
+      },
+      {
+        "sha256": "c2e04a7a3eb6e187dc6d4496be1de77508354e05c6249725ae072f8a5f2ce18e",
+        "size_bytes": 269542239
+      }
+    ]
+  },
+  "source_child_count": 11745,
+  "source_attrition": [
+    {
+      "status": "age_out_of_scope",
+      "n": 134,
+      "child_weight": 633390.6468148227
+    },
+    {
+      "status": "ambiguous_calendar",
+      "n": 1222,
+      "child_weight": 5389746.35438953
+    },
+    {
+      "status": "complete",
+      "n": 7120,
+      "child_weight": 30778083.363609407
+    },
+    {
+      "status": "missing_calendar",
+      "n": 3095,
+      "child_weight": 14061828.648228496
+    },
+    {
+      "status": "partial_calendar",
+      "n": 174,
+      "child_weight": 847769.9869632281
+    }
+  ],
+  "under13_complete_weight_share": 0.6025769964530093,
+  "seed": 915,
+  "evaluation_design": "fixed household diagnostic split; not final population certification",
+  "match_columns": [
+    "age",
+    "region",
+    "parent_work_status"
+  ],
+  "training_children": 5721,
+  "heldout_children": 1399,
+  "unsupported_heldout_children": 3,
+  "unsupported_heldout_weight": 44357.422786916,
+  "household_overlap": 0,
+  "comparisons": [
+    {
+      "grouping": "all",
+      "group": "all",
+      "n": 1396,
+      "observed": {
+        "participation": 0.44824430561905076,
+        "days_per_week": 1.8230211691271492,
+        "hours_per_week": 13.652357584014506
+      },
+      "predicted": {
+        "participation": 0.4599107708663381,
+        "days_per_week": 1.792538633803043,
+        "hours_per_week": 13.094746582956082
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "0",
+      "n": 85,
+      "observed": {
+        "participation": 0.4250548518820099,
+        "days_per_week": 1.6272888682251536,
+        "hours_per_week": 13.475219723863841
+      },
+      "predicted": {
+        "participation": 0.4001916699342544,
+        "days_per_week": 1.1485583331917613,
+        "hours_per_week": 9.848867658204549
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "1",
+      "n": 110,
+      "observed": {
+        "participation": 0.5884762506267653,
+        "days_per_week": 2.113900852594937,
+        "hours_per_week": 15.642081332218696
+      },
+      "predicted": {
+        "participation": 0.546281902566076,
+        "days_per_week": 2.2283167307047886,
+        "hours_per_week": 18.453955475585847
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "2",
+      "n": 109,
+      "observed": {
+        "participation": 0.6638776717499305,
+        "days_per_week": 3.1543151104205833,
+        "hours_per_week": 31.753365600922873
+      },
+      "predicted": {
+        "participation": 0.6675303263843991,
+        "days_per_week": 2.153101731321593,
+        "hours_per_week": 19.06318009755674
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "3",
+      "n": 103,
+      "observed": {
+        "participation": 0.5305706046713187,
+        "days_per_week": 2.438879416678265,
+        "hours_per_week": 18.1763127663353
+      },
+      "predicted": {
+        "participation": 0.7244282687897443,
+        "days_per_week": 3.5317307356291354,
+        "hours_per_week": 31.010642124434668
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "4",
+      "n": 115,
+      "observed": {
+        "participation": 0.6728458027114763,
+        "days_per_week": 3.0618827336322867,
+        "hours_per_week": 21.645846223858417
+      },
+      "predicted": {
+        "participation": 0.7679834812046982,
+        "days_per_week": 3.0884408007199,
+        "hours_per_week": 22.77807200190468
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "5",
+      "n": 108,
+      "observed": {
+        "participation": 0.44276847764953914,
+        "days_per_week": 2.098241639215739,
+        "hours_per_week": 15.395426983272767
+      },
+      "predicted": {
+        "participation": 0.5098892206159185,
+        "days_per_week": 2.034518834281255,
+        "hours_per_week": 12.616686226131161
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "6",
+      "n": 114,
+      "observed": {
+        "participation": 0.3316947363796176,
+        "days_per_week": 1.2944962438275214,
+        "hours_per_week": 9.335974428220535
+      },
+      "predicted": {
+        "participation": 0.2502829109705292,
+        "days_per_week": 0.8489748828146265,
+        "hours_per_week": 4.095594700920569
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "7",
+      "n": 117,
+      "observed": {
+        "participation": 0.24608381033211157,
+        "days_per_week": 0.754974779448484,
+        "hours_per_week": 4.361409561749528
+      },
+      "predicted": {
+        "participation": 0.2816097434308538,
+        "days_per_week": 1.2011659245211868,
+        "hours_per_week": 8.378054810826729
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "8",
+      "n": 131,
+      "observed": {
+        "participation": 0.32031380136011167,
+        "days_per_week": 1.1016613467219087,
+        "hours_per_week": 5.702965816381827
+      },
+      "predicted": {
+        "participation": 0.3616416815522732,
+        "days_per_week": 1.3941828221834964,
+        "hours_per_week": 6.393127232702683
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "9",
+      "n": 96,
+      "observed": {
+        "participation": 0.34656269944559637,
+        "days_per_week": 1.3599782610569988,
+        "hours_per_week": 6.897690557738436
+      },
+      "predicted": {
+        "participation": 0.43275434548357045,
+        "days_per_week": 1.7893869343598068,
+        "hours_per_week": 12.468455293838895
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "10",
+      "n": 101,
+      "observed": {
+        "participation": 0.42051506588928955,
+        "days_per_week": 1.4586593950757574,
+        "hours_per_week": 9.973639524210338
+      },
+      "predicted": {
+        "participation": 0.24474633593038378,
+        "days_per_week": 0.9756762848157232,
+        "hours_per_week": 6.008858030670072
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "11",
+      "n": 112,
+      "observed": {
+        "participation": 0.3912389480210642,
+        "days_per_week": 1.7037510807546974,
+        "hours_per_week": 11.42197768791282
+      },
+      "predicted": {
+        "participation": 0.27792753401822695,
+        "days_per_week": 0.8090302361512782,
+        "hours_per_week": 7.743373773952352
+      }
+    },
+    {
+      "grouping": "age",
+      "group": "12",
+      "n": 95,
+      "observed": {
+        "participation": 0.42381513275076016,
+        "days_per_week": 1.3666357724773346,
+        "hours_per_week": 10.404992746238733
+      },
+      "predicted": {
+        "participation": 0.5490190603072337,
+        "days_per_week": 2.3346754573311457,
+        "hours_per_week": 13.09355527945929
+      }
+    },
+    {
+      "grouping": "region",
+      "group": "1",
+      "n": 176,
+      "observed": {
+        "participation": 0.512049571332397,
+        "days_per_week": 2.3364280889303273,
+        "hours_per_week": 14.798702419320156
+      },
+      "predicted": {
+        "participation": 0.6213815652348272,
+        "days_per_week": 2.367934702106529,
+        "hours_per_week": 16.14377173776723
+      }
+    },
+    {
+      "grouping": "region",
+      "group": "2",
+      "n": 326,
+      "observed": {
+        "participation": 0.4156690296156914,
+        "days_per_week": 1.6707757670228114,
+        "hours_per_week": 13.50512496474333
+      },
+      "predicted": {
+        "participation": 0.4156827588489637,
+        "days_per_week": 1.4698531060718576,
+        "hours_per_week": 11.050552277269526
+      }
+    },
+    {
+      "grouping": "region",
+      "group": "3",
+      "n": 460,
+      "observed": {
+        "participation": 0.39711564348080924,
+        "days_per_week": 1.7104278494216743,
+        "hours_per_week": 14.327410707539498
+      },
+      "predicted": {
+        "participation": 0.40609226757761724,
+        "days_per_week": 1.6125118356079156,
+        "hours_per_week": 12.357699085016328
+      }
+    },
+    {
+      "grouping": "region",
+      "group": "4",
+      "n": 434,
+      "observed": {
+        "participation": 0.4998856798556513,
+        "days_per_week": 1.7358423509265488,
+        "hours_per_week": 12.03035641734164
+      },
+      "predicted": {
+        "participation": 0.4542107213405013,
+        "days_per_week": 1.9027766791574927,
+        "hours_per_week": 13.681380128977889
+      }
+    },
+    {
+      "grouping": "parent_work_status",
+      "group": "-1",
+      "n": 21,
+      "observed": {
+        "participation": 0.2883481772975941,
+        "days_per_week": 0.9379764610750094,
+        "hours_per_week": 3.544637613886705
+      },
+      "predicted": {
+        "participation": 0.20256052180939443,
+        "days_per_week": 0.9965262439605058,
+        "hours_per_week": 4.923861455170338
+      }
+    },
+    {
+      "grouping": "parent_work_status",
+      "group": "0",
+      "n": 153,
+      "observed": {
+        "participation": 0.28587206721249403,
+        "days_per_week": 1.1510297379070302,
+        "hours_per_week": 9.85637208916276
+      },
+      "predicted": {
+        "participation": 0.33794446267152484,
+        "days_per_week": 1.381154311963177,
+        "hours_per_week": 8.994549754516147
+      }
+    },
+    {
+      "grouping": "parent_work_status",
+      "group": "1",
+      "n": 556,
+      "observed": {
+        "participation": 0.2544421472652274,
+        "days_per_week": 0.8655226862627626,
+        "hours_per_week": 5.479055121121177
+      },
+      "predicted": {
+        "participation": 0.3048755294132399,
+        "days_per_week": 0.9735429342912938,
+        "hours_per_week": 6.619958653424124
+      }
+    },
+    {
+      "grouping": "parent_work_status",
+      "group": "2",
+      "n": 666,
+      "observed": {
+        "participation": 0.6079397288949188,
+        "days_per_week": 2.598506997335398,
+        "hours_per_week": 20.1129358627005
+      },
+      "predicted": {
+        "participation": 0.591426968065257,
+        "days_per_week": 2.435925494751169,
+        "hours_per_week": 18.361765426147866
+      }
+    }
+  ],
+  "production_ready": false,
+  "limitations": [
+    "Only complete, unambiguous calendars enter this holdout; source selection remains unvalidated.",
+    "The diagnostic matches age and caller-specified covariates; it is not a nationally validated fitted model.",
+    "Sibling assignments, mixed providers, older-child care and scalar monthly conversion need validation.",
+    "No full Microcosm population build or state CCDF distribution is certified by this source-only report."
+  ],
+  "candidate_frame_written": true,
+  "environment": {
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "microcosm-build": "0.1.0",
+    "microcosm-frame": "0.1.0",
+    "python": "3.13.5"
+  },
+  "code_sha256": {
+    "prepare_us_childcare_attendance.py": "5b83f0e3fb6b2b1e4c4264ffc594a1daefa1de3cd1d05f6bbadeb381d3b7bc88",
+    "childcare_attendance.py": "f7fede91b10ed5384a7197c1413958c5e526c47300b20e9248b08f12f46168b8",
+    "nsece_childcare.py": "39100db1e7ede461c37c0e6259a274233074d7838ec61616ed5d62302eb377ed"
+  }
+}

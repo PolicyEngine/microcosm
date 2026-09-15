@@ -1,0 +1,47 @@
+{
+  "date": "2026-09-15",
+  "people": 166321,
+  "households": 57240,
+  "under13_children": 31889,
+  "checkpoint_sha256": "e9d363aa5a10a611c751c704017edd47c6ec8c2ba583bb7124b27514ba15d69e",
+  "native_sha256": "937c0c0c9798f0cf9e015fc4d5bed204342480bf93a415d94d3080d66f20cb6f",
+  "previous_native_sha256": "be04c3fe14763bb5d40fbb7057763cec6ffb69e0a43a021c2d0b117d881b54d7",
+  "source_stage_report_sha256": "3d54dd35857a825679eec8a0d97e352541a673e257ce886aaf37d9c1a8b6bf9a",
+  "sensitivity_report_sha256": "05c0bedf2b59de80e0645005e4e10ec46c083dfe425f5d88342172af2812bff5",
+  "attendance_recipe": {
+    "code_sha256": {
+      "childcare_attendance.py": "da00ef1fb45232a731bd4a3b33d93cd0aeac0682b28d50e4d53cb79db12ce96e",
+      "childcare_attendance_receipt.py": "0950fce7f372ca4b240cd055c931f5f8fe070223fd68504a3ea9cfbc4e16c645",
+      "childcare_attendance_stage.py": "42e777b0edfc813d79204bc2932fe429d6a48cd2866397560a7386cbee54dadb",
+      "childcare_population.py": "19fef5e4cc1838734783c2eb911f556596256cf093fb1063a403a6eadf49d04e",
+      "nsece_childcare.py": "affc8ac5a3ce853e2ef8b062c51a1801a15573cbcbf6eacc2c093334a1d12c11",
+      "nsece_childcare_bridge.py": "70a7edea8b28c6da21ff4fa9bb220766a3e6cd714926684af29bdba1a8421b0a",
+      "nsece_childcare_dependence.py": "bf9ff3a1992d16c75fc74b8c17634791739669f0ecab4382fdf59a6e6c3c424c"
+    },
+    "contract_sha256": "ae648c6cb0e2838fdf142975e9c536eb0683d9630fd1738096d524222ffb01dc",
+    "runtime_versions": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "policyengine-us": "1.819.0"
+    }
+  },
+  "content_binding_sha256": "db79754d13221f083d9ee56bd2efbc293039790468c8145ceea4755aa3b21d41",
+  "verified_native_loaders": [
+    "microcosm.build.us_runtime.h5_io.load_legacy_calibrated_us_h5",
+    "microcosm.build.us_runtime.l0_refit_export.load_us_frame"
+  ],
+  "exact_attendance_matches_sensitivity_candidate": true,
+  "exact_sibling_diagnostics_match_previous_execution": true,
+  "household_weights_unchanged_on_native_reload": true,
+  "original_columns_and_period_verified_by_source_stage_export": true,
+  "difference_since_sensitivity_run": "Equivalent explicit column reindexing and type annotations for the repository AST guard, plus a sequence-based private receipt inventory to avoid quadratic metadata serialization; final attendance arrays and diagnostic values compare exactly.",
+  "build_wheel_sha256": "bf027a1814f8e374496d3ca42d4ed4b432e5a5e45290480f6c1c62861c3a0cde",
+  "verification_code_sha256": "203ef9ddacc8bb579b3acbe8a754fac5b2781f2f14f9b6125d179f5a94fb545d",
+  "changed_recipe_files_since_sensitivity": [
+    "childcare_attendance_stage.py",
+    "childcare_attendance_receipt.py"
+  ],
+  "sensitivity_model_and_evaluator_code_unchanged": true,
+  "engine_version": "1.819.0",
+  "production_ready": false
+}

@@ -519,6 +519,12 @@ def load_us_frame(path: str | Path) -> Frame:
         US_SCHEMA,
         {"household": Weights(weights, WeightKind.CALIBRATED)},
     )
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        restore_native_childcare_receipt,
+    )
+
+    frame = restore_native_childcare_receipt(path, frame)
+    assert_h5_unchanged(path, sha256, consumer=consumer)
     refuse_denied_frame(frame, consumer=consumer)
     return frame
 
