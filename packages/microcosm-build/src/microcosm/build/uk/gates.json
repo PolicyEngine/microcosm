@@ -233,13 +233,13 @@
         "stage": "lcfs_consumption",
         "check": "energy_rake",
         "maximum_relative_deviation_by_margin": {
-          "income": 0.05,
-          "tenure": 0.05,
-          "accommodation": 0.05,
+          "income": 0.02,
+          "tenure": 0.02,
+          "accommodation": 0.01,
           "region": 0.001
         }
       },
-      "notes": "Stage-time NEED check (microcosm#890 F, Mar\u00eda's ruling 2026-09-15): the post-imputation kWh rake must fit the vendored NEED 2023 mean kWh at design weights, electricity over every household of a cell and gas over its gas-connected households, per margin (income band, tenure, property type, region) and fuel, within the pinned allowance; region is swept last and fits exactly, the earlier margins settle to the pinned baseline. Replaces the two NEED mean-spend anchors that uk_aggregate_admin measured on the calibrated frame, where the bound ONS 04.5 total governs."
+      "notes": "Stage-time NEED check (microcosm#890 F, Mar\u00eda's ruling 2026-09-15): the post-imputation kWh rake must fit the vendored NEED 2023 mean kWh at design weights, electricity over every household of a cell and gas over its gas-connected households, per margin (income band, tenure, property type, region) and fuel, within the pinned allowance; region is swept last and fits exactly, the earlier margins settle to the pinned baseline (spine-s3, 2026-09-15: income 1.65 %, tenure 1.29 %, accommodation 0.83 %, region 0.00 %; allowances 2 %, 2 %, 1 %, 0.1 %). Replaces the two NEED mean-spend anchors that uk_aggregate_admin measured on the calibrated frame, where the bound ONS 04.5 total governs."
     },
     {
       "id": "uk_stage_etb_vat_support",
