@@ -73,7 +73,11 @@ Each release must include `build_manifest.json`, `release_manifest.json`, and
 `us_source_coverage.json`. The release manifest records the build environment
 under `build.built_with_*_package` and separately records certified runtime
 compatibility through `compatible_model_packages` and `compatible_core_packages`
-using PEP 440 specifiers.
+using PEP 440 specifiers. By default those entries pin exactly the versions the
+build measured. A model entry the publisher deliberately widened
+instead carries `"basis": "publisher_claim"` and a `declared_by` naming who is
+accountable for the claim; the loader honours any specifier that contains the
+built version, whichever way the entry was produced.
 
 Use `latest.json` to discover the current release and its contract file paths;
 use the release id/tag in artifact revisions when loading an immutable release.

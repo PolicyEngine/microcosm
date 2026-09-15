@@ -211,9 +211,27 @@ def main(argv: list[str] | None = None) -> int:
         tag_only=args.tag_only,
         evidence=args.evidence,
     )
+    from microcosm.data.source_enrichment import recorded_narrowed_claims
+
+    # A re-certification that reverted a declared compatibility range to the
+    # exact pin warned in the terminal that ran it, days and an operator ago.
+    # Both paths out of here say so, because publication does not require the
+    # preflight first: tools/publish_release.sh passes its arguments straight
+    # through. stdout carries the machine-readable verdict, stderr the record
+    # for whoever is reading the terminal.
+    narrowed = recorded_narrowed_claims(Path(args.release_dir))
+    if narrowed:
+        print(
+            "note: this release records a compatibility narrowing from an "
+            f"earlier certification: {json.dumps(narrowed)}",
+            file=sys.stderr,
+        )
     if args.preflight_only:
         prepare_release(Path(args.release_dir), **preparation_options)
-        print(json.dumps({"valid": True, "published": False}))
+        preflight = {"valid": True, "published": False}
+        if narrowed:
+            preflight["narrowed_claims"] = narrowed
+        print(json.dumps(preflight))
         return 0
 
     pointer = publish_release(

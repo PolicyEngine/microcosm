@@ -1,3 +1,192 @@
+# Publisher compatibility range at source-enrichment certification
+
+Lane: `max/certify-compatible-model-range-20260914`, off `origin/main` at
+`18271b28d`. Started 2026-09-14. Everything below the `---` rule at the end of
+this section is prior-lane history; see "Root journals are history, not state"
+in `CLAUDE.md`.
+
+## State
+
+Pushed as draft PR
+[#928](https://github.com/PolicyEngine/microcosm/pull/928). No publication of
+any kind: this lane changes producer/validator source only, and builds,
+certifies and publishes no artifact.
+
+An adversarial review lane run against this worktree wrote into it while it
+worked: a reviewer checked out `origin/main` copies of the changed files for a
+byte-for-byte default-path comparison, and a `git add -A` in this session
+committed and pushed that reverted tree as `4b0ae3624`, briefly deleting the
+feature from the PR and committing a reviewer's scratch test module. The branch
+was reset to `8f82d0c6a` and the two intended commits reapplied; `git diff
+8f82d0c6a <head>` is now exactly the docs and journal changes, with the feature
+and test files byte-identical to `8f82d0c6a`. Review lanes must run in their own
+worktree, not this one.
+
+## Problem
+
+`certify_source_enrichment` writes
+`compatible_{model,core}_packages = [{"name": pkg, "specifier": "==<tested version>"}]`
+over whatever the candidate manifest held (`source_enrichment.py:940-942`), and
+`_check_compatibility` then requires exactly that list at every later validation,
+including publish preflight (`source_enrichment.py:610-615`). The contract layer
+(`contract.py::_check_compatible_package_entries`) and both consumers (Microcosm
+`loader.py::_package_certification`, policyengine.py
+`provenance/certification.py::validate_release_manifest`) already accept any PEP
+440 specifier set that contains the built-with version — so the exact pin is a
+producer-tooling choice, not a schema limit. The consequence: each country patch
+release moves the binding rather than widening it, and a data release whose H5
+bytes are unchanged still needs re-certification.
+
+## Plan
+
+1. Add a validated publisher claim at certification time, recorded in both
+   `release_manifest.json` and `source_enrichment.json`, with the default path
+   byte-identical to today.
+2. Relax the certification-time equality gate to "equals the default exact pin,
+   or equals the claim the report records", keeping every other guard.
+3. Tests for accept/reject/default/consumer-read.
+4. Docs: when a range is legitimate and when it is not.
+
+## Done
+
+- Read both gates, the contract layer, both consumers and the 2026-09-12 dry-run
+  report that motivated the change.
+- `--compatible-model-specifier` / `--compatibility-claim-declared-by` on the
+  source-enrichment CLI and `certify_source_enrichment`, validated by
+  `parse_compatibility_claim_requirement` (PEP 508, names the built-with
+  package, no URL/extras/marker) and `compatibility_claim_entry` (valid and
+  non-empty PEP 440 set, contains the tested version under the consumers' own
+  containment, bounded above, accountable declarer).
+- The claim recorded in `source_enrichment.json`
+  (`compatibility.publisher_claims.model`) and `release_manifest.json`
+  (`compatible_model_packages[0]`, `basis: publisher_claim`, `declared_by`),
+  cross-checked at every later validation so a manifest widened after
+  certification has no declaration behind it.
+- `contract.py` refuses a `publisher_claim` basis with no declarer, and a
+  declarer with no basis, for every release type.
+- 20 tests across `test_source_enrichment.py` and `test_contract.py`;
+  `packages/microcosm-data/tests/` 550 passed, 2 skipped; `ruff check .` clean;
+  `tools/ci_test_groups.py --verify` ok.
+- Docs: a "Declaring a publisher compatibility range" section in
+  `docs/us-native-spm-role-source-enrichment.md` with when to use a range and
+  when not to, a note in the `microcosm-data` README, and a changelog fragment.
+
+## Second session, 2026-09-14 evening
+
+The lane was re-entered after the first session ended at `a4e7e131c`. Nothing
+was rewritten: the feature and test files are untouched, and this session's job
+was to confirm the branch rather than extend it. Done here:
+
+- `packages/microcosm-data/tests/` re-run from scratch in the lane venv: 565
+  passed, 2 skipped, matching what the PR body claims.
+- A second, independent adversarial pass over the branch, run out of two
+  detached review worktrees so no reviewer could write into this one (the
+  collision recorded above must not repeat): PEP 440 containment parity against
+  both consumers, guard-preservation and bypass, wrapper accept/refuse measured
+  rather than described, mutation testing of every new guard, a claims audit of
+  the PR body and docs, and a blast-radius sweep for anything that reads
+  `compatible_model_packages`.
+
+## Third session, 2026-09-14 — second-pass review, part two
+
+The second-pass review (`review-928-r2.md`, written against `7cb8eae6e`)
+confirmed the six earlier fixes and left five items. This session applies them,
+each with a test that fails before and passes after.
+
+- **M1** — the boundedness guard bounds a claim above and never below, so
+  `policyengine-us<2.1` over a 2.0.1 build is accepted and certifies a consumer
+  running 0.9.0. Add a lower-bound probe.
+- **L1** — `compatibility.narrowed_claims` is written and never read; surface it
+  in the validation/preflight output.
+- **L2** — the "pass the flags" remediation suffix fires even when the flags
+  were passed this run; gate it on the claim being absent.
+- **L3** — the narrowing loop calls a Core pin change a narrowed "claim",
+  although no producer can declare a Core range; reword.
+- **I2** — doc only: a prerelease built-with version cannot carry a range, so
+  the exact default pin is the only option there. (Filed as such; the premise
+  did not survive measurement — see "Done".)
+
+### Done
+
+- **M1.** A third boundedness probe in `compatibility_claim_entry` asks whether
+  the claim still admits `Version(f"{tested.epoch}!0")`. Measured first:
+  `Version("0") in SpecifierSet("<2.1")` is `True`, and `False` for
+  `>=2.0.1,<2.1`, `~=2.0.1`, `==2.0.*` and `>=2.0.1,<3`. `<2.1` and `<=2.0.5`
+  moved from the accepted parameters to the refused ones, a
+  certification-level `policyengine-us<2` case was added, and the next-major
+  error text now cites `'>=2.0.1,<2.1'` instead of the `'<2.1'` the new probe
+  refuses. Four tests failed before, pass after. The probe carries the tested
+  version's epoch because a claim may mix epochs: over a `1!2.0.1` build,
+  `>=2.0.1,<1!2.1` admits `1!0` while excluding a bare `Version("0")`. The
+  first draft justified that backwards — claiming an epoch-0 zero sits outside
+  an epoch-bearing claim, when `Version("0") in SpecifierSet("<1!2.1")` is
+  `True` — and its test survived replacing the probe with a bare
+  `Version("0")`. Corrected after the third pass; the test now uses the
+  mixed-epoch claim and kills that mutant.
+- **L1.** `recorded_narrowed_claims` reads the record back, and both validation
+  (`python -m microcosm.data.source_enrichment` without `--certify`) and
+  `microcosm-publish-release --preflight-only` print `narrowed_claims` beside
+  their verdict when a bundle carries one; publication repeats it on stderr,
+  since reaching publication does not require running the preflight first.
+  It reports rather than gates: an absent or malformed record reads as no
+  record. Three tests failed before.
+- **L2.** The "pass the flags" suffix is gated on `claim_specifier is None`.
+  Both branches tested through a re-certification that tightens a declared
+  range (`>=1.998.0,<2` → `>=1.999.0,<2`): warns, no suffix.
+- **L3.** Message construction moved to `_narrowing_notice`; Core reads "moves
+  the policyengine-core compatibility pin". The Core branch turns out to be
+  unreachable through `certify_source_enrichment` — the input gate re-runs the
+  loader qualification and requires the recorded receipt to equal the runtime,
+  so a moved Core version is refused first. Both the wording and that wall are
+  now pinned by tests.
+- **I2.** The review's premise was wrong and the docs say the accurate thing
+  instead. Installed `packaging` 26.2 matches prereleases by default
+  (`SpecifierSet.contains` documents it; `Version("2.1.0rc1") in
+  SpecifierSet(">=2.0.1,<2.2")` is `True`). The real constraint is ordering: a
+  prerelease sorts below its own release, so `>=2.0.1,<2.1` and `~=2.0.1`
+  exclude a `2.0.1rc1` build while `>=2.0.1rc1,<2.1` and `==2.0.*` reach it and
+  pass all three probes. A characterization test pins all five outcomes; it
+  passes before and after.
+- `packages/microcosm-data/tests/` 611 passed, 2 skipped; the two named files
+  379 passed; `ruff check` and `ruff format --check` clean on
+  `packages/microcosm-data` and on every changed `.py`; repo-wide `ruff check`
+  clean; `tools/ci_test_groups.py --verify` ok.
+
+### Third adversarial pass
+
+Five read-only reviewers over the five changes (guard correctness, reporting
+path, wording and reachability, docs/claims audit, test quality), each finding
+put to an independent refuter: 33 raised, 2 survived. Both are fixed.
+
+- **The epoch rationale was a fabricated mechanism, and its test was inert.**
+  The comment and docstring said an epoch-0 zero sits outside an epoch-bearing
+  claim; `Version("0") in SpecifierSet("<1!2.1")` is `True`. The verifier
+  mutated the probe to a bare `Version("0")` and the whole file stayed green —
+  the test named for the epoch carry survived dropping it. The carry is
+  justified by mixed-epoch claims instead (`>=2.0.1,<1!2.1` over `1!2.0.1`
+  admits `1!0` and not `0`), which is the case the test now uses; the mutant
+  fails it.
+- **The record reached the preflight and not the publish run.** Already closed
+  mid-flight, before the pass reported it: publication repeats it on stderr,
+  since `tools/publish_release.sh` passes its arguments straight through and
+  the runbook's "remove `--preflight-only`" step is a habit, not a gate.
+
+Two refuted findings were worth acting on anyway. The documented probe residue
+is now executable on both sides (`<2.1,!=0` admits `0.9.0` exactly as
+`>=2.0.1,!=3.0.0,!=99999.0.0` admits `5.0`), so the sentence describing the
+guard's limit cannot drift from it. And `--certify` now reports the narrowing
+it caused in its own verdict, with `_narrowed_claims` giving all four verdicts
+one tolerance so none can report a bundle differently from the others.
+
+### Next
+
+- PR CI. Do not merge; do not mark ready.
+
+## Next
+
+- Whole-workspace run and PR CI to finish; hand to human review. Do not merge;
+  do not publish.
+
 # Grouped solver x calibration target snapshots integration - 2026-09-12
 
 Historical note, 12 September 2026: this grouped-lane journal was subsequently
