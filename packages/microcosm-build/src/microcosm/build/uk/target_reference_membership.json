@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-df35af7e-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 617,
-  "contract_target_count": 218,
-  "active_reference_count": 603,
+  "candidate_count": 627,
+  "contract_target_count": 228,
+  "active_reference_count": 613,
   "status_counts": {
-    "active": 603,
+    "active": 613,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 7
   },
@@ -1034,7 +1034,7 @@
       "geography_level": "country",
       "geography_id": "K02000001"
     },
-    "voa.council_tax_stock.band_a": {
+    "mhclg.council_tax_stock.band_a": {
       "geography_fanout": [
         {
           "geography_level": "region",
@@ -1072,359 +1072,741 @@
           "geography_level": "region",
           "geography_id": "E12000009"
         }
-      ]
+      ],
+      "geography_composition": {
+        "E12000001": {
+          "member_level": "local_authority",
+          "member_count": 12
+        },
+        "E12000002": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000003": {
+          "member_level": "local_authority",
+          "member_count": 15
+        },
+        "E12000004": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000005": {
+          "member_level": "local_authority",
+          "member_count": 30
+        },
+        "E12000006": {
+          "member_level": "local_authority",
+          "member_count": 45
+        },
+        "E12000007": {
+          "member_level": "local_authority",
+          "member_count": 33
+        },
+        "E12000008": {
+          "member_level": "local_authority",
+          "member_count": 64
+        },
+        "E12000009": {
+          "member_level": "local_authority",
+          "member_count": 27
+        }
+      }
+    },
+    "mhclg.council_tax_stock.band_b": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ],
+      "geography_composition": {
+        "E12000001": {
+          "member_level": "local_authority",
+          "member_count": 12
+        },
+        "E12000002": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000003": {
+          "member_level": "local_authority",
+          "member_count": 15
+        },
+        "E12000004": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000005": {
+          "member_level": "local_authority",
+          "member_count": 30
+        },
+        "E12000006": {
+          "member_level": "local_authority",
+          "member_count": 45
+        },
+        "E12000007": {
+          "member_level": "local_authority",
+          "member_count": 33
+        },
+        "E12000008": {
+          "member_level": "local_authority",
+          "member_count": 64
+        },
+        "E12000009": {
+          "member_level": "local_authority",
+          "member_count": 27
+        }
+      }
+    },
+    "mhclg.council_tax_stock.band_c": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ],
+      "geography_composition": {
+        "E12000001": {
+          "member_level": "local_authority",
+          "member_count": 12
+        },
+        "E12000002": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000003": {
+          "member_level": "local_authority",
+          "member_count": 15
+        },
+        "E12000004": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000005": {
+          "member_level": "local_authority",
+          "member_count": 30
+        },
+        "E12000006": {
+          "member_level": "local_authority",
+          "member_count": 45
+        },
+        "E12000007": {
+          "member_level": "local_authority",
+          "member_count": 33
+        },
+        "E12000008": {
+          "member_level": "local_authority",
+          "member_count": 64
+        },
+        "E12000009": {
+          "member_level": "local_authority",
+          "member_count": 27
+        }
+      }
+    },
+    "mhclg.council_tax_stock.band_d": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ],
+      "geography_composition": {
+        "E12000001": {
+          "member_level": "local_authority",
+          "member_count": 12
+        },
+        "E12000002": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000003": {
+          "member_level": "local_authority",
+          "member_count": 15
+        },
+        "E12000004": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000005": {
+          "member_level": "local_authority",
+          "member_count": 30
+        },
+        "E12000006": {
+          "member_level": "local_authority",
+          "member_count": 45
+        },
+        "E12000007": {
+          "member_level": "local_authority",
+          "member_count": 33
+        },
+        "E12000008": {
+          "member_level": "local_authority",
+          "member_count": 64
+        },
+        "E12000009": {
+          "member_level": "local_authority",
+          "member_count": 27
+        }
+      }
+    },
+    "mhclg.council_tax_stock.band_e": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ],
+      "geography_composition": {
+        "E12000001": {
+          "member_level": "local_authority",
+          "member_count": 12
+        },
+        "E12000002": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000003": {
+          "member_level": "local_authority",
+          "member_count": 15
+        },
+        "E12000004": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000005": {
+          "member_level": "local_authority",
+          "member_count": 30
+        },
+        "E12000006": {
+          "member_level": "local_authority",
+          "member_count": 45
+        },
+        "E12000007": {
+          "member_level": "local_authority",
+          "member_count": 33
+        },
+        "E12000008": {
+          "member_level": "local_authority",
+          "member_count": 64
+        },
+        "E12000009": {
+          "member_level": "local_authority",
+          "member_count": 27
+        }
+      }
+    },
+    "mhclg.council_tax_stock.band_f": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ],
+      "geography_composition": {
+        "E12000001": {
+          "member_level": "local_authority",
+          "member_count": 12
+        },
+        "E12000002": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000003": {
+          "member_level": "local_authority",
+          "member_count": 15
+        },
+        "E12000004": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000005": {
+          "member_level": "local_authority",
+          "member_count": 30
+        },
+        "E12000006": {
+          "member_level": "local_authority",
+          "member_count": 45
+        },
+        "E12000007": {
+          "member_level": "local_authority",
+          "member_count": 33
+        },
+        "E12000008": {
+          "member_level": "local_authority",
+          "member_count": 64
+        },
+        "E12000009": {
+          "member_level": "local_authority",
+          "member_count": 27
+        }
+      }
+    },
+    "mhclg.council_tax_stock.band_g": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ],
+      "geography_composition": {
+        "E12000001": {
+          "member_level": "local_authority",
+          "member_count": 12
+        },
+        "E12000002": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000003": {
+          "member_level": "local_authority",
+          "member_count": 15
+        },
+        "E12000004": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000005": {
+          "member_level": "local_authority",
+          "member_count": 30
+        },
+        "E12000006": {
+          "member_level": "local_authority",
+          "member_count": 45
+        },
+        "E12000007": {
+          "member_level": "local_authority",
+          "member_count": 33
+        },
+        "E12000008": {
+          "member_level": "local_authority",
+          "member_count": 64
+        },
+        "E12000009": {
+          "member_level": "local_authority",
+          "member_count": 27
+        }
+      }
+    },
+    "mhclg.council_tax_stock.band_h": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ],
+      "geography_composition": {
+        "E12000001": {
+          "member_level": "local_authority",
+          "member_count": 12
+        },
+        "E12000002": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000003": {
+          "member_level": "local_authority",
+          "member_count": 15
+        },
+        "E12000004": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000005": {
+          "member_level": "local_authority",
+          "member_count": 30
+        },
+        "E12000006": {
+          "member_level": "local_authority",
+          "member_count": 45
+        },
+        "E12000007": {
+          "member_level": "local_authority",
+          "member_count": 33
+        },
+        "E12000008": {
+          "member_level": "local_authority",
+          "member_count": 64
+        },
+        "E12000009": {
+          "member_level": "local_authority",
+          "member_count": 27
+        }
+      }
+    },
+    "mhclg.council_tax_stock.total": {
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ],
+      "geography_composition": {
+        "E12000001": {
+          "member_level": "local_authority",
+          "member_count": 12
+        },
+        "E12000002": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000003": {
+          "member_level": "local_authority",
+          "member_count": 15
+        },
+        "E12000004": {
+          "member_level": "local_authority",
+          "member_count": 35
+        },
+        "E12000005": {
+          "member_level": "local_authority",
+          "member_count": 30
+        },
+        "E12000006": {
+          "member_level": "local_authority",
+          "member_count": 45
+        },
+        "E12000007": {
+          "member_level": "local_authority",
+          "member_count": 33
+        },
+        "E12000008": {
+          "member_level": "local_authority",
+          "member_count": 64
+        },
+        "E12000009": {
+          "member_level": "local_authority",
+          "member_count": 27
+        }
+      }
+    },
+    "welshgov.council_tax_stock.band_a": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "welshgov.council_tax_stock.band_b": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "welshgov.council_tax_stock.band_c": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "welshgov.council_tax_stock.band_d": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "welshgov.council_tax_stock.band_e": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "welshgov.council_tax_stock.band_f": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "welshgov.council_tax_stock.band_g": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "welshgov.council_tax_stock.band_h": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "welshgov.council_tax_stock.band_i": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "welshgov.council_tax_stock.total": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
     },
     "scotgov.council_tax_stock.band_a": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
-    "voa.council_tax_stock.band_b": {
-      "geography_fanout": [
-        {
-          "geography_level": "region",
-          "geography_id": "E12000001"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000002"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000003"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000004"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000005"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000006"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000007"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000008"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000009"
-        }
-      ]
-    },
     "scotgov.council_tax_stock.band_b": {
       "geography_level": "country",
       "geography_id": "S92000003"
-    },
-    "voa.council_tax_stock.band_c": {
-      "geography_fanout": [
-        {
-          "geography_level": "region",
-          "geography_id": "E12000001"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000002"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000003"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000004"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000005"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000006"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000007"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000008"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000009"
-        }
-      ]
     },
     "scotgov.council_tax_stock.band_c": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
-    "voa.council_tax_stock.band_d": {
-      "geography_fanout": [
-        {
-          "geography_level": "region",
-          "geography_id": "E12000001"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000002"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000003"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000004"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000005"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000006"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000007"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000008"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000009"
-        }
-      ]
-    },
     "scotgov.council_tax_stock.band_d": {
       "geography_level": "country",
       "geography_id": "S92000003"
-    },
-    "voa.council_tax_stock.band_e": {
-      "geography_fanout": [
-        {
-          "geography_level": "region",
-          "geography_id": "E12000001"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000002"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000003"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000004"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000005"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000006"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000007"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000008"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000009"
-        }
-      ]
     },
     "scotgov.council_tax_stock.band_e": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
-    "voa.council_tax_stock.band_f": {
-      "geography_fanout": [
-        {
-          "geography_level": "region",
-          "geography_id": "E12000001"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000002"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000003"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000004"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000005"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000006"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000007"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000008"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000009"
-        }
-      ]
-    },
     "scotgov.council_tax_stock.band_f": {
       "geography_level": "country",
       "geography_id": "S92000003"
-    },
-    "voa.council_tax_stock.band_g": {
-      "geography_fanout": [
-        {
-          "geography_level": "region",
-          "geography_id": "E12000001"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000002"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000003"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000004"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000005"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000006"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000007"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000008"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000009"
-        }
-      ]
     },
     "scotgov.council_tax_stock.band_g": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
-    "voa.council_tax_stock.band_h": {
-      "geography_fanout": [
-        {
-          "geography_level": "region",
-          "geography_id": "E12000001"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000002"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000003"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000004"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000005"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000006"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000007"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000008"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000009"
-        }
-      ]
-    },
     "scotgov.council_tax_stock.band_h": {
       "geography_level": "country",
       "geography_id": "S92000003"
-    },
-    "voa.council_tax_stock.total": {
-      "geography_fanout": [
-        {
-          "geography_level": "region",
-          "geography_id": "E12000001"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000002"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000003"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000004"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000005"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000006"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000007"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000008"
-        },
-        {
-          "geography_level": "region",
-          "geography_id": "E12000009"
-        }
-      ]
     },
     "scotgov.council_tax_stock.total": {
       "geography_level": "country",
@@ -3913,48 +4295,408 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_a@E12000001",
-      "from": "2025-03",
+      "name": "mhclg.council_tax_stock.band_a@E12000001",
+      "from": "2025-10",
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_a@E12000002",
-      "from": "2025-03",
+      "name": "mhclg.council_tax_stock.band_a@E12000002",
+      "from": "2025-10",
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_a@E12000003",
-      "from": "2025-03",
+      "name": "mhclg.council_tax_stock.band_a@E12000003",
+      "from": "2025-10",
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_a@E12000004",
-      "from": "2025-03",
+      "name": "mhclg.council_tax_stock.band_a@E12000004",
+      "from": "2025-10",
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_a@E12000005",
-      "from": "2025-03",
+      "name": "mhclg.council_tax_stock.band_a@E12000005",
+      "from": "2025-10",
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_a@E12000006",
-      "from": "2025-03",
+      "name": "mhclg.council_tax_stock.band_a@E12000006",
+      "from": "2025-10",
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_a@E12000007",
-      "from": "2025-03",
+      "name": "mhclg.council_tax_stock.band_a@E12000007",
+      "from": "2025-10",
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_a@E12000008",
-      "from": "2025-03",
+      "name": "mhclg.council_tax_stock.band_a@E12000008",
+      "from": "2025-10",
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_a@E12000009",
-      "from": "2025-03",
+      "name": "mhclg.council_tax_stock.band_a@E12000009",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_b@E12000001",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_b@E12000002",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_b@E12000003",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_b@E12000004",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_b@E12000005",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_b@E12000006",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_b@E12000007",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_b@E12000008",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_b@E12000009",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_c@E12000001",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_c@E12000002",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_c@E12000003",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_c@E12000004",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_c@E12000005",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_c@E12000006",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_c@E12000007",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_c@E12000008",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_c@E12000009",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_d@E12000001",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_d@E12000002",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_d@E12000003",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_d@E12000004",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_d@E12000005",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_d@E12000006",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_d@E12000007",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_d@E12000008",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_d@E12000009",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_e@E12000001",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_e@E12000002",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_e@E12000003",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_e@E12000004",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_e@E12000005",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_e@E12000006",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_e@E12000007",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_e@E12000008",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_e@E12000009",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_f@E12000001",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_f@E12000002",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_f@E12000003",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_f@E12000004",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_f@E12000005",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_f@E12000006",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_f@E12000007",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_f@E12000008",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_f@E12000009",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_g@E12000001",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_g@E12000002",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_g@E12000003",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_g@E12000004",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_g@E12000005",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_g@E12000006",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_g@E12000007",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_g@E12000008",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_g@E12000009",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_h@E12000001",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_h@E12000002",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_h@E12000003",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_h@E12000004",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_h@E12000005",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_h@E12000006",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_h@E12000007",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_h@E12000008",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.band_h@E12000009",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.total@E12000001",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.total@E12000002",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.total@E12000003",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.total@E12000004",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.total@E12000005",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.total@E12000006",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.total@E12000007",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.total@E12000008",
+      "from": "2025-10",
+      "to": "2025"
+    },
+    {
+      "name": "mhclg.council_tax_stock.total@E12000009",
+      "from": "2025-10",
       "to": "2025"
     },
     {
@@ -3963,98 +4705,8 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_b@E12000001",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_b@E12000002",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_b@E12000003",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_b@E12000004",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_b@E12000005",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_b@E12000006",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_b@E12000007",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_b@E12000008",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_b@E12000009",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
       "name": "scotgov.council_tax_stock.band_b",
       "from": "2025-09",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_c@E12000001",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_c@E12000002",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_c@E12000003",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_c@E12000004",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_c@E12000005",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_c@E12000006",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_c@E12000007",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_c@E12000008",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_c@E12000009",
-      "from": "2025-03",
       "to": "2025"
     },
     {
@@ -4063,98 +4715,8 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_d@E12000001",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_d@E12000002",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_d@E12000003",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_d@E12000004",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_d@E12000005",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_d@E12000006",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_d@E12000007",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_d@E12000008",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_d@E12000009",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
       "name": "scotgov.council_tax_stock.band_d",
       "from": "2025-09",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_e@E12000001",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_e@E12000002",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_e@E12000003",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_e@E12000004",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_e@E12000005",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_e@E12000006",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_e@E12000007",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_e@E12000008",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_e@E12000009",
-      "from": "2025-03",
       "to": "2025"
     },
     {
@@ -4163,98 +4725,8 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_f@E12000001",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_f@E12000002",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_f@E12000003",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_f@E12000004",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_f@E12000005",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_f@E12000006",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_f@E12000007",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_f@E12000008",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_f@E12000009",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
       "name": "scotgov.council_tax_stock.band_f",
       "from": "2025-09",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_g@E12000001",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_g@E12000002",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_g@E12000003",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_g@E12000004",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_g@E12000005",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_g@E12000006",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_g@E12000007",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_g@E12000008",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_g@E12000009",
-      "from": "2025-03",
       "to": "2025"
     },
     {
@@ -4263,98 +4735,8 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_h@E12000001",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_h@E12000002",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_h@E12000003",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_h@E12000004",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_h@E12000005",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_h@E12000006",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_h@E12000007",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_h@E12000008",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.band_h@E12000009",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
       "name": "scotgov.council_tax_stock.band_h",
       "from": "2025-09",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.total@E12000001",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.total@E12000002",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.total@E12000003",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.total@E12000004",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.total@E12000005",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.total@E12000006",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.total@E12000007",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.total@E12000008",
-      "from": "2025-03",
-      "to": "2025"
-    },
-    {
-      "name": "voa.council_tax_stock.total@E12000009",
-      "from": "2025-03",
       "to": "2025"
     },
     {
@@ -10203,116 +10585,1170 @@
         }
       ]
     },
-    "voa.council_tax_stock.band_a": {
+    "mhclg.council_tax_stock.band_a": {
       "status": "active",
       "candidates": [
         {
-          "name": "voa.council_tax_stock.band_a@E12000001",
+          "name": "mhclg.council_tax_stock.band_a@E12000001",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 4776,
+          "matched_fact_count_at_or_before_period": 4728,
           "geography_level": "region",
           "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 667540.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3d64b9c8ee0b42435cba72a1"
+          "resolved_value": 621096.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d0152c2791236d6ec749fb4b"
         },
         {
-          "name": "voa.council_tax_stock.band_a@E12000002",
+          "name": "mhclg.council_tax_stock.band_a@E12000002",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
           "geography_level": "region",
           "geography_id": "E12000002",
           "resolved_period": 2025,
-          "resolved_value": 1386260.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ac00f27785b7e0806ac70198"
+          "resolved_value": 1285713.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fa7c76228b4383e695be0c57"
         },
         {
-          "name": "voa.council_tax_stock.band_a@E12000003",
+          "name": "mhclg.council_tax_stock.band_a@E12000003",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 5970,
+          "matched_fact_count_at_or_before_period": 5910,
           "geography_level": "region",
           "geography_id": "E12000003",
           "resolved_period": 2025,
-          "resolved_value": 1070830.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fd338a9f2aabd878385b0c0b"
+          "resolved_value": 988548.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eb94428708527c6adbce48c3"
         },
         {
-          "name": "voa.council_tax_stock.band_a@E12000004",
+          "name": "mhclg.council_tax_stock.band_a@E12000004",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
           "geography_level": "region",
           "geography_id": "E12000004",
           "resolved_period": 2025,
-          "resolved_value": 804340.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_def10973faec0fe9fa09aa42"
+          "resolved_value": 739971.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f17101c03f5970d639ddb6d7"
         },
         {
-          "name": "voa.council_tax_stock.band_a@E12000005",
+          "name": "mhclg.council_tax_stock.band_a@E12000005",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 11940,
+          "matched_fact_count_at_or_before_period": 11820,
           "geography_level": "region",
           "geography_id": "E12000005",
           "resolved_period": 2025,
-          "resolved_value": 786010.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ecf0bb968b9ffa7647f930f8"
+          "resolved_value": 728493.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ef49e263051486267b93c7cd"
         },
         {
-          "name": "voa.council_tax_stock.band_a@E12000006",
+          "name": "mhclg.council_tax_stock.band_a@E12000006",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 17910,
+          "matched_fact_count_at_or_before_period": 17730,
           "geography_level": "region",
           "geography_id": "E12000006",
           "resolved_period": 2025,
-          "resolved_value": 403180.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_cb8a20afb3bc7fba95459372"
+          "resolved_value": 364482.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f9ada16eb0c916b22d2397bb"
         },
         {
-          "name": "voa.council_tax_stock.band_a@E12000007",
+          "name": "mhclg.council_tax_stock.band_a@E12000007",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 13134,
+          "matched_fact_count_at_or_before_period": 13002,
           "geography_level": "region",
           "geography_id": "E12000007",
           "resolved_period": 2025,
-          "resolved_value": 144550.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_09f13c8a14b446d6f6c1c62c"
+          "resolved_value": 118732.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7d8d56243116fa2f1419fe1"
         },
         {
-          "name": "voa.council_tax_stock.band_a@E12000008",
+          "name": "mhclg.council_tax_stock.band_a@E12000008",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 25472,
+          "matched_fact_count_at_or_before_period": 25216,
           "geography_level": "region",
           "geography_id": "E12000008",
           "resolved_period": 2025,
-          "resolved_value": 367610.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3291e358aff521b0dab57647"
+          "resolved_value": 320025.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fcc7bbe5d78c199fc6d856ca"
         },
         {
-          "name": "voa.council_tax_stock.band_a@E12000009",
+          "name": "mhclg.council_tax_stock.band_a@E12000009",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 10746,
+          "matched_fact_count_at_or_before_period": 10638,
           "geography_level": "region",
           "geography_id": "E12000009",
           "resolved_period": 2025,
-          "resolved_value": 473020.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c13e9668105786f6669a4acd"
+          "resolved_value": 422969.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f23d41b29d6952c18d44dc26"
+        }
+      ]
+    },
+    "mhclg.council_tax_stock.band_b": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "mhclg.council_tax_stock.band_b@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 4776,
+          "matched_fact_count_at_or_before_period": 4728,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 193309.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f84be54967344adf03fab807"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_b@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 666970.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fac49fea11fd3b1110a941c5"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_b@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 5970,
+          "matched_fact_count_at_or_before_period": 5910,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 482052.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8ef63f3e9b07a934c3f2df8"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_b@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 478320.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f48dde558979080156b8c99f"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_b@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 11940,
+          "matched_fact_count_at_or_before_period": 11820,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 625673.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fc4a526b4ee56ed620ab4c14"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_b@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 17910,
+          "matched_fact_count_at_or_before_period": 17730,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 568914.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe310977523bcaadf025f7f6"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_b@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 13134,
+          "matched_fact_count_at_or_before_period": 13002,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 463447.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ffadb386ab954d99278ba891"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_b@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 25472,
+          "matched_fact_count_at_or_before_period": 25216,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 649092.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb23fbffbee284d17da76489"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_b@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 10746,
+          "matched_fact_count_at_or_before_period": 10638,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 609286.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f84a549115340205a9ae8951"
+        }
+      ]
+    },
+    "mhclg.council_tax_stock.band_c": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "mhclg.council_tax_stock.band_c@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 4776,
+          "matched_fact_count_at_or_before_period": 4728,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 186703.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e5eaf3e7f4def06c8d938e5f"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_c@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 585587.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fc2f9b5b1813a71f580f85a4"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_c@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 5970,
+          "matched_fact_count_at_or_before_period": 5910,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 408440.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe416e96e8e324e0e1647008"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_c@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 384470.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fa1e7c770b7403c2a2663980"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_c@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 11940,
+          "matched_fact_count_at_or_before_period": 11820,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 503657.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ffab2e562cd756fa9f44ac4c"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_c@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 17910,
+          "matched_fact_count_at_or_before_period": 17730,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 708146.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff565a1885420d902566f5be"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_c@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 13134,
+          "matched_fact_count_at_or_before_period": 13002,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 991205.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eb754d4d8153e7497df94fa9"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_c@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 25472,
+          "matched_fact_count_at_or_before_period": 25216,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 1024169.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_feb50a6c4dfa72419ef9e591"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_c@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 10746,
+          "matched_fact_count_at_or_before_period": 10638,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 587214.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fff7d7ced3067ef09f8e6d12"
+        }
+      ]
+    },
+    "mhclg.council_tax_stock.band_d": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "mhclg.council_tax_stock.band_d@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 4776,
+          "matched_fact_count_at_or_before_period": 4728,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 108432.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb2d7a086ad6d3c95a074ab0"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_d@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 346489.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff0d7ad8c7d5d0d2f02702f0"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_d@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 5970,
+          "matched_fact_count_at_or_before_period": 5910,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 237496.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7c0b8b92776a6109a114a92"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_d@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 238335.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fa621220d1e5d193343634ca"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_d@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 11940,
+          "matched_fact_count_at_or_before_period": 11820,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 288790.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff6f72e91c98eb23dfe9d09c"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_d@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 17910,
+          "matched_fact_count_at_or_before_period": 17730,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 485975.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd87126e89fd8a33383640f1"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_d@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 13134,
+          "matched_fact_count_at_or_before_period": 13002,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 929941.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7dfce8ada24dca8651cdc12"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_d@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 25472,
+          "matched_fact_count_at_or_before_period": 25216,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 807114.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8129a3bae48724ddc91e4ca"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_d@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 10746,
+          "matched_fact_count_at_or_before_period": 10638,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 404568.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f9f3dcc56f346a75bfa16137"
+        }
+      ]
+    },
+    "mhclg.council_tax_stock.band_e": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "mhclg.council_tax_stock.band_e@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 4776,
+          "matched_fact_count_at_or_before_period": 4728,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 58932.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e767a90e1f4f3985379189f5"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_e@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 207825.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f9b8ef4202908453655767f0"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_e@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 5970,
+          "matched_fact_count_at_or_before_period": 5910,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 152517.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fbb09c3c4f80ba784375aa37"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_e@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 149931.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fec984442b918005ccc92238"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_e@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 11940,
+          "matched_fact_count_at_or_before_period": 11820,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 185672.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d83f9067bfa886482b6a5be7"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_e@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 17910,
+          "matched_fact_count_at_or_before_period": 17730,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 301723.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb2e48afaa19a026d3d2dbf9"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_e@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 13134,
+          "matched_fact_count_at_or_before_period": 13002,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 551952.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe53b4ade27bba47669221bb"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_e@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 25472,
+          "matched_fact_count_at_or_before_period": 25216,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 529137.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff8b7b878381855ff02392c8"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_e@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 10746,
+          "matched_fact_count_at_or_before_period": 10638,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 274120.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd8affa54b589a8f8dfa76e1"
+        }
+      ]
+    },
+    "mhclg.council_tax_stock.band_f": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "mhclg.council_tax_stock.band_f@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 4776,
+          "matched_fact_count_at_or_before_period": 4728,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 25729.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f1a656e56ed4ec922ab1be8a"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_f@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 100117.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f934ec4447a2decb7d93153c"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_f@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 5970,
+          "matched_fact_count_at_or_before_period": 5910,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 73172.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fed1e74402841596ec02537f"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_f@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 71418.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f992d8c87d194b0dfb07b0fa"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_f@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 11940,
+          "matched_fact_count_at_or_before_period": 11820,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 102077.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f9f49f0636d79cb28dcc85e1"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_f@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 17910,
+          "matched_fact_count_at_or_before_period": 17730,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 166744.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e672d9b03691ddd1faac694d"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_f@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 13134,
+          "matched_fact_count_at_or_before_period": 13002,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 279261.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ef478a0ef6ff0cb78a65dcaa"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_f@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 25472,
+          "matched_fact_count_at_or_before_period": 25216,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 325815.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb02357269b3d262a700cf5f"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_f@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 10746,
+          "matched_fact_count_at_or_before_period": 10638,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 139412.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb77e2f50e126802cff79f21"
+        }
+      ]
+    },
+    "mhclg.council_tax_stock.band_g": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "mhclg.council_tax_stock.band_g@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 4776,
+          "matched_fact_count_at_or_before_period": 4728,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 14062.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f80042add7dbd445217cde1a"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_g@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 62587.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ffc555374f59e3667468b086"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_g@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 5970,
+          "matched_fact_count_at_or_before_period": 5910,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 40487.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f290bf6f13fa468c2acf0be2"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_g@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 37892.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f69d9fecd8d273243af03685"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_g@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 11940,
+          "matched_fact_count_at_or_before_period": 11820,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 60209.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ec75efe3a83bc6d9c25d7ae1"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_g@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 17910,
+          "matched_fact_count_at_or_before_period": 17730,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 108700.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd2a0529ed0a7cf9532ef8ea"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_g@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 13134,
+          "matched_fact_count_at_or_before_period": 13002,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 207056.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7d99e8a41825169a450a9ed"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_g@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 25472,
+          "matched_fact_count_at_or_before_period": 25216,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 255206.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fda73631af17107d741fed93"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_g@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 10746,
+          "matched_fact_count_at_or_before_period": 10638,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 75533.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ddffd3467540ebe8f71dc050"
+        }
+      ]
+    },
+    "mhclg.council_tax_stock.band_h": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "mhclg.council_tax_stock.band_h@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 4776,
+          "matched_fact_count_at_or_before_period": 4728,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 1151.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff4150e637c1d82a68bb2a28"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_h@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 6230.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f742ed87e05f38e0a20ba028"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_h@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 5970,
+          "matched_fact_count_at_or_before_period": 5910,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 3022.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd393adec42be55cfefb3400"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_h@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 2779.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe1b32af9c019b0fa366ea83"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_h@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 11940,
+          "matched_fact_count_at_or_before_period": 11820,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 5285.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f086bebb12518f66fdd27be8"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_h@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 17910,
+          "matched_fact_count_at_or_before_period": 17730,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 13447.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb031812869aaf579b6d5b62"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_h@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 13134,
+          "matched_fact_count_at_or_before_period": 13002,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 59569.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb5c13d22ffe09151cf3b4f8"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_h@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 25472,
+          "matched_fact_count_at_or_before_period": 25216,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 36978.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd99e21ba622e4f2a978332a"
+        },
+        {
+          "name": "mhclg.council_tax_stock.band_h@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 10746,
+          "matched_fact_count_at_or_before_period": 10638,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 6697.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f90a5f109dfd934a167bf0e0"
+        }
+      ]
+    },
+    "mhclg.council_tax_stock.total": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "mhclg.council_tax_stock.total@E12000001",
+          "status": "active",
+          "matched_fact_count_overall": 4776,
+          "matched_fact_count_at_or_before_period": 4728,
+          "geography_level": "region",
+          "geography_id": "E12000001",
+          "resolved_period": 2025,
+          "resolved_value": 1209414.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d0495e6e8e02785ad2236142"
+        },
+        {
+          "name": "mhclg.council_tax_stock.total@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 3261518.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fc1af92610b38c4757aea9cd"
+        },
+        {
+          "name": "mhclg.council_tax_stock.total@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 5970,
+          "matched_fact_count_at_or_before_period": 5910,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 2385734.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d97752a94900433af3ad7e6f"
+        },
+        {
+          "name": "mhclg.council_tax_stock.total@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 13930,
+          "matched_fact_count_at_or_before_period": 13790,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 2103116.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ef350c9b94fb54787fbca592"
+        },
+        {
+          "name": "mhclg.council_tax_stock.total@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 11940,
+          "matched_fact_count_at_or_before_period": 11820,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 2499856.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f649a1ce99478b505d03ab91"
+        },
+        {
+          "name": "mhclg.council_tax_stock.total@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 17910,
+          "matched_fact_count_at_or_before_period": 17730,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 2718131.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f27b18e8ecc0114a5b9e88e4"
+        },
+        {
+          "name": "mhclg.council_tax_stock.total@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 13134,
+          "matched_fact_count_at_or_before_period": 13002,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 3601163.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f56db6353a3459ee98059504"
+        },
+        {
+          "name": "mhclg.council_tax_stock.total@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 25472,
+          "matched_fact_count_at_or_before_period": 25216,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 3947536.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd4beff6e5a58b2ca5ff0b3a"
+        },
+        {
+          "name": "mhclg.council_tax_stock.total@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 10746,
+          "matched_fact_count_at_or_before_period": 10638,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 2519799.0,
+          "resolved_fact_period": "2025-10",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7339b440103ee7084920ea3"
+        }
+      ]
+    },
+    "welshgov.council_tax_stock.band_a": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "welshgov.council_tax_stock.band_a",
+          "status": "active",
+          "matched_fact_count_overall": 436,
+          "matched_fact_count_at_or_before_period": 339,
+          "resolved_period": 2025,
+          "resolved_value": 194973.29,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_21e317eb3f397169fa2dc933"
+        }
+      ]
+    },
+    "welshgov.council_tax_stock.band_b": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "welshgov.council_tax_stock.band_b",
+          "status": "active",
+          "matched_fact_count_overall": 436,
+          "matched_fact_count_at_or_before_period": 339,
+          "resolved_period": 2025,
+          "resolved_value": 285787.52,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1db23c3de870c2f9704b9822"
+        }
+      ]
+    },
+    "welshgov.council_tax_stock.band_c": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "welshgov.council_tax_stock.band_c",
+          "status": "active",
+          "matched_fact_count_overall": 436,
+          "matched_fact_count_at_or_before_period": 339,
+          "resolved_period": 2025,
+          "resolved_value": 301699.86,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c8c0495e5862c06f0f268414"
+        }
+      ]
+    },
+    "welshgov.council_tax_stock.band_d": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "welshgov.council_tax_stock.band_d",
+          "status": "active",
+          "matched_fact_count_overall": 436,
+          "matched_fact_count_at_or_before_period": 339,
+          "resolved_period": 2025,
+          "resolved_value": 225179.88,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_04e498c0e2dad39004885ea3"
+        }
+      ]
+    },
+    "welshgov.council_tax_stock.band_e": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "welshgov.council_tax_stock.band_e",
+          "status": "active",
+          "matched_fact_count_overall": 436,
+          "matched_fact_count_at_or_before_period": 339,
+          "resolved_period": 2025,
+          "resolved_value": 185447.46,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e8ca0bef4217724c1b6eafbb"
+        }
+      ]
+    },
+    "welshgov.council_tax_stock.band_f": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "welshgov.council_tax_stock.band_f",
+          "status": "active",
+          "matched_fact_count_overall": 436,
+          "matched_fact_count_at_or_before_period": 339,
+          "resolved_period": 2025,
+          "resolved_value": 114672.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f9e314273b8264de7d24a7b6"
+        }
+      ]
+    },
+    "welshgov.council_tax_stock.band_g": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "welshgov.council_tax_stock.band_g",
+          "status": "active",
+          "matched_fact_count_overall": 436,
+          "matched_fact_count_at_or_before_period": 339,
+          "resolved_period": 2025,
+          "resolved_value": 52211.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1ffc03853a7f22dbfdfd30ee"
+        }
+      ]
+    },
+    "welshgov.council_tax_stock.band_h": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "welshgov.council_tax_stock.band_h",
+          "status": "active",
+          "matched_fact_count_overall": 436,
+          "matched_fact_count_at_or_before_period": 339,
+          "resolved_period": 2025,
+          "resolved_value": 12357.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_38b37ca6c167d44f1ee2b517"
+        }
+      ]
+    },
+    "welshgov.council_tax_stock.band_i": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "welshgov.council_tax_stock.band_i",
+          "status": "active",
+          "matched_fact_count_overall": 436,
+          "matched_fact_count_at_or_before_period": 339,
+          "resolved_period": 2025,
+          "resolved_value": 5305.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f94d0825d8f1f21a02667aeb"
+        }
+      ]
+    },
+    "welshgov.council_tax_stock.total": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "welshgov.council_tax_stock.total",
+          "status": "active",
+          "matched_fact_count_overall": 436,
+          "matched_fact_count_at_or_before_period": 339,
+          "resolved_period": 2025,
+          "resolved_value": 1377633.03,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_69899dbf797a73ce0c05f13d"
         }
       ]
     },
@@ -10331,119 +11767,6 @@
         }
       ]
     },
-    "voa.council_tax_stock.band_b": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "voa.council_tax_stock.band_b@E12000001",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000001",
-          "resolved_period": 2025,
-          "resolved_value": 206790.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_8955ef23164ec04f5006a161"
-        },
-        {
-          "name": "voa.council_tax_stock.band_b@E12000002",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000002",
-          "resolved_period": 2025,
-          "resolved_value": 705450.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_8b3524ef2243749e4cd0784f"
-        },
-        {
-          "name": "voa.council_tax_stock.band_b@E12000003",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000003",
-          "resolved_period": 2025,
-          "resolved_value": 514190.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b2eaeec372723931bade3b3b"
-        },
-        {
-          "name": "voa.council_tax_stock.band_b@E12000004",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000004",
-          "resolved_period": 2025,
-          "resolved_value": 505610.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c5802e125aec9727ec678f30"
-        },
-        {
-          "name": "voa.council_tax_stock.band_b@E12000005",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000005",
-          "resolved_period": 2025,
-          "resolved_value": 654140.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ddf4c74a73dfb8e143e899e2"
-        },
-        {
-          "name": "voa.council_tax_stock.band_b@E12000006",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000006",
-          "resolved_period": 2025,
-          "resolved_value": 598950.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_48d6f0b6906977c144e84bd9"
-        },
-        {
-          "name": "voa.council_tax_stock.band_b@E12000007",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000007",
-          "resolved_period": 2025,
-          "resolved_value": 499130.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_7053c8cbf35cb3022447b31c"
-        },
-        {
-          "name": "voa.council_tax_stock.band_b@E12000008",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000008",
-          "resolved_period": 2025,
-          "resolved_value": 687430.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_17295fc2e139d180287c2014"
-        },
-        {
-          "name": "voa.council_tax_stock.band_b@E12000009",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000009",
-          "resolved_period": 2025,
-          "resolved_value": 644890.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c14843f97601d160be0a9516"
-        }
-      ]
-    },
     "scotgov.council_tax_stock.band_b": {
       "status": "active",
       "candidates": [
@@ -10456,119 +11779,6 @@
           "resolved_value": 583705.0,
           "resolved_fact_period": "2025-09",
           "resolved_fact_key": "ledger_aggregate_fact_v2_2f95ec98ae61f9898bd47ed9"
-        }
-      ]
-    },
-    "voa.council_tax_stock.band_c": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "voa.council_tax_stock.band_c@E12000001",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000001",
-          "resolved_period": 2025,
-          "resolved_value": 196180.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b7a6d8a559ed5817e289ab89"
-        },
-        {
-          "name": "voa.council_tax_stock.band_c@E12000002",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000002",
-          "resolved_period": 2025,
-          "resolved_value": 616070.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_afec3692548eb58848eb4f74"
-        },
-        {
-          "name": "voa.council_tax_stock.band_c@E12000003",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000003",
-          "resolved_period": 2025,
-          "resolved_value": 432290.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_22cfbecd7bd215e7751e349d"
-        },
-        {
-          "name": "voa.council_tax_stock.band_c@E12000004",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000004",
-          "resolved_period": 2025,
-          "resolved_value": 403840.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_978dcbbd8663990bdcfb461d"
-        },
-        {
-          "name": "voa.council_tax_stock.band_c@E12000005",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000005",
-          "resolved_period": 2025,
-          "resolved_value": 526260.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_dce3b1093a753675fa284f80"
-        },
-        {
-          "name": "voa.council_tax_stock.band_c@E12000006",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000006",
-          "resolved_period": 2025,
-          "resolved_value": 739570.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_6c659cd734444cfdd1d651c6"
-        },
-        {
-          "name": "voa.council_tax_stock.band_c@E12000007",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000007",
-          "resolved_period": 2025,
-          "resolved_value": 1040280.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fa46132ed0107a360c3a549d"
-        },
-        {
-          "name": "voa.council_tax_stock.band_c@E12000008",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000008",
-          "resolved_period": 2025,
-          "resolved_value": 1075940.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_bf4a77b8455bb6aea85b760e"
-        },
-        {
-          "name": "voa.council_tax_stock.band_c@E12000009",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000009",
-          "resolved_period": 2025,
-          "resolved_value": 624030.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e87540eb97f29cacf120fd3e"
         }
       ]
     },
@@ -10587,119 +11797,6 @@
         }
       ]
     },
-    "voa.council_tax_stock.band_d": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "voa.council_tax_stock.band_d@E12000001",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000001",
-          "resolved_period": 2025,
-          "resolved_value": 113460.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0b5fcf256d38909389e3b57a"
-        },
-        {
-          "name": "voa.council_tax_stock.band_d@E12000002",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000002",
-          "resolved_period": 2025,
-          "resolved_value": 363970.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_84fe918f408f544492aa90a5"
-        },
-        {
-          "name": "voa.council_tax_stock.band_d@E12000003",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000003",
-          "resolved_period": 2025,
-          "resolved_value": 249530.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f5aa30370c6bac96d28ec17c"
-        },
-        {
-          "name": "voa.council_tax_stock.band_d@E12000004",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000004",
-          "resolved_period": 2025,
-          "resolved_value": 247850.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_949ba52ffe15cdfd798ce808"
-        },
-        {
-          "name": "voa.council_tax_stock.band_d@E12000005",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000005",
-          "resolved_period": 2025,
-          "resolved_value": 302500.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ef0247f963abaffbebf59b6c"
-        },
-        {
-          "name": "voa.council_tax_stock.band_d@E12000006",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000006",
-          "resolved_period": 2025,
-          "resolved_value": 506540.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b02f55ab569e67c1f7145d29"
-        },
-        {
-          "name": "voa.council_tax_stock.band_d@E12000007",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000007",
-          "resolved_period": 2025,
-          "resolved_value": 975750.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_88a75ec79293da0f82a9d3af"
-        },
-        {
-          "name": "voa.council_tax_stock.band_d@E12000008",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000008",
-          "resolved_period": 2025,
-          "resolved_value": 843560.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_58473f911762c6ae3902d2a8"
-        },
-        {
-          "name": "voa.council_tax_stock.band_d@E12000009",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000009",
-          "resolved_period": 2025,
-          "resolved_value": 432070.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3bcfafa6b488ed08f9c2e9f8"
-        }
-      ]
-    },
     "scotgov.council_tax_stock.band_d": {
       "status": "active",
       "candidates": [
@@ -10712,119 +11809,6 @@
           "resolved_value": 369621.0,
           "resolved_fact_period": "2025-09",
           "resolved_fact_key": "ledger_aggregate_fact_v2_ae1fe03809a505b820479598"
-        }
-      ]
-    },
-    "voa.council_tax_stock.band_e": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "voa.council_tax_stock.band_e@E12000001",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000001",
-          "resolved_period": 2025,
-          "resolved_value": 61090.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1e99bd497e2895709dc0f9e1"
-        },
-        {
-          "name": "voa.council_tax_stock.band_e@E12000002",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000002",
-          "resolved_period": 2025,
-          "resolved_value": 216990.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_277ec35c395ecb02939ee720"
-        },
-        {
-          "name": "voa.council_tax_stock.band_e@E12000003",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000003",
-          "resolved_period": 2025,
-          "resolved_value": 158600.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_debd66d3583f9f1fecd696e2"
-        },
-        {
-          "name": "voa.council_tax_stock.band_e@E12000004",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000004",
-          "resolved_period": 2025,
-          "resolved_value": 154970.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_4dce9fd786ef519556404c50"
-        },
-        {
-          "name": "voa.council_tax_stock.band_e@E12000005",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000005",
-          "resolved_period": 2025,
-          "resolved_value": 193700.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_714cfafa915641757589b604"
-        },
-        {
-          "name": "voa.council_tax_stock.band_e@E12000006",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000006",
-          "resolved_period": 2025,
-          "resolved_value": 313840.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_674cf0835be136cab85f54b8"
-        },
-        {
-          "name": "voa.council_tax_stock.band_e@E12000007",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000007",
-          "resolved_period": 2025,
-          "resolved_value": 585130.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_15f64c7393430a54f6dfd9a9"
-        },
-        {
-          "name": "voa.council_tax_stock.band_e@E12000008",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000008",
-          "resolved_period": 2025,
-          "resolved_value": 551730.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c87704523b66f69de2fd8c5b"
-        },
-        {
-          "name": "voa.council_tax_stock.band_e@E12000009",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000009",
-          "resolved_period": 2025,
-          "resolved_value": 292090.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d0ff0b4ce381a7faad755d61"
         }
       ]
     },
@@ -10843,119 +11827,6 @@
         }
       ]
     },
-    "voa.council_tax_stock.band_f": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "voa.council_tax_stock.band_f@E12000001",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000001",
-          "resolved_period": 2025,
-          "resolved_value": 26600.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_212b21ea2b32d2e3d2bd521a"
-        },
-        {
-          "name": "voa.council_tax_stock.band_f@E12000002",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000002",
-          "resolved_period": 2025,
-          "resolved_value": 104330.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_5642442033f8077a90875803"
-        },
-        {
-          "name": "voa.council_tax_stock.band_f@E12000003",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000003",
-          "resolved_period": 2025,
-          "resolved_value": 75690.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_6dacbd8557b665d6ee0740ca"
-        },
-        {
-          "name": "voa.council_tax_stock.band_f@E12000004",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000004",
-          "resolved_period": 2025,
-          "resolved_value": 73920.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_712e802adea1d16382695b03"
-        },
-        {
-          "name": "voa.council_tax_stock.band_f@E12000005",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000005",
-          "resolved_period": 2025,
-          "resolved_value": 105630.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_6749abdcd4e56c1884091b82"
-        },
-        {
-          "name": "voa.council_tax_stock.band_f@E12000006",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000006",
-          "resolved_period": 2025,
-          "resolved_value": 172960.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_8d6432f10bfb6f4b29d4cb36"
-        },
-        {
-          "name": "voa.council_tax_stock.band_f@E12000007",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000007",
-          "resolved_period": 2025,
-          "resolved_value": 298920.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ab0f7a8926ecd169382ff1dc"
-        },
-        {
-          "name": "voa.council_tax_stock.band_f@E12000008",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000008",
-          "resolved_period": 2025,
-          "resolved_value": 337260.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_eb725155aaa609877ae1e7a9"
-        },
-        {
-          "name": "voa.council_tax_stock.band_f@E12000009",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000009",
-          "resolved_period": 2025,
-          "resolved_value": 147920.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_47c47b1375052fc7c190e314"
-        }
-      ]
-    },
     "scotgov.council_tax_stock.band_f": {
       "status": "active",
       "candidates": [
@@ -10968,119 +11839,6 @@
           "resolved_value": 221282.0,
           "resolved_fact_period": "2025-09",
           "resolved_fact_key": "ledger_aggregate_fact_v2_b24b6409c1473600c03999ec"
-        }
-      ]
-    },
-    "voa.council_tax_stock.band_g": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "voa.council_tax_stock.band_g@E12000001",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000001",
-          "resolved_period": 2025,
-          "resolved_value": 14600.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_98a20120bac3eb106ff70d1e"
-        },
-        {
-          "name": "voa.council_tax_stock.band_g@E12000002",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000002",
-          "resolved_period": 2025,
-          "resolved_value": 65750.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3f82b93e0aebf97b2b0a550b"
-        },
-        {
-          "name": "voa.council_tax_stock.band_g@E12000003",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000003",
-          "resolved_period": 2025,
-          "resolved_value": 42180.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e522a6efe40eb9186b7e7557"
-        },
-        {
-          "name": "voa.council_tax_stock.band_g@E12000004",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000004",
-          "resolved_period": 2025,
-          "resolved_value": 39400.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2a765502b5ba10e73f89a515"
-        },
-        {
-          "name": "voa.council_tax_stock.band_g@E12000005",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000005",
-          "resolved_period": 2025,
-          "resolved_value": 62780.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ea2217959cff56b7d2e6bba3"
-        },
-        {
-          "name": "voa.council_tax_stock.band_g@E12000006",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000006",
-          "resolved_period": 2025,
-          "resolved_value": 113720.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c63aeb7ddeced2c169b053aa"
-        },
-        {
-          "name": "voa.council_tax_stock.band_g@E12000007",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000007",
-          "resolved_period": 2025,
-          "resolved_value": 225170.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_477dda108c5db0ff25eb19e9"
-        },
-        {
-          "name": "voa.council_tax_stock.band_g@E12000008",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000008",
-          "resolved_period": 2025,
-          "resolved_value": 265610.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_60a509a12483e481e3c25d5f"
-        },
-        {
-          "name": "voa.council_tax_stock.band_g@E12000009",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000009",
-          "resolved_period": 2025,
-          "resolved_value": 81960.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2479fbb4c844d88ebb159241"
         }
       ]
     },
@@ -11099,119 +11857,6 @@
         }
       ]
     },
-    "voa.council_tax_stock.band_h": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "voa.council_tax_stock.band_h@E12000001",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000001",
-          "resolved_period": 2025,
-          "resolved_value": 1570.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3dc74673765985ec461506ca"
-        },
-        {
-          "name": "voa.council_tax_stock.band_h@E12000002",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000002",
-          "resolved_period": 2025,
-          "resolved_value": 7350.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e577d7bbb3752de28cdbd97b"
-        },
-        {
-          "name": "voa.council_tax_stock.band_h@E12000003",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000003",
-          "resolved_period": 2025,
-          "resolved_value": 3770.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ef2cc35f77ed4598a04c5526"
-        },
-        {
-          "name": "voa.council_tax_stock.band_h@E12000004",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000004",
-          "resolved_period": 2025,
-          "resolved_value": 3480.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0a7428361eb1fdc474980d92"
-        },
-        {
-          "name": "voa.council_tax_stock.band_h@E12000005",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000005",
-          "resolved_period": 2025,
-          "resolved_value": 6170.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fbba262d92b5f637e78ab6c0"
-        },
-        {
-          "name": "voa.council_tax_stock.band_h@E12000006",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000006",
-          "resolved_period": 2025,
-          "resolved_value": 14830.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_59fff7b3db7c983cfc79a50b"
-        },
-        {
-          "name": "voa.council_tax_stock.band_h@E12000007",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000007",
-          "resolved_period": 2025,
-          "resolved_value": 68500.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b5b4366ff7c8bb489bf639a0"
-        },
-        {
-          "name": "voa.council_tax_stock.band_h@E12000008",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000008",
-          "resolved_period": 2025,
-          "resolved_value": 40390.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1cc7f916cf9be218cf410040"
-        },
-        {
-          "name": "voa.council_tax_stock.band_h@E12000009",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000009",
-          "resolved_period": 2025,
-          "resolved_value": 8430.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_56df761829398cbf0863dbf5"
-        }
-      ]
-    },
     "scotgov.council_tax_stock.band_h": {
       "status": "active",
       "candidates": [
@@ -11224,119 +11869,6 @@
           "resolved_value": 14481.0,
           "resolved_fact_period": "2025-09",
           "resolved_fact_key": "ledger_aggregate_fact_v2_60d9ae638eff29fc1c88907e"
-        }
-      ]
-    },
-    "voa.council_tax_stock.total": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "voa.council_tax_stock.total@E12000001",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000001",
-          "resolved_period": 2025,
-          "resolved_value": 1287830.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_d264f11c76d5ad9588b7ebe4"
-        },
-        {
-          "name": "voa.council_tax_stock.total@E12000002",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000002",
-          "resolved_period": 2025,
-          "resolved_value": 3466140.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_4c0e124f549e52b53393a53d"
-        },
-        {
-          "name": "voa.council_tax_stock.total@E12000003",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000003",
-          "resolved_period": 2025,
-          "resolved_value": 2547080.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a853f79f7409dbf0b2e2a85b"
-        },
-        {
-          "name": "voa.council_tax_stock.total@E12000004",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000004",
-          "resolved_period": 2025,
-          "resolved_value": 2233400.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2c4835df758e5304e0fd8e5f"
-        },
-        {
-          "name": "voa.council_tax_stock.total@E12000005",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000005",
-          "resolved_period": 2025,
-          "resolved_value": 2637190.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_4e695a253e47694a97651a10"
-        },
-        {
-          "name": "voa.council_tax_stock.total@E12000006",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000006",
-          "resolved_period": 2025,
-          "resolved_value": 2863600.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_77119abfc2f7609862d34ade"
-        },
-        {
-          "name": "voa.council_tax_stock.total@E12000007",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000007",
-          "resolved_period": 2025,
-          "resolved_value": 3837430.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_9dbee719ce6dcd05600cd217"
-        },
-        {
-          "name": "voa.council_tax_stock.total@E12000008",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000008",
-          "resolved_period": 2025,
-          "resolved_value": 4169520.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_3b4504e4d7881843f594af0a"
-        },
-        {
-          "name": "voa.council_tax_stock.total@E12000009",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "geography_level": "region",
-          "geography_id": "E12000009",
-          "resolved_period": 2025,
-          "resolved_value": 2704390.0,
-          "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_424f337c329feb3a9d11c5f0"
         }
       ]
     },
@@ -12156,8 +12688,8 @@
     {
       "family": "council_tax_stock",
       "status": "active_declared_rows",
-      "active_reference_count": 90,
-      "signed_rationale": "VOA (England) and Scottish Government CTAXBASE (Scotland) council-tax stock bands are declared as nine explicit target rows each, including total. The Scottish rows resolve with their country-level geography and band pin; the English rows fan out over the nine English regions of the region tier (microcosm#905), each cell resolving VOA's region-stamped band count with the same band pin."
+      "active_reference_count": 100,
+      "signed_rationale": "MHCLG council taxbase (England), Welsh Government CT1 (Wales) and Scottish Government CTAXBASE (Scotland) council-tax stock bands are declared as explicit target rows per band plus total (England and Scotland A-H, Wales A-I). The Welsh and Scottish rows resolve with their country-level geography and band pin; the English rows fan out over the nine English regions of the region tier (microcosm#905), each cell composed as the linear combination of the billing-authority facts the crosswalk places in that region (microcosm#929)."
     },
     {
       "family": "ons_population",

@@ -334,12 +334,19 @@ def _uk_region_tier_fixture_name(name: str) -> str | None:
             return None
         region, band = parts
         code = _UK_INCUMBENT_REGION_ENUM_CODES.get(region)
-        if code is None or not code.startswith("E12"):
+        if code is None:
             return None
-        if band == "total":
-            return f"voa.council_tax_stock.total@{code}"
-        if band in tuple("ABCDEFGH"):
-            return f"voa.council_tax_stock.band_{band.lower()}@{code}"
+        suffix = "total" if band == "total" else f"band_{band.lower()}"
+        if band != "total" and band not in tuple("ABCDEFGH"):
+            return None
+        if code.startswith("E12"):
+            # The English region cells are composed from the MHCLG taxbase
+            # authority rows (microcosm#929); the incumbent's VOA rows are the
+            # same concept on the valuation-list basis.
+            return f"mhclg.council_tax_stock.{suffix}@{code}"
+        if code == "W92000004":
+            # Wales is one country row per band from the StatsWales CT1 return.
+            return f"welshgov.council_tax_stock.{suffix}"
     return None
 
 
@@ -356,7 +363,6 @@ def align_uk_local_registry_parity_fixture(
     exclusions.
     """
 
-    metric_target_ids = _uk_local_metric_target_ids()
     rows: list[dict[str, Any]] = []
     for row in fixture.get("rows", ()):
         if not isinstance(row, Mapping):
@@ -367,12 +373,13 @@ def align_uk_local_registry_parity_fixture(
             updated.get("metric") or str(updated.get("name", "")).split("@")[0]
         )
         contract_metric = _UK_LOCAL_FIXTURE_METRIC_ALIASES.get(metric, metric)
-        target_id = metric_target_ids.get(contract_metric)
+        name = str(updated.get("name", ""))
+        geography_id = str(
+            updated.get("geography_id")
+            or (name.split("@", 1)[1] if "@" in name else "")
+        )
+        target_id = _uk_local_metric_target_id(contract_metric, geography_id)
         if target_id is not None:
-            geography_id = str(
-                updated.get("geography_id")
-                or str(updated.get("name", "")).split("@", 1)[1]
-            )
             updated["name"] = f"{target_id}@{geography_id}"
             updated["contract_target_id"] = updated["name"]
             updated.setdefault("measure", metric)
@@ -382,9 +389,18 @@ def align_uk_local_registry_parity_fixture(
     return aligned
 
 
-def _uk_local_metric_target_ids() -> dict[str, str]:
+def _uk_local_metric_targets() -> dict[str, tuple[tuple[str, tuple[str, ...]], ...]]:
+    """Metric name -> the contract targets that measure it, with their scopes.
+
+    One local metric is normally one contract target. Nation-scoped families
+    (the council-tax stock by_area rows, microcosm#929: England, Wales and
+    Scotland each bind their own return) share a metric name and split the
+    roster by GSS code prefix (``area_scope``); such a metric maps to several
+    targets whose prefixes must be disjoint, so any area names exactly one.
+    """
+
     contract = load_uk_local_geography_contract()
-    mapping: dict[str, str] = {}
+    entries: dict[str, list[tuple[str, tuple[str, ...]]]] = {}
     for target in contract.get("targets", ()):
         if not isinstance(target, Mapping):
             continue
@@ -398,14 +414,70 @@ def _uk_local_metric_target_ids() -> dict[str, str]:
         target_id = target.get("target_id")
         if not isinstance(metric_name, str) or not isinstance(target_id, str):
             continue
-        existing = mapping.get(metric_name)
-        if existing is not None and existing != target_id:
+        scope = target.get("area_scope") or {}
+        prefixes = tuple(
+            str(prefix)
+            for level_rule in scope.values()
+            if isinstance(level_rule, Mapping)
+            for prefix in level_rule.get("gss_prefixes", ())
+        )
+        if any(existing == target_id for existing, _ in entries.get(metric_name, ())):
+            continue
+        entries.setdefault(metric_name, []).append((target_id, prefixes))
+    for metric_name, sharers in entries.items():
+        if len(sharers) < 2:
+            continue
+        unscoped = [target_id for target_id, prefixes in sharers if not prefixes]
+        if unscoped:
             raise ValueError(
                 "UK local geography contract maps metric "
                 f"{metric_name!r} to multiple target ids: "
-                f"{existing!r} and {target_id!r}."
+                f"{[target_id for target_id, _ in sharers]!r}; a shared metric "
+                "needs a disjoint area_scope on every sharer, "
+                f"{unscoped!r} declare none."
             )
-        mapping[metric_name] = target_id
+        for index, (_, prefixes) in enumerate(sharers):
+            for _, other in sharers[index + 1 :]:
+                if any(
+                    left.startswith(right) or right.startswith(left)
+                    for left in prefixes
+                    for right in other
+                ):
+                    raise ValueError(
+                        "UK local geography contract maps metric "
+                        f"{metric_name!r} to targets whose area scopes overlap: "
+                        f"{prefixes!r} and {other!r}."
+                    )
+    return {metric: tuple(sharers) for metric, sharers in entries.items()}
+
+
+def _uk_local_metric_target_id(metric_name: str, area_id: str) -> str | None:
+    """The contract target measuring ``metric_name`` for ``area_id``."""
+
+    sharers = _uk_local_metric_targets().get(metric_name)
+    if not sharers:
+        return None
+    if len(sharers) == 1 and not sharers[0][1]:
+        return sharers[0][0]
+    for target_id, prefixes in sharers:
+        if any(area_id.startswith(prefix) for prefix in prefixes):
+            return target_id
+    return None
+
+
+def _uk_local_metric_target_ids() -> dict[str, str | dict[str, str]]:
+    """Metric name -> target id, or ``{gss_prefix: target_id}`` when scoped."""
+
+    mapping: dict[str, str | dict[str, str]] = {}
+    for metric_name, sharers in _uk_local_metric_targets().items():
+        if len(sharers) == 1 and not sharers[0][1]:
+            mapping[metric_name] = sharers[0][0]
+        else:
+            mapping[metric_name] = {
+                prefix: target_id
+                for target_id, prefixes in sharers
+                for prefix in prefixes
+            }
     return mapping
 
 
@@ -801,6 +873,12 @@ def _uk_licensed_empty_legs_from_membership(
     ``leg_of_area`` is the resolver the surface reconciles with, so a licence
     is read on the same legs the run assigns; the default is the committed
     crosswalk's resolver, the standing rule's own.
+
+    A leg is licensed empty for a target when every roster area the target
+    could bind on that leg is signed deferred. A target with an ``area_scope``
+    (microcosm#929: one nation's publication) can bind only the scoped areas,
+    so a leg holding none of them is licensed outright and a leg holding some
+    is licensed once those are all deferred.
     """
 
     resolve = _uk_cross_grain_leg_of_area if leg_of_area is None else leg_of_area
@@ -878,19 +956,75 @@ def _uk_licensed_empty_legs_from_membership(
                 (target_id, geography_level, leg), set()
             ).add(area_id)
 
+    scope_by_target_level = _uk_area_scope_by_target_level(
+        membership, roster_by_level_leg
+    )
     licensed: dict[str, set[str]] = {}
-    for (
-        target_id,
-        geography_level,
-        leg,
-    ), deferred in deferred_by_target_level_leg.items():
-        roster = roster_by_level_leg[(geography_level, leg)]
-        if roster and deferred == roster:
-            licensed.setdefault(target_id, set()).add(leg)
+    target_levels = {key[:2] for key in deferred_by_target_level_leg} | set(
+        scope_by_target_level
+    )
+    for target_id, geography_level in sorted(target_levels):
+        scope = scope_by_target_level.get((target_id, geography_level))
+        for (level, leg), roster in roster_by_level_leg.items():
+            if level != geography_level or not roster:
+                continue
+            bindable = roster if scope is None else roster & scope
+            deferred = deferred_by_target_level_leg.get(
+                (target_id, geography_level, leg), set()
+            )
+            if not bindable or deferred >= bindable:
+                licensed.setdefault(target_id, set()).add(leg)
     return {
         target_id: frozenset(sorted(legs))
         for target_id, legs in sorted(licensed.items())
     }
+
+
+def _uk_area_scope_by_target_level(
+    membership: Mapping[str, Any],
+    roster_by_level_leg: Mapping[tuple[str, str], set[str]],
+) -> dict[tuple[str, str], set[str]]:
+    """The membership's ``area_scope_by_target_id`` as (target, level) -> areas."""
+
+    del roster_by_level_leg  # legs are read by the caller; validation is roster-wide
+
+    raw_scopes = membership.get("area_scope_by_target_id", {})
+    if not isinstance(raw_scopes, Mapping):
+        raise ValueError(
+            "UK local target membership area_scope_by_target_id must be a mapping."
+        )
+    # Validate scoped areas against the committed rosters, not the placed
+    # ones: under a run's own resolver an area its ladder does not carry is
+    # skipped above, and a scope naming it is not a register defect.
+    roster_by_level: dict[str, set[str]] = {
+        str(level): {str(area_id).strip() for area_id in area_ids}
+        for level, area_ids in membership.get("areas_by_geography_level", {}).items()
+    }
+    scopes: dict[tuple[str, str], set[str]] = {}
+    for raw_target_id, levels in raw_scopes.items():
+        target_id = str(raw_target_id).strip()
+        if not target_id or not isinstance(levels, Mapping):
+            raise ValueError(
+                "UK local target membership area scopes must map a target id to "
+                "{geography_level: [area_id, ...]}."
+            )
+        for raw_level, raw_area_ids in levels.items():
+            geography_level = str(raw_level).strip()
+            if not geography_level or not isinstance(raw_area_ids, (list, tuple)):
+                raise ValueError(
+                    f"UK local target membership area scope for {target_id!r} "
+                    "must list area ids per geography level."
+                )
+            area_ids = {str(area_id).strip() for area_id in raw_area_ids}
+            unknown = area_ids - roster_by_level.get(geography_level, set())
+            if "" in area_ids or unknown:
+                raise ValueError(
+                    f"UK local target membership area scope for {target_id!r} "
+                    f"names areas absent from the {geography_level!r} roster: "
+                    f"{sorted(unknown)[:5]}."
+                )
+            scopes[(target_id, geography_level)] = area_ids
+    return scopes
 
 
 def compile_uk_local_target_registry(
@@ -969,12 +1103,14 @@ def _assert_local_fact_vintages(
             f"{level!r}, which declares no expected boundary vintage in the "
             "crosswalk."
         )
+    aliases = rosters.get(level, {}).get("aliases", {})
     for fact in facts:
         geography = fact.get("geography")
         if not isinstance(geography, Mapping):
             continue
         vintage = str(geography.get("vintage") or "")
         code = str(geography.get("id") or "")
+        alias = aliases.get(code)
         if isinstance(expected, Mapping):
             wanted = expected.get(code[:1])
             if wanted is None:
@@ -988,6 +1124,15 @@ def _assert_local_fact_vintages(
         accepted = (
             {str(wanted)} if isinstance(wanted, str) else {str(v) for v in wanted}
         )
+        if alias is not None:
+            # A recoded authority's fact is filed under the alias code: some
+            # publishers stamp it with the alias vintage the crosswalk
+            # declares (MHCLG's taxbase, lad_2025), others keep the roster
+            # frame's label on the new code (PIPR, lad_2023). Both are the
+            # same authority; the roster code stays the identity.
+            _, alias_vintage = alias
+            if alias_vintage:
+                accepted = accepted | {alias_vintage}
         if not vintage:
             raise ValueError(
                 f"UK local target reference {reference.name!r} matched a fact "
@@ -1071,6 +1216,13 @@ def _local_crosswalk_rosters(
         rosters[str(level)] = {
             "area_ids": frozenset(str(area_id) for area_id in area_ids),
             "expected_vintage": payload.get("expected_vintage", ""),
+            # alias code -> (roster code, alias vintage): publisher recodings
+            # the crosswalk declares (microcosm#929).
+            "aliases": {
+                str(code): (str(area_id), str(alias.get("alias_vintage") or ""))
+                for area_id, alias in (payload.get("code_aliases") or {}).items()
+                for code in alias.get("alias_codes", ())
+            },
         }
     return rosters
 
@@ -1129,7 +1281,14 @@ def _assert_local_reference_in_crosswalk(
 ) -> None:
     selector = reference.ledger_selector
     geography_level = str(selector.get("geography_level") or "")
-    geography_id = str(selector.get("geography_id") or "")
+    selected = selector.get("geography_id")
+    # An aliased cell selects under the roster code and its alias code(s); the
+    # roster code is the identity checked here.
+    geography_id = (
+        str(selected[0])
+        if isinstance(selected, list) and selected
+        else str(selected or "")
+    )
     if not geography_level or not geography_id:
         raise ValueError(
             f"UK local target reference {reference.name!r} must pin "
@@ -1401,7 +1560,17 @@ def _spec_geography(spec: TargetSpec) -> tuple[str, str]:
 
     local = spelling("", "local")
     ledger = spelling("ledger_", "ledger")
-    if local is not None and ledger is not None and local != ledger:
+    aliases = {
+        code.strip()
+        for code in str(metadata.get("geography_id_aliases") or "").split(",")
+        if code.strip()
+    }
+    if (
+        local is not None
+        and ledger is not None
+        and local != ledger
+        and not (local[0] == ledger[0] and ledger[1] in aliases)
+    ):
         raise ValueError(
             f"UK target {spec.name!r} geography spellings disagree: "
             f"local={local!r}, ledger={ledger!r}."
@@ -1825,7 +1994,9 @@ def uk_local_target_surface(
         for area_type, level in AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL.items()
     }
     target_id_to_metric = {
-        target_id: metric for metric, target_id in _uk_local_metric_target_ids().items()
+        target_id: metric
+        for metric, sharers in _uk_local_metric_targets().items()
+        for target_id, _ in sharers
     }
     output_rows: list[dict[str, Any]] = []
     reconciliation_rows: list[dict[str, Any]] = []

@@ -3825,6 +3825,464 @@ def test_hierarchy_catalog_rejects_blank_declared_target_label() -> None:
         )
 
 
+def _linear_combination_fact(
+    *,
+    key: str,
+    value: float,
+    measure_id: str,
+    band: str,
+    geography_id: str = "E92000001",
+    geography_level: str = "country",
+    period: int = 2025,
+):
+    fact = _consumer_fact_row_for_period(period, value=value)
+    fact["aggregate_fact_key"] = f"ledger.aggregate_fact.v2:{key}"
+    fact["semantic_fact_key"] = f"ledger.semantic_fact.v2:{key}"
+    fact["legacy_fact_key"] = f"ledger.fact.v1:{key}"
+    fact["dimensions"] = {"council_tax_band": band}
+    fact["layout"] = {**fact["layout"], "measure_id": measure_id}
+    fact["observed_measure"] = {
+        **fact.get("observed_measure", {}),
+        "source_measure_id": measure_id,
+    }
+    fact["geography"] = {"level": geography_level, "id": geography_id}
+    return fact
+
+
+def _occupied_band_a_reference(**overrides):
+    base = dict(
+        name="occupied band A",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "geography_level": "country",
+            "geography_id": "E92000001",
+        },
+        value_operation="linear_combination",
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A"},
+                "label": "line_07[A]",
+            },
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A-"},
+                "label": "line_07[A-]",
+            },
+            {
+                "weight": -1,
+                "source_measure_id": "line_11",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+            {
+                "weight": -1,
+                "source_measure_id": "line_15",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+        ),
+        entity="household",
+        measure="council_tax/band_a",
+        period=2025,
+    )
+    base.update(overrides)
+    return LedgerTargetReference(**base)
+
+
+def _occupied_band_a_facts():
+    return [
+        _linear_combination_fact(
+            key="l7a", value=6_000, measure_id="line_07", band="A"
+        ),
+        _linear_combination_fact(key="l7am", value=17, measure_id="line_07", band="A-"),
+        _linear_combination_fact(key="l11a", value=60, measure_id="line_11", band="A"),
+        _linear_combination_fact(key="l15a", value=140, measure_id="line_15", band="A"),
+        _linear_combination_fact(
+            key="l7b", value=5_000, measure_id="line_07", band="B"
+        ),
+    ]
+
+
+def test__given_signed_single_fact_operands__then_linear_combination_compiles() -> None:
+    facts = _occupied_band_a_facts()
+    registry = compile_ledger_target_references(
+        facts, [_occupied_band_a_reference()], country="uk"
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == 6_000 + 17 - 60 - 140
+    assert spec.metadata["ledger_value_operation"] == "linear_combination"
+    assert spec.metadata["ledger_value_formula"] == (
+        "+line_07[A] +line_07[A-] -line_11[council_tax_band=A] "
+        "-line_15[council_tax_band=A]"
+    )
+    assert json.loads(spec.metadata["ledger_member_fact_keys"]) == [
+        "ledger.aggregate_fact.v2:l7a",
+        "ledger.aggregate_fact.v2:l7am",
+        "ledger.aggregate_fact.v2:l11a",
+        "ledger.aggregate_fact.v2:l15a",
+    ]
+
+
+def test__given_member_set_operands__then_linear_combination_sums_each_operand() -> (
+    None
+):
+    """A region row composed from its authorities: sum(line 7) - sum(line 11)."""
+
+    authorities = ("E06000001", "E06000002", "E06000003")
+    facts = []
+    for index, code in enumerate(authorities):
+        facts.append(
+            _linear_combination_fact(
+                key=f"l7-{code}",
+                value=1_000 * (index + 1),
+                measure_id="line_07",
+                band="A",
+                geography_id=code,
+                geography_level="local_authority",
+            )
+        )
+        facts.append(
+            _linear_combination_fact(
+                key=f"l11-{code}",
+                value=10 * (index + 1),
+                measure_id="line_11",
+                band="A",
+                geography_id=code,
+                geography_level="local_authority",
+            )
+        )
+    facts.append(
+        _linear_combination_fact(
+            key="l7-other",
+            value=99_999,
+            measure_id="line_07",
+            band="A",
+            geography_id="E06000004",
+            geography_level="local_authority",
+        )
+    )
+    reference = LedgerTargetReference(
+        name="mhclg.council_tax_stock.band_a@E12000001",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "geography_level": "local_authority",
+            "geography_id": list(authorities),
+            "dimension_values": {"council_tax_band": "A"},
+        },
+        value_operation="linear_combination",
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "expected_member_count": 3,
+                "label": "sum(line_07)",
+            },
+            {
+                "weight": -1,
+                "source_measure_id": "line_11",
+                "expected_member_count": 3,
+                "label": "sum(line_11)",
+            },
+        ),
+        entity="household",
+        measure="council_tax/band_a",
+        period=2025,
+    )
+
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+
+    spec = registry.specs[0]
+    assert spec.value == (1_000 + 2_000 + 3_000) - (10 + 20 + 30)
+    assert spec.metadata["ledger_value_formula"] == "+sum(line_07) -sum(line_11)"
+    assert len(json.loads(spec.metadata["ledger_member_fact_keys"])) == 6
+
+
+def test__given_member_set_without_declared_count__then_linear_combination_refuses() -> (
+    None
+):
+    facts = [
+        _linear_combination_fact(
+            key=f"l7-{code}",
+            value=1,
+            measure_id="line_07",
+            band="A",
+            geography_id=code,
+            geography_level="local_authority",
+        )
+        for code in ("E06000001", "E06000002")
+    ]
+    reference = LedgerTargetReference(
+        name="undeclared members",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "geography_level": "local_authority",
+            "geography_id": ["E06000001", "E06000002"],
+        },
+        value_operation="linear_combination",
+        value_operands=({"weight": 1, "source_measure_id": "line_07"},),
+        entity="household",
+        measure="council_tax/band_a",
+        period=2025,
+    )
+
+    with pytest.raises(ValueError, match="declare expected_member_count"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test__given_missing_member__then_linear_combination_refuses() -> None:
+    facts = _occupied_band_a_facts()
+    reference = _occupied_band_a_reference(
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A"},
+                "expected_member_count": 2,
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="expected 2 members"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test__given_operand_without_a_match__then_linear_combination_refuses() -> None:
+    facts = _occupied_band_a_facts()
+    reference = _occupied_band_a_reference(
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+            {
+                "weight": -1,
+                "source_measure_id": "line_99",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="matched no eligible Ledger fact"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test__given_overlapping_operands__then_linear_combination_refuses() -> None:
+    facts = _occupied_band_a_facts()
+    reference = _occupied_band_a_reference(
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+            {
+                "weight": 1,
+                "dimension_values": {"council_tax_band": "A"},
+                "source_measure_id": "line_07",
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="operand selectors must be disjoint"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test__given_operands_at_different_periods__then_linear_combination_refuses() -> (
+    None
+):
+    facts = [
+        _linear_combination_fact(key="l7a", value=100, measure_id="line_07", band="A"),
+        _linear_combination_fact(
+            key="l11a", value=1, measure_id="line_11", band="A", period=2024
+        ),
+    ]
+    reference = _occupied_band_a_reference(
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+            {
+                "weight": -1,
+                "source_measure_id": "line_11",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="same latest period"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test__given_negative_result__then_linear_combination_refuses() -> None:
+    facts = _occupied_band_a_facts()
+    reference = _occupied_band_a_reference(
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_11",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+            {
+                "weight": -1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="produced invalid value"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+@pytest.mark.parametrize(
+    ("operands", "message"),
+    [
+        ((), "at least one weighted operand"),
+        (({"source_measure_id": "line_07"},), "finite nonzero numeric weight"),
+        (
+            ({"weight": 0, "source_measure_id": "line_07"},),
+            "finite nonzero numeric weight",
+        ),
+        (({"weight": 1},), "declares no selector overlay"),
+        (
+            (
+                {
+                    "weight": 1,
+                    "source_measure_id": "line_07",
+                    "expected_member_count": 0,
+                },
+            ),
+            "expected_member_count must be a positive integer",
+        ),
+    ],
+)
+def test__given_malformed_operands__then_linear_combination_reference_refuses(
+    operands, message
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _occupied_band_a_reference(value_operands=operands)
+
+
+def _composed_region_reference(**overrides):
+    seed = _exact_agi_reference().hierarchy
+    assert seed is not None
+    values = dict(
+        name="mhclg.council_tax_stock.band_a@E12000001",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "geography_level": "local_authority",
+            "geography_id": ["E06000001", "E06000002"],
+            "dimension_values": {"council_tax_band": "A"},
+        },
+        value_operation="linear_combination",
+        value_operands=(
+            {"weight": 1, "source_measure_id": "line_07", "expected_member_count": 2},
+            {"weight": -1, "source_measure_id": "line_11", "expected_member_count": 2},
+        ),
+        entity="household",
+        measure="council_tax/band_a",
+        period=2025,
+        metadata={
+            "geography_level": "region",
+            "geography_id": "E12000001",
+            "composed_from_level": "local_authority",
+        },
+        hierarchy=CalibrationHierarchySeed(
+            seed.provider, seed.category, target_label="Band A occupied dwellings"
+        ),
+    )
+    values.update(overrides)
+    return LedgerTargetReference(**values)
+
+
+def _composed_region_facts():
+    facts = []
+    for code, name in (("E06000001", "Hartlepool"), ("E06000002", "Middlesbrough")):
+        for measure_id, value in (("line_07", 1_000), ("line_11", 10)):
+            fact = _linear_combination_fact(
+                key=f"{measure_id}-{code}",
+                value=value,
+                measure_id=measure_id,
+                band="A",
+                geography_id=code,
+                geography_level="local_authority",
+            )
+            fact["geography"]["name"] = name
+            fact["label"] = f"{name} band A {measure_id}"
+            fact["layout"] = {
+                **fact["layout"],
+                "groupby_dimension": "geography",
+                "groupby_dimension_label": "Geography",
+                "groupby_value_id": code.lower(),
+                "groupby_value_label": name,
+            }
+            fact["dimension_labels"] = {
+                "council_tax_band": "Council tax band",
+                "geography": "Geography",
+            }
+            fact["dimension_value_labels"] = {
+                "council_tax_band": {"A": "Band A"},
+                "geography": {code.lower(): name},
+            }
+            facts.append(fact)
+    return facts
+
+
+def test__given_composed_region_row__then_hierarchy_takes_the_declared_geography() -> (
+    None
+):
+    registry = compile_ledger_target_references(
+        _composed_region_facts(), [_composed_region_reference()], country="uk"
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == 2_000 - 20
+    assert spec.hierarchy is not None
+    assert spec.hierarchy.geography.level == "region"
+    assert spec.hierarchy.geography.id == "E12000001"
+    assert spec.hierarchy.geography.label == "North East"
+    assert spec.metadata["ledger_geography_level"] == "region"
+    assert spec.metadata["ledger_geography_id"] == "E12000001"
+    assert spec.metadata["ledger_geography_name"] == "North East"
+    assert spec.metadata["composed_from_level"] == "local_authority"
+
+
+def test__given_composed_row_with_uncatalogued_geography__then_it_refuses() -> None:
+    reference = _composed_region_reference(
+        name="mhclg.council_tax_stock.band_a@E12999999",
+        metadata={
+            "geography_level": "region",
+            "geography_id": "E12999999",
+            "composed_from_level": "local_authority",
+        },
+    )
+
+    with pytest.raises(ValueError, match="authoritative geography catalog"):
+        compile_ledger_target_references(
+            _composed_region_facts(), [reference], country="uk"
+        )
+
+
+def test__given_composed_row_members_at_another_grain__then_it_refuses() -> None:
+    reference = _composed_region_reference(
+        metadata={
+            "geography_level": "region",
+            "geography_id": "E12000001",
+            "composed_from_level": "constituency",
+        },
+    )
+
+    with pytest.raises(ValueError, match="must all sit at 'constituency'"):
+        compile_ledger_target_references(
+            _composed_region_facts(), [reference], country="uk"
+        )
+
+
 @pytest.mark.parametrize(
     ("record_set_id", "expected"),
     [
@@ -3873,3 +4331,63 @@ def test__given_one_series_published_per_vintage__then_latest_not_after_resolves
     registry = compile_ledger_target_references(facts, [reference], country="uk")
 
     assert registry.specs[0].value == 490_000 + 2025
+
+
+def test__given_an_aliased_row__then_hierarchy_keeps_the_roster_code_and_the_name() -> (
+    None
+):
+    seed = _exact_agi_reference().hierarchy
+    assert seed is not None
+    fact = _linear_combination_fact(
+        key="l7-barnsley",
+        value=62_000,
+        measure_id="line_07",
+        band="A",
+        geography_id="E08000038",
+        geography_level="local_authority",
+    )
+    fact["geography"]["name"] = "Barnsley"
+    fact["label"] = "Barnsley band A line 7"
+    fact["layout"] = {
+        **fact["layout"],
+        "groupby_dimension": "geography",
+        "groupby_dimension_label": "Geography",
+        "groupby_value_id": "e08000038",
+        "groupby_value_label": "Barnsley",
+    }
+    fact["dimension_labels"] = {
+        "council_tax_band": "Council tax band",
+        "geography": "Geography",
+    }
+    fact["dimension_value_labels"] = {
+        "council_tax_band": {"A": "Band A"},
+        "geography": {"e08000038": "Barnsley"},
+    }
+    reference = LedgerTargetReference(
+        name="mhclg.council_tax_stock.by_area.band_a@E08000016",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "geography_level": "local_authority",
+            "geography_id": ["E08000016", "E08000038"],
+        },
+        entity="household",
+        measure="council_tax/band_a",
+        period=2025,
+        metadata={
+            "geography_level": "local_authority",
+            "geography_id": "E08000016",
+            "geography_id_aliases": "E08000038",
+        },
+        hierarchy=CalibrationHierarchySeed(
+            seed.provider, seed.category, target_label="Band A occupied dwellings"
+        ),
+    )
+
+    registry = compile_ledger_target_references([fact], [reference], country="uk")
+
+    spec = registry.specs[0]
+    assert spec.value == 62_000
+    assert spec.hierarchy is not None
+    assert spec.hierarchy.geography.id == "E08000016"
+    assert spec.hierarchy.geography.label == "Barnsley"
+    assert spec.metadata["ledger_geography_id"] == "E08000038"

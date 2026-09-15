@@ -113,6 +113,8 @@ def main() -> None:
         geography_pins=_geography_pins(contract),
         geography_fanout_by_target_id=_geography_fanout(contract),
         geography_fanout_metadata=_geography_fanout_metadata,
+        geography_composition_by_target_id=_geography_composition(contract),
+        geography_composition_aliases=_geography_composition_aliases(),
         fanout_name=lambda target, fact: _fanout_name(
             target,
             fact,
@@ -300,6 +302,97 @@ def _geography_fanout_metadata(
     }
 
 
+def _local_area_crosswalk() -> dict[str, Any]:
+    return json.loads(
+        Path(__file__)
+        .resolve()
+        .parents[1]
+        .joinpath(
+            "packages/microcosm-build/src/microcosm/build/uk/local_area_crosswalk.json"
+        )
+        .read_text()
+    )
+
+
+def _geography_composition_aliases() -> dict[str, dict[str, tuple[str, ...]]]:
+    aliases: dict[str, dict[str, tuple[str, ...]]] = {}
+    for level, payload in _local_area_crosswalk()["levels"].items():
+        for area_id, alias in (payload.get("code_aliases") or {}).items():
+            codes = tuple(str(code) for code in alias.get("alias_codes", ()))
+            if codes:
+                aliases.setdefault(str(level), {})[str(area_id)] = codes
+    return aliases
+
+
+def _geography_composition(
+    contract: Mapping[str, Any],
+) -> dict[str, dict[str, tuple[str, tuple[str, ...]]]]:
+    """Region cells composed from the authorities the crosswalk places in them.
+
+    A two-level target that declares ``region_composition`` binds no region
+    fact of its own: the publisher prints the England row and the billing
+    authorities (MHCLG Council Taxbase), so each English region cell is the
+    signed combination of its authorities' rows, the consumer rollup Chronicle's
+    doctrine leaves to the consumer (microcosm#929). Membership comes from the
+    sha-pinned OA ladder through ``region_code_by_area`` in the local-area
+    crosswalk, the same map the cross-grain legs read, so the cell's members
+    are exactly the authorities the cross-grain rule reconciles beneath it.
+    """
+
+    composition: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {}
+    crosswalk: Mapping[str, Any] | None = None
+    for target in contract.get("targets", ()):
+        declaration = target.get("region_composition")
+        if declaration is None:
+            continue
+        levels = {str(level) for level in target.get("geography_levels") or ()}
+        if levels != REGION_TIER_FANOUT_LEVELS:
+            raise ValueError(
+                f"{target['target_id']}: region_composition needs the two-level "
+                "(country + region) declaration."
+            )
+        from_level = str(declaration.get("from_level") or "")
+        if from_level != "local_authority":
+            raise ValueError(
+                f"{target['target_id']}: region_composition.from_level must be "
+                f"'local_authority', got {from_level!r}."
+            )
+        if crosswalk is None:
+            crosswalk = _local_area_crosswalk()
+        level_payload = crosswalk["levels"][from_level]
+        region_by_area = level_payload["region_code_by_area"]
+        code_aliases = level_payload.get("code_aliases") or {}
+        members: dict[str, list[str]] = {}
+        for area_id, region_code in sorted(region_by_area.items()):
+            if str(region_code).startswith("E12"):
+                codes = members.setdefault(str(region_code), [])
+                codes.append(str(area_id))
+                # A recoded authority's facts carry the alias code; the member
+                # count stays one per authority (the resolver takes the latest
+                # period, where only one spelling has a row).
+                codes.extend(
+                    str(code)
+                    for code in (code_aliases.get(str(area_id)) or {}).get(
+                        "alias_codes", ()
+                    )
+                )
+        cells = {
+            code: (from_level, tuple(members[code]))
+            for level, code in UK_REGION_TIER
+            if level == "region"
+        }
+        missing = [code for code, (_, ids) in cells.items() if not ids]
+        if missing:
+            raise ValueError(
+                f"{target['target_id']}: no {from_level} member for region(s) "
+                f"{missing!r} in the crosswalk."
+            )
+        composition[str(target["target_id"])] = cells
+    return composition
+
+
+MHCLG_COUNCIL_TAX_STOCK_PREFIX = "mhclg.council_tax_stock."
+WELSHGOV_COUNCIL_TAX_STOCK_PREFIX = "welshgov.council_tax_stock."
 SCOTGOV_COUNCIL_TAX_STOCK_PREFIX = "scotgov.council_tax_stock."
 
 # Target-id prefixes whose geography pins cannot come from the nation-substring
@@ -313,6 +406,10 @@ TARGET_PREFIX_GEOGRAPHY_PINS: tuple[tuple[str, str], ...] = (
     # "scotgov" or "scottish_child_payment" and would fall through to the UK
     # pin, which never matches a Scotland-stamped fact.
     ("scotgov.", "scotland"),
+    # MHCLG's council taxbase return is England-only (facts stamped E92000001
+    # and the 296 English billing authorities); the substring rule sees no
+    # nation in "mhclg".
+    ("mhclg.", "england"),
     # The SLC borrower-plan forecasts Chronicle carries are England-scoped
     # (facts stamped E92000001) and the contract bindings already filter
     # country == ENGLAND explicitly, so the GB default could never match.
@@ -562,7 +659,11 @@ def _add_uk_membership_accounting(
         1
         for reference in references
         if reference["metadata"]["contract_target_id"].startswith(
-            ("voa.council_tax_stock.", SCOTGOV_COUNCIL_TAX_STOCK_PREFIX)
+            (
+                MHCLG_COUNCIL_TAX_STOCK_PREFIX,
+                WELSHGOV_COUNCIL_TAX_STOCK_PREFIX,
+                SCOTGOV_COUNCIL_TAX_STOCK_PREFIX,
+            )
         )
     )
     report["fanout_family_outcomes"] = [
@@ -600,13 +701,16 @@ def _add_uk_membership_accounting(
             "status": "active_declared_rows",
             "active_reference_count": council_tax_count,
             "signed_rationale": (
-                "VOA (England) and Scottish Government CTAXBASE (Scotland) "
-                "council-tax stock bands are declared as nine explicit target "
-                "rows each, including total. The Scottish rows resolve with "
-                "their country-level geography and band pin; the English rows "
-                "fan out over the nine English regions of the region tier "
-                "(microcosm#905), each cell resolving VOA's region-stamped "
-                "band count with the same band pin."
+                "MHCLG council taxbase (England), Welsh Government CT1 "
+                "(Wales) and Scottish Government CTAXBASE (Scotland) "
+                "council-tax stock bands are declared as explicit target rows "
+                "per band plus total (England and Scotland A-H, Wales A-I). "
+                "The Welsh and Scottish rows resolve with their country-level "
+                "geography and band pin; the English rows fan out over the "
+                "nine English regions of the region tier (microcosm#905), each "
+                "cell composed as the linear combination of the billing-"
+                "authority facts the crosswalk places in that region "
+                "(microcosm#929)."
             ),
         },
         {

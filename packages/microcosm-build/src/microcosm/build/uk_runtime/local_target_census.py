@@ -206,10 +206,15 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
     {
         "family": "council_tax",
         "description": (
-            "Chargeable dwelling stock by council-tax band A-H at local-"
-            "authority grain, represented on the household frame."
+            "Dwellings charged council tax by band at local-authority grain, "
+            "from the councils' taxbase returns (England A-H, Wales A-I, "
+            "Scotland A-H), represented on the household frame (microcosm#929)."
         ),
-        "sources": ["voa_council_tax_stock_la"],
+        "sources": [
+            "mhclg_council_taxbase_la",
+            "welshgov_council_tax_dwellings_la",
+            "scotgov_ctaxbase_chargeable_dwellings_la",
+        ],
         "adjudications": [_COUNCIL_TAX_UNIVERSE_FENCE_ID],
     },
 )
@@ -474,38 +479,82 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
-        "source_id": "voa_council_tax_stock_la",
-        "publisher": "Valuation Office Agency",
+        "source_id": "mhclg_council_taxbase_la",
+        "publisher": "Ministry of Housing, Communities and Local Government",
         "product": (
-            "Council Tax stock of properties, 2025: local-authority counts "
-            "by valuation band."
+            "Council Taxbase 2025 in England: local-authority level data, CTB "
+            "lines by valuation band (chronicle#262 / #264)."
         ),
         "url": (
-            "https://www.gov.uk/government/statistics/council-tax-stock-of-"
-            "properties-2025"
+            "https://www.gov.uk/government/statistics/council-taxbase-2025-in-england"
         ),
         "geographies": ["la"],
-        "latest_vintage": "2025",
+        "latest_vintage": "2025-10",
         "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
         "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
-            "The pinned feed record-set spec "
-            "uk.local_geography.council_tax_stock.by_local_authority.v1 "
-            "supplies 2,541 locally compilable band cells. After the A13 and "
-            "A14 rulings, 2,058 English cells bind: bands A-G each cover 294 "
-            "authorities after E06000053 and E09000001 are support-floor "
-            "excluded (E09000001 Band A was already suppressed), and the "
-            "entire 296-cell English Band H family is signed deferred because "
-            "84 authorities lack Band H support at K=10. All 176 Welsh A-H "
-            "cells are "
-            "signed deferred because the feed has no Wales country-level "
-            "stock-by-band parent control; 174 have local facts and the two "
-            "Band H cells W06000019 and W06000024 are absent. Scotland's 32 "
-            "authorities have no VOA band-count rows and Northern Ireland's "
-            "11 LGDs use domestic rates; all 830 excluded cells are signed "
-            "deferrals. The feed has no comparable 2025 LA net series across "
-            "the roster, so council_tax/net is not declared."
+            "The pinned feed record-set specs uk.local_geography.council_tax."
+            "england_ctb.line_07_chargeable_dwellings_adjusted_for_disabled_"
+            "relief.v1, line_11_second_homes.v1 and line_15_empty_dwellings.v1 "
+            "supply the 296 English billing authorities by band A-, A-H at the "
+            "October 2025 count. Each cell binds line 7 minus line 11 minus "
+            "line 15 (band A adds line 7's A- column): the dwellings charged as "
+            "someone's sole or main residence, the universe a household frame "
+            "carries. Bands A-G bind 294 authorities after E06000053 and "
+            "E09000001 are support-floor excluded; the 296-cell band H family "
+            "stays signed deferred on spine support (microcosm#762 A14). "
+            "Barnsley and Sheffield bind through the crosswalk's declared "
+            "aliases of their April 2025 codes. The family is scoped to the "
+            "296 English authorities: Wales and Scotland bind their own "
+            "returns below and Northern Ireland levies domestic rates."
+        ),
+    },
+    {
+        "source_id": "welshgov_council_tax_dwellings_la",
+        "publisher": "Welsh Government (StatsWales)",
+        "product": (
+            "Council tax dwellings by authority and band (CT1 returns), "
+            "FY2023-24 to FY2026-27 (chronicle#262 / #264)."
+        ),
+        "url": "https://stats.gov.wales/en-GB/062488e2-3fd6-4755-9b0b-a64547fc570f/start",
+        "geographies": ["la"],
+        "latest_vintage": "2026-27",
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "The pinned feed record-set specs uk.local_geography.council_tax."
+            "wales_ct1.a1_all_chargeable_dwellings.v1, h7_total_chargeable_"
+            "empty_properties.v1 and h8_total_chargeable_second_homes.v1 "
+            "supply the 22 Welsh authorities by band A-I per financial year. "
+            "Each cell binds a1 minus h7 minus h8 on the 2025-26 row (the "
+            "taxbase set for that year, counted on the 31 October 2024 list, "
+            "one count-year behind England and Scotland by ruling of "
+            "2026-09-15); all 198 cells bind, band I included."
+        ),
+    },
+    {
+        "source_id": "scotgov_ctaxbase_chargeable_dwellings_la",
+        "publisher": "Scottish Government",
+        "product": (
+            "Number of chargeable dwellings, September 2025 (CTAXBASE 2025): "
+            "council-area rows (chronicle#262 / #264)."
+        ),
+        "url": "https://www.gov.scot/publications/council-tax-datasets/",
+        "geographies": ["la"],
+        "latest_vintage": "2025-09",
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "The pinned feed record-set spec uk.local_geography.council_tax_"
+            "stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1 "
+            "supplies the 32 councils by band A-H, the concept the "
+            "scotgov.council_tax_stock country rows already bind; all 256 "
+            "cells bind. Chargeable dwellings run about 1 % above the "
+            "household frame nationally, the residual the universe fence "
+            "records."
         ),
     },
 )
@@ -658,17 +707,21 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "fenced_fact_count": None,
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
-            "VOA council-tax stock counts chargeable dwellings, including "
-            "empty properties, second homes, and other dwellings that need "
-            "not correspond one-for-one with occupied private households in "
-            "the FRS frame. Binding the band-count family requires an explicit "
-            "adjudication accepting the household proxy or a source-faithful "
-            "dwelling representation."
+            "Council-tax stock targets count dwellings, not households. The "
+            "family binds the councils' taxbase returns, which count the "
+            "dwellings charged as a sole or main residence once second homes "
+            "and empty dwellings are taken out (England, Wales) or the "
+            "chargeable dwellings (Scotland); the VOA valuation-list stock, "
+            "which also carries exempt, empty and second-home dwellings, ran "
+            "6 % over the household frame and is not bound. The residual "
+            "between the taxbase universe and occupied private households in "
+            "the FRS frame needs an explicit adjudication naming it."
         ),
         "authority": (
             "uk-data targets/sources/la_council_tax.py lineage doctrine and "
             "datasets/local_areas/local_authorities/loss.py; uk-data#371; "
-            "microcosm#147 adjudication A3."
+            "uk-data#457; microcosm#147 adjudication A3; microcosm#929 basis "
+            "ruling 2026-09-15."
         ),
     },
 )

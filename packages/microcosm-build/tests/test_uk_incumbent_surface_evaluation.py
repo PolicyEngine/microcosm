@@ -151,7 +151,7 @@ def test_local_rows_map_metrics_and_carry_our_cell_status() -> None:
     ]
     membership = {
         "targets": {
-            "voa.council_tax_stock.by_area.band_h": {
+            "mhclg.council_tax_stock.by_area.band_h": {
                 "geography_levels": {
                     "local_authority": {
                         "candidates": [
@@ -163,7 +163,7 @@ def test_local_rows_map_metrics_and_carry_our_cell_status() -> None:
         },
         "signed_deferrals": [
             {
-                "target_id": "voa.council_tax_stock.by_area.band_h",
+                "target_id": "mhclg.council_tax_stock.by_area.band_h",
                 "geography_level": "local_authority",
                 "reason_id": "council_tax_band_h_spine_support_absent",
                 "area_ids": ["S12000005"],
@@ -174,8 +174,8 @@ def test_local_rows_map_metrics_and_carry_our_cell_status() -> None:
         fixture,
         metric_target_ids={
             "age/20_30": "ons.age.20_30",
-            "council_tax/band_a": "voa.council_tax_stock.by_area.band_a",
-            "council_tax/band_h": "voa.council_tax_stock.by_area.band_h",
+            "council_tax/band_a": "mhclg.council_tax_stock.by_area.band_a",
+            "council_tax/band_h": "mhclg.council_tax_stock.by_area.band_h",
         },
         membership=membership,
         our_metric_names={
@@ -184,7 +184,7 @@ def test_local_rows_map_metrics_and_carry_our_cell_status() -> None:
         },
         bound_names={
             "ons.age.20_30@E14000001",
-            "voa.council_tax_stock.by_area.band_a@E06000001",
+            "mhclg.council_tax_stock.by_area.band_a@E06000001",
         },
         unmapped_concern={
             "housing/council_tax_net": ("blocked_source", "local_council_tax_net")
@@ -329,7 +329,16 @@ def test_local_metric_target_ids_map_metric_name_to_contract_id() -> None:
     mapping = _uk_local_metric_target_ids()
     # Direction matters: the evaluator looks our metric name up to find the
     # contract id the membership register is keyed by.
-    assert mapping["council_tax/band_h"] == "voa.council_tax_stock.by_area.band_h"
+    # A metric three nation-scoped families share maps by GSS prefix
+    # (microcosm#929); an unscoped metric maps to its one target.
+    assert mapping["council_tax/band_h"] == {
+        "E": "mhclg.council_tax_stock.by_area.band_h",
+        "W": "welshgov.council_tax_stock.by_area.band_h",
+        "S": "scotgov.council_tax_stock.by_area.band_h",
+    }
+    assert mapping["council_tax/band_i"] == {
+        "W": "welshgov.council_tax_stock.by_area.band_i"
+    }
     assert mapping["uc_households"] == "dwp.uc.households_by_area"
 
 

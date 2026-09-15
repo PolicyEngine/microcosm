@@ -92,6 +92,24 @@ class TargetReferenceAuthoringConfig:
     #: Optional per-row metadata for geography fan-out rows (for example the
     #: predicate that scopes the measure to the row's geography).
     geography_fanout_metadata: GeographyFanoutMetadata | None = None
+    #: Fan-out cells composed from lower-grain member facts instead of a fact
+    #: of their own: ``target_id -> cell geography_id -> (member_level,
+    #: member_geography_ids)``. The cell keeps its own geography in the row's
+    #: metadata (and ``composed_from_level``), while its selector names the
+    #: member level and the member ids, and each aggregating operand takes
+    #: ``expected_member_count`` = the member count. A publisher that prints no
+    #: row for the cell (English regions in the MHCLG council taxbase,
+    #: microcosm#929) is bound as a consumer rollup of the rows it does print.
+    geography_composition_by_target_id: Mapping[
+        str, Mapping[str, tuple[str, tuple[str, ...]]]
+    ] = field(default_factory=dict)
+    #: Publisher recodings among composition members: ``member_level ->
+    #: roster code -> alias codes`` (the same declaration the area rosters
+    #: carry as ``code_aliases``), so a member list can name both spellings
+    #: while the expected member count stays one per authority.
+    geography_composition_aliases: Mapping[str, Mapping[str, tuple[str, ...]]] = field(
+        default_factory=dict
+    )
     binding_vocabulary: frozenset[str] = frozenset()
     source_fact_feed: str = ""
     uprating_appliers: Mapping[str, UpratingApplier] = field(default_factory=dict)
@@ -143,6 +161,21 @@ class AreaTargetReferenceAuthoringConfig:
         default_factory=dict
     )
     reference_metadata_by_target_id: Mapping[str, Mapping[str, str]] = field(
+        default_factory=dict
+    )
+    #: Per-target area rosters narrower than the shared roster:
+    #: ``target_id -> geography_level -> area ids``. A target scoped this way
+    #: authors cells only for the listed areas (a publication that covers one
+    #: nation, microcosm#929); areas outside the scope are neither candidates
+    #: nor deferrals, and the membership report records the scope.
+    area_scope_by_target_id: Mapping[str, Mapping[str, frozenset[str]]] = field(
+        default_factory=dict
+    )
+    #: Publisher recodings of roster areas: ``geography_level -> area_id ->
+    #: alias codes``. A cell keeps the roster code as its identity and selects
+    #: facts under the roster code or any alias; the row's metadata records the
+    #: aliases so the surface can accept a fact stamped with one.
+    area_id_aliases: Mapping[str, Mapping[str, tuple[str, ...]]] = field(
         default_factory=dict
     )
     binding_vocabulary: frozenset[str] = frozenset()
@@ -222,6 +255,21 @@ def author_target_references(
                     for level, area_id in geography_fanout
                 ]
             }
+            composition = config.geography_composition_by_target_id.get(target_id)
+            if composition:
+                geography_pin_report[target_id]["geography_composition"] = {
+                    str(area_id): {
+                        "member_level": str(member_level),
+                        "member_count": _composition_member_count(
+                            config,
+                            str(member_level),
+                            tuple(str(member) for member in member_ids),
+                        ),
+                    }
+                    for area_id, (member_level, member_ids) in sorted(
+                        composition.items()
+                    )
+                }
         else:
             geography_pin_report[target_id] = dict(pin)
         source_facts = _source_prefilter(fact_rows, facts_by_source, target)
@@ -407,6 +455,22 @@ def author_area_target_references(
                     f"{geography_level!r}, which the area roster does not "
                     "carry."
                 )
+            scope = config.area_scope_by_target_id.get(target_id, {}).get(
+                geography_level
+            )
+            if scope is not None:
+                unknown = sorted(set(scope) - set(area_ids))
+                if unknown:
+                    raise ValueError(
+                        f"target {target_id!r} area scope at {geography_level!r} "
+                        f"names areas the roster does not carry: {unknown!r}."
+                    )
+                area_ids = tuple(area_id for area_id in area_ids if area_id in scope)
+                if not area_ids:
+                    raise ValueError(
+                        f"target {target_id!r} area scope at {geography_level!r} "
+                        "leaves no roster area."
+                    )
             candidates: list[dict[str, Any]] = []
             for area_id in area_ids:
                 key = (target_id, geography_level, area_id)
@@ -424,7 +488,19 @@ def author_area_target_references(
                     config=config,
                     hierarchy_catalog=contract["hierarchy"],
                 )
-                source_facts = facts_by_area.get(area_id, ())
+                # A recoded authority's facts are indexed under the alias
+                # code; the cell's pool carries both spellings.
+                aliases = config.area_id_aliases.get(geography_level, {}).get(
+                    area_id, ()
+                )
+                source_facts = (
+                    *facts_by_area.get(area_id, ()),
+                    *(
+                        fact
+                        for alias in aliases
+                        for fact in facts_by_area.get(alias, ())
+                    ),
+                )
                 matched = [
                     fact
                     for fact in source_facts
@@ -545,6 +621,12 @@ def author_area_target_references(
         "areas_by_geography_level": {
             level: list(area_ids) for level, area_ids in areas_by_level.items()
         },
+        "area_scope_by_target_id": {
+            target_id: {
+                level: sorted(area_ids) for level, area_ids in sorted(scopes.items())
+            }
+            for target_id, scopes in sorted(config.area_scope_by_target_id.items())
+        },
         "signed_deferrals": [
             {
                 "target_id": deferral.target_id,
@@ -634,7 +716,11 @@ def target_references_resource(
                     row["value_operation"]
                     for row in authored.references
                     if row.get("value_operation")
-                    in {"monthly_window_average", "monthly_window_sum_average"}
+                    in {
+                        "monthly_window_average",
+                        "monthly_window_sum_average",
+                        "linear_combination",
+                    }
                 }
             ),
         ],
@@ -762,6 +848,24 @@ def _candidate_rows(
     )
 
 
+def _composition_member_count(
+    config: TargetReferenceAuthoringConfig,
+    member_level: str,
+    members: tuple[str, ...],
+) -> int:
+    """Members of a composition, counting a recoded authority once.
+
+    A member list may carry an authority under its roster code and its alias
+    code(s) (``geography_composition_aliases``); the publisher prints one row
+    per authority per vintage, so the count of rows the composition expects is
+    the count of authorities, not of spellings.
+    """
+
+    aliases = config.geography_composition_aliases.get(member_level, {})
+    alias_codes = {code for codes in aliases.values() for code in codes}
+    return len([member for member in members if member not in alias_codes])
+
+
 def _geography_fanout_rows(
     target: Mapping[str, Any],
     areas: GeographyFanout,
@@ -794,11 +898,28 @@ def _geography_fanout_rows(
                 f"target {target_id!r} geography fan-out lists {area_id!r} twice."
             )
         seen.add(area_id)
-        selector = _target_selector(
-            target,
-            {"geography_level": level, "geography_id": area_id},
-            config,
+        composition = config.geography_composition_by_target_id.get(target_id, {}).get(
+            area_id
         )
+        if composition is None:
+            selector = _target_selector(
+                target,
+                {"geography_level": level, "geography_id": area_id},
+                config,
+            )
+        else:
+            member_level, member_ids = composition
+            members = tuple(dict.fromkeys(str(member) for member in member_ids))
+            if not member_level or not members:
+                raise ValueError(
+                    f"target {target_id!r} composition for {area_id!r} needs a "
+                    "member level and at least one member id."
+                )
+            selector = _target_selector(
+                target,
+                {"geography_level": str(member_level), "geography_id": list(members)},
+                config,
+            )
         row = _reference_row(
             target,
             selector,
@@ -811,6 +932,28 @@ def _geography_fanout_rows(
             "geography_level": level,
             "geography_id": area_id,
         }
+        if composition is not None:
+            member_level, member_ids = composition
+            members = tuple(dict.fromkeys(str(member) for member in member_ids))
+            if row.get("value_operation") not in {"sum", "linear_combination"}:
+                raise ValueError(
+                    f"target {target_id!r} composes {area_id!r} from "
+                    f"{len(members)} member rows but declares value_operation "
+                    f"{row.get('value_operation', 'identity')!r}; a composed "
+                    "cell needs an aggregating operation."
+                )
+            member_count = _composition_member_count(config, member_level, members)
+            if row.get("value_operation") == "sum":
+                row["expected_member_count"] = member_count
+            else:
+                row["value_operands"] = [
+                    {**dict(operand), "expected_member_count": member_count}
+                    if operand.get("expected_member_count") is None
+                    else dict(operand)
+                    for operand in row.get("value_operands", ())
+                ]
+            metadata["composed_from_level"] = str(member_level)
+            metadata["composed_member_count"] = str(member_count)
         if config.geography_fanout_metadata is not None:
             extra = config.geography_fanout_metadata(
                 target, level, area_id, str(row["entity"])
@@ -853,10 +996,11 @@ def _area_target_selector(
     area_id: str,
     config: AreaTargetReferenceAuthoringConfig,
 ) -> dict[str, Any]:
+    aliases = tuple(config.area_id_aliases.get(geography_level, {}).get(area_id, ()))
     selector = {
         **dict(target["ledger_selector"]),
         "geography_level": geography_level,
-        "geography_id": area_id,
+        "geography_id": [area_id, *aliases] if aliases else area_id,
     }
     pins = config.selector_pins_by_target_id.get(str(target["target_id"]), {})
     for key, value in pins.items():
@@ -894,6 +1038,15 @@ def _area_reference_row(
             "measure_kind": "prepared_column",
             "geography_level": geography_level,
             "geography_id": area_id,
+            **(
+                {
+                    "geography_id_aliases": ",".join(
+                        config.area_id_aliases[geography_level][area_id]
+                    )
+                }
+                if config.area_id_aliases.get(geography_level, {}).get(area_id)
+                else {}
+            ),
             **dict(config.reference_metadata_by_target_id.get(target_id, {})),
         },
         "hierarchy": _hierarchy_seed(target, hierarchy_catalog),
@@ -904,6 +1057,11 @@ def _area_reference_row(
     value_operation = config.value_operation_by_target_id.get(target_id)
     if value_operation is not None and value_operation != "identity":
         row["value_operation"] = value_operation
+    operands = target.get("value_operands")
+    if operands is not None:
+        row["value_operands"] = operands
+    if target.get("expected_member_count") is not None:
+        row["expected_member_count"] = target["expected_member_count"]
     return row
 
 

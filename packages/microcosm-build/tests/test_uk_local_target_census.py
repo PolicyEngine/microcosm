@@ -189,24 +189,31 @@ def test_fences_declare_enforcement_and_gate_reviewed_families() -> None:
 def test_council_tax_source_and_fence_pin_measured_coverage() -> None:
     census = build_uk_local_target_census()
     sources = {row["source_id"]: row for row in census["sources"]}
-    source = sources["voa_council_tax_stock_la"]
-    assert source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS
-    assert "2,541 locally compilable band cells" in source["notes"]
-    assert "2,058 English cells bind" in source["notes"]
-    assert "bands A-G each cover 294 authorities" in source["notes"]
-    assert "entire 296-cell English Band H family is signed deferred" in source["notes"]
-    assert "84 authorities lack Band H support at K=10" in source["notes"]
-    assert "All 176 Welsh A-H cells are signed deferred" in source["notes"]
-    assert "no Wales country-level stock-by-band parent control" in source["notes"]
-    assert "all 830 excluded cells are signed deferrals" in source["notes"]
-    assert "E09000001" in source["notes"]
-    assert "W06000019 and W06000024" in source["notes"]
-    assert "council_tax/net is not declared" in source["notes"]
-
+    assert "voa_council_tax_stock_la" not in sources
+    england = sources["mhclg_council_taxbase_la"]
+    assert england["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS
+    assert "line 7 minus line 11 minus line 15" in england["notes"]
+    assert "Bands A-G bind 294 authorities" in england["notes"]
+    assert "296-cell band H family" in england["notes"]
+    assert "Barnsley and Sheffield bind through the crosswalk" in england["notes"]
+    wales = sources["welshgov_council_tax_dwellings_la"]
+    assert wales["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS
+    assert "a1 minus h7 minus h8 on the 2025-26 row" in wales["notes"]
+    assert "all 198 cells bind, band I included" in wales["notes"]
+    scotland = sources["scotgov_ctaxbase_chargeable_dwellings_la"]
+    assert scotland["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS
+    assert "all 256 cells bind" in scotland["notes"]
+    families = {row["family"]: row for row in census["families"]}
+    assert families["council_tax"]["sources"] == [
+        "mhclg_council_taxbase_la",
+        "welshgov_council_tax_dwellings_la",
+        "scotgov_ctaxbase_chargeable_dwellings_la",
+    ]
     fences = {row["fence_id"]: row for row in census["binding_fences"]}
     fence = fences["voa_dwellings_vs_household_frame"]
-    assert "chargeable dwellings" in fence["rule"]
-    assert "occupied private households" in fence["rule"]
+    assert "councils' taxbase returns" in fence["rule"]
+    assert "6 % over the household frame and is not bound" in fence["rule"]
+    assert "microcosm#929" in fence["authority"]
 
 
 def test_census_disclosure_fence_names_country_as_winning_grain() -> None:
