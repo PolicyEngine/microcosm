@@ -10,7 +10,7 @@ from test_us_graph_current_survey_geography import _detached_context
 from test_us_puf55_survey_recipients import recipient_financial_run  # noqa: F401
 
 from microcosm.build.us_runtime import graph_puf55_survey_recipients as graph
-from microcosm.graph import StructuralDelta, compile_graph, run_graph
+from microcosm.graph import KernelRegistry, StructuralDelta, compile_graph, run_graph
 from microcosm.graph.artifact_edges import typed_contracts
 from microcosm.graph.executor import _all_node_keys, _source_paths_and_keys
 
@@ -27,8 +27,14 @@ def recipient_graph(recipient_financial_run):  # noqa: F811
         graph.Puf55SurveyRecipientProjectionKernel(run),
         graph.Puf55SurveyRecipientMatrixKernel(run),
     )
+    # A private registry, as graph_survey_puf55 composes one: the issued run's
+    # own registry is sealed at issuance and check_atomic_survey_financial_run
+    # refuses a run whose registry gained a kernel after that.
+    registry = KernelRegistry()
+    for kernel in run.kernels.as_mapping().values():
+        registry.register(kernel)
     for kernel in kernels:
-        run.kernels.register(kernel)
+        registry.register(kernel)
     contexts = {}
 
     def trace(frame, event, arg):
@@ -40,7 +46,7 @@ def recipient_graph(recipient_financial_run):  # noqa: F811
     sys.setprofile(trace)
     try:
         cold = run_graph(
-            compiled, sources=run.sources, store=run.store, kernels=run.kernels
+            compiled, sources=run.sources, store=run.store, kernels=registry
         )
     finally:
         sys.setprofile(old)
@@ -49,7 +55,7 @@ def recipient_graph(recipient_financial_run):  # noqa: F811
         compiled,
         sources=run.sources,
         store=run.store,
-        kernels=run.kernels,
+        kernels=registry,
         resume="require",
     )
     yield SimpleNamespace(
@@ -58,6 +64,7 @@ def recipient_graph(recipient_financial_run):  # noqa: F811
         nodes=nodes,
         compiled=compiled,
         kernels=kernels,
+        registry=registry,
         contexts=contexts,
         cold=cold,
         warm=warm,
@@ -69,14 +76,14 @@ def _verified_artifacts(case, manifest):
     """Check actual producer keys and typed closure before reading artifacts."""
     run = case.run
     _, sources = _source_paths_and_keys(case.compiled, run.sources, run.store)
-    keys, implementations = _all_node_keys(case.compiled, run.kernels, sources)
+    keys, implementations = _all_node_keys(case.compiled, case.registry, sources)
     payloads = {}
     for node in case.nodes:
         record = manifest.node(node.id)
         assert record.key == keys[node.id]
         assert record.kernel_impl_hash == implementations[node.id]
         assert record.typed_artifacts == typed_contracts(
-            case.compiled, node, keys, run.kernels
+            case.compiled, node, keys, case.registry
         )
         assert set(record.opaque_artifacts) == {a.name for a in node.artifact_outputs}
         for artifact in node.artifact_outputs:
@@ -250,7 +257,12 @@ def test_last_owner_check_seals_graph_outputs_and_population(recipient_graph, ta
     sys.setprofile(trace)
     try:
         with pytest.raises(
-            ValueError, match="GRAPH_FINAL_RESULT|FINANCIAL_RUN_.*CHANGED"
+            ValueError,
+            match=(
+                "GRAPH_FINAL_RESULT"
+                "|FINANCIAL_NODE_POPULATION_CHANGED"
+                "|FINANCIAL_RUN_.*CHANGED"
+            ),
         ):
             case.kernels[1].run(context)
     finally:
