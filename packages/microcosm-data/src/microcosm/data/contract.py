@@ -385,13 +385,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "3f4ba191d01f53ddfb7b1f7b6e8c551dfc3ff127a51ddcb64a0061a4f0ed6c70"
+    "502beb5bc60b7fcbd0701bfd309827ab5629a0cefffde20988c52e582bff4b90"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "1286757d06df290b97b29e6e554211b79d727a1ab04b5947f0f2255c98feb193"
+    "777a1771b3b238197c6fa132091fe6a7ebaf44e691a466d4d3b573ec8e1dab4c"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "39edfe802c68ae59ead14f6bdd4425bec21ca416473fe5368db69d89fb1741ad"
+    "349905fc15ad9c9f8026f285791a76c6cc05347effad9c7e62272e9a55851cf2"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -437,6 +437,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_was_wealth_support": ("stage_health", "transferred"),
     "uk_stage_uc_deduction_attributes": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred"),
     "uk_stage_etb_vat_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support": ("stage_health", "transferred"),
     "uk_stage_frs_hmrc_spine_leaves_signal": (
@@ -517,6 +518,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_was_wealth_support",
         "uk_stage_uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support",
+        "uk_stage_lcfs_consumption_energy_rake",
         "uk_stage_etb_vat_support",
         "uk_stage_etb_services_support",
         "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -670,6 +672,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_frs_relationships_composition",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_lcfs_consumption_support",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_spi_support_channel_mass",
@@ -716,26 +719,26 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "406e8a251dec31cedd794a6a690da4a04987dedeb01105302b656626e996ef5f"
+            "d09a05ec316d13de34c08a6bf5d764e022536e26c7f7a0175c431256af2ed4e8"
         ),
         "policy_sha256": (
-            "2e03a05d3bbd14503d61998082ef5e5735d0ee1becaa903573dee4e363f2d0b6"
+            "17007d77dda8efd4aeed521417ad3441f29f2f9c550d1d00d867312a7285a533"
         ),
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "aae3cd03fe9d2f54b2c63b91610080351ab7a8c6cf978b8c101bc1e7f79ca845"
+            "17bad2bee6f4433b9d976315d481c02ff2c436387362d574b35980c57eb74d7a"
         ),
         "policy_sha256": (
-            "08d7472393c376b01c980fbc6a57afa364ff6ca77ad35a6aea0fe3b42854b1f7"
+            "eaaaacace07b4d282e1b7497f82f027daa9bb31aa7a6268063b05a069588e385"
         ),
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "c5c7d00d2e6c3c0f4a08b5963f8c81dbd0cc3a9d6f8dc3065e67b901caf0d82c"
+            "2b79ce28dc74c71fc789ac133081b6ec26e6eeb72fd63becc95256d9c2004d4b"
         ),
         "policy_sha256": (
-            "892a4f5d013c0d8010f5ff34efb9f9d58a6b811f1030dd21f27ea7a322cfa0c3"
+            "e8a6c4f196fd1fa056aa7a6e7c4ad9f854763c1796a1fd0bcd1f7173e9e909e7"
         ),
     },
 }

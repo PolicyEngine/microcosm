@@ -642,7 +642,6 @@ def rake_recipient_energy(
         use_region_margin=True,
         gas_connected=in_kwh[GAS_KWH].to_numpy(dtype=float) > 0,
     )
-    receipt["unit"] = "kwh"
     receipt["gas_connected_share"] = float(
         np.dot(
             raked[GAS_KWH].to_numpy(dtype=float) > 0, np.asarray(weights, dtype=float)

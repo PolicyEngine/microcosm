@@ -226,9 +226,23 @@ def test_need_margins_come_from_both_geographies_in_kwh() -> None:
         need_margins_from_facts("ofgem_price_cap_facts.json")
 
 
-def test_aggregate_admin_anchors_are_the_band_means_priced_at_the_gb_cap() -> None:
+def test_need_is_checked_at_stage_time_by_the_energy_rake_gate() -> None:
+    """The NEED kWh fit is a stage-health gate on the lcfs receipt (#890, ruling 2026-09-15).
+
+    The two NEED mean-spend anchors no longer sit in uk_aggregate_admin (the
+    calibrated frame is held to ONS 04.5); the rake's own fit block is what
+    the gate reads, at design weights, per margin and fuel.
+    """
+
     import json
     from pathlib import Path
+
+    from microcosm.build.uk_runtime.energy_pricing import (
+        ELECTRICITY_KWH,
+        GAS_KWH,
+        rake_energy_kwh,
+    )
+    from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 
     gates = json.loads(
         (
@@ -236,40 +250,124 @@ def test_aggregate_admin_anchors_are_the_band_means_priced_at_the_gb_cap() -> No
             / "packages/microcosm-build/src/microcosm/build/uk/gates.json"
         ).read_text("utf-8")
     )
-    anchors = {
-        anchor["name"]: anchor
-        for gate in gates["gates"]
-        if gate["id"] == "uk_aggregate_admin"
-        for anchor in gate["parameters"]["anchors"]
-    }
-    rates, _ = cap_rates(_declared())
+    by_id = {gate["id"]: gate for gate in gates["gates"]}
+    assert [
+        a["name"] for a in by_id["uk_aggregate_admin"]["parameters"]["anchors"]
+    ] == ["nhs_spending_total"]
+    parameters = by_id["uk_stage_lcfs_consumption_energy_rake"]["parameters"]
+    assert parameters["check"] == "energy_rake"
+    assert by_id["uk_stage_lcfs_consumption_energy_rake"]["evidence_absent_blocks"]
+
     margins = need_margins_from_facts()
-    bands = [band for band, _, _ in margins.income_bands]
-    for name, fuel, column in (
-        (
-            "need_electricity_mean_spending",
-            "electricity_single_rate",
-            "electricity_kwh",
-        ),
-        ("need_gas_mean_spending", "gas", "gas_kwh"),
-    ):
-        mean_kwh = float(
-            np.mean(
-                [
-                    margins.targets["income"][(ENGLAND_AND_WALES_GEOGRAPHY_ID, band)][
-                        column
-                    ]
-                    for band in bands
-                ]
-            )
-        )
-        expected = (
-            mean_kwh * rates.unit_rate[(GB, fuel)] + rates.standing_charge[(GB, fuel)]
-        )
-        assert anchors[name]["value"] == pytest.approx(expected, abs=1e-4), name
-        assert anchors[name]["tolerance"] == pytest.approx(0.15 * expected, abs=1e-4)
-        assert anchors[name]["period"] == "2024"
-        assert "need_energy_facts.json" in anchors[name]["source"]
+    n = 120
+    rng = np.random.default_rng(5)
+    table = pd.DataFrame(
+        {
+            ELECTRICITY_KWH: rng.uniform(1000.0, 5000.0, n),
+            GAS_KWH: np.where(
+                np.arange(n) % 5 == 0, 0.0, rng.uniform(5000.0, 20000.0, n)
+            ),
+        }
+    )
+    region = np.array(["LONDON", "WALES", "SCOTLAND"], dtype=object)[np.arange(n) % 3]
+    income = rng.uniform(5e3, 2e5, n)
+    tenure = np.array(["OWNED_OUTRIGHT", "RENT_PRIVATELY"], dtype=object)[
+        np.arange(n) % 2
+    ]
+    accommodation = np.array(["HOUSE_DETACHED", "FLAT"], dtype=object)[
+        (np.arange(n) // 2) % 2
+    ]
+    _, receipt = rake_energy_kwh(
+        table,
+        margins=margins,
+        frs_region=region,
+        income=income,
+        weights=rng.uniform(0.5, 2.0, n),
+        iterations=50,
+        tenure=tenure,
+        accommodation=accommodation,
+        use_region_margin=True,
+        gas_connected=table[GAS_KWH].to_numpy() > 0,
+    )
+    fit = receipt["fit"]
+    assert set(fit) == {"income", "tenure", "accommodation", "region"}
+    # Region is swept last, so it fits exactly; each cell records target,
+    # achieved and deviation per fuel, gas over its connected rows.
+    assert fit["region"]["max_abs_relative_deviation"]["electricity_kwh"] < 1e-9
+    assert fit["region"]["max_abs_relative_deviation"]["gas_kwh"] < 1e-9
+    london = fit["region"]["cells"][f"{ENGLAND_AND_WALES_GEOGRAPHY_ID}:london"]
+    assert london["gas_kwh"]["achieved"] == pytest.approx(london["gas_kwh"]["target"])
+    assert (
+        london["gas_kwh"]["weighted_rows"] < london["electricity_kwh"]["weighted_rows"]
+    )
+
+    evidence = {"stage": "lcfs_consumption", "energy_rake": receipt}
+    generous = {
+        **parameters,
+        "maximum_relative_deviation_by_margin": {
+            "income": 1.0,
+            "tenure": 1.0,
+            "accommodation": 1.0,
+            "region": 0.001,
+        },
+    }
+    passed = uk_stage_health_gate(
+        evidence=evidence,
+        stage="lcfs_consumption",
+        check="energy_rake",
+        parameters=generous,
+    )
+    assert passed.passed, passed.failures
+    assert passed.details["worst"]["region:gas_kwh"] < 1e-9
+    strict = {
+        **generous,
+        "maximum_relative_deviation_by_margin": {
+            **generous["maximum_relative_deviation_by_margin"],
+            "income": 0.0,
+        },
+    }
+    failed = uk_stage_health_gate(
+        evidence=evidence,
+        stage="lcfs_consumption",
+        check="energy_rake",
+        parameters=strict,
+    )
+    assert not failed.passed and any("income" in f for f in failed.failures)
+    missing_margin = {
+        **generous,
+        "maximum_relative_deviation_by_margin": {"income": 1.0},
+    }
+    result = uk_stage_health_gate(
+        evidence=evidence,
+        stage="lcfs_consumption",
+        check="energy_rake",
+        parameters=missing_margin,
+    )
+    assert not result.passed and any(
+        "declares no relative-deviation allowance" in f for f in result.failures
+    )
+    wrong_population = {
+        "stage": "lcfs_consumption",
+        "energy_rake": {**receipt, "gas_rake_population": "all_rows"},
+    }
+    result = uk_stage_health_gate(
+        evidence=wrong_population,
+        stage="lcfs_consumption",
+        check="energy_rake",
+        parameters=generous,
+    )
+    assert not result.passed and any("gas_connected_rows" in f for f in result.failures)
+    no_fit = {
+        "stage": "lcfs_consumption",
+        "energy_rake": {k: v for k, v in receipt.items() if k != "fit"},
+    }
+    result = uk_stage_health_gate(
+        evidence=no_fit,
+        stage="lcfs_consumption",
+        check="energy_rake",
+        parameters=generous,
+    )
+    assert not result.passed and any("no fit block" in f for f in result.failures)
 
 
 @pytest.mark.requires_uk

@@ -112,6 +112,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
     "uk_stage_uc_deduction_attributes",
     "uk_stage_lcfs_consumption_support",
+    "uk_stage_lcfs_consumption_energy_rake",
     "uk_stage_etb_vat_support",
     "uk_stage_etb_services_support",
     "uk_stage_frs_hmrc_spine_leaves_signal",

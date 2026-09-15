@@ -643,7 +643,14 @@ def rake_energy_kwh(
     )
     zero_cells.extend(gas_raked.attrs.get("raking_zero_current_cells", ()))
     raked.loc[connected, GAS_KWH] = gas_raked[GAS_KWH].to_numpy(dtype=float)
+    weight_values = (
+        np.ones(len(frame), dtype=float)
+        if weights is None
+        else np.asarray(weights, dtype=float)
+    )
+    fit = _rake_fit(raked, margins, fitted, connected, weight_values)
     receipt = {
+        "unit": "kwh",
         "iterations": int(iterations),
         "weighted": weights is not None,
         "margins": list(fitted),
@@ -652,5 +659,69 @@ def rake_energy_kwh(
         "gas_connected_rows": int(connected.sum()),
         "rows": int(len(frame)),
         "zero_current_cells": zero_cells,
+        "fit": fit,
     }
     return raked.drop(columns=[c for c in scratch if c in raked]), receipt
+
+
+def _rake_fit(
+    raked: pd.DataFrame,
+    margins: NeedMargins,
+    fitted: Mapping[str, Sequence[str]],
+    connected: np.ndarray,
+    weights: np.ndarray,
+) -> dict[str, Any]:
+    """Per margin: the design-weighted cell means after the rake against NEED.
+
+    Electricity is averaged over every row of a cell, gas over its connected
+    rows, the populations the rake itself used. The stage-time
+    ``energy_rake`` health check reads the maximum absolute relative
+    deviation per margin and fuel from this block (microcosm#890: NEED is
+    checked where the rake acts, at design weights, not on the calibrated
+    frame).
+    """
+
+    electricity = raked[ELECTRICITY_KWH].to_numpy(dtype=float)
+    gas = raked[GAS_KWH].to_numpy(dtype=float)
+    fit: dict[str, Any] = {}
+    for margin, keys in fitted.items():
+        column = f"_need_{margin}"
+        labels = raked[column].to_numpy().astype(str)
+        cells: dict[str, dict[str, Any]] = {}
+        worst = {ELECTRICITY_KWH: 0.0, GAS_KWH: 0.0}
+        for key in keys:
+            geo, category = key.split(":", 1)
+            target = margins.targets[margin][(geo, category)]
+            rows = labels == key
+            entry: dict[str, Any] = {}
+            for fuel, values, population in (
+                (ELECTRICITY_KWH, electricity, rows),
+                (GAS_KWH, gas, rows & connected),
+            ):
+                total_weight = float(weights[population].sum())
+                achieved = (
+                    float(
+                        np.dot(values[population], weights[population]) / total_weight
+                    )
+                    if total_weight > 0
+                    else None
+                )
+                deviation = (
+                    None
+                    if achieved is None or target[fuel] <= 0
+                    else achieved / target[fuel] - 1.0
+                )
+                entry[fuel] = {
+                    "target": target[fuel],
+                    "achieved": achieved,
+                    "relative_deviation": deviation,
+                    "weighted_rows": total_weight,
+                }
+                if deviation is not None:
+                    worst[fuel] = max(worst[fuel], abs(deviation))
+            cells[key] = entry
+        fit[margin] = {
+            "cells": cells,
+            "max_abs_relative_deviation": dict(worst),
+        }
+    return fit

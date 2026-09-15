@@ -224,6 +224,24 @@
       "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus fares are exempt since microcosm#890: the declared rake to DfT receipts sets their level."
     },
     {
+      "id": "uk_stage_lcfs_consumption_energy_rake",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "energy_rake",
+        "maximum_relative_deviation_by_margin": {
+          "income": 0.05,
+          "tenure": 0.05,
+          "accommodation": 0.05,
+          "region": 0.001
+        }
+      },
+      "notes": "Stage-time NEED check (microcosm#890 F, Mar\u00eda's ruling 2026-09-15): the post-imputation kWh rake must fit the vendored NEED 2023 mean kWh at design weights, electricity over every household of a cell and gas over its gas-connected households, per margin (income band, tenure, property type, region) and fuel, within the pinned allowance; region is swept last and fits exactly, the earlier margins settle to the pinned baseline. Replaces the two NEED mean-spend anchors that uk_aggregate_admin measured on the calibrated frame, where the bound ONS 04.5 total governs."
+    },
+    {
       "id": "uk_stage_etb_vat_support",
       "gate": "stage_health",
       "phase": "transferred",
@@ -546,26 +564,6 @@
         "default_rtol": 0.15,
         "anchors": [
           {
-            "name": "need_electricity_mean_spending",
-            "entity": "household",
-            "measure": "electricity_consumption",
-            "value": 1081.88357,
-            "period": "2024",
-            "source": "Unweighted mean of the ten NEED 2023 England-and-Wales income-band mean electricity kWh (vendored need_energy_facts.json) priced at the FY2024-25 GB direct-debit single-rate cap (vendored ofgem_price_cap_facts.json: unit rate plus standing charge, including VAT), the same pricing the lcfs_consumption stage applies (microcosm#890 F). Measured as the design-weighted mean over households with positive spend.",
-            "family": "need_energy",
-            "tolerance": 162.2825355
-          },
-          {
-            "name": "need_gas_mean_spending",
-            "entity": "household",
-            "measure": "gas_consumption",
-            "value": 850.11871,
-            "period": "2024",
-            "source": "Unweighted mean of the ten NEED 2023 England-and-Wales income-band mean gas kWh (vendored need_energy_facts.json) priced at the FY2024-25 GB direct-debit gas cap (vendored ofgem_price_cap_facts.json: unit rate plus standing charge, including VAT), the same pricing the lcfs_consumption stage applies (microcosm#890 F). Measured as the design-weighted mean over gas-connected households (positive gas spend).",
-            "family": "need_energy",
-            "tolerance": 127.5178065
-          },
-          {
             "name": "nhs_spending_total",
             "entity": "person",
             "measure": "nhs_spending",
@@ -577,7 +575,7 @@
           }
         ]
       },
-      "notes": "Release-blocking aggregate-admin gate for E6 NEED energy anchors (priced at the FY2024-25 Ofgem cap from vendored facts, microcosm#890) and the NHS budget. The build supplies SDC-safe measured aggregates as evidence; the gate checks signs and tolerances."
+      "notes": "Release-blocking aggregate-admin gate for the NHS budget. The NEED energy anchors left this gate under microcosm#890 (Mar\u00eda's ruling, 2026-09-15): the calibrated frame is held to the bound ONS 04.5 total, and NEED is checked where the rake acts, at design weights, by uk_stage_lcfs_consumption_energy_rake. The build supplies SDC-safe measured aggregates as evidence; the gate checks signs and tolerances."
     },
     {
       "id": "uk_export_surface",

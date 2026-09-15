@@ -1329,6 +1329,7 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
+            "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -1420,6 +1421,7 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
+            "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -1471,10 +1473,16 @@ class TestUKGatesManifest:
         aggregate = params["uk_aggregate_admin"]
         assert aggregate["default_rtol"] == 0.15
         assert [anchor["name"] for anchor in aggregate["anchors"]] == [
-            "need_electricity_mean_spending",
-            "need_gas_mean_spending",
             "nhs_spending_total",
         ]
+        energy_rake = params["uk_stage_lcfs_consumption_energy_rake"]
+        assert energy_rake["check"] == "energy_rake"
+        assert set(energy_rake["maximum_relative_deviation_by_margin"]) == {
+            "income",
+            "tenure",
+            "accommodation",
+            "region",
+        }
 
     def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
