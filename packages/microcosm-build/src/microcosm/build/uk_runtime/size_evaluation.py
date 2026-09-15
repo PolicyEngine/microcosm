@@ -874,16 +874,17 @@ def frozen_vs_recomputed(
     )
     recomputed: dict[str, float] = {}
     for row in _surface_rows(payload):
+        status = str(row.get("status") or "")
+        if status.startswith("rolled_up:") or status.startswith("not_ported"):
+            # A rolled-up incumbent row (a region cell measured on the frame
+            # for comparison) is not one of our references: summing it into
+            # the contract id it points at inflated the England VOA rows by
+            # the Wales rollup in the 2026-09-10 report (microcosm#929).
+            continue
         name = next(
             (
                 str(row[key])
-                for key in (
-                    "name",
-                    "our_name",
-                    "contract_target_id",
-                    "target_name",
-                    "id",
-                )
+                for key in ("name", "our_name", "target_name", "id")
                 if row.get(key)
             ),
             "",
@@ -901,8 +902,14 @@ def frozen_vs_recomputed(
             ),
             None,
         )
-        if name and estimate is not None:
-            recomputed[name] = recomputed.get(name, 0.0) + estimate
+        if not name or estimate is None:
+            continue
+        if name in recomputed:
+            raise ValueError(
+                f"frozen_vs_recomputed: surface row {name!r} appears more than "
+                "once; a recomputed national row must be one row."
+            )
+        recomputed[name] = estimate
     national = run.targets.loc[run.targets["grain"] == "national"]
     output_rows: list[dict[str, Any]] = []
     divergences: list[float] = []

@@ -565,6 +565,8 @@ one. Open item.
 matched; maximum relative divergence **9.3% (P50) / 11.1% (P95b)** → the pre-registered red flag (> 5%)
 fires. Eleven / twelve rows exceed 1%: `isc.private_school_students` (frozen 557k, recomputed 523k, −6%) and
 the seven `voa.council_tax_stock.band_*` rows (recomputed +3% to +10% above frozen). The other 328 matched
+
+> **Erratum (2026-09-15, microcosm#929).** The seven VOA band rows were not diverging: `frozen_vs_recomputed` keyed the incumbent-surface rows by `contract_target_id` and summed the Wales regional rollup into the England-pinned target (band A recomputed − frozen = 248,027, the Wales band-A rollup exactly; bands B and C likewise). Excluding the rolled-up rows, frozen and recomputed agree on every VOA row; the comparison now keys on bound rows only and refuses duplicates.
 rows agree within 1%. This is the population-dependent-measure physics the plan said to size: the refit froze
 the pool's contributions; the engine on 55k rows resolves the council-tax band imputation and the private
 school flag differently.

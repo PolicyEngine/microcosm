@@ -607,12 +607,12 @@ def test_packaged_exclusions_load():
     band_h_region_cells = [
         entry
         for entry in exclusions
-        if entry["name"].startswith("voa.council_tax_stock.band_h@E12")
+        if entry["name"].startswith("mhclg.council_tax_stock.band_h@E12")
     ]
     assert [entry["name"] for entry in band_h_region_cells] == [
-        "voa.council_tax_stock.band_h@E12000001",
-        "voa.council_tax_stock.band_h@E12000002",
-        "voa.council_tax_stock.band_h@E12000003",
+        "mhclg.council_tax_stock.band_h@E12000001",
+        "mhclg.council_tax_stock.band_h@E12000002",
+        "mhclg.council_tax_stock.band_h@E12000003",
     ]
     assert {entry["approved_on"] for entry in band_h_region_cells} == {"2026-09-14"}
     assert {entry["tracking"] for entry in band_h_region_cells} == {"microcosm#796"}

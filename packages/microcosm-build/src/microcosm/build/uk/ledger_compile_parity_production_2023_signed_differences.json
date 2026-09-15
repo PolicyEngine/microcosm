@@ -1,11 +1,11 @@
 {
- "compiled_count": 346,
+ "compiled_count": 437,
  "counts_by_kind": {
   "calibration_drift": 120,
   "fixture_only": 17,
-  "ledger_only": 214
+  "ledger_only": 305
  },
- "difference_count": 351,
+ "difference_count": 442,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -1255,6 +1255,573 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 619889.0,
+   "name": "mhclg.council_tax_stock.band_a@E12000001",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1280024.0,
+   "name": "mhclg.council_tax_stock.band_a@E12000002",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 985878.0,
+   "name": "mhclg.council_tax_stock.band_a@E12000003",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 735754.0,
+   "name": "mhclg.council_tax_stock.band_a@E12000004",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 725474.0,
+   "name": "mhclg.council_tax_stock.band_a@E12000005",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 362319.0,
+   "name": "mhclg.council_tax_stock.band_a@E12000006",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 125722.0,
+   "name": "mhclg.council_tax_stock.band_a@E12000007",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 319942.0,
+   "name": "mhclg.council_tax_stock.band_a@E12000008",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 420198.0,
+   "name": "mhclg.council_tax_stock.band_a@E12000009",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 190132.0,
+   "name": "mhclg.council_tax_stock.band_b@E12000001",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 659139.0,
+   "name": "mhclg.council_tax_stock.band_b@E12000002",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 475788.0,
+   "name": "mhclg.council_tax_stock.band_b@E12000003",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 470037.0,
+   "name": "mhclg.council_tax_stock.band_b@E12000004",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 619935.0,
+   "name": "mhclg.council_tax_stock.band_b@E12000005",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 561545.0,
+   "name": "mhclg.council_tax_stock.band_b@E12000006",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 462972.0,
+   "name": "mhclg.council_tax_stock.band_b@E12000007",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 641879.0,
+   "name": "mhclg.council_tax_stock.band_b@E12000008",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 604255.0,
+   "name": "mhclg.council_tax_stock.band_b@E12000009",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 182845.0,
+   "name": "mhclg.council_tax_stock.band_c@E12000001",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 577834.0,
+   "name": "mhclg.council_tax_stock.band_c@E12000002",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 399986.0,
+   "name": "mhclg.council_tax_stock.band_c@E12000003",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 376785.0,
+   "name": "mhclg.council_tax_stock.band_c@E12000004",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 494537.0,
+   "name": "mhclg.council_tax_stock.band_c@E12000005",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 697459.0,
+   "name": "mhclg.council_tax_stock.band_c@E12000006",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 983776.0,
+   "name": "mhclg.council_tax_stock.band_c@E12000007",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1010578.0,
+   "name": "mhclg.council_tax_stock.band_c@E12000008",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 578832.0,
+   "name": "mhclg.council_tax_stock.band_c@E12000009",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 105704.0,
+   "name": "mhclg.council_tax_stock.band_d@E12000001",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 341398.0,
+   "name": "mhclg.council_tax_stock.band_d@E12000002",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 232830.0,
+   "name": "mhclg.council_tax_stock.band_d@E12000003",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 233180.0,
+   "name": "mhclg.council_tax_stock.band_d@E12000004",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 283593.0,
+   "name": "mhclg.council_tax_stock.band_d@E12000005",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 477633.0,
+   "name": "mhclg.council_tax_stock.band_d@E12000006",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 923421.0,
+   "name": "mhclg.council_tax_stock.band_d@E12000007",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 794256.0,
+   "name": "mhclg.council_tax_stock.band_d@E12000008",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 398189.0,
+   "name": "mhclg.council_tax_stock.band_d@E12000009",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 56739.0,
+   "name": "mhclg.council_tax_stock.band_e@E12000001",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 202953.0,
+   "name": "mhclg.council_tax_stock.band_e@E12000002",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 149040.0,
+   "name": "mhclg.council_tax_stock.band_e@E12000003",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 145737.0,
+   "name": "mhclg.council_tax_stock.band_e@E12000004",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 181892.0,
+   "name": "mhclg.council_tax_stock.band_e@E12000005",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 295496.0,
+   "name": "mhclg.council_tax_stock.band_e@E12000006",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 546948.0,
+   "name": "mhclg.council_tax_stock.band_e@E12000007",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 521623.0,
+   "name": "mhclg.council_tax_stock.band_e@E12000008",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 269559.0,
+   "name": "mhclg.council_tax_stock.band_e@E12000009",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24950.0,
+   "name": "mhclg.council_tax_stock.band_f@E12000001",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 98538.0,
+   "name": "mhclg.council_tax_stock.band_f@E12000002",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 71957.0,
+   "name": "mhclg.council_tax_stock.band_f@E12000003",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 70252.0,
+   "name": "mhclg.council_tax_stock.band_f@E12000004",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 100370.0,
+   "name": "mhclg.council_tax_stock.band_f@E12000005",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 163111.0,
+   "name": "mhclg.council_tax_stock.band_f@E12000006",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 275724.0,
+   "name": "mhclg.council_tax_stock.band_f@E12000007",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 320693.0,
+   "name": "mhclg.council_tax_stock.band_f@E12000008",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 137321.0,
+   "name": "mhclg.council_tax_stock.band_f@E12000009",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13791.0,
+   "name": "mhclg.council_tax_stock.band_g@E12000001",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 61819.0,
+   "name": "mhclg.council_tax_stock.band_g@E12000002",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 39802.0,
+   "name": "mhclg.council_tax_stock.band_g@E12000003",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 37296.0,
+   "name": "mhclg.council_tax_stock.band_g@E12000004",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 59484.0,
+   "name": "mhclg.council_tax_stock.band_g@E12000005",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 107130.0,
+   "name": "mhclg.council_tax_stock.band_g@E12000006",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 207087.0,
+   "name": "mhclg.council_tax_stock.band_g@E12000007",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 252303.0,
+   "name": "mhclg.council_tax_stock.band_g@E12000008",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 74526.0,
+   "name": "mhclg.council_tax_stock.band_g@E12000009",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1090.0,
+   "name": "mhclg.council_tax_stock.band_h@E12000001",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 6092.0,
+   "name": "mhclg.council_tax_stock.band_h@E12000002",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2944.0,
+   "name": "mhclg.council_tax_stock.band_h@E12000003",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2628.0,
+   "name": "mhclg.council_tax_stock.band_h@E12000004",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5181.0,
+   "name": "mhclg.council_tax_stock.band_h@E12000005",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13126.0,
+   "name": "mhclg.council_tax_stock.band_h@E12000006",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 60581.0,
+   "name": "mhclg.council_tax_stock.band_h@E12000007",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 36233.0,
+   "name": "mhclg.council_tax_stock.band_h@E12000008",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 6521.0,
+   "name": "mhclg.council_tax_stock.band_h@E12000009",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1195140.0,
+   "name": "mhclg.council_tax_stock.total@E12000001",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3227797.0,
+   "name": "mhclg.council_tax_stock.total@E12000002",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2358225.0,
+   "name": "mhclg.council_tax_stock.total@E12000003",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2071669.0,
+   "name": "mhclg.council_tax_stock.total@E12000004",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2470466.0,
+   "name": "mhclg.council_tax_stock.total@E12000005",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2677819.0,
+   "name": "mhclg.council_tax_stock.total@E12000006",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3586231.0,
+   "name": "mhclg.council_tax_stock.total@E12000007",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3897507.0,
+   "name": "mhclg.council_tax_stock.total@E12000008",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2489401.0,
+   "name": "mhclg.council_tax_stock.total@E12000009",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 99200000.0,
    "name": "nithc.public_transport_support",
    "period": 2023,
@@ -1621,6 +2188,76 @@
    "kind": "ledger_only",
    "ledger_value": 97426240.0,
    "name": "welshgov.bus.public_support",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 192587.31,
+   "name": "welshgov.council_tax_stock.band_a",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 283914.53,
+   "name": "welshgov.council_tax_stock.band_b",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 298889.86,
+   "name": "welshgov.council_tax_stock.band_c",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 222892.37,
+   "name": "welshgov.council_tax_stock.band_d",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 183400.59,
+   "name": "welshgov.council_tax_stock.band_e",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 113397.0,
+   "name": "welshgov.council_tax_stock.band_f",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 51764.0,
+   "name": "welshgov.council_tax_stock.band_g",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12323.0,
+   "name": "welshgov.council_tax_stock.band_h",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5286.0,
+   "name": "welshgov.council_tax_stock.band_i",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1364454.68,
+   "name": "welshgov.council_tax_stock.total",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

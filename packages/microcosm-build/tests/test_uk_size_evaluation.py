@@ -642,6 +642,43 @@ def test_dense_deltas_and_frozen_surface(tmp_path: Path) -> None:
     assert surface["max_abs_rel_divergence"] == pytest.approx(0.02)
     assert [row["name"] for row in surface["rows_over_1pct"]] == ["national/a@2025"]
 
+    # A rolled-up incumbent row (a region cell measured on the frame for
+    # comparison, pointing at our contract id) is not a recomputed row of ours:
+    # summing it into the England-pinned target inflated the VOA rows by the
+    # Wales rollup in the 2026-09-10 report (microcosm#929).
+    surface_path.write_text(
+        json.dumps(
+            {
+                "national_rows": [
+                    {"our_name": "national/a@2025", "candidate_estimate": 107.1},
+                    {
+                        "contract_target_id": "national/a@2025",
+                        "status": "rolled_up:council_tax_band_by_region",
+                        "candidate_estimate": 50.0,
+                    },
+                    {"our_name": "national/b@2025", "candidate_estimate": 131.3},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    surface = frozen_vs_recomputed(run, surface_path)
+    assert surface["max_abs_rel_divergence"] == pytest.approx(0.02)
+
+    surface_path.write_text(
+        json.dumps(
+            {
+                "national_rows": [
+                    {"our_name": "national/a@2025", "candidate_estimate": 107.1},
+                    {"our_name": "national/a@2025", "candidate_estimate": 1.0},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="appears more than once"):
+        frozen_vs_recomputed(run, surface_path)
+
 
 def test_summarize_outcome_flags(tmp_path: Path) -> None:
     run = load_run(

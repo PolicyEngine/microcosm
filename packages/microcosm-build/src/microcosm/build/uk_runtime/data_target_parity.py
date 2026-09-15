@@ -318,7 +318,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "national_council_tax_stock",
         "status": "ported_national",
         "classification": "red_line_national_family",
-        "evidence": "uk-data targets/sources/voa_council_tax.py:235,275; Microcosm voa.council_tax_stock.* and scotgov.council_tax_stock.* targets.",
+        "evidence": "uk-data targets/sources/voa_council_tax.py:235,275; Microcosm mhclg.council_tax_stock.* (England, composed from the MHCLG taxbase authority rows per region), welshgov.council_tax_stock.* and scotgov.council_tax_stock.* targets on the councils' taxbase basis (microcosm#929).",
     },
     {
         "concern_id": "national_housing_rate_headcount_products",
@@ -360,7 +360,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "local_council_tax_band_counts",
         "status": "ported_local_declared",
         "classification": "local_registry_family",
-        "evidence": "uk-data targets/sources/la_council_tax.py and datasets/local_areas/local_authorities/loss.py:251-300; Microcosm council_tax/band_a..h contract rows compile 2,541 pinned-feed cells with 347 signed deferrals.",
+        "evidence": "uk-data targets/sources/la_council_tax.py and datasets/local_areas/local_authorities/loss.py:251-300; Microcosm council_tax/band_a..i contract rows (mhclg, welshgov and scotgov by_area families) bind 2,512 authority cells on the taxbase basis with the 296 English band-H cells signed deferred (microcosm#929).",
     },
     {
         "concern_id": "local_private_rent_pipr",
@@ -396,14 +396,14 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "cross_grain_council_tax_stock_country_over_la",
         "status": "ported_local_declared",
         "classification": "cross_grain_rule",
-        "evidence": "Local voa.council_tax_stock.by_area.band_a..h measurement signatures exactly match the national VOA/scotgov band-count signatures; apply_uk_cross_grain_reconciliation uses UK_CROSS_GRAIN_RULE so a bound country control rescales LA values.",
+        "evidence": "Local mhclg/welshgov/scotgov council_tax_stock.by_area.band_* measurement signatures exactly match the national band-count signatures; apply_uk_cross_grain_reconciliation uses UK_CROSS_GRAIN_RULE so a bound country control rescales LA values.",
     },
     {
         "concern_id": "cross_grain_council_tax_stock_england_region",
         "status": "ported_national",
         "classification": "cross_grain_rule",
         "reason": "The English VOA stock rows fan out over the nine English regions and sit at the region grain of the cross-grain rule (country > region > constituency > la); each region is its own leg, so the LA solve reconciles to its region's published stock rather than to a single England row (microcosm#905).",
-        "evidence": "voa.council_tax_stock.band_* references voa.council_tax_stock.band_*@E12000001..E12000009; UK_CROSS_GRAIN_RULE declares control_grains (country, region), so the English region rows and the Scottish CTAXBASE country row share the band signature group and each authority takes its nearest covering control (test_uk_ledger_targets::test_voa_region_controls_and_the_scottish_country_control_share_the_surface); parent_geography_legs maps every E12 code to itself; English legs come from the run ladder or the crosswalk's region_code_by_area.",
+        "evidence": "mhclg.council_tax_stock.band_* references mhclg.council_tax_stock.band_*@E12000001..E12000009, each composed from its authorities' MHCLG taxbase rows (microcosm#929); UK_CROSS_GRAIN_RULE declares control_grains (country, region), so the English region rows and the Scottish CTAXBASE country row share the band signature group and each authority takes its nearest covering control (test_uk_ledger_targets::test_voa_region_controls_and_the_scottish_country_control_share_the_surface); parent_geography_legs maps every E12 code to itself; English legs come from the run ladder or the crosswalk's region_code_by_area.",
     },
     {
         "concern_id": "local_council_tax_band_d_rate",

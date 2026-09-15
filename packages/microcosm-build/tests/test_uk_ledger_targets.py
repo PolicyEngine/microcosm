@@ -331,7 +331,7 @@ def test_uk_local_target_surface_refuses_named_nonfinite_national_cell() -> None
 
 
 def test_uk_local_target_surface_refuses_fanout_across_levels() -> None:
-    target_id = "voa.council_tax_stock.band_a"
+    target_id = "mhclg.council_tax_stock.band_a"
     specs = [
         _national_control_spec(
             "country-cell",
@@ -427,7 +427,7 @@ def test_local_parity_fixture_aligns_legacy_council_tax_band_names():
     aligned = align_uk_local_registry_parity_fixture(fixture)
 
     assert aligned["rows"][0]["name"] == (
-        "voa.council_tax_stock.by_area.band_a@E06000001"
+        "mhclg.council_tax_stock.by_area.band_a@E06000001"
     )
 
 
@@ -1202,12 +1202,12 @@ def test_uk_empty_leg_licences_require_complete_signed_deferral_coverage():
         },
         "signed_deferrals": [
             {
-                "target_id": "voa.council_tax_stock.by_area.band_a",
+                "target_id": "mhclg.council_tax_stock.by_area.band_a",
                 "geography_level": "local_authority",
                 "area_ids": ["S12000005", "S12000006"],
             },
             {
-                "target_id": "voa.council_tax_stock.by_area.band_b",
+                "target_id": "mhclg.council_tax_stock.by_area.band_b",
                 "geography_level": "local_authority",
                 "area_ids": ["S12000005"],
             },
@@ -1215,8 +1215,67 @@ def test_uk_empty_leg_licences_require_complete_signed_deferral_coverage():
     }
 
     assert _uk_licensed_empty_legs_from_membership(membership) == {
-        "voa.council_tax_stock.by_area.band_a": frozenset({"S92000003"}),
+        "mhclg.council_tax_stock.by_area.band_a": frozenset({"S92000003"}),
     }
+
+
+def test_uk_empty_leg_licences_honour_each_target_area_scope():
+    # microcosm#929: a nation-scoped family binds only its scoped areas, so a
+    # leg holding none of them is licensed outright (the Welsh band-H cells
+    # never sit under an English region control), and a leg holding some is
+    # licensed once those are all signed deferred. An unscoped target still
+    # needs every roster area of the leg deferred.
+    membership = {
+        "areas_by_geography_level": {
+            "local_authority": ["E09000001", "E09000002", "W06000001", "S12000005"],
+        },
+        "area_scope_by_target_id": {
+            "welshgov.council_tax_stock.by_area.band_h": {
+                "local_authority": ["W06000001"]
+            },
+            "mhclg.council_tax_stock.by_area.band_h": {
+                "local_authority": ["E09000001", "E09000002"]
+            },
+            "mhclg.council_tax_stock.by_area.band_a": {
+                "local_authority": ["E09000001", "E09000002"]
+            },
+        },
+        "signed_deferrals": [
+            {
+                "target_id": "mhclg.council_tax_stock.by_area.band_h",
+                "geography_level": "local_authority",
+                "area_ids": ["E09000001", "E09000002"],
+            },
+            {
+                "target_id": "mhclg.council_tax_stock.by_area.band_a",
+                "geography_level": "local_authority",
+                "area_ids": ["E09000001"],
+            },
+            {
+                "target_id": "ons.census.households",
+                "geography_level": "local_authority",
+                "area_ids": ["E09000001"],
+            },
+        ],
+    }
+
+    licences = _uk_licensed_empty_legs_from_membership(membership)
+    assert licences["welshgov.council_tax_stock.by_area.band_h"] == frozenset(
+        {"E12000007", "S92000003"}
+    )
+    assert licences["mhclg.council_tax_stock.by_area.band_h"] == frozenset(
+        {"E12000007", "W92000004", "S92000003"}
+    )
+    assert licences["mhclg.council_tax_stock.by_area.band_a"] == frozenset(
+        {"W92000004", "S92000003"}
+    )
+    assert "ons.census.households" not in licences
+
+    membership["area_scope_by_target_id"][
+        "welshgov.council_tax_stock.by_area.band_h"
+    ] = {"local_authority": ["W06000099"]}
+    with pytest.raises(ValueError, match="absent from the 'local_authority' roster"):
+        _uk_licensed_empty_legs_from_membership(membership)
 
 
 def test_committed_contract_detects_exact_uc_payment_partition():
@@ -1271,13 +1330,13 @@ def test_council_tax_stock_country_control_rescales_la_band_counts():
             {
                 "grain": "la",
                 "geography_id": "S12000005",
-                "target_id": "voa.council_tax_stock.by_area.band_a",
+                "target_id": "mhclg.council_tax_stock.by_area.band_a",
                 "value": 30.0,
             },
             {
                 "grain": "la",
                 "geography_id": "S12000006",
-                "target_id": "voa.council_tax_stock.by_area.band_a",
+                "target_id": "mhclg.council_tax_stock.by_area.band_a",
                 "value": 20.0,
             },
         ]
@@ -2090,9 +2149,9 @@ def test_align_uk_national_registry_parity_fixture_renames_regional_rows() -> No
         "ons.population.age_0_9_by_region@E12000007",
         "ons.population.age_80_89_by_region@E12000003",
         "ons.population.age_10_19_by_region@N92000002",
-        "voa.council_tax_stock.band_a@E12000001",
-        "voa.council_tax_stock.total@E12000007",
-        "voa/council_tax/WALES/A",
+        "mhclg.council_tax_stock.band_a@E12000001",
+        "mhclg.council_tax_stock.total@E12000007",
+        "welshgov.council_tax_stock.band_a",
         "ons/female_0_4",
         "ons/uk_population",
         "not-a-row",
@@ -2231,18 +2290,18 @@ def test_voa_region_controls_and_the_scottish_country_control_share_the_surface(
 
     rows = [
         ("country", "S92000003", "scotgov.council_tax_stock.band_a", 40.0),
-        ("region", "E12000007", "voa.council_tax_stock.band_a", 100.0),
-        ("region", "E12000001", "voa.council_tax_stock.band_a", 50.0),
-        ("la", "E09000001", "voa.council_tax_stock.by_area.band_a", 60.0),
-        ("la", "E06000001", "voa.council_tax_stock.by_area.band_a", 20.0),
-        ("la", "S12000033", "voa.council_tax_stock.by_area.band_a", 30.0),
+        ("region", "E12000007", "mhclg.council_tax_stock.band_a", 100.0),
+        ("region", "E12000001", "mhclg.council_tax_stock.band_a", 50.0),
+        ("la", "E09000001", "mhclg.council_tax_stock.by_area.band_a", 60.0),
+        ("la", "E06000001", "mhclg.council_tax_stock.by_area.band_a", 20.0),
+        ("la", "S12000033", "mhclg.council_tax_stock.by_area.band_a", 30.0),
     ]
     surface = pd.DataFrame(
         rows, columns=["grain", "geography_id", "target_id", "value"]
     )
     reconciled, receipt = apply_uk_cross_grain_reconciliation(
         surface,
-        ("scotgov.council_tax_stock.band_a", "voa.council_tax_stock.band_a"),
+        ("scotgov.council_tax_stock.band_a", "mhclg.council_tax_stock.band_a"),
     )
     assert reconciled["value"].tolist() == pytest.approx(
         [40.0, 100.0, 50.0, 100.0, 50.0, 40.0]
@@ -2264,7 +2323,7 @@ def test_voa_region_controls_and_the_scottish_country_control_share_the_surface(
     with pytest.raises(ValueError, match="unparented lower-grain leg"):
         apply_uk_cross_grain_reconciliation(
             surface.loc[surface["target_id"] != "scotgov.council_tax_stock.band_a"],
-            ("voa.council_tax_stock.band_a",),
+            ("mhclg.council_tax_stock.band_a",),
         )
 
 

@@ -41,7 +41,7 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
-ACTIVE_REFERENCE_COUNT = 595
+ACTIVE_REFERENCE_COUNT = 605
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:

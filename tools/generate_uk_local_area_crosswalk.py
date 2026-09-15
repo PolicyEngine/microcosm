@@ -30,6 +30,26 @@ EXPECTED_COUNTS = {
 # lgd_2014. The devolved publishers stamp their own frames. Both labels name
 # the same boundary set, so the compile accepts either; a vintage OUTSIDE the
 # set is a genuinely different boundary frame and still refuses.
+#: Roster areas a publisher recodes after the roster's boundary vintage. The
+#: ladder (and so the roster) is on the April 2023 LAD frame; ONS recoded
+#: Barnsley and Sheffield in the April 2025 LAD layer and MHCLG's 2025 council
+#: taxbase return files them under the new codes (chronicle #264 review). A
+#: consumer selects facts under either spelling and keeps the roster code as
+#: the cell's identity; the alias vintage is accepted for the aliased facts
+#: only. Nothing else about the two authorities changed (microcosm#929).
+LOCAL_AUTHORITY_CODE_ALIASES: dict[str, dict[str, Any]] = {
+    "E08000016": {
+        "alias_codes": ["E08000038"],
+        "alias_vintage": "lad_2025",
+        "note": "Barnsley, recoded E08000038 in the April 2025 ONS LAD layer.",
+    },
+    "E08000019": {
+        "alias_codes": ["E08000039"],
+        "alias_vintage": "lad_2025",
+        "note": "Sheffield, recoded E08000039 in the April 2025 ONS LAD layer.",
+    },
+}
+
 EXPECTED_FACT_VINTAGE = {
     "constituency": ["pcon_2024"],
     "local_authority": {
@@ -181,6 +201,14 @@ def _level_payload(
         "area_count": len(area_ids),
         "area_ids": area_ids,
         "region_code_by_area": region_code_by_area,
+        "code_aliases": (
+            {
+                code: dict(alias)
+                for code, alias in sorted(LOCAL_AUTHORITY_CODE_ALIASES.items())
+            }
+            if level == "local_authority"
+            else {}
+        ),
     }
 
 

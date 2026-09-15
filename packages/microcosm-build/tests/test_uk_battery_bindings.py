@@ -1017,12 +1017,14 @@ class TestPreflightBindings:
         )
 
         assert result.passed is True
-        assert result.details["candidate_targets"] == 20_430
-        assert result.details["reference_targets"] == 22_530
-        # Only the 2,100 signed area deferrals remain; the 1,011 household rows
-        # are ordinary Chronicle-compiled references.
+        assert result.details["candidate_targets"] == 20_885
+        assert result.details["reference_targets"] == 22_464
+        # Only the 1,579 signed area deferrals and absences remain (2,100
+        # before microcosm#929 bound the Welsh and Scottish council-tax cells;
+        # Shetland band H is the one Scottish support deferral); the 1,011
+        # household rows are ordinary Chronicle-compiled references.
         exclusions = result.details["reviewed_exclusions"]
-        assert len(exclusions) == 2_100
+        assert len(exclusions) == 1_579
         households = [
             name for name in exclusions if str(name).startswith("households@")
         ]

@@ -1399,7 +1399,30 @@ def _validate_local_target_references(
                 f"{context}: reference {reference.name!r} must pin "
                 "ledger_selector.geography_level and geography_id."
             )
-        if str(selector_id) != geography_id:
+        # An aliased cell selects under the roster code and the publisher's
+        # alias code(s); the roster code leads the list and names the row, and
+        # the aliases are declared on the row's metadata (microcosm#929).
+        declared_aliases = {
+            code.strip()
+            for code in str(reference.metadata.get("geography_id_aliases") or "").split(
+                ","
+            )
+            if code.strip()
+        }
+        if isinstance(selector_id, list):
+            codes = [str(code) for code in selector_id]
+            if (
+                not codes
+                or codes[0] != geography_id
+                or set(codes[1:]) != declared_aliases
+                or not declared_aliases
+            ):
+                raise ValueError(
+                    f"{context}: reference {reference.name!r} selector "
+                    f"geography_id {selector_id!r} must lead with the roster "
+                    "code and list exactly the declared geography_id_aliases."
+                )
+        elif str(selector_id) != geography_id:
             raise ValueError(
                 f"{context}: reference {reference.name!r} geography id does not "
                 f"match selector geography_id {selector_id!r}."
