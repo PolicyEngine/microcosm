@@ -387,6 +387,13 @@ COUNT_SOURCES: dict[str, dict[str, tuple[str, str]]] = {
 }
 NATION_PREFIXES = {_EW: ("E", "W"), _SCOT: ("S",), _NI: ("N",)}
 
+#: Tracking issues cited by the provenance register: the geography-first
+#: umbrella issue and the Chronicle raw-only registration of the publisher files.
+ISSUES = {
+    "umbrella": "PolicyEngine/microcosm#931",
+    "chronicle_registration": "PolicyEngine/chronicle#269",
+}
+
 #: Reviewed conventions carried into the provenance register.
 NOTES = (
     "E&W local_authority_code is the April 2023 LAD code set as published in the "
@@ -804,6 +811,7 @@ def main(argv: list[str] | None = None) -> None:
         else {k: v for k, v in diff.items() if k != "ladder_sha256"},
         "reviewed_differences": [],
         "notes": NOTES,
+        "issues": ISSUES,
     }
     args.provenance_json.parent.mkdir(parents=True, exist_ok=True)
     args.provenance_json.write_text(

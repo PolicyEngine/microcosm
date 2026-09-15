@@ -1,6 +1,6 @@
-# UK geography step 2 — atomic-area assignment before/after receipts
+# UK #931 step 2 — atomic-area assignment before/after receipts
 
-Assignment-level measurement of the identity-keyed single-stage atomic-area draw against the legacy sequential ladder draw, at design weights and with no solve, on the canonical spine-r checkpoint. Recorder: `tools/measure_uk_atomic_assignment.py` (diagnostic only; it never gates and release builds do not run it). File name carries the `step2` placeholder until the geography-first umbrella issue is filed; the evidence directory `docs/evidence/uk-geography-step2/` renames with it.
+Assignment-level measurement of the identity-keyed single-stage atomic-area draw against the legacy sequential ladder draw, at design weights and with no solve, on the canonical spine-r checkpoint. Recorder: `tools/measure_uk_atomic_assignment.py` (diagnostic only; it never gates and release builds do not run it). Umbrella issue: PolicyEngine/microcosm#931 (item a); Chronicle registration of the publisher files: PolicyEngine/chronicle#269.
 
 Disclosure: the committed 1 % evidence and this file report population aggregates only. Per-area counts below 3 are written as `<3`, no unit record appears, and the 100 % evidence stays in the licensed spool (its sha256 is recorded here so a reviewer with access can check it).
 
@@ -17,7 +17,7 @@ Disclosure: the committed 1 % evidence and this file report population aggregate
 
 ## R1 — f001 (1 %, sample seed 578; committed evidence)
 
-Evidence: `docs/evidence/uk-geography-step2/atomic-assignment-cells.json`, sha256 `32f494dff98e81c58fbaa8c03d1a425c1684277e36d4b62757a50f66f44a2a49` (4 cells × 1,011 areas; 985 area counts suppressed as `<3`).
+Evidence: `docs/evidence/uk-931/atomic-assignment-cells.json`, sha256 `32f494dff98e81c58fbaa8c03d1a425c1684277e36d4b62757a50f66f44a2a49` (4 cells × 1,011 areas; 985 area counts suppressed as `<3`).
 
 | law | K | rows | source hh | gate | shared gate | London share | const. min rows / ESS / sources | const. max abs z / share abs z>3 (n) | const. breaches | LA min rows / ESS / sources | LA max abs z / share>3 (n) | LA breaches | identity stable | K-growth nested |
 |---|---:|---:|---:|---|---|---:|---|---|---:|---|---|---:|---|---|

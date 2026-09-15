@@ -1,5 +1,9 @@
 {
   "built_on": "2026-09-15",
+  "issues": {
+    "chronicle_registration": "PolicyEngine/chronicle#269",
+    "umbrella": "PolicyEngine/microcosm#931"
+  },
   "kind": "uk_atomic_area_supports_provenance",
   "ladder_diff": {
     "areas": 239023,

@@ -173,13 +173,13 @@ def test_breach_tables_and_disclosure_suppression(harness, toy_ladder):
     assert harness._suppress(3.0, 3) == 3.0
 
 
-def test_committed_step2_evidence_is_internally_consistent():
+def test_committed_931_evidence_is_internally_consistent():
     import microcosm.build
 
     root = Path(microcosm.build.__file__).resolve().parents[5]
-    path = root / "docs/evidence/uk-geography-step2/atomic-assignment-cells.json"
+    path = root / "docs/evidence/uk-931/atomic-assignment-cells.json"
     if not path.is_file():
-        pytest.skip("committed step-2 evidence is not present in this checkout")
+        pytest.skip("committed #931 evidence is not present in this checkout")
     evidence = json.loads(path.read_text(encoding="utf-8"))
     assert evidence["minimum_count"] >= 3
     assert set(evidence["supports"]) == set(SYSTEMS)
