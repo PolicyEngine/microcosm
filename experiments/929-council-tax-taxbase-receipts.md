@@ -121,3 +121,76 @@ support reason (the other 31 Scottish and the 22 Welsh band-H cells draw at leas
 surface is 20,885 rows and 2,511 council-tax cells.
 
 **Registers.** `uk_local_target_census.json` (13 sources: the VOA source retires, three taxbase sources join; fence rule re-worded), `uk_data_target_parity.json` (concern ids follow the new target ids; evidence texts updated), `calibration_measure_exclusions.json` (the three band-H region exclusions re-named onto `mhclg.council_tax_stock.band_h@E1200000{1,2,3}`, tracking and expiry unchanged), `local_binding_adjudications.json` (fence re-adjudicated, "country wins" retired from the census note).
+
+## Part D — the family measured (run `after-spine-r-df35af7-dense-e1500-s42`, commit 96e6204e)
+
+**Run.** Recipe of Part B, 1,500 epochs, launched 18:10 on 2026-09-15, solve loss 0.012423 at the last epoch
+(the VOA-basis attempts sat at 0.0150–0.0152 from epoch 1,100 on); household mass 29,247,433 → 29,003,269
+(−0.83 %, the rowwise doctrine's declared move); gate battery: `uk_local_area_support`, ladder,
+`uk_local_per_family_fit` and `uk_local_weight_ess` pass; `uk_local_target_fit` and `uk_local_weight_ratio`
+fail as they did on D2 (below), so the artifact is a blocked candidate, as D2 was. Comparison figures are the
+D2 dense run in the 10 September report (spine-q, feed ec7169b, 2,000 epochs, no region grain).
+
+**Council tax at authority grain (2,511 active cells; D2 had 2,058).**
+- Within 10 %: 92.2 % → 99.6 %; within 25 %: 98.4 % → 99.8 %; median absolute error 1.05 % → 0.82 %; cells
+  past 25 %: 33 → 5.
+- England A–G (the 2,058 cells D2 also bound): within 10 % 99.85 %, mean signed error −0.04 % (D2: every band
+  negative, A −4.5 %, B −3.2 %, C −5.3 %, D −1.7 %); by band the mean signed error is now A −0.07 %, B −0.06 %,
+  C −0.19 %, D −0.09 %, E +0.03 %, F +0.05 %, G +0.08 %, and the 10th percentile sits at −1.4 to −2.4 % (D2: A −14 %,
+  B −11 %, C −19 %). One cell past 25 %: Derbyshire Dales band G (2,026 target, 1,254 estimate, −38 %; −42 % on D2 — a
+  band-support residue, cause 3b of the plan).
+- The four band-G micro-cells that tripped D2's red flag (Barking & Dagenham +4,683 %, Sandwell +3,729 %,
+  Stoke-on-Trent +3,598 %, Kingston upon Hull +2,442 %) fit within 1.2 % (49 → 50, 75 → 76, 184 → 185, 60 → 59): the
+  taxbase targets are the same size as the VOA ones (49–184 dwellings), so D2's estimates of 1,500–7,800 were the
+  basis mismatch pulling weight onto those rows, not missing support.
+- The inner-London A–D misses (Tower Hamlets C −57 %, Newham C −36 %, Islington D −34 %, Croydon C −33 %,
+  Exeter B −43 %, Westminster G −39 % on D2) are within 2 % (−0.5 %, −1.9 %, −0.4 %, −0.7 %, 0.0 %, −2.0 %).
+- Wales (198 cells, A–I): within 10 % 99.5 %; A–G and I mean signed error −0.8 % to +0.3 %, band I 22/22 within
+  10 %; one cell past 25 %, Merthyr Tydfil band H (target 2, estimate 63).
+- Scotland (255 cells, A–H): within 10 % 98.0 %; A–G mean signed error −1.5 % to −0.1 % (chargeable basis, the
+  +1.2 % residual to households recorded in Part C); three cells past 25 %, all thin: Na h-Eileanan Siar band A
+  (−31 %) and band H (target 5, estimate 120), Stirling band H (−43 %). Shetland band H is the signed support
+  deferral of Part C.
+- Band H is where the residue lives: the 53 bound Welsh and Scottish band-H cells are 50 out of 53 within 10 %
+  and carry the three largest misses; the 296 English cells stay deferred (A14).
+
+**The other local families did not move.** Census households 99.7 % → 100 % within 10 % at authority grain
+(mean signed +0.5 % → −0.04 %) and 99.4 % → 99.7 % at constituency grain; tenure 98.3 % → 98.8 %; age
+structure 100 % → 100 %; SPI income by area 99.2 % → 99.2 % (authority) and 99.4 % → 99.3 % (constituency);
+private rent 98.4 % → 98.1 % (316 cells now, 314 before: Barnsley and Sheffield bind through the aliases); UC
+households 98.0 % → 98.3 %.
+
+**Gates.** `uk_local_target_fit`: 53 failing targets on D2 → 24, council tax 33 → 5; the other 19 are the SPI
+self-employment amounts at −32 % to −95 % that D2 also carried (its 20 listed failures were capped by the
+council-tax entries). `uk_local_weight_ratio`: max/median positive weight 296 → 283 against the reviewed 100,
+ESS 130.5k → 127.9k, top-1 % weight share 16.0 % → 16.4 %; neither gate is this family's, both stood before it.
+
+**National grain (joint solve controls, and step 40 against the incumbent surface).**
+- The 97 `council_tax_stock` controls in the joint solve (78 composed English region cells after the three
+  signed band-H exclusions, the 10 Welsh country rows, the 9 Scottish country rows) all sit within 10 %; the
+  worst is `mhclg.council_tax_stock.band_h@E12000005` at 3.7 %. The composed cells equal the sum of their
+  authority cells by construction (cross-grain factor 1.0), so the region distribution is the authority fit.
+- Step 40 (`tools/evaluate_uk_dataset_size.py --steps 40-incumbent-surface`, incumbent 1.57.3, engine pass on
+  the 2.56 GB candidate): bound national rows within 10 % 80.9 % → 83.1 % (D2 → this run), median absolute
+  error 1.8 % → 2.5 %; the Scottish stock rows within 0.7 % (D2 within 1.1 %). The incumbent's 90
+  `voa/council_tax/<REGION>/<band>` rows are still evaluated as region rollups of our authority cells against
+  the VOA valuation-list targets, and now read −3 to −7 % on every band A–G (D2: −0.5 to −15 %, uneven by band).
+  That uniform gap is the basis difference the family was re-based on (occupied chargeable dwellings against the
+  valuation list, England +6.3 %), not a fit miss; the parity register records it as a signed difference. With the
+  fixture relabelled onto the `mhclg.*` / `welshgov.*` ids, the evaluation joins the nine Welsh incumbent rows to
+  our Welsh country rows (bound national rows 324 → 333; the 81 English region rows stay rollups, since our
+  composed cells are nine per band).
+- `obr.council_tax` (UK, net of CTR, £50.9bn): −11.0 % on D2 → −12.8 % here (£45.3bn → £44.4bn). The direction
+  is expected: D2 over-weighted high-band inner-London dwellings to chase the valuation-list counts, which
+  inflated modelled council tax; on the household basis the level gap is what remains (cause 3h of the plan:
+  England gross ≈ £1,522 per household against a requirement near £1,815, plus receipts on non-household
+  dwellings). It is the CT-C item on #929, not this PR's.
+- `frozen_vs_recomputed` no longer carries the nine VOA rows the 55k report called its largest divergence:
+  with `size_evaluation.frozen_vs_recomputed` keyed on bound rows only, the rows over 1 % are the same two D2
+  also had (`isc.private_school_students`, `ons.land.corporate_land_value`); max divergence 12.4 % → 6.2 %.
+
+**Verdict against the plan's 5f checks.** Family within 10 % above 97 %: yes (99.6 %). Bias by band ≈ 0: yes for
+England A–G; Scotland A–C −1.0 to −1.5 % (chargeable basis). National and region rows within 2 %: the 97 controls
+within 3.7 %, 96 within 2 %. Gate failures down to the micro-cells and any inner-London residue: the inner-London
+misses are gone; five council-tax cells remain, three of them band-H micro-cells. Census and tenure unchanged:
+yes. `obr.council_tax` a smaller miss: no, −11.0 % → −12.8 % (explained above; open on #929 as CT-C).
