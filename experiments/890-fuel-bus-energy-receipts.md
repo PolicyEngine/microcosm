@@ -533,3 +533,35 @@ and `uk_target_fit`, where the inherited HMRC self-employment 20–30k band cell
 at +24.6 % sits at +25.1 %, one tenth of a point over the fence — the spine-r posture recorded in
 Part J (a dated reviewed exclusion under her name, or a lever), not a #890 effect. No staging
 H5 is written while the battery blocks.
+
+### Part Q — round 3: NEED checked where the rake acts (María's ruling 1, 2026-09-15)
+
+Ruling: implement Vahid's connected-household gas rake (Part P) and move the NEED check before
+calibration; the calibrated frame is held to the bound ONS 04.5 total and NEED is not a
+calibration target. Commit `303e6d95`: the kWh rake receipt carries a `fit` block (per margin
+and cell, the design-weighted mean after the rake against the NEED target, electricity over
+every household of the cell and gas over its gas-connected households, with the maximum
+absolute relative deviation per margin and fuel); a new stage-health check `energy_rake`
+(`uk_stage_lcfs_consumption_energy_rake`, phase transferred, release-blocking, evidence-absent
+blocks) holds those deviations to pinned allowances and requires the kWh unit, the
+connected-row gas population and no zero-current cell; the two NEED mean-spend anchors leave
+`uk_aggregate_admin` (the NHS budget stays). `48cf2570` pins the allowances at the spine-s3
+baseline (income 2 %, tenure 2 %, accommodation 1 %, region 0.1 % against receipted maxima of
+1.65 %, 1.29 %, 0.83 % and 0.00 %) and re-pins the gate-battery and certification digests.
+
+spine-s3 (`76a02793ebc2649629850e4522db06619f8864e560512a71894ff8ddf5edc31d`, 531 s, rows as
+spine-r, content identity `b899f40a…` = spine-s2's): payload-identical to spine-s2 (the fit
+block is evidence only) and clean against spine-r under the expectation (24 expected, none
+unexpected). The transferred-phase stage-health gates evaluated on its build record all pass:
+`uk_stage_lcfs_consumption_support` (14 columns, zero clipped rows),
+`uk_stage_lcfs_consumption_energy_rake` (worst deviations as pinned above; region 2e-16),
+`uk_stage_etb_services_support` (2 columns, zero clipped rows).
+
+National calibration `pr-s-round3-spine-s3/` (`uk-frs-calibration-attempt-20260915T111325Z-55f419b8`,
+code `48cf2570`, 230 s): the round-2 solve to the rounding — loss 0.01138, 95.76 % within
+10 %, ESS 9,137, top-1 % share 16.2 %; bus rows exact, cars fuel duty −34.7 % → −12.1 %, rail
+−76.8 % → +0.0 %, ONS 04.5 +20.3 % → −0.0 %. Terminal battery: `uk_aggregate_admin` passes
+(NHS only), and the battery blocks on `uk_target_fit` alone — the inherited HMRC
+self-employment 20–30k band cell at +25.1 %, left failing by María's ruling 2 pending her
+exclusion or lever. Rulings 3 (Wales fare fence) and 4 (rake-then-bind and alternative
+sources) are answered in the PR thread and await her word.
