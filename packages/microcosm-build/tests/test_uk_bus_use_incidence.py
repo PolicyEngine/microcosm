@@ -47,6 +47,9 @@ def test_declared_bands_read_both_nts_series_by_label() -> None:
     assert receipt["age_threshold"] == 60
     assert len(receipt["source_record_ids"]) == 14
     assert receipt["user_definition"] == "at_least_once_a_year"
+    assert receipt["share_geography"] == "E92000001"
+    assert receipt["share_age_coverage"] == "all_ages"
+    assert receipt["applied_to"] == "fare_rake_regions"
 
 
 @pytest.mark.parametrize(
@@ -132,14 +135,9 @@ def test_household_incidence_is_identity_keyed_and_rolls_up_any_user() -> None:
         .any()
     )
     assert first.household_user.tolist() == user_by_household.tolist()
-    trips = (
-        pd.Series([_toy_shares().trips_per_year[band] for band in first.person_band])
-        .groupby(person["person_household_id"].to_numpy())
-        .sum()
-    )
-    assert first.household_trips_per_year.tolist() == trips.tolist()
     receipt = first.receipt
     assert receipt["seed"] == 0 and receipt["salt"] == "lcfs_uses_local_bus"
+    assert not hasattr(first, "household_trips_per_year")
     assert 0.3 < receipt["older_population_share"] < 0.45
     # Roughly half of people use a bus in the toy shares; households more.
     assert 0.4 < receipt["person_user_share"] < 0.6

@@ -8018,6 +8018,19 @@
       },
       "user_definition": {
        "const": "at_least_once_a_year"
+      },
+      "share_geography": {
+       "type": "string"
+      },
+      "share_age_coverage": {
+       "enum": [
+        "all_ages"
+       ]
+      },
+      "applied_to": {
+       "enum": [
+        "fare_rake_regions"
+       ]
       }
      }
     },

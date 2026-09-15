@@ -412,6 +412,10 @@ def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
     )
 
     def wmean_kwh(spend, fuel, mask):
+        # NEED gas means are per gas-metered household: average gas over the
+        # connected (positive) rows of the cell only, electricity over all.
+        if fuel == "gas":
+            mask = mask & (spend > 0)
         kwh = spend_to_kwh(
             spend[mask],
             frs_region=region[mask],
@@ -445,18 +449,22 @@ def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
     from microcosm.build.uk_runtime.energy_pricing import GAS_KWH, rake_energy_kwh
     from microcosm.build.uk_runtime.lcfs_consumption import energy_spend_to_kwh
 
+    in_kwh = energy_spend_to_kwh(household, energy=energy, region=region)
     two_margin, _ = rake_energy_kwh(
-        energy_spend_to_kwh(household, energy=energy, region=region),
+        in_kwh,
         margins=energy.margins,
         frs_region=region,
         income=income,
         weights=weights,
         iterations=50,
         tenure=tenure,
+        gas_connected=in_kwh[GAS_KWH].to_numpy(dtype=float) > 0,
     )
     gas_two = two_margin[GAS_KWH].to_numpy(dtype=float)
+    connected_owner = ew_owner & (gas_two > 0)
     fitted = float(
-        (gas_two[ew_owner] * weights[ew_owner]).sum() / weights[ew_owner].sum()
+        (gas_two[connected_owner] * weights[connected_owner]).sum()
+        / weights[connected_owner].sum()
     )
     assert abs(fitted - target) / target < 1e-6
     # Northern Ireland has no NEED table: untouched by every margin, so its
@@ -481,6 +489,8 @@ def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
     assert receipt["unit"] == "kwh"
     assert receipt["margins"] == ["income", "tenure", "accommodation", "region"]
     assert 0.8 < receipt["gas_connected_share"] < 0.9
+    assert receipt["gas_rake_population"] == "gas_connected_rows"
+    assert receipt["gas_connected_rows"] == int((~zero_gas).sum())
 
 
 def _synthetic_lcfs_donor(

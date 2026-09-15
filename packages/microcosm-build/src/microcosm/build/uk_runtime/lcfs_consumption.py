@@ -640,6 +640,7 @@ def rake_recipient_energy(
         tenure=tenure,
         accommodation=accommodation,
         use_region_margin=True,
+        gas_connected=in_kwh[GAS_KWH].to_numpy(dtype=float) > 0,
     )
     receipt["unit"] = "kwh"
     receipt["gas_connected_share"] = float(
@@ -651,27 +652,30 @@ def rake_recipient_energy(
     return energy_kwh_to_spend(raked, energy=energy, region=region), receipt
 
 
-def _donor_energy_rake_iterations(stage: SourceStageSpec) -> int:
-    """The declared donor-side energy IPF (the first one on the stage)."""
+def _energy_rake_operation(stage: SourceStageSpec, *, margin: str):
+    """The declared energy IPF whose margins name ``margin`` (never positional)."""
 
     for operation in stage.operations:
         if operation.kind == "iterative_proportional_fit" and (
             "electricity_consumption" in operation.parameters.get("columns", ())
+            and margin in [str(m) for m in operation.parameters.get("margins", ())]
         ):
-            return int(operation.parameters.get("iterations", 1))
-    return 1
+            return operation
+    return None
+
+
+def _donor_energy_rake_iterations(stage: SourceStageSpec) -> int:
+    """The declared donor-side energy IPF (the one on the gross income band)."""
+
+    operation = _energy_rake_operation(stage, margin="gross_income_band")
+    return 1 if operation is None else int(operation.parameters.get("iterations", 1))
 
 
 def _recipient_energy_rake_iterations(stage: SourceStageSpec) -> int:
-    """The declared post-imputation energy IPF (the last one on the stage)."""
+    """The declared post-imputation energy IPF (the one with the region margin)."""
 
-    iterations = 50
-    for operation in stage.operations:
-        if operation.kind == "iterative_proportional_fit" and (
-            "electricity_consumption" in operation.parameters.get("columns", ())
-        ):
-            iterations = int(operation.parameters.get("iterations", iterations))
-    return iterations
+    operation = _energy_rake_operation(stage, margin="region")
+    return 50 if operation is None else int(operation.parameters.get("iterations", 50))
 
 
 def support_clip_exempt(stage: SourceStageSpec) -> set[str]:
@@ -705,7 +709,6 @@ def lcfs_bus_use_incidence(
     )
     return BusUseIncidenceResult(
         household_user=result.household_user,
-        household_trips_per_year=result.household_trips_per_year,
         person_band=result.person_band,
         receipt={"nts": shares_receipt, **result.receipt},
     )
@@ -992,6 +995,7 @@ def clean_lcfs_consumption_table(
             income=household["household_gross_income"].to_numpy(dtype=float),
             weights=None,
             iterations=donor_rake_iterations,
+            gas_connected=in_kwh[GAS_KWH].to_numpy(dtype=float) > 0,
         )
         household = energy_kwh_to_spend(raked, energy=energy, region=region)
     household["domestic_energy_consumption"] = (
@@ -1195,6 +1199,7 @@ def _impose_bus_use_incidence(
     return adjusted, {
         "regime": str(getattr(step.regime, "name", step.regime)),
         "positive_draw_salt": UK_LCFS_BUS_FARE_POSITIVE_SALT,
+        "chain_conditioned_on": "raw_draw",
         "households": int(len(raw_draw)),
         "households_in_scope": int(in_scope.sum()),
         "households_outside_scope_keep_raw_draw": int((~in_scope).sum()),

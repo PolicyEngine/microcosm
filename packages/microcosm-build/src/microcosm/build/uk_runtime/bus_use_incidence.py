@@ -13,8 +13,13 @@ Survey frequency-of-use shares (NTS0313 for all ages, NTS0621 for people aged
 * a household uses local buses when any member is in a user band (the declared
   ``user_definition``, at least once a year);
 * each band carries declared trips-per-year weights (band midpoints, a ruling
-  default) so the fare rake can spread an area's receipts over user households
-  in proportion to their members' trips.
+  default) so the receipt can state the mean trips per person the draw
+  implies beside the NTS0705a trips per person the fare rake allocates by;
+  the rake itself spreads an area's receipts by income quintile, not by band.
+
+The published shares are England's (NTS0313, all ages; NTS0621, 60 and over)
+and are applied to every person in the regions a fare cell levels, Scotland
+and Northern Ireland included; the declaration names that scope.
 
 Everything read is returned in a receipt the stage records as evidence.
 """
@@ -56,7 +61,6 @@ class BusUseBandShares:
 @dataclass(frozen=True)
 class BusUseIncidenceResult:
     household_user: np.ndarray
-    household_trips_per_year: np.ndarray
     person_band: np.ndarray
     receipt: dict[str, Any]
 
@@ -148,6 +152,9 @@ def nts_band_shares(parameters: Mapping[str, Any]) -> tuple[BusUseBandShares, di
     receipt = {
         "resource": resource,
         "period_value": period_value,
+        "share_geography": str(parameters.get("share_geography", "E92000001")),
+        "share_age_coverage": str(parameters.get("share_age_coverage", "all_ages")),
+        "applied_to": str(parameters.get("applied_to", "fare_rake_regions")),
         "transport_mode_groupby_value_id": mode_groupby,
         "older_age_band": older_age_band,
         "age_threshold": age_threshold,
@@ -278,17 +285,10 @@ def assign_bus_use_incidence(
         [shares.trips_per_year[band] for band in person_band], dtype=float
     )
     person_user = person_band != shares.non_user_band
-    by_household = pd.DataFrame(
-        {
-            "household": person["person_household_id"].to_numpy(),
-            "user": person_user,
-            "trips": trips,
-        }
-    ).groupby("household")
-    user_any = by_household["user"].any()
-    trips_sum = by_household["trips"].sum()
+    user_any = (
+        pd.Series(person_user).groupby(person["person_household_id"].to_numpy()).any()
+    )
     household_user = user_any.reindex(household_ids).fillna(False).to_numpy(dtype=bool)
-    household_trips = trips_sum.reindex(household_ids).fillna(0.0).to_numpy(dtype=float)
     receipt = {
         "seed": int(seed),
         "salt": salt,
@@ -315,7 +315,6 @@ def assign_bus_use_incidence(
     }
     return BusUseIncidenceResult(
         household_user=household_user,
-        household_trips_per_year=household_trips,
         person_band=person_band,
         receipt=receipt,
     )

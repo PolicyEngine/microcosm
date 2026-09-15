@@ -531,6 +531,7 @@ def rake_energy_kwh(
     tenure: Sequence[str] | None = None,
     accommodation: Sequence[str] | None = None,
     use_region_margin: bool = False,
+    gas_connected: Sequence[bool] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Rake ``electricity_kwh`` and ``gas_kwh`` to the NEED margins.
 
@@ -539,6 +540,12 @@ def rake_energy_kwh(
     prefixed by its NEED geography so England-and-Wales and Scotland rows fit
     their own published means. Households outside every category (Northern
     Ireland, unmapped tenures or dwelling types) are untouched by that margin.
+
+    NEED publishes gas means per gas-metered household and electricity means
+    per household, so electricity is raked over every row of a cell and gas
+    over its ``gas_connected`` rows only (the cell-mean IPF would otherwise
+    spread a per-connected mean over unconnected zeros). Without a mask every
+    row counts as connected.
     """
 
     frame = table.copy()
@@ -599,18 +606,51 @@ def rake_energy_kwh(
         frame["_need_weight"] = np.asarray(weights, dtype=float)
         weight_column = "_need_weight"
         scratch.append("_need_weight")
+    connected = (
+        np.ones(len(frame), dtype=bool)
+        if gas_connected is None
+        else np.asarray(gas_connected, dtype=bool)
+    )
+    if len(connected) != len(frame):
+        raise ValueError("gas_connected must align with the table.")
+    electricity_specs = tuple(
+        MarginSpec(
+            spec.column,
+            {k: {ELECTRICITY_KWH: v[ELECTRICITY_KWH]} for k, v in spec.targets.items()},
+        )
+        for spec in specs
+    )
+    gas_specs = tuple(
+        MarginSpec(
+            spec.column, {k: {GAS_KWH: v[GAS_KWH]} for k, v in spec.targets.items()}
+        )
+        for spec in specs
+    )
     raked = iterative_proportional_fit(
         frame,
-        columns=(ELECTRICITY_KWH, GAS_KWH),
-        margins=tuple(specs),
+        columns=(ELECTRICITY_KWH,),
+        margins=electricity_specs,
         iterations=iterations,
         weight_column=weight_column,
     )
+    zero_cells = list(raked.attrs.get("raking_zero_current_cells", ()))
+    gas_raked = iterative_proportional_fit(
+        frame.loc[connected],
+        columns=(GAS_KWH,),
+        margins=gas_specs,
+        iterations=iterations,
+        weight_column=weight_column,
+    )
+    zero_cells.extend(gas_raked.attrs.get("raking_zero_current_cells", ()))
+    raked.loc[connected, GAS_KWH] = gas_raked[GAS_KWH].to_numpy(dtype=float)
     receipt = {
         "iterations": int(iterations),
         "weighted": weights is not None,
         "margins": list(fitted),
         "populated_cells": {margin: len(keys) for margin, keys in fitted.items()},
-        "zero_current_cells": list(raked.attrs.get("raking_zero_current_cells", ())),
+        "gas_rake_population": "gas_connected_rows",
+        "gas_connected_rows": int(connected.sum()),
+        "rows": int(len(frame)),
+        "zero_current_cells": zero_cells,
     }
     return raked.drop(columns=[c for c in scratch if c in raked]), receipt

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
@@ -282,3 +283,55 @@ def test_declared_vat_rate_lockstep_with_the_engine() -> None:
         reader(parameters["vat_parameter_path"], parameters["vat_period"])
         == (parameters["vat_rate"])
     )
+
+
+def test_gas_is_raked_over_connected_rows_and_electricity_over_all() -> None:
+    from microcosm.build.uk_runtime.energy_pricing import (
+        ELECTRICITY_KWH,
+        GAS_KWH,
+        rake_energy_kwh,
+    )
+
+    margins = need_margins_from_facts()
+    n = 200
+    rng = np.random.default_rng(8)
+    table = pd.DataFrame(
+        {
+            ELECTRICITY_KWH: rng.uniform(1000.0, 5000.0, n),
+            GAS_KWH: np.where(
+                np.arange(n) % 4 == 0, 0.0, rng.uniform(5000.0, 20000.0, n)
+            ),
+        }
+    )
+    region = np.full(n, "LONDON", dtype=object)
+    income = np.full(n, 10_000.0)  # one E&W income band: less_than_gbp15_000
+    connected = table[GAS_KWH].to_numpy() > 0
+    raked, receipt = rake_energy_kwh(
+        table,
+        margins=margins,
+        frs_region=region,
+        income=income,
+        weights=None,
+        iterations=1,
+        gas_connected=connected,
+    )
+    cell = margins.targets["income"][
+        (ENGLAND_AND_WALES_GEOGRAPHY_ID, "less_than_gbp15_000")
+    ]
+    assert raked[ELECTRICITY_KWH].mean() == pytest.approx(cell["electricity_kwh"])
+    # Gas: the connected rows carry the NEED mean; unconnected rows stay zero.
+    assert raked.loc[connected, GAS_KWH].mean() == pytest.approx(cell["gas_kwh"])
+    assert (raked.loc[~connected, GAS_KWH] == 0.0).all()
+    assert raked[GAS_KWH].mean() == pytest.approx(cell["gas_kwh"] * connected.mean())
+    assert receipt["gas_rake_population"] == "gas_connected_rows"
+    assert receipt["gas_connected_rows"] == int(connected.sum())
+    # Without a mask every row counts as connected: the all-row mean fits.
+    unmasked, _ = rake_energy_kwh(
+        table,
+        margins=margins,
+        frs_region=region,
+        income=income,
+        weights=None,
+        iterations=1,
+    )
+    assert unmasked[GAS_KWH].mean() == pytest.approx(cell["gas_kwh"])
