@@ -364,8 +364,8 @@ levels Wales (receipts unpublished). Fix `a5c71477`: the override is imposed onl
 a fare-rake cell covers; Wales keeps the chain's raw draw, and the receipt names the households
 outside scope. The same twin's energy reading stands and is a finding, not a defect of the
 declaration: domestic energy GBP 52.9bn at design weights (electricity mean GBP 1,011, gas
-GBP 799 over 96.5 % gas-positive households) against ONS 04.5 GBP 42.3bn in CY2024 and
-GBP 43.4bn in CY2025, i.e. +22 % before the engine's CPI uprating, where the C6 ruling text
+GBP 799 over 96.5 % gas-positive households) against ONS 04.5 GBP 42.3bn in CY2024 (+25 %)
+and GBP 43.4bn in CY2025 (+22 %), before the engine's CPI uprating, where the C6 ruling text
 expected 4–5 % under. The old pricing (NEED kWh at Q2-2026 unit rates, no standing charge)
 matched ONS by coincidence (GBP 1,470 a household); FY2024-25 cap pricing adds GBP 336 of
 standing charges a household and the LCFS-derived gas signal (the `p537` split assigns gas to
@@ -489,12 +489,15 @@ to low-energy households. The two facts are inconsistent on this frame by about 
 mean kWh priced at the FY2024-25 cap with standing charges, over 96.5 % gas-connected
 households, exceeds the national-accounts household energy spend per household. Before PR-S
 the anchor was NEED kWh at Q2-2026 unit rates with no standing charge (GBP 882 / 700) and the
-frame matched ONS by coincidence. Candidate resolutions, all rulings: (a) a truthful
+frame matched ONS by coincidence. Candidate resolutions, all rulings (re-worded after Vahid's round 1, which showed the gas
+rake was spreading a per-connected-household NEED mean over unconnected zeros; commit `31204e19`
+rakes gas over gas-positive rows only, so the connected share now scales the frame's total gas
+kWh as well as the standing charges — Part P re-measures on that basis): (a) a truthful
 gas-connection signal on the donor (LCFS `a151`, 80.9 % of diary households weighted, if the
-codebook confirms it as mains-gas central heating; `b490 > 0` marks only 12 %) so the gas
-standing charge and kWh apply to about 85 % of households; (b) an anchor that measures what
-NEED measures — mean kWh over the raked households, not pounds — so the anchor cannot disagree
-with the pricing; (c) accept the ONS total as the level and widen the NEED tolerance. No
+codebook confirms it as mains-gas central heating; `b490 > 0` marks only 12 %), which lowers
+total gas kWh and standing charges to about 85 % of households; (b) an anchor that measures
+what NEED measures — mean kWh over connected households, not pounds — so the anchor cannot
+disagree with the pricing; (c) accept the ONS total as the level and widen the NEED tolerance. No
 staging H5 is written when the battery blocks, so the per-row weight-stretch anatomy (mass on
 households stretched >3× and >5×) is not re-measured here; the global ESS and top-1 % share
 above are the stretch reading.
