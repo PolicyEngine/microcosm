@@ -243,20 +243,27 @@ def extended_status_host(tmp_path_factory, request):
         generator = fixtures.property_host_source.__wrapped__(tmp_path_factory)
         case = next(generator)
         try:
-            pins = runner._property_module().sources.routing.coverage._MEMBER_PINS
-            patch.setattr(graph.source.student, "_MEMBER_PINS", pins)
-            options = replace(case.options, completion_routing=True)
-            call = {
-                **case.call,
-                "property_income": options,
-                "rebase_property_taxes": request.param,
-                "person_status": True,
-            }
-            cold = runner.run_atomic_survey_financial(**call)
-            warm = runner.run_atomic_survey_financial(**call, resume="require")
-            yield SimpleNamespace(cold=cold, warm=warm, tax=request.param)
-            cold.checked_view()
-            warm.checked_view()
+            # The student pins are patched on a context nested inside the
+            # generator's lifetime. Recorded on the outer context instead, the
+            # patch would be undone after ``generator.close()`` and restore
+            # the generator-era pins over the value the module's earlier
+            # fixture installed, so that fixture's retained student receipts
+            # would fail ``STUDENT_CONTENT_CHANGED`` at its own teardown.
+            with pytest.MonkeyPatch.context() as student_patch:
+                pins = runner._property_module().sources.routing.coverage._MEMBER_PINS
+                student_patch.setattr(graph.source.student, "_MEMBER_PINS", pins)
+                options = replace(case.options, completion_routing=True)
+                call = {
+                    **case.call,
+                    "property_income": options,
+                    "rebase_property_taxes": request.param,
+                    "person_status": True,
+                }
+                cold = runner.run_atomic_survey_financial(**call)
+                warm = runner.run_atomic_survey_financial(**call, resume="require")
+                yield SimpleNamespace(cold=cold, warm=warm, tax=request.param)
+                cold.checked_view()
+                warm.checked_view()
         finally:
             generator.close()
 
