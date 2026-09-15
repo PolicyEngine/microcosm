@@ -28,6 +28,7 @@ from microcosm.build.chronicle_epoch import (
     ACCEPTED_CONSUMER_FACT_SCHEMA_VERSIONS,
     CHRONICLE_CONSUMER_ARTIFACT_SCHEMA_VERSION,
     CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
+    CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V3,
     CHRONICLE_EPOCH,
     CHRONICLE_FACT_KEY_DOMAINS,
     CHRONICLE_NAMESPACES,
@@ -398,6 +399,7 @@ def test_schema_id_membership_covers_every_real_producer_id() -> None:
     assert ACCEPTED_CONSUMER_FACT_SCHEMA_VERSIONS == {
         LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
         CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
+        CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V3,
     }
     for schema_id, expected_epoch in _ARTIFACT_SCHEMA_IDS_BY_EPOCH:
         assert is_accepted_consumer_artifact_schema_version(schema_id), schema_id
@@ -406,6 +408,9 @@ def test_schema_id_membership_covers_every_real_producer_id() -> None:
         LEDGER_EPOCH
     )
     assert consumer_fact_schema_epoch(CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION) == (
+        CHRONICLE_EPOCH
+    )
+    assert consumer_fact_schema_epoch(CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V3) == (
         CHRONICLE_EPOCH
     )
     assert not is_accepted_consumer_artifact_schema_version(
@@ -588,7 +593,11 @@ def test_malformed_schema_version_types_raise_the_documented_error(
 
 @pytest.mark.parametrize(
     "row_schema_version",
-    [LEDGER_CONSUMER_FACT_SCHEMA_VERSION, CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION],
+    [
+        LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
+        CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
+        CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V3,
+    ],
 )
 def test_per_row_schema_id_is_accepted_in_either_era(
     tmp_path, row_schema_version: str

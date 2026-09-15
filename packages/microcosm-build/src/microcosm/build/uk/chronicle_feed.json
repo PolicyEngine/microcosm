@@ -3,14 +3,14 @@
   "country": "uk",
   "scope": "uk_calibration",
   "source_repo": "PolicyEngine/chronicle",
-  "source_commit": "474a0ae100e9dbfa43c167e9e200ec07dcfc6643",
+  "source_commit": "df35af7e7ccf689ad2a5b6e47ce33e99b8c9d3fb",
   "build": "build-bundle --suite uk -> build-consumer-artifact",
   "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
   "consumer_fact_schema_versions": [
-    "chronicle.consumer_fact.v2"
+    "chronicle.consumer_fact.v3"
   ],
-  "consumer_fact_schema_sha256": "6a42e4a54b9758eaa1219489c318131429a3200fef6205e6700651d46bde068d",
-  "fact_row_count": 141400,
-  "facts_sha256": "bb12d77a661ef1649c2907211bfd58bc031dcf7d41d2e5d39a09d63eb7266d3d",
-  "manifest_sha256": "c649b7fea9178e309574ed10851d30623bd7e6ca1335006fe7f5ae44d801e78d"
+  "consumer_fact_schema_sha256": "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d",
+  "fact_row_count": 266390,
+  "facts_sha256": "3e7d5a4fe18be9e5a19e5475a6e9f91a5d5b0ab827faedccdc755584957e59e7",
+  "manifest_sha256": "51aab3411e803cac7b9bbd1b1bf9250a87cd43bfd0ba35d0cd653e31821d0364"
 }

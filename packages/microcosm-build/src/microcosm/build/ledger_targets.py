@@ -2180,11 +2180,29 @@ def _normalized_record_set_part(value: str) -> str:
         return ""
     normalized = value.lower().replace("-", "_")
     pieces = [
-        piece
+        _strip_trailing_vintage_year(piece)
         for piece in normalized.split("_")
         if piece and not _is_period_fragment(piece)
     ]
     return "_".join(pieces)
+
+
+_TRAILING_VINTAGE_YEAR = re.compile(r"^([a-z]{2,})((?:19|20)[0-9]{2})$")
+
+
+def _strip_trailing_vintage_year(piece: str) -> str:
+    """``ctaxbase2025`` -> ``ctaxbase``: a vintage year glued to a word.
+
+    Chronicle names one package per publication year and spells the year
+    into the record-set id without a separator (``scotgov.ctaxbase2025.…``,
+    ``mhclg.ctb2025.…``). The series-invariant key must read those the way it
+    already reads ``fy2025`` and ``september2025``, or every vintage of one
+    series looks like a different series and the latest-not-after resolution
+    refuses the reference as ambiguous.
+    """
+
+    match = _TRAILING_VINTAGE_YEAR.match(piece)
+    return match.group(1) if match else piece
 
 
 def _normalized_period_bearing_id(value: str) -> str:
