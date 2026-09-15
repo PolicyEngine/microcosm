@@ -43,6 +43,7 @@ from microcosm.graph.codecs import SOURCE_CODECS
 
 from ..artifact_files import file_artifact
 from . import geography_ladder, national_frame
+from .atomic_area_support import UK_NATIVE_ALIAS_COLUMNS
 from .geography_ladder import uk_geography_ladder_gate
 from .graph_population import context_frame, population_columns, population_slices
 from .national_frame import (
@@ -76,6 +77,12 @@ def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
         renamed[entity] = tables[entity].rename(
             columns={column: ARTIFACT_CLONE_INDEX_COLUMN}
         )
+    # Nation-native aliases of derived layers are NA outside their own nation;
+    # the single-year artifact carries the ten ladder columns plus the
+    # identity-keyed assignment columns, never the aliases.
+    aliases = [c for c in UK_NATIVE_ALIAS_COLUMNS if c in renamed["household"]]
+    if aliases:
+        renamed["household"] = renamed["household"].drop(columns=aliases)
     return renamed
 
 

@@ -58,7 +58,7 @@ AM_SPEC_SHA256 = "ab8458f8520ffe8325bf9193a7c4f3cb76bade3944522fba5f9ab3f9c4b235
         ),
         (
             "uk",
-            "cbdbda2b6335f70c281382263ba189d93d323ab32bc0e89db7d6d9c845e6353d",
+            "b6e8bddcb364e171db26dbcf93dc34e90cb38fb0fca37b0b8fca51490c57286e",
             {
                 "benunit.benunit_id",
                 "household.household_id",
@@ -140,6 +140,7 @@ def test_country_kernel_contract_ids_are_closed_in_the_compiler_registry() -> No
         "build_uk_frs_spine",
         "assign_uk_geography_ladder",
         "uk_geography_ladder_gate",
+        "load_uk_atomic_area_support",
     }
 
     assert country_contract_ids == F0_CONTRACT_ONLY_KERNEL_IDS

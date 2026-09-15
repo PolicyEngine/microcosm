@@ -56,6 +56,45 @@ def _frame():
     )
 
 
+def test_export_drops_native_aliases_and_keeps_identity_keyed_assignment(tmp_path):
+    pytest.importorskip("tables")
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        UK_NATIVE_ALIAS_COLUMNS,
+    )
+    from microcosm.build.uk_runtime.graph_terminal import _tables
+
+    frame = _frame()
+    household = frame.table("household")
+    household["geography_household_key"] = pd.array(["k1", "k2"], dtype="string")
+    household["atomic_area_code"] = household["oa_code"]
+    household["atomic_area_system"] = pd.array(
+        ["uk_ew_output_area_2021"] * 2, dtype="string"
+    )
+    household["atomic_area_basis"] = pd.array(["assigned"] * 2, dtype="string")
+    household["output_area_code"] = household["oa_code"]
+    for alias in UK_NATIVE_ALIAS_COLUMNS[1:]:
+        household[alias] = pd.array([pd.NA, pd.NA], dtype="string")
+    exported = _tables(frame)["household"].columns
+    assert not set(UK_NATIVE_ALIAS_COLUMNS) & set(exported)
+    assert {
+        "geography_household_key",
+        "atomic_area_code",
+        "atomic_area_system",
+        "atomic_area_basis",
+        "oa_code",
+        "ward_code",
+        "itl1_code",
+    } <= set(exported)
+    descriptor = describe_uk_export(frame, bindings={"target_scope": "all"})
+    assert "output_area_code" not in descriptor["tables"]["household"]["columns"]
+    path = tmp_path / "full.h5"
+    materialize_uk_export(frame, descriptor, path)
+    assert validate_uk_export(path, descriptor)["passed"] is True
+    with pd.HDFStore(path) as store:
+        stored = store["household"].columns
+    assert "geography_household_key" in stored and "data_zone_code" not in stored
+
+
 def test_export_roundtrip_preserves_dtype_weights_lineage_period_and_gate(tmp_path):
     pytest.importorskip("tables")
     frame = _frame()
@@ -211,6 +250,11 @@ def test_graph_export_continuation_reuses_numerics_and_validates_recreated_file(
 
 @pytest.mark.parametrize("households", [None, 2])
 def test_full_gate_nodes_precede_dense_and_bind_final_problem_axis(households):
+    from uk_atomic_support_fixtures import toy_support_payloads
+
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        uk_atomic_assignment_definition,
+    )
     from microcosm.build.uk_runtime.graph import uk_spine_endpoint, uk_spine_graph
     from microcosm.build.uk_runtime.graph_build import UKFullBuildConfig, uk_full_graph
     from microcosm.build.uk_runtime.graph_calibration import UKGraphCalibrationConfig
@@ -218,12 +262,16 @@ def test_full_gate_nodes_precede_dense_and_bind_final_problem_axis(households):
     from microcosm.graph import compile_graph
 
     raw = uk_spine_graph(source_mode="split")
+    config = UKFullBuildConfig(
+        calibration_year=2025,
+        calibration=UKGraphCalibrationConfig(dataset_households=households),
+    )
     full = uk_full_graph(
-        UKFullBuildConfig(
-            calibration_year=2025,
-            calibration=UKGraphCalibrationConfig(dataset_households=households),
-        ),
+        config,
         spine=raw,
+        atomic_geography_definition=uk_atomic_assignment_definition(
+            toy_support_payloads(), seed=config.seed
+        ),
     )
     graph = append_uk_full_gate_nodes(
         full.graph,

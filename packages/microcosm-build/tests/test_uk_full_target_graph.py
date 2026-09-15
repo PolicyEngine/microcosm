@@ -9,10 +9,18 @@ import numpy as np
 import pandas as pd
 import pytest
 from test_uk_full_calibration_graph import preflight_payload
-from test_uk_full_population_graph import Source, graph_and_registry
+from test_uk_full_population_graph import SOURCE_VINTAGE, Source, graph_and_registry
 from test_uk_ladder_rowwise_clone import toy_ladder as toy_ladder
+from uk_atomic_support_fixtures import (
+    toy_support_payloads,
+    toy_support_sources,
+    write_toy_supports,
+)
 
 from microcosm.build.uk_runtime import full_targets, graph_targets, ledger_targets
+from microcosm.build.uk_runtime.atomic_area_support import (
+    uk_atomic_assignment_definition,
+)
 from microcosm.build.uk_runtime.graph_build import (
     UKFullBuildConfig,
     register_uk_full_kernels,
@@ -202,6 +210,7 @@ def build(
     dataset_households=None,
     resume="auto",
     forbid_execution=False,
+    geography_assignment="atomic",
 ):
     primitive, _ = graph_and_registry(1)
     base = Graph(
@@ -216,11 +225,24 @@ def build(
         n_clones=n_clones,
         geography_levels=levels,
         seed=seed,
+        geography_assignment=geography_assignment,
+        source_vintage=SOURCE_VINTAGE,
         calibration=UKGraphCalibrationConfig(
             epochs=8, seed=seed, dataset_households=dataset_households
         ),
     )
-    full = uk_full_graph(config, spine=base, spine_population="source")
+    payloads, support_paths = write_toy_supports(tmp_path / "supports")
+    definition = (
+        uk_atomic_assignment_definition(payloads, seed=seed)
+        if geography_assignment == "atomic"
+        else None
+    )
+    full = uk_full_graph(
+        config,
+        spine=base,
+        spine_population="source",
+        atomic_geography_definition=definition,
+    )
     preflight = Node(
         "fixture.preflight",
         Preflight.ref,
@@ -277,6 +299,11 @@ def build(
             "fixture": ladder_path,
             "uk_ladder": ladder_path,
             "uk_ledger_facts": ladder_path,
+            **(
+                toy_support_sources(support_paths)
+                if geography_assignment == "atomic"
+                else {}
+            ),
         },
         store=store,
         kernels=registry,
@@ -299,7 +326,16 @@ def test_explicit_country_filter_runs_same_full_graph_without_local_constraints(
     assert manifest.population(full.population).n("household") == 4
     assert len(problem.bindings["target_selection"]["excluded"]) > 0
     assert "uk.full.dense" in manifest.nodes
-    assert "uk.full.locations" in manifest.nodes
+    assert "uk.full.locations" not in manifest.nodes
+    assert {
+        "uk.full.identity",
+        "uk.full.geography.assign",
+        "uk.full.geography_gate",
+    } <= set(manifest.nodes)
+    assert manifest.nodes["uk.full.geography_gate"].receipt["outcome"] == "pass"
+    assert (
+        manifest.nodes["uk.full.pool"].receipt["atomic_validation"]["outcome"] == "pass"
+    )
     surface = json.loads(
         ContentStore(tmp_path / "store").load_bytes(
             manifest.nodes["uk.full.target_compilation"].opaque_artifacts["surface"]
@@ -323,7 +359,12 @@ def test_default_scope_contains_all_levels_and_never_depends_on_k_or_k_small():
             default, calibration=replace(default.calibration, dataset_households=20)
         ),
     ):
-        graph = uk_full_graph(config).graph
+        graph = uk_full_graph(
+            config,
+            atomic_geography_definition=uk_atomic_assignment_definition(
+                toy_support_payloads(), seed=config.seed
+            ),
+        ).graph
         assert graph.node("uk.full.target_selection").params["geography_levels"] is None
 
 
@@ -343,14 +384,17 @@ def test_default_all_has_direct_matrix_and_solver_parity_and_replays(
     )
 
     ladder, path = toy_ladder
+    # The pre-graph numerical helpers below draw geography with the legacy
+    # sequential ladder; the graph is built the same way for this parity proof.
     default, default_run, default_problem = build(
-        tmp_path / "default", path, None, n_clones=10
+        tmp_path / "default", path, None, n_clones=10, geography_assignment="legacy"
     )
     explicit, explicit_run, explicit_problem = build(
         tmp_path / "explicit",
         path,
         ("country", "region", "constituency", "la"),
         n_clones=10,
+        geography_assignment="legacy",
     )
     assert {row["geography_level"] for row in default_problem.target_metadata} == {
         "country",
@@ -440,6 +484,7 @@ def test_default_all_has_direct_matrix_and_solver_parity_and_replays(
         n_clones=10,
         resume="require",
         forbid_execution=True,
+        geography_assignment="legacy",
     )
     assert all(receipt.hit for receipt in replay.nodes.values())
     np.testing.assert_array_equal(

@@ -101,6 +101,79 @@ sources:
   loader: kernel:build_uk_frs_spine
   vintages:
   - vintage:uk_frs_2024_25
+- id: uk_ew_output_area_2021_support
+  role: uk_atomic_area_support
+  sha256: 1b0dec268be0141f03ec05dc3b55c13733cc2bb20be5e403d76d73c8e27dc797
+  byte_size: 1828698
+  loader: kernel:load_uk_atomic_area_support
+  vintages:
+  - vintage:uk_oa_2021
+  - vintage:uk_lad_2023
+  - vintage:uk_rgn_2024
+  - vintage:uk_pcon_2024
+  - vintage:uk_wd_2024
+  - vintage:uk_itl_2025
+  vintage_authorities:
+  - id: uk_oa_2021
+    kind: geography_vintage
+    value: 2021_census
+  - id: uk_lad_2023
+    kind: geography_vintage
+    value: 2023_april_lad
+  - id: uk_rgn_2024
+    kind: geography_vintage
+    value: 2024_rgn
+  - id: uk_pcon_2024
+    kind: geography_vintage
+    value: 2024_pcon
+  - id: uk_wd_2024
+    kind: geography_vintage
+    value: 2024_wd
+  - id: uk_itl_2025
+    kind: geography_vintage
+    value: 2025_itl
+- id: uk_scotland_output_area_2022_support
+  role: uk_atomic_area_support
+  sha256: 1649fa831315e6fac80caa4af7f68e837fd985b7f59c2831bb0db8cbfeeee443
+  byte_size: 440439
+  loader: kernel:load_uk_atomic_area_support
+  vintages:
+  - vintage:uk_oa_2022
+  - vintage:uk_ca_2019
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_itl_2025
+  vintage_authorities:
+  - id: uk_oa_2022
+    kind: geography_vintage
+    value: 2022_census
+  - id: uk_ca_2019
+    kind: geography_vintage
+    value: 2019_council_area
+  - id: uk_scotland_ew_2022
+    kind: geography_vintage
+    value: 2022_ew
+- id: uk_ni_data_zone_2021_support
+  role: uk_atomic_area_support
+  sha256: facb9923f589cb68eefa8fad37911e618b6137964ff58a231976ef62584b669f
+  byte_size: 44638
+  loader: kernel:load_uk_atomic_area_support
+  vintages:
+  - vintage:uk_dz_2021
+  - vintage:uk_lgd_2014
+  - vintage:uk_dea_2014
+  - vintage:uk_pcon_2024
+  - vintage:uk_itl_2025
+  vintage_authorities:
+  - id: uk_dz_2021
+    kind: geography_vintage
+    value: 2021_census
+  - id: uk_lgd_2014
+    kind: geography_vintage
+    value: 2014_lgd
+  - id: uk_dea_2014
+    kind: geography_vintage
+    value: 2014_dea
 stage_manifest:
   version: 1
   country: uk

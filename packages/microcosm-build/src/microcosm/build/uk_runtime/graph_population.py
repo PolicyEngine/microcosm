@@ -27,6 +27,7 @@ from microcosm.graph import (
     KernelRegistry,
     KernelResult,
     Node,
+    Numeric,
     Owned,
     SeedSource,
     Slice,
@@ -40,7 +41,13 @@ from microcosm.graph.canonical import canonical_json
 from microcosm.graph.population import dtype_for_token
 from microcosm.graph.weight_update import weight_update_receipt
 
-from . import geography_ladder, national_sampling, rowwise_dataset
+from . import (
+    atomic_area_support,
+    atomic_household_identity,
+    geography_ladder,
+    national_sampling,
+    rowwise_dataset,
+)
 from .geography_ladder import (
     UK_GEOGRAPHY_LADDER_COLUMNS,
     derive_uk_ladder_locations,
@@ -53,6 +60,20 @@ from .rowwise_dataset import expand_uk_geographic_pool, ladder_clone_index_colum
 POPULATION_RECEIPT_TYPE = ArtifactType("microcosm.uk.population-receipt", 1)
 LOCATION_DRAW_TYPE = ArtifactType("microcosm.uk.ladder-location-draw", 1)
 GEOGRAPHY_GATE_TYPE = ArtifactType("microcosm.uk.geography-gate", 1)
+GEOGRAPHY_ASSIGNMENTS = ("atomic", "legacy")
+#: Lineage columns the post-clone household identity is keyed on. The support
+#: channel and CGT flags come from the spine stages; the geographic clone index
+#: from ``uk.full.expand``. Calibration K, weights and remapped ids are not inputs.
+UK_GEOGRAPHY_IDENTITY_INPUTS = (
+    "source_household_id",
+    "household_support_channel",
+    "household_support_clone_index",
+    "household_is_capital_gains_clone",
+    "household_is_cgt_band_donor",
+    ladder_clone_index_column("household"),
+)
+_BASE_SUPPORT_CHANNEL = "frs"
+_SPI_SUPPORT_CHANNEL = "spi"
 
 
 def context_frame(context: KernelContext) -> Frame:
@@ -331,6 +352,149 @@ class UKGeographyMappingKernel(_PopulationKernel):
         )
 
 
+class UKGeographyIdentityKernel(_PopulationKernel):
+    """Key every post-clone household by its source id and ordered clone path.
+
+    The path is read from the spine's explicit lineage columns, never inferred
+    from ids, weights or financial values: ``spi_support_channel`` with the
+    support clone index when the household is an SPI support copy,
+    ``cgt_incidence_clone`` and ``cgt_band_donors`` (ordinal 1) from their
+    flags, ``geographic_support`` with the pool clone index when it is not
+    the original copy. Growing K never changes an existing household's key.
+    """
+
+    ref = "uk.full.identity@1"
+    capabilities = Capabilities(Determinism.DETERMINISTIC)
+
+    def implementation_hash(self) -> str:
+        return source_hash(
+            type(self), atomic_household_identity, atomic_area_support, rowwise_dataset
+        )
+
+    def run(self, context: KernelContext) -> KernelResult:
+        household = context.tables["household"]
+        source = str(context.params["source"])
+        vintage = str(context.params["source_vintage"])
+        missing = [c for c in UK_GEOGRAPHY_IDENTITY_INPUTS if c not in household]
+        if missing:
+            raise ValueError(f"Geography identity lacks lineage column(s) {missing}.")
+        lineage = household.loc[:, list(UK_GEOGRAPHY_IDENTITY_INPUTS)]
+        if lineage.isna().any().any():
+            raise ValueError("Geography identity refuses null lineage values.")
+        if lineage["source_household_id"].dtype != np.dtype("int64"):
+            raise ValueError("Geography identity requires int64 source household ids.")
+        for column in (
+            "household_is_capital_gains_clone",
+            "household_is_cgt_band_donor",
+        ):
+            dtype = lineage[column].dtype
+            if dtype != np.dtype("bool") and not isinstance(dtype, pd.BooleanDtype):
+                raise ValueError(f"Geography identity requires a boolean {column}.")
+        keys = []
+        for source_id, channel, support_index, cgt, donor, clone_index in zip(
+            lineage["source_household_id"].to_numpy(),
+            lineage["household_support_channel"].to_numpy(),
+            lineage["household_support_clone_index"].to_numpy(),
+            lineage["household_is_capital_gains_clone"].to_numpy(),
+            lineage["household_is_cgt_band_donor"].to_numpy(),
+            lineage[ladder_clone_index_column("household")].to_numpy(),
+            strict=True,
+        ):
+            channel = str(channel)
+            support_index, clone_index = int(support_index), int(clone_index)
+            if channel not in {_BASE_SUPPORT_CHANNEL, _SPI_SUPPORT_CHANNEL}:
+                raise ValueError(f"Unknown household support channel {channel!r}.")
+            if support_index < 0 or clone_index < 0:
+                raise ValueError("Geography identity refuses negative clone indices.")
+            if (channel == _SPI_SUPPORT_CHANNEL) != (support_index != 0):
+                raise ValueError(
+                    "Household support channel and support clone index disagree."
+                )
+            path = []
+            if support_index:
+                path.append(("spi_support_channel", support_index))
+            if bool(cgt):
+                path.append(("cgt_incidence_clone", 1))
+            if bool(donor):
+                path.append(("cgt_band_donors", 1))
+            if clone_index:
+                path.append(("geographic_support", clone_index))
+            keys.append(
+                atomic_household_identity.household_draw_key(
+                    source=source,
+                    source_vintage=vintage,
+                    source_household_id=int(source_id),
+                    clone_path=tuple(path),
+                )
+            )
+        if len(set(keys)) != len(keys):
+            raise ValueError("Geography identity keys are not unique.")
+        index = pd.Index(household["household_id"], name="household_id")
+        column = atomic_area_support.IDENTITY_COLUMN
+        return KernelResult(
+            columns={
+                ("household", column): pd.Series(
+                    keys, index=index, name=column, dtype=dtype_for_token("string")
+                )
+            },
+            receipt={
+                "households": len(keys),
+                "source": source,
+                "source_vintage": vintage,
+                "inputs": list(UK_GEOGRAPHY_IDENTITY_INPUTS),
+            },
+        )
+
+
+class UKPoolCheckpointKernel(_PopulationKernel):
+    """Checkpoint the complete pool; refuse unless the shared atomic gate passed.
+
+    The shared ``geography.gate@1`` result is a platform-scoped typed artifact
+    (amendment 17). This FILTER node consumes it and emits no typed artifact of
+    its own, so the scope stops here instead of laundering into the bitwise
+    UK target and calibration chain through a gate report.
+    """
+
+    ref = "uk.full.pool@1"
+    capabilities = Capabilities(
+        Determinism.DETERMINISTIC,
+        numeric=Numeric.PLATFORM_BITWISE,
+        structural=StructuralDelta.FILTER,
+    )
+
+    def run(self, context: KernelContext) -> KernelResult:
+        receipt = {"scope": "complete_pool_checkpoint"}
+        if "atomic_validation" in context.artifacts:
+            validation = json.loads(context.artifacts["atomic_validation"].payload)
+            if validation.get("outcome") != "pass":
+                raise ValueError("Shared atomic geography validation did not pass.")
+            receipt["atomic_validation"] = validation
+        person = context.tables[UK_NATIONAL_SCHEMA.person_entity]
+        id_column = UK_NATIONAL_SCHEMA.person_id_column
+        ids = pd.Index(person[id_column].to_numpy(copy=True), name=id_column)
+        return KernelResult(
+            keep=pd.Series(True, index=ids, dtype="bool"), receipt=receipt
+        )
+
+
+def uk_pool_validation_inputs(geography_assignment: str) -> tuple[ArtifactInput, ...]:
+    """The typed edge that orders the shared atomic gate before the checkpoint."""
+    if geography_assignment != "atomic":
+        return ()
+    from microcosm.build.graph_atomic_geography import (
+        ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
+    )
+
+    return (
+        ArtifactInput(
+            "atomic_validation",
+            "uk.full.geography.gate",
+            "validation",
+            ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
+        ),
+    )
+
+
 class UKGeographyGateKernel(_PopulationKernel):
     ref = "uk.full.geography_gate@1"
     capabilities = Capabilities(Determinism.DETERMINISTIC)
@@ -362,14 +526,38 @@ def append_uk_population_nodes(
     source_year: int = 2024,
     constituency_vintage: str = "2024_pcon",
     source_lineage_modulus: int | None = None,
+    geography_assignment: str = "atomic",
+    atomic_geography_definition: Mapping | None = None,
+    source_vintage: str | None = None,
+    identity_source: str = "frs",
 ) -> Graph:
-    """Compose sampling → replication → location draw → derivation → gate."""
+    """Compose sampling → replication → identity → assignment → derivation → gate.
+
+    ``geography_assignment="atomic"`` (the default) keys every post-clone
+    household by its lineage and runs the shared atomic-geography operators
+    on the three UK support artifacts declared by ``atomic_geography_definition``
+    (``uk_atomic_assignment_definition``). ``"legacy"`` keeps the sequential
+    ladder draw for measurement builds only.
+    """
 
     from .graph_kernels import UKClaimKernel
 
     cells = population_columns(graph, population)
     if type(n_clones) is not int or n_clones < 1:
         raise ValueError("Geographic replicate count K must be a positive integer.")
+    if geography_assignment not in GEOGRAPHY_ASSIGNMENTS:
+        raise ValueError(
+            f"Geography assignment must be one of {GEOGRAPHY_ASSIGNMENTS}."
+        )
+    if geography_assignment == "atomic":
+        if atomic_geography_definition is None:
+            raise ValueError(
+                "Atomic geography assignment requires the UK assignment definition."
+            )
+        if not isinstance(source_vintage, str) or not source_vintage:
+            raise ValueError("Atomic geography assignment requires the FRS vintage.")
+    elif atomic_geography_definition is not None:
+        raise ValueError("Legacy geography assignment takes no atomic definition.")
     national_sampling.validate_sample_fraction(sample_fraction, label="UK full build")
     national_sampling.validate_sample_seed(sample_seed, label="UK full build")
     common = {"time_period": str(time_period)}
@@ -485,7 +673,34 @@ def append_uk_population_nodes(
         )
     )
     cells.update(expansion_cells)
-    nodes.append(
+    if geography_assignment == "legacy":
+        geography_nodes, geography_sources = _legacy_geography_nodes(
+            cells, common=common, seed=seed, constituency_vintage=constituency_vintage
+        )
+    else:
+        geography_nodes, geography_sources = _atomic_geography_nodes(
+            cells,
+            common=common,
+            seed=seed,
+            definition=atomic_geography_definition,
+            identity_source=identity_source,
+            source_vintage=source_vintage,
+        )
+    nodes.extend(geography_nodes)
+    declared = {s.name for s in graph.sources}
+    sources = (
+        *graph.sources,
+        *(ref for ref in geography_sources if ref.name not in declared),
+    )
+    return replace(graph, nodes=tuple(nodes), sources=tuple(sources))
+
+
+def _legacy_geography_nodes(
+    cells: dict, *, common: Mapping, seed: int, constituency_vintage: str
+) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
+    """The sequential ladder draw, kept verbatim for measurement builds."""
+
+    nodes = (
         Node(
             id="uk.full.locations",
             kernel=UKLocationDrawKernel.ref,
@@ -495,9 +710,7 @@ def append_uk_population_nodes(
             params={"seed": seed, "constituency_vintage": constituency_vintage},
             artifact_outputs=(ArtifactOutput("locations", LOCATION_DRAW_TYPE),),
             description="Draw constituency then atomic area with the current sequential RNG.",
-        )
-    )
-    nodes.append(
+        ),
         Node(
             id="uk.full.geography_mapping",
             kernel=UKGeographyMappingKernel.ref,
@@ -514,42 +727,114 @@ def append_uk_population_nodes(
                 for col in UK_GEOGRAPHY_LADDER_COLUMNS
             ),
             description="Derive every geography from the drawn atomic-area index.",
-        )
+        ),
     )
     cells.update({("household", col): "string" for col in UK_GEOGRAPHY_LADDER_COLUMNS})
-    nodes.append(
-        Node(
-            id="uk.full.geography_gate",
-            kernel=UKGeographyGateKernel.ref,
-            population="uk.full.expand",
-            inputs=population_slices(cells),
-            params=common,
-            artifact_outputs=(ArtifactOutput("gate", GEOGRAPHY_GATE_TYPE),),
-            description="Validate geography integrity before selected-target contributions.",
-        )
+    gate = Node(
+        id="uk.full.geography_gate",
+        kernel=UKGeographyGateKernel.ref,
+        population="uk.full.expand",
+        inputs=population_slices(cells),
+        params=dict(common),
+        artifact_outputs=(ArtifactOutput("gate", GEOGRAPHY_GATE_TYPE),),
+        description="Validate geography integrity before selected-target contributions.",
+    )
+    ladder = SourceRef(
+        "uk_ladder", "raw-bytes-v1", "Full UK atomic-area ladder with pinned vintages."
+    )
+    return (*nodes, gate), (ladder,)
+
+
+def _atomic_geography_nodes(
+    cells: dict,
+    *,
+    common: Mapping,
+    seed: int,
+    definition: Mapping,
+    identity_source: str,
+    source_vintage: str,
+) -> tuple[tuple[Node, ...], tuple[SourceRef, ...]]:
+    """Identity-keyed assignment on the shared operators (release path order)."""
+
+    from microcosm.build.atomic_geography import validate_assignment_spec
+    from microcosm.build.graph_atomic_geography import atomic_geography_nodes
+
+    spec = validate_assignment_spec(definition)
+    if spec["identity"] != [atomic_area_support.IDENTITY_COLUMN]:
+        raise ValueError("UK atomic assignment must key on the geography identity.")
+    if spec["stream"][3] != seed:
+        raise ValueError("UK atomic assignment seed differs from the build seed.")
+    if {system["source"] for system in spec["systems"]} != set(
+        atomic_area_support.SOURCES.values()
+    ):
+        raise ValueError("UK atomic assignment must declare the three UK supports.")
+    identity = Node(
+        id="uk.full.identity",
+        kernel=UKGeographyIdentityKernel.ref,
+        population="uk.full.expand",
+        inputs=(Slice("household", tuple(sorted(UK_GEOGRAPHY_IDENTITY_INPUTS))),),
+        outputs=(Owned("household", atomic_area_support.IDENTITY_COLUMN, "string"),),
+        params={
+            **common,
+            "source": identity_source,
+            "source_vintage": source_vintage,
+        },
+        description="Key every post-clone household by its source id and ordered clone path.",
+    )
+    cells[("household", atomic_area_support.IDENTITY_COLUMN)] = "string"
+    shared = atomic_geography_nodes(
+        spec,
+        tuple(Owned(e, c, dtype) for (e, c), dtype in sorted(cells.items())),
+        base="uk.full.expand",
+        prefix="uk.full.geography",
+        emit_validation_artifact=True,
+    )
+    for node in shared:
+        cells.update({(o.entity, o.column): o.dtype for o in node.outputs})
+    # The shared gate's typed validation artifact is platform-scoped, so it is
+    # consumed by the pool checkpoint (uk.full.pool, no typed outputs), not by
+    # this distribution gate, whose own artifact feeds the bitwise UK chain.
+    gate = Node(
+        id="uk.full.geography_gate",
+        kernel=UKGeographyGateKernel.ref,
+        population="uk.full.expand",
+        inputs=population_slices(cells),
+        params=dict(common),
+        artifact_outputs=(ArtifactOutput("gate", GEOGRAPHY_GATE_TYPE),),
+        description="Validate the UK geography distribution on the identity-keyed assignment.",
     )
     sources = (
-        graph.sources
-        if any(s.name == "uk_ladder" for s in graph.sources)
-        else (
-            *graph.sources,
+        SourceRef(
+            "uk_ladder",
+            "raw-bytes-v1",
+            "Full UK atomic-area ladder with pinned vintages.",
+        ),
+        *(
             SourceRef(
-                "uk_ladder",
+                atomic_area_support.SOURCES[system],
                 "raw-bytes-v1",
-                "Full UK atomic-area ladder with pinned vintages.",
-            ),
-        )
+                f"UK atomic-area support artifact for {system}.",
+            )
+            for system in atomic_area_support.SYSTEMS
+        ),
     )
-    return replace(graph, nodes=tuple(nodes), sources=tuple(sources))
+    return (identity, *shared, gate), sources
 
 
 def register_uk_population_kernels(registry: KernelRegistry) -> None:
+    from microcosm.build.graph_atomic_geography import (
+        register_atomic_geography_kernels,
+    )
+
     for kernel in (
         UKFamilySampleKernel(),
         UKSampleNormalizationKernel(),
         UKGeographicExpansionKernel(),
+        UKGeographyIdentityKernel(),
         UKLocationDrawKernel(),
         UKGeographyMappingKernel(),
         UKGeographyGateKernel(),
+        UKPoolCheckpointKernel(),
     ):
         registry.register(kernel)
+    register_atomic_geography_kernels(registry)

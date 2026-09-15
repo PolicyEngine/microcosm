@@ -8,6 +8,7 @@ composition; an arbitrary historical uk-data H5 is not a build source.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
@@ -45,10 +46,12 @@ from .graph_calibration import (
 )
 from .graph_kernels import UKClaimKernel, UKIdentityKernel, _normalize_create_frame
 from .graph_population import (
+    UKPoolCheckpointKernel,
     append_uk_population_nodes,
     population_columns,
     population_slices,
     register_uk_population_kernels,
+    uk_pool_validation_inputs,
 )
 from .graph_targets import append_uk_target_nodes, register_uk_target_kernels
 from .local_doctrine import UK_LOCAL_CLONE_COUNT
@@ -74,10 +77,23 @@ class UKFullBuildConfig:
     constituency_vintage: str = "2024_pcon"
     source_lineage_modulus: int | None = None
     calibration: UKGraphCalibrationConfig = UKGraphCalibrationConfig()
+    #: ``atomic`` keys every post-clone household and draws on the shared
+    #: atomic-geography operators; ``legacy`` keeps the sequential ladder draw
+    #: for measurement builds (a release candidate refuses it).
+    geography_assignment: str = "atomic"
+    #: FRS release vintage folded into every geography identity key.
+    source_vintage: str = field(default_factory=lambda: load_uk_frs_release().vintage)
 
     def __post_init__(self) -> None:
+        from .graph_population import GEOGRAPHY_ASSIGNMENTS
         from .national_sampling import validate_sample_fraction
 
+        if self.geography_assignment not in GEOGRAPHY_ASSIGNMENTS:
+            raise ValueError(
+                f"Geography assignment must be one of {GEOGRAPHY_ASSIGNMENTS}."
+            )
+        if not isinstance(self.source_vintage, str) or not self.source_vintage:
+            raise ValueError("The FRS source vintage must be a non-empty string.")
         validate_sample_fraction(self.sample_fraction, label="UK full pool")
         validate_sample_fraction(self.source_sample_fraction, label="UK source spine")
         if self.sample_fraction != 1.0 and self.source_sample_fraction != 1.0:
@@ -153,8 +169,14 @@ def uk_full_graph(
     optional_target_sources: tuple[str, ...] = (),
     checkpoint_identity: dict | None = None,
     review_date: str | None = None,
+    atomic_geography_definition: Mapping | None = None,
 ) -> UKFullGraph:
-    """Append the full build to the existing source-owned UK spine graph."""
+    """Append the full build to the existing source-owned UK spine graph.
+
+    ``atomic_geography_definition`` is the validated UK assignment declaration
+    (``uk_atomic_assignment_definition``) and is required when the config's
+    ``geography_assignment`` is ``atomic``.
+    """
 
     initial = uk_spine_graph(source_mode="split") if spine is None else spine
     endpoint = (
@@ -174,6 +196,9 @@ def uk_full_graph(
         source_year=config.source_year,
         constituency_vintage=config.constituency_vintage,
         source_lineage_modulus=config.source_lineage_modulus,
+        geography_assignment=config.geography_assignment,
+        atomic_geography_definition=atomic_geography_definition,
+        source_vintage=config.source_vintage,
     )
     graph = append_uk_target_nodes(
         graph,
@@ -196,10 +221,11 @@ def uk_full_graph(
             *graph.nodes,
             Node(
                 "uk.full.pool",
-                UKIdentityKernel.ref,
+                UKPoolCheckpointKernel.ref,
                 structural=StructuralDelta.FILTER,
                 base="uk.full.expand",
                 inputs=population_slices(cells),
+                artifact_inputs=uk_pool_validation_inputs(config.geography_assignment),
                 description="Checkpoint the complete geographic pool and selected-target problem.",
             ),
         ),

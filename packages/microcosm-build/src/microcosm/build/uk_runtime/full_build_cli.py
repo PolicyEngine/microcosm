@@ -29,7 +29,18 @@ from microcosm.graph import (
     run_graph,
 )
 from microcosm.graph.canonical import canonical_json
+from microcosm.graph.codecs import load_raw_bytes
 
+from .atomic_area_support import (
+    IDENTITY_COLUMN,
+    uk_atomic_assignment_definition,
+)
+from .atomic_area_support import (
+    SOURCES as ATOMIC_SUPPORT_SOURCES,
+)
+from .atomic_area_support import (
+    SYSTEMS as ATOMIC_SUPPORT_SYSTEMS,
+)
 from .frs_release import load_uk_frs_release
 from .full_certification import (
     append_uk_full_certification_node,
@@ -44,6 +55,7 @@ from .graph_build import (
     uk_full_graph,
 )
 from .graph_calibration import UKGraphCalibrationConfig
+from .graph_population import GEOGRAPHY_ASSIGNMENTS
 from .graph_targets import TARGET_SELECTION_TYPE
 from .graph_terminal import (
     FULL_DIAGNOSTICS_CSV_TYPE,
@@ -70,6 +82,11 @@ from .local_doctrine import (
 from .national_chronicle_feed import load_uk_national_chronicle_feed
 from .national_frame import load_uk_national_frame
 from .national_sampling import UK_SAMPLE_SEED_DEFAULT
+
+#: CLI labels for the three UK atomic-area support systems, in SYSTEMS order.
+_SUPPORT_ARGUMENTS = dict(
+    zip(ATOMIC_SUPPORT_SYSTEMS, ("ew", "scotland", "ni"), strict=True)
+)
 
 
 def _target_geographies(value: str) -> tuple[str, ...] | None:
@@ -105,6 +122,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--input-sha256")
     parser.add_argument("--ladder", type=Path, required=True)
     parser.add_argument("--ladder-sha256")
+    parser.add_argument(
+        "--geography-assignment",
+        choices=GEOGRAPHY_ASSIGNMENTS,
+        default="atomic",
+        help=(
+            "atomic (default): identity-keyed single-stage draw on the three UK "
+            "atomic-area supports; legacy: the sequential ladder draw, for "
+            "measurement builds only."
+        ),
+    )
+    for system, label in _SUPPORT_ARGUMENTS.items():
+        parser.add_argument(
+            f"--atomic-support-{label}",
+            type=Path,
+            dest=f"atomic_support_{label}",
+            help=f"Atomic-area support NPZ for {system} (required with atomic).",
+        )
+        parser.add_argument(
+            f"--atomic-support-sha256-{label}", dest=f"atomic_support_sha256_{label}"
+        )
     parser.add_argument(
         "--ledger-facts",
         type=Path,
@@ -224,6 +261,36 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             parser.error(
                 "A release candidate requires explicit input H5 and ladder digest pins."
             )
+        if args.geography_assignment != "atomic":
+            parser.error(
+                "A release candidate requires the identity-keyed atomic geography assignment."
+            )
+        if any(
+            getattr(args, f"atomic_support_sha256_{label}") is None
+            for label in _SUPPORT_ARGUMENTS.values()
+        ):
+            parser.error(
+                "A release candidate requires explicit atomic-area support digest pins."
+            )
+    supports = {
+        label: getattr(args, f"atomic_support_{label}")
+        for label in _SUPPORT_ARGUMENTS.values()
+    }
+    if args.geography_assignment == "atomic" and any(
+        path is None for path in supports.values()
+    ):
+        parser.error(
+            "Atomic geography assignment requires --atomic-support-ew, "
+            "--atomic-support-scotland and --atomic-support-ni."
+        )
+    if args.geography_assignment == "legacy" and (
+        any(path is not None for path in supports.values())
+        or any(
+            getattr(args, f"atomic_support_sha256_{label}") is not None
+            for label in _SUPPORT_ARGUMENTS.values()
+        )
+    ):
+        parser.error("Legacy geography assignment takes no atomic-area supports.")
     if args.resume_size_checkpoint and args.input_h5 is None:
         parser.error(
             "Historical size checkpoints bind an input H5; raw builds resume using --graph-store."
@@ -243,9 +310,11 @@ def _checkpoint_identity(args, config, pins) -> dict | None:
         return None
     # Match the existing checkpoint schema exactly. The import kernel also
     # verifies ordered targets, weights, household axis and recomputed losses.
+    geography = {"geography": pins["geography"]} if "geography" in pins else {}
     return {
         "dataset_pin": pins["dataset"],
         "ladder_pin": pins["ladder"],
+        **geography,
         "ledger_facts_sha256": args.ledger_facts_sha256,
         "ledger_manifest_sha256": args.ledger_manifest_sha256,
         "seed": args.seed,
@@ -277,6 +346,37 @@ def _checkpoint_identity(args, config, pins) -> dict | None:
     }
 
 
+def _prepare_geography(
+    args: argparse.Namespace, pins: dict, sources: dict[str, Path]
+) -> tuple[dict | None, dict]:
+    """Pin the three supports and declare the identity-keyed assignment.
+
+    The definition is the UK adapter's declaration over the admitted support
+    bytes at the build seed; its sha256 (and every keyed draw) moves iff a
+    support artifact or the seed moves. Legacy builds bind nothing here.
+    """
+    if args.geography_assignment != "atomic":
+        return None, {"assignment": "legacy"}
+    support_pins = {}
+    payloads = {}
+    for system, label in _SUPPORT_ARGUMENTS.items():
+        path = getattr(args, f"atomic_support_{label}")
+        support_pins[system] = _pin(
+            path, getattr(args, f"atomic_support_sha256_{label}")
+        )
+        payloads[system] = load_raw_bytes(path)
+        sources[ATOMIC_SUPPORT_SOURCES[system]] = path
+    definition = uk_atomic_assignment_definition(payloads, seed=args.seed)
+    pins["geography"] = {"assignment": "atomic", "support_pins": support_pins}
+    return definition, {
+        "assignment": "atomic",
+        "definition_sha256": hashlib.sha256(canonical_json(definition)).hexdigest(),
+        "support_pins": support_pins,
+        "identity": IDENTITY_COLUMN,
+        "stream": list(definition["stream"]),
+    }
+
+
 @dataclass(frozen=True)
 class PreparedUKFullBuild:
     full: UKFullGraph
@@ -300,6 +400,7 @@ def prepare_full_build(args: argparse.Namespace) -> PreparedUKFullBuild:
     release = load_uk_frs_release()
     pins = {"ladder": _pin(args.ladder, args.ladder_sha256)}
     sources = {"uk_ladder": args.ladder, "uk_ledger_facts": args.ledger_facts}
+    definition, geography_binding = _prepare_geography(args, pins, sources)
     provenance = None
     if args.input_h5 is not None:
         pins["dataset"] = _pin(args.input_h5, args.input_sha256)
@@ -371,6 +472,8 @@ def prepare_full_build(args: argparse.Namespace) -> PreparedUKFullBuild:
         engine_blocks=args.engine_blocks,
         constituency_vintage=args.expected_constituency_vintage,
         source_lineage_modulus=args.source_lineage_modulus,
+        geography_assignment=args.geography_assignment,
+        source_vintage=release.vintage,
         calibration=UKGraphCalibrationConfig(
             epochs=args.epochs,
             learning_rate=args.learning_rate,
@@ -419,6 +522,7 @@ def prepare_full_build(args: argparse.Namespace) -> PreparedUKFullBuild:
         optional_target_sources=tuple(optional),
         review_date=args.review_date.isoformat(),
         checkpoint_identity=_checkpoint_identity(args, config, pins),
+        atomic_geography_definition=definition,
     )
     if args.resume_size_checkpoint:
         from .size_checkpoint import (
@@ -460,6 +564,7 @@ def prepare_full_build(args: argparse.Namespace) -> PreparedUKFullBuild:
             },
             "paired_ladder_sha256": pins["ladder"]["sha256"],
         },
+        "geography": geography_binding,
     }
     graph = add_uk_export_preparation(
         graph,

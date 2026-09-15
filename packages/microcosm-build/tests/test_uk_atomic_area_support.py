@@ -359,7 +359,7 @@ def test_distinct_post_clone_keys_assign_then_remain_stable_under_order_subset_a
         geo.assign_atomic(expected, spec, supports)
 
 
-def test_country_declaration_retains_the_two_stage_sampling_law():
+def test_country_declaration_uses_the_single_stage_household_law():
     households = pd.DataFrame(
         {
             "household_id": np.arange(1, 2001, dtype=np.int64),
@@ -369,21 +369,19 @@ def test_country_declaration_retains_the_two_stage_sampling_law():
     )
     result, spec, _ = complete(households, payloads())
     assert all(
-        s["stages"]
-        == [
-            {"level": "constituency_code", "weight": "households"},
-            {"level": "area", "weight": "population"},
-        ]
+        s["stages"] == [{"level": "area", "weight": "households"}]
         for s in spec["systems"]
     )
     arrays, _ = parts(SYSTEMS[0])
     london = arrays["region_code"] == FRS_REGION_TO_REGION_CODE["LONDON"]
     areas = arrays["oa_code"][london]
     shares = result["atomic_area_code"].value_counts(normalize=True)
-    # Constituent household mass 30:10, then within-first-area population 2:6;
-    # the third area's population 1000 must not dominate the first-stage draw.
-    for area, expected in zip(areas, (0.1875, 0.5625, 0.25), strict=True):
+    # One draw by census households 0:30:10 within the region: the first area
+    # (no households) is never drawn and the 1,000-person third area does not
+    # dominate; usual-resident population no longer enters the law.
+    for area, expected in zip(areas, (0.0, 0.75, 0.25), strict=True):
         assert abs(shares.get(area, 0) - expected) < 0.04
+    assert shares.get(areas[0], 0) == 0
 
 
 def test_exact_source_ids_and_ordered_branches_are_preserved():
