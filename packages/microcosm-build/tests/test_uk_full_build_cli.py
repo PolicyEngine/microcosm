@@ -49,14 +49,24 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 
+SUPPORT_ARGUMENTS = (
+    "--atomic-support-ew",
+    "supports/ew.npz",
+    "--atomic-support-scotland",
+    "supports/scotland.npz",
+    "--atomic-support-ni",
+    "supports/ni.npz",
+)
 
-def arguments(tmp_path, *extra):
+
+def arguments(tmp_path, *extra, supports=SUPPORT_ARGUMENTS):
     return cli.parse_args(
         [
             "--input-h5",
             str(tmp_path / "spine.h5"),
             "--ladder",
             str(tmp_path / "ladder.npz"),
+            *supports,
             "--ledger-facts",
             str(tmp_path / "ledger"),
             "--out",
@@ -64,6 +74,41 @@ def arguments(tmp_path, *extra):
             *extra,
         ]
     )
+
+
+def test_geography_assignment_arguments_are_closed(tmp_path):
+    assert arguments(tmp_path).geography_assignment == "atomic"
+    assert arguments(tmp_path, "--geography-assignment", "legacy", supports=())
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, supports=())
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, supports=SUPPORT_ARGUMENTS[:4])
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--geography-assignment", "legacy")
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--geography-assignment", "keyed", supports=())
+    pins = (
+        "--input-sha256",
+        "a" * 64,
+        "--ladder-sha256",
+        "b" * 64,
+        "--release-candidate",
+    )
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, *pins, "--geography-assignment", "legacy", supports=())
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, *pins)
+    release = arguments(
+        tmp_path,
+        *pins,
+        "--atomic-support-sha256-ew",
+        "c" * 64,
+        "--atomic-support-sha256-scotland",
+        "d" * 64,
+        "--atomic-support-sha256-ni",
+        "e" * 64,
+    )
+    assert release.release_candidate and release.geography_assignment == "atomic"
 
 
 def test_every_scope_and_size_control_keeps_default_all(tmp_path):

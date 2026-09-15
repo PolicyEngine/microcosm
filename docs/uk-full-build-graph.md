@@ -52,7 +52,10 @@ The existing source-stage roster supplies the spine graph. The superseded `frs_h
 | Bound checkpoint admission | `uk.full.spine_checkpoint`, when resuming a saved spine |
 | Pool sample and mass normalization | `uk.full.sample`, `uk.full.normalize` |
 | Linked entity expansion and ancestry | `uk.full.expand`, `uk.full.expand.owned` |
-| Location draw, mapping and integrity | `uk.full.locations`, `uk.full.geography_mapping`, `uk.full.geography_gate` |
+| Post-clone household identity | `uk.full.identity` |
+| Atomic-area support import, identity-keyed assignment, derivation and shared integrity gate | `uk.full.geography.support.{0,1,2}`, `uk.full.geography.assign`, `uk.full.geography.derive`, `uk.full.geography.gate` (shared `geography.*@1` kernels) |
+| UK geography distribution gate | `uk.full.geography_gate` |
+| Legacy sequential ladder draw (`--geography-assignment legacy`, measurement builds only) | `uk.full.locations`, `uk.full.geography_mapping`, `uk.full.geography_gate` |
 | Full pinned source/register compilation | `uk.full.target_compilation` |
 | Explicit target selection and inclusion/exclusion receipt | `uk.full.target_selection` |
 | Engine measures and ordered contribution problem | `uk.full.measures`, `uk.full.problem` |
