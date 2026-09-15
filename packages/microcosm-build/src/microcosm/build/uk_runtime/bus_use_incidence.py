@@ -95,6 +95,17 @@ def nts_band_shares(parameters: Mapping[str, Any]) -> tuple[BusUseBandShares, di
     ):
         raise ValueError("unsupported bus user_definition.")
     period_value = int(parameters["period_value"])
+    for key in ("share_geography", "share_age_coverage", "applied_to"):
+        if not parameters.get(key):
+            raise ValueError(f"assign_bus_use_incidence declares no {key}.")
+    share_geography = str(parameters["share_geography"])
+    share_age_coverage = str(parameters["share_age_coverage"])
+    applied_to = str(parameters["applied_to"])
+    if share_age_coverage != "all_ages" or applied_to != "fare_rake_regions":
+        raise ValueError(
+            "assign_bus_use_incidence supports share_age_coverage all_ages applied "
+            "to fare_rake_regions only."
+        )
     mode_groupby = str(parameters.get("transport_mode_groupby_value_id") or "local_bus")
     older_age_band = str(parameters.get("older_age_band") or "60 and over")
     age_threshold = int(parameters["age_threshold"])
@@ -152,9 +163,9 @@ def nts_band_shares(parameters: Mapping[str, Any]) -> tuple[BusUseBandShares, di
     receipt = {
         "resource": resource,
         "period_value": period_value,
-        "share_geography": str(parameters.get("share_geography", "E92000001")),
-        "share_age_coverage": str(parameters.get("share_age_coverage", "all_ages")),
-        "applied_to": str(parameters.get("applied_to", "fare_rake_regions")),
+        "share_geography": share_geography,
+        "share_age_coverage": share_age_coverage,
+        "applied_to": applied_to,
         "transport_mode_groupby_value_id": mode_groupby,
         "older_age_band": older_age_band,
         "age_threshold": age_threshold,

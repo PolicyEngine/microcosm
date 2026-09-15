@@ -233,14 +233,15 @@
       "parameters": {
         "stage": "lcfs_consumption",
         "check": "energy_rake",
-        "maximum_relative_deviation_by_margin": {
-          "income": 0.02,
-          "tenure": 0.02,
-          "accommodation": 0.01,
-          "region": 0.001
-        }
+        "margins": [
+          "income",
+          "tenure",
+          "accommodation",
+          "region"
+        ],
+        "maximum_relative_deviation": 0.02
       },
-      "notes": "Stage-time NEED check (microcosm#890 F, Mar\u00eda's ruling 2026-09-15): the post-imputation kWh rake must fit the vendored NEED 2023 mean kWh at design weights, electricity over every household of a cell and gas over its gas-connected households, per margin (income band, tenure, property type, region) and fuel, within the pinned allowance; region is swept last and fits exactly, the earlier margins settle to the pinned baseline (spine-s3, 2026-09-15: income 1.65 %, tenure 1.29 %, accommodation 0.83 %, region 0.00 %; allowances 2 %, 2 %, 1 %, 0.1 %). Replaces the two NEED mean-spend anchors that uk_aggregate_admin measured on the calibrated frame, where the bound ONS 04.5 total governs."
+      "notes": "Stage-time NEED check (microcosm#890 F). Mar\u00eda's ruling (2026-09-15, PR #927): 'I'm not sure why we are comparing against NEED as a gate in the first place if that is not what we are calibrating, but I agree we should implement Vahid's recommended fix and move the fix to before calibration.' Two checks on the lcfs energy_rake receipt: every cell target the kWh rake fitted is recomputed from the vendored need_energy_facts.json rows and must equal the receipt's target (the fact check), and the maximum absolute relative deviation of any cell mean from its target, per margin (income band, tenure, property type, region) and fuel, electricity over every household of a cell and gas over its gas-connected households, must not exceed one fixed 2 % tolerance on the IPF's cross-margin residual (the four margins are mutually inconsistent; region is swept last and fits to machine precision by construction, so the tolerance binds the earlier three). The tolerance is a declared rule, not a fact: observed maxima on spine-s3 (2026-09-15) were income 1.65 %, tenure 1.29 %, accommodation 0.83 %, region 0.00 %. This gate replaces the two NEED mean-spend anchors that uk_aggregate_admin measured on the calibrated frame; after the move no gate checks NEED against the calibrated frame, where the solver's reconciliation of ONS 04.5 (18 % below the FY2024-25-priced frame) left the means at GBP 824 / 688 against GBP 1,082 / 850 (-24 % / -19 %, PR #927 receipts Part P)."
     },
     {
       "id": "uk_stage_etb_vat_support",
@@ -576,7 +577,7 @@
           }
         ]
       },
-      "notes": "Release-blocking aggregate-admin gate for the NHS budget. The NEED energy anchors left this gate under microcosm#890 (Mar\u00eda's ruling, 2026-09-15): the calibrated frame is held to the bound ONS 04.5 total, and NEED is checked where the rake acts, at design weights, by uk_stage_lcfs_consumption_energy_rake. The build supplies SDC-safe measured aggregates as evidence; the gate checks signs and tolerances."
+      "notes": "Release-blocking aggregate-admin gate for the NHS budget. The two NEED energy anchors left this gate under microcosm#890 by Mar\u00eda's ruling (2026-09-15, PR #927): 'I'm not sure why we are comparing against NEED as a gate in the first place if that is not what we are calibrating, but I agree we should implement Vahid's recommended fix and move the fix to before calibration.' NEED is checked where the rake acts, at design weights, by uk_stage_lcfs_consumption_energy_rake; the calibrated frame is held to the bound ONS 04.5 total. Known and now unchecked after calibration: the calibrated NEED means sat at GBP 824 / 688 against the anchors' GBP 1,082 / 850 (-24 % / -19 %) because NEED kWh priced at the FY2024-25 cap (about GBP 52bn at design weights) and ONS 04.5 (GBP 43.4bn) disagree by roughly 20 % on this frame (PR #927 receipts Parts N-Q). The build supplies SDC-safe measured aggregates as evidence; the gate checks signs and tolerances."
     },
     {
       "id": "uk_export_surface",

@@ -186,20 +186,39 @@ def _energy_rake_gate(
 ) -> GateResult:
     """The NEED kWh rake fits its margins at design weights (microcosm#890).
 
-    Reads the lcfs ``energy_rake`` receipt: the rake must have run in kWh
-    with gas over gas-connected rows, and for every declared margin the
-    maximum absolute relative deviation of a cell mean from its NEED target,
-    per fuel, must not exceed the pinned allowance. A missing margin,
-    allowance or fit block fails closed. This is where NEED is checked; the
-    calibrated frame is held to ONS 04.5 instead.
+    Two checks on the lcfs ``energy_rake`` receipt. The fact check: every
+    cell target the rake fitted is recomputed here from the vendored NEED
+    rows (``need_energy_facts.json``) and must equal the receipt's target,
+    so the gate cannot pass on a receipt raked to something other than the
+    published means. The residual check: the rake sweeps four mutually
+    inconsistent margins, so the earlier ones settle to a residual; the
+    maximum absolute relative deviation of any cell mean from its target,
+    per margin and fuel, must not exceed ``maximum_relative_deviation``, one
+    fixed tolerance on that IPF residual (it is not a tolerance on NEED
+    itself, which the rake hits by construction on the last-swept margin).
+    The rake must have run in kWh with gas over gas-connected rows and no
+    zero-current cell; a missing margin, fit block or tolerance fails closed.
+
+    This is where NEED is checked; the calibrated frame is held to the bound
+    ONS 04.5 total instead (María's ruling, 2026-09-15), and the NEED means
+    of the calibrated frame are not checked by any gate.
     """
+
+    from microcosm.build.uk_runtime.energy_pricing import (
+        ELECTRICITY_KWH,
+        GAS_KWH,
+        need_margins_from_facts,
+    )
 
     check = "energy_rake"
     receipt = _mapping(evidence.get("energy_rake"), label=f"{stage}.energy_rake")
-    allowances = _mapping(
-        parameters.get("maximum_relative_deviation_by_margin"),
-        label=f"{stage}.maximum_relative_deviation_by_margin",
+    tolerance = _finite_number(
+        parameters.get("maximum_relative_deviation"),
+        label=f"{stage}.maximum_relative_deviation",
     )
+    expected_margins = [str(m) for m in parameters.get("margins", ())]
+    if not expected_margins:
+        raise ValueError(f"{stage}: energy_rake declares no margins.")
     failures: list[str] = []
     if receipt.get("unit") != "kwh":
         failures.append(
@@ -215,37 +234,61 @@ def _energy_rake_gate(
         failures.append(f"{stage}: energy_rake receipt carries no fit block.")
         fit = {}
     declared_margins = [str(m) for m in receipt.get("margins", ())]
-    details: dict[str, object] = {"margins": declared_margins, "worst": {}}
-    for margin in declared_margins:
-        allowance = allowances.get(margin)
-        if allowance is None:
-            failures.append(
-                f"{stage}: margin {margin!r} declares no relative-deviation allowance."
-            )
+    undeclared = sorted(set(declared_margins) - set(expected_margins))
+    if undeclared:
+        failures.append(f"{stage}: receipt rakes undeclared margins {undeclared}.")
+    published = need_margins_from_facts().targets
+    details: dict[str, object] = {
+        "margins": expected_margins,
+        "maximum_relative_deviation": tolerance,
+        "worst": {},
+        "cells_fact_checked": 0,
+    }
+    for margin in expected_margins:
+        if margin not in declared_margins:
+            failures.append(f"{stage}: margin {margin!r} was not raked.")
             continue
-        limit = _finite_number(allowance, label=f"{stage}.{margin}.allowance")
         block = fit.get(margin)
         if not isinstance(block, Mapping) or not isinstance(
             block.get("max_abs_relative_deviation"), Mapping
         ):
             failures.append(f"{stage}: fit carries no block for margin {margin!r}.")
             continue
+        for key, cell in _mapping(
+            block.get("cells"), label=f"{stage}.{margin}.cells"
+        ).items():
+            geography, _, category = str(key).partition(":")
+            fact = published.get(margin, {}).get((geography, category))
+            if fact is None:
+                failures.append(
+                    f"{stage}: {margin} cell {key!r} has no vendored NEED row."
+                )
+                continue
+            for fuel in (ELECTRICITY_KWH, GAS_KWH):
+                target = _mapping(cell, label=f"{stage}.{key}").get(fuel)
+                observed = _mapping(target, label=f"{stage}.{key}.{fuel}").get("target")
+                if not isinstance(observed, int | float) or abs(
+                    float(observed) - float(fact[fuel])
+                ) > 1e-6 * max(1.0, abs(float(fact[fuel]))):
+                    failures.append(
+                        f"{stage}: {margin} cell {key!r} {fuel} was raked to "
+                        f"{observed!r}, not the vendored NEED mean {fact[fuel]}."
+                    )
+            details["cells_fact_checked"] = int(details["cells_fact_checked"]) + 1
         worst = block["max_abs_relative_deviation"]
-        for fuel in ("electricity_kwh", "gas_kwh"):
+        for fuel in (ELECTRICITY_KWH, GAS_KWH):
             value = _finite_number(worst.get(fuel), label=f"{stage}.{margin}.{fuel}")
             details["worst"][f"{margin}:{fuel}"] = value
-            if value > limit:
+            if value > tolerance:
                 failures.append(
                     f"{stage}: {margin} {fuel} cell mean deviates {value:.4f} "
-                    f"from NEED, above the allowance {limit}."
+                    f"from its NEED target, above the residual tolerance {tolerance}."
                 )
-    extra = sorted(set(allowances) - set(declared_margins))
-    if extra:
-        failures.append(f"{stage}: allowances name undeclared margins {extra}.")
-    if receipt.get("zero_current_cells"):
+    zero_cells = receipt.get("zero_current_cells")
+    if zero_cells:
         failures.append(
-            f"{stage}: {len(receipt['zero_current_cells'])} NEED cell(s) had a zero "
-            "current mean and could not be raked."
+            f"{stage}: {len(zero_cells)} NEED cell(s) had a zero current mean and "
+            "could not be raked."
         )
     return (
         _fail(stage, check, failures, details)

@@ -5,6 +5,7 @@
   "source": {
     "citation": "Ofgem energy price cap: charge-restriction regions (fourteen GB distribution areas) against ONS regions; dominant-area mapping reviewed for microcosm#890.",
     "urls": [
+      "https://www.ofgem.gov.uk/information-consumers/energy-advice-households/get-energy-price-cap-standing-charges-and-unit-rates-region",
       "https://www.ofgem.gov.uk/energy-price-cap"
     ]
   },
@@ -31,7 +32,7 @@
     "authored": "2026-09-14",
     "authored_for": "microcosm#890 (PR-S)",
     "basis": "Ofgem publishes the price cap by charge-restriction region, the fourteen electricity distribution (DNO) areas; each FRS (ONS) region is mapped to the distribution area that serves most of its population. The mapping is asserted from the published area definitions, not from a published population crosswalk, and stands as a ruling (reviewer question on PR #927).",
-    "area_definitions_url": "https://www.ofgem.gov.uk/information-consumers/energy-advice-households/energy-price-cap",
+    "area_definitions_url": "https://www.ofgem.gov.uk/information-consumers/energy-advice-households/get-energy-price-cap-standing-charges-and-unit-rates-region",
     "rationale": {
       "NORTH_EAST": "Northern Powergrid North East area (ofgem:northern).",
       "NORTH_WEST": "Electricity North West (ofgem:north_west); Merseyside lies in ofgem:n_wales_and_mersey but Greater Manchester, Lancashire and Cumbria dominate.",
@@ -45,6 +46,7 @@
       "WALES": "National Grid South Wales area (ofgem:south_wales); North Wales lies in ofgem:n_wales_and_mersey, the smaller share of Welsh households.",
       "SCOTLAND": "SP Distribution central-belt area (ofgem:southern_scotland); the Highlands and islands lie in SSEN North (ofgem:northern_scotland), the smaller share.",
       "NORTHERN_IRELAND": "Outside the GB cap (Utility Regulator NI); priced at the GB average level (K03000001)."
-    }
+    },
+    "area_definitions_note": "Ofgem's regional cap page lists the fourteen charge-restriction regions (the electricity distribution areas) with their standing charges and unit rates; the distribution-network operator serving each ONS region is the basis of the dominant-area mapping in `rationale`."
   }
 }

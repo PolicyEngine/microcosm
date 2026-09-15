@@ -1405,7 +1405,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "support_bounds_resource",
                 "minimum_band_rows",
                 # #890 energy_rake check: NEED kWh fit at design weights.
-                "maximum_relative_deviation_by_margin",
+                "margins",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

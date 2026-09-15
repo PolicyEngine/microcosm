@@ -7959,7 +7959,10 @@
       "period_value",
       "age_threshold",
       "bands",
-      "non_user_band"
+      "non_user_band",
+      "share_geography",
+      "share_age_coverage",
+      "applied_to"
      ],
      "properties": {
       "kind": {

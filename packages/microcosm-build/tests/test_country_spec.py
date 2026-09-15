@@ -1477,12 +1477,13 @@ class TestUKGatesManifest:
         ]
         energy_rake = params["uk_stage_lcfs_consumption_energy_rake"]
         assert energy_rake["check"] == "energy_rake"
-        assert set(energy_rake["maximum_relative_deviation_by_margin"]) == {
+        assert list(energy_rake["margins"]) == [
             "income",
             "tenure",
             "accommodation",
             "region",
-        }
+        ]
+        assert energy_rake["maximum_relative_deviation"] == 0.02
 
     def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}

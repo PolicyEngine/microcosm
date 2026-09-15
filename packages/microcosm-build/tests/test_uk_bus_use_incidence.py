@@ -65,6 +65,8 @@ def test_declared_bands_read_both_nts_series_by_label() -> None:
         (lambda p: p["bands"][-1].update(trips_per_year=3), "zero trips"),
         (lambda p: p.update(period_value=1999), "missing an NTS series"),
         (lambda p: p.update(user_definition="ever"), "user_definition"),
+        (lambda p: p.pop("share_geography"), "declares no share_geography"),
+        (lambda p: p.update(applied_to="everywhere"), "fare_rake_regions only"),
     ],
 )
 def test_declaration_refusals(mutation, match: str) -> None:

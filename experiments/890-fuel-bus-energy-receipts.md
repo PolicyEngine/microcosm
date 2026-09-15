@@ -536,9 +536,19 @@ H5 is written while the battery blocks.
 
 ### Part Q — round 3: NEED checked where the rake acts (María's ruling 1, 2026-09-15)
 
-Ruling: implement Vahid's connected-household gas rake (Part P) and move the NEED check before
-calibration; the calibrated frame is held to the bound ONS 04.5 total and NEED is not a
-calibration target. Commit `303e6d95`: the kWh rake receipt carries a `fit` block (per margin
+Ruling, María on PR #927, 2026-09-15, quoted: "I'm not sure why we are comparing against NEED as
+a gate in the first place if that is not what we are calibrating, but I agree we should implement
+Vahid's recommended fix and move the fix to before calibration." Read with #790's ruling that the
+solver calibrates to bound facts: the calibrated frame is held to the bound ONS 04.5 total and
+NEED is not a calibration target. What this is, stated plainly: a fence relocation. On the
+calibrated frame the two NEED mean-spend anchors failed at GBP 824 / 688 against GBP 1,082 / 850
+(−24 % / −19 %, Part P); at design weights the same means are GBP 1,012 / 802 and pass. After the
+move no gate checks NEED on the calibrated frame, and the roughly 20 % disagreement between NEED
+kWh priced at the FY2024-25 cap (about GBP 52bn at design weights) and ONS 04.5 (GBP 43.4bn) is a
+known, recorded, unchecked gap: the `uk_aggregate_admin` gate note carries the magnitude so a later
+reader does not take NEED to hold on the calibrated frame. The plan of record
+(`repos/uk-890-implementation-plan.md`) lives outside the tree by repo convention; its ruling lines
+are quoted here and in the gate notes. Commit `303e6d95`: the kWh rake receipt carries a `fit` block (per margin
 and cell, the design-weighted mean after the rake against the NEED target, electricity over
 every household of the cell and gas over its gas-connected households, with the maximum
 absolute relative deviation per margin and fuel); a new stage-health check `energy_rake`
@@ -578,8 +588,9 @@ checks the column again with a zero clipped-row allowance. spine-s4
 `b899f40a…`): the clip receipt shows 0 rows clipped low and 0 high over 16,288 households
 (every draw is a donor value, positive-regime fills included), the payload is identical to
 spine-s3, and the three transferred-phase stage gates pass (15 columns checked on the lcfs
-support gate). The H2 fixture, the UK `spec_sha256` (`08fbe013…`) and the gate digests were
-regenerated (`10d85464`).
+support gate). `45aef087` also moved the UK `spec_sha256` (`d2e82feb…` → `08fbe013…`, the declaration
+changed) and the gate digests, re-pinned in the same commit but unmentioned in its message; the H2
+fixture was regenerated separately at `10d85464`.
 
 Ruling 4: rake and target stay together as the interim (the plan-of-record line is in
 `repos/uk-890-implementation-plan.md`), and microcosm#930 asks for the structural fix — bus
@@ -595,3 +606,36 @@ National calibration `pr-s-round4-spine-s4/` (`uk-frs-calibration-attempt-202609
 code `45aef087`, 248 s): the round-3 solve (loss 0.01138, 95.76 % within 10 %, ESS 9,137, bus
 rows exact); `uk_aggregate_admin` passes and the battery blocks on `uk_target_fit` alone, the
 inherited self-employment 20–30k cell at +25.1 % left failing by ruling 2.
+
+### Part S — Vahid's round 2 on PR #927 (the energy_rake gate)
+
+Round 2 accepted round 1 and objected to the gate that arrived between rounds: the fence
+relocation was paraphrased rather than quoted and its unchecked magnitude unstated; the
+per-margin allowances were the ceiling of the very run they gate, computed by the rake's own
+function, so the gate was a trip-wire on the IPF residual with no fact check, and the round-one
+lockstep claim had gone stale. Fixes:
+
+- The gate is now two checks. Fact check: every cell target the rake fitted is recomputed at
+  gate time from the vendored `need_energy_facts.json` rows and must equal the receipt's target
+  (46 cells on spine-s4), so a receipt raked to anything but the published means fails; a test
+  recomputes the fit-block targets from the vendored rows independently. Residual check: one
+  declared tolerance, `maximum_relative_deviation: 0.02`, on the IPF's cross-margin residual per
+  margin and fuel, stated in the gate note as a rule and not a fact, with the observed spine-s3
+  maxima (1.65 / 1.29 / 0.83 / 0.00 %) recorded beside it; the per-margin allowance table is
+  gone. The gate also declares its four margins and refuses an undeclared or missing one, a
+  zero-current cell, the wrong gas population and a missing fit block, each branch unit-tested.
+- The `uk_aggregate_admin` and `energy_rake` gate notes quote María's ruling and state the
+  unchecked −24 % / −19 % gap; Part Q above says the same.
+- `assign_bus_use_incidence` now requires `share_geography`, `share_age_coverage` and
+  `applied_to` (schema `required`, runtime refusal, no defaults).
+- The crosswalk's `area_definitions_url` is Ofgem's regional cap page (the fourteen regions
+  with their standing charges and unit rates), with a note on the dominant-area basis.
+- Attribution corrections: the UK `spec_sha256` moved at `45aef087` (Part R), the fixture was
+  regenerated at `12628088` and `10d85464`, not `47ea5a03` (PR body).
+
+On the spine-s4 build record the reworked gate passes with 46 cells fact-checked and the
+worst residuals income 1.65 %, tenure 1.29 %, accommodation 0.83 %, region 0.00 %; the
+crosswalk edit moves the lcfs stage's resource pin, so the H2 fixture is regenerated once more.
+The PR was marked ready by María after the round-1 reply; by her ruling 2 the terminal battery
+still blocks on the inherited self-employment 20–30k cell until she signs an exclusion or names
+a lever.
