@@ -104,6 +104,27 @@ LAD23_ITL_URL = (
     "02b4942973374f039ec1d2e7d35c16a9/csv?layers=0"
 )
 
+#: ONS OA (2021) -> Parish/NCP -> LAD -> Region -> Country (December 2024) V2.
+#: Its ``LAD24CD`` field carries the April 2023 LAD code set (the 1 April 2025
+#: Barnsley/Sheffield recode is not in this file) and ``RGN24CD`` the nine
+#: English regions; it replaces the retired OA->LAD (April 2023) and
+#: LAD->Region (2022) items for the FY2024-25 atomic-area supports.
+EW_OA_PARNCP_LAD_REGION_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    "7507c0292db546ed83e4ba60f1115b1d/csv?layers=0"
+)
+#: ONS OA (2021) -> Ward (2024) -> LAD (May 2024) best-fit lookup in EW V2.
+EW_OA_WARD24_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    "b21c632804094c149ccdfea1ae59c8c8/csv?layers=0"
+)
+#: ONS LAD (December 2024) -> LAU1 -> ITL3 -> ITL2 -> ITL1 (January 2025) lookup
+#: in the UK: the ITL 2025 revision keyed on the April 2023 LAD code set.
+LAD24_ITL25_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    "15bdb6b0ff1c4a64b34a64e2e39f8caf/csv?layers=0"
+)
+
 ENGLAND_WALES_OA2021_COUNT = 188_880
 SCOTLAND_OA2022_COUNT = 46_363
 NI_DZ2021_COUNT = 3_780
@@ -155,6 +176,64 @@ def load_england_wales_oa_constituencies(
         frame,
         expected_count=ENGLAND_WALES_OA2021_COUNT,
     )
+
+
+def load_ew_oa_lad_region_lookup(
+    url: str = EW_OA_PARNCP_LAD_REGION_URL,
+) -> pd.DataFrame:
+    """Load the ONS OA2021 -> LAD -> Region (December 2024) lookup.
+
+    Returns one row per OA with ``oa_code``, ``la_code`` and ``region_code``
+    (blank for Wales, whose region is the ``W99999999`` sentinel downstream).
+    The LAD column is accepted under any ``LAD<yy>CD`` name; the December 2024
+    file carries the April 2023 LAD code set as ``LAD24CD``.
+    """
+
+    frame = _read_csv_url(url, dtype=str)
+    upper_to_column = {str(column).strip().upper(): column for column in frame}
+    lad_column = next(
+        (
+            column
+            for upper, column in upper_to_column.items()
+            if upper.startswith("LAD") and upper.endswith("CD")
+        ),
+        None,
+    )
+    region_column = next(
+        (
+            column
+            for upper, column in upper_to_column.items()
+            if upper.startswith("RGN") and upper.endswith("CD")
+        ),
+        None,
+    )
+    oa_column = upper_to_column.get("OA21CD")
+    if oa_column is None or lad_column is None or region_column is None:
+        raise ValueError(
+            "E/W OA-LAD-region lookup is missing OA, LAD or region columns."
+        )
+    lookup = pd.DataFrame(
+        {
+            "oa_code": frame[oa_column].fillna("").astype(str).str.strip(),
+            "la_code": frame[lad_column].fillna("").astype(str).str.strip(),
+            "region_code": frame[region_column].fillna("").astype(str).str.strip(),
+        }
+    )
+    if (lookup["oa_code"] == "").any() or (lookup["la_code"] == "").any():
+        raise ValueError(
+            "E/W OA-LAD-region lookup must not include blank OA or LAD codes."
+        )
+    if lookup["oa_code"].duplicated().any():
+        raise ValueError("E/W OA-LAD-region lookup OA codes must be unique.")
+    if len(lookup) != ENGLAND_WALES_OA2021_COUNT:
+        raise ValueError(
+            "E/W OA-LAD-region lookup must cover every OA2021: "
+            f"{len(lookup):,} rows, expected {ENGLAND_WALES_OA2021_COUNT:,}."
+        )
+    english = lookup["oa_code"].str.startswith("E")
+    if (lookup.loc[english, "region_code"] == "").any():
+        raise ValueError("E/W OA-LAD-region lookup has English OAs without a region.")
+    return lookup.reset_index(drop=True)
 
 
 def load_england_lad_region_lookup(
@@ -1349,7 +1428,7 @@ def _normalise_ew_lad_lookup(frame: pd.DataFrame) -> pd.DataFrame:
         upper = str(column).upper()
         if upper == "OA21CD":
             column_map[column] = "oa_code"
-        elif upper == "LAD23CD":
+        elif upper.startswith("LAD") and upper.endswith("CD"):
             column_map[column] = "lad23_code"
     lookup = frame.rename(columns=column_map)
     missing = sorted({"oa_code", "lad23_code"} - set(lookup.columns))
