@@ -12,13 +12,18 @@ From a canonical spine checkpoint with its `.build.json` and `.spine_gates.json`
 uv run --no-sync python tools/build_uk_full.py \
   --input-h5 /data/uk/spine.h5 \
   --ladder /data/uk/ladder.npz \
+  --atomic-support-ew /data/uk/supports/uk_ew_output_area_2021_support.npz \
+  --atomic-support-scotland /data/uk/supports/uk_scotland_output_area_2022_support.npz \
+  --atomic-support-ni /data/uk/supports/uk_ni_data_zone_2021_support.npz \
   --ledger-facts /data/chronicle/uk-artifact \
   --out /data/uk/full-build
 ```
 
+The three atomic-area supports are the artifacts pinned in `uk/uk_atomic_area_supports.provenance.json` and `uk/spec/sources.yaml` (built by `tools/build_uk_atomic_area_supports.py`); `--atomic-support-sha256-{ew,scotland,ni}` pin them like `--ladder-sha256`, and a release candidate requires all four pins.
+
 The checkpoint must bind the exact frame content, current spine stage roster and gate-report bytes. Historical candidate H5 files and reviewed-bypass sidecars are not alternate build sources. Chronicle facts and manifest must match the independently reviewed national and local feed declarations; filtering targets does not relax source validation.
 
-The target registry binds Census household and demographic rows from the reviewed Chronicle feed, including the approved Northern Ireland constituency geography. The OA ladder supplies geographic assignment and lookup support. Its household counts are not a second source of calibration targets. Source receipts retain the Chronicle identity and the paired ladder digest, so target values and the geography used to assign households can be audited separately.
+The target registry binds Census household and demographic rows from the reviewed Chronicle feed, including the approved Northern Ireland constituency geography. Geography is assigned after expansion by the shared atomic-geography operators: `uk.full.identity` keys every household with `household_draw_key` from the spine's explicit lineage (source household id, SPI support channel and clone index, CGT clone and donor flags) and the pool clone index; `uk.full.geography.assign` draws one atomic area per household (E&W 2021 Output Area, Scotland 2022 Output Area, NI 2021 Data Zone) by census household count within the household's FRS region, with a keyed `sha256-u53-v1` stream so a household's draw never depends on row order, K or any other household; `uk.full.geography.derive` reads every larger geography off the support's versioned mappings; the shared `uk.full.geography.gate` and the UK distribution gate `uk.full.geography_gate` follow, and `uk.full.pool` refuses unless the shared gate passed. The OA ladder still supplies the constituency and local-authority rosters, household dispersion and lookup support for target compilation; its household counts are not a second source of calibration targets. Source receipts retain the Chronicle identity, the paired ladder digest and the geography binding (assignment mode, definition sha256, support pins, identity column, stream), so target values and the geography used to assign households can be audited separately. `--geography-assignment legacy` keeps the previous sequential two-stage ladder draw (`uk.full.locations`, `uk.full.geography_mapping`) for measurement builds; `--release-candidate` refuses it.
 
 To include raw spine construction in the same execution, pass `--spine-request /data/uk/spine-request.json`. This file is a JSON array of the raw-source arguments accepted by the maintained spine preparation API:
 

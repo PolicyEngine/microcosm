@@ -21,7 +21,7 @@ These checks establish internal consistency of supplied descriptions. A dataclas
 
 The host can extract the household pairs from its verified shared EXPAND receipt without decoding household ID offsets. The helper returns the key column for the existing `uk_atomic_assignment_definition` and `atomic_geography_nodes` APIs. Support-byte provenance, observed-region constraints and versioned mapping relations remain separate responsibilities. Larger geographies continue to derive from the assigned atomic area.
 
-No production UK host is changed here. María's full-build graph currently uses its existing ladder draw after geographic expansion. Adopting this key and shared assignment must be coordinated in that host. The existing source stage order also interleaves enrichment before later SPI/CGT cloning; moving atomic assignment before every enrichment stage requires a separate staged migration. This helper does not claim that migration, native FRS qualification or a new UK release.
+The full-build graph now adopts this key: `uk.full.identity` (`UKGeographyIdentityKernel`) reads the spine's explicit lineage columns and the pool clone index and writes `geography_household_key` with exactly this encoding, and `test_uk_atomic_identity_graph.py` holds the kernel to this projector on the executor's actual EXPAND receipt. The existing source stage order still interleaves enrichment before later SPI/CGT cloning; moving atomic assignment before every enrichment stage remains a separate staged migration under the geography-first umbrella issue. This helper does not claim that migration, native FRS qualification or a new UK release.
 
 ## Verification scope
 
