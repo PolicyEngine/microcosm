@@ -26,7 +26,7 @@ PR CI (`.github/workflows/test.yml`) has four lanes — `lint`, `fast`,
 the diff into `shared`/`us`/`uk`. `lint` verifies
 `tools/ci_test_groups.py --verify`, syncs with `--locked`, and runs ruff.
 `fast` runs the full tracked test-file inventory without engine extras in
-three groups (`trade`, `spine-uk`, `rest`), with `rest` split across four
+three groups (`trade`, `spine-uk`, `rest`), with `rest` split across six
 parallel matrix jobs per Python version; engine-gated tests skip there
 through whichever guard they carry — the `requires_*` markers, or the
 `importorskip` calls that remain the norm on the US side. `engine-shared` always syncs
@@ -42,7 +42,7 @@ wheels.
 
 `us-am` likewise has four matrix subdivisions. Within each, build and other-shard
 tests retain separate pytest processes to isolate their import state. Every wheel
-job retains the complete build/install/smoke boundary and runs one of four
+job retains the complete build/install/smoke boundary and runs one of eight
 disjoint file subdivisions, including engine-only files whose markers skip when
 the engine is absent. Other groups and both Python versions are unchanged.
 `tools/ci_test_groups.py --list GROUP[:PROCESS] --shard INDEX/COUNT` selects

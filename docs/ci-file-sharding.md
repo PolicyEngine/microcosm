@@ -1,14 +1,15 @@
 # CI file sharding
 
-The fast `rest`, engine `us-am` and installed-wheel inventory each run across
-four independent GitHub Actions matrix jobs per Python version. The initial
+The fast `rest` inventory runs across six independent GitHub Actions matrix jobs
+per Python version, the installed-wheel inventory across eight, and the engine
+`us-am` inventory across four. The initial
 partition uses sorted file paths round-robin. It balances file counts, not
 measured runtime; an expensive single module can still dominate a job.
 
 Files are the smallest scheduling unit. All tests in a module, its module-scoped
 fixtures, cold/required pairs and mutation controls stay in the same pytest
 invocation. `us-am:build` and `us-am:other-shards` remain separate processes
-inside each of the four jobs, preserving import isolation. The US `us-qs` and
+inside each of the four `us-am` jobs, preserving import isolation. The US `us-qs` and
 UK process divisions also remain unchanged.
 
 The environment tiers keep their original scope:
@@ -26,15 +27,20 @@ No tests are renamed, newly marked, skipped or replaced by sharding. Only the
 partition regression file is added. The independent seed-diagnostic job and
 the required `ci-ok` aggregation are unchanged. More jobs repeat setup and
 wheel-building work; shorter wall time is not guaranteed by this configuration.
+Every sharded pytest invocation prints its 25 slowest tests (`--durations=25`)
+so an imbalance shows in the job log. `rest` went from four to six jobs and
+`wheels` from four to eight on 2026-09-14 after one `rest` job and both `wheels`
+2/4 jobs hit the six-hour runner limit; the partition is by file count, so a
+few heavy modules dominate a job and the durations report is what shows which.
 
 ## Selection and verification
 
 `tools/ci_test_groups.py` owns the file partition. For example:
 
 ```sh
-python3 tools/ci_test_groups.py --list rest --shard 1/4
+python3 tools/ci_test_groups.py --list rest --shard 1/6
 python3 tools/ci_test_groups.py --list us-am:build --shard 2/4
-python3 tools/ci_test_groups.py --list wheels --shard 4/4
+python3 tools/ci_test_groups.py --list wheels --shard 8/8
 ```
 
 The inventory includes only `packages/<package>/tests/test_*.py` at that exact

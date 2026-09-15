@@ -191,10 +191,12 @@ jobs:
         lane:
           - {"group": "trade", "shard": "1/1"}
           - {"group": "spine-uk", "shard": "1/1"}
-          - {"group": "rest", "shard": "1/4"}
-          - {"group": "rest", "shard": "2/4"}
-          - {"group": "rest", "shard": "3/4"}
-          - {"group": "rest", "shard": "4/4"}
+          - {"group": "rest", "shard": "1/6"}
+          - {"group": "rest", "shard": "2/6"}
+          - {"group": "rest", "shard": "3/6"}
+          - {"group": "rest", "shard": "4/6"}
+          - {"group": "rest", "shard": "5/6"}
+          - {"group": "rest", "shard": "6/6"}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -208,7 +210,7 @@ jobs:
           selected="$(uv run --no-sync python tools/ci_test_groups.py --list "${{ matrix.lane.group }}" --shard "${{ matrix.lane.shard }}")"
           test -n "$selected"
           mapfile -t files <<< "$selected"
-          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider --durations=25
 
   engine-shared:
     # Deliberately does NOT depend on `changes`: it reads no classifier output,
@@ -232,7 +234,7 @@ jobs:
           selected="$(uv run --no-sync python tools/ci_test_groups.py --list shared-spec)"
           test -n "$selected"
           mapfile -t files <<< "$selected"
-          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider --durations=25
 
   spec-seed-diagnostics:
     # Produce bounded diagnosis immediately, independently of the full suite.
@@ -331,7 +333,7 @@ jobs:
             selected="$(uv run --no-sync python tools/ci_test_groups.py --list "${{ matrix.lane.group }}:${proc}" --shard "${{ matrix.lane.shard }}")"
             test -n "$selected"
             mapfile -t files <<< "$selected"
-            /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+            /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider --durations=25
           done
 
   engine-uk:
@@ -360,7 +362,7 @@ jobs:
             selected="$(uv run --no-sync python tools/ci_test_groups.py --list "uk:${proc}")"
             test -n "$selected"
             mapfile -t files <<< "$selected"
-            /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+            /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider --durations=25
           done
 
   wheels:
@@ -375,10 +377,14 @@ jobs:
       matrix:
         python-version: ["3.13", "3.14"]
         lane:
-          - {"group": "wheels", "shard": "1/4"}
-          - {"group": "wheels", "shard": "2/4"}
-          - {"group": "wheels", "shard": "3/4"}
-          - {"group": "wheels", "shard": "4/4"}
+          - {"group": "wheels", "shard": "1/8"}
+          - {"group": "wheels", "shard": "2/8"}
+          - {"group": "wheels", "shard": "3/8"}
+          - {"group": "wheels", "shard": "4/8"}
+          - {"group": "wheels", "shard": "5/8"}
+          - {"group": "wheels", "shard": "6/8"}
+          - {"group": "wheels", "shard": "7/8"}
+          - {"group": "wheels", "shard": "8/8"}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -487,7 +493,7 @@ jobs:
           test -n "$selected"
           mapfile -t files <<< "$selected"
           /usr/bin/time -v env -u PYTHONPATH /tmp/wheels-venv/bin/python -I -m pytest \
-            "${files[@]}" -p no:cacheprovider
+            "${files[@]}" -p no:cacheprovider --durations=25
 
   ci-ok:
     # The single aggregate context for branch protection. Per-leg matrix names

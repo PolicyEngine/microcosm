@@ -21,7 +21,7 @@ GROUPS = (*FAST_GROUPS, *ENGINE_GROUPS, "wheels")
 MAX_SHARDS = 64
 # Initial file partitions, not measured runtime weights. The workflow matrix
 # and its stdlib regression controls must cover every one of these subdivisions.
-SHARD_COUNTS = {"rest": 4, "us-am": 4, "wheels": 4}
+SHARD_COUNTS = {"rest": 6, "us-am": 4, "wheels": 8}
 
 # Files explicitly reserved for the engine tier by the existing fast-lane policy.
 # PyTables is available in both the workspace and the engine-free wheels venv;
