@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-474a0ae1-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 438,
+  "candidate_count": 609,
   "contract_target_count": 210,
-  "active_reference_count": 424,
+  "active_reference_count": 595,
   "status_counts": {
-    "active": 424,
+    "active": 595,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 7
   },
@@ -363,40 +363,472 @@
       "geography_id": "K02000001"
     },
     "ons.population.age_0_9_by_region": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
     },
     "ons.population.age_10_19_by_region": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
     },
     "ons.population.age_20_29_by_region": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
     },
     "ons.population.age_30_39_by_region": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
     },
     "ons.population.age_40_49_by_region": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
     },
     "ons.population.age_50_59_by_region": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
     },
     "ons.population.age_60_69_by_region": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
     },
     "ons.population.age_70_79_by_region": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
     },
     "ons.population.age_80_89_by_region": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "W92000004"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "S92000003"
+        },
+        {
+          "geography_level": "country",
+          "geography_id": "N92000002"
+        }
+      ]
     },
     "ons.population.female_0_4": {
       "geography_level": "country",
@@ -603,72 +1035,396 @@
       "geography_id": "K02000001"
     },
     "voa.council_tax_stock.band_a": {
-      "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ]
     },
     "scotgov.council_tax_stock.band_a": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_b": {
-      "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ]
     },
     "scotgov.council_tax_stock.band_b": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_c": {
-      "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ]
     },
     "scotgov.council_tax_stock.band_c": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_d": {
-      "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ]
     },
     "scotgov.council_tax_stock.band_d": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_e": {
-      "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ]
     },
     "scotgov.council_tax_stock.band_e": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_f": {
-      "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ]
     },
     "scotgov.council_tax_stock.band_f": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_g": {
-      "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ]
     },
     "scotgov.council_tax_stock.band_g": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_h": {
-      "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ]
     },
     "scotgov.council_tax_stock.band_h": {
       "geography_level": "country",
       "geography_id": "S92000003"
     },
     "voa.council_tax_stock.total": {
-      "geography_level": "country",
-      "geography_id": "E92000001"
+      "geography_fanout": [
+        {
+          "geography_level": "region",
+          "geography_id": "E12000001"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000002"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000003"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000004"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000005"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000006"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000007"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000008"
+        },
+        {
+          "geography_level": "region",
+          "geography_id": "E12000009"
+        }
+      ]
     },
     "scotgov.council_tax_stock.total": {
       "geography_level": "country",
@@ -856,15 +1612,114 @@
     "dfi_ni.bus.passenger_receipts",
     "nithc.public_transport_support",
     "obr.esa",
-    "ons.population.age_0_9_by_region",
-    "ons.population.age_10_19_by_region",
-    "ons.population.age_20_29_by_region",
-    "ons.population.age_30_39_by_region",
-    "ons.population.age_40_49_by_region",
-    "ons.population.age_50_59_by_region",
-    "ons.population.age_60_69_by_region",
-    "ons.population.age_70_79_by_region",
-    "ons.population.age_80_89_by_region",
+    "ons.population.age_0_9_by_region@E12000001",
+    "ons.population.age_0_9_by_region@E12000002",
+    "ons.population.age_0_9_by_region@E12000003",
+    "ons.population.age_0_9_by_region@E12000004",
+    "ons.population.age_0_9_by_region@E12000005",
+    "ons.population.age_0_9_by_region@E12000006",
+    "ons.population.age_0_9_by_region@E12000007",
+    "ons.population.age_0_9_by_region@E12000008",
+    "ons.population.age_0_9_by_region@E12000009",
+    "ons.population.age_0_9_by_region@N92000002",
+    "ons.population.age_0_9_by_region@S92000003",
+    "ons.population.age_0_9_by_region@W92000004",
+    "ons.population.age_10_19_by_region@E12000001",
+    "ons.population.age_10_19_by_region@E12000002",
+    "ons.population.age_10_19_by_region@E12000003",
+    "ons.population.age_10_19_by_region@E12000004",
+    "ons.population.age_10_19_by_region@E12000005",
+    "ons.population.age_10_19_by_region@E12000006",
+    "ons.population.age_10_19_by_region@E12000007",
+    "ons.population.age_10_19_by_region@E12000008",
+    "ons.population.age_10_19_by_region@E12000009",
+    "ons.population.age_10_19_by_region@N92000002",
+    "ons.population.age_10_19_by_region@S92000003",
+    "ons.population.age_10_19_by_region@W92000004",
+    "ons.population.age_20_29_by_region@E12000001",
+    "ons.population.age_20_29_by_region@E12000002",
+    "ons.population.age_20_29_by_region@E12000003",
+    "ons.population.age_20_29_by_region@E12000004",
+    "ons.population.age_20_29_by_region@E12000005",
+    "ons.population.age_20_29_by_region@E12000006",
+    "ons.population.age_20_29_by_region@E12000007",
+    "ons.population.age_20_29_by_region@E12000008",
+    "ons.population.age_20_29_by_region@E12000009",
+    "ons.population.age_20_29_by_region@N92000002",
+    "ons.population.age_20_29_by_region@S92000003",
+    "ons.population.age_20_29_by_region@W92000004",
+    "ons.population.age_30_39_by_region@E12000001",
+    "ons.population.age_30_39_by_region@E12000002",
+    "ons.population.age_30_39_by_region@E12000003",
+    "ons.population.age_30_39_by_region@E12000004",
+    "ons.population.age_30_39_by_region@E12000005",
+    "ons.population.age_30_39_by_region@E12000006",
+    "ons.population.age_30_39_by_region@E12000007",
+    "ons.population.age_30_39_by_region@E12000008",
+    "ons.population.age_30_39_by_region@E12000009",
+    "ons.population.age_30_39_by_region@N92000002",
+    "ons.population.age_30_39_by_region@S92000003",
+    "ons.population.age_30_39_by_region@W92000004",
+    "ons.population.age_40_49_by_region@E12000001",
+    "ons.population.age_40_49_by_region@E12000002",
+    "ons.population.age_40_49_by_region@E12000003",
+    "ons.population.age_40_49_by_region@E12000004",
+    "ons.population.age_40_49_by_region@E12000005",
+    "ons.population.age_40_49_by_region@E12000006",
+    "ons.population.age_40_49_by_region@E12000007",
+    "ons.population.age_40_49_by_region@E12000008",
+    "ons.population.age_40_49_by_region@E12000009",
+    "ons.population.age_40_49_by_region@N92000002",
+    "ons.population.age_40_49_by_region@S92000003",
+    "ons.population.age_40_49_by_region@W92000004",
+    "ons.population.age_50_59_by_region@E12000001",
+    "ons.population.age_50_59_by_region@E12000002",
+    "ons.population.age_50_59_by_region@E12000003",
+    "ons.population.age_50_59_by_region@E12000004",
+    "ons.population.age_50_59_by_region@E12000005",
+    "ons.population.age_50_59_by_region@E12000006",
+    "ons.population.age_50_59_by_region@E12000007",
+    "ons.population.age_50_59_by_region@E12000008",
+    "ons.population.age_50_59_by_region@E12000009",
+    "ons.population.age_50_59_by_region@N92000002",
+    "ons.population.age_50_59_by_region@S92000003",
+    "ons.population.age_50_59_by_region@W92000004",
+    "ons.population.age_60_69_by_region@E12000001",
+    "ons.population.age_60_69_by_region@E12000002",
+    "ons.population.age_60_69_by_region@E12000003",
+    "ons.population.age_60_69_by_region@E12000004",
+    "ons.population.age_60_69_by_region@E12000005",
+    "ons.population.age_60_69_by_region@E12000006",
+    "ons.population.age_60_69_by_region@E12000007",
+    "ons.population.age_60_69_by_region@E12000008",
+    "ons.population.age_60_69_by_region@E12000009",
+    "ons.population.age_60_69_by_region@N92000002",
+    "ons.population.age_60_69_by_region@S92000003",
+    "ons.population.age_60_69_by_region@W92000004",
+    "ons.population.age_70_79_by_region@E12000001",
+    "ons.population.age_70_79_by_region@E12000002",
+    "ons.population.age_70_79_by_region@E12000003",
+    "ons.population.age_70_79_by_region@E12000004",
+    "ons.population.age_70_79_by_region@E12000005",
+    "ons.population.age_70_79_by_region@E12000006",
+    "ons.population.age_70_79_by_region@E12000007",
+    "ons.population.age_70_79_by_region@E12000008",
+    "ons.population.age_70_79_by_region@E12000009",
+    "ons.population.age_70_79_by_region@N92000002",
+    "ons.population.age_70_79_by_region@S92000003",
+    "ons.population.age_70_79_by_region@W92000004",
+    "ons.population.age_80_89_by_region@E12000001",
+    "ons.population.age_80_89_by_region@E12000002",
+    "ons.population.age_80_89_by_region@E12000003",
+    "ons.population.age_80_89_by_region@E12000004",
+    "ons.population.age_80_89_by_region@E12000005",
+    "ons.population.age_80_89_by_region@E12000006",
+    "ons.population.age_80_89_by_region@E12000007",
+    "ons.population.age_80_89_by_region@E12000008",
+    "ons.population.age_80_89_by_region@E12000009",
+    "ons.population.age_80_89_by_region@N92000002",
+    "ons.population.age_80_89_by_region@S92000003",
+    "ons.population.age_80_89_by_region@W92000004",
     "ons.population.female_0_4",
     "ons.population.female_10_14",
     "ons.population.female_15_19",
@@ -2285,47 +3140,542 @@
       "to": "2025"
     },
     {
-      "name": "ons.population.age_0_9_by_region",
+      "name": "ons.population.age_0_9_by_region@E12000001",
       "from": "2024",
       "to": "2025"
     },
     {
-      "name": "ons.population.age_10_19_by_region",
+      "name": "ons.population.age_0_9_by_region@E12000002",
       "from": "2024",
       "to": "2025"
     },
     {
-      "name": "ons.population.age_20_29_by_region",
+      "name": "ons.population.age_0_9_by_region@E12000003",
       "from": "2024",
       "to": "2025"
     },
     {
-      "name": "ons.population.age_30_39_by_region",
+      "name": "ons.population.age_0_9_by_region@E12000004",
       "from": "2024",
       "to": "2025"
     },
     {
-      "name": "ons.population.age_40_49_by_region",
+      "name": "ons.population.age_0_9_by_region@E12000005",
       "from": "2024",
       "to": "2025"
     },
     {
-      "name": "ons.population.age_50_59_by_region",
+      "name": "ons.population.age_0_9_by_region@E12000006",
       "from": "2024",
       "to": "2025"
     },
     {
-      "name": "ons.population.age_60_69_by_region",
+      "name": "ons.population.age_0_9_by_region@E12000007",
       "from": "2024",
       "to": "2025"
     },
     {
-      "name": "ons.population.age_70_79_by_region",
+      "name": "ons.population.age_0_9_by_region@E12000008",
       "from": "2024",
       "to": "2025"
     },
     {
-      "name": "ons.population.age_80_89_by_region",
+      "name": "ons.population.age_0_9_by_region@E12000009",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_0_9_by_region@W92000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_0_9_by_region@S92000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_0_9_by_region@N92000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_10_19_by_region@E12000001",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_10_19_by_region@E12000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_10_19_by_region@E12000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_10_19_by_region@E12000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_10_19_by_region@E12000005",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_10_19_by_region@E12000006",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_10_19_by_region@E12000007",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_10_19_by_region@E12000008",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_10_19_by_region@E12000009",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_10_19_by_region@W92000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_10_19_by_region@S92000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_10_19_by_region@N92000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_20_29_by_region@E12000001",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_20_29_by_region@E12000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_20_29_by_region@E12000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_20_29_by_region@E12000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_20_29_by_region@E12000005",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_20_29_by_region@E12000006",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_20_29_by_region@E12000007",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_20_29_by_region@E12000008",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_20_29_by_region@E12000009",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_20_29_by_region@W92000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_20_29_by_region@S92000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_20_29_by_region@N92000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_30_39_by_region@E12000001",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_30_39_by_region@E12000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_30_39_by_region@E12000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_30_39_by_region@E12000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_30_39_by_region@E12000005",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_30_39_by_region@E12000006",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_30_39_by_region@E12000007",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_30_39_by_region@E12000008",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_30_39_by_region@E12000009",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_30_39_by_region@W92000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_30_39_by_region@S92000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_30_39_by_region@N92000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_40_49_by_region@E12000001",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_40_49_by_region@E12000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_40_49_by_region@E12000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_40_49_by_region@E12000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_40_49_by_region@E12000005",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_40_49_by_region@E12000006",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_40_49_by_region@E12000007",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_40_49_by_region@E12000008",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_40_49_by_region@E12000009",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_40_49_by_region@W92000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_40_49_by_region@S92000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_40_49_by_region@N92000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_50_59_by_region@E12000001",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_50_59_by_region@E12000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_50_59_by_region@E12000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_50_59_by_region@E12000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_50_59_by_region@E12000005",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_50_59_by_region@E12000006",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_50_59_by_region@E12000007",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_50_59_by_region@E12000008",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_50_59_by_region@E12000009",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_50_59_by_region@W92000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_50_59_by_region@S92000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_50_59_by_region@N92000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_60_69_by_region@E12000001",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_60_69_by_region@E12000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_60_69_by_region@E12000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_60_69_by_region@E12000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_60_69_by_region@E12000005",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_60_69_by_region@E12000006",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_60_69_by_region@E12000007",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_60_69_by_region@E12000008",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_60_69_by_region@E12000009",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_60_69_by_region@W92000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_60_69_by_region@S92000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_60_69_by_region@N92000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_70_79_by_region@E12000001",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_70_79_by_region@E12000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_70_79_by_region@E12000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_70_79_by_region@E12000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_70_79_by_region@E12000005",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_70_79_by_region@E12000006",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_70_79_by_region@E12000007",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_70_79_by_region@E12000008",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_70_79_by_region@E12000009",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_70_79_by_region@W92000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_70_79_by_region@S92000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_70_79_by_region@N92000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_80_89_by_region@E12000001",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_80_89_by_region@E12000002",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_80_89_by_region@E12000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_80_89_by_region@E12000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_80_89_by_region@E12000005",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_80_89_by_region@E12000006",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_80_89_by_region@E12000007",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_80_89_by_region@E12000008",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_80_89_by_region@E12000009",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_80_89_by_region@W92000004",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_80_89_by_region@S92000003",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "ons.population.age_80_89_by_region@N92000002",
       "from": "2024",
       "to": "2025"
     },
@@ -2530,7 +3880,47 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_a",
+      "name": "voa.council_tax_stock.band_a@E12000001",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_a@E12000002",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_a@E12000003",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_a@E12000004",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_a@E12000005",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_a@E12000006",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_a@E12000007",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_a@E12000008",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_a@E12000009",
       "from": "2025-03",
       "to": "2025"
     },
@@ -2540,7 +3930,47 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_b",
+      "name": "voa.council_tax_stock.band_b@E12000001",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_b@E12000002",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_b@E12000003",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_b@E12000004",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_b@E12000005",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_b@E12000006",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_b@E12000007",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_b@E12000008",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_b@E12000009",
       "from": "2025-03",
       "to": "2025"
     },
@@ -2550,7 +3980,47 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_c",
+      "name": "voa.council_tax_stock.band_c@E12000001",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_c@E12000002",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_c@E12000003",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_c@E12000004",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_c@E12000005",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_c@E12000006",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_c@E12000007",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_c@E12000008",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_c@E12000009",
       "from": "2025-03",
       "to": "2025"
     },
@@ -2560,7 +4030,47 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_d",
+      "name": "voa.council_tax_stock.band_d@E12000001",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_d@E12000002",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_d@E12000003",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_d@E12000004",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_d@E12000005",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_d@E12000006",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_d@E12000007",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_d@E12000008",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_d@E12000009",
       "from": "2025-03",
       "to": "2025"
     },
@@ -2570,7 +4080,47 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_e",
+      "name": "voa.council_tax_stock.band_e@E12000001",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_e@E12000002",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_e@E12000003",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_e@E12000004",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_e@E12000005",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_e@E12000006",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_e@E12000007",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_e@E12000008",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_e@E12000009",
       "from": "2025-03",
       "to": "2025"
     },
@@ -2580,7 +4130,47 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_f",
+      "name": "voa.council_tax_stock.band_f@E12000001",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_f@E12000002",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_f@E12000003",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_f@E12000004",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_f@E12000005",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_f@E12000006",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_f@E12000007",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_f@E12000008",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_f@E12000009",
       "from": "2025-03",
       "to": "2025"
     },
@@ -2590,7 +4180,47 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_g",
+      "name": "voa.council_tax_stock.band_g@E12000001",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_g@E12000002",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_g@E12000003",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_g@E12000004",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_g@E12000005",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_g@E12000006",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_g@E12000007",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_g@E12000008",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_g@E12000009",
       "from": "2025-03",
       "to": "2025"
     },
@@ -2600,7 +4230,47 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.band_h",
+      "name": "voa.council_tax_stock.band_h@E12000001",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_h@E12000002",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_h@E12000003",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_h@E12000004",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_h@E12000005",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_h@E12000006",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_h@E12000007",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_h@E12000008",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.band_h@E12000009",
       "from": "2025-03",
       "to": "2025"
     },
@@ -2610,7 +4280,47 @@
       "to": "2025"
     },
     {
-      "name": "voa.council_tax_stock.total",
+      "name": "voa.council_tax_stock.total@E12000001",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.total@E12000002",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.total@E12000003",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.total@E12000004",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.total@E12000005",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.total@E12000006",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.total@E12000007",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.total@E12000008",
+      "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "voa.council_tax_stock.total@E12000009",
       "from": "2025-03",
       "to": "2025"
     },
@@ -6361,14 +8071,148 @@
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.age_0_9_by_region",
+          "name": "ons.population.age_0_9_by_region@E12000001",
           "status": "active",
           "matched_fact_count_overall": 20,
           "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 7553013.0,
+          "resolved_value": 285165.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b94a17afcae0f28216f5c756"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c796672d4d88aa11ab15a31a"
+        },
+        {
+          "name": "ons.population.age_0_9_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 865892.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_de0fc360f660f7a387628062"
+        },
+        {
+          "name": "ons.population.age_0_9_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 626938.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cbc8ee6d7552af4ba61edcb1"
+        },
+        {
+          "name": "ons.population.age_0_9_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 543004.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f858f629484e7989a9dc1f0b"
+        },
+        {
+          "name": "ons.population.age_0_9_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 718837.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_de2d9b45547f640fbc7ebb5a"
+        },
+        {
+          "name": "ons.population.age_0_9_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 744698.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fec32a4b3417958969f5f2d9"
+        },
+        {
+          "name": "ons.population.age_0_9_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 1054493.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cdd134faa924b905bd8a36ad"
+        },
+        {
+          "name": "ons.population.age_0_9_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 1059434.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f0ef951a6bad79d44726fe11"
+        },
+        {
+          "name": "ons.population.age_0_9_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 575506.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d6a250010241c987a217b54f"
+        },
+        {
+          "name": "ons.population.age_0_9_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 321552.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eef268031d128fde4eec5d91"
+        },
+        {
+          "name": "ons.population.age_0_9_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 527989.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f9862176e9cdec891820dfa2"
+        },
+        {
+          "name": "ons.population.age_0_9_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 229505.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eb8519582dac5a21a72f8360"
         }
       ]
     },
@@ -6376,14 +8220,148 @@
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.age_10_19_by_region",
+          "name": "ons.population.age_10_19_by_region@E12000001",
           "status": "active",
           "matched_fact_count_overall": 20,
           "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 8331437.0,
+          "resolved_value": 326306.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ec5be4478e3e8a5ed9186e22"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ce36092d33f50f712f620485"
+        },
+        {
+          "name": "ons.population.age_10_19_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 952864.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f6fc45432de26717dc50151d"
+        },
+        {
+          "name": "ons.population.age_10_19_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 696780.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f1942c03893e2aeccb514e34"
+        },
+        {
+          "name": "ons.population.age_10_19_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 615630.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d96b0e1445c879a8267ef553"
+        },
+        {
+          "name": "ons.population.age_10_19_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 785062.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff921d8727a6c1ea11548896"
+        },
+        {
+          "name": "ons.population.age_10_19_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 785091.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d66fd1b48bc1e9ae4d38f778"
+        },
+        {
+          "name": "ons.population.age_10_19_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 1068691.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8b79fef8b80acc1deb297b7"
+        },
+        {
+          "name": "ons.population.age_10_19_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 1183235.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ba4c8f8e6cb789626f191523"
+        },
+        {
+          "name": "ons.population.age_10_19_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 677228.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8ea04bba18d65ed2ac0dd74"
+        },
+        {
+          "name": "ons.population.age_10_19_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 374851.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f040814c3de37f315671a60d"
+        },
+        {
+          "name": "ons.population.age_10_19_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 612935.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d8cb95f3b8a4eb5725ec1e0d"
+        },
+        {
+          "name": "ons.population.age_10_19_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 252764.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ef301c6ab42b35eb692e20b0"
         }
       ]
     },
@@ -6391,14 +8369,148 @@
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.age_20_29_by_region",
+          "name": "ons.population.age_20_29_by_region@E12000001",
           "status": "active",
           "matched_fact_count_overall": 20,
           "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 8715225.0,
+          "resolved_value": 343015.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ed0cabd54beb345a04d236b1"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ebe0b2ced4987cd701db581a"
+        },
+        {
+          "name": "ons.population.age_20_29_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 986590.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe94b1572d6db93b57407bcd"
+        },
+        {
+          "name": "ons.population.age_20_29_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 717479.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cb721748c503839a9229a404"
+        },
+        {
+          "name": "ons.population.age_20_29_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 612108.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7be7895d4f680a502caeb4b"
+        },
+        {
+          "name": "ons.population.age_20_29_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 766058.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f539e665a5478f92346bb4d4"
+        },
+        {
+          "name": "ons.population.age_20_29_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 727218.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff31c89cfa957bdd279c9947"
+        },
+        {
+          "name": "ons.population.age_20_29_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 1508607.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f0ffc4e5795625b9238d6dde"
+        },
+        {
+          "name": "ons.population.age_20_29_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 1066121.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f3a720e9d1d4664e83307a9a"
+        },
+        {
+          "name": "ons.population.age_20_29_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 684393.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe520978b4f4105aa292a3f5"
+        },
+        {
+          "name": "ons.population.age_20_29_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 380557.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fe44434fdb2e33179826ee35"
+        },
+        {
+          "name": "ons.population.age_20_29_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 703554.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dadba40aea2eb5dcdb2e5d6e"
+        },
+        {
+          "name": "ons.population.age_20_29_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 219525.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_afe826389a344a01c4be2862"
         }
       ]
     },
@@ -6406,14 +8518,148 @@
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.age_30_39_by_region",
+          "name": "ons.population.age_30_39_by_region@E12000001",
           "status": "active",
           "matched_fact_count_overall": 20,
           "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 9572397.0,
+          "resolved_value": 363357.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f3cd6e4fd7249a0ef2be0ffb"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ceb94ab430de1f0bc8c19ce4"
+        },
+        {
+          "name": "ons.population.age_30_39_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 1064968.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eeb6e6194f0405a4b7010913"
+        },
+        {
+          "name": "ons.population.age_30_39_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 770809.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ebc2a149da9287a3a2b28d45"
+        },
+        {
+          "name": "ons.population.age_30_39_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 676709.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fefffb16e9e1a25fd0da3435"
+        },
+        {
+          "name": "ons.population.age_30_39_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 839114.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eaee3d4e99154692dbad24b9"
+        },
+        {
+          "name": "ons.population.age_30_39_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 895639.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fbb89267af1b9a1a349f3274"
+        },
+        {
+          "name": "ons.population.age_30_39_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 1537372.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c7d5874566b099143ddbac28"
+        },
+        {
+          "name": "ons.population.age_30_39_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 1284552.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff4aa5baed49b53887253b70"
+        },
+        {
+          "name": "ons.population.age_30_39_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 742082.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8c6ce01a5aa83ce392ccf3a"
+        },
+        {
+          "name": "ons.population.age_30_39_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 410248.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fa74c4da871af17e8af431d6"
+        },
+        {
+          "name": "ons.population.age_30_39_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 733480.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f045b554aebb8f1b21df5a5c"
+        },
+        {
+          "name": "ons.population.age_30_39_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 254067.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eb383d007487ef1df14f4946"
         }
       ]
     },
@@ -6421,14 +8667,148 @@
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.age_40_49_by_region",
+          "name": "ons.population.age_40_49_by_region@E12000001",
           "status": "active",
           "matched_fact_count_overall": 20,
           "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 8622506.0,
+          "resolved_value": 320860.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f618aa084dbd211cdca7c544"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f081bcb6c2e794e8ec3b0161"
+        },
+        {
+          "name": "ons.population.age_40_49_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 930967.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7744877e123c00b96511818"
+        },
+        {
+          "name": "ons.population.age_40_49_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 674349.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d6e708c298712163b552e6c7"
+        },
+        {
+          "name": "ons.population.age_40_49_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 610611.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e861cd162b6b06a1107ca177"
+        },
+        {
+          "name": "ons.population.age_40_49_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 746341.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fa28a64a0b8ec87502b44a9f"
+        },
+        {
+          "name": "ons.population.age_40_49_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 838578.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f94400c214a5c3c3847cc562"
+        },
+        {
+          "name": "ons.population.age_40_49_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 1268973.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb8228a78efb8cdb3dd46764"
+        },
+        {
+          "name": "ons.population.age_40_49_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 1255951.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_edac715ea904f29dbd3332f9"
+        },
+        {
+          "name": "ons.population.age_40_49_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 688417.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f6ecf5ebd09a5d638cf6dd15"
+        },
+        {
+          "name": "ons.population.age_40_49_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 365951.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f6496b4ebd88792d288206a1"
+        },
+        {
+          "name": "ons.population.age_40_49_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 675368.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e159eb5144ceae58dccb4dc0"
+        },
+        {
+          "name": "ons.population.age_40_49_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 246140.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b71979cb27997e512ea68888"
         }
       ]
     },
@@ -6436,14 +8816,148 @@
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.age_50_59_by_region",
+          "name": "ons.population.age_50_59_by_region@E12000001",
           "status": "active",
           "matched_fact_count_overall": 20,
           "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 9036816.0,
+          "resolved_value": 360074.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f8fb3f14e335149ae47e882a"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8febade5d1aa4eff5515f79"
+        },
+        {
+          "name": "ons.population.age_50_59_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 995810.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ce316c567d2d3919bad74247"
+        },
+        {
+          "name": "ons.population.age_50_59_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 736903.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f07e470e70895701083be7b4"
+        },
+        {
+          "name": "ons.population.age_50_59_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 676307.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fc3b848c0d546908542f7522"
+        },
+        {
+          "name": "ons.population.age_50_59_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 794143.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eced9fed4ca113ee655134b7"
+        },
+        {
+          "name": "ons.population.age_50_59_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 866946.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8011436193a375ac63a33af"
+        },
+        {
+          "name": "ons.population.age_50_59_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 1087518.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c0999183e74a6f6978377427"
+        },
+        {
+          "name": "ons.population.age_50_59_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 1287719.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f5b6740db34f7f702bb230fb"
+        },
+        {
+          "name": "ons.population.age_50_59_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 784718.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cf32f90895454cdb82d3a611"
+        },
+        {
+          "name": "ons.population.age_50_59_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 424694.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ed905faab304a40013587ffd"
+        },
+        {
+          "name": "ons.population.age_50_59_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 766715.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f332e28940d1c94b1e2dec31"
+        },
+        {
+          "name": "ons.population.age_50_59_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 255269.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f786aada1891e9f309902c1c"
         }
       ]
     },
@@ -6451,14 +8965,148 @@
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.age_60_69_by_region",
+          "name": "ons.population.age_60_69_by_region@E12000001",
           "status": "active",
           "matched_fact_count_overall": 20,
           "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 7861034.0,
+          "resolved_value": 349719.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fc9476cc3d2ecd4fb1fd9403"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ff4466f1cb6fb29ce9b132b0"
+        },
+        {
+          "name": "ons.population.age_60_69_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 884043.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f861d328dbb8a01929eb1e91"
+        },
+        {
+          "name": "ons.population.age_60_69_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 652931.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f9ab6846d67db88fda81fa30"
+        },
+        {
+          "name": "ons.population.age_60_69_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 591429.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e884ef403c95938c7ebf961b"
+        },
+        {
+          "name": "ons.population.age_60_69_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 677922.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd4d62d07376896553d9fb66"
+        },
+        {
+          "name": "ons.population.age_60_69_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 744651.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f77f96051d8340645148d138"
+        },
+        {
+          "name": "ons.population.age_60_69_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 787666.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e9f63f0939b77a41ec815de0"
+        },
+        {
+          "name": "ons.population.age_60_69_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 1089421.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8667b0358441f18c2f8e548"
+        },
+        {
+          "name": "ons.population.age_60_69_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 736639.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f923cb193de625676c40b5c4"
+        },
+        {
+          "name": "ons.population.age_60_69_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 401775.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f518ad65099be8a424a62142"
+        },
+        {
+          "name": "ons.population.age_60_69_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 721727.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e893656e104d3c1c375fa5e7"
+        },
+        {
+          "name": "ons.population.age_60_69_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 223111.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f9f6e8f32b460fefc304aeee"
         }
       ]
     },
@@ -6466,14 +9114,148 @@
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.age_70_79_by_region",
+          "name": "ons.population.age_70_79_by_region@E12000001",
           "status": "active",
           "matched_fact_count_overall": 20,
           "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 5998605.0,
+          "resolved_value": 265573.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_ffd4d3a0d7b8b5e4667d53d8"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f135bc83bf0e2495ccab922b"
+        },
+        {
+          "name": "ons.population.age_70_79_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 669277.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f18853f5a9046c59334188d3"
+        },
+        {
+          "name": "ons.population.age_70_79_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 504131.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f71c0090e322cc6b02a80193"
+        },
+        {
+          "name": "ons.population.age_70_79_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 466530.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f1eaa2a27d34d75f4fcaf147"
+        },
+        {
+          "name": "ons.population.age_70_79_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 528207.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f6ed607ecc20a6bd1c0c8bef"
+        },
+        {
+          "name": "ons.population.age_70_79_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 599882.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ef2c110c9bb5462379338b17"
+        },
+        {
+          "name": "ons.population.age_70_79_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 485057.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d9b7f415855dd808a1aee77c"
+        },
+        {
+          "name": "ons.population.age_70_79_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 865392.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dea0c6655095781f862cf7ac"
+        },
+        {
+          "name": "ons.population.age_70_79_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 618254.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e8898137aad748593321b2fb"
+        },
+        {
+          "name": "ons.population.age_70_79_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 321668.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f1de159eac6f90c69f7aef22"
+        },
+        {
+          "name": "ons.population.age_70_79_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 519252.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f506930ca553f609fe076c9c"
+        },
+        {
+          "name": "ons.population.age_70_79_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 155382.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ec559b1c9b44b3acc8de9073"
         }
       ]
     },
@@ -6481,14 +9263,148 @@
       "status": "active",
       "candidates": [
         {
-          "name": "ons.population.age_80_89_by_region",
+          "name": "ons.population.age_80_89_by_region@E12000001",
           "status": "active",
           "matched_fact_count_overall": 20,
           "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 2965168.0,
+          "resolved_value": 122118.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f2dffa4221fe14e9138365b0"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eec7f31aac48f686e0d9a343"
+        },
+        {
+          "name": "ons.population.age_80_89_by_region@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 324141.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f5dcf6bfa6186fc6200bb9cd"
+        },
+        {
+          "name": "ons.population.age_80_89_by_region@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 243274.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ed30948324557f6bd25a0064"
+        },
+        {
+          "name": "ons.population.age_80_89_by_region@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 225626.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f32be81803e3b527361467e0"
+        },
+        {
+          "name": "ons.population.age_80_89_by_region@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 275030.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f252d1b20801bc91a40a9a12"
+        },
+        {
+          "name": "ons.population.age_80_89_by_region@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 305691.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d387c1edf10113b2b8602fc3"
+        },
+        {
+          "name": "ons.population.age_80_89_by_region@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 237061.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fa7d5971f83d3ece501a33c7"
+        },
+        {
+          "name": "ons.population.age_80_89_by_region@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 447958.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bb61f66f5159481b73615674"
+        },
+        {
+          "name": "ons.population.age_80_89_by_region@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 313605.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ea5f3461bbda1967761f0d48"
+        },
+        {
+          "name": "ons.population.age_80_89_by_region@W92000004",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "W92000004",
+          "resolved_period": 2025,
+          "resolved_value": 154319.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d766d2003f1fd56635d53589"
+        },
+        {
+          "name": "ons.population.age_80_89_by_region@S92000003",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "S92000003",
+          "resolved_period": 2025,
+          "resolved_value": 238904.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f206015a88100a72b83bbe9f"
+        },
+        {
+          "name": "ons.population.age_80_89_by_region@N92000002",
+          "status": "active",
+          "matched_fact_count_overall": 20,
+          "matched_fact_count_at_or_before_period": 20,
+          "geography_level": "country",
+          "geography_id": "N92000002",
+          "resolved_period": 2025,
+          "resolved_value": 77441.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb5795d1ea12a7a7005a9ee9"
         }
       ]
     },
@@ -7258,14 +10174,112 @@
       "status": "active",
       "candidates": [
         {
-          "name": "voa.council_tax_stock.band_a",
+          "name": "voa.council_tax_stock.band_a@E12000001",
           "status": "active",
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 6103320.0,
+          "resolved_value": 667540.0,
           "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_401f12d7af649e0fd5779ac4"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3d64b9c8ee0b42435cba72a1"
+        },
+        {
+          "name": "voa.council_tax_stock.band_a@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 1386260.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ac00f27785b7e0806ac70198"
+        },
+        {
+          "name": "voa.council_tax_stock.band_a@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 1070830.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd338a9f2aabd878385b0c0b"
+        },
+        {
+          "name": "voa.council_tax_stock.band_a@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 804340.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_def10973faec0fe9fa09aa42"
+        },
+        {
+          "name": "voa.council_tax_stock.band_a@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 786010.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ecf0bb968b9ffa7647f930f8"
+        },
+        {
+          "name": "voa.council_tax_stock.band_a@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 403180.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cb8a20afb3bc7fba95459372"
+        },
+        {
+          "name": "voa.council_tax_stock.band_a@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 144550.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_09f13c8a14b446d6f6c1c62c"
+        },
+        {
+          "name": "voa.council_tax_stock.band_a@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 367610.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3291e358aff521b0dab57647"
+        },
+        {
+          "name": "voa.council_tax_stock.band_a@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 473020.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c13e9668105786f6669a4acd"
         }
       ]
     },
@@ -7288,14 +10302,112 @@
       "status": "active",
       "candidates": [
         {
-          "name": "voa.council_tax_stock.band_b",
+          "name": "voa.council_tax_stock.band_b@E12000001",
           "status": "active",
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 5016580.0,
+          "resolved_value": 206790.0,
           "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_56854712efa30950d408790e"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8955ef23164ec04f5006a161"
+        },
+        {
+          "name": "voa.council_tax_stock.band_b@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 705450.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8b3524ef2243749e4cd0784f"
+        },
+        {
+          "name": "voa.council_tax_stock.band_b@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 514190.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b2eaeec372723931bade3b3b"
+        },
+        {
+          "name": "voa.council_tax_stock.band_b@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 505610.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c5802e125aec9727ec678f30"
+        },
+        {
+          "name": "voa.council_tax_stock.band_b@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 654140.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ddf4c74a73dfb8e143e899e2"
+        },
+        {
+          "name": "voa.council_tax_stock.band_b@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 598950.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_48d6f0b6906977c144e84bd9"
+        },
+        {
+          "name": "voa.council_tax_stock.band_b@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 499130.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7053c8cbf35cb3022447b31c"
+        },
+        {
+          "name": "voa.council_tax_stock.band_b@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 687430.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_17295fc2e139d180287c2014"
+        },
+        {
+          "name": "voa.council_tax_stock.band_b@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 644890.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c14843f97601d160be0a9516"
         }
       ]
     },
@@ -7318,14 +10430,112 @@
       "status": "active",
       "candidates": [
         {
-          "name": "voa.council_tax_stock.band_c",
+          "name": "voa.council_tax_stock.band_c@E12000001",
           "status": "active",
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 5654450.0,
+          "resolved_value": 196180.0,
           "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_fc068d151c19fb214f6df036"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b7a6d8a559ed5817e289ab89"
+        },
+        {
+          "name": "voa.council_tax_stock.band_c@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 616070.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_afec3692548eb58848eb4f74"
+        },
+        {
+          "name": "voa.council_tax_stock.band_c@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 432290.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_22cfbecd7bd215e7751e349d"
+        },
+        {
+          "name": "voa.council_tax_stock.band_c@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 403840.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_978dcbbd8663990bdcfb461d"
+        },
+        {
+          "name": "voa.council_tax_stock.band_c@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 526260.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dce3b1093a753675fa284f80"
+        },
+        {
+          "name": "voa.council_tax_stock.band_c@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 739570.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6c659cd734444cfdd1d651c6"
+        },
+        {
+          "name": "voa.council_tax_stock.band_c@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 1040280.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fa46132ed0107a360c3a549d"
+        },
+        {
+          "name": "voa.council_tax_stock.band_c@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 1075940.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bf4a77b8455bb6aea85b760e"
+        },
+        {
+          "name": "voa.council_tax_stock.band_c@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 624030.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e87540eb97f29cacf120fd3e"
         }
       ]
     },
@@ -7348,14 +10558,112 @@
       "status": "active",
       "candidates": [
         {
-          "name": "voa.council_tax_stock.band_d",
+          "name": "voa.council_tax_stock.band_d@E12000001",
           "status": "active",
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 4035220.0,
+          "resolved_value": 113460.0,
           "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0eb041a728d3c583d0687fbd"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0b5fcf256d38909389e3b57a"
+        },
+        {
+          "name": "voa.council_tax_stock.band_d@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 363970.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_84fe918f408f544492aa90a5"
+        },
+        {
+          "name": "voa.council_tax_stock.band_d@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 249530.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f5aa30370c6bac96d28ec17c"
+        },
+        {
+          "name": "voa.council_tax_stock.band_d@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 247850.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_949ba52ffe15cdfd798ce808"
+        },
+        {
+          "name": "voa.council_tax_stock.band_d@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 302500.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ef0247f963abaffbebf59b6c"
+        },
+        {
+          "name": "voa.council_tax_stock.band_d@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 506540.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b02f55ab569e67c1f7145d29"
+        },
+        {
+          "name": "voa.council_tax_stock.band_d@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 975750.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_88a75ec79293da0f82a9d3af"
+        },
+        {
+          "name": "voa.council_tax_stock.band_d@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 843560.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_58473f911762c6ae3902d2a8"
+        },
+        {
+          "name": "voa.council_tax_stock.band_d@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 432070.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3bcfafa6b488ed08f9c2e9f8"
         }
       ]
     },
@@ -7378,14 +10686,112 @@
       "status": "active",
       "candidates": [
         {
-          "name": "voa.council_tax_stock.band_e",
+          "name": "voa.council_tax_stock.band_e@E12000001",
           "status": "active",
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 2528140.0,
+          "resolved_value": 61090.0,
           "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b0fdb6a16964ec71bf031981"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1e99bd497e2895709dc0f9e1"
+        },
+        {
+          "name": "voa.council_tax_stock.band_e@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 216990.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_277ec35c395ecb02939ee720"
+        },
+        {
+          "name": "voa.council_tax_stock.band_e@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 158600.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_debd66d3583f9f1fecd696e2"
+        },
+        {
+          "name": "voa.council_tax_stock.band_e@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 154970.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4dce9fd786ef519556404c50"
+        },
+        {
+          "name": "voa.council_tax_stock.band_e@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 193700.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_714cfafa915641757589b604"
+        },
+        {
+          "name": "voa.council_tax_stock.band_e@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 313840.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_674cf0835be136cab85f54b8"
+        },
+        {
+          "name": "voa.council_tax_stock.band_e@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 585130.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_15f64c7393430a54f6dfd9a9"
+        },
+        {
+          "name": "voa.council_tax_stock.band_e@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 551730.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c87704523b66f69de2fd8c5b"
+        },
+        {
+          "name": "voa.council_tax_stock.band_e@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 292090.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d0ff0b4ce381a7faad755d61"
         }
       ]
     },
@@ -7408,14 +10814,112 @@
       "status": "active",
       "candidates": [
         {
-          "name": "voa.council_tax_stock.band_f",
+          "name": "voa.council_tax_stock.band_f@E12000001",
           "status": "active",
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 1343220.0,
+          "resolved_value": 26600.0,
           "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a99d214f6f55e7f54a423a71"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_212b21ea2b32d2e3d2bd521a"
+        },
+        {
+          "name": "voa.council_tax_stock.band_f@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 104330.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5642442033f8077a90875803"
+        },
+        {
+          "name": "voa.council_tax_stock.band_f@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 75690.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6dacbd8557b665d6ee0740ca"
+        },
+        {
+          "name": "voa.council_tax_stock.band_f@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 73920.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_712e802adea1d16382695b03"
+        },
+        {
+          "name": "voa.council_tax_stock.band_f@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 105630.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6749abdcd4e56c1884091b82"
+        },
+        {
+          "name": "voa.council_tax_stock.band_f@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 172960.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8d6432f10bfb6f4b29d4cb36"
+        },
+        {
+          "name": "voa.council_tax_stock.band_f@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 298920.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ab0f7a8926ecd169382ff1dc"
+        },
+        {
+          "name": "voa.council_tax_stock.band_f@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 337260.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eb725155aaa609877ae1e7a9"
+        },
+        {
+          "name": "voa.council_tax_stock.band_f@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 147920.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_47c47b1375052fc7c190e314"
         }
       ]
     },
@@ -7438,14 +10942,112 @@
       "status": "active",
       "candidates": [
         {
-          "name": "voa.council_tax_stock.band_g",
+          "name": "voa.council_tax_stock.band_g@E12000001",
           "status": "active",
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 911160.0,
+          "resolved_value": 14600.0,
           "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_5d2bfddb2effd2adc195fcb5"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_98a20120bac3eb106ff70d1e"
+        },
+        {
+          "name": "voa.council_tax_stock.band_g@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 65750.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3f82b93e0aebf97b2b0a550b"
+        },
+        {
+          "name": "voa.council_tax_stock.band_g@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 42180.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e522a6efe40eb9186b7e7557"
+        },
+        {
+          "name": "voa.council_tax_stock.band_g@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 39400.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2a765502b5ba10e73f89a515"
+        },
+        {
+          "name": "voa.council_tax_stock.band_g@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 62780.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ea2217959cff56b7d2e6bba3"
+        },
+        {
+          "name": "voa.council_tax_stock.band_g@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 113720.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c63aeb7ddeced2c169b053aa"
+        },
+        {
+          "name": "voa.council_tax_stock.band_g@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 225170.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_477dda108c5db0ff25eb19e9"
+        },
+        {
+          "name": "voa.council_tax_stock.band_g@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 265610.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_60a509a12483e481e3c25d5f"
+        },
+        {
+          "name": "voa.council_tax_stock.band_g@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 81960.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2479fbb4c844d88ebb159241"
         }
       ]
     },
@@ -7468,14 +11070,112 @@
       "status": "active",
       "candidates": [
         {
-          "name": "voa.council_tax_stock.band_h",
+          "name": "voa.council_tax_stock.band_h@E12000001",
           "status": "active",
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 154470.0,
+          "resolved_value": 1570.0,
           "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_67f3a58d14df489820a9f9ab"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3dc74673765985ec461506ca"
+        },
+        {
+          "name": "voa.council_tax_stock.band_h@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 7350.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e577d7bbb3752de28cdbd97b"
+        },
+        {
+          "name": "voa.council_tax_stock.band_h@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 3770.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ef2cc35f77ed4598a04c5526"
+        },
+        {
+          "name": "voa.council_tax_stock.band_h@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 3480.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0a7428361eb1fdc474980d92"
+        },
+        {
+          "name": "voa.council_tax_stock.band_h@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 6170.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fbba262d92b5f637e78ab6c0"
+        },
+        {
+          "name": "voa.council_tax_stock.band_h@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 14830.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_59fff7b3db7c983cfc79a50b"
+        },
+        {
+          "name": "voa.council_tax_stock.band_h@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 68500.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b5b4366ff7c8bb489bf639a0"
+        },
+        {
+          "name": "voa.council_tax_stock.band_h@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 40390.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1cc7f916cf9be218cf410040"
+        },
+        {
+          "name": "voa.council_tax_stock.band_h@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 8430.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_56df761829398cbf0863dbf5"
         }
       ]
     },
@@ -7498,14 +11198,112 @@
       "status": "active",
       "candidates": [
         {
-          "name": "voa.council_tax_stock.total",
+          "name": "voa.council_tax_stock.total@E12000001",
           "status": "active",
           "matched_fact_count_overall": 1,
           "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000001",
           "resolved_period": 2025,
-          "resolved_value": 25746570.0,
+          "resolved_value": 1287830.0,
           "resolved_fact_period": "2025-03",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_a9db0e47afe1d9b6eca42b97"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d264f11c76d5ad9588b7ebe4"
+        },
+        {
+          "name": "voa.council_tax_stock.total@E12000002",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000002",
+          "resolved_period": 2025,
+          "resolved_value": 3466140.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4c0e124f549e52b53393a53d"
+        },
+        {
+          "name": "voa.council_tax_stock.total@E12000003",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000003",
+          "resolved_period": 2025,
+          "resolved_value": 2547080.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a853f79f7409dbf0b2e2a85b"
+        },
+        {
+          "name": "voa.council_tax_stock.total@E12000004",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000004",
+          "resolved_period": 2025,
+          "resolved_value": 2233400.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2c4835df758e5304e0fd8e5f"
+        },
+        {
+          "name": "voa.council_tax_stock.total@E12000005",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000005",
+          "resolved_period": 2025,
+          "resolved_value": 2637190.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4e695a253e47694a97651a10"
+        },
+        {
+          "name": "voa.council_tax_stock.total@E12000006",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000006",
+          "resolved_period": 2025,
+          "resolved_value": 2863600.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_77119abfc2f7609862d34ade"
+        },
+        {
+          "name": "voa.council_tax_stock.total@E12000007",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000007",
+          "resolved_period": 2025,
+          "resolved_value": 3837430.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9dbee719ce6dcd05600cd217"
+        },
+        {
+          "name": "voa.council_tax_stock.total@E12000008",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000008",
+          "resolved_period": 2025,
+          "resolved_value": 4169520.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3b4504e4d7881843f594af0a"
+        },
+        {
+          "name": "voa.council_tax_stock.total@E12000009",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "geography_level": "region",
+          "geography_id": "E12000009",
+          "resolved_period": 2025,
+          "resolved_value": 2704390.0,
+          "resolved_fact_period": "2025-03",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_424f337c329feb3a9d11c5f0"
         }
       ]
     },
@@ -8198,8 +11996,14 @@
     {
       "family": "council_tax_stock",
       "status": "active_declared_rows",
-      "active_reference_count": 18,
-      "signed_rationale": "VOA (England and Wales) and Scottish Government CTAXBASE (Scotland) council-tax stock bands are declared as nine explicit target rows each, including total, and each resolves with its country-level geography and band pin."
+      "active_reference_count": 90,
+      "signed_rationale": "VOA (England) and Scottish Government CTAXBASE (Scotland) council-tax stock bands are declared as nine explicit target rows each, including total. The Scottish rows resolve with their country-level geography and band pin; the English rows fan out over the nine English regions of the region tier (microcosm#905), each cell resolving VOA's region-stamped band count with the same band pin."
+    },
+    {
+      "family": "ons_population",
+      "status": "active_region_tier_fanout",
+      "active_reference_count": 108,
+      "signed_rationale": "The nine ONS population-by-age-band targets fan out over the twelve-area region tier (nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level), one reference per area, each scoped on the spine by a household-region predicate and placed at the region grain of the cross-grain rule (microcosm#905). The former single UK-wide row per band is retired: the tier sums to it within the same publication."
     }
   ],
   "signed_exclusion_rationales": [

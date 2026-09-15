@@ -20,7 +20,7 @@ _UNRELATED_MODULES = (
 )
 # SHA256 of compact JSON for all 456 ordered entries from ec3b306f3f9742ff...
 # This includes the existing duplicate ladder_vs_chronicle_household_dispersion.
-_ORDERED_ALL_SHA256 = "282baaa8103b6a68ec916669dc9b96909d6faf0a9beecdbb8359df12f128f66c"
+_ORDERED_ALL_SHA256 = "b1b27eaa0204f49402b2883b80c996ea460cbec388ebe64644a688aca430552d"
 
 
 def _unrelated_modules() -> set[str]:
@@ -89,8 +89,8 @@ def test_discovery_preserves_the_frozen_ordered_export_contract_without_resoluti
 
     discovered = dir(package)
 
-    assert len(package.__all__) == 456
-    assert len(set(package.__all__)) == 455
+    assert len(package.__all__) == 458
+    assert len(set(package.__all__)) == 457
     assert package.__all__.count("ladder_vs_chronicle_household_dispersion") == 2
     encoded = json.dumps(package.__all__, separators=(",", ":")).encode()
     assert hashlib.sha256(encoded).hexdigest() == _ORDERED_ALL_SHA256

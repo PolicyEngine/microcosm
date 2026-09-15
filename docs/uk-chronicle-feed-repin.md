@@ -41,6 +41,14 @@ Verify the complete compiled target diff on both surfaces, including targets
 outside the intended policy area, and record the value moves in the changelog
 fragment.
 
+Two-level (country + region) contract targets fan out over the region tier
+(`UK_REGION_TIER` in `microcosm.calibrate.geography_constants`), one reference per area
+(microcosm#905); their cells resolve Chronicle's region- and country-stamped
+facts, so a re-pin must carry all twelve areas or the national generator
+refuses. The cross-grain legs of English constituencies and authorities come
+from `region_code_by_area` in `local_area_crosswalk.json`, regenerated from
+the sha-pinned ladder with `tools/generate_uk_local_area_crosswalk.py`.
+
 The national calibration runner refuses a feed whose facts or manifest digest
 differs from the committed pin. `--allow-unpinned-feed` is an explicit
 diagnostic override recorded in the run manifest; it is not a re-pin procedure.

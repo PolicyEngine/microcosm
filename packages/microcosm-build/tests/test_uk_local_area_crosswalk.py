@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.calibrate.geography_constants import UK_REGION_TIER
 from tools.generate_uk_local_area_crosswalk import build_local_area_crosswalk
 
 LADDER_ARTIFACT = Path("build/uk/uk_oa_ladder_2021.npz")
@@ -102,3 +103,28 @@ def test_uk_local_area_crosswalk_pins_rosters_and_vintages() -> None:
         "S12",
         "W06",
     }
+
+
+def test_uk_local_area_crosswalk_carries_region_tier_membership() -> None:
+    resource = _load()
+    tier = {code for _, code in UK_REGION_TIER}
+    nation_by_prefix = {"W": "W92000004", "S": "S92000003", "N": "N92000002"}
+    for payload in resource["levels"].values():
+        by_area = payload["region_code_by_area"]
+        assert set(by_area) == set(payload["area_ids"])
+        assert set(by_area.values()) <= tier
+        for area_id, region in by_area.items():
+            if area_id.startswith("E"):
+                assert region.startswith("E12"), (area_id, region)
+            else:
+                assert region == nation_by_prefix[area_id[0]], (area_id, region)
+    constituency = resource["levels"]["constituency"]["region_code_by_area"]
+    local_authority = resource["levels"]["local_authority"]["region_code_by_area"]
+    # London: 75 constituencies and 33 authorities (32 boroughs + the City);
+    # the North East holds 12 authorities. Nation counts follow the rosters.
+    assert sum(region == "E12000007" for region in constituency.values()) == 75
+    assert sum(region == "E12000007" for region in local_authority.values()) == 33
+    assert sum(region == "E12000001" for region in local_authority.values()) == 12
+    assert sum(region == "S92000003" for region in local_authority.values()) == 32
+    assert sum(region == "W92000004" for region in local_authority.values()) == 22
+    assert sum(region == "N92000002" for region in local_authority.values()) == 11

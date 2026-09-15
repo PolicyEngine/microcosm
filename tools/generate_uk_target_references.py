@@ -23,6 +23,10 @@ from microcosm.build.target_reference_authoring import (
 )
 from microcosm.build.uk_runtime.ledger_targets import UK_UPRATING_APPLIERS
 from microcosm.build.uk_runtime.uc_source_periods import uc_source_month_metadata
+from microcosm.calibrate.geography_constants import (
+    UK_REGION_TIER,
+    UK_REGION_TIER_ENUM,
+)
 
 UK_GEOGRAPHY_IDS = {
     "uk": "K02000001",
@@ -107,6 +111,8 @@ def main() -> None:
     config = TargetReferenceAuthoringConfig(
         target_period=args.period,
         geography_pins=_geography_pins(contract),
+        geography_fanout_by_target_id=_geography_fanout(contract),
+        geography_fanout_metadata=_geography_fanout_metadata,
         fanout_name=lambda target, fact: _fanout_name(
             target,
             fact,
@@ -197,15 +203,101 @@ def _geography_pins(contract: Mapping[str, Any]) -> dict[str, dict[str, str]]:
     exists. Every other national target pins at country level.
     """
 
+    fanned_out = _geography_fanout(contract)
     pins: dict[str, dict[str, str]] = {}
     for target in contract.get("targets", ()):
+        target_id = str(target["target_id"])
+        if target_id in fanned_out:
+            # A two-level target takes its geographies from the region tier
+            # roster (microcosm#905); a single pin would collapse it back to
+            # the country row the roster replaces.
+            continue
         levels = tuple(str(level) for level in target.get("geography_levels") or ())
         level = "region" if levels == ("region",) else "country"
-        pins[str(target["target_id"])] = {
+        pins[target_id] = {
             "geography_level": level,
             "geography_id": _geography_id_for_target(target),
         }
     return pins
+
+
+#: The declared level set that fans out over the region tier instead of
+#: pinning one country: a target that is published both nationally and by
+#: region (ONS mid-year population by age band, VOA council-tax stock by band).
+REGION_TIER_FANOUT_LEVELS = frozenset({"country", "region"})
+
+
+def _geography_fanout(
+    contract: Mapping[str, Any],
+) -> dict[str, tuple[tuple[str, str], ...]]:
+    """Region-tier cells for every two-level (country + region) target.
+
+    The nine English regions are always in; the three nations join only when
+    the binding does not already pin a country itself (the VOA stock bindings
+    filter ``country == ENGLAND`` because the Welsh, Scottish and Northern
+    Irish stocks are separate publications and contract families), so a
+    nation cell is never a row the binding would measure as zero.
+    """
+
+    fanout: dict[str, tuple[tuple[str, str], ...]] = {}
+    for target in contract.get("targets", ()):
+        levels = {str(level) for level in target.get("geography_levels") or ()}
+        if levels != REGION_TIER_FANOUT_LEVELS:
+            continue
+        cells = [(level, code) for level, code in UK_REGION_TIER if level == "region"]
+        if not _binding_pins_country(target["bindings"]["policyengine"]):
+            cells.extend(
+                (level, code) for level, code in UK_REGION_TIER if level == "country"
+            )
+        fanout[str(target["target_id"])] = tuple(cells)
+    return fanout
+
+
+def _binding_pins_country(binding: Mapping[str, Any]) -> bool:
+    predicates = [
+        *binding.get("filters", ()),
+        *binding.get("household_conditions", ()),
+    ]
+    return any(
+        str(predicate.get("variable") or predicate.get("concept") or "") == "country"
+        for predicate in predicates
+        if isinstance(predicate, Mapping)
+    )
+
+
+def _geography_fanout_metadata(
+    target: Mapping[str, Any],
+    geography_level: str,
+    geography_id: str,
+    entity: str,
+) -> dict[str, str]:
+    """Scope one region-tier row to its area on the spine.
+
+    The predicate compares the household's ``region`` enum (FRS ``gvtregno``
+    through ``REGION_MAP``) with the tier code's enum name and projects the
+    household match to the binding's own entity, the way the incumbent's
+    ``compute_regional_age`` masks persons by their household's region. The
+    ``cross_grain_grain`` stamp places every tier row, the three nation rows
+    included, at the ``region`` grain of the cross-grain rule; Chronicle's
+    ``country`` stamp on those three stays on the selector and the ledger
+    metadata untouched.
+    """
+
+    del target, geography_level
+    predicate = {
+        "entity": "household",
+        "variable": "region",
+        "operator": "==",
+        "value": UK_REGION_TIER_ENUM[geography_id],
+        "reduce": "any",
+        "map_to": entity,
+    }
+    return {
+        "geography_predicate": json.dumps(
+            predicate, sort_keys=True, separators=(",", ":")
+        ),
+        "cross_grain_grain": "region",
+    }
 
 
 SCOTGOV_COUNCIL_TAX_STOCK_PREFIX = "scotgov.council_tax_stock."
@@ -508,10 +600,32 @@ def _add_uk_membership_accounting(
             "status": "active_declared_rows",
             "active_reference_count": council_tax_count,
             "signed_rationale": (
-                "VOA (England and Wales) and Scottish Government CTAXBASE "
-                "(Scotland) council-tax stock bands are declared as nine "
-                "explicit target rows each, including total, and each resolves "
-                "with its country-level geography and band pin."
+                "VOA (England) and Scottish Government CTAXBASE (Scotland) "
+                "council-tax stock bands are declared as nine explicit target "
+                "rows each, including total. The Scottish rows resolve with "
+                "their country-level geography and band pin; the English rows "
+                "fan out over the nine English regions of the region tier "
+                "(microcosm#905), each cell resolving VOA's region-stamped "
+                "band count with the same band pin."
+            ),
+        },
+        {
+            "family": "ons_population",
+            "status": "active_region_tier_fanout",
+            "active_reference_count": sum(
+                1
+                for reference in references
+                if reference["metadata"]["contract_target_id"].endswith("_by_region")
+            ),
+            "signed_rationale": (
+                "The nine ONS population-by-age-band targets fan out over the "
+                "twelve-area region tier (nine English regions at Chronicle's "
+                "region level, Wales, Scotland and Northern Ireland at country "
+                "level), one reference per area, each scoped on the spine by "
+                "a household-region predicate and placed at the region grain "
+                "of the cross-grain rule (microcosm#905). The former single "
+                "UK-wide row per band is retired: the tier sums to it within "
+                "the same publication."
             ),
         },
     ]

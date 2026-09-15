@@ -1095,7 +1095,9 @@ class TestExistingPackagesGeneralize:
         spec = load_country_spec("uk")
 
         references = {reference.name: reference for reference in spec.target_references}
-        assert len(references) == 424
+        assert (
+            len(references) == 595
+        )  # microcosm#905: 424 - 18 country rows + 189 region-tier cells
         assert references["obr.esa"].value_operation == "sum"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"

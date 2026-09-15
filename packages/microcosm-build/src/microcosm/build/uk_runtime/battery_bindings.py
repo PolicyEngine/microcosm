@@ -63,6 +63,7 @@ from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
+    align_uk_national_registry_parity_fixture,
 )
 from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
@@ -1256,7 +1257,9 @@ def _load_ledger_compile_parity_fixture(fixture_resource: str) -> dict[str, Any]
     )
     if fixture_resource == LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE:
         return align_uk_local_registry_parity_fixture(fixture)
-    return fixture
+    # The national fixtures spell the incumbent's regional rows their own way;
+    # the receipts are signed against the region-tier names (microcosm#905).
+    return align_uk_national_registry_parity_fixture(fixture)
 
 
 def _ledger_compile_parity_evidence(

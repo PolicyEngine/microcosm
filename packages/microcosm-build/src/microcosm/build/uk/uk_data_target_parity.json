@@ -159,19 +159,14 @@
       "status": "ported_local_declared"
     },
     {
-      "classification": "cross_grain_grain_gap",
+      "classification": "cross_grain_rule",
       "concern_id": "cross_grain_council_tax_stock_england_region",
       "covers": [
         "policyengine_uk_data.targets.sources.voa_council_tax"
       ],
-      "evidence": "Microcosm voa.council_tax_stock.band_* geography_levels include region; CrossGrainRule.grain_precedence is country,constituency,la.",
-      "fence": {
-        "origin": "The national contract materializes English VOA stock by region and Wales by country.",
-        "purpose": "Prevent the LA solve from implicitly choosing between conflicting regional and local stock totals.",
-        "verdict_basis": "Use exact-signature country reconciliation where a country leg exists; record the England regional leg here until #802 machinery gains an adjudicated region bridge."
-      },
-      "reason": "The incumbent English VOA controls are region-grain, while the #802 rule declares only country > constituency > LA and cannot accept region rows.",
-      "status": "routed"
+      "evidence": "voa.council_tax_stock.band_* references voa.council_tax_stock.band_*@E12000001..E12000009; UK_CROSS_GRAIN_RULE declares control_grains (country, region), so the English region rows and the Scottish CTAXBASE country row share the band signature group and each authority takes its nearest covering control (test_uk_ledger_targets::test_voa_region_controls_and_the_scottish_country_control_share_the_surface); parent_geography_legs maps every E12 code to itself; English legs come from the run ladder or the crosswalk's region_code_by_area.",
+      "reason": "The English VOA stock rows fan out over the nine English regions and sit at the region grain of the cross-grain rule (country > region > constituency > la); each region is its own leg, so the LA solve reconciles to its region's published stock rather than to a single England row (microcosm#905).",
+      "status": "ported_national"
     },
     {
       "classification": "cross_grain_grain_gap",

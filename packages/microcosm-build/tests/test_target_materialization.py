@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -1096,3 +1098,130 @@ def test_declared_band_filter_dimension_breaks_the_tie():
     assert result.skipped == ()
     assert list(adapter.tables["person"]["income_band_0"]) == [1.0, 0.0, 0.0]
     assert list(adapter.tables["person"]["income_band_20"]) == [0.0, 1.0, 1.0]
+
+
+def _geography_predicate_registry(predicate: str | None) -> TargetRegistry:
+    metadata = {"contract_target_id": "adult_income"}
+    if predicate is not None:
+        metadata["geography_predicate"] = predicate
+    return TargetRegistry(
+        [
+            TargetSpec(
+                name="adult_income@LONDON",
+                entity="person",
+                measure="adult_income@LONDON",
+                value=50.0,
+                source="test",
+                metadata=metadata,
+            )
+        ],
+        country="uk",
+    )
+
+
+_ADULT_INCOME_CONTRACT = {
+    "adult_income": {
+        "bindings": {
+            "policyengine": {
+                "value_variable": "income",
+                "filters": [{"variable": "age", "operator": ">=", "value": 18}],
+            }
+        }
+    }
+}
+
+
+def test_geography_predicate_scopes_a_shared_binding_to_one_reference():
+    adapter = StubAdapter()
+    adapter.tables["person"]["region"] = np.array(["LONDON", "LONDON", "WALES"])
+    registry = _geography_predicate_registry(
+        json.dumps({"variable": "region", "operator": "==", "value": "LONDON"})
+    )
+    result = materialize_target_bindings(
+        adapter, registry, _ADULT_INCOME_CONTRACT, period=2025
+    )
+    assert result.skipped == ()
+    # The contract's age filter still applies; the predicate removes the
+    # Welsh adult, and nothing in the contract itself changed.
+    assert adapter.tables["person"]["adult_income@LONDON"].tolist() == [
+        0.0,
+        20.0,
+        0.0,
+    ]
+    assert _ADULT_INCOME_CONTRACT["adult_income"]["bindings"]["policyengine"][
+        "filters"
+    ] == [{"variable": "age", "operator": ">=", "value": 18}]
+
+
+def test_reference_without_geography_predicate_is_untouched():
+    adapter = StubAdapter()
+    registry = _geography_predicate_registry(None)
+    result = materialize_target_bindings(
+        adapter, registry, _ADULT_INCOME_CONTRACT, period=2025
+    )
+    assert result.skipped == ()
+    assert adapter.tables["person"]["adult_income@LONDON"].tolist() == [
+        0.0,
+        20.0,
+        30.0,
+    ]
+
+
+@pytest.mark.parametrize(
+    "predicate, message",
+    [
+        ("{not json", "not valid JSON"),
+        (json.dumps(["region"]), "must be a predicate object"),
+        (json.dumps({"operator": "==", "value": "LONDON"}), "naming a variable"),
+    ],
+)
+def test_malformed_geography_predicate_refuses_materialization(predicate, message):
+    adapter = StubAdapter()
+    registry = _geography_predicate_registry(predicate)
+    with pytest.raises(ValueError, match=message):
+        materialize_target_bindings(
+            adapter, registry, _ADULT_INCOME_CONTRACT, period=2025
+        )
+
+
+def test_geography_predicate_refuses_provider_bindings():
+    adapter = StubAdapter()
+    registry = _geography_predicate_registry(
+        json.dumps({"variable": "region", "operator": "==", "value": "LONDON"})
+    )
+    contract = {
+        "adult_income": {
+            "bindings": {
+                "policyengine": {
+                    "kind": "input_substitution_counterfactual",
+                    "zeroed_input": "salary_sacrifice",
+                    "output_variable": "baseline_tax",
+                }
+            }
+        }
+    }
+    with pytest.raises(ValueError, match="cannot scope a provider binding"):
+        materialize_target_bindings(adapter, registry, contract, period=2025)
+
+
+def test_geography_predicate_must_project_to_the_reference_entity():
+    adapter = StubAdapter()
+    adapter.tables["person"]["region"] = np.array(["LONDON", "LONDON", "WALES"])
+    registry = _geography_predicate_registry(
+        json.dumps(
+            {
+                "entity": "household",
+                "variable": "region",
+                "operator": "==",
+                "value": "LONDON",
+                "reduce": "any",
+                "map_to": "household",
+            }
+        )
+    )
+    # The reference measures persons; a predicate projected to households
+    # would produce a mask of the wrong length, so it refuses up front.
+    with pytest.raises(ValueError, match="projects to 'household'"):
+        materialize_target_bindings(
+            adapter, registry, _ADULT_INCOME_CONTRACT, period=2025
+        )

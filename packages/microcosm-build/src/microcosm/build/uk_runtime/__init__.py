@@ -173,6 +173,8 @@ if _TYPE_CHECKING:
         assign_uk_geography_ladder,
         expected_uk_ladder_area_support,
         load_uk_oa_ladder,
+        region_tier_by_area,
+        uk_area_region_codes,
         uk_geography_ladder_assignment_summary,
         uk_geography_ladder_gate,
         uk_region_mix,
@@ -885,6 +887,8 @@ __all__ = [
     "load_scotland_oa_population",
     "load_scotland_oa_ward_lookup",
     "load_uk_oa_ladder",
+    "region_tier_by_area",
+    "uk_area_region_codes",
     "local_authority_household_targets",
     "load_uk_local_target_census",
     "ladder_target_provenance",
@@ -1512,6 +1516,14 @@ _EXPORTS = _MappingProxyType(
         "load_uk_oa_ladder": (
             "microcosm.build.uk_runtime.geography_ladder",
             "load_uk_oa_ladder",
+        ),
+        "region_tier_by_area": (
+            "microcosm.build.uk_runtime.geography_ladder",
+            "region_tier_by_area",
+        ),
+        "uk_area_region_codes": (
+            "microcosm.build.uk_runtime.geography_ladder",
+            "uk_area_region_codes",
         ),
         "uk_geography_ladder_assignment_summary": (
             "microcosm.build.uk_runtime.geography_ladder",

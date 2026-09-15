@@ -15,6 +15,7 @@ from microcosm.build.uk_runtime.ledger_targets import (
 )
 from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
 from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate.geography_constants import UK_REGION_TIER_ENUM
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from tools.generate_uk_local_target_references import _area_signed_deferrals
@@ -36,15 +37,9 @@ def _membership() -> dict:
     )
 
 
-def test_national_voa_matrix_counts_only_england_for_every_band_and_total() -> None:
-    """The E92000001 fact must not absorb Wales/Scotland/NI household mass."""
-    rows = [
-        (country, band)
-        for country in ("ENGLAND", "WALES", "SCOTLAND", "NORTHERN_IRELAND")
-        for band in "ABCDEFGH"
-    ]
+def _region_frame(rows: list[tuple[str, str, str]]) -> Frame:
     ids = np.arange(len(rows), dtype="int64")
-    frame = Frame(
+    return Frame(
         {
             "person": pd.DataFrame(
                 {"person_id": ids, "person_benunit_id": ids, "person_household_id": ids}
@@ -53,8 +48,9 @@ def test_national_voa_matrix_counts_only_england_for_every_band_and_total() -> N
             "household": pd.DataFrame(
                 {
                     "household_id": ids,
-                    "country": [x[0] for x in rows],
-                    "council_tax_band": [x[1] for x in rows],
+                    "country": [row[0] for row in rows],
+                    "region": [row[1] for row in rows],
+                    "council_tax_band": [row[2] for row in rows],
                     "household_num_benunits": np.ones(len(rows)),
                 }
             ),
@@ -62,13 +58,14 @@ def test_national_voa_matrix_counts_only_england_for_every_band_and_total() -> N
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(np.ones(len(rows)), WeightKind.DESIGN)},
     )
+
+
+def _registry_for(prefix: str) -> tuple[list, TargetRegistry]:
     refs = [
         r
         for r in load_country_spec("uk").target_references
-        if r.name.startswith("voa.council_tax_stock.")
+        if r.name.startswith(prefix)
     ]
-    assert len(refs) == 9
-    assert all(r.ledger_selector["geography_id"] == "E92000001" for r in refs)
     registry = TargetRegistry(
         [
             TargetSpec(
@@ -84,7 +81,33 @@ def test_national_voa_matrix_counts_only_england_for_every_band_and_total() -> N
         ],
         country="uk",
     )
-    adapter = UKFrameTargetAdapter(frame)
+    return refs, registry
+
+
+def test_national_voa_matrix_counts_only_its_region_for_every_band_and_total() -> None:
+    """Each region cell must count only that region's English band households.
+
+    The English VOA stock fans out over the nine English regions
+    (microcosm#905); a Welsh, Scottish or Northern Irish household never
+    enters any cell, and a Londoner never enters the North East's.
+    """
+
+    areas = (
+        ("ENGLAND", "NORTH_EAST"),
+        ("ENGLAND", "LONDON"),
+        ("ENGLAND", "SOUTH_EAST"),
+        ("WALES", "WALES"),
+        ("SCOTLAND", "SCOTLAND"),
+        ("NORTHERN_IRELAND", "NORTHERN_IRELAND"),
+    )
+    rows = [(country, region, band) for country, region in areas for band in "ABCDEFGH"]
+    refs, registry = _registry_for("voa.council_tax_stock.")
+    assert len(refs) == 81
+    assert {r.ledger_selector["geography_level"] for r in refs} == {"region"}
+    assert sorted({r.ledger_selector["geography_id"] for r in refs}) == [
+        f"E1200000{index}" for index in range(1, 10)
+    ]
+    adapter = UKFrameTargetAdapter(_region_frame(rows))
     result = materialize_uk_ledger_targets(
         adapter, registry, period=2025, band_edge_registry=registry
     )
@@ -93,15 +116,67 @@ def test_national_voa_matrix_counts_only_england_for_every_band_and_total() -> N
         adapter.to_frame(), registry.to_target_set(), weight_entity="household"
     )
     for name, values in zip(problem.names, problem.matrix.toarray(), strict=True):
+        target_id, code = name.split("@")[:2]
         band = (
-            name.split("@")[0].rsplit("band_", 1)[-1].upper()
-            if "band_" in name
-            else None
+            target_id.rsplit("band_", 1)[-1].upper() if "band_" in target_id else None
         )
+        region = UK_REGION_TIER_ENUM[code]
         expected = [
-            country == "ENGLAND" and (band is None or b == band) for country, b in rows
+            country == "ENGLAND" and r == region and (band is None or b == band)
+            for country, r, b in rows
         ]
         np.testing.assert_array_equal(values, expected, err_msg=name)
+
+
+def test_national_ons_region_cells_count_only_their_region_at_person_grain() -> None:
+    """The region predicate is a household fact projected to each person."""
+
+    household_ids = np.arange(3, dtype="int64")
+    person_ids = np.arange(4, dtype="int64")
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": person_ids,
+                    "person_benunit_id": np.array([0, 0, 1, 2], dtype="int64"),
+                    "person_household_id": np.array([0, 0, 1, 2], dtype="int64"),
+                    "age": np.array([5.0, 40.0, 7.0, 3.0]),
+                }
+            ),
+            "benunit": pd.DataFrame({"benunit_id": household_ids}),
+            "household": pd.DataFrame(
+                {
+                    "household_id": household_ids,
+                    "region": ["LONDON", "WALES", "SCOTLAND"],
+                    "household_num_benunits": np.ones(3),
+                }
+            ),
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(np.ones(3), WeightKind.DESIGN)},
+    )
+    refs, registry = _registry_for("ons.population.age_0_9_by_region@")
+    assert len(refs) == 12
+    adapter = UKFrameTargetAdapter(frame)
+    result = materialize_uk_ledger_targets(
+        adapter, registry, period=2025, band_edge_registry=registry
+    )
+    assert not result.skipped
+    problem = build_constraint_matrix(
+        adapter.to_frame(), registry.to_target_set(), weight_entity="household"
+    )
+    # Matrix names carry the target period as a third "@" segment.
+    by_name = {
+        "@".join(name.split("@")[:2]): values
+        for name, values in zip(problem.names, problem.matrix.toarray(), strict=True)
+    }
+    prefix = "ons.population.age_0_9_by_region@"
+    # London: one child under ten; the 40-year-old is outside the band.
+    assert by_name[f"{prefix}E12000007"].tolist() == [1.0, 0.0, 0.0]
+    assert by_name[f"{prefix}W92000004"].tolist() == [0.0, 1.0, 0.0]
+    assert by_name[f"{prefix}S92000003"].tolist() == [0.0, 0.0, 1.0]
+    assert by_name[f"{prefix}N92000002"].tolist() == [0.0, 0.0, 0.0]
+    assert by_name[f"{prefix}E12000001"].tolist() == [0.0, 0.0, 0.0]
 
 
 def test_council_tax_band_cells_activate_and_defer_as_measured() -> None:

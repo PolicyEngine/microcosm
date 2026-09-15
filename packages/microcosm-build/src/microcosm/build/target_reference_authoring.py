@@ -39,6 +39,15 @@ UpratingApplier = Callable[
     ["LedgerTargetReference", "TargetRegistry"], "TargetRegistry"
 ]
 GeographyPin = Mapping[str, str]
+#: ``(target, geography_level, geography_id, entity) -> extra reference metadata``
+#: for one geography fan-out row. Values are strings (reference metadata is a
+#: string mapping); a country encodes structured values, such as a predicate,
+#: as JSON.
+GeographyFanoutMetadata = Callable[
+    [Mapping[str, Any], str, str, str], Mapping[str, str]
+]
+#: Ordered ``(geography_level, geography_id)`` pairs one target fans out over.
+GeographyFanout = tuple[tuple[str, str], ...]
 
 
 @dataclass(frozen=True)
@@ -71,6 +80,18 @@ class TargetReferenceAuthoringConfig:
         default_factory=dict
     )
     signed_exclusions_by_target_id: Mapping[str, str] = field(default_factory=dict)
+    #: Targets that fan out over a declared geography roster instead of pinning
+    #: one geography: one reference per ``(geography_level, geography_id)``,
+    #: named ``target_id@geography_id`` with its own measure column, the same
+    #: way area-grain references are authored. A target listed here must not
+    #: also carry a geography pin. Every roster cell must compile; an absent
+    #: fact refuses the run rather than deferring silently.
+    geography_fanout_by_target_id: Mapping[str, GeographyFanout] = field(
+        default_factory=dict
+    )
+    #: Optional per-row metadata for geography fan-out rows (for example the
+    #: predicate that scopes the measure to the row's geography).
+    geography_fanout_metadata: GeographyFanoutMetadata | None = None
     binding_vocabulary: frozenset[str] = frozenset()
     source_fact_feed: str = ""
     uprating_appliers: Mapping[str, UpratingApplier] = field(default_factory=dict)
@@ -187,7 +208,22 @@ def author_target_references(
     for target in reference_targets:
         target_id = str(target["target_id"])
         pin = config.geography_pins.get(target_id, {})
-        geography_pin_report[target_id] = dict(pin)
+        geography_fanout = config.geography_fanout_by_target_id.get(target_id)
+        if geography_fanout:
+            if pin:
+                raise ValueError(
+                    f"target {target_id!r} declares both a geography pin "
+                    f"{dict(pin)!r} and a geography fan-out; a fanned-out "
+                    "target takes its geography from the roster only."
+                )
+            geography_pin_report[target_id] = {
+                "geography_fanout": [
+                    {"geography_level": str(level), "geography_id": str(area_id)}
+                    for level, area_id in geography_fanout
+                ]
+            }
+        else:
+            geography_pin_report[target_id] = dict(pin)
         source_facts = _source_prefilter(fact_rows, facts_by_source, target)
         selector = _target_selector(target, pin, config)
         signed_exclusion = config.signed_exclusions_by_target_id.get(target_id)
@@ -240,6 +276,10 @@ def author_target_references(
                 "matched_fact_count_overall": len(matched),
                 "matched_fact_count_at_or_before_period": len(eligible),
             }
+            row_geography_level = str(row["metadata"].get("geography_level") or "")
+            if row_geography_level:
+                entry["geography_level"] = row_geography_level
+                entry["geography_id"] = str(row["metadata"].get("geography_id") or "")
             if reference.period_match_policy == "source_window":
                 entry["matched_fact_count_in_source_window"] = sum(
                     _assertion_allowed(reference, fact) for fact in matched
@@ -255,6 +295,15 @@ def author_target_references(
             except ValueError as error:
                 entry["status"] = _classify_deferral(error, matched, eligible)
                 entry["error"] = _compact_compile_error(entry["status"])
+                if geography_fanout:
+                    # A roster cell that does not compile is a hole in a
+                    # declared partition, not a deferral: refuse, the way the
+                    # area-grain authoring refuses an unsigned absence.
+                    raise ValueError(
+                        f"Unsigned geography fan-out absence for {target_id!r} "
+                        f"at {entry.get('geography_level')!r}/"
+                        f"{entry.get('geography_id')!r}: {entry['status']}."
+                    ) from error
             else:
                 spec = registry.specs[0]
                 resolved_period = spec.metadata.get("ledger_fact_period", "")
@@ -685,6 +734,14 @@ def _candidate_rows(
     config: TargetReferenceAuthoringConfig,
     hierarchy_catalog: Mapping[str, Any],
 ) -> Iterable[dict[str, Any]]:
+    geography_fanout = config.geography_fanout_by_target_id.get(
+        str(target["target_id"])
+    )
+    if geography_fanout:
+        yield from _geography_fanout_rows(
+            target, geography_fanout, config, hierarchy_catalog=hierarchy_catalog
+        )
+        return
     selector = _target_selector(target, geography_pin, config)
     if "groupby_dimension" in selector:
         rows = _fanout_rows(
@@ -703,6 +760,70 @@ def _candidate_rows(
         config,
         hierarchy_catalog=hierarchy_catalog,
     )
+
+
+def _geography_fanout_rows(
+    target: Mapping[str, Any],
+    areas: GeographyFanout,
+    config: TargetReferenceAuthoringConfig,
+    *,
+    hierarchy_catalog: Mapping[str, Any],
+) -> Iterable[dict[str, Any]]:
+    """One reference per roster cell, named and measured ``target_id@area``.
+
+    The selector is the contract selector plus the cell's geography, exactly
+    as a pinned reference is built, so every other declaration (value
+    operation, member count, period policy, uprating holds) follows the
+    contract unchanged. The row's metadata carries the cell's geography under
+    the same keys area-grain references use, plus whatever the country's
+    ``geography_fanout_metadata`` adds for the cell.
+    """
+
+    target_id = str(target["target_id"])
+    seen: set[str] = set()
+    for geography_level, geography_id in areas:
+        level = str(geography_level)
+        area_id = str(geography_id)
+        if not level or not area_id:
+            raise ValueError(
+                f"target {target_id!r} geography fan-out has a blank cell "
+                f"({geography_level!r}, {geography_id!r})."
+            )
+        if area_id in seen:
+            raise ValueError(
+                f"target {target_id!r} geography fan-out lists {area_id!r} twice."
+            )
+        seen.add(area_id)
+        selector = _target_selector(
+            target,
+            {"geography_level": level, "geography_id": area_id},
+            config,
+        )
+        row = _reference_row(
+            target,
+            selector,
+            config,
+            name=f"{target_id}@{area_id}",
+            hierarchy_catalog=hierarchy_catalog,
+        )
+        metadata: dict[str, str] = {
+            **row["metadata"],
+            "geography_level": level,
+            "geography_id": area_id,
+        }
+        if config.geography_fanout_metadata is not None:
+            extra = config.geography_fanout_metadata(
+                target, level, area_id, str(row["entity"])
+            )
+            for key, value in extra.items():
+                if not isinstance(value, str):
+                    raise ValueError(
+                        f"target {target_id!r} geography fan-out metadata "
+                        f"{key!r} must be a string, got {type(value).__name__}."
+                    )
+                metadata[str(key)] = value
+        row["metadata"] = metadata
+        yield row
 
 
 def _target_selector(

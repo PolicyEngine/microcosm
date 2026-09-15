@@ -603,7 +603,20 @@ _A16_UNREACHABLE_ROWS = (
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 47
+    assert len(names) == len(set(names)) == 50
+    band_h_region_cells = [
+        entry
+        for entry in exclusions
+        if entry["name"].startswith("voa.council_tax_stock.band_h@E12")
+    ]
+    assert [entry["name"] for entry in band_h_region_cells] == [
+        "voa.council_tax_stock.band_h@E12000001",
+        "voa.council_tax_stock.band_h@E12000002",
+        "voa.council_tax_stock.band_h@E12000003",
+    ]
+    assert {entry["approved_on"] for entry in band_h_region_cells} == {"2026-09-14"}
+    assert {entry["tracking"] for entry in band_h_region_cells} == {"microcosm#796"}
+    assert {entry["expires_on"] for entry in band_h_region_cells} == {"2026-11-26"}
 
     for marker, expected in _PACKAGED_EXCLUSION_CENSUS.items():
         matched = [name for name in names if marker in name]

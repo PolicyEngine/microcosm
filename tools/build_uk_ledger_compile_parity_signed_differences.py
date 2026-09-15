@@ -12,6 +12,7 @@ from microcosm.build.gates import ledger_compile_parity_signed_differences
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
+    align_uk_national_registry_parity_fixture,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
 )
@@ -382,6 +383,18 @@ def _aligned_fixture(fixture: dict) -> dict:
     return aligned
 
 
+_REGION_TIER_ONS_DRIFT_RATIONALE = (
+    "Region-tier ONS population cell (microcosm#905): the Ledger row binds the "
+    "ONS mid-year estimate by single year of age at Chronicle's region or "
+    "country stamp, held to the comparison period as identity, while the "
+    "incumbent's regional row is an ONS subnational projection rounded to the "
+    "nearest thousand. The difference is projection-versus-estimate vintage "
+    "and rounding, never area or band definition: the nine English regions "
+    "and three nations sum exactly to the retired UK-wide row of the same "
+    "publication."
+)
+
+
 def _add_signed_rationale_notes(
     report: dict[str, object],
     *,
@@ -414,6 +427,8 @@ def _add_signed_rationale_notes(
                 "baseline; it does not redatum the observations to the comparison "
                 "year or create a new year ruling."
             )
+        elif "_by_region@" in name and row.get("kind") == "calibration_drift":
+            row["reason"] = _REGION_TIER_ONS_DRIFT_RATIONALE
         elif fixture_resource != "registry_parity_fixture_2025.json":
             continue
         elif name in _CGT_OBSERVED_RATIONALES:
@@ -475,7 +490,7 @@ def _fixture_for_receipt(spec: ParityReceiptSpec) -> dict:
     fixture = _aligned_fixture(_load_fixture(spec.fixture_resource))
     if spec.surface == "local":
         return align_uk_local_registry_parity_fixture(fixture)
-    return fixture
+    return align_uk_national_registry_parity_fixture(fixture)
 
 
 def main() -> None:

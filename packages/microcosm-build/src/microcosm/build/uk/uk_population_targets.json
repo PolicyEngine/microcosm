@@ -6254,7 +6254,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "One row per geography: English regions resolve at region level, Wales/Scotland/Northern Ireland at country level; the resolved geography binds the model region filter (compute/demographics.py:22-38)."
+          "notes": "One reference per region-tier area (microcosm#905): the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Each cell is scoped on the spine by the household-region predicate the generator stamps into its reference metadata (geography_predicate), projected to the person entity, and sits at the region grain of the cross-grain rule as the control for its constituencies and authorities."
         },
         "axiom": {
           "metric_name": "ons/regional_age/0_9",
@@ -6326,7 +6326,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "One row per geography: English regions resolve at region level, Wales/Scotland/Northern Ireland at country level; the resolved geography binds the model region filter (compute/demographics.py:22-38)."
+          "notes": "One reference per region-tier area (microcosm#905): the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Each cell is scoped on the spine by the household-region predicate the generator stamps into its reference metadata (geography_predicate), projected to the person entity, and sits at the region grain of the cross-grain rule as the control for its constituencies and authorities."
         },
         "axiom": {
           "metric_name": "ons/regional_age/10_19",
@@ -6398,7 +6398,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "One row per geography: English regions resolve at region level, Wales/Scotland/Northern Ireland at country level; the resolved geography binds the model region filter (compute/demographics.py:22-38)."
+          "notes": "One reference per region-tier area (microcosm#905): the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Each cell is scoped on the spine by the household-region predicate the generator stamps into its reference metadata (geography_predicate), projected to the person entity, and sits at the region grain of the cross-grain rule as the control for its constituencies and authorities."
         },
         "axiom": {
           "metric_name": "ons/regional_age/20_29",
@@ -6470,7 +6470,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "One row per geography: English regions resolve at region level, Wales/Scotland/Northern Ireland at country level; the resolved geography binds the model region filter (compute/demographics.py:22-38)."
+          "notes": "One reference per region-tier area (microcosm#905): the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Each cell is scoped on the spine by the household-region predicate the generator stamps into its reference metadata (geography_predicate), projected to the person entity, and sits at the region grain of the cross-grain rule as the control for its constituencies and authorities."
         },
         "axiom": {
           "metric_name": "ons/regional_age/30_39",
@@ -6542,7 +6542,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "One row per geography: English regions resolve at region level, Wales/Scotland/Northern Ireland at country level; the resolved geography binds the model region filter (compute/demographics.py:22-38)."
+          "notes": "One reference per region-tier area (microcosm#905): the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Each cell is scoped on the spine by the household-region predicate the generator stamps into its reference metadata (geography_predicate), projected to the person entity, and sits at the region grain of the cross-grain rule as the control for its constituencies and authorities."
         },
         "axiom": {
           "metric_name": "ons/regional_age/40_49",
@@ -6614,7 +6614,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "One row per geography: English regions resolve at region level, Wales/Scotland/Northern Ireland at country level; the resolved geography binds the model region filter (compute/demographics.py:22-38)."
+          "notes": "One reference per region-tier area (microcosm#905): the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Each cell is scoped on the spine by the household-region predicate the generator stamps into its reference metadata (geography_predicate), projected to the person entity, and sits at the region grain of the cross-grain rule as the control for its constituencies and authorities."
         },
         "axiom": {
           "metric_name": "ons/regional_age/50_59",
@@ -6686,7 +6686,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "One row per geography: English regions resolve at region level, Wales/Scotland/Northern Ireland at country level; the resolved geography binds the model region filter (compute/demographics.py:22-38)."
+          "notes": "One reference per region-tier area (microcosm#905): the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Each cell is scoped on the spine by the household-region predicate the generator stamps into its reference metadata (geography_predicate), projected to the person entity, and sits at the region grain of the cross-grain rule as the control for its constituencies and authorities."
         },
         "axiom": {
           "metric_name": "ons/regional_age/60_69",
@@ -6758,7 +6758,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "One row per geography: English regions resolve at region level, Wales/Scotland/Northern Ireland at country level; the resolved geography binds the model region filter (compute/demographics.py:22-38)."
+          "notes": "One reference per region-tier area (microcosm#905): the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Each cell is scoped on the spine by the household-region predicate the generator stamps into its reference metadata (geography_predicate), projected to the person entity, and sits at the region grain of the cross-grain rule as the control for its constituencies and authorities."
         },
         "axiom": {
           "metric_name": "ons/regional_age/70_79",
@@ -6830,7 +6830,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "One row per geography: English regions resolve at region level, Wales/Scotland/Northern Ireland at country level; the resolved geography binds the model region filter (compute/demographics.py:22-38)."
+          "notes": "One reference per region-tier area (microcosm#905): the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level. Each cell is scoped on the spine by the household-region predicate the generator stamps into its reference metadata (geography_predicate), projected to the person entity, and sits at the region grain of the cross-grain rule as the control for its constituencies and authorities."
         },
         "axiom": {
           "metric_name": "ons/regional_age/80_89",
@@ -10277,7 +10277,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
+          "notes": "England dwelling stock proxied by households. National references fan out over the nine English regions (microcosm#905), each cell scoped by the household-region predicate in its reference metadata, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_a",
@@ -10374,7 +10374,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
+          "notes": "England dwelling stock proxied by households. National references fan out over the nine English regions (microcosm#905), each cell scoped by the household-region predicate in its reference metadata, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_b",
@@ -10471,7 +10471,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
+          "notes": "England dwelling stock proxied by households. National references fan out over the nine English regions (microcosm#905), each cell scoped by the household-region predicate in its reference metadata, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_c",
@@ -10568,7 +10568,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
+          "notes": "England dwelling stock proxied by households. National references fan out over the nine English regions (microcosm#905), each cell scoped by the household-region predicate in its reference metadata, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_d",
@@ -10665,7 +10665,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
+          "notes": "England dwelling stock proxied by households. National references fan out over the nine English regions (microcosm#905), each cell scoped by the household-region predicate in its reference metadata, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_e",
@@ -10762,7 +10762,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
+          "notes": "England dwelling stock proxied by households. National references fan out over the nine English regions (microcosm#905), each cell scoped by the household-region predicate in its reference metadata, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_f",
@@ -10859,7 +10859,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
+          "notes": "England dwelling stock proxied by households. National references fan out over the nine English regions (microcosm#905), each cell scoped by the household-region predicate in its reference metadata, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_g",
@@ -10956,7 +10956,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
+          "notes": "England dwelling stock proxied by households. National references fan out over the nine English regions (microcosm#905), each cell scoped by the household-region predicate in its reference metadata, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/band_h",
@@ -11028,7 +11028,23 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.housing.council_tax_band",
+            "operator": "in",
+            "value": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F",
+              "G",
+              "H"
+            ]
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -11047,7 +11063,7 @@
             }
           ],
           "value_variable": "household_count",
-          "notes": "England dwelling stock proxied by households. National references select E92000001, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
+          "notes": "England dwelling stock proxied by households. National references fan out over the nine English regions (microcosm#905), each cell scoped by the household-region predicate in its reference metadata, and this binding explicitly filters country == ENGLAND. Local VOA bands use the separate by_area bindings."
         },
         "axiom": {
           "metric_name": "voa/council_tax/total",
@@ -11070,7 +11086,23 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.housing.council_tax_band",
+            "operator": "in",
+            "value": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "E",
+              "F",
+              "G",
+              "H"
+            ]
+          }
+        ]
       },
       "bindings": {
         "policyengine": {

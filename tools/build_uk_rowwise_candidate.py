@@ -90,6 +90,7 @@ from microcosm.build.uk_runtime import (
     runtime_provenance,
     solve_uk_rowwise_weights_under_doctrine,
     spine_provenance_from_sidecar,
+    uk_area_region_codes,
     uk_census_household_uprating,
     uk_fit_by_family,
     uk_household_weight_kind,
@@ -1540,6 +1541,7 @@ def _build_joint_problem(
         period=period,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         census_household_uprating=census_household_uprating,
+        area_region_codes=uk_area_region_codes(assignment.ladder),
     )
     covered = {
         grain: set(values.astype(str).tolist()) for grain, values in assigned.items()
@@ -1667,6 +1669,7 @@ def _joint_dry_run_plan(
         bound_national_target_ids=_national_contract_target_ids(national_registry),
         period=joint_inputs["calibration_year"],
         reviewed_unbound_higher_targets=joint_inputs["reviewed_unbound_higher_targets"],
+        area_region_codes=uk_area_region_codes(ladder),
         census_household_uprating=joint_inputs.get("census_household_uprating"),
     )
     household = clone.frame.table("household")
@@ -1847,6 +1850,7 @@ def _build_bound_problem(
         bound_national_target_ids=BOUND_NATIONAL_TARGETS,
         period=period,
         census_household_uprating=census_household_uprating,
+        area_region_codes=uk_area_region_codes(assignment.ladder),
     )
     surface = surface.sort_values("area_code", kind="mergesort").reset_index(drop=True)
     targets = pd.DataFrame(

@@ -11,6 +11,8 @@ from typing import Any
 
 import numpy as np
 
+from microcosm.build.uk_runtime.geography_ladder import region_tier_by_area
+
 DEFAULT_LADDER_ARTIFACT = Path("build/uk/uk_oa_ladder_2021.npz")
 DEFAULT_LADDER_SUMMARY = Path("build/uk/ladder_summary.json")
 DEFAULT_OUTPUT = Path(
@@ -131,13 +133,19 @@ def _level_payload(
 ) -> dict[str, Any]:
     if code_column not in payload.files:
         raise ValueError(f"UK OA ladder artifact is missing {code_column!r}.")
-    area_ids = sorted({str(value) for value in np.asarray(payload[code_column])})
+    if "region_code" not in payload.files:
+        raise ValueError("UK OA ladder artifact is missing 'region_code'.")
+    codes = np.asarray(payload[code_column]).astype(str)
+    area_ids = sorted(set(codes))
     expected = EXPECTED_COUNTS[level]
     if len(area_ids) != expected:
         raise ValueError(
             f"UK OA ladder {level} roster has {len(area_ids)} area id(s), "
             f"expected {expected}."
         )
+    region_code_by_area = region_tier_by_area(
+        codes, np.asarray(payload["region_code"]).astype(str), level=level
+    )
     layers = metadata.get("layers") or {}
     layer = layers.get(ladder_layer) or {}
     ladder_vintage = str(layer.get("vintage") or "")
@@ -172,6 +180,7 @@ def _level_payload(
         "expected_vintage": EXPECTED_FACT_VINTAGE[level],
         "area_count": len(area_ids),
         "area_ids": area_ids,
+        "region_code_by_area": region_code_by_area,
     }
 
 

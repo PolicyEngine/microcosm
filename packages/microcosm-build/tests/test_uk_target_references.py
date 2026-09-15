@@ -38,6 +38,10 @@ from microcosm.build.uk_runtime.chronicle_feed import (
     load_uk_chronicle_feed,
 )
 from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
+from microcosm.calibrate.geography_constants import (
+    UK_REGION_TIER,
+    UK_REGION_TIER_ENUM,
+)
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from tools.build_uk_ledger_compile_parity_signed_differences import (
@@ -56,7 +60,8 @@ from tools.generate_uk_target_references import (
     _value_operation_by_target_id,
 )
 
-ACTIVE_REFERENCE_COUNT = 424
+ACTIVE_REFERENCE_COUNT = 595
+REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
 
@@ -221,21 +226,34 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         contract_target_id = reference["metadata"]["contract_target_id"]
         target = targets_by_id[contract_target_id]
         binding = target["bindings"]["policyengine"]
+        fanout_cell = reference["metadata"].get("geography_id")
 
         for key, value in target["ledger_selector"].items():
             if key == "dimension_values":
                 assert value.items() <= reference["ledger_selector"][key].items()
                 continue
             assert reference["ledger_selector"][key] == value
-        # Region-only contract targets (the DfT London bus rows) pin the
-        # publisher's region-stamped fact; everything else pins a country.
-        expected_level = (
-            "region"
-            if list(target.get("geography_levels") or ()) == ["region"]
-            else "country"
-        )
-        assert reference["ledger_selector"]["geography_level"] == expected_level
-        assert reference["ledger_selector"]["geography_id"]
+        if fanout_cell:
+            # Two-level (country + region) targets fan out over the region
+            # tier: each cell pins the tier's level for its area and is named
+            # and measured target_id@geography_id (microcosm#905).
+            assert reference["name"] == f"{contract_target_id}@{fanout_cell}"
+            assert sorted(target["geography_levels"]) == ["country", "region"]
+            assert (
+                reference["ledger_selector"]["geography_level"]
+                == (REGION_TIER_LEVEL[fanout_cell])
+            )
+            assert reference["ledger_selector"]["geography_id"] == fanout_cell
+        else:
+            # Region-only contract targets (the DfT London bus rows) pin the
+            # publisher's region-stamped fact; everything else pins a country.
+            expected_level = (
+                "region"
+                if list(target.get("geography_levels") or ()) == ["region"]
+                else "country"
+            )
+            assert reference["ledger_selector"]["geography_level"] == expected_level
+            assert reference["ledger_selector"]["geography_id"]
         assert reference["entity"] == _expected_reference_entity(target)
         expected_measure = (
             binding["metric_name"]
@@ -261,6 +279,26 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
             expected_metadata["measurement_period"] = str(binding["measurement_period"])
         if binding.get("require_matching_fact_period"):
             expected_metadata["source_period_policy"] = "exact_observation"
+        if fanout_cell:
+            expected_metadata.update(
+                {
+                    "geography_level": REGION_TIER_LEVEL[fanout_cell],
+                    "geography_id": fanout_cell,
+                    "geography_predicate": json.dumps(
+                        {
+                            "entity": "household",
+                            "variable": "region",
+                            "operator": "==",
+                            "value": UK_REGION_TIER_ENUM[fanout_cell],
+                            "reduce": "any",
+                            "map_to": _expected_reference_entity(target),
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    "cross_grain_grain": "region",
+                }
+            )
         assert reference["metadata"] == expected_metadata
         category_id = target["category_id"]
         category = resource["hierarchy"]["categories"][category_id]
@@ -629,7 +667,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 424,
+        "active": 595,
         "no_fact_at_or_before_period": 7,
         "signed_excluded": 7,
     }
@@ -668,12 +706,30 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "council_tax_stock",
             "status": "active_declared_rows",
-            "active_reference_count": 18,
+            "active_reference_count": 90,
             "signed_rationale": (
-                "VOA (England and Wales) and Scottish Government CTAXBASE "
-                "(Scotland) council-tax stock bands are declared as nine "
-                "explicit target rows each, including total, and each resolves "
-                "with its country-level geography and band pin."
+                "VOA (England) and Scottish Government CTAXBASE (Scotland) "
+                "council-tax stock bands are declared as nine explicit target "
+                "rows each, including total. The Scottish rows resolve with "
+                "their country-level geography and band pin; the English rows "
+                "fan out over the nine English regions of the region tier "
+                "(microcosm#905), each cell resolving VOA's region-stamped "
+                "band count with the same band pin."
+            ),
+        },
+        {
+            "family": "ons_population",
+            "status": "active_region_tier_fanout",
+            "active_reference_count": 108,
+            "signed_rationale": (
+                "The nine ONS population-by-age-band targets fan out over the "
+                "twelve-area region tier (nine English regions at Chronicle's "
+                "region level, Wales, Scotland and Northern Ireland at country "
+                "level), one reference per area, each scoped on the spine by "
+                "a household-region predicate and placed at the region grain "
+                "of the cross-grain rule (microcosm#905). The former single "
+                "UK-wide row per band is retired: the tier sums to it within "
+                "the same publication."
             ),
         },
     ]
@@ -1250,3 +1306,52 @@ def test_public_cgt_parity_fixture_rejects_stale_values_and_unsigned_names(mutat
         signed = [r for r in signed if r["name"] != omitted]
     gate = ledger_compile_parity_gate(actual, fixture, signed_differences=signed)
     assert not gate.passed
+
+
+def test_two_level_targets_fan_out_over_the_region_tier() -> None:
+    resource = _load_uk_resource("target_references.json")
+    membership = _load_uk_resource("target_reference_membership.json")
+    contract = _load_uk_resource("uk_population_targets.json")
+    two_level = [
+        target["target_id"]
+        for target in contract["targets"]
+        if sorted(target.get("geography_levels") or ()) == ["country", "region"]
+    ]
+    assert len(two_level) == 18
+    ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
+    voa = [target_id for target_id in two_level if target_id.startswith("voa.")]
+    assert len(ons) == 9 and len(voa) == 9
+    by_contract: dict[str, list[dict]] = {}
+    for reference in resource["target_references"]:
+        by_contract.setdefault(reference["metadata"]["contract_target_id"], []).append(
+            reference
+        )
+    tier_codes = [code for _, code in UK_REGION_TIER]
+    english = [code for code in tier_codes if code.startswith("E12")]
+    for target_id in two_level:
+        rows = by_contract[target_id]
+        cells = [row["metadata"]["geography_id"] for row in rows]
+        # The retired single country row is gone: every row is a tier cell.
+        assert all("@" in row["name"] for row in rows), target_id
+        assert cells == (tier_codes if target_id in ons else english), target_id
+        assert [row["measure"] for row in rows] == [row["name"] for row in rows]
+        assert {row["metadata"]["cross_grain_grain"] for row in rows} == {"region"}
+        for row in rows:
+            predicate = json.loads(row["metadata"]["geography_predicate"])
+            assert (
+                predicate["value"]
+                == UK_REGION_TIER_ENUM[row["metadata"]["geography_id"]]
+            )
+            assert predicate["map_to"] == row["entity"]
+        pins = membership["geography_pins"][target_id]
+        assert [cell["geography_id"] for cell in pins["geography_fanout"]] == cells
+        candidates = membership["targets"][target_id]["candidates"]
+        assert [entry["geography_id"] for entry in candidates] == cells
+        assert {entry["status"] for entry in candidates} == {"active"}
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 189
+    # The twelve ONS cells of a band sum to the retired UK row of the same
+    # publication (the 0-9 band: 7,553,013 at mid-2024).
+    zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]
+    assert sum(entry["resolved_value"] for entry in zero_to_nine["candidates"]) == (
+        7_553_013.0
+    )

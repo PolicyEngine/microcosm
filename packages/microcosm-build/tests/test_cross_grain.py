@@ -219,6 +219,8 @@ def test_absence_receipt_exists_when_no_higher_target_is_bound():
         "unbound_bridges": [],
         "empty_legs_licensed": [],
         "controls_without_lower_rows": [],
+        "delegated_legs": [],
+        "absent_middle_tier_legs": [],
         "absence": "No cross-grain inconsistencies are in force on this surface.",
     }
 
@@ -840,3 +842,205 @@ def test_ordered_payload_inside_a_filter_does_not_false_collide():
 
     assert receipt["groups"] == []
     assert receipt["absence"]
+
+
+def _tier_leg(area: str) -> str:
+    # Region areas name their leg with their first two characters (R1a -> R1);
+    # nation areas name their nation (Sa -> S).
+    return area[:2] if area.startswith("R") else area[0]
+
+
+def _tiered_rule() -> CrossGrainRule:
+    return CrossGrainRule(
+        grain_precedence=("country", "region", "la"),
+        signature_fields=("concept", "entity", "map_to", "filters"),
+        bridges=(),
+        leg_of_area=_tier_leg,
+        parent_geography_legs={
+            "UK": ("R1", "R2", "S"),
+            "S": ("S",),
+            "R1": ("R1",),
+            "R2": ("R2",),
+        },
+        control_grains=("country", "region"),
+    )
+
+
+def _tiered_signatures() -> dict[str, dict[str, object]]:
+    return {
+        target_id: _signature()
+        for target_id in ("national", "regional", "scottish", "local")
+    }
+
+
+def _pairs(receipt: dict) -> dict[str, dict]:
+    return {
+        group["inconsistency_id"].rsplit(":", 1)[1]: group
+        for group in receipt["groups"]
+    }
+
+
+def test_control_grains_let_region_and_country_controls_share_one_group():
+    """A region row parents its own authorities; a country row the rest."""
+
+    surface = pd.DataFrame(
+        [
+            ("country", "S", "scottish", 40.0),
+            ("region", "R1", "regional", 100.0),
+            ("region", "R2", "regional", 50.0),
+            ("la", "R1a", "local", 30.0),
+            ("la", "R1b", "local", 30.0),
+            ("la", "R2a", "local", 20.0),
+            ("la", "Sa", "local", 30.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface, ("scottish", "regional"), _tiered_signatures(), _tiered_rule()
+    )
+    assert reconciled["value"].tolist() == pytest.approx(
+        [40.0, 100.0, 50.0, 50.0, 50.0, 50.0, 40.0]
+    )
+    pairs = _pairs(receipt)
+    assert set(pairs) == {"country_over_region", "region_over_la", "country_over_la"}
+    # The Scottish row has no region rows on its leg: not a licence matter,
+    # it parents the Scottish authority directly.
+    assert pairs["country_over_region"]["legs"] == []
+    assert [e["parent_geography_id"] for e in receipt["absent_middle_tier_legs"]] == [
+        "S"
+    ]
+    assert [leg["parent_geography_id"] for leg in pairs["region_over_la"]["legs"]] == [
+        "R1",
+        "R2",
+    ]
+    assert [leg["parent_geography_id"] for leg in pairs["country_over_la"]["legs"]] == [
+        "S"
+    ]
+    assert receipt["delegated_legs"] == []
+    assert receipt["empty_legs_licensed"] == []
+
+
+def test_nearest_control_claims_first_and_farther_legs_are_delegated():
+    """Under a country row, region rows nest to it and authorities follow
+    their region; the country row's region legs are delegated, never
+    rescaled twice."""
+
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "national", 200.0),
+            ("region", "R1", "regional", 60.0),
+            ("region", "R2", "regional", 40.0),
+            ("la", "R1a", "local", 10.0),
+            ("la", "R2a", "local", 10.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national", "regional"),
+        _tiered_signatures(),
+        _tiered_rule(),
+        licensed_empty_legs={"local": frozenset({"S"})},
+    )
+    # Region rows rescale jointly to the UK row (100 -> 200); authorities
+    # follow their reconciled region.
+    assert reconciled["value"].tolist() == pytest.approx(
+        [200.0, 120.0, 80.0, 120.0, 80.0]
+    )
+    pairs = _pairs(receipt)
+    assert [
+        leg["parent_geography_id"] for leg in pairs["country_over_region"]["legs"]
+    ] == ["UK"]
+    assert [leg["parent_geography_id"] for leg in pairs["region_over_la"]["legs"]] == [
+        "R1",
+        "R2",
+    ]
+    assert pairs["country_over_la"]["legs"] == []
+    assert [
+        (e["parent_geography_id"], e["legs"]) for e in receipt["delegated_legs"]
+    ] == [("UK", ["R1", "R2"])]
+
+
+def test_a_control_split_between_delegated_and_live_legs_is_refused():
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "national", 200.0),
+            ("region", "R1", "regional", 60.0),
+            ("la", "R1a", "local", 10.0),
+            ("la", "Sa", "local", 10.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    with pytest.raises(ValueError, match="cannot be split across tiers"):
+        apply_cross_grain_reconciliation(
+            surface, ("national", "regional"), _tiered_signatures(), _tiered_rule()
+        )
+
+
+def test_unbound_middle_tier_rows_are_not_controls():
+    surface = pd.DataFrame(
+        [
+            ("country", "UK", "national", 200.0),
+            ("region", "R1", "regional", 60.0),
+            ("la", "R1a", "local", 10.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    reconciled, receipt = apply_cross_grain_reconciliation(
+        surface,
+        ("national",),
+        _tiered_signatures(),
+        _tiered_rule(),
+        licensed_empty_legs={"local": frozenset({"R2", "S"})},
+    )
+    # The unbound region row is out of play: the authority reconciles to the
+    # UK row and the region row is untouched.
+    assert reconciled["value"].tolist() == pytest.approx([200.0, 60.0, 200.0])
+    assert {g["winning_grain"] for g in receipt["groups"]} == {"country"}
+
+
+def test_leaf_rows_without_any_covering_control_still_refuse():
+    surface = pd.DataFrame(
+        [
+            ("region", "R1", "regional", 60.0),
+            ("la", "R1a", "local", 10.0),
+            ("la", "Sa", "local", 10.0),
+        ],
+        columns=["grain", "geography_id", "target_id", "value"],
+    )
+    with pytest.raises(ValueError, match="unparented lower-grain leg"):
+        apply_cross_grain_reconciliation(
+            surface, ("regional",), _tiered_signatures(), _tiered_rule()
+        )
+
+
+def test_control_grains_declaration_is_validated():
+    empty = pd.DataFrame(columns=["grain", "geography_id", "target_id", "value"])
+    with pytest.raises(ValueError, match="not in grain_precedence"):
+        apply_cross_grain_reconciliation(
+            empty,
+            (),
+            {},
+            CrossGrainRule(
+                grain_precedence=("country", "la"),
+                signature_fields=("concept",),
+                bridges=(),
+                leg_of_area=_tier_leg,
+                parent_geography_legs={},
+                control_grains=("country", "region"),
+            ),
+        )
+    with pytest.raises(ValueError, match="must include the top grain"):
+        apply_cross_grain_reconciliation(
+            empty,
+            (),
+            {},
+            CrossGrainRule(
+                grain_precedence=("country", "region", "la"),
+                signature_fields=("concept",),
+                bridges=(),
+                leg_of_area=_tier_leg,
+                parent_geography_legs={},
+                control_grains=("region",),
+            ),
+        )
