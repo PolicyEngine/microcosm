@@ -483,3 +483,31 @@ difference, and the agent was right.
 All late-breaking owner findings were appended to the agents' shared `CONTEXT.md`
 before any refuter or adjudicator started, so the containment result, the CI root
 causes and the maintainer sign-off reach every downstream stage.
+
+### reviewDecision is a useless readiness signal here (~03:00 UTC)
+
+Reading every PR's conversation, not just its diff, produced the finding most
+likely to prevent a bad merge:
+
+- **48 of the 50 have an empty `reviewDecision`.** Only #153 and #739 carry one
+  (both CHANGES_REQUESTED). This team posts blocking findings as issue comments
+  headed `## Blocking`, not as formal GitHub reviews.
+- **#906 is green, MERGEABLE/CLEAN, not a draft — and has an unanswered blocking
+  review from 2026-09-14 14:52.** vahid-ahmadi: "The VOA region controls and the
+  Scottish council-tax controls cannot coexist on the joint surface" — with the
+  VOA rows moved to region grain the Scottish country row wins alone and **the
+  nine English legs are unparented**, reproduced on a synthetic surface. It is
+  NOT MERGE-READY and no mechanical signal says so.
+- **#901's reviewer diagnosed it five days ago, and both causes are still
+  unfixed.** Cause 2 is the `frame_column_order` contract I found independently in
+  the CI log. Cause 1 I had missed: `weight_update.py` is a new `microcosm.graph`
+  module but `us_runtime/graph_implementation_inventory.json`'s
+  `package_rosters["microcosm.graph"]` was never updated. **Verified on the
+  current head: 18 entries, no `weight_update`** (#893 has 17, also without it).
+  `_validate_package_roster` raises and `survey_population_preparation.py` masks
+  it as `PREPARATION_ISSUANCE_REFUSED` — every ERROR in the us-p log.
+- **#413's blocking comment is the author's own**: the fit gates certify
+  calibration, not the release — Build K is 52/52 within 10% calibrated but
+  23/52 outside 10% simulated from the exported H5.
+
+Added to the agents' CONTEXT.md before the refuters started.
