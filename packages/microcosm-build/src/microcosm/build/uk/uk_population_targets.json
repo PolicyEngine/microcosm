@@ -9857,7 +9857,13 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.composition_type",
+            "equals": "lone_households_under_65"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -9898,7 +9904,13 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.composition_type",
+            "equals": "lone_households_over_65"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -9939,7 +9951,13 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.composition_type",
+            "equals": "unrelated_adult_households"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -9980,7 +9998,13 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.composition_type",
+            "equals": "couple_no_children_households"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -10021,7 +10045,13 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.composition_type",
+            "equals": "couple_under_3_children_households"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -10062,7 +10092,13 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.composition_type",
+            "equals": "couple_3_plus_children_households"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -10103,7 +10139,13 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.composition_type",
+            "equals": "couple_non_dependent_children_only_households"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -10144,7 +10186,13 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.composition_type",
+            "equals": "lone_parent_dependent_children_households"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -10185,7 +10233,13 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.composition_type",
+            "equals": "lone_parent_non_dependent_children_households"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -10226,7 +10280,13 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.household.count"
+        "concept": "uk.household.count",
+        "filters": [
+          {
+            "concept": "uk.household.composition_type",
+            "equals": "multi_family_households"
+          }
+        ]
       },
       "bindings": {
         "policyengine": {

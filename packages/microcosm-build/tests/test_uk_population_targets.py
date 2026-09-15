@@ -916,5 +916,53 @@ def test_household_composition_rows_bind_on_the_frs_relationships_column() -> No
         assert "reduce" not in condition and "entity" not in condition
         assert binding["value_variable"] == "household_count"
         assert "microcosm#791" in binding["notes"], target["target_id"]
+        # The partition is declared on the measurement too (microcosm#929):
+        # the cross-grain operator groups contract rows by their exact
+        # measurement signature, and an unfiltered household count would put
+        # these ten cells in the same group as every other household total.
+        assert target["measurement"] == {
+            "entity": "household",
+            "concept": "uk.household.count",
+            "filters": [
+                {
+                    "concept": "uk.household.composition_type",
+                    "equals": condition["value"],
+                }
+            ],
+        }, target["target_id"]
         seen.append(condition["value"])
     assert seen == list(CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS)
+
+
+def test_household_composition_cells_do_not_share_the_household_total_signature() -> (
+    None
+):
+    # microcosm#929: with `control_grains = (country, region)` (microcosm#906)
+    # every K02000001 row whose exact signature matches a lower-grain total is
+    # a control for it. The ten composition cells used to carry the bare
+    # `uk.household.count` signature and collided with the council-tax stock
+    # totals ("two different control values at grain 'country'").
+    from microcosm.build.cross_grain import _measurement_signature
+    from microcosm.build.uk_runtime.ledger_targets import UK_CROSS_GRAIN_RULE
+
+    resource = _load()
+    by_id = {target["target_id"]: target for target in resource["targets"]}
+    fields = UK_CROSS_GRAIN_RULE.signature_fields
+    composition = {
+        _measurement_signature(target, fields)
+        for target in resource["targets"]
+        if target["family"] == "ons_household_composition"
+    }
+    assert len(composition) == 10
+    unfiltered_totals = [
+        _measurement_signature(target, fields)
+        for target in resource["targets"]
+        if target["measurement"].get("concept") == "uk.household.count"
+        and not target["measurement"].get("filters")
+    ]
+    assert unfiltered_totals, "the contract still carries household totals"
+    assert composition.isdisjoint(unfiltered_totals)
+    assert by_id["scotgov.council_tax_stock.total"]["measurement"] == {
+        "entity": "household",
+        "concept": "uk.household.count",
+    }
