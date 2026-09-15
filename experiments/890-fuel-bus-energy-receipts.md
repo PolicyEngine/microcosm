@@ -565,3 +565,33 @@ code `48cf2570`, 230 s): the round-2 solve to the rounding — loss 0.01138, 95.
 self-employment 20–30k band cell at +25.1 %, left failing by María's ruling 2 pending her
 exclusion or lever. Rulings 3 (Wales fare fence) and 4 (rake-then-bind and alternative
 sources) are answered in the PR thread and await her word.
+
+### Part R — rulings 3 and 4: the Wales fare fence, rake-then-bind and microcosm#930
+
+Ruling 3 (`45aef087`): `bus_fare_spending` leaves the lcfs `support_clip` exemptions, so every
+household's draw is clipped to the LCFS donor's realised range (GBP 0 to 8,894 a year on the
+uprated 2023-24 diary) before the fare rake; the regions no fare cell levels (Wales, the raw
+chain draw) are bounded there, the raked regions move beyond donor support afterwards, and
+the column keeps no committed terminal support bound. `uk_stage_lcfs_consumption_support`
+checks the column again with a zero clipped-row allowance. spine-s4
+(`e9a572a6cfba7d14c1c202b620e227ac2e411e212cf97f596d2e7db6104b8c5a`, 430 s, content identity
+`b899f40a…`): the clip receipt shows 0 rows clipped low and 0 high over 16,288 households
+(every draw is a donor value, positive-regime fills included), the payload is identical to
+spine-s3, and the three transferred-phase stage gates pass (15 columns checked on the lcfs
+support gate). The H2 fixture, the UK `spec_sha256` (`08fbe013…`) and the gate digests were
+regenerated (`10d85464`).
+
+Ruling 4: rake and target stay together as the interim (the plan-of-record line is in
+`repos/uk-890-implementation-plan.md`), and microcosm#930 asks for the structural fix — bus
+journeys imputed from the NTS microdata (UKDS SN 5340) priced at the published revenue per
+journey, after which the #904 receipts targets constrain something the stage did not set and
+the #890 fare rake and incidence draw retire. Diagnostic reading, never bound: the frame's
+design-weight bus fares, GBP 3.99bn, against ONS 07.3.2 household spend on road passenger
+transport (buses, coaches and taxis; vendored `ons_household_expenditure_facts.json`),
+GBP 8.00bn in CY2024 and 8.60bn in CY2025 — 50 % of a concept that also carries coach and
+taxi fares, so consistent as an upper bound and not a fit.
+
+National calibration `pr-s-round4-spine-s4/` (`uk-frs-calibration-attempt-20260915T113349Z-603b100a`,
+code `45aef087`, 248 s): the round-3 solve (loss 0.01138, 95.76 % within 10 %, ESS 9,137, bus
+rows exact); `uk_aggregate_admin` passes and the battery blocks on `uk_target_fit` alone, the
+inherited self-employment 20–30k cell at +25.1 % left failing by ruling 2.
