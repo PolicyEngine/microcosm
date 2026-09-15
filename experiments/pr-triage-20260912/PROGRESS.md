@@ -401,3 +401,50 @@ call rather than relayed.
 `wf_957cf79e-597`: 30/50 evidence agents returned, 0 failures. Refuters queued
 behind the remaining evidence agents (the pipeline fills all 16 slots with
 stage-1 work first).
+
+### The containment result (~02:00 UTC) — the cleanest finding of the whole triage
+
+No prior run checked whether one open PR's HEAD is an ancestor of another's.
+Doing it for all 50 × 12 candidate pairs settles several rows by proof rather
+than by inference:
+
+```
+git rev-list --count triage/893..triage/914   -> 0     #914 ⊆ #893
+git rev-list --count triage/901..triage/918   -> 0     #918 ⊆ #901
+git rev-list --count triage/538..triage/532   -> 0     #532 ⊆ #538
+git rev-list --count triage/538..triage/534   -> 0     #534 ⊆ #538
+git rev-list --count triage/538..triage/535   -> 0     #535 ⊆ #538
+git rev-list --count triage/538..triage/536   -> 0     #536 ⊆ #538
+git rev-list --count triage/538..triage/537   -> 0     #537 ⊆ #538
+```
+
+- **#914 ⊆ #893, exactly.** #914's head `16fc6cb50` **is #893's commit 165**,
+  "Merge shared graph consolidation into target snapshots". Zero #914 commits
+  lie outside #893; #893 has 274 beyond it. The earlier "12 of 20 files
+  byte-identical, 8 differ" reading was right but understated: the 8 differ only
+  because #893 kept developing past #914. FOLD-INTO-893-LAYER is now provable
+  with one command.
+- **#918 ⊆ #901, exactly.** Zero #918 commits outside #901; #901 has 263 beyond.
+  19 of their 21 shared files are byte-identical, `decl.py`, `kernel.py`,
+  `graph-interface.lock` and both changelog fragments included. But here the
+  containment argues the OPPOSITE of a close: #918 is green and MERGEABLE/CLEAN
+  against main, #901 is red with 46 failing tests, so #918 is the merge and #901
+  is what shrinks.
+- **The whole QBI stack collapses into #538.** #532, #534, #535, #536 and #537
+  each have **zero** commits outside #538; #538 has 37 beyond #532. So one PR
+  carries all five. #537 ⊆ #538 despite being on a sibling branch, via
+  `9e23c69bb Merge branch 'qbi-v3-evidence' into qbi-v3-wiring`.
+
+Also measured: cross-PR byte-identity over every changed file of every pair
+(journals, `uv.lock`, `experiments/` and `docs/evidence/` excluded). Only four
+pairs share any identical blob at all — #901/#918 (19 of 21), #537/#538 (9 of
+10), #893/#914 (7 of 14), #893/#901 (1 of 27, a test fixture). Nothing else in
+the 50 duplicates anything else.
+
+Independently re-verified the evidence agent's #156 finding, which beat my own
+prior: **PR #634** (`486f96d48`, merged 2026-08-10, "UK local solve through the
+public calibrate front door") *deleted* `uk_runtime/local_runner.py` and
+`local_solver.py` in commits `ce6bf446a` and `f55f68c04`. Both are absent from
+main (`git ls-tree` finds neither), and #156 modifies exactly those files. main
+did not merely re-implement #156 — it deleted #156's host and replaced it with
+`local_rowwise.py` + `local_doctrine.py`.
