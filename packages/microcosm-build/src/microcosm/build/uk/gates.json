@@ -185,11 +185,11 @@
         "exempt_columns": [
           "domestic_energy_consumption",
           "electricity_consumption",
-          "gas_consumption",
-          "bus_fare_spending"
+          "gas_consumption"
         ],
         "max_clipped_low_rows_by_column": {
           "alcohol_and_tobacco_consumption": 0,
+          "bus_fare_spending": 0,
           "clothing_and_footwear_consumption": 0,
           "communication_consumption": 0,
           "diesel_spending": 0,
@@ -206,6 +206,7 @@
         },
         "max_clipped_high_rows_by_column": {
           "alcohol_and_tobacco_consumption": 0,
+          "bus_fare_spending": 0,
           "clothing_and_footwear_consumption": 0,
           "communication_consumption": 0,
           "diesel_spending": 0,
@@ -221,7 +222,7 @@
           "transport_consumption": 0
         }
       },
-      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus fares are exempt since microcosm#890: the declared rake to DfT receipts sets their level."
+      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus fares are clipped before the fare rake (microcosm#890, Mar\u00eda's ruling 2026-09-15): the clip bounds the regions no fare cell levels at donor support, the rake then moves the raked regions beyond it, and the column carries no committed terminal support bound."
     },
     {
       "id": "uk_stage_lcfs_consumption_energy_rake",
