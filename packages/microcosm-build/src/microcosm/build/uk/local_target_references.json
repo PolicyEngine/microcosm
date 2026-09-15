@@ -1,7 +1,7 @@
 {
   "schema_version": 2,
   "country": "uk",
-  "description": "UK local-area Ledger target references for constituency and local-authority calibration. Rows are generated from the local rows in uk_population_targets.json and local_area_crosswalk.json: name is target_id@geography_id, ledger_selector is the contract selector plus geography_level/geography_id pins, entity and measure come from the policyengine binding, and observed values stay in Ledger facts. Deferred area absences are recorded in the membership report.",
+  "description": "UK local-area Ledger target references for constituency and local-authority calibration. Rows are generated from the Chronicle-backed local rows in uk_population_targets.json and local_area_crosswalk.json: name is target_id@geography_id, ledger_selector is the contract selector plus geography_level/geography_id pins, entity and measure come from the policyengine binding, and observed values stay in Ledger facts. Targets without matching Chronicle facts fail unless their exact area absences are explicitly reviewed. Deferred area absences are recorded in the membership report.",
   "hierarchy": {
     "providers": {
       "dwp": {
@@ -33,6 +33,18 @@
       },
       "dft": {
         "label": "Department for Transport"
+      },
+      "orr": {
+        "label": "Office of Rail and Road"
+      },
+      "welshgov": {
+        "label": "Welsh Government"
+      },
+      "dfi_ni": {
+        "label": "Department for Infrastructure (Northern Ireland)"
+      },
+      "nithc": {
+        "label": "Northern Ireland Transport Holding Company"
       }
     },
     "categories": {
@@ -155,6 +167,30 @@
       "dft.local_bus_finances": {
         "provider_id": "dft",
         "label": "Local bus finances"
+      },
+      "orr.rail_industry_finance": {
+        "provider_id": "orr",
+        "label": "Rail industry finance"
+      },
+      "ons.consumer_trends": {
+        "provider_id": "ons",
+        "label": "Consumer trends household expenditure"
+      },
+      "scotgov.local_bus_finances": {
+        "provider_id": "scotgov",
+        "label": "Local bus finances"
+      },
+      "welshgov.local_bus_finances": {
+        "provider_id": "welshgov",
+        "label": "Local bus finances"
+      },
+      "dfi_ni.local_bus_finances": {
+        "provider_id": "dfi_ni",
+        "label": "Local bus finances"
+      },
+      "nithc.public_transport_finances": {
+        "provider_id": "nithc",
+        "label": "Public transport finances"
       }
     },
     "target_categories": {
@@ -398291,7 +398327,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000001",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398316,7 +398352,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000002",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398341,7 +398377,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000003",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398366,7 +398402,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000004",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398391,7 +398427,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000005",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398416,7 +398452,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000006",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398441,7 +398477,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000007",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398466,7 +398502,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000008",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398491,7 +398527,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000009",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398516,7 +398552,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000010",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398541,7 +398577,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000011",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398566,7 +398602,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000012",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398591,7 +398627,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000013",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398616,7 +398652,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000014",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398641,7 +398677,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000015",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398666,7 +398702,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000016",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398691,7 +398727,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000017",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398716,7 +398752,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000018",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398741,7 +398777,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000019",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398766,7 +398802,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000020",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398791,7 +398827,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000021",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398816,7 +398852,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000022",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398841,7 +398877,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000023",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398866,7 +398902,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000024",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398891,7 +398927,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000025",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398916,7 +398952,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000026",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398941,7 +398977,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000027",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398966,7 +399002,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000030",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -398991,7 +399027,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000031",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399016,7 +399052,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000032",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399041,7 +399077,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000033",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399066,7 +399102,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000034",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399091,7 +399127,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000035",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399116,7 +399152,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000036",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399141,7 +399177,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000037",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399166,7 +399202,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000038",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399191,7 +399227,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000039",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399216,7 +399252,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000040",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399241,7 +399277,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000041",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399266,7 +399302,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000042",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399291,7 +399327,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000043",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399316,7 +399352,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000044",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399341,7 +399377,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000045",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399366,7 +399402,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000046",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399391,7 +399427,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000047",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399416,7 +399452,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000049",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399441,7 +399477,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000050",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399466,7 +399502,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000051",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399491,7 +399527,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000052",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399516,7 +399552,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000054",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399541,7 +399577,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000055",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399566,7 +399602,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000056",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399591,7 +399627,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000057",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399616,7 +399652,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000058",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399641,7 +399677,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000059",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399666,7 +399702,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000060",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399691,7 +399727,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000061",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399716,7 +399752,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000062",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399741,7 +399777,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000063",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399766,7 +399802,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000064",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399791,7 +399827,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000065",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399816,7 +399852,7 @@
         "geography_level": "local_authority",
         "geography_id": "E06000066",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399841,7 +399877,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000008",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399866,7 +399902,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000009",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399891,7 +399927,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000010",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399916,7 +399952,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000011",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399941,7 +399977,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000012",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399966,7 +400002,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000032",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -399991,7 +400027,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000033",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400016,7 +400052,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000034",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400041,7 +400077,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000035",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400066,7 +400102,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000036",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400091,7 +400127,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000037",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400116,7 +400152,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000038",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400141,7 +400177,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000039",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400166,7 +400202,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000040",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400191,7 +400227,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000041",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400216,7 +400252,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000042",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400241,7 +400277,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000043",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400266,7 +400302,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000044",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400291,7 +400327,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000045",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400316,7 +400352,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000046",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400341,7 +400377,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000047",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400366,7 +400402,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000061",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400391,7 +400427,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000062",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400416,7 +400452,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000063",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400441,7 +400477,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000064",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400466,7 +400502,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000065",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400491,7 +400527,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000066",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400516,7 +400552,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000067",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400541,7 +400577,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000068",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400566,7 +400602,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000069",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400591,7 +400627,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000070",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400616,7 +400652,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000071",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400641,7 +400677,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000072",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400666,7 +400702,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000073",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400691,7 +400727,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000074",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400716,7 +400752,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000075",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400741,7 +400777,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000076",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400766,7 +400802,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000077",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400791,7 +400827,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000078",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400816,7 +400852,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000079",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400841,7 +400877,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000080",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400866,7 +400902,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000081",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400891,7 +400927,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000082",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400916,7 +400952,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000083",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400941,7 +400977,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000084",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400966,7 +401002,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000085",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -400991,7 +401027,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000086",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401016,7 +401052,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000087",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401041,7 +401077,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000088",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401066,7 +401102,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000089",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401091,7 +401127,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000090",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401116,7 +401152,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000091",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401141,7 +401177,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000092",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401166,7 +401202,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000093",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401191,7 +401227,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000094",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401216,7 +401252,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000095",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401241,7 +401277,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000096",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401266,7 +401302,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000098",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401291,7 +401327,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000099",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401316,7 +401352,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000102",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401341,7 +401377,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000103",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401366,7 +401402,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000105",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401391,7 +401427,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000106",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401416,7 +401452,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000107",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401441,7 +401477,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000108",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401466,7 +401502,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000109",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401491,7 +401527,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000110",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401516,7 +401552,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000111",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401541,7 +401577,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000112",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401566,7 +401602,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000113",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401591,7 +401627,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000114",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401616,7 +401652,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000115",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401641,7 +401677,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000116",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401666,7 +401702,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000117",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401691,7 +401727,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000118",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401716,7 +401752,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000119",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401741,7 +401777,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000120",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401766,7 +401802,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000121",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401791,7 +401827,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000122",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401816,7 +401852,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000123",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401841,7 +401877,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000124",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401866,7 +401902,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000125",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401891,7 +401927,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000126",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401916,7 +401952,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000127",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401941,7 +401977,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000128",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401966,7 +402002,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000129",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -401991,7 +402027,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000130",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402016,7 +402052,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000131",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402041,7 +402077,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000132",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402066,7 +402102,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000133",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402091,7 +402127,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000134",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402116,7 +402152,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000135",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402141,7 +402177,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000136",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402166,7 +402202,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000137",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402191,7 +402227,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000138",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402216,7 +402252,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000139",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402241,7 +402277,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000140",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402266,7 +402302,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000141",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402291,7 +402327,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000142",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402316,7 +402352,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000143",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402341,7 +402377,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000144",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402366,7 +402402,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000145",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402391,7 +402427,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000146",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402416,7 +402452,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000147",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402441,7 +402477,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000148",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402466,7 +402502,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000149",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402491,7 +402527,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000170",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402516,7 +402552,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000171",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402541,7 +402577,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000172",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402566,7 +402602,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000173",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402591,7 +402627,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000174",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402616,7 +402652,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000175",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402641,7 +402677,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000176",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402666,7 +402702,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000177",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402691,7 +402727,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000178",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402716,7 +402752,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000179",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402741,7 +402777,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000180",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402766,7 +402802,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000181",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402791,7 +402827,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000192",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402816,7 +402852,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000193",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402841,7 +402877,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000194",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402866,7 +402902,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000195",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402891,7 +402927,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000196",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402916,7 +402952,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000197",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402941,7 +402977,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000198",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402966,7 +403002,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000199",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -402991,7 +403027,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000200",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403016,7 +403052,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000202",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403041,7 +403077,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000203",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403066,7 +403102,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000207",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403091,7 +403127,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000208",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403116,7 +403152,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000209",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403141,7 +403177,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000210",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403166,7 +403202,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000211",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403191,7 +403227,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000212",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403216,7 +403252,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000213",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403241,7 +403277,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000214",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403266,7 +403302,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000215",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403291,7 +403327,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000216",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403316,7 +403352,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000217",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403341,7 +403377,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000218",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403366,7 +403402,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000219",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403391,7 +403427,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000220",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403416,7 +403452,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000221",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403441,7 +403477,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000222",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403466,7 +403502,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000223",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403491,7 +403527,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000224",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403516,7 +403552,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000225",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403541,7 +403577,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000226",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403566,7 +403602,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000227",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403591,7 +403627,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000228",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403616,7 +403652,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000229",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403641,7 +403677,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000234",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403666,7 +403702,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000235",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403691,7 +403727,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000236",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403716,7 +403752,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000237",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403741,7 +403777,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000238",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403766,7 +403802,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000239",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403791,7 +403827,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000240",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403816,7 +403852,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000241",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403841,7 +403877,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000242",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403866,7 +403902,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000243",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403891,7 +403927,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000244",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403916,7 +403952,7 @@
         "geography_level": "local_authority",
         "geography_id": "E07000245",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403941,7 +403977,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000001",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403966,7 +404002,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000002",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -403991,7 +404027,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000003",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404016,7 +404052,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000004",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404041,7 +404077,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000005",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404066,7 +404102,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000006",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404091,7 +404127,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000007",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404116,7 +404152,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000008",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404141,7 +404177,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000009",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404166,7 +404202,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000010",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404191,7 +404227,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000011",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404216,7 +404252,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000012",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404241,7 +404277,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000013",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404266,7 +404302,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000014",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404291,7 +404327,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000015",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404316,7 +404352,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000017",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404341,7 +404377,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000018",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404366,7 +404402,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000021",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404391,7 +404427,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000022",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404416,7 +404452,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000023",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404441,7 +404477,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000024",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404466,7 +404502,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000025",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404491,7 +404527,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000026",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404516,7 +404552,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000027",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404541,7 +404577,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000028",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404566,7 +404602,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000029",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404591,7 +404627,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000030",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404616,7 +404652,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000031",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404641,7 +404677,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000032",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404666,7 +404702,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000033",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404691,7 +404727,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000034",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404716,7 +404752,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000035",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404741,7 +404777,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000036",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404766,7 +404802,7 @@
         "geography_level": "local_authority",
         "geography_id": "E08000037",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404791,7 +404827,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000002",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404816,7 +404852,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000003",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404841,7 +404877,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000004",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404866,7 +404902,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000005",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404891,7 +404927,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000006",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404916,7 +404952,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000007",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404941,7 +404977,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000008",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404966,7 +405002,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000009",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -404991,7 +405027,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000010",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405016,7 +405052,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000011",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405041,7 +405077,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000012",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405066,7 +405102,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000013",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405091,7 +405127,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000014",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405116,7 +405152,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000015",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405141,7 +405177,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000016",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405166,7 +405202,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000017",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405191,7 +405227,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000018",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405216,7 +405252,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000019",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405241,7 +405277,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000020",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405266,7 +405302,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000021",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405291,7 +405327,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000022",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405316,7 +405352,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000023",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405341,7 +405377,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000024",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405366,7 +405402,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000025",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405391,7 +405427,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000026",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405416,7 +405452,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000027",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405441,7 +405477,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000028",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405466,7 +405502,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000029",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405491,7 +405527,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000030",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405516,7 +405552,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000031",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405541,7 +405577,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000032",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405566,7 +405602,7 @@
         "geography_level": "local_authority",
         "geography_id": "E09000033",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405591,7 +405627,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000001",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405616,7 +405652,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000002",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405641,7 +405677,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000003",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405666,7 +405702,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000004",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405691,7 +405727,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000005",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405716,7 +405752,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000006",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405741,7 +405777,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000008",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405766,7 +405802,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000009",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405791,7 +405827,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000010",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405816,7 +405852,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000011",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405841,7 +405877,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000012",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405866,7 +405902,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000013",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405891,7 +405927,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000014",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405916,7 +405952,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000015",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405941,7 +405977,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000016",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405966,7 +406002,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000018",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -405991,7 +406027,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000019",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -406016,7 +406052,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000020",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -406041,7 +406077,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000021",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -406066,7 +406102,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000022",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -406091,7 +406127,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000023",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",
@@ -406116,7 +406152,7 @@
         "geography_level": "local_authority",
         "geography_id": "W06000024",
         "fact_aggregation": "time_mean",
-        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by María on 2026-09-05."
+        "period_basis_note": "Calendar-year average of the available 2025 PIPR monthly area price levels; approved by Mar\u00eda on 2026-09-05."
       },
       "value_operation": "calendar_year_average",
       "uprating_from_period": "2025-12",

@@ -3823,3 +3823,53 @@ def test_hierarchy_catalog_rejects_blank_declared_target_label() -> None:
             "irs.income",
             target_id="irs.agi",
         )
+
+
+@pytest.mark.parametrize(
+    ("record_set_id", "expected"),
+    [
+        (
+            "scotgov.ctaxbase2025.chargeable_dwellings.scotland",
+            "scotgov.ctaxbase.chargeable_dwellings.scotland",
+        ),
+        (
+            "mhclg.ctb2023.line_07.chargeable_dwellings_adjusted_for_disabled_relief",
+            "mhclg.ctb.line_07.chargeable_dwellings_adjusted_for_disabled_relief",
+        ),
+        ("welshgov.ct1.fy2025.a1", "welshgov.ct1.a1"),
+        ("irs_soi.ty2023.table_1_1", "irs_soi.table_1_1"),
+        ("ons.pipr.june2026.average_rent_by_area", "ons.pipr.average_rent_by_area"),
+        ("dwp.uc_households.sic2007_division", "dwp.uc_households.sic_division"),
+    ],
+)
+def test__given_a_vintage_year_glued_to_a_word__then_the_record_set_id_normalizes(
+    record_set_id: str, expected: str
+) -> None:
+    from microcosm.build.ledger_targets import _normalized_record_set_id
+
+    assert _normalized_record_set_id(record_set_id) == expected
+
+
+def test__given_one_series_published_per_vintage__then_latest_not_after_resolves() -> (
+    None
+):
+    facts = []
+    for year in (2023, 2024, 2025):
+        fact = _consumer_fact_row_for_period(year, value=490_000 + year)
+        fact["period"] = {"type": "month", "value": f"{year}-09"}
+        fact["layout"] = {
+            **fact["layout"],
+            "record_set_id": f"scotgov.ctaxbase{year}.chargeable_dwellings.scotland",
+        }
+        facts.append(fact)
+    reference = LedgerTargetReference(
+        name="scotgov.council_tax_stock.band_a",
+        ledger_selector={"source_name": "irs_soi"},
+        entity="household",
+        measure="council_tax/band_a",
+        period=2025,
+    )
+
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+
+    assert registry.specs[0].value == 490_000 + 2025

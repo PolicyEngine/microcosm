@@ -1,11 +1,11 @@
 {
- "compiled_count": 344,
+ "compiled_count": 353,
  "counts_by_kind": {
   "calibration_drift": 120,
   "fixture_only": 17,
-  "ledger_only": 212
+  "ledger_only": 221
  },
- "difference_count": 349,
+ "difference_count": 358,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -1600,6 +1600,69 @@
    "kind": "ledger_only",
    "ledger_value": 438893000.0,
    "name": "scotgov.bus.government_support",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 497080.0,
+   "name": "scotgov.council_tax_stock.band_a",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 579303.0,
+   "name": "scotgov.council_tax_stock.band_b",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 419799.0,
+   "name": "scotgov.council_tax_stock.band_c",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 360254.0,
+   "name": "scotgov.council_tax_stock.band_d",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 358243.0,
+   "name": "scotgov.council_tax_stock.band_e",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 214726.0,
+   "name": "scotgov.council_tax_stock.band_f",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 138126.0,
+   "name": "scotgov.council_tax_stock.band_g",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14197.0,
+   "name": "scotgov.council_tax_stock.band_h",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2581728.0,
+   "name": "scotgov.council_tax_stock.total",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
