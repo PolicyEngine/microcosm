@@ -448,3 +448,38 @@ public calibrate front door") *deleted* `uk_runtime/local_runner.py` and
 main (`git ls-tree` finds neither), and #156 modifies exactly those files. main
 did not merely re-implement #156 — it deleted #156's host and replaced it with
 `local_rowwise.py` + `local_doctrine.py`.
+
+### The maintainer already signed off on two of the closes (~02:30 UTC)
+
+Reading the PR conversations rather than only the diffs turned up the strongest
+warrant in the set:
+
+- **juaristi22 wrote on BOTH #153 and #181, 2026-08-14 09:40**: the populace tree
+  is dead so a rebase is not viable, the evidence "carries over" into the named
+  successor, and "**Fine to close this in favor of #685/#623 [resp. #681] unless
+  you'd rather keep it open while those land.**"
+- Those successors have landed. Issue **#681** is CLOSED/COMPLETED at
+  **2026-08-19T14:14:39Z**, the same second PR **#714** (`0f49bf1e8`) merged.
+  Issue **#685** is CLOSED (PR #730, `433c437b1`). Issue **#623** is CLOSED
+  (PRs #874 `5ab1b056f` and #904 `18271b28d`, the current main tip).
+- So the condition the maintainer attached is satisfied, and closing #153/#181
+  carries out a decision the team already reached.
+
+Also: **only two of the fifty carry any `reviewDecision`** — #153
+CHANGES_REQUESTED (two Max reviews, 2026-07-07 and 07-09, both verifying the DfT
+England anchors against the primary publication) and #739 CHANGES_REQUESTED.
+
+I accepted the evidence agent's **#739 = KEEP-BLOCKED-ON** over my own prior of
+REBASE-THEN-GATE, after verifying its two claims myself: `reviewDecision` really
+is CHANGES_REQUESTED, and the PR's two Supabase migrations really are absent from
+`origin/main:supabase/migrations` (which stops at `20260829000000_...`), with no
+project ref recorded on main outside test files. Rebasing to green would still
+not make it safe to merge.
+
+**Agreement check**: my priors, written before any verdict landed, matched the
+evidence agents on **29 of the 30 rows** where both existed. #739 was the only
+difference, and the agent was right.
+
+All late-breaking owner findings were appended to the agents' shared `CONTEXT.md`
+before any refuter or adjudicator started, so the containment result, the CI root
+causes and the maintainer sign-off reach every downstream stage.
