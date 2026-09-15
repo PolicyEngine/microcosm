@@ -639,3 +639,20 @@ crosswalk edit moves the lcfs stage's resource pin, so the H2 fixture is regener
 The PR was marked ready by María after the round-1 reply; by her ruling 2 the terminal battery
 still blocks on the inherited self-employment 20–30k cell until she signs an exclusion or names
 a lever.
+
+Gap decomposition and the Chronicle ask (2026-09-15, spine-s4 at design weights): 29.25 m
+households pay GBP 52.25bn for electricity and gas — 97.2 TWh of electricity for GBP 29.61bn
+(standing charges GBP 6.17bn) and 322.6 TWh of gas over the 96.5 % gas-positive households for
+GBP 22.65bn (standing charges GBP 3.25bn); standing charges are 18 % of the total. ONS 04.5 is
+GBP 42.29bn in CY2024 including other fuels, so the like-for-like electricity-plus-gas figure is
+nearer GBP 40bn. The pieces: about 3 % of households more than the ONS denominators (weights
+close it); a 96.5 % gas share against roughly 85 % with a meter (an 85 % share alone takes the
+frame to GBP 49.55bn); NEED's 2023 volumes against a warmer 2024; the cap as a maximum against
+prices actually paid; NEED's valid-reading selection; and the other-fuels concept. The three
+publishers measure different things, so the gap cannot be closed with the vendored facts.
+chronicle#270 asks for the series that would close it — DESNZ domestic consumption totals (the
+volume level), DESNZ QEP average prices paid (the price level), the ONS 04.5.1/04.5.2 split (the
+spend target per fuel), NEED 2024 and the gas-connected household counts — after which NEED
+carries the shape only, DESNZ the level, QEP the price and ONS the calibrated spend, three
+independent facts with the concept residual stated. Until then the stage-time gate is a
+provenance-and-convergence check on the rake, not a NEED fence.
