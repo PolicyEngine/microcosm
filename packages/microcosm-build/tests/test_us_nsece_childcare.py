@@ -1,6 +1,7 @@
 """Synthetic source-code and Frame/export contracts; no NSECE microdata in CI."""
 
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -11,8 +12,16 @@ from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
 )
+from microcosm.build.us_runtime import childcare_attendance_stage as stage
 from microcosm.build.us_runtime.childcare_attendance import (
     US_CHILDCARE_ATTENDANCE_COLUMNS,
+)
+from microcosm.build.us_runtime.childcare_attendance_receipt import (
+    assert_bound_childcare_attendance,
+    restore_native_childcare_receipt,
+)
+from microcosm.build.us_runtime.childcare_population import (
+    harmonize_asec_childcare_predictors,
 )
 from microcosm.build.us_runtime.nsece_childcare import (
     NSECE_CALENDAR_BLOCKS,
@@ -25,6 +34,11 @@ from microcosm.build.us_runtime.nsece_childcare import (
     nsece_childcare_household_columns,
     nsece_childcare_validation_report,
     with_us_nsece_childcare_attendance,
+)
+from microcosm.build.us_runtime.release_input_coverage import (
+    ReleaseInputColumn,
+    ReleaseInputCoverageManifest,
+    us_release_input_coverage_gate,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -591,7 +605,7 @@ def test_asec_income_sidecar_checks_identity_and_preserves_raw_missingness(
 
 
 @pytest.mark.requires_us
-def test_registered_attendance_recipe_uses_real_transform_chain(monkeypatch):
+def test_registered_attendance_recipe_uses_real_transform_chain(monkeypatch, tmp_path):
     from microcosm.build.us_runtime import childcare_attendance_stage as stage
 
     frame = _asec_frame()
@@ -603,6 +617,9 @@ def test_registered_attendance_recipe_uses_real_transform_chain(monkeypatch):
     hh["HH4_ECON_INCOME_ANNUAL"] = 40000
     _care(cal, hours=3)
     source = derive_nsece_childcare(hh, cal)
+    source.source_receipt["artifacts"] = stage.childcare_attendance_contract()[
+        "artifacts"
+    ]
     monkeypatch.setattr(stage, "load_nsece_childcare", lambda *args: source)
     result = stage.with_us_childcare_attendance_inputs(
         frame,
@@ -622,6 +639,39 @@ def test_registered_attendance_recipe_uses_real_transform_chain(monkeypatch):
     np.testing.assert_array_equal(
         result.weights_for("household").values, frame.weights_for("household").values
     )
+    assert_bound_childcare_attendance(result)
+    options = dict(
+        household_tsv="synthetic",
+        calendar_tsv="synthetic",
+        asec_source_cache=None,
+        seed=915,
+        inherit_outside_domain_baseline=True,
+    )
+    assert stage.with_us_childcare_attendance_inputs(result, **options) is result
+    for changed in ({"seed": 916}, {"inherit_outside_domain_baseline": False}):
+        with pytest.raises(ValueError, match="settings changed"):
+            stage.with_us_childcare_attendance_inputs(result, **{**options, **changed})
+    operations = result.metadata["childcare_attendance_stage"]["operations"]
+    assert [op["operation"] for op in operations] == [
+        "calendar_attendance",
+        "fit_sibling_dependence",
+        "regular_hours_schedule_bridge",
+        "harmonize_asec_childcare_predictors",
+        "joint_weighted_schedule_transfer",
+        "inherit_engine_baseline",
+    ]
+    from policyengine_us.data import USSingleYearDataset
+
+    from microcosm.build.us_runtime.l0_refit_export import load_us_frame
+
+    tables = {e: result.table(e).copy() for e in result.entities}
+    tables["household"]["household_weight"] = result.weights_for("household").values
+    path = tmp_path / "final.h5"
+    USSingleYearDataset(**tables, time_period=2026).save(str(path))
+    evidence = stage.persist_native_childcare_receipt(path, result)
+    assert evidence["retained_people"] == 2
+    assert "rows" not in evidence
+    assert_bound_childcare_attendance(load_us_frame(path))
 
 
 def test_bridge_retains_all_equally_near_donors():
@@ -648,3 +698,288 @@ def test_bridge_retains_all_equally_near_donors():
     ]
     assert len(bridged) == 2
     assert bridged.irregular_hours_per_week.eq(2).all()
+
+
+def _replace(frame, *, people=None, metadata=None):
+    tables = {e: frame.table(e).copy() for e in frame.entities}
+    if people is not None:
+        tables["person"] = people
+    return Frame(
+        tables,
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        metadata=frame.metadata if metadata is None else metadata,
+    )
+
+
+def _candidate():
+    return with_us_nsece_childcare_attendance(
+        _frame(), _source(), seed=915, match_columns=("age",)
+    )
+
+
+@pytest.mark.parametrize(
+    "column,value",
+    [(DAYS, 4), ("age", 4), ("person_id", 99), ("person_household_id", 99)],
+)
+def test_persisted_value_or_identity_change_fails_binding(column, value):
+    candidate = _candidate()
+    candidate.table("person").loc[1, column] = value
+    with pytest.raises(ValueError, match="differ from the source receipt"):
+        assert_bound_childcare_attendance(candidate, require_stage=False)
+
+
+def test_receipt_loss_and_metadata_relabeling_are_rejected():
+    candidate = _candidate()
+    with pytest.raises(ValueError, match="content-bound"):
+        assert_bound_childcare_attendance(
+            _replace(candidate, metadata={}), require_stage=False
+        )
+    metadata = json.loads(json.dumps(candidate.metadata, default=dict))
+    metadata["nsece_childcare_attendance"]["seed"] += 1
+    with pytest.raises(ValueError, match="metadata disagrees"):
+        assert_bound_childcare_attendance(
+            _replace(candidate, metadata=metadata), require_stage=False
+        )
+
+
+def test_same_transfer_is_idempotent_but_seed_and_source_refresh_are_rejected():
+    source = _source()
+    candidate = _candidate()
+    assert (
+        with_us_nsece_childcare_attendance(
+            candidate, source, seed=915, match_columns=("age",)
+        )
+        is candidate
+    )
+    with pytest.raises(ValueError, match="settings changed"):
+        with_us_nsece_childcare_attendance(
+            candidate, source, seed=916, match_columns=("age",)
+        )
+    source.source_receipt["source_year"] = 2025
+    with pytest.raises(ValueError, match="source or settings changed"):
+        with_us_nsece_childcare_attendance(
+            candidate, source, seed=915, match_columns=("age",)
+        )
+
+
+def test_selection_order_and_calibration_do_not_invalidate_attendance():
+    candidate = _candidate()
+    selected = _replace(candidate, people=candidate.table("person").iloc[::-1])
+    assert_bound_childcare_attendance(selected, require_stage=False)
+    tables = {e: selected.table(e) for e in selected.entities}
+    calibrated = Frame(
+        tables,
+        selected.schema,
+        {"household": Weights(np.array([200.0]), WeightKind.CALIBRATED)},
+        metadata=selected.metadata,
+    )
+    assert_bound_childcare_attendance(calibrated, require_stage=False)
+
+
+@pytest.mark.parametrize("value", [np.nan, None, "", "nan", "<NA>"])
+def test_invalid_household_source_identity_fails_before_string_conversion(value):
+    frame = _asec_frame()
+    frame.table("household")["household_source_id"] = value
+    with pytest.raises(ValueError, match="household identities"):
+        harmonize_asec_childcare_predictors(frame)
+
+
+def test_unresolved_household_membership_is_rejected():
+    frame = _asec_frame()
+    frame.table("household")["household_source_id"] = "household"
+    frame.table("person")["PEPAR1"] = -1
+    frame.table("person").loc[1, "person_household_id"] = 999
+    with pytest.raises(ValueError, match="link does not resolve"):
+        harmonize_asec_childcare_predictors(frame)
+
+
+@pytest.mark.parametrize(
+    "column,value",
+    [(DAYS, np.nan), (DAYS, 8), (DAYS, 0), (US_CHILDCARE_ATTENDANCE_COLUMNS[0], 2.5)],
+)
+def test_final_boundary_rechecks_each_row_and_schedule(column, value):
+    candidate = _candidate()
+    candidate.table("person").loc[1, column] = value
+    with pytest.raises(ValueError):
+        assert_childcare_attendance_exportable(candidate)
+    manifest = ReleaseInputCoverageManifest(
+        reference={},
+        columns=tuple(
+            ReleaseInputColumn(c, "required") for c in US_CHILDCARE_ATTENDANCE_COLUMNS
+        ),
+    )
+    gate = us_release_input_coverage_gate(
+        candidate,
+        SimpleNamespace(default_values=lambda columns: {c: 0 for c in columns}),
+        manifest=manifest,
+    )
+    assert not gate.passed
+    assert any("Childcare" in x or "Attendance" in x for x in gate.failures)
+
+
+@pytest.mark.requires_us
+def test_native_reload_preserves_binding_and_detects_tampering(tmp_path):
+    from policyengine_us.data import USSingleYearDataset
+
+    from microcosm.build.us_runtime.h5_io import load_legacy_calibrated_us_h5
+    from microcosm.build.us_runtime.l0_refit_export import load_us_frame
+
+    candidate = _candidate()
+    tables = {e: candidate.table(e).copy() for e in candidate.entities}
+    tables["household"]["household_weight"] = candidate.weights_for("household").values
+    # Native exports intentionally omit per-cell provenance columns.
+    tables["person"] = tables["person"].drop(
+        columns=[f"{c}_source" for c in US_CHILDCARE_ATTENDANCE_COLUMNS]
+    )
+    path = tmp_path / "native.h5"
+    USSingleYearDataset(**tables, time_period=2026).save(str(path))
+    for loader in (load_legacy_calibrated_us_h5, load_us_frame):
+        with pytest.raises(ValueError, match="lack a bound receipt"):
+            loader(path)
+    stage._write_childcare_candidate_person_table(
+        path, tables["person"], candidate.metadata
+    )
+    for loader in (load_legacy_calibrated_us_h5, load_us_frame):
+        loaded = loader(path)
+        assert_bound_childcare_attendance(loaded, require_stage=False)
+    tables["person"].loc[1, DAYS] = 4
+    stage._write_childcare_candidate_person_table(
+        path, tables["person"], candidate.metadata
+    )
+    with pytest.raises(ValueError, match="differ from the source receipt"):
+        restore_native_childcare_receipt(
+            path, _replace(candidate, people=tables["person"], metadata={})
+        )
+
+
+@pytest.mark.requires_us
+def test_production_stage_refuses_unbound_existing_values(monkeypatch):
+    monkeypatch.setattr(stage, "load_nsece_childcare", lambda *args: _source())
+    frame = _asec_frame()
+    frame.table("person").loc[1, DAYS] = 5
+    with pytest.raises(ValueError, match="Pre-existing child attendance"):
+        stage.with_us_childcare_attendance_inputs(
+            frame,
+            household_tsv="fake",
+            calendar_tsv="fake",
+            asec_source_cache=None,
+            seed=915,
+        )
+
+
+def test_final_gate_cannot_accept_unbound_nondegenerate_columns():
+    candidate = _replace(_candidate(), metadata={})
+    manifest = ReleaseInputCoverageManifest(
+        reference={},
+        columns=tuple(
+            ReleaseInputColumn(c, "required") for c in US_CHILDCARE_ATTENDANCE_COLUMNS
+        ),
+    )
+    gate = us_release_input_coverage_gate(
+        candidate,
+        SimpleNamespace(default_values=lambda columns: {c: 0 for c in columns}),
+        manifest=manifest,
+    )
+    assert not gate.passed
+    assert any("content-bound" in x for x in gate.failures)
+
+
+def test_receipt_loss_cannot_relabel_derived_values_as_observations():
+    with pytest.raises(ValueError, match="lost its receipt"):
+        with_us_nsece_childcare_attendance(
+            _replace(_candidate(), metadata={}),
+            _source(),
+            seed=916,
+            match_columns=("age",),
+        )
+
+
+def test_changed_recipe_invalidates_receipt(monkeypatch):
+    from microcosm.build.us_runtime import childcare_attendance_receipt as receipts
+
+    candidate = _candidate()
+    monkeypatch.setattr(
+        receipts, "attendance_recipe_identity", lambda: {"different": True}
+    )
+    with pytest.raises(ValueError, match="recipe changed"):
+        assert_bound_childcare_attendance(candidate, require_stage=False)
+
+
+def test_public_metadata_omits_person_hash_inventory():
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        ATTENDANCE_RECEIPT_KEY,
+        childcare_attendance_public_metadata,
+    )
+
+    candidate = _candidate()
+    public = childcare_attendance_public_metadata(candidate)
+    assert "rows" not in public[ATTENDANCE_RECEIPT_KEY]
+    assert public[ATTENDANCE_RECEIPT_KEY]["source_people"] == 2
+    assert len(candidate.metadata[ATTENDANCE_RECEIPT_KEY]["rows"]) == 2
+    # Population-sized mappings make immutable Frame metadata serialization
+    # quadratic. Keep the private row inventory as a sequence of ID/hash pairs.
+    assert isinstance(candidate.metadata[ATTENDANCE_RECEIPT_KEY]["rows"], tuple)
+
+
+def test_retaining_a_subset_keeps_attendance_binding():
+    candidate = _candidate()
+    selected = _replace(candidate, people=candidate.table("person").iloc[[1]])
+    summary = assert_bound_childcare_attendance(selected, require_stage=False)
+    assert summary["source_people"] == 2
+    assert summary["retained_people"] == 1
+
+
+def test_shared_rank_joint_moment_integrates_unequal_cdfs():
+    from microcosm.build.us_runtime.nsece_childcare_sibling_validation import (
+        _joint_product,
+    )
+
+    a = (np.array([[0.0], [2.0]]), np.array([0.25, 1]))
+    b = (np.array([[1.0], [3.0]]), np.array([0.5, 1]))
+    # [0,.25): 0; [.25,.5): 2; [.5,1): 6.
+    assert _joint_product(a, b) == pytest.approx([3.5])
+
+
+def test_undefined_sibling_metrics_do_not_pass_validation():
+    from microcosm.build.us_runtime.nsece_childcare_sibling_validation import (
+        sibling_schedule_screen,
+    )
+
+    result = sibling_schedule_screen({"larger_households": {}})
+    assert not result["passed"]
+    assert all(not check["passed"] for check in result["checks"])
+
+
+@pytest.mark.parametrize(
+    "irregular,shift,expected_days,expected_hours",
+    [
+        (False, 0, 5, 12),
+        (True, -1, 4, 13),
+        (True, 1, 6, 13),
+    ],
+)
+def test_schedule_sensitivity_preserves_measured_regular_hours(
+    irregular, shift, expected_days, expected_hours
+):
+    from microcosm.build.us_runtime.childcare_sensitivity import (
+        noncalendar_sensitivity_source,
+    )
+
+    source = _source()
+    source.children["attendance_status"] = "summary_bridge"
+    source.children["regular_hours_per_week"] = 12.0
+    source.children["irregular_hours_per_week"] = 1.0
+    original = source.children.copy(deep=True)
+    changed = noncalendar_sensitivity_source(
+        source, irregular_hours=irregular, day_shift=shift
+    )
+    row = changed.children.iloc[0]
+    assert row.regular_hours_per_week == 12
+    assert row[DAYS] == expected_days
+    assert row[DAYS] * row[HOURS] == pytest.approx(expected_hours)
+    assert_frame_equal(source.children, original)
+    observed = noncalendar_sensitivity_source(
+        _source(), irregular_hours=False, day_shift=-1
+    )
+    assert_frame_equal(observed.children, _source().children)

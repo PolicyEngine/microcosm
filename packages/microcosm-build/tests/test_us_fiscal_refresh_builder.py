@@ -12311,3 +12311,34 @@ def test_attendance_source_cli_requires_paired_inputs(options):
         builder._parse_args(
             ["--ledger-facts", "facts.jsonl", "--out", "release", *options]
         )
+
+
+def test_attendance_integrity_is_unconditional_at_final_native_write():
+    """Neither coverage overrides nor omitted TSV flags can skip integrity.
+
+    Pair this ordering contract with the behavioral receipt, row validation,
+    and real native reload tests in test_us_nsece_childcare.py.
+    """
+    import ast
+
+    main = ast.parse(inspect.getsource(_load_builder_module()._main)).body[0]
+    calls = []
+    # Direct body statements prove these checks are outside optional branches.
+    for statement in main.body:
+        value = getattr(statement, "value", None)
+        if isinstance(value, ast.Call):
+            function = value.func
+            name = (
+                function.attr
+                if isinstance(function, ast.Attribute)
+                else getattr(function, "id", None)
+            )
+            calls.append(name)
+    expected = [
+        "assert_childcare_attendance_exportable",
+        "assert_bound_childcare_attendance",
+        "write_dataset",
+        "persist_native_childcare_receipt",
+    ]
+    positions = [calls.index(name) for name in expected]
+    assert positions == list(range(positions[0], positions[0] + 4))

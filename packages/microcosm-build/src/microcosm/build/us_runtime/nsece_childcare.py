@@ -9,6 +9,7 @@ determine licensed-provider status or CCDF eligibility/receipt.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -302,8 +303,45 @@ def with_us_nsece_childcare_attendance(
     """
     if frame.schema != US_SCHEMA:
         raise ValueError("NSECE childcare attendance requires the US schema.")
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        assert_bound_childcare_attendance,
+        bind_childcare_attendance,
+    )
+
+    receipt = {
+        **source.source_receipt,
+        "seed": int(seed),
+        "match_columns": match_columns,
+        "fallback_match_columns": fallback_match_columns,
+        "sibling_dependence": sibling_dependence,
+        "candidate_only": True,
+    }
+    if "nsece_childcare_attendance" in frame.metadata:
+        assert_bound_childcare_attendance(frame, require_stage=False)
+        previous = json.loads(
+            json.dumps(frame.metadata["nsece_childcare_attendance"], default=dict)
+        )
+        if previous != json.loads(json.dumps(receipt)):
+            raise ValueError(
+                "Attendance source or settings changed; rebuild from the original parent."
+            )
+        return frame
     donor, weights = source.donors()
     original_people = frame.table("person")
+    for column in US_CHILDCARE_ATTENDANCE_COLUMNS:
+        provenance = f"{column}_source"
+        if (
+            provenance in original_people
+            and original_people[provenance]
+            .astype("string")
+            .str.startswith(
+                ("donor:", "source_person:", "inherited_engine_baseline"), na=False
+            )
+            .any()
+        ):
+            raise ValueError(
+                "Imputed attendance lost its receipt; rebuild from the original parent."
+            )
     recipients = original_people.copy()
     # Native BuildP IDs are exact int64, while the pure donor API uses strings.
     # Encode integers losslessly for hashing, then restore the native column.
@@ -329,23 +367,15 @@ def with_us_nsece_childcare_attendance(
     people["person_source_id"] = original_people.person_source_id
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tables["person"] = people
-    return Frame(
-        tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-        mass_log=frame.mass_log,
-        metadata={
-            **frame.metadata,
-            "nsece_childcare_attendance": {
-                **source.source_receipt,
-                "seed": int(seed),
-                "match_columns": match_columns,
-                "fallback_match_columns": fallback_match_columns,
-                "sibling_dependence": sibling_dependence,
-                "candidate_only": True,
-            },
-        },
+    return bind_childcare_attendance(
+        Frame(
+            tables,
+            frame.schema,
+            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata={**frame.metadata, "nsece_childcare_attendance": receipt},
+        )
     )
 
 
@@ -365,6 +395,11 @@ def assert_childcare_attendance_exportable(frame: Frame) -> None:
         raise ValueError(
             "Childcare export has unresolved attendance; do not fill with zero."
         )
+    # Completeness alone is insufficient: preserve the joint nonattendance,
+    # calendar bounds and integral-month contract at the final boundary too.
+    from microcosm.build.us_runtime.childcare_attendance import _validate_attendance
+
+    _validate_attendance(people, complete=True)
 
 
 def nsece_childcare_validation_report(

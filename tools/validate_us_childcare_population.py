@@ -10,7 +10,6 @@ CCDF caseload or spending estimates. No microdata are published by this tool.
 from __future__ import annotations
 
 import argparse
-import gc
 import hashlib
 import json
 from importlib.metadata import version
@@ -23,8 +22,12 @@ from microcosm.build.frame_checkpoint import load_frame_checkpoint
 from microcosm.build.us_runtime.childcare_attendance import (
     US_CHILDCARE_ATTENDANCE_COLUMNS,
 )
+from microcosm.build.us_runtime.childcare_attendance_receipt import (
+    childcare_attendance_public_metadata,
+)
+from microcosm.build.us_runtime.childcare_sensitivity import compare_childcare_scenarios
 from microcosm.build.us_runtime.h5_io import load_legacy_calibrated_us_h5
-from microcosm.calibrate.geography_constants import US_STATE_NUMERIC_FIPS_TO_POSTAL
+from microcosm.frame import Frame
 
 
 def _sha256(path: Path) -> str:
@@ -48,7 +51,13 @@ def main() -> None:
         parser.error("Parent population hash mismatch")
     parent = load_legacy_calibrated_us_h5(args.parent_h5)
     stored = load_frame_checkpoint(args.candidate_checkpoint)
-    candidate = stored.frame
+    frame = stored.frame
+    candidate = Frame(
+        {e: frame.table(e) for e in frame.entities},
+        frame.schema,
+        {e: frame.weights_for(e) for e in frame.weighted_entities},
+        metadata=stored.metadata.get("frame_metadata", {}),
+    )
     for entity in parent.entities:
         pd.testing.assert_frame_equal(
             parent.table(entity), candidate.table(entity)[parent.table(entity).columns]
@@ -101,7 +110,7 @@ def main() -> None:
                 days[young] * attendance[young, 2], weights=person_weights[young]
             )
         ),
-        "candidate_receipt": stored.metadata.get("frame_metadata", {}),
+        "candidate_receipt": childcare_attendance_public_metadata(candidate),
         "states": [],
         "production_ready": False,
         "interpretation": "attendance-only counterfactual; provider, activity, expenses and take-up inputs remain as in parent",
@@ -129,52 +138,11 @@ def main() -> None:
                     ),
                 }
             )
-    from policyengine_us import Microsimulation
-    from policyengine_us.data import USSingleYearDataset
-
     try:
-        for state_fips, households in hh.groupby("state_fips", sort=True):
-            state = US_STATE_NUMERIC_FIPS_TO_POSTAL[int(state_fips)]
-            rows = p.person_household_id.isin(households.household_id)
-            people = parent.table("person").loc[rows].copy()
-            tables = {"person": people, "household": households}
-            for entity in parent.schema.group_entities:
-                if entity != "household":
-                    table = parent.table(entity)
-                    tables[entity] = table.loc[
-                        table[f"{entity}_id"].isin(people[f"person_{entity}_id"])
-                    ]
-            result = {"state": state, "sample_households": len(households)}
-            for name in ("baseline", "candidate"):
-                sim = Microsimulation(
-                    dataset=USSingleYearDataset(**tables, time_period=args.year)
-                )
-                if name == "candidate":
-                    for column in US_CHILDCARE_ATTENDANCE_COLUMNS:
-                        values = np.asarray(sim.calculate(column, args.year)).copy()
-                        known = resolved[rows]
-                        values[known] = p.loc[rows, column].to_numpy()[known]
-                        sim.set_input(column, args.year, values)
-                variable = f"{state.lower()}_child_care_subsidies"
-                if variable not in sim.tax_benefit_system.variables:
-                    raise ValueError(f"The pinned engine has no {variable}")
-                definition = sim.tax_benefit_system.variables[variable]
-                entity = definition.entity.key
-                amount = np.asarray(sim.calculate(variable, args.year), dtype=float)
-                weights = np.asarray(
-                    sim.calculate(f"{entity}_weight", args.year), dtype=float
-                )
-                if not np.isfinite(amount).all():
-                    raise ValueError(f"Nonfinite state benefit: {state}/{name}")
-                result[name] = {
-                    "variable": variable,
-                    "entity": entity,
-                    "positive_sample_units": int((amount > 0).sum()),
-                    "weighted_positive_units": float(weights[amount > 0].sum()),
-                    "annual_modeled_benefits": float(amount @ weights),
-                }
-                del sim
-                gc.collect()
+        for result in compare_childcare_scenarios(
+            parent, {"candidate": attendance}, year=args.year
+        ):
+            state = result["state"]
             report["states"].append(result)
             print(
                 f"{state}: {result['baseline']['positive_sample_units']} -> {result['candidate']['positive_sample_units']} positive units",

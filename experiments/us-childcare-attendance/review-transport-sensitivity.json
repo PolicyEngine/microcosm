@@ -1,0 +1,3214 @@
+{
+  "parent_sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+  "source": {
+    "study": "ICPSR39466.v1",
+    "source_year": 2024,
+    "measurement": "union_of_ECE_calendar_blocks_excluding_K8",
+    "monthly_conversion": "floor(days_per_week * 52 / 12 + 0.5)",
+    "national_representativeness_validated": false,
+    "artifacts": [
+      {
+        "sha256": "b42c69874de627273cdf698e4b8cdd39d3d4fdfef7d1295c239772cbc4e6c5a2",
+        "size_bytes": 122764947
+      },
+      {
+        "sha256": "c2e04a7a3eb6e187dc6d4496be1de77508354e05c6249725ae072f8a5f2ce18e",
+        "size_bytes": 269542239
+      }
+    ]
+  },
+  "recipe": {
+    "contract_sha256": "ae648c6cb0e2838fdf142975e9c536eb0683d9630fd1738096d524222ffb01dc",
+    "runtime_versions": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "policyengine-us": "1.819.0"
+    },
+    "code_sha256": {
+      "childcare_attendance.py": "da00ef1fb45232a731bd4a3b33d93cd0aeac0682b28d50e4d53cb79db12ce96e",
+      "childcare_population.py": "19fef5e4cc1838734783c2eb911f556596256cf093fb1063a403a6eadf49d04e",
+      "nsece_childcare.py": "affc8ac5a3ce853e2ef8b062c51a1801a15573cbcbf6eacc2c093334a1d12c11",
+      "nsece_childcare_bridge.py": "70a7edea8b28c6da21ff4fa9bb220766a3e6cd714926684af29bdba1a8421b0a",
+      "nsece_childcare_dependence.py": "bf9ff3a1992d16c75fc74b8c17634791739669f0ecab4382fdf59a6e6c3c424c",
+      "childcare_attendance_stage.py": "8705b891c1bcbab8eb852d1b15c3dd51c496ceabd08924dfbe193d85c79edc2c",
+      "childcare_attendance_receipt.py": "2e914760d6012878d15bf32c4ca24426bb6fbbf86345b939a7945b4cdf0a251c"
+    }
+  },
+  "seed": 915,
+  "engine_version": "1.819.0",
+  "policy_year": 2026,
+  "code_sha256": {
+    "validate_us_childcare_sensitivity.py": "59d41bf8b6192f9d4d01976e9a3b464446ade56d67f7493cb611ef3d8c01d07c",
+    "childcare_sensitivity.py": "a3d370bcaf78b609d81c542dc774b7dab0202ea02f53f80135417320840e06ac"
+  },
+  "population": "fixed BuildP source ages/incomes; no aging or uprating",
+  "assumptions": {
+    "candidate": {},
+    "no_modeled_irregular_hours": {
+      "include_modeled_irregular_hours": false,
+      "modeled_day_shift": 0,
+      "measured_regular_hours_preserved": true
+    },
+    "one_fewer_day": {
+      "include_modeled_irregular_hours": true,
+      "modeled_day_shift": -1,
+      "measured_regular_hours_preserved": true
+    },
+    "one_more_day": {
+      "include_modeled_irregular_hours": true,
+      "modeled_day_shift": 1,
+      "measured_regular_hours_preserved": true
+    }
+  },
+  "changed_children": {
+    "candidate": 0,
+    "no_modeled_irregular_hours": 1809,
+    "one_fewer_day": 5705,
+    "one_more_day": 6683
+  },
+  "screens": {
+    "national_relative_change": 0.1,
+    "state_relative_change": 0.2
+  },
+  "states": [
+    {
+      "state": "AL",
+      "sample_households": 1061,
+      "baseline": {
+        "variable": "al_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "al_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 13061.764184842585,
+        "annual_modeled_benefits": 32688921.398814265
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "al_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 13061.764184842585,
+        "annual_modeled_benefits": 32688921.398814265
+      },
+      "one_fewer_day": {
+        "variable": "al_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 13061.764184842585,
+        "annual_modeled_benefits": 32688921.398814265
+      },
+      "one_more_day": {
+        "variable": "al_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 13061.764184842585,
+        "annual_modeled_benefits": 32688921.398814265
+      }
+    },
+    {
+      "state": "AK",
+      "sample_households": 826,
+      "baseline": {
+        "variable": "ak_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 1390.1623900386767,
+        "annual_modeled_benefits": 6435797.486872292
+      },
+      "candidate": {
+        "variable": "ak_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 1390.1623900386767,
+        "annual_modeled_benefits": 6435797.486872292
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ak_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 1390.1623900386767,
+        "annual_modeled_benefits": 6435797.486872292
+      },
+      "one_fewer_day": {
+        "variable": "ak_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 1390.1623900386767,
+        "annual_modeled_benefits": 6435797.486872292
+      },
+      "one_more_day": {
+        "variable": "ak_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 1390.1623900386767,
+        "annual_modeled_benefits": 6435797.486872292
+      }
+    },
+    {
+      "state": "AZ",
+      "sample_households": 1164,
+      "baseline": {
+        "variable": "az_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "az_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 18733.37486637244,
+        "annual_modeled_benefits": 23159527.697095435
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "az_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 13,
+        "weighted_positive_units": 18733.29978438327,
+        "annual_modeled_benefits": 23159479.981134396
+      },
+      "one_fewer_day": {
+        "variable": "az_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 18733.37486637244,
+        "annual_modeled_benefits": 23159508.09361713
+      },
+      "one_more_day": {
+        "variable": "az_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 18733.37486637244,
+        "annual_modeled_benefits": 22260467.45209273
+      }
+    },
+    {
+      "state": "AR",
+      "sample_households": 952,
+      "baseline": {
+        "variable": "ar_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ar_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 17289.894029146235,
+        "annual_modeled_benefits": 50793417.58586023
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ar_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 17289.87330874073,
+        "annual_modeled_benefits": 50793412.084522665
+      },
+      "one_fewer_day": {
+        "variable": "ar_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 17289.894029146235,
+        "annual_modeled_benefits": 47298738.19780214
+      },
+      "one_more_day": {
+        "variable": "ar_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 17289.894029146235,
+        "annual_modeled_benefits": 73116589.09583077
+      }
+    },
+    {
+      "state": "CA",
+      "sample_households": 2659,
+      "baseline": {
+        "variable": "ca_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ca_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ca_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "one_fewer_day": {
+        "variable": "ca_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "one_more_day": {
+        "variable": "ca_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      }
+    },
+    {
+      "state": "CO",
+      "sample_households": 1164,
+      "baseline": {
+        "variable": "co_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 19,
+        "weighted_positive_units": 30914.695305580855,
+        "annual_modeled_benefits": 252602567.65021172
+      },
+      "candidate": {
+        "variable": "co_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 13,
+        "weighted_positive_units": 18502.53110225743,
+        "annual_modeled_benefits": 236445530.32343873
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "co_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 18502.54616478004,
+        "annual_modeled_benefits": 236445566.4573961
+      },
+      "one_fewer_day": {
+        "variable": "co_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 13,
+        "weighted_positive_units": 18502.53110225743,
+        "annual_modeled_benefits": 236445530.32343873
+      },
+      "one_more_day": {
+        "variable": "co_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 13,
+        "weighted_positive_units": 18502.53110225743,
+        "annual_modeled_benefits": 236445530.32343873
+      }
+    },
+    {
+      "state": "CT",
+      "sample_households": 908,
+      "baseline": {
+        "variable": "ct_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 23,
+        "weighted_positive_units": 79449.487583021,
+        "annual_modeled_benefits": 405879416.70427954
+      },
+      "candidate": {
+        "variable": "ct_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 23,
+        "weighted_positive_units": 79449.487583021,
+        "annual_modeled_benefits": 636244010.8081238
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ct_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 23,
+        "weighted_positive_units": 79449.487583021,
+        "annual_modeled_benefits": 636244010.8081238
+      },
+      "one_fewer_day": {
+        "variable": "ct_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 23,
+        "weighted_positive_units": 79449.487583021,
+        "annual_modeled_benefits": 636244010.8081238
+      },
+      "one_more_day": {
+        "variable": "ct_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 23,
+        "weighted_positive_units": 79449.487583021,
+        "annual_modeled_benefits": 636244010.8081238
+      }
+    },
+    {
+      "state": "DE",
+      "sample_households": 1068,
+      "baseline": {
+        "variable": "de_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 13026.181364486925,
+        "annual_modeled_benefits": 42150126.00852959
+      },
+      "candidate": {
+        "variable": "de_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 13026.181364486925,
+        "annual_modeled_benefits": 42150126.00852959
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "de_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 13026.181364486925,
+        "annual_modeled_benefits": 42150126.00852959
+      },
+      "one_fewer_day": {
+        "variable": "de_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 13026.181364486925,
+        "annual_modeled_benefits": 42150126.00852959
+      },
+      "one_more_day": {
+        "variable": "de_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 13026.181364486925,
+        "annual_modeled_benefits": 42150126.00852959
+      }
+    },
+    {
+      "state": "DC",
+      "sample_households": 551,
+      "baseline": {
+        "variable": "dc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "dc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 3288.0395223266023,
+        "annual_modeled_benefits": 23916792.31200898
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "dc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 3288.0395223266023,
+        "annual_modeled_benefits": 23916792.31200898
+      },
+      "one_fewer_day": {
+        "variable": "dc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 3288.0395223266023,
+        "annual_modeled_benefits": 23916792.31200898
+      },
+      "one_more_day": {
+        "variable": "dc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 3288.0395223266023,
+        "annual_modeled_benefits": 23916792.31200898
+      }
+    },
+    {
+      "state": "FL",
+      "sample_households": 1642,
+      "baseline": {
+        "variable": "fl_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "fl_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 17,
+        "weighted_positive_units": 87314.34071851184,
+        "annual_modeled_benefits": 336693781.677099
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "fl_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 76833.30946851184,
+        "annual_modeled_benefits": 320195353.52476215
+      },
+      "one_fewer_day": {
+        "variable": "fl_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 60231.18556508084,
+        "annual_modeled_benefits": 320401507.8530382
+      },
+      "one_more_day": {
+        "variable": "fl_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 60231.18556508084,
+        "annual_modeled_benefits": 324178392.2600601
+      }
+    },
+    {
+      "state": "GA",
+      "sample_households": 1215,
+      "baseline": {
+        "variable": "ga_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 13,
+        "weighted_positive_units": 28445.463818153017,
+        "annual_modeled_benefits": 130565867.0594202
+      },
+      "candidate": {
+        "variable": "ga_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 13,
+        "weighted_positive_units": 28445.463818153017,
+        "annual_modeled_benefits": 130565867.0594202
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ga_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 13,
+        "weighted_positive_units": 28445.463818153017,
+        "annual_modeled_benefits": 130565867.0594202
+      },
+      "one_fewer_day": {
+        "variable": "ga_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 13,
+        "weighted_positive_units": 28445.463818153017,
+        "annual_modeled_benefits": 130565867.0594202
+      },
+      "one_more_day": {
+        "variable": "ga_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 13,
+        "weighted_positive_units": 28445.463818153017,
+        "annual_modeled_benefits": 130565867.0594202
+      }
+    },
+    {
+      "state": "HI",
+      "sample_households": 838,
+      "baseline": {
+        "variable": "hi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "hi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 3,
+        "weighted_positive_units": 2554.6082648136944,
+        "annual_modeled_benefits": 15688867.198366832
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "hi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 3,
+        "weighted_positive_units": 2554.6082648136944,
+        "annual_modeled_benefits": 15688867.198366832
+      },
+      "one_fewer_day": {
+        "variable": "hi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 3,
+        "weighted_positive_units": 2554.6082648136944,
+        "annual_modeled_benefits": 15688867.198366832
+      },
+      "one_more_day": {
+        "variable": "hi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 3,
+        "weighted_positive_units": 2554.6082648136944,
+        "annual_modeled_benefits": 15688867.198366832
+      }
+    },
+    {
+      "state": "ID",
+      "sample_households": 746,
+      "baseline": {
+        "variable": "id_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "id_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 2,
+        "weighted_positive_units": 2335.738774359226,
+        "annual_modeled_benefits": 10651259.924815893
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "id_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 2,
+        "weighted_positive_units": 2335.738774359226,
+        "annual_modeled_benefits": 10651259.924815893
+      },
+      "one_fewer_day": {
+        "variable": "id_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 2,
+        "weighted_positive_units": 2335.738774359226,
+        "annual_modeled_benefits": 10651259.924815893
+      },
+      "one_more_day": {
+        "variable": "id_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 2,
+        "weighted_positive_units": 2335.738774359226,
+        "annual_modeled_benefits": 10651167.105942965
+      }
+    },
+    {
+      "state": "IL",
+      "sample_households": 1668,
+      "baseline": {
+        "variable": "il_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "il_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 62767.78443156066,
+        "annual_modeled_benefits": 196786246.13666055
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "il_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 62767.78443156066,
+        "annual_modeled_benefits": 196786246.13666055
+      },
+      "one_fewer_day": {
+        "variable": "il_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 62767.78443156066,
+        "annual_modeled_benefits": 196786122.30308777
+      },
+      "one_more_day": {
+        "variable": "il_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 62767.78443156066,
+        "annual_modeled_benefits": 196786118.53858995
+      }
+    },
+    {
+      "state": "IN",
+      "sample_households": 1141,
+      "baseline": {
+        "variable": "in_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 20,
+        "weighted_positive_units": 9694.763750434155,
+        "annual_modeled_benefits": 25856735.988747887
+      },
+      "candidate": {
+        "variable": "in_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 20,
+        "weighted_positive_units": 9694.763750434155,
+        "annual_modeled_benefits": 25856735.988747887
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "in_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 20,
+        "weighted_positive_units": 9694.763750434155,
+        "annual_modeled_benefits": 25856735.988747887
+      },
+      "one_fewer_day": {
+        "variable": "in_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 20,
+        "weighted_positive_units": 9694.763750434155,
+        "annual_modeled_benefits": 25856735.988747887
+      },
+      "one_more_day": {
+        "variable": "in_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 20,
+        "weighted_positive_units": 9694.763750434155,
+        "annual_modeled_benefits": 25856735.988747887
+      }
+    },
+    {
+      "state": "IA",
+      "sample_households": 973,
+      "baseline": {
+        "variable": "ia_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ia_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 13277.069981029548,
+        "annual_modeled_benefits": 54542065.75748161
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ia_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 13277.069981029548,
+        "annual_modeled_benefits": 54542065.75748161
+      },
+      "one_fewer_day": {
+        "variable": "ia_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 13277.069981029548,
+        "annual_modeled_benefits": 87267295.53406624
+      },
+      "one_more_day": {
+        "variable": "ia_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 13277.069981029548,
+        "annual_modeled_benefits": 54542065.75748161
+      }
+    },
+    {
+      "state": "KS",
+      "sample_households": 921,
+      "baseline": {
+        "variable": "ks_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ks_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 21785.09440057905,
+        "annual_modeled_benefits": 57457564.33302226
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ks_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 21785.09440057905,
+        "annual_modeled_benefits": 57457564.33302226
+      },
+      "one_fewer_day": {
+        "variable": "ks_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 21785.09440057905,
+        "annual_modeled_benefits": 29101934.00209515
+      },
+      "one_more_day": {
+        "variable": "ks_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 21785.09440057905,
+        "annual_modeled_benefits": 58709158.015559085
+      }
+    },
+    {
+      "state": "KY",
+      "sample_households": 776,
+      "baseline": {
+        "variable": "ky_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ky_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 0.02885724022053182,
+        "annual_modeled_benefits": 147.92350896229354
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ky_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 0.02885724022053182,
+        "annual_modeled_benefits": 147.92350896229354
+      },
+      "one_fewer_day": {
+        "variable": "ky_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 0.02885724022053182,
+        "annual_modeled_benefits": 157.98810727270265
+      },
+      "one_more_day": {
+        "variable": "ky_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 0.02885724022053182,
+        "annual_modeled_benefits": 146.34993561158112
+      }
+    },
+    {
+      "state": "LA",
+      "sample_households": 1000,
+      "baseline": {
+        "variable": "la_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "la_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 11,
+        "weighted_positive_units": 37176.93537535961,
+        "annual_modeled_benefits": 72842360.51107226
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "la_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 11,
+        "weighted_positive_units": 37176.93537535961,
+        "annual_modeled_benefits": 69024044.59310351
+      },
+      "one_fewer_day": {
+        "variable": "la_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 12,
+        "weighted_positive_units": 37176.93812166341,
+        "annual_modeled_benefits": 72842353.11263487
+      },
+      "one_more_day": {
+        "variable": "la_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 11,
+        "weighted_positive_units": 37176.93537535961,
+        "annual_modeled_benefits": 72842360.51107226
+      }
+    },
+    {
+      "state": "ME",
+      "sample_households": 785,
+      "baseline": {
+        "variable": "me_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 17,
+        "weighted_positive_units": 11874.206514407007,
+        "annual_modeled_benefits": 46683663.687080294
+      },
+      "candidate": {
+        "variable": "me_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 17,
+        "weighted_positive_units": 11874.206514407007,
+        "annual_modeled_benefits": 46683670.942570195
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "me_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 17,
+        "weighted_positive_units": 11874.206514407007,
+        "annual_modeled_benefits": 46683670.942570195
+      },
+      "one_fewer_day": {
+        "variable": "me_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 17,
+        "weighted_positive_units": 11874.206514407007,
+        "annual_modeled_benefits": 46683670.942570195
+      },
+      "one_more_day": {
+        "variable": "me_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 17,
+        "weighted_positive_units": 11874.206514407007,
+        "annual_modeled_benefits": 46683670.942570195
+      }
+    },
+    {
+      "state": "MD",
+      "sample_households": 1091,
+      "baseline": {
+        "variable": "md_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "md_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "md_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "one_fewer_day": {
+        "variable": "md_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "one_more_day": {
+        "variable": "md_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      }
+    },
+    {
+      "state": "MA",
+      "sample_households": 1522,
+      "baseline": {
+        "variable": "ma_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ma_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 0.0716373446630314,
+        "annual_modeled_benefits": 212.01572016369738
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ma_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 0.0716373446630314,
+        "annual_modeled_benefits": 212.01572016369738
+      },
+      "one_fewer_day": {
+        "variable": "ma_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 0.0716373446630314,
+        "annual_modeled_benefits": 212.01572016369738
+      },
+      "one_more_day": {
+        "variable": "ma_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 0.0716373446630314,
+        "annual_modeled_benefits": 212.01572016369738
+      }
+    },
+    {
+      "state": "MI",
+      "sample_households": 1478,
+      "baseline": {
+        "variable": "mi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 42453.16293835803,
+        "annual_modeled_benefits": 167344216.73651382
+      },
+      "candidate": {
+        "variable": "mi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 42453.16293835803,
+        "annual_modeled_benefits": 167344216.73651382
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "mi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 42453.16293835803,
+        "annual_modeled_benefits": 167344216.73651382
+      },
+      "one_fewer_day": {
+        "variable": "mi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 42453.16293835803,
+        "annual_modeled_benefits": 167344216.73651382
+      },
+      "one_more_day": {
+        "variable": "mi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 42453.16293835803,
+        "annual_modeled_benefits": 167344216.73651382
+      }
+    },
+    {
+      "state": "MN",
+      "sample_households": 1166,
+      "baseline": {
+        "variable": "mn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "mn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 21289.402694451623,
+        "annual_modeled_benefits": 274850426.86324066
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "mn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 9,
+        "weighted_positive_units": 21289.401307827327,
+        "annual_modeled_benefits": 274850426.2413397
+      },
+      "one_fewer_day": {
+        "variable": "mn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 21289.402694451623,
+        "annual_modeled_benefits": 274850426.86324066
+      },
+      "one_more_day": {
+        "variable": "mn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 21289.402694451623,
+        "annual_modeled_benefits": 274850426.86324066
+      }
+    },
+    {
+      "state": "MS",
+      "sample_households": 882,
+      "baseline": {
+        "variable": "ms_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ms_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 7256.952556610806,
+        "annual_modeled_benefits": 30449890.664512668
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ms_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 7256.951193145127,
+        "annual_modeled_benefits": 30449886.57411563
+      },
+      "one_fewer_day": {
+        "variable": "ms_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 7256.952556610806,
+        "annual_modeled_benefits": 9247129.336387664
+      },
+      "one_more_day": {
+        "variable": "ms_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 7256.952556610806,
+        "annual_modeled_benefits": 30449890.664512668
+      }
+    },
+    {
+      "state": "MO",
+      "sample_households": 1013,
+      "baseline": {
+        "variable": "mo_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "mo_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 9981.891486888984,
+        "annual_modeled_benefits": 44110014.74611533
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "mo_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 9981.891486888984,
+        "annual_modeled_benefits": 44110014.74611533
+      },
+      "one_fewer_day": {
+        "variable": "mo_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 9981.891486888984,
+        "annual_modeled_benefits": 44110017.00214956
+      },
+      "one_more_day": {
+        "variable": "mo_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 9981.891486888984,
+        "annual_modeled_benefits": 44110014.31673183
+      }
+    },
+    {
+      "state": "MT",
+      "sample_households": 744,
+      "baseline": {
+        "variable": "mt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 3,
+        "weighted_positive_units": 4.609087781107519,
+        "annual_modeled_benefits": 343.68633474948
+      },
+      "candidate": {
+        "variable": "mt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 3,
+        "weighted_positive_units": 4.609087781107519,
+        "annual_modeled_benefits": 343.68633474948
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "mt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 3,
+        "weighted_positive_units": 4.609087781107519,
+        "annual_modeled_benefits": 343.68633474948
+      },
+      "one_fewer_day": {
+        "variable": "mt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 3,
+        "weighted_positive_units": 4.609087781107519,
+        "annual_modeled_benefits": 343.68633474948
+      },
+      "one_more_day": {
+        "variable": "mt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 3,
+        "weighted_positive_units": 4.609087781107519,
+        "annual_modeled_benefits": 343.68633474948
+      }
+    },
+    {
+      "state": "NE",
+      "sample_households": 884,
+      "baseline": {
+        "variable": "ne_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 1.0507851635920815,
+        "annual_modeled_benefits": 754.4826039844379
+      },
+      "candidate": {
+        "variable": "ne_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 1.0507851635920815,
+        "annual_modeled_benefits": 752.3048707440652
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ne_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 1.0507851635920815,
+        "annual_modeled_benefits": 750.2732835703686
+      },
+      "one_fewer_day": {
+        "variable": "ne_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 1.0507851635920815,
+        "annual_modeled_benefits": 752.3048707440652
+      },
+      "one_more_day": {
+        "variable": "ne_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 1.0507851635920815,
+        "annual_modeled_benefits": 752.3048707440652
+      }
+    },
+    {
+      "state": "NV",
+      "sample_households": 952,
+      "baseline": {
+        "variable": "nv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "nv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "nv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "one_fewer_day": {
+        "variable": "nv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "one_more_day": {
+        "variable": "nv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      }
+    },
+    {
+      "state": "NH",
+      "sample_households": 840,
+      "baseline": {
+        "variable": "nh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 6328.660297448034,
+        "annual_modeled_benefits": 16452735.29621234
+      },
+      "candidate": {
+        "variable": "nh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 6328.660297448034,
+        "annual_modeled_benefits": 16452735.29621234
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "nh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 6328.660297448034,
+        "annual_modeled_benefits": 16452735.29621234
+      },
+      "one_fewer_day": {
+        "variable": "nh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 6328.660297448034,
+        "annual_modeled_benefits": 16452735.29621234
+      },
+      "one_more_day": {
+        "variable": "nh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 6328.660297448034,
+        "annual_modeled_benefits": 16452735.29621234
+      }
+    },
+    {
+      "state": "NJ",
+      "sample_households": 1651,
+      "baseline": {
+        "variable": "nj_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 12,
+        "weighted_positive_units": 47645.06307415466,
+        "annual_modeled_benefits": 54783391.64412939
+      },
+      "candidate": {
+        "variable": "nj_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 12,
+        "weighted_positive_units": 47645.06307415466,
+        "annual_modeled_benefits": 39399036.82068616
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "nj_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 12,
+        "weighted_positive_units": 47645.06307415466,
+        "annual_modeled_benefits": 39399036.82068616
+      },
+      "one_fewer_day": {
+        "variable": "nj_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 12,
+        "weighted_positive_units": 47645.06307415466,
+        "annual_modeled_benefits": 39399036.82068616
+      },
+      "one_more_day": {
+        "variable": "nj_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 12,
+        "weighted_positive_units": 47645.06307415466,
+        "annual_modeled_benefits": 39399036.82068616
+      }
+    },
+    {
+      "state": "NM",
+      "sample_households": 902,
+      "baseline": {
+        "variable": "nm_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 32,
+        "weighted_positive_units": 14416.283866321406,
+        "annual_modeled_benefits": 40276267.46262546
+      },
+      "candidate": {
+        "variable": "nm_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 32,
+        "weighted_positive_units": 14416.283866321406,
+        "annual_modeled_benefits": 59646231.852653645
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "nm_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 32,
+        "weighted_positive_units": 14416.283866321406,
+        "annual_modeled_benefits": 59644459.68607285
+      },
+      "one_fewer_day": {
+        "variable": "nm_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 32,
+        "weighted_positive_units": 14416.283866321406,
+        "annual_modeled_benefits": 59646236.386424586
+      },
+      "one_more_day": {
+        "variable": "nm_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 32,
+        "weighted_positive_units": 14416.283866321406,
+        "annual_modeled_benefits": 59647120.40554538
+      }
+    },
+    {
+      "state": "NY",
+      "sample_households": 2166,
+      "baseline": {
+        "variable": "ny_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ny_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 28,
+        "weighted_positive_units": 84809.87077922659,
+        "annual_modeled_benefits": 386150016.03633535
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ny_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 28,
+        "weighted_positive_units": 84809.87077922659,
+        "annual_modeled_benefits": 386150016.03633535
+      },
+      "one_fewer_day": {
+        "variable": "ny_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 28,
+        "weighted_positive_units": 84809.87077922659,
+        "annual_modeled_benefits": 386147637.05533403
+      },
+      "one_more_day": {
+        "variable": "ny_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 28,
+        "weighted_positive_units": 84809.87077922659,
+        "annual_modeled_benefits": 386150016.03633535
+      }
+    },
+    {
+      "state": "NC",
+      "sample_households": 1337,
+      "baseline": {
+        "variable": "nc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 28725.60765656957,
+        "annual_modeled_benefits": 161822256.86665964
+      },
+      "candidate": {
+        "variable": "nc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 28725.60765656957,
+        "annual_modeled_benefits": 161822256.86665964
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "nc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 28725.60765656957,
+        "annual_modeled_benefits": 161822256.86665964
+      },
+      "one_fewer_day": {
+        "variable": "nc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 28725.60765656957,
+        "annual_modeled_benefits": 161822256.86665964
+      },
+      "one_more_day": {
+        "variable": "nc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 28725.60765656957,
+        "annual_modeled_benefits": 161822256.86665964
+      }
+    },
+    {
+      "state": "ND",
+      "sample_households": 682,
+      "baseline": {
+        "variable": "nd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 0.1099370562878903,
+        "annual_modeled_benefits": 409.12895149587507
+      },
+      "candidate": {
+        "variable": "nd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 0.1099370562878903,
+        "annual_modeled_benefits": 471.04686684011335
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "nd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 0.1099370562878903,
+        "annual_modeled_benefits": 465.6641840398204
+      },
+      "one_fewer_day": {
+        "variable": "nd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 0.1099370562878903,
+        "annual_modeled_benefits": 474.0045400403885
+      },
+      "one_more_day": {
+        "variable": "nd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 0.1099370562878903,
+        "annual_modeled_benefits": 515.8170557760147
+      }
+    },
+    {
+      "state": "OH",
+      "sample_households": 1531,
+      "baseline": {
+        "variable": "oh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "oh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 57197.27386227145,
+        "annual_modeled_benefits": 109086186.25780228
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "oh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 57197.27386227145,
+        "annual_modeled_benefits": 109086186.25780228
+      },
+      "one_fewer_day": {
+        "variable": "oh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 57197.27386227145,
+        "annual_modeled_benefits": 109086186.25780228
+      },
+      "one_more_day": {
+        "variable": "oh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 57197.27386227145,
+        "annual_modeled_benefits": 109088290.29528335
+      }
+    },
+    {
+      "state": "OK",
+      "sample_households": 918,
+      "baseline": {
+        "variable": "ok_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ok_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 1,
+        "weighted_positive_units": 0.0031096774619072676,
+        "annual_modeled_benefits": 5.149625876918435
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ok_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 1,
+        "weighted_positive_units": 0.0031096774619072676,
+        "annual_modeled_benefits": 5.149625876918435
+      },
+      "one_fewer_day": {
+        "variable": "ok_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 1,
+        "weighted_positive_units": 0.0031096774619072676,
+        "annual_modeled_benefits": 3.0897752604315514
+      },
+      "one_more_day": {
+        "variable": "ok_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 1,
+        "weighted_positive_units": 0.0031096774619072676,
+        "annual_modeled_benefits": 5.149625876918435
+      }
+    },
+    {
+      "state": "OR",
+      "sample_households": 1152,
+      "baseline": {
+        "variable": "or_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 15165.681869102991,
+        "annual_modeled_benefits": 33054937.630309362
+      },
+      "candidate": {
+        "variable": "or_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 15165.681869102991,
+        "annual_modeled_benefits": 33054937.630309362
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "or_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 15165.681869102991,
+        "annual_modeled_benefits": 33054937.630309362
+      },
+      "one_fewer_day": {
+        "variable": "or_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 15165.681869102991,
+        "annual_modeled_benefits": 33054937.630309362
+      },
+      "one_more_day": {
+        "variable": "or_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 15165.681869102991,
+        "annual_modeled_benefits": 33054937.630309362
+      }
+    },
+    {
+      "state": "PA",
+      "sample_households": 1999,
+      "baseline": {
+        "variable": "pa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "pa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 0.2005278345895931,
+        "annual_modeled_benefits": 561.099948525683
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "pa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 0.2005278345895931,
+        "annual_modeled_benefits": 561.099948525683
+      },
+      "one_fewer_day": {
+        "variable": "pa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 0.2005278345895931,
+        "annual_modeled_benefits": 561.099948525683
+      },
+      "one_more_day": {
+        "variable": "pa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 0.2005278345895931,
+        "annual_modeled_benefits": 561.099948525683
+      }
+    },
+    {
+      "state": "RI",
+      "sample_households": 804,
+      "baseline": {
+        "variable": "ri_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 5,
+        "weighted_positive_units": 4049.67838506322,
+        "annual_modeled_benefits": 2429808.7526231185
+      },
+      "candidate": {
+        "variable": "ri_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 5,
+        "weighted_positive_units": 4049.67838506322,
+        "annual_modeled_benefits": 2429813.4984327066
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ri_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 5,
+        "weighted_positive_units": 4049.67838506322,
+        "annual_modeled_benefits": 2429813.4984327066
+      },
+      "one_fewer_day": {
+        "variable": "ri_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 5,
+        "weighted_positive_units": 4049.67838506322,
+        "annual_modeled_benefits": 2429813.4984327066
+      },
+      "one_more_day": {
+        "variable": "ri_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 5,
+        "weighted_positive_units": 4049.67838506322,
+        "annual_modeled_benefits": 2429813.4984327066
+      }
+    },
+    {
+      "state": "SC",
+      "sample_households": 955,
+      "baseline": {
+        "variable": "sc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "sc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 11,
+        "weighted_positive_units": 27915.89938246878,
+        "annual_modeled_benefits": 77088809.79821464
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "sc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 27854.604704734404,
+        "annual_modeled_benefits": 77020404.93038082
+      },
+      "one_fewer_day": {
+        "variable": "sc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 11,
+        "weighted_positive_units": 27915.89938246878,
+        "annual_modeled_benefits": 77088803.73884593
+      },
+      "one_more_day": {
+        "variable": "sc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 11,
+        "weighted_positive_units": 27915.89938246878,
+        "annual_modeled_benefits": 77088809.79821464
+      }
+    },
+    {
+      "state": "SD",
+      "sample_households": 866,
+      "baseline": {
+        "variable": "sd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "sd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 9,
+        "weighted_positive_units": 2978.0845139123267,
+        "annual_modeled_benefits": 5809177.944389787
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "sd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 9,
+        "weighted_positive_units": 2978.0845139123267,
+        "annual_modeled_benefits": 5809177.944389787
+      },
+      "one_fewer_day": {
+        "variable": "sd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 9,
+        "weighted_positive_units": 2978.0845139123267,
+        "annual_modeled_benefits": 5809177.483422956
+      },
+      "one_more_day": {
+        "variable": "sd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 9,
+        "weighted_positive_units": 2978.0845139123267,
+        "annual_modeled_benefits": 5809179.365034073
+      }
+    },
+    {
+      "state": "TN",
+      "sample_households": 1082,
+      "baseline": {
+        "variable": "tn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "tn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 54836.32565583871,
+        "annual_modeled_benefits": 120178664.890383
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "tn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 12,
+        "weighted_positive_units": 37178.86130036996,
+        "annual_modeled_benefits": 76918628.29417688
+      },
+      "one_fewer_day": {
+        "variable": "tn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 54836.32565583871,
+        "annual_modeled_benefits": 120178652.73669359
+      },
+      "one_more_day": {
+        "variable": "tn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 58319.75094880746,
+        "annual_modeled_benefits": 139207804.7182324
+      }
+    },
+    {
+      "state": "TX",
+      "sample_households": 1875,
+      "baseline": {
+        "variable": "tx_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "tx_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 72034.10924506374,
+        "annual_modeled_benefits": 172158000.8966679
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "tx_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 72034.10924506374,
+        "annual_modeled_benefits": 172158000.8966679
+      },
+      "one_fewer_day": {
+        "variable": "tx_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 72034.10924506374,
+        "annual_modeled_benefits": 172158000.8966679
+      },
+      "one_more_day": {
+        "variable": "tx_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 72034.10924506374,
+        "annual_modeled_benefits": 172158000.8966679
+      }
+    },
+    {
+      "state": "UT",
+      "sample_households": 861,
+      "baseline": {
+        "variable": "ut_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 23851.249713434547,
+        "annual_modeled_benefits": 66285594.41326967
+      },
+      "candidate": {
+        "variable": "ut_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 23851.249713434547,
+        "annual_modeled_benefits": 66285594.41326967
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "ut_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 23851.249713434547,
+        "annual_modeled_benefits": 66285594.41326967
+      },
+      "one_fewer_day": {
+        "variable": "ut_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 23851.249713434547,
+        "annual_modeled_benefits": 66285594.41326967
+      },
+      "one_more_day": {
+        "variable": "ut_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 23851.249713434547,
+        "annual_modeled_benefits": 66285594.41326967
+      }
+    },
+    {
+      "state": "VT",
+      "sample_households": 496,
+      "baseline": {
+        "variable": "vt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 78,
+        "weighted_positive_units": 32213.61921006818,
+        "annual_modeled_benefits": 526819840.50677323
+      },
+      "candidate": {
+        "variable": "vt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 80,
+        "weighted_positive_units": 32213.669151621914,
+        "annual_modeled_benefits": 720606373.2116799
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "vt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 80,
+        "weighted_positive_units": 32213.669151621914,
+        "annual_modeled_benefits": 707106120.8814734
+      },
+      "one_fewer_day": {
+        "variable": "vt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 80,
+        "weighted_positive_units": 32213.669151621914,
+        "annual_modeled_benefits": 723295768.2248663
+      },
+      "one_more_day": {
+        "variable": "vt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 81,
+        "weighted_positive_units": 32213.82430987344,
+        "annual_modeled_benefits": 735348229.2533482
+      }
+    },
+    {
+      "state": "VA",
+      "sample_households": 1394,
+      "baseline": {
+        "variable": "va_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "va_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 9,
+        "weighted_positive_units": 45187.34717369359,
+        "annual_modeled_benefits": 249203866.21813098
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "va_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 45187.34378196369,
+        "annual_modeled_benefits": 249203861.9343761
+      },
+      "one_fewer_day": {
+        "variable": "va_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 9,
+        "weighted_positive_units": 45187.34717369359,
+        "annual_modeled_benefits": 218587967.72536415
+      },
+      "one_more_day": {
+        "variable": "va_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 45187.52193577867,
+        "annual_modeled_benefits": 254330473.5103389
+      }
+    },
+    {
+      "state": "WA",
+      "sample_households": 1305,
+      "baseline": {
+        "variable": "wa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 18,
+        "weighted_positive_units": 34613.59633511363,
+        "annual_modeled_benefits": 273947341.7692
+      },
+      "candidate": {
+        "variable": "wa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 18,
+        "weighted_positive_units": 34613.59633511363,
+        "annual_modeled_benefits": 273947341.7692
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "wa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 18,
+        "weighted_positive_units": 34613.59633511363,
+        "annual_modeled_benefits": 273947341.7692
+      },
+      "one_fewer_day": {
+        "variable": "wa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 18,
+        "weighted_positive_units": 34613.59633511363,
+        "annual_modeled_benefits": 273947341.7692
+      },
+      "one_more_day": {
+        "variable": "wa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 18,
+        "weighted_positive_units": 34613.59633511363,
+        "annual_modeled_benefits": 273947341.7692
+      }
+    },
+    {
+      "state": "WV",
+      "sample_households": 845,
+      "baseline": {
+        "variable": "wv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "wv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 4,
+        "weighted_positive_units": 2978.909898934886,
+        "annual_modeled_benefits": 9329928.243193686
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "wv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 4,
+        "weighted_positive_units": 2978.909898934886,
+        "annual_modeled_benefits": 9329923.422902562
+      },
+      "one_fewer_day": {
+        "variable": "wv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 4,
+        "weighted_positive_units": 2978.909898934886,
+        "annual_modeled_benefits": 9329930.062846346
+      },
+      "one_more_day": {
+        "variable": "wv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 4,
+        "weighted_positive_units": 2978.909898934886,
+        "annual_modeled_benefits": 10521487.168013036
+      }
+    },
+    {
+      "state": "WI",
+      "sample_households": 1232,
+      "baseline": {
+        "variable": "wi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "wi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 33918.60478726821,
+        "annual_modeled_benefits": 249284653.88471013
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "wi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 33918.60478726821,
+        "annual_modeled_benefits": 249284653.88471013
+      },
+      "one_fewer_day": {
+        "variable": "wi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 33918.60478726821,
+        "annual_modeled_benefits": 249284617.12617347
+      },
+      "one_more_day": {
+        "variable": "wi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 9,
+        "weighted_positive_units": 33918.61217102362,
+        "annual_modeled_benefits": 210174118.98339957
+      }
+    },
+    {
+      "state": "WY",
+      "sample_households": 557,
+      "baseline": {
+        "variable": "wy_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "wy_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 2962.834392214354,
+        "annual_modeled_benefits": 18103301.12153925
+      },
+      "no_modeled_irregular_hours": {
+        "variable": "wy_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 2962.834582739495,
+        "annual_modeled_benefits": 18103300.895859934
+      },
+      "one_fewer_day": {
+        "variable": "wy_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 2962.834392214354,
+        "annual_modeled_benefits": 18103301.12153925
+      },
+      "one_more_day": {
+        "variable": "wy_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 2962.834392214354,
+        "annual_modeled_benefits": 18834318.50135846
+      }
+    }
+  ],
+  "production_ready": false,
+  "interpretation": "assumption stress tests, not confidence intervals; potential modeled benefits, not calibrated spending",
+  "summary": {
+    "states_evaluated": 51,
+    "annual_potential_modeled_benefits": {
+      "baseline": 2253392072.9613476,
+      "candidate": 5286396512.037729,
+      "no_modeled_irregular_hours": 5209249263.466962,
+      "one_fewer_day": 5221847327.786389,
+      "one_more_day": 5298269288.494554
+    },
+    "sensitivity_flags": [
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "TN",
+        "relative_change": -0.3599643633557116,
+        "absolute_change": -43260036.59620613,
+        "flagged": true
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "IA",
+        "relative_change": 0.5999998225607299,
+        "absolute_change": 32725229.776584633,
+        "flagged": true
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "KS",
+        "relative_change": -0.49350560992419995,
+        "absolute_change": -28355630.330927107,
+        "flagged": true
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "MS",
+        "relative_change": -0.6963165011569457,
+        "absolute_change": -21202761.328125004,
+        "flagged": true
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "OK",
+        "relative_change": -0.40000005159976976,
+        "absolute_change": -2.0598506164868837,
+        "flagged": true
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "AR",
+        "relative_change": 0.43948945692098534,
+        "absolute_change": 22323171.50997054,
+        "flagged": true
+      }
+    ],
+    "comparisons": [
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "US",
+        "relative_change": -0.014593541819100081,
+        "absolute_change": -77147248.5707674,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "AL",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "AK",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "AZ",
+        "relative_change": -2.0603166723927034e-06,
+        "absolute_change": -47.715961039066315,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "AR",
+        "relative_change": -1.0830808059296869e-07,
+        "absolute_change": -5.501337565481663,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "CA",
+        "relative_change": null,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "CO",
+        "relative_change": 1.5282148622892612e-07,
+        "absolute_change": 36.13395735621452,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "CT",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "DE",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "DC",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "FL",
+        "relative_change": -0.04900128559000059,
+        "absolute_change": -16498428.152336836,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "GA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "HI",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "ID",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "IL",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "IN",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "IA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "KS",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "KY",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "LA",
+        "relative_change": -0.0524188932261243,
+        "absolute_change": -3818315.91796875,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "ME",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "MD",
+        "relative_change": null,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "MA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "MI",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "MN",
+        "relative_change": -2.262688775133818e-09,
+        "absolute_change": -0.6219009757041931,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "MS",
+        "relative_change": -1.343320763490555e-07,
+        "absolute_change": -4.090397037565708,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "MO",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "MT",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "NE",
+        "relative_change": -0.002700483876552961,
+        "absolute_change": -2.0315871736966074,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "NV",
+        "relative_change": null,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "NH",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "NJ",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "NM",
+        "relative_change": -2.9711291489026368e-05,
+        "absolute_change": -1772.1665807962418,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "NY",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "NC",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "ND",
+        "relative_change": -0.011427064224842841,
+        "absolute_change": -5.382682800292969,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "OH",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "OK",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "OR",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "PA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "RI",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "SC",
+        "relative_change": -0.0008873514588288169,
+        "absolute_change": -68404.86783382297,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "SD",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "TN",
+        "relative_change": -0.3599643633557116,
+        "absolute_change": -43260036.59620613,
+        "flagged": true
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "TX",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "UT",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "VT",
+        "relative_change": -0.01873457248239016,
+        "absolute_change": -13500252.330206513,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "VA",
+        "relative_change": -1.7189760938327763e-08,
+        "absolute_change": -4.283754885196686,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "WA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "WV",
+        "relative_change": -5.166482526594711e-07,
+        "absolute_change": -4.820291124284267,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "WI",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "no_modeled_irregular_hours",
+        "state": "WY",
+        "relative_change": -1.2466196861638054e-08,
+        "absolute_change": -0.22567931562662125,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "US",
+        "relative_change": -0.012210431832790832,
+        "absolute_change": -64549184.25133991,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "AL",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "AK",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "AZ",
+        "relative_change": -8.464541488685182e-07,
+        "absolute_change": -19.60347830504179,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "AR",
+        "relative_change": -0.06880181634068526,
+        "absolute_change": -3494679.3880580887,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "CA",
+        "relative_change": null,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "CO",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "CT",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "DE",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "DC",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "FL",
+        "relative_change": -0.04838899531469712,
+        "absolute_change": -16292273.824060798,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "GA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "HI",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "ID",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "IL",
+        "relative_change": -6.29279612809565e-07,
+        "absolute_change": -123.8335727751255,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "IN",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "IA",
+        "relative_change": 0.5999998225607299,
+        "absolute_change": 32725229.776584633,
+        "flagged": true
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "KS",
+        "relative_change": -0.49350560992419995,
+        "absolute_change": -28355630.330927107,
+        "flagged": true
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "KY",
+        "relative_change": 0.06803920743236715,
+        "absolute_change": 10.06459831040911,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "LA",
+        "relative_change": -1.015677875316422e-07,
+        "absolute_change": -7.398437395691872,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "ME",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "MD",
+        "relative_change": null,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "MA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "MI",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "MN",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "MS",
+        "relative_change": -0.6963165011569457,
+        "absolute_change": -21202761.328125004,
+        "flagged": true
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "MO",
+        "relative_change": 5.114562408698159e-08,
+        "absolute_change": 2.256034232676029,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "MT",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "NE",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "NV",
+        "relative_change": null,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "NH",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "NJ",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "NM",
+        "relative_change": 7.601102031722338e-08,
+        "absolute_change": 4.533770941197872,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "NY",
+        "relative_change": -6.160768878729368e-06,
+        "absolute_change": -2378.981001317501,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "NC",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "ND",
+        "relative_change": 0.006278936149423715,
+        "absolute_change": 2.957673200275167,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "OH",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "OK",
+        "relative_change": -0.40000005159976976,
+        "absolute_change": -2.0598506164868837,
+        "flagged": true
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "OR",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "PA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "RI",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "SC",
+        "relative_change": -7.860244217741888e-08,
+        "absolute_change": -6.059368714690208,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "SD",
+        "relative_change": -7.935147357416053e-08,
+        "absolute_change": -0.46096683014184237,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "TN",
+        "relative_change": -1.0113017502190059e-07,
+        "absolute_change": -12.153689414262772,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "TX",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "UT",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "VT",
+        "relative_change": 0.0037321277096120254,
+        "absolute_change": 2689395.0131863356,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "VA",
+        "relative_change": -0.122854829491162,
+        "absolute_change": -30615898.492766827,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "WA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "WV",
+        "relative_change": 1.9503393942456014e-07,
+        "absolute_change": 1.81965265981853,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "WI",
+        "relative_change": -1.474560751887755e-07,
+        "absolute_change": -36.7585366666317,
+        "flagged": false
+      },
+      {
+        "scenario": "one_fewer_day",
+        "state": "WY",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "US",
+        "relative_change": 0.002245911071897205,
+        "absolute_change": 11872776.456824303,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "AL",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "AK",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "AZ",
+        "relative_change": -0.038820318650775495,
+        "absolute_change": -899060.2450027056,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "AR",
+        "relative_change": 0.43948945692098534,
+        "absolute_change": 22323171.50997054,
+        "flagged": true
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "CA",
+        "relative_change": null,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "CO",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "CT",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "DE",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "DC",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "FL",
+        "relative_change": -0.037171430237584874,
+        "absolute_change": -12515389.417038918,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "GA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "HI",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "ID",
+        "relative_change": -8.714356196712921e-06,
+        "absolute_change": -92.81887292861938,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "IL",
+        "relative_change": -6.484094955654378e-07,
+        "absolute_change": -127.59807059168816,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "IN",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "IA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "KS",
+        "relative_change": 0.02178292270244223,
+        "absolute_change": 1251593.6825368255,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "KY",
+        "relative_change": -0.010637750292372622,
+        "absolute_change": -1.5735733507124223,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "LA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "ME",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "MD",
+        "relative_change": null,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "MA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "MI",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "MN",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "MS",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "MO",
+        "relative_change": -9.734376568026846e-09,
+        "absolute_change": -0.4293834939599037,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "MT",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "NE",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "NV",
+        "relative_change": null,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "NH",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "NJ",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "NM",
+        "relative_change": 1.4897049891328236e-05,
+        "absolute_change": 888.5528917387128,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "NY",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "NC",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "ND",
+        "relative_change": 0.09504402234161904,
+        "absolute_change": 44.77018893590139,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "OH",
+        "relative_change": 1.9287845264817622e-05,
+        "absolute_change": 2104.037481069565,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "OK",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "OR",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "PA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "RI",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "SC",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "SD",
+        "relative_change": 2.445516903920343e-07,
+        "absolute_change": 1.4206442860886455,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "TN",
+        "relative_change": 0.15834041628941534,
+        "absolute_change": 19029139.827849388,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "TX",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "UT",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "VT",
+        "relative_change": 0.020457570998109725,
+        "absolute_change": 14741856.041668296,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "VA",
+        "relative_change": 0.020571941238345593,
+        "absolute_change": 5126607.2922079265,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "WA",
+        "relative_change": 0.0,
+        "absolute_change": 0.0,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "WV",
+        "relative_change": 0.1277136215585162,
+        "absolute_change": 1191558.9248193502,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "WI",
+        "relative_change": -0.1568910652614762,
+        "absolute_change": -39110534.90131056,
+        "flagged": false
+      },
+      {
+        "scenario": "one_more_day",
+        "state": "WY",
+        "relative_change": 0.04038033587970585,
+        "absolute_change": 731017.3798192106,
+        "flagged": false
+      }
+    ]
+  }
+}

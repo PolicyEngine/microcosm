@@ -112,6 +112,15 @@ def impute_us_childcare_attendance(
         raise ValueError("Sibling dependence must be between zero and one.")
     if sibling_dependence > 0:
         _ids(person, "childcare_source_household_id", unique=False)
+        if (
+            person.childcare_source_household_id.str.strip()
+            .str.lower()
+            .isin(["nan", "none", "<na>"])
+            .any()
+        ):
+            raise ValueError(
+                "Childcare household source identities cannot be missing-value strings."
+            )
     levels = (match_columns, *fallback_match_columns)
     if any(
         "age" not in level

@@ -12,7 +12,7 @@ The build runs `with_us_childcare_attendance_inputs` after the childcare expense
 producer and before release validation. The generated release input contract
 requires all three attendance columns. Licensed local source paths are explicit
 build inputs; CI does not download or redistribute survey records. This PR
-provides build integration and a qualified local population candidate; it does
+provides build integration and a local population candidate under review; it does
 not publish a replacement population or certify national CCDF spending.
 
 ## Source and mapping
@@ -75,6 +75,11 @@ A fitted mixture of independent child ranks and a shared household rank models
 sibling dependence while preserving each child's conditional donor distribution.
 It is fitted on youngest sibling pairs in fully observed households using
 household weights and evaluated with household-separated folds.
+The same rank also couples days and hours. The expanded validation therefore
+integrates the actual weighted donor distributions to test joint day/hour
+moments, correlations, and every child's contribution to totals in households
+with three or more children. Its provisional screens currently fail; matching
+the average participation rate does not qualify this household model.
 
 ## ASEC target harmonization
 
@@ -82,6 +87,9 @@ household weights and evaluated with household-separated folds.
 `A_LINENO` within physical households. It counts measured last-week work among
 parents of any under-13 household child, matching the NSECE unit. Unrelated
 working adults do not become parents. Dangling parent pointers fail.
+Missing household source identities, blank IDs, stringified nulls, and unresolved
+person-to-household links fail before shared ranks are assigned. Unrelated
+households must never acquire one shared `"nan"` identity.
 
 Regions derive from the shared Census state mapping. Household income is the
 sum of raw `PTOTVAL`, expressed in 2023 dollars using annual CPI-U. The pinned
@@ -118,6 +126,28 @@ Native export adds only the three inputs and a receipt, reloads the result, and
 verifies every original entity column, household weight, and time period.
 Code hashes and environment versions accompany the aggregate preparation report.
 
+The receipt binds the source hashes, contract, recipe code, runtime versions,
+seed, matching/bridge settings, fitted dependence, and outside-domain policy to
+each person's ID, household link, age, and three attendance values. Both native
+US loaders restore and check it. A missing, stale, or altered receipt fails;
+changing seed or settings requires rebuilding from the original parent. An
+identical rerun verifies and reuses the existing values. A production-stage
+input with existing under-13 attendance and no production receipt is rejected,
+including all-zero columns; use the original unmodified parent. The lower-level
+observed-cell imputer remains available for separately sourced observations.
+
+Calibration weights and row selection/order may change without invalidating
+retained people. Changed IDs, membership, ages or attendance require a new source
+execution. The final fiscal export checks every row for completeness, bounds,
+integral monthly days, coherent zero schedules, and its source binding before
+writing. Generic coverage overrides cannot waive this check. The written native
+file receives the receipt and is reloaded and checked before source evidence is
+reported. Private per-person hashes stay in local checkpoints/H5; public reports
+contain only aggregate receipt summaries. The private inventory is a sequence
+of ID/hash pairs: population-sized dictionaries cause quadratic traversal in
+the Frame metadata container, which is intended for small mappings. These hashes detect accidental stale
+or modified artifacts; they are not signatures or publication authorization.
+
 Supply the same source inputs to the normal fiscal build using
 `--childcare-attendance-household-tsv`, `--childcare-attendance-calendar-tsv`,
 `--childcare-attendance-asec-cache`, and
@@ -150,6 +180,30 @@ Both arms use fixed source ages and incomes without aging or uprating. Direct
 state subsidy variables avoid conflating attendance with the separate household
 aggregation issue [PolicyEngine-US #9405](https://github.com/PolicyEngine/policyengine-us/issues/9405).
 Outputs describe potential modeled benefits, not caseload or spending estimates.
+
+Run the separate noncalendar assumption stress test with the same parent and
+source files:
+
+```bash
+uv run python tools/validate_us_childcare_sensitivity.py \
+  --parent-h5 /local/populace_us_2024.h5 \
+  --parent-sha256 48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e \
+  --household-tsv /local/39466-0005-Data.tsv \
+  --calendar-tsv /local/39466-0004-Data.tsv \
+  --asec-source-cache /local/asec --seed 915 \
+  --year 2026 --report /local/transport-sensitivity.json
+```
+
+The alternatives remove modeled irregular hours or shift modeled attended days
+by one in either direction, subject to hours/day feasibility. Each preserves
+measured regular hours. All arms use the same source population, matching fields,
+weights and random seed; modified bridge donors are transferred again. These
+are assumption stress tests, not confidence intervals. The
+[declared diagnostic screens](../experiments/us-childcare-attendance/review-validation-criteria.txt)
+flag national changes above 10% or state changes above 20% against the candidate,
+and separately assess sibling schedule distributions. They were written before
+the expanded runs, after seeing earlier development diagnostics, and require
+review rather than serving as automatic release acceptance.
 
 ## Validation and limits
 

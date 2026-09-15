@@ -20,6 +20,9 @@ from microcosm.build.frame_checkpoint import (
     write_frame_checkpoint,
 )
 from microcosm.build.us_runtime import childcare_attendance, nsece_childcare
+from microcosm.build.us_runtime.childcare_attendance_receipt import (
+    childcare_attendance_public_metadata,
+)
 from microcosm.build.us_runtime.childcare_attendance_stage import (
     export_native_childcare_candidate,
     inherit_outside_domain_attendance_baseline,
@@ -45,6 +48,9 @@ from microcosm.build.us_runtime.nsece_childcare_bridge import (
 )
 from microcosm.build.us_runtime.nsece_childcare_dependence import (
     fit_nsece_sibling_dependence,
+)
+from microcosm.build.us_runtime.nsece_childcare_sibling_validation import (
+    assess_sibling_schedules,
 )
 from microcosm.frame import Frame
 
@@ -155,6 +161,7 @@ def main() -> None:
     if args.extended_assessment:
         report["selection_and_cross_validation"] = assess_nsece_childcare(source)
         report["masked_calendar_validation"] = assess_noncalendar_bridge(source)
+        report["sibling_schedule_validation"] = assess_sibling_schedules(source)
     if args.bridge_noncalendar:
         source = bridge_nsece_noncalendar_attendance(source, seed=args.seed)
         report["noncalendar_bridge"] = source.source_receipt["noncalendar_bridge"]
@@ -259,8 +266,8 @@ def main() -> None:
             report["candidate_checkpoint_sha256"] = _sha256(args.output_checkpoint)
             report["parent_population_sha256"] = _sha256(input_path)
             report["production_stage_executed"] = args.production_stage
-            report["candidate_receipts"] = json.loads(
-                json.dumps(candidate.metadata, default=dict)
+            report["candidate_receipts"] = childcare_attendance_public_metadata(
+                candidate
             )
             if args.output_native_h5:
                 export_native_childcare_candidate(

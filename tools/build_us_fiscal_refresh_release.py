@@ -11670,7 +11670,23 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # the batched pre-export raise so a gate-failed run never produces it.
     # microcosm#443: #437 dropped this call while inserting the batched raise,
     # so attempts 13/14 smoke-scored a stale artifact from a prior run.
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        assert_bound_childcare_attendance,
+    )
+    from microcosm.build.us_runtime.childcare_attendance_stage import (
+        persist_native_childcare_receipt,
+    )
+    from microcosm.build.us_runtime.nsece_childcare import (
+        assert_childcare_attendance_exportable,
+    )
+
+    # Attendance integrity is not waivable by generic coverage/evidence flags.
+    assert_childcare_attendance_exportable(export_frame)
+    assert_bound_childcare_attendance(export_frame)
     release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
+    attendance_source_evidence = persist_native_childcare_receipt(
+        dataset_path, export_frame
+    )
     # microcosm#368: reform-coverage smoke on the WRITTEN release H5. The column
     # gate above proves the required keys exist and carry signal; this is the
     # end-to-end backstop: each pinned probe (first: SSI asset limits at
@@ -11798,18 +11814,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         reviewed_exclusions=_reviewed_exclusions(active_aliases),
     )
     coverage["fiscal_target_sources"] = _fiscal_target_source_provenance(target_specs)
-    attendance_receipts = {
-        key: json.loads(json.dumps(base_frame.metadata[key], default=dict))
-        for key in (
-            "childcare_attendance_stage",
-            "nsece_childcare_attendance",
-            "childcare_predictor_harmonization",
-            "childcare_outside_domain_baseline",
-        )
-        if key in base_frame.metadata
-    }
-    if attendance_receipts:
-        coverage["childcare_attendance"] = attendance_receipts
+    coverage["childcare_attendance"] = attendance_source_evidence
     if congressional_district_vintage_crosswalk_metadata is not None:
         coverage["congressional_district_vintage_crosswalk"] = (
             congressional_district_vintage_crosswalk_metadata

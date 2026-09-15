@@ -95,9 +95,28 @@ def harmonize_asec_childcare_predictors(
     household = frame.table("household")
     if "household_source_id" in household:
         identities = household.set_index("household_id").household_source_id
-        person["childcare_source_household_id"] = person.person_household_id.map(
-            identities
-        ).astype(str)
+        if not identities.index.is_unique or identities.isna().any():
+            raise ValueError(
+                "Childcare household identities must be complete and uniquely linked."
+            )
+        mapped = person.person_household_id.map(identities)
+        if mapped.isna().any():
+            raise ValueError("Childcare person-to-household link does not resolve.")
+        if not mapped.map(
+            lambda value: (
+                (
+                    isinstance(value, str)
+                    and value.strip().lower() not in ("", "nan", "none", "<na>")
+                )
+                or (
+                    isinstance(value, (int, np.integer)) and not isinstance(value, bool)
+                )
+            )
+        ).all():
+            raise ValueError(
+                "Childcare household identities must be canonical strings or integers."
+            )
+        person["childcare_source_household_id"] = mapped.astype(str)
     contract = childcare_attendance_contract()
     prices = {
         int(year): value for year, value in contract["cpi_u_annual_average"].items()

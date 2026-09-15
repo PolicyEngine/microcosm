@@ -602,13 +602,34 @@ def us_release_input_coverage_gate(
             present_values["household_weight"] = frame.weights_for("household").values
 
     degenerate, no_observed = _degenerate_columns(present_values, engine)
-    return input_column_coverage_gate(
+    attendance_details = None
+    attendance_failures = ()
+    if set(US_CHILDCARE_ATTENDANCE_COLUMNS) & (required | set(present_values)):
+        from microcosm.build.us_runtime.childcare_attendance_receipt import (
+            assert_bound_childcare_attendance,
+        )
+        from microcosm.build.us_runtime.nsece_childcare import (
+            assert_childcare_attendance_exportable,
+        )
+
+        try:
+            assert_childcare_attendance_exportable(frame)
+            attendance_details = assert_bound_childcare_attendance(frame)
+        except ValueError as error:
+            attendance_failures = (str(error),)
+    result = input_column_coverage_gate(
         present_values.keys(),
         required_columns=required,
         degenerate_columns=degenerate,
         no_observed_columns=no_observed,
         reviewed_exclusions=reviewed,
         name="us_release_input_coverage",
+    )
+    return GateResult(
+        name=result.name,
+        passed=result.passed and not attendance_failures,
+        failures=(*result.failures, *attendance_failures),
+        details={**result.details, "childcare_attendance": attendance_details},
     )
 
 

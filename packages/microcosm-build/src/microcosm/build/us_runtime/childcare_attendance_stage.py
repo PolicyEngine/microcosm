@@ -21,6 +21,11 @@ from microcosm.build.us_runtime.childcare_attendance import (
     US_CHILDCARE_ATTENDANCE_COLUMNS,
     childcare_attendance_contract,
 )
+from microcosm.build.us_runtime.childcare_attendance_receipt import (
+    ATTENDANCE_H5_KEY,
+    assert_bound_childcare_attendance,
+    bind_childcare_attendance,
+)
 from microcosm.build.us_runtime.childcare_population import (
     harmonize_asec_childcare_predictors,
 )
@@ -49,6 +54,7 @@ def inherit_outside_domain_attendance_baseline(frame: Frame) -> Frame:
     """
     from policyengine_us import CountryTaxBenefitSystem
 
+    assert_bound_childcare_attendance(frame, require_stage=False)
     people = frame.table("person").copy()
     system = CountryTaxBenefitSystem()
     outside = ~people.age.between(0, 12)
@@ -74,21 +80,23 @@ def inherit_outside_domain_attendance_baseline(frame: Frame) -> Frame:
         inherited[column] = int(missing.sum())
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables["person"] = people
-    return Frame(
-        tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-        mass_log=frame.mass_log,
-        metadata={
-            **frame.metadata,
-            "childcare_outside_domain_baseline": {
-                "engine_version": version("policyengine-us"),
-                "values": defaults,
-                "inherited_counts": inherited,
-                "interpretation": "baseline retained; not evidence of nonattendance outside ages 0-12",
+    return bind_childcare_attendance(
+        Frame(
+            tables,
+            frame.schema,
+            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata={
+                **frame.metadata,
+                "childcare_outside_domain_baseline": {
+                    "engine_version": version("policyengine-us"),
+                    "values": defaults,
+                    "inherited_counts": inherited,
+                    "interpretation": "baseline retained; not evidence of nonattendance outside ages 0-12",
+                },
             },
-        },
+        )
     )
 
 
@@ -109,6 +117,29 @@ def with_us_childcare_attendance_inputs(
             "Childcare source-stage outputs drifted from the engine inputs."
         )
     source = load_nsece_childcare(household_tsv, calendar_tsv)
+    outside_policy = (
+        "inherit_engine_baseline"
+        if inherit_outside_domain_baseline
+        else "require_observed"
+    )
+    if "childcare_attendance_stage" in frame.metadata:
+        assert_bound_childcare_attendance(frame)
+        previous = frame.metadata["childcare_attendance_stage"]
+        if (
+            previous["seed"] != seed
+            or previous["outside_domain_policy"] != outside_policy
+        ):
+            raise ValueError(
+                "Attendance settings changed; rebuild from the original parent."
+            )
+        assert_childcare_attendance_exportable(frame)
+        return frame
+    people = frame.table("person")
+    existing = [c for c in US_CHILDCARE_ATTENDANCE_COLUMNS if c in people]
+    if existing and people.loc[people.age.between(0, 12), existing].notna().any().any():
+        raise ValueError(
+            "Pre-existing child attendance lacks a production receipt; rebuild from the original parent."
+        )
     dependence = fit_nsece_sibling_dependence(source.children)
     source = bridge_nsece_noncalendar_attendance(source, seed=seed)
     normalized = harmonize_asec_childcare_predictors(
@@ -125,31 +156,54 @@ def with_us_childcare_attendance_inputs(
     if inherit_outside_domain_baseline:
         candidate = inherit_outside_domain_attendance_baseline(candidate)
     assert_childcare_attendance_exportable(candidate)
-    return Frame(
-        {entity: candidate.table(entity) for entity in candidate.entities},
-        candidate.schema,
-        {
-            entity: candidate.weights_for(entity)
-            for entity in candidate.weighted_entities
-        },
-        candidate.strata,
-        mass_log=candidate.mass_log,
-        metadata={
-            **candidate.metadata,
-            "childcare_attendance_stage": {
-                "stage": spec.stage,
-                "outputs": spec.outputs,
-                "seed": seed,
-                "operation_order": tuple(
-                    operation.kind for operation in spec.operations
-                ),
-                "sibling_dependence": dependence,
-                "modeled_age_domain": [0, 12],
-                "outside_domain_policy": "inherit_engine_baseline"
-                if inherit_outside_domain_baseline
-                else "require_observed",
+    return bind_childcare_attendance(
+        Frame(
+            {entity: candidate.table(entity) for entity in candidate.entities},
+            candidate.schema,
+            {
+                entity: candidate.weights_for(entity)
+                for entity in candidate.weighted_entities
             },
-        },
+            candidate.strata,
+            mass_log=candidate.mass_log,
+            metadata={
+                **candidate.metadata,
+                "childcare_attendance_stage": {
+                    "stage": spec.stage,
+                    "outputs": spec.outputs,
+                    "seed": seed,
+                    "operations": [
+                        {
+                            "kind": spec.operations[0].kind,
+                            **spec.operations[0].parameters,
+                        },
+                        {
+                            "kind": "fit",
+                            "operation": "fit_sibling_dependence",
+                            "rho": dependence["rho"],
+                        },
+                        {
+                            "kind": spec.operations[1].kind,
+                            **spec.operations[1].parameters,
+                        },
+                        {
+                            "kind": "derive",
+                            "operation": "harmonize_asec_childcare_predictors",
+                        },
+                        {
+                            "kind": spec.operations[2].kind,
+                            **spec.operations[2].parameters,
+                        },
+                        {"kind": "export_policy", "operation": outside_policy},
+                    ],
+                    "sibling_dependence": dependence,
+                    "modeled_age_domain": [0, 12],
+                    "outside_domain_policy": "inherit_engine_baseline"
+                    if inherit_outside_domain_baseline
+                    else "require_observed",
+                },
+            },
+        )
     )
 
 
@@ -167,6 +221,7 @@ def export_native_childcare_candidate(
     if output_path.exists() or parent_path.resolve() == output_path.resolve():
         raise ValueError("Native childcare output must be a new path.")
     assert_childcare_attendance_exportable(candidate)
+    assert_bound_childcare_attendance(candidate, require_stage=False)
     parent = USSingleYearDataset(file_path=str(parent_path))
     attendance = set(US_CHILDCARE_ATTENDANCE_COLUMNS)
     for entity in candidate.entities:
@@ -226,6 +281,29 @@ def _write_childcare_candidate_person_table(
             store, "person", people, preferred_format="table", data_columns=True
         )
         store.put(
-            "_childcare_attendance_receipt",
+            ATTENDANCE_H5_KEY,
             pd.Series([json.dumps(receipt, default=dict, allow_nan=False)]),
         )
+
+
+def persist_native_childcare_receipt(path: str | Path, frame: Frame) -> dict:
+    """Persist final release evidence and verify the actual serialized attendance."""
+    from policyengine_us.data import USSingleYearDataset
+
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        restore_native_childcare_receipt,
+    )
+
+    assert_childcare_attendance_exportable(frame)
+    summary = assert_bound_childcare_attendance(frame)
+    dataset = USSingleYearDataset(file_path=str(path))
+    _write_childcare_candidate_person_table(Path(path), dataset.person, frame.metadata)
+    # Use the written values, not the pre-export arrays, for the binding check.
+    dataset = USSingleYearDataset(file_path=str(path))
+    tables = {e: getattr(dataset, e).copy() for e in frame.entities}
+    tables["household"] = tables["household"].drop(columns="household_weight")
+    written = Frame(
+        tables, frame.schema, {e: frame.weights_for(e) for e in frame.weighted_entities}
+    )
+    restore_native_childcare_receipt(path, written)
+    return summary

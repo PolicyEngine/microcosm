@@ -1,4 +1,107 @@
-# NSECE attendance population qualification — 2026-09-12
+# NSECE attendance review revision — 2026-09-15
+
+**PR #916 remains draft.** The engineering safeguards have been strengthened,
+but the expanded household diagnostics fail provisional statistical screens.
+The earlier aggregate means did not establish population validity. Nothing in
+these reports authorizes publication or changes PolicyEngine-US defaults.
+
+- [Criteria declared before the expanded runs](review-validation-criteria.txt)
+- [Revised source/stage and household diagnostics](review-source-stage-validation.json)
+- [All-state noncalendar sensitivity results](review-transport-sensitivity.json)
+- [Final artifact verification](review-artifact-verification.json)
+- [Reproduction commands and receipt contract](../../docs/us-childcare-attendance.md)
+
+The criteria are developmental screens informed by earlier diagnostics, not an
+untouched external evaluation or a maintainer-approved release standard.
+
+## Response to review
+
+- **C1:** bind attendance to source/recipe/runtime/settings and person-level
+  content; restore and verify the binding in both native loaders. Reject stale,
+  missing or changed receipts. An identical rerun validates existing values;
+  changed source/seed/policy requires rebuilding from the original parent.
+- **A1:** recheck every row's completeness and valid schedule at final fiscal
+  export, independently of optional source flags or generic coverage overrides.
+  Persist and verify the receipt after native serialization.
+- **A2:** reject missing/blank household identities and unresolved household
+  links before converting IDs to strings or assigning shared ranks.
+- **A3:** evaluate the actual shared-rank schedule mixture, including days/hours
+  cross-moments and correlations and all-child totals for larger households.
+  The expanded evidence exposes a remaining model limitation; it does not close
+  this statistical concern.
+- **S1:** declare screens and measure benefit sensitivity while preserving every
+  measured regular-hour value. The state-level sensitivity remains unresolved;
+  missing days and irregular care are not identified by this experiment.
+- **S2:** record the actual calendar, sibling fit, bridge, predictor
+  harmonization, transfer and outside-domain operations in execution order.
+
+## Expanded household results
+
+Five household-separated folds contain 1,941 complete sibling households,
+including 661 with three or more children. Predictions integrate the empirical
+weighted donor CDFs exactly; no favorable simulation seed is selected.
+
+| Quantity | Observed | Shared-rank model |
+| --- | ---: | ---: |
+| Youngest-pair days correlation | 0.580 | 0.442 |
+| Youngest-pair weekly-hours correlation | 0.523 | 0.356 |
+| Mean total days/week, households with 3+ children | 4.510 | 5.653 |
+| Mean total hours/week, households with 3+ children | 33.085 | 40.814 |
+
+Nine of fifteen provisional screens fail. Larger-household mean total days are
+25.35% too high and hours 23.36% too high. A fitted binary-participation mixture
+is not enough to establish realistic household schedules. A next model revision
+should investigate household-size conditioning and joint schedule donors, then
+be evaluated with separately reserved household evidence; retuning on these
+folds would not create independent validation.
+
+## Noncalendar assumption sensitivity
+
+All 51 jurisdictions use the same parent, source, matching fields, survey
+weights, seed and policy year. Each alternative modifies only modeled bridge
+components and retransfers the resulting joint schedules; measured regular
+hours are unchanged. Source-selection, missing partial calendars and true summer
+attendance are separate uncertainties this stress test does not resolve.
+
+| Scenario | National annual potential benefits | Change from candidate |
+| --- | ---: | ---: |
+| Current candidate | $5.286 billion | — |
+| No modeled irregular hours | $5.209 billion | −1.46% |
+| One fewer modeled day | $5.222 billion | −1.22% |
+| One more modeled day | $5.298 billion | +0.22% |
+
+State flags above 20% include TN (−36.0%, no irregular hours), IA (+60.0%),
+KS (−49.4%) and MS (−69.6%) with one fewer day, and AR (+43.9%) with one
+more day. OK also flags at −40.0%, but that is only a $2.06 change from an
+approximately $5.15 baseline and must not be read as a material spending result.
+Day changes also change daily hours and can cross state policy thresholds;
+these are joint-schedule assumption tests, not monotonic attendance effects.
+These estimates are potential modeled benefits, not calibrated CCDF expenditure,
+caseload estimates or confidence intervals.
+
+## Revision code checks
+
+The 750-test regression run passed, covering the complete source-spine
+architecture guard, pool-tool regressions, NSECE source/receipt behavior, and
+the unconditional fiscal export guard. The preceding focused attendance and
+release-coverage run passed 165 tests; native H5, serializer and fiscal-builder
+checks also passed before the architecture fixes were verified in the final run.
+After replacing the large receipt dictionary with a sequence, all 67 focused
+source/receipt and architecture tests passed again. This avoids quadratic
+traversal in immutable Frame metadata without changing attendance values.
+Repository lint, format checks, the tracked CI inventory and the exact
+42,159-field/41-inventory coverage audit passed. The build wheel was rebuilt;
+its three new modules match the source bytes and import from the unpacked wheel.
+These code checks do not certify restricted data or resolve the statistical gaps.
+
+## Historical evidence
+
+The September 12–13 reports below describe the previous execution and remain
+available for audit. Their artifact receipts predate the content-binding
+contract; rebuild them from the original parent before using the revised release
+path. The attendance point estimates are unchanged by the engineering revision.
+
+## Original population candidate — 2026-09-12
 
 Related: [#915](https://github.com/PolicyEngine/microcosm/issues/915) and
 [PR #916](https://github.com/PolicyEngine/microcosm/pull/916).
