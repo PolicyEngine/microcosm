@@ -364,3 +364,40 @@ All re-verified by me this run, not inherited:
 Workflow `wf_957cf79e-597` launched: 50 evidence agents (effort high) →
 lens-specific adversarial refuters → per-PR adjudicators that re-run the
 deciding command. Running on Opus.
+
+### Run-5 measured merge-order constraints (~01:10 UTC)
+
+- `git merge-tree --write-tree --name-only` over **93 overlapping pairs**:
+  **65 conflict**. Most of that is staleness, not collision, so the honest
+  subset is the 9 PRs whose merge-base IS `18271b28d`:
+  **#906+#921 = 8 content conflicts** (both green, both MERGEABLE/CLEAN, both
+  María's — the sharpest real constraint in the ready lane), #893+#927 = 5,
+  #896+#927 = 2, #893+{#896,#906,#923} = 1 each; and **CLEAN** for
+  #896+#906, #896+#921, #906+#927, #921+#927, #927+#928.
+- Also CLEAN and worth naming: **#893+#914** (consistent with the fold),
+  **#893+#918**, **#901+#918** (the extraction is compatible with its consumer),
+  **#817+#893**, **#718+{#779,#893,#901,#923}**.
+- **#873+#918 = 20 conflicts, #873+#901 = 22** — the lock collision is real.
+- **Axiom-adapter three-way**: `frame/adapters/axiom.py` is 743 lines on main AND
+  in #893; #821 → 904, #822 → 931, #826 → 1861. They conflict pairwise.
+- **#739's red verified from the log myself**: 10 ×
+  `ModuleNotFoundError: No module named 'tables'` across 5 tests in
+  `test_us_exact_k_ladder_launcher.py`, **wheels lane only**; its new code calls
+  `.to_hdf(..., format="table")` and `tables>=3` is declared only under the
+  `us`/`uk` extras (`packages/microcosm-build/pyproject.toml:37,42`).
+- **#928's UNSTABLE is a fresh run, not a failure**: all 20 jobs of run
+  34907027912 are `pending`, `changes` passed, nothing failed.
+- **#642's green is LEGACY**: run 31749046363, only `test`+`wheels`, under the
+  workflow retired 2026-08-25; 1291 commits behind.
+- **#924 and #926 are both `ci-ok` SUCCESS, CURRENT era, MERGEABLE/CLEAN, 0
+  behind** — drafts, and #926's body chains it to #924.
+
+Owner priors for all 50 written to `scratchpad/r5/owner_priors.md` **before** the
+agent verdicts landed, so the fan-out is cross-checked against an independent
+call rather than relayed.
+
+### Fan-out progress
+
+`wf_957cf79e-597`: 30/50 evidence agents returned, 0 failures. Refuters queued
+behind the remaining evidence agents (the pipeline fills all 16 slots with
+stage-1 work first).
