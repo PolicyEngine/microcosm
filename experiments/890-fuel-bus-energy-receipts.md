@@ -501,3 +501,35 @@ disagree with the pricing; (c) accept the ONS total as the level and widen the N
 staging H5 is written when the battery blocks, so the per-row weight-stretch anatomy (mass on
 households stretched >3× and >5×) is not re-measured here; the global ESS and top-1 % share
 above are the stretch reading.
+
+### Part P — round 2 after Vahid's review of PR #927 (gas raked over connected households)
+
+Vahid's should-fix 1: NEED gas means are per gas-metered household and the cell-mean IPF was
+spreading them over unconnected zeros. Commit `31204e19` rakes gas over the gas-positive rows of
+each cell only (electricity over every row), on the donor and the recipient, with the rake
+population receipted; the same commit declares the NTS share scope on the incidence operation
+(`share_geography: E92000001`, `share_age_coverage: all_ages`, `applied_to: fare_rake_regions`)
+and gives `ofgem_region_crosswalk.json` a provenance block, and `12628088` / `47ea5a03` carry
+the regenerated H2 fixture, coverage manifest, the re-pinned UK `spec_sha256` (`d2e82feb…`) and
+the stage-note wording on the uprating factors the rakes level away.
+
+spine-s2 (`855b513d7d4ed637a2e9ce359ac01c90ec079ca77fc84a858e35e17c8bd56f04`, 504 s, rows as
+spine-r, content identity `b899f40a…`) under `890-fuel-bus/spine-s2/`; the twin diff against
+spine-r under the same expectation is clean (24 expected, none unexpected). Design-weight energy,
+spine-s → spine-s2: gas mean over connected households GBP 829 → 802, over all households
+799 → 774, electricity unchanged at GBP 1,012, domestic total GBP 52.94bn → 52.25bn (+20.3 %
+against ONS 04.5 CY2025, +23.6 % against CY2024); gas-connected share 96.5 % on both. Bus, fuel
+and support columns are byte-identical to spine-s at the lcfs stage (the fix touches energy
+only), so Parts L–M's bus and fuel readings stand.
+
+National calibration `pr-s-round2-spine-s2/` (`uk-frs-calibration-attempt-20260915T101054Z-bba6d82b`,
+code `12628088`, 1,500 epochs, `family_equal`, 377 targets, 212 s): loss 0.01138 (round 1
+0.01122), 95.76 % within 10 %, ESS 9,137 (9,073), top-1 % share 16.2 %. The #890 rows are
+round 1's to the rounding (bus rows exact, cars fuel duty −34.7 % → −12.1 %, rail −76.8 % →
++0.0 %, ONS 04.5 +20.3 % → −0.0 %). The terminal battery blocks on two entries, both rulings
+for María: `uk_aggregate_admin` (electricity mean GBP 824 against 1,082, gas GBP 688 against
+850 after calibration; the Part N options, re-worded there for the connected-household rake)
+and `uk_target_fit`, where the inherited HMRC self-employment 20–30k band cell that round 1 left
+at +24.6 % sits at +25.1 %, one tenth of a point over the fence — the spine-r posture recorded in
+Part J (a dated reviewed exclusion under her name, or a lever), not a #890 effect. No staging
+H5 is written while the battery blocks.
