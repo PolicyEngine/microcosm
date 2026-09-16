@@ -22,6 +22,7 @@ from microcosm.build.uk_runtime import (
     frs_disability,
     frs_education_grants,
     frs_legacy_proxies,
+    frs_take_up,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_relationships import (
@@ -611,6 +612,12 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                     operations=[
                         {"kind": "aggregate_person_to_benunit"},
                         {
+                            "kind": "aggregate_person_to_benunit",
+                            "method": "any_adult_under_state_pension_age",
+                            "consumed_only": True,
+                            "aggregates": {"uc_age_eligible": "age"},
+                        },
+                        {
                             "kind": "assign_binary_with_anchored_residual",
                             "output": "would_claim_child_benefit",
                             "seed": 0,
@@ -628,6 +635,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         {
                             "kind": "assign_binary_with_anchored_residual",
                             "output": "would_claim_uc",
+                            "population": "uc_age_eligible",
                             "seed": 0,
                         },
                         {
@@ -1229,6 +1237,16 @@ def _stub_policy_readers(monkeypatch: pytest.MonkeyPatch) -> None:
         "uk_dsa_policy",
         lambda period: frs_education_grants.UKDSAPolicy(
             maximum=0.0,
+            instant=f"{period}-01-01",
+            source="test stub",
+        ),
+    )
+    monkeypatch.setattr(
+        frs_take_up,
+        "uk_take_up_population_policy",
+        lambda period: frs_take_up.UKTakeUpPopulationPolicy(
+            adult_age=18,
+            state_pension_age=66,
             instant=f"{period}-01-01",
             source="test stub",
         ),

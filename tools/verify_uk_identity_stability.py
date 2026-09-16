@@ -88,8 +88,13 @@ def e4_identity_receipt(
     count_resource: Mapping[str, object],
     lha_category: Sequence[object],
     permutation_seed: int,
+    population_policy=None,
 ) -> dict[str, object]:
     """Recompute every E4 column in original and permuted row order.
+
+    ``population_policy`` is the engine's working-age bounds the take-up draw
+    used (``uk_take_up_population_policy``); it is read from the engine when
+    not supplied, so a hermetic caller passes one.
 
     Two claims are receipted: a row permutation of the input tables changes
     no assignment per entity id, and the original-order recomputation equals
@@ -99,7 +104,8 @@ def e4_identity_receipt(
     person = frame.table("person")
     benunit = frame.table("benunit").copy()
     household = frame.table("household")
-    population_policy = uk_take_up_population_policy(uk_time_period(frame))
+    if population_policy is None:
+        population_policy = uk_take_up_population_policy(uk_time_period(frame))
     if len(lha_category) != len(benunit):
         raise ValueError("LHA_category materialization must align to benunit rows.")
     benunit["LHA_category"] = [_enum_name(value) for value in lha_category]
@@ -1071,6 +1077,7 @@ def main() -> int:
             count_resource=load_brma_count_resource(),
             lha_category=lha_category,
             permutation_seed=args.permutation_seed,
+            population_policy=uk_take_up_population_policy(uk_time_period(frame)),
         )
         ok = bool(
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]

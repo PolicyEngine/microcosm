@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.uk_runtime.frs_take_up import UKTakeUpPopulationPolicy
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 
@@ -215,6 +216,9 @@ def test_e4_identity_receipt_survives_permutation_on_synthetic_frame() -> None:
         count_resource=count_resource,
         lha_category=["A", "A", "A"],
         permutation_seed=7,
+        population_policy=UKTakeUpPopulationPolicy(
+            adult_age=18, state_pension_age=66, instant="2023-01-01", source="test"
+        ),
     )
 
     assert receipt["identical_under_permutation"] is True

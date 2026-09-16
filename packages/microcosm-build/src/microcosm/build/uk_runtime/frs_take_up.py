@@ -162,13 +162,19 @@ def assert_take_up_stage_population_declaration(stage: SourceStageSpec) -> None:
         for op in stage.operations
     )
     if not (declared_aggregate and declared_population):
+        seen = [
+            (op.kind, dict(op.parameters))
+            for op in stage.operations
+            if op.kind == "aggregate_person_to_benunit"
+            or op.parameters.get("output") == UK_UC_TAKE_UP_OUTPUT
+        ]
         raise ValueError(
             f"stage {stage.stage!r} must declare the {UK_UC_AGE_ELIGIBLE_AGGREGATE!r} "
             f"aggregate ({UK_UC_AGE_ELIGIBLE_METHOD} over "
             f"{UK_UC_AGE_ELIGIBLE_SOURCE}) and population={UK_UC_AGE_ELIGIBLE_AGGREGATE!r} "
             f"on the {UK_UC_TAKE_UP_OUTPUT!r} operation; the code draws Universal "
             "Credit take-up over that population and refuses a manifest that says "
-            "otherwise"
+            f"otherwise (declared: {seen!r})"
         )
 
 
