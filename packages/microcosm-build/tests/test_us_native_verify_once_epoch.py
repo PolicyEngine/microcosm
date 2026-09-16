@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 import pytest
 from test_us_survey_population_preparation import fixture
@@ -379,3 +380,131 @@ def native_epoch():
     """The epoch, opened through the preparation owner that drives both memos."""
 
     return owner.verification_epoch()
+
+
+# --------------------------------------------------------------------------
+# The memo miss itself: a file the cheap tier cannot see, changed in place.
+# --------------------------------------------------------------------------
+
+
+def _rewrite_in_place(path):
+    """Flip one byte, keeping the length, the inode and the modification time.
+
+    This is the strongest stat-preserving rewrite an unprivileged process can
+    perform on APFS: only ``st_ctime_ns`` moves, and no interface restores it
+    (``setattrlist(ATTR_CMN_CHGTIME)`` refuses with ``EPERM``). It is written
+    this way so the mutation is decided by the memo, never by a size or a
+    modification time the cheap tier compares for free.
+    """
+
+    path = Path(path)
+    before = path.stat()
+    raw = bytearray(path.read_bytes())
+    raw[-1] ^= 0x20
+    # A retained snapshot copy is written read-only by its owner; the mode is
+    # put back so nothing but the bytes and st_ctime_ns differs afterwards.
+    os.chmod(path, before.st_mode | 0o200)
+    try:
+        with path.open("r+b") as handle:
+            handle.seek(0)
+            handle.write(bytes(raw))
+    finally:
+        os.chmod(path, before.st_mode)
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    after = path.stat()
+    assert after.st_size == before.st_size
+    assert after.st_ino == before.st_ino
+    assert after.st_mtime_ns == before.st_mtime_ns
+    assert after.st_mode == before.st_mode
+
+
+def _acs_snapshot_copy(preparation):
+    """One private ACS snapshot copy: in the memo signature, not in the roster."""
+
+    state = owner._ISSUED[id(preparation)][2]
+    copies = [
+        path for _role, path in owner.acs_catalogue._lookup(state.catalogues[0]).paths
+    ]
+    assert copies
+    return Path(copies[0])
+
+
+def test_a_changed_snapshot_copy_refuses_through_the_memoised_tier(
+    tmp_path, monkeypatch
+):
+    """The one path the cheap tier cannot see, so only the memo can refuse it.
+
+    The ACS catalogue's private snapshot copies are inside the memo signature
+    and outside ``_file_stats``, which covers the ten roster files and their
+    three directories and nothing else. A byte written into a copy -- same
+    length, same inode, modification time restored -- therefore leaves the
+    cheap tier's comparison identical, and the refusal that arrives is the one
+    the complete validation raises on the signature miss. It is asserted to be
+    the same code an unmemoised borrow raises for the same mutation, which is
+    the claim the design note makes and the one nothing pinned before.
+    """
+
+    # Today's code first, on its own fixture, so the epoch's fixture is the
+    # live one when the memoised borrow runs.
+    plain_root = tmp_path / "unmemoised"
+    plain_root.mkdir()
+    plain_arguments = fixture(plain_root, monkeypatch)
+    plain = owner.prepare_authenticated_survey_population(**plain_arguments)
+    _borrow(plain)
+    _rewrite_in_place(_acs_snapshot_copy(plain))
+    with pytest.raises(owner.SurveyPopulationPreparationError) as today:
+        _borrow(plain)
+    unmemoised = str(today.value)
+
+    memoised_root = tmp_path / "memoised"
+    memoised_root.mkdir()
+    arguments = fixture(memoised_root, monkeypatch)
+    preparation = owner.prepare_authenticated_survey_population(**arguments)
+    state = owner._ISSUED[id(preparation)][2]
+    copy = _acs_snapshot_copy(preparation)
+    roster = owner._file_stats(state.root)
+
+    def mutate():
+        _rewrite_in_place(copy)
+        # The cheap tier compares exactly this and nothing else, so it cannot
+        # be what refuses below.
+        assert owner._file_stats(state.root) == roster
+
+    borrow, closing = _refuses_at_the_borrow_and_at_the_close(
+        preparation, mutate, owner.SurveyPopulationPreparationError
+    )
+    assert borrow == closing == unmemoised == "PREPARATION_VERIFICATION_REFUSED"
+
+
+def test_the_native_capsule_refuses_a_rewritten_source_through_its_memo(
+    tmp_path, monkeypatch
+):
+    """This capsule's cheap tier compares no file stat at all, so the memo decides.
+
+    ``_memoized_validate`` here checks only the implementation encoding before
+    the memo lookup; every source identity lives in the signature. A byte
+    rewritten in place with the modification time restored is therefore
+    refused by the memoised tier -- by the complete ``_validate_state`` the
+    signature miss runs -- and the file loop is counted to prove that complete
+    pass really happened rather than a cheap comparison short-circuiting it.
+    """
+
+    from test_us_asec_2024_native_population import _fixture as asec_fixture
+
+    paths = asec_fixture(tmp_path, monkeypatch)
+    capsule = native.load_authenticated_asec_2024_native_population(**paths)
+    borrowed = []
+    with _Counter(native._file_identity) as counter:
+        with pytest.raises(native.AsecNativePopulationError) as closing:
+            with native_epoch():
+                capsule.validate()
+                warm = counter.counts["_file_identity"]
+                assert warm > 0
+                _rewrite_in_place(paths["parent_path"])
+                with pytest.raises(native.AsecNativePopulationError) as borrow:
+                    capsule.validate()
+                borrowed.append(str(borrow.value))
+                # The refusing borrow re-ran the whole file loop: a memo miss,
+                # not a cheap check that never reached the memo.
+                assert counter.counts["_file_identity"] > warm
+    assert borrowed == [str(closing.value)] == ["SOURCE_FILE_CHANGED"]
