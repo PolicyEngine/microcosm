@@ -770,6 +770,31 @@
     },
     "magnitude_provenance": "max_abs_delta measured 2026-09-05 on the L5 rebuilt twin (sha256 37280e7c99af3f4d4f176c42722c56e1fd2c5170de8d3d97ba767db46de40b08) against the packaged reference, rounded up at 1e-4 grain."
    }
+  },
+  {
+   "id": "uc-childcare-take-up-net-new-column",
+   "class": "net_new_column",
+   "scope": {
+    "surface": "nonzero_shares",
+    "columns": [
+     "would_claim_uc_childcare"
+    ],
+    "entities": [
+     "benunit"
+    ]
+   },
+   "expectation": "column_missing_in_reference",
+   "magnitude_evidence": "The frs_take_up stage draws would_claim_uc_childcare, the Universal Credit childcare-element take-up flag, at one contract rate per family type (single 0.441, couple 0.2682, fitted on the Q50f candidate so the expected paid-UC count equals DWP's calendar-2025 households receiving the element). The pinned incumbent has no such column: it pays the element to every eligible unit. The column is present in the candidate and absent from the reference, coverage the spine adds rather than a divergence in a shared column; it becomes an engine input at the policyengine-uk release that reads it (#882).",
+   "evidence": "experiments/882-uc-repairs-receipts.md#r3-childcare-take-up-fit-toolsfit_uk_uc_childcare_takeuppy",
+   "adjudicator": "juaristi22",
+   "adjudicated_on": "2026-09-16",
+   "quantitative": {
+    "structural": {
+     "expected_columns": [
+      "would_claim_uc_childcare"
+     ]
+    }
+   }
   }
  ]
 }

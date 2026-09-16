@@ -602,6 +602,7 @@ class TestE3ManifestLockstep:
             "assign_binary_from_rate",
             "assign_binary_from_rate",
             "assign_binary_from_rate",
+            "assign_binary_from_banded_rates",
             "assign_clipped_normal",
         ]
         assert [op.kind for op in stages["frs_person_draws"].operations] == [

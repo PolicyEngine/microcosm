@@ -27,6 +27,8 @@ class _Contract:
             "extended_childcare": 0.5,
             "universal_childcare": 0.5,
             "targeted_childcare": 0.5,
+            "uc_childcare_single": 0.5,
+            "uc_childcare_couple": 0.5,
             "marriage_allowance": 0.5,
             "scp_under_6": 0.5,
             "scp_6_plus": 0.5,
@@ -49,7 +51,9 @@ def _frame(*, brma_values=("LONDON_A", "LONDON_B")):
             "age": [30, 40] * 5,
         }
     )
-    benunit = pd.DataFrame({"benunit_id": np.arange(201, 201 + n)})
+    benunit = pd.DataFrame(
+        {"benunit_id": np.arange(201, 201 + n), "is_married": [False, True] * 5}
+    )
     household = pd.DataFrame(
         {
             "household_id": household_ids,
@@ -171,4 +175,6 @@ def test_take_up_gate_fails_when_the_uc_population_is_empty() -> None:
     result = uk_take_up_signal_gate(frame, contract=_Contract())
 
     assert result.passed is False
-    assert "would_claim_uc: no unit in the draw's population" in " ".join(result.failures)
+    assert "would_claim_uc: no unit in the draw's population" in " ".join(
+        result.failures
+    )

@@ -442,7 +442,9 @@ def test_generator_preserves_observation_basis_and_explicit_months():
         "uc": {"observation_basis": "monthly_stock", **uc_source_month_metadata(MONTHS)}
     }
     contract["targets"][0]["family"] = "other"
-    with pytest.raises(ValueError, match="declared only by the UK DWP monthly families"):
+    with pytest.raises(
+        ValueError, match="declared only by the UK DWP monthly families"
+    ):
         _reference_metadata(contract)
 
 

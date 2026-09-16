@@ -1495,7 +1495,7 @@
       "nonnegative_outputs": [
         "maximum_extended_childcare_hours_usage"
       ],
-      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only.",
+      "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with an adult under State Pension age (66 for everyone who can reach it in this release; the engine lockstep test pins it), so the contract rate is a share of those units, an anchor outside them stays true, and a unit with every adult at or over State Pension age is never drawn; its reported Housing Benefit is no longer zeroed by a claim it cannot make (#882, microcosm#867).",
       "operations": [
         {
           "aggregates": {
@@ -1506,6 +1506,14 @@
           "consumed_only": true,
           "kind": "aggregate_person_to_benunit",
           "method": "any_positive"
+        },
+        {
+          "aggregates": {
+            "uc_age_eligible": "age"
+          },
+          "consumed_only": true,
+          "kind": "aggregate_person_to_benunit",
+          "method": "any_adult_under_state_pension_age"
         },
         {
           "anchor": "child_benefit_reported_anchor",
@@ -1535,6 +1543,7 @@
           "draw": "would_claim_uc",
           "kind": "assign_binary_with_anchored_residual",
           "output": "would_claim_uc",
+          "population": "uc_age_eligible",
           "rate_key": "universal_credit",
           "seed": 0
         },
@@ -1567,6 +1576,22 @@
           "seed": 0
         },
         {
+          "band_column": "is_married",
+          "bands": [
+            {
+              "rate_key": "uc_childcare_single",
+              "upper_exclusive": 1
+            },
+            {
+              "rate_key": "uc_childcare_couple"
+            }
+          ],
+          "draw": "would_claim_uc_childcare",
+          "kind": "assign_binary_from_banded_rates",
+          "output": "would_claim_uc_childcare",
+          "seed": 0
+        },
+        {
           "distribution_key": "maximum_extended_childcare_hours_usage",
           "draw": "maximum_extended_childcare_hours_usage",
           "kind": "assign_clipped_normal",
@@ -1583,6 +1608,7 @@
         "would_claim_extended_childcare",
         "would_claim_universal_childcare",
         "would_claim_targeted_childcare",
+        "would_claim_uc_childcare",
         "maximum_extended_childcare_hours_usage"
       ],
       "rewrites": [],
