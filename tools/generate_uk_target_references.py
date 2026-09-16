@@ -809,12 +809,32 @@ def _add_uk_membership_accounting(
             ),
         },
         {
+            "family": "hmrc_cgt",
+            "status": "active_with_row_level_signed_exclusions",
+            "active_reference_count": fanout_counts.get("hmrc_cgt", 0),
+            "signed_rationale": (
+                "The FY2024-25 individual CGT observations fan out three ways "
+                "(microcosm#725, #467): Table 6 age bands as dimension rows "
+                "(the 0-15 band and the all-ages total are signed out row by "
+                "row), Table 5 country/region cells over the twelve-area "
+                "region tier restated on the individuals basis by the Table 1 "
+                "share through the scaled_by_ratio operation, and Table 2.1a "
+                "size-of-gain bands under the incumbent banded names (the "
+                "0-2,999 band below the 2024 annual exempt amount is signed "
+                "out). Table 2.1a publishes no tax column, so liability binds "
+                "nationally and by age band only."
+            ),
+        },
+        {
             "family": "ons_population",
             "status": "active_region_tier_fanout",
             "active_reference_count": sum(
                 1
                 for reference in references
-                if reference["metadata"]["contract_target_id"].endswith("_by_region")
+                if reference["metadata"]["contract_target_id"].startswith(
+                    "ons.population."
+                )
+                and reference["metadata"]["contract_target_id"].endswith("_by_region")
             ),
             "signed_rationale": (
                 "The nine ONS population-by-age-band targets fan out over the "
@@ -846,6 +866,21 @@ def _add_uk_membership_accounting(
             ]["candidates"][0]["signed_rationale"],
         },
     ]
+    for target_id, entry in sorted(report["targets"].items()):
+        if not str(target_id).startswith("hmrc.cgt."):
+            continue
+        for candidate in entry["candidates"]:
+            if candidate.get("status") != "signed_excluded":
+                continue
+            report["signed_exclusion_rationales"].append(
+                {
+                    "family": "hmrc_cgt",
+                    "target_id": target_id,
+                    "row": candidate["name"],
+                    "status": "signed_excluded",
+                    "signed_rationale": candidate["signed_rationale"],
+                }
+            )
     report["multi_fact_rationales"] = []
 
 

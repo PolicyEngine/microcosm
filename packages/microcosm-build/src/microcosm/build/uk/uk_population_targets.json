@@ -22,8 +22,8 @@
     "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
     "pinned_version": "1.56.16",
     "registry_rows": 652,
-    "mapped_rows": 609,
-    "excluded_rows": 43,
+    "mapped_rows": 627,
+    "excluded_rows": 25,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
       "dwp/esa_claimants": "dwp.esa_claimants",
@@ -33,7 +33,6 @@
       "dwp/pip_dl_enhanced_claimants": "dwp.pip.daily_living_enhanced_claimants",
       "dwp/pip_dl_standard_claimants": "dwp.pip.daily_living_standard_claimants",
       "dwp/scotland_uc_households_child_under_1": "dwp.uc.scotland_households_child_under_1",
-      "dwp/uc/households": "dwp.uc.households",
       "dwp/uc/claimants_couple_no_children": "dwp.uc.households_couple_no_children",
       "dwp/uc/claimants_couple_with_children": "dwp.uc.households_couple_with_children",
       "dwp/uc/claimants_single_no_children": "dwp.uc.households_single_no_children",
@@ -43,6 +42,7 @@
       "dwp/uc/claimants_with_3_children": "dwp.uc.households_children_3",
       "dwp/uc/claimants_with_4_children": "dwp.uc.households_children_4",
       "dwp/uc/claimants_with_5+_children": "dwp.uc.households_children_5_or_more",
+      "dwp/uc/households": "dwp.uc.households",
       "dwp/uc/two_child_limit/3_children_households": "dwp.uc.two_child_limit.households_3_children",
       "dwp/uc/two_child_limit/3_children_households_total_children": "dwp.uc.two_child_limit.children_in_3_children_households",
       "dwp/uc/two_child_limit/4_children_households": "dwp.uc.two_child_limit.households_4_children",
@@ -162,8 +162,26 @@
       "dwp/uc_payment_dist/SINGLE_annual_payment_8_400_to_9_600": "dwp.uc.payment_distribution_single",
       "dwp/uc_payment_dist/SINGLE_annual_payment_9_600_to_10_800": "dwp.uc.payment_distribution_single",
       "dwp/uc_payment_dist/SINGLE_annual_payment_nan_to_nan": "dwp.uc.payment_distribution_single",
+      "hmrc/capital_gains_band_100000": "hmrc.cgt.gains_by_gain_band",
+      "hmrc/capital_gains_band_1000000": "hmrc.cgt.gains_by_gain_band",
+      "hmrc/capital_gains_band_12300": "hmrc.cgt.gains_by_gain_band",
+      "hmrc/capital_gains_band_2000000": "hmrc.cgt.gains_by_gain_band",
+      "hmrc/capital_gains_band_25000": "hmrc.cgt.gains_by_gain_band",
+      "hmrc/capital_gains_band_250000": "hmrc.cgt.gains_by_gain_band",
+      "hmrc/capital_gains_band_50000": "hmrc.cgt.gains_by_gain_band",
+      "hmrc/capital_gains_band_500000": "hmrc.cgt.gains_by_gain_band",
+      "hmrc/capital_gains_band_5000000": "hmrc.cgt.gains_by_gain_band",
       "hmrc/capital_gains_total": "hmrc.cgt.gains_total",
       "hmrc/cgt_taxpayers": "hmrc.cgt.taxpayers_total",
+      "hmrc/cgt_taxpayers_band_100000": "hmrc.cgt.taxpayers_by_gain_band",
+      "hmrc/cgt_taxpayers_band_1000000": "hmrc.cgt.taxpayers_by_gain_band",
+      "hmrc/cgt_taxpayers_band_12300": "hmrc.cgt.taxpayers_by_gain_band",
+      "hmrc/cgt_taxpayers_band_2000000": "hmrc.cgt.taxpayers_by_gain_band",
+      "hmrc/cgt_taxpayers_band_25000": "hmrc.cgt.taxpayers_by_gain_band",
+      "hmrc/cgt_taxpayers_band_250000": "hmrc.cgt.taxpayers_by_gain_band",
+      "hmrc/cgt_taxpayers_band_50000": "hmrc.cgt.taxpayers_by_gain_band",
+      "hmrc/cgt_taxpayers_band_500000": "hmrc.cgt.taxpayers_by_gain_band",
+      "hmrc/cgt_taxpayers_band_5000000": "hmrc.cgt.taxpayers_by_gain_band",
       "hmrc/dividend_income_count_income_band_100_000_to_150_000": "hmrc.spi.dividend_income.count_by_total_income_band",
       "hmrc/dividend_income_count_income_band_12_570_to_15_000": "hmrc.spi.dividend_income.count_by_total_income_band",
       "hmrc/dividend_income_count_income_band_150_000_to_200_000": "hmrc.spi.dividend_income.count_by_total_income_band",
@@ -637,24 +655,6 @@
     },
     "excluded": {
       "dwp/benefit_cap_total_reduction": "The GBP 320.9m total reduction is uk-data's computed annualization of a monthly figure - excluded per the facts-only ADR (chronicle#139).",
-      "hmrc/capital_gains_band_100000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/capital_gains_band_1000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/capital_gains_band_12300": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/capital_gains_band_2000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/capital_gains_band_25000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/capital_gains_band_250000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/capital_gains_band_50000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/capital_gains_band_500000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/capital_gains_band_5000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/cgt_taxpayers_band_100000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/cgt_taxpayers_band_1000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/cgt_taxpayers_band_12300": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/cgt_taxpayers_band_2000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/cgt_taxpayers_band_25000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/cgt_taxpayers_band_250000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/cgt_taxpayers_band_50000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/cgt_taxpayers_band_500000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
-      "hmrc/cgt_taxpayers_band_5000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
       "hmrc/salary_sacrifice_contributions": "SPP Review 2025 base value (GBP 24bn); the pinned asset 404s with no Wayback snapshot - blocked until a source surfaces (checklist row).",
       "housing/rent_private": "Computed rate x count products (PIPR mean rent / EHS mean weekly cost x unpinned tenure counts). The base facts are ported (chronicle#159); the product stays a populace-side declaration per the facts-only ADR.",
       "housing/rent_social": "Computed rate x count products (PIPR mean rent / EHS mean weekly cost x unpinned tenure counts). The base facts are ported (chronicle#159); the product stays a populace-side declaration per the facts-only ADR.",
@@ -716,7 +716,12 @@
       "dwp.uc.households_childcare_element": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
       "dwp.uc.households_with_deduction": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
       "obr.universal_credit": "#882 UC expenditure total over the two OBR welfare-cap cells; the incumbent binds only the split, which is excluded.",
-      "welshgov.council_tax_stock.band_i": "No incumbent target: uk-data's VOA council-tax rows stop at band H; microcosm#929 binds the Welsh band I stock from StatsWales CT1 (Wales is the only nation with a band I)."
+      "welshgov.council_tax_stock.band_i": "No incumbent target: uk-data's VOA council-tax rows stop at band H; microcosm#929 binds the Welsh band I stock from StatsWales CT1 (Wales is the only nation with a band I).",
+      "hmrc.cgt.taxpayers_by_age_band": "New declaration backed by the HMRC CGT Table 6 2024-25 age-band facts in Chronicle (cgt_age_2026); the incumbent registry has no age-band CGT metric (microcosm#725).",
+      "hmrc.cgt.gains_by_age_band": "New declaration backed by the HMRC CGT Table 6 2024-25 age-band facts in Chronicle (cgt_age_2026); the incumbent registry has no age-band CGT metric (microcosm#725).",
+      "hmrc.cgt.tax_by_age_band": "New declaration backed by the HMRC CGT Table 6 2024-25 age-band facts in Chronicle (cgt_age_2026); the incumbent registry has no age-band CGT metric (microcosm#725).",
+      "hmrc.cgt.taxpayers_by_region": "New declaration backed by the HMRC CGT Table 5 2024-25 country/region facts in Chronicle (cgt_country_region_2026), scaled to the individuals basis by the Table 1 share; the incumbent registry has no regional CGT metric (microcosm#725).",
+      "hmrc.cgt.gains_by_region": "New declaration backed by the HMRC CGT Table 5 2024-25 country/region facts in Chronicle (cgt_country_region_2026), scaled to the individuals basis by the Table 1 share; the incumbent registry has no regional CGT metric (microcosm#725)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -746,7 +751,8 @@
       "salary_sacrifice_obr_near_equivalents": "The contract separately maps OBR near-equivalents obr/salary_sacrifice_employee_ni_relief and obr/salary_sacrifice_employer_ni_relief onto hmrc.salary_sacrifice.nics_relief_employee and hmrc.salary_sacrifice.nics_relief_employer.",
       "two_child_limit_year_surface": "Chronicle's 15 dwp/uc/two_child_limit/* facts are the April-2025 publication (period month 2025-04) and are the only TCL facts; there are no 2026 Ledger facts. At 12a1e028, the incumbent pins the same published numbers at {2026}, so at calibration year 2025 Ledger activates all 15 TCL targets while the incumbent drops them from the 652-row union to the 637-row effective surface; the 2026 effective surface remains 652. The same 12a1e028 refresh adds the new incumbent dwp/uc/households row. Fixture B treats the 15 TCL rows as enumerated ledger-side additions.",
       "geography_level_order_canonicalization": "The 9 voa.council_tax_stock.* rows use country, region order to match the rest of the contract; consumers use membership only.",
-      "ons_terminal_sex_band_split": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference."
+      "ons_terminal_sex_band_split": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
+      "cgt_band_promotion": "The 18 banded CGT registry names (hmrc/cgt_taxpayers_band_<lower> and hmrc/capital_gains_band_<lower>, nine bands from 12,300) move from excluded to mapped: Chronicle now carries HMRC Table 2.1a for 2024-25 (cgt_size_of_gain_2026), so the incumbent's unpackaged uk-data CSV is superseded by published individual rows bound at identity; the 3,000 and 6,000 bands the incumbent never carried are authored under the same naming form and the 0-2,999 band below the 2024 AEA is signed out (microcosm#467, #725). Table 2.1a publishes no tax column, so no liability-by-band target exists."
     },
     "scope_target_ids": [
       "obr.income_tax",
@@ -800,6 +806,13 @@
       "hmrc.spi.state_pension.count_by_total_income_band",
       "hmrc.cgt.taxpayers_total",
       "hmrc.cgt.gains_total",
+      "hmrc.cgt.taxpayers_by_age_band",
+      "hmrc.cgt.gains_by_age_band",
+      "hmrc.cgt.tax_by_age_band",
+      "hmrc.cgt.taxpayers_by_region",
+      "hmrc.cgt.gains_by_region",
+      "hmrc.cgt.taxpayers_by_gain_band",
+      "hmrc.cgt.gains_by_gain_band",
       "dwp.benefit_cap.capped_households",
       "dwp.pip.daily_living_standard_claimants",
       "dwp.pip.daily_living_enhanced_claimants",
@@ -3444,6 +3457,425 @@
       },
       "category_id": "hmrc.capital_gains_tax",
       "label": "Capital Gains Tax gains"
+    },
+    {
+      "target_id": "hmrc.cgt.taxpayers_by_age_band",
+      "family": "hmrc_cgt",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "groupby_dimension": "hmrc.cgt_age_band",
+        "filters": [
+          {
+            "concept": "uk.income.capital_gains.amount",
+            "operator": ">",
+            "value": "gov.hmrc.cgt.annual_exempt_amount"
+          }
+        ],
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_age_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/cgt_taxpayers_by_age_band",
+          "kind": "parameter_gated_threshold",
+          "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+          "gated_variable": "cgt_2024_gains",
+          "gate_comparison": ">",
+          "from_entity": "person",
+          "map_to": "household",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true,
+          "value_variable": "person_count",
+          "groupby_variable": "age",
+          "notes": "HMRC Table 6 2024-25, individuals with a CGT liability by age at the end of the tax year. The AEA gate is the national taxpayer proxy on the engine-year net gains; each row's age band is the half-open [lower, next lower) slice read from the compiled sibling edges, which equals the published inclusive integer bands. The 0-15 row is signed out (1k people, GBP 54m; the frame carries no under-16 gainers) and the all-ages row duplicates the national target (microcosm#725)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/cgt_taxpayers_by_age_band",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_concept": "hmrc.cgt_taxpayers_individuals",
+        "groupby_dimension": "age_band",
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.capital_gains_tax",
+      "label": "Capital Gains Tax taxpayers by age band"
+    },
+    {
+      "target_id": "hmrc.cgt.gains_by_age_band",
+      "family": "hmrc_cgt",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.capital_gains.amount",
+        "groupby_dimension": "hmrc.cgt_age_band",
+        "filters": [
+          {
+            "concept": "uk.income.capital_gains.amount",
+            "operator": ">",
+            "value": "gov.hmrc.cgt.annual_exempt_amount"
+          }
+        ],
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_age_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/capital_gains_by_age_band",
+          "kind": "parameter_gated_threshold",
+          "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+          "gated_variable": "cgt_2024_gains",
+          "gate_comparison": ">",
+          "from_entity": "person",
+          "map_to": "household",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true,
+          "value_variable": "cgt_2024_gains",
+          "groupby_variable": "age",
+          "notes": "HMRC Table 6 2024-25, individuals with a CGT liability by age at the end of the tax year. The AEA gate is the national taxpayer proxy on the engine-year net gains; each row's age band is the half-open [lower, next lower) slice read from the compiled sibling edges, which equals the published inclusive integer bands. The 0-15 row is signed out (1k people, GBP 54m; the frame carries no under-16 gainers) and the all-ages row duplicates the national target (microcosm#725)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/capital_gains_by_age_band",
+          "status": "pending",
+          "value_rule": "uk.income.capital_gains.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_concept": "hmrc.cgt_gains_individuals",
+        "groupby_dimension": "age_band",
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.capital_gains_tax",
+      "label": "Capital Gains Tax gains by age band"
+    },
+    {
+      "target_id": "hmrc.cgt.tax_by_age_band",
+      "family": "hmrc_cgt",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.capital_gains_tax.amount",
+        "groupby_dimension": "hmrc.cgt_age_band",
+        "filters": [
+          {
+            "concept": "uk.income.capital_gains.amount",
+            "operator": ">",
+            "value": "gov.hmrc.cgt.annual_exempt_amount"
+          }
+        ],
+        "observation_basis": "individuals_observed_disposal_year_2024_liability_by_age_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/cgt_liability_by_age_band",
+          "kind": "parameter_gated_threshold",
+          "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+          "gated_variable": "cgt_2024_gains",
+          "gate_comparison": ">",
+          "from_entity": "person",
+          "map_to": "household",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true,
+          "value_variable": "cgt_2024_tax",
+          "groupby_variable": "age",
+          "notes": "HMRC Table 6 2024-25, individuals with a CGT liability by age at the end of the tax year. The AEA gate is the national taxpayer proxy on the engine-year net gains; each row's age band is the half-open [lower, next lower) slice read from the compiled sibling edges, which equals the published inclusive integer bands. The 0-15 row is signed out (1k people, GBP 54m; the frame carries no under-16 gainers) and the all-ages row duplicates the national target (microcosm#725). Liability rows measure the same cgt_2024_tax engine array as the national liability target."
+        },
+        "axiom": {
+          "metric_name": "hmrc/cgt_liability_by_age_band",
+          "status": "pending",
+          "value_rule": "uk.tax.capital_gains_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_concept": "hmrc.cgt_tax_individuals",
+        "groupby_dimension": "age_band",
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.capital_gains_tax",
+      "label": "Capital Gains Tax liability by age band"
+    },
+    {
+      "target_id": "hmrc.cgt.taxpayers_by_region",
+      "family": "hmrc_cgt",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.cgt_taxpayers_individuals",
+          "groupby_dimension": "hmrc.cgt_table1_line",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:31d709fc393c2bf4d04efca5"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.cgt_taxpayers_total",
+          "groupby_dimension": "hmrc.cgt_table1_line",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:ec8cf88ffb8304ce72228e8b"
+        }
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.income.capital_gains.amount",
+            "operator": ">",
+            "value": "gov.hmrc.cgt.annual_exempt_amount"
+          }
+        ],
+        "observation_basis": "all_taxpayers_by_area_disposal_year_2024_scaled_to_individuals_by_table1_share"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/cgt_taxpayers_by_region",
+          "kind": "parameter_gated_threshold",
+          "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+          "gated_variable": "cgt_2024_gains",
+          "gate_comparison": ">",
+          "from_entity": "person",
+          "map_to": "household",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true,
+          "value_variable": "person_count",
+          "notes": "HMRC Table 5 2024-25 publishes taxpayers, gains and tax by country and region for all taxpayers including trusts (584k UK) while the national targets are individuals (Table 1, 551k). Each tier cell is the published area value multiplied by the Table 1 individuals/total share for the same measure and year, on the declared assumption that trusts are distributed across areas in proportion to all taxpayers; the base, numerator, denominator, ratio and member fact keys are recorded on every compiled spec. One reference per region-tier area (microcosm#905), scoped by the stamped household-region predicate; the AEA gate is the national taxpayer proxy (microcosm#725)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/cgt_taxpayers_by_region",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.cgt_taxpayers_total",
+        "groupby_dimension": "geography",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.capital_gains_tax",
+      "label": "Capital Gains Tax taxpayers by region"
+    },
+    {
+      "target_id": "hmrc.cgt.gains_by_region",
+      "family": "hmrc_cgt",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.cgt_gains_individuals",
+          "groupby_dimension": "hmrc.cgt_table1_line",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:12060d20a417d85d67cf24e8"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.cgt_gains_total",
+          "groupby_dimension": "hmrc.cgt_table1_line",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a9969c2a306f713f6bb203fc"
+        }
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.capital_gains.amount",
+        "filters": [
+          {
+            "concept": "uk.income.capital_gains.amount",
+            "operator": ">",
+            "value": "gov.hmrc.cgt.annual_exempt_amount"
+          }
+        ],
+        "observation_basis": "all_taxpayers_by_area_disposal_year_2024_scaled_to_individuals_by_table1_share"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/capital_gains_by_region",
+          "kind": "parameter_gated_threshold",
+          "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+          "gated_variable": "cgt_2024_gains",
+          "gate_comparison": ">",
+          "from_entity": "person",
+          "map_to": "household",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true,
+          "value_variable": "cgt_2024_gains",
+          "notes": "HMRC Table 5 2024-25 publishes taxpayers, gains and tax by country and region for all taxpayers including trusts (584k UK) while the national targets are individuals (Table 1, 551k). Each tier cell is the published area value multiplied by the Table 1 individuals/total share for the same measure and year, on the declared assumption that trusts are distributed across areas in proportion to all taxpayers; the base, numerator, denominator, ratio and member fact keys are recorded on every compiled spec. One reference per region-tier area (microcosm#905), scoped by the stamped household-region predicate; the AEA gate is the national taxpayer proxy (microcosm#725)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/capital_gains_by_region",
+          "status": "pending",
+          "value_rule": "uk.income.capital_gains.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.cgt_gains_total",
+        "groupby_dimension": "geography",
+        "entity_name": "tax_unit",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.capital_gains_tax",
+      "label": "Capital Gains Tax gains by region"
+    },
+    {
+      "target_id": "hmrc.cgt.taxpayers_by_gain_band",
+      "family": "hmrc_cgt",
+      "geography_levels": [
+        "country"
+      ],
+      "fanout_row_naming": "metric_name_band_lower",
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "groupby_dimension": "hmrc.cgt_gain_band",
+        "filters": [
+          {
+            "concept": "uk.income.capital_gains.amount",
+            "operator": ">",
+            "value": "gov.hmrc.cgt.annual_exempt_amount"
+          }
+        ],
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_size_of_gain"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/cgt_taxpayers_band",
+          "kind": "parameter_gated_threshold",
+          "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+          "gated_variable": "cgt_2024_gains",
+          "gate_comparison": ">",
+          "from_entity": "person",
+          "map_to": "household",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true,
+          "value_variable": "person_count",
+          "groupby_variable": "cgt_2024_gains",
+          "band_filter_dimension": "cgt_gain",
+          "notes": "HMRC Table 2.1a 2024-25, individuals with a CGT liability by size of gain. Rows are the published half-open bands [lower, next lower) on the same engine-year net gains the national target measures; the AEA gate is retained so band membership and taxpayer status share one array. The 0-2,999 band lies below the 2024 annual exempt amount and is signed out. Row names reuse the incumbent hmrc/capital_gains_band_<lower> and hmrc/cgt_taxpayers_band_<lower> registry names; the 3,000 and 6,000 bands the incumbent never carried take the same form. Counts publish to the nearest thousand, so the 3k/5k/9k rows carry rounding half-widths of about 17/10/6 percent (microcosm#467, #725)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/cgt_taxpayers_band",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_concept": "hmrc.cgt_taxpayers_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.capital_gains_tax",
+      "label": "Capital Gains Tax taxpayers by size of gain"
+    },
+    {
+      "target_id": "hmrc.cgt.gains_by_gain_band",
+      "family": "hmrc_cgt",
+      "geography_levels": [
+        "country"
+      ],
+      "fanout_row_naming": "metric_name_band_lower",
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.capital_gains.amount",
+        "groupby_dimension": "hmrc.cgt_gain_band",
+        "filters": [
+          {
+            "concept": "uk.income.capital_gains.amount",
+            "operator": ">",
+            "value": "gov.hmrc.cgt.annual_exempt_amount"
+          }
+        ],
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_size_of_gain"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/capital_gains_band",
+          "kind": "parameter_gated_threshold",
+          "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+          "gated_variable": "cgt_2024_gains",
+          "gate_comparison": ">",
+          "from_entity": "person",
+          "map_to": "household",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true,
+          "value_variable": "cgt_2024_gains",
+          "groupby_variable": "cgt_2024_gains",
+          "band_filter_dimension": "cgt_gain",
+          "notes": "HMRC Table 2.1a 2024-25, individuals with a CGT liability by size of gain. Rows are the published half-open bands [lower, next lower) on the same engine-year net gains the national target measures; the AEA gate is retained so band membership and taxpayer status share one array. The 0-2,999 band lies below the 2024 annual exempt amount and is signed out. Row names reuse the incumbent hmrc/capital_gains_band_<lower> and hmrc/cgt_taxpayers_band_<lower> registry names; the 3,000 and 6,000 bands the incumbent never carried take the same form. Counts publish to the nearest thousand, so the 3k/5k/9k rows carry rounding half-widths of about 17/10/6 percent (microcosm#467, #725)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/capital_gains_band",
+          "status": "pending",
+          "value_rule": "uk.income.capital_gains.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_concept": "hmrc.cgt_gains_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.capital_gains_tax",
+      "label": "Capital Gains Tax gains by size of gain"
     },
     {
       "target_id": "dwp.benefit_cap.capped_households",

@@ -86,6 +86,41 @@ _CGT_OBSERVED_RATIONALES = {
     ),
 }
 
+#: The nine incumbent banded CGT names per measure now map onto the Table
+#: 2.1a fan-out (microcosm#467): the incumbent read uk-data's 2023-24
+#: size-of-gain CSV uprated by a national ratio; the current row binds the
+#: published FY2024-25 individuals cell at identity.
+_CGT_BAND_INCUMBENT_PREFIXES = ("hmrc/cgt_taxpayers_band_", "hmrc/capital_gains_band_")
+_CGT_BAND_DRIFT_RATIONALE = (
+    "Vintage and basis class: the incumbent banded CGT row reads uk-data's "
+    "2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, "
+    "while the current reference binds the published FY2024-25 individuals "
+    "cell for the same band at identity (Chronicle cgt_size_of_gain_2026), "
+    "measured in 2024 at calibration index 2025 like the national CGT "
+    "observations (microcosm#467, #725). The frozen incumbent fixture keeps "
+    "its historical value."
+)
+_CGT_NEW_ROW_PREFIXES = (
+    "hmrc.cgt.taxpayers_by_age_band.",
+    "hmrc.cgt.gains_by_age_band.",
+    "hmrc.cgt.tax_by_age_band.",
+    "hmrc.cgt.taxpayers_by_region@",
+    "hmrc.cgt.gains_by_region@",
+    "hmrc/cgt_taxpayers_band_3000",
+    "hmrc/cgt_taxpayers_band_6000",
+    "hmrc/cgt_taxpayers_band_10000",
+    "hmrc/capital_gains_band_3000",
+    "hmrc/capital_gains_band_6000",
+    "hmrc/capital_gains_band_10000",
+)
+_CGT_NEW_ROW_LEDGER_ONLY_RATIONALE = (
+    "Declared ledger-only observation: HMRC CGT statistics 2026 release, "
+    "FY2024-25 individual rows by age band (Table 6), by country and region "
+    "on the individuals basis via the Table 1 share (Table 5), and the "
+    "size-of-gain bands the incumbent never carried (Table 2.1a). The frozen "
+    "incumbent fixture has no equivalent row (microcosm#725, #467)."
+)
+
 _UC_PAID_WINDOW_NAMES = frozenset(
     {"dwp.uc.households"}
     | {f"dwp.uc.households_children_{i}" for i in (1, 2, 3, 4, "5_or_more")}
@@ -497,6 +532,15 @@ def _add_signed_rationale_notes(
             continue
         elif name in _CGT_OBSERVED_RATIONALES:
             row["reason"] = _CGT_OBSERVED_RATIONALES[name]
+        elif (
+            name.startswith(_CGT_BAND_INCUMBENT_PREFIXES)
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _CGT_BAND_DRIFT_RATIONALE
+        elif (
+            name.startswith(_CGT_NEW_ROW_PREFIXES) and row.get("kind") == "ledger_only"
+        ):
+            row["reason"] = _CGT_NEW_ROW_LEDGER_ONLY_RATIONALE
         elif name in _ONS_TERMINAL_BAND_RATIONALES:
             row["reason"] = _ONS_TERMINAL_BAND_RATIONALES[name]
 

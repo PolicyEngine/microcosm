@@ -116,7 +116,7 @@ def test_compiled_facts_match_hmrc_2024_25_individuals_observations():
 
 def test_individual_scope_is_pinned_to_table1_not_age_marginals():
     references = load_country_spec("uk").target_references
-    cgt = [r for r in references if r.name.startswith("hmrc.cgt.")]
+    cgt = [r for r in references if r.name in CGT_TARGET_NAMES]
     assert len(cgt) == 3
     expected_keys = {
         "hmrc.cgt.taxpayers_total": "31d709fc393c2bf4d04efca5",
@@ -385,3 +385,199 @@ def test_duplicate_pinned_observation_fails_loudly(name, compile_cgt):
     compilation = compile_cgt([*facts, deepcopy(original)], target_period=2025)
     assert name not in {r.name for r in compilation.registry}
     assert name in {r["name"] for r in compilation.unsupported}
+
+
+# ---------------------------------------------------------------------------
+# Banded families (microcosm#725, #467): Table 6 age bands, Table 5 region
+# tier, Table 2.1a size of gain. The frozen feed fixture predates these
+# rows, so the hermetic checks are structural; the pinned feed, when
+# present, proves the values partition the national observations.
+# ---------------------------------------------------------------------------
+
+AGE_BAND_TARGETS = (
+    "hmrc.cgt.taxpayers_by_age_band",
+    "hmrc.cgt.gains_by_age_band",
+    "hmrc.cgt.tax_by_age_band",
+)
+REGION_TARGETS = ("hmrc.cgt.taxpayers_by_region", "hmrc.cgt.gains_by_region")
+GAIN_BAND_TARGETS = ("hmrc.cgt.taxpayers_by_gain_band", "hmrc.cgt.gains_by_gain_band")
+GAIN_BAND_METRICS = {
+    "hmrc.cgt.taxpayers_by_gain_band": "hmrc/cgt_taxpayers_band",
+    "hmrc.cgt.gains_by_gain_band": "hmrc/capital_gains_band",
+}
+ADULT_AGE_LOWER_BOUNDS = (16, 25, 35, 45, 55, 65, 75, 85)
+BOUND_GAIN_LOWER_BOUNDS = (
+    3_000,
+    6_000,
+    10_000,
+    12_300,
+    25_000,
+    50_000,
+    100_000,
+    250_000,
+    500_000,
+    1_000_000,
+    2_000_000,
+    5_000_000,
+)
+REGION_TIER_IDS = (
+    "E12000001",
+    "E12000002",
+    "E12000003",
+    "E12000004",
+    "E12000005",
+    "E12000006",
+    "E12000007",
+    "E12000008",
+    "E12000009",
+    "W92000004",
+    "S92000003",
+    "N92000002",
+)
+
+
+def _references_for(contract_target_id: str):
+    return [
+        reference
+        for reference in load_country_spec("uk").target_references
+        if reference.metadata.get("contract_target_id") == contract_target_id
+    ]
+
+
+def test_age_band_rows_fan_out_over_the_adult_bands_only():
+    for target_id in AGE_BAND_TARGETS:
+        rows = _references_for(target_id)
+        assert [r.name for r in rows] == [
+            f"{target_id}.age_{lower}_to_{upper - 1}"
+            if upper is not None
+            else f"{target_id}.age_{lower}_plus"
+            for lower, upper in zip(
+                ADULT_AGE_LOWER_BOUNDS, (*ADULT_AGE_LOWER_BOUNDS[1:], None), strict=True
+            )
+        ]
+        for reference in rows:
+            assert reference.family == "hmrc_cgt"
+            assert reference.entity == "person"
+            assert reference.ledger_selector["period_value"] == 2024
+            assert reference.ledger_selector["groupby_dimension"] == "age_band"
+            assert reference.ledger_selector["source_table"].startswith(
+                "Capital Gains Tax statistics Table 6"
+            )
+            assert reference.metadata["measurement_period"] == "2024"
+
+
+def test_region_rows_cover_the_tier_and_declare_the_ratio_translation():
+    for target_id in REGION_TARGETS:
+        rows = _references_for(target_id)
+        assert [r.name for r in rows] == [
+            f"{target_id}@{area}" for area in REGION_TIER_IDS
+        ]
+        for reference in rows:
+            assert reference.value_operation == "scaled_by_ratio"
+            roles = [operand["role"] for operand in reference.value_operands]
+            assert roles == ["base", "numerator", "denominator"]
+            assert reference.metadata["cross_grain_grain"] == "region"
+            predicate = json.loads(reference.metadata["geography_predicate"])
+            assert predicate["variable"] == "region"
+            assert predicate["map_to"] == "person"
+            assert (
+                reference.ledger_selector["geography_id"]
+                == reference.name.split("@")[1]
+            )
+
+
+def test_gain_band_rows_reuse_incumbent_names_and_skip_the_sub_aea_band():
+    for target_id in GAIN_BAND_TARGETS:
+        rows = _references_for(target_id)
+        metric = GAIN_BAND_METRICS[target_id]
+        # Fan-out rows sort by their dimension value id, so compare as sets.
+        assert {r.name for r in rows} == {
+            f"{metric}_{lower}" for lower in BOUND_GAIN_LOWER_BOUNDS
+        }
+        assert len(rows) == len(BOUND_GAIN_LOWER_BOUNDS)
+        assert all(r.measure == r.name for r in rows)
+        assert all(
+            r.ledger_selector["source_table"].startswith(
+                "Capital Gains Tax statistics Table 2"
+            )
+            for r in rows
+        )
+
+
+def test_signed_out_rows_are_recorded_not_dropped():
+    membership = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "src/microcosm/build/uk/target_reference_membership.json"
+        ).read_text()
+    )
+    signed = {
+        (target_id, entry["signed_row"]["value"])
+        for target_id, target in membership["targets"].items()
+        if target_id.startswith("hmrc.cgt.")
+        for entry in target["candidates"]
+        if entry["status"] == "signed_excluded"
+    }
+    assert signed == {
+        *((target_id, '"age_0_to_15"') for target_id in AGE_BAND_TARGETS),
+        *((target_id, '"gain_0_to_2999"') for target_id in GAIN_BAND_TARGETS),
+    }
+    assert all(
+        membership["targets"][target_id]["status"] == "active"
+        for target_id in (*AGE_BAND_TARGETS, *GAIN_BAND_TARGETS, *REGION_TARGETS)
+    )
+
+
+def _pinned_feed_rows():
+    feed = Path(__file__).resolve().parents[3] / ".codex-work/consumer_facts_uk.jsonl"
+    if not feed.exists():
+        pytest.skip("pinned UK Chronicle consumer feed is not present")
+    return [json.loads(line) for line in feed.read_text().splitlines() if line.strip()]
+
+
+def test_banded_rows_partition_the_national_observations_on_the_pinned_feed():
+    facts = _pinned_feed_rows()
+    spec = load_country_spec("uk")
+    wanted = {*AGE_BAND_TARGETS, *REGION_TARGETS, *GAIN_BAND_TARGETS}
+    references = [
+        r
+        for r in spec.target_references
+        if r.metadata.get("contract_target_id") in wanted
+    ]
+    registry = compile_ledger_target_references(facts, references, country="uk")
+    by_target: dict[str, list] = {}
+    for reference, compiled in zip(references, registry.specs, strict=True):
+        by_target.setdefault(reference.metadata["contract_target_id"], []).append(
+            compiled
+        )
+    # Published rows round to the nearest thousand people and million
+    # pounds, so the bound rows sum to the national line less the signed-out
+    # row within that rounding.
+    totals = {
+        "hmrc.cgt.taxpayers_by_age_band": 551_000 - 1_000,
+        "hmrc.cgt.gains_by_age_band": 119_258e6 - 54e6,
+        "hmrc.cgt.tax_by_age_band": 22_503e6 - 9e6,
+        "hmrc.cgt.taxpayers_by_gain_band": 551_000 - 3_000,
+        "hmrc.cgt.gains_by_gain_band": 119_258e6 - 1e6,
+    }
+    for target_id, expected in totals.items():
+        assert sum(s.value for s in by_target[target_id]) == pytest.approx(
+            expected, rel=1e-3
+        )
+    # Region cells: published all-taxpayer areas sum to the Table 1 total
+    # within rounding, and the ratio restates them on the individuals basis.
+    for target_id, national in (
+        ("hmrc.cgt.taxpayers_by_region", 551_000),
+        ("hmrc.cgt.gains_by_region", 119_258e6),
+    ):
+        cells = by_target[target_id]
+        assert len(cells) == 12
+        assert sum(s.value for s in cells) == pytest.approx(national, rel=0.01)
+        for compiled in cells:
+            assert compiled.metadata["ledger_value_formula"] == (
+                "base * numerator / denominator"
+            )
+            assert 0.9 < float(compiled.metadata["ledger_value_ratio"]) < 1.0
+            assert (
+                compiled.metadata["ledger_geography_id"] == compiled.name.split("@")[1]
+            )
