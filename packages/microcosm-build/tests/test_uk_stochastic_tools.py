@@ -190,7 +190,9 @@ def test_e4_identity_receipt_survives_permutation_on_synthetic_frame() -> None:
     )
     frame = uk_national_frame(
         person=person,
-        benunit=pd.DataFrame({"benunit_id": [10, 20, 30]}),
+        benunit=pd.DataFrame(
+            {"benunit_id": [10, 20, 30], "is_married": [False, True, False]}
+        ),
         household=pd.DataFrame(
             {
                 "household_id": [1, 2],
@@ -279,7 +281,9 @@ def _frame():
             "person_household_id": [1, 2, 3],
         }
     )
-    benunit = pd.DataFrame({"benunit_id": [201, 202, 203]})
+    benunit = pd.DataFrame(
+        {"benunit_id": [201, 202, 203], "is_married": [False, True, False]}
+    )
     household = pd.DataFrame(
         {
             "household_id": [1, 2, 3],
