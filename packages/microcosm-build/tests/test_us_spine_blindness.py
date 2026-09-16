@@ -264,6 +264,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "nsece_childcare_sibling_validation.py",  # Whole-household schedule diagnostics.
         "nsece_childcare_dependence.py",  # Household dependence estimation.
         "nsece_childcare_pooling.py",  # Experimental donor pooling; no source-spine routing.
+        "nsece_childcare_qrf.py",  # Experimental canonical conditional matching.
         "nsece_childcare_bridge.py",  # Source measurement completion; no spine routing.
         "operator_boundary.py",  # Raw-stage validator; no population treatment.
         "org_wages.py",

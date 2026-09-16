@@ -15,12 +15,13 @@ build inputs; CI does not download or redistribute survey records. This PR
 provides build integration and a local population candidate under review; it does
 not publish a replacement population or certify national CCDF spending.
 
-The September 16 main merge upgrades the branch to PolicyEngine-US 2.2.1.
-Existing population candidates and state-benefit reports were generated with
-1.819.0 and remain historical evidence. Their runtime-bound attendance receipts
-cannot be reused under 2.2.1: a new candidate must be rebuilt from the original
-parent and revalidated before use. The survey-model experiments do not provide
-that population validation.
+The September 16 candidate was rebuilt from the pinned parent under
+PolicyEngine-US 2.2.1 and Core 3.32.5. Both native loaders verify the new receipt;
+all original values and weights are preserved. The new all-state comparison
+reduces all-zero results from 31 jurisdictions to two (MD and NV). The
+[aggregate experiment](../experiments/us-childcare-attendance/README.md) records
+the current population, sensitivity and model diagnostics. Older 1.819.0 reports
+remain historical; their receipts are not reused under the new runtime.
 
 ## Source and mapping
 
@@ -53,6 +54,14 @@ care depends on `HH4_RPARENT`; school gap code 68 is classifiable as non-ECE onl
 at age six or older. Ambiguous codes remain unknown. A complete parental,
 self-care, or school-only calendar is a measured zero donor. Missing calendars
 never become observed zeros.
+
+Diagnostic `calendar_ece_hours_lower/upper` and `calendar_ece_days_lower/upper`
+retain the definite and possible care in incomplete calendars. For partial
+calendars, code 0 is unresolved because unreported time can be encoded as assumed
+parental care (User Guide HH-334). Wholly missing calendars have uninformative
+bounds. These fields do not populate attendance inputs. Regular-instrument
+summary hours derive from the same calendar and are not independent evidence
+for completing its missing blocks.
 
 Attendance uses the union of classified ECE blocks. Days count days with any
 ECE; hours per day equal weekly ECE hours divided by days. Monthly days use
@@ -110,6 +119,13 @@ source/target integration, and does not change population attendance values.
 See the [plans and full comparison](../experiments/us-childcare-attendance/README.md)
 for source-selection limits and reproducible commands. All inspected survey
 partitions now count as development evidence.
+
+Two further diagnostics add roster composition or use `microcosm.fit`'s canonical
+weighted QRF with common household predictors. Composition reduces household
+screen failures to one but worsens the unresolved-sibling hours error to −42.8%.
+QRF closely matches overall means while still underpredicting that subgroup's
+hours by 36.9%, so it was not advanced to joint/production integration. Both
+remain experimental; neither relaxes the selection or transport assumptions.
 
 ## ASEC target harmonization
 

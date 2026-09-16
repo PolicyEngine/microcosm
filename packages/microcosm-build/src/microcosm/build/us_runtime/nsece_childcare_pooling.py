@@ -29,6 +29,21 @@ POOLED_CHILDCARE_LEVELS = tuple(
     for n in range(1, len(POOLED_CHILDCARE_MATCH_COLUMNS) + 1)
 )
 POOLED_CHILDCARE_STRENGTH = 10.0
+COMPOSITION_CHILDCARE_MATCH_COLUMNS = (
+    "age",
+    "childcare_household_size",
+    "childcare_under6_count",
+    "childcare_schoolage_count",
+    "childcare_youngest_age_band",
+    "childcare_has_younger_sibling",
+    "parent_work_status",
+    "income_band",
+    "region",
+)
+COMPOSITION_CHILDCARE_LEVELS = tuple(
+    COMPOSITION_CHILDCARE_MATCH_COLUMNS[:n]
+    for n in range(1, len(COMPOSITION_CHILDCARE_MATCH_COLUMNS) + 1)
+)
 
 
 def with_childcare_household_size(children):
@@ -44,6 +59,22 @@ def with_childcare_household_size(children):
         .transform("sum")
         .clip(upper=3)
     )
+    for column, included in (
+        ("childcare_under6_count", result.age.between(0, 5)),
+        ("childcare_schoolage_count", result.age.between(6, 12)),
+    ):
+        result[column] = (
+            included.groupby(result.source_household_id).transform("sum").clip(upper=3)
+        )
+    youngest = (
+        result.age.where(result.age.between(0, 12))
+        .groupby(result.source_household_id)
+        .transform("min")
+    )
+    result["childcare_youngest_age_band"] = np.select(
+        [youngest < 3, youngest < 6], [0, 1], default=2
+    )
+    result["childcare_has_younger_sibling"] = (result.age > youngest).astype(int)
     return result
 
 
@@ -54,12 +85,18 @@ class PooledScheduleDonors:
     Multiplying all survey weights by a common factor cannot change predictions.
     """
 
-    def __init__(self, children, *, strength=POOLED_CHILDCARE_STRENGTH):
+    def __init__(
+        self, children, *, strength=POOLED_CHILDCARE_STRENGTH, composition=False
+    ):
         if not np.isfinite(strength) or strength <= 0:
             raise ValueError("Pooling strength must be finite and positive.")
         self.strength = strength
+        self.levels = (
+            COMPOSITION_CHILDCARE_LEVELS if composition else POOLED_CHILDCARE_LEVELS
+        )
+        self.match_columns = self.levels[-1]
         required = [
-            *POOLED_CHILDCARE_MATCH_COLUMNS,
+            *self.match_columns,
             "source_household_id",
             "donor_id",
             "child_weight",
@@ -79,9 +116,7 @@ class PooledScheduleDonors:
             raise ValueError("Pooled childcare donor IDs must be unique.")
         _ids(self.pool, "source_household_id", unique=False)
         _ids(self.pool, "donor_id", unique=True)
-        predictors = self.pool.reindex(columns=POOLED_CHILDCARE_MATCH_COLUMNS).to_numpy(
-            dtype=float
-        )
+        predictors = self.pool.reindex(columns=self.match_columns).to_numpy(dtype=float)
         if (
             not np.isfinite(predictors).all()
             or (predictors % 1 != 0).any()
@@ -104,14 +139,13 @@ class PooledScheduleDonors:
         self.weights = self.pool.child_weight.to_numpy(dtype=float)
         self.households = self.pool.source_household_id.to_numpy()
         self.groups = [
-            self.pool.groupby(list(level), sort=False).indices
-            for level in POOLED_CHILDCARE_LEVELS
+            self.pool.groupby(list(level), sort=False).indices for level in self.levels
         ]
         self.cache = {}
 
     def distribution(self, child, *, exclude_household=None):
         """Return care-sorted values, cumulative probabilities and row masses."""
-        key = tuple(child.reindex(POOLED_CHILDCARE_MATCH_COLUMNS))
+        key = tuple(child.reindex(self.match_columns))
         if not np.isfinite(np.asarray(key, dtype=float)).all():
             raise ValueError("Pooled target matching fields must be complete.")
         if exclude_household is None and key in self.cache:
@@ -123,9 +157,7 @@ class PooledScheduleDonors:
             raise ValueError("No exact-age donor household remains after exclusion.")
         probabilities = self.weights[age_indices].copy()
         probabilities /= probabilities.sum()
-        for level, groups in zip(
-            POOLED_CHILDCARE_LEVELS[1:], self.groups[1:], strict=True
-        ):
+        for level, groups in zip(self.levels[1:], self.groups[1:], strict=True):
             indices = np.asarray(groups.get(key[: len(level)], []), dtype=int)
             if exclude_household is not None:
                 indices = indices[self.households[indices] != exclude_household]
@@ -151,7 +183,11 @@ class PooledScheduleDonors:
 
 
 def fit_pooled_sibling_dependence(
-    children, *, strength=POOLED_CHILDCARE_STRENGTH, objective="pair_squared_error"
+    children,
+    *,
+    strength=POOLED_CHILDCARE_STRENGTH,
+    objective="pair_squared_error",
+    composition=False,
 ):
     """Fit all measured pair cross-products with whole-household donor exclusion."""
     from microcosm.build.us_runtime.nsece_childcare_sibling_validation import (
@@ -160,7 +196,7 @@ def fit_pooled_sibling_dependence(
 
     if objective not in ("pair_squared_error", "population_moments"):
         raise ValueError("Unknown pooled dependence objective.")
-    model = PooledScheduleDonors(children, strength=strength)
+    model = PooledScheduleDonors(children, strength=strength, composition=composition)
     records = []
     households = 0
     incomplete_households = 0

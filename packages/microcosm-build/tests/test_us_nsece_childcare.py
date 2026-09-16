@@ -131,6 +131,56 @@ def test_complete_parental_care_is_a_weighted_zero_donor():
     assert weights.total == 100
 
 
+def test_calendar_bounds_preserve_measured_blocks_without_filling_ambiguous_time():
+    hh, cal = _raw()
+    _care(cal, hours=4)
+    cal.loc[0, "HH4_CHCAL_R_1_200"] = 97
+    child = derive_nsece_childcare(hh, cal).children.iloc[0]
+    assert child.calendar_ece_hours_lower == 4
+    assert child.calendar_ece_hours_upper == 4.25
+    assert child.calendar_ece_days_lower == 1
+    assert child.calendar_ece_days_upper == 2
+    assert child.calendar_unknown_hours == 0.25
+    assert child.attendance_status == "ambiguous_calendar"
+    assert pd.isna(child[DAYS])
+
+
+def test_partial_calendar_assumed_parental_zeros_remain_unresolved():
+    hh, cal = _raw()
+    _care(cal, hours=4)
+    hh["HH4_MISSING_STATUS_CC_1"] = 1
+    child = derive_nsece_childcare(hh, cal).children.iloc[0]
+    assert child.calendar_ece_hours_lower == 4
+    assert child.calendar_ece_hours_upper == 168
+    assert child.calendar_ece_days_lower == 1
+    assert child.calendar_ece_days_upper == 7
+    assert child.calendar_unknown_hours == 164
+    assert pd.isna(child.regular_hours_per_week)
+    assert pd.isna(child[HOURS])
+
+
+def test_missing_calendar_has_uninformative_bounds_not_observed_zeros():
+    hh, cal = _raw()
+    hh["HH4_MISSING_STATUS_CC_1"] = 0
+    child = derive_nsece_childcare(hh, cal).children.iloc[0]
+    assert child.calendar_ece_hours_lower == 0
+    assert child.calendar_ece_hours_upper == 168
+    assert child.calendar_ece_days_lower == 0
+    assert child.calendar_ece_days_upper == 7
+    assert pd.isna(child[DAYS])
+
+
+def test_complete_calendar_bounds_equal_the_observed_schedule():
+    hh, cal = _raw()
+    _care(cal, hours=4)
+    child = derive_nsece_childcare(hh, cal).children.iloc[0]
+    assert child.calendar_ece_hours_lower == child.ece_hours_per_week
+    assert child.calendar_ece_hours_upper == child.ece_hours_per_week
+    assert child.calendar_ece_days_lower == child[DAYS]
+    assert child.calendar_ece_days_upper == child[DAYS]
+    assert child.calendar_unknown_hours == 0
+
+
 def test_unknown_provider_type_is_not_a_zero_schedule():
     hh, cal = _raw()
     _care(cal)

@@ -1,0 +1,46 @@
+Calendar selection and household composition investigation, 2026-09-16.
+
+All previously inspected NSECE records are development evidence. This plan
+does not create an untouched validation sample or alter the existing screens.
+
+1. Audit information loss before fitting another model. The source guide
+   (HH-334) says unreported calendar time can be encoded as parental care, and
+   calendar-derived summaries do not account for the missing-calendar flag.
+   Therefore the regular-instrument summaries are not independent observed
+   outcomes for partial/missing calendars. For complete-but-ambiguous calendars,
+   retain definite ECE hours/days as lower bounds and allow every unresolved
+   block to be ECE in upper bounds. For partial calendars, code 0 also remains
+   unresolved; fully missing calendars have no informative attendance bounds.
+   Bounds are not imputations, observed zeros, or confidence intervals.
+
+2. Compare the existing pooled population-moment model with one predetermined
+   composition-aware empirical model. Keep exact age and whole joint day/hour
+   schedules. Add under-6 count, school-age (6-12) count, youngest-child age band
+   (0-2, 3-5, 6-12), and whether a child has a younger sibling. Counts are capped
+   at three and use the full roster before calendar selection. Pool in order:
+   age; age + under-13 count; + under-6 count; + school-age count;
+   + youngest-child age band; + younger-sibling indicator; + parent work;
+   + income band; + region. Retain strength 10 and the shared population-moment
+   dependence objective. No new source-only response indicator enters target
+   predictors, and no smoothing or dependence coefficient is selected by the
+   evaluation outcomes.
+
+3. Use the same five whole-household folds and all 15 household plus 18 observed-
+   child checks. Exclude fitting households from their own donor distributions.
+   Keep the unresolved-sibling subgroup visible. Report conditional-mean and
+   random-draw errors, correlation/joint-moment compatibility and donor support.
+
+4. Use the calendar bounds to test the consequences of the source exclusions,
+   including whether uncertainty is concentrated among high-attendance families.
+   Do not promote a completion rule merely because it makes validation pass.
+   Any additional model must have a separately recorded rationale and evaluation
+   plan before its results, and must preserve the measured parts of calendars.
+
+5. Rebuild the current approved-in-code attendance recipe from the original
+   SHA-pinned parent under PolicyEngine-US 2.2.1. Verify both native loaders,
+   content/runtime receipts, every original column/weight and all attendance
+   rows. Rerun all-state attendance comparisons and noncalendar stress scenarios.
+   A model adoption requires equivalent source/target/bridge integration and a
+   fresh candidate; diagnostic models never silently replace the build recipe.
+   Statistical source selection, population qualification, and publication are
+   separate. No population publication or relaxed release gate is authorized.

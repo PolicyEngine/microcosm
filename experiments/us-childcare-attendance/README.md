@@ -1,4 +1,174 @@
-# NSECE attendance pooled-model investigation — 2026-09-16
+# NSECE attendance: calendar selection and current-runtime validation — 2026-09-16
+
+**PR #916 remains draft.** The population has now been rebuilt from the pinned
+parent under **PolicyEngine-US 2.2.1 / Core 3.32.5**. Two additional marginal
+models were tested, but neither resolves the observed-child selection problem;
+neither replaces the existing production-stage matcher. No population is
+published, and all reports retain `production_ready: false`.
+
+## Calendar information that can actually be recovered
+
+The adapter now preserves definite/possible ECE hours and days separately from
+completed attendance. The NSECE Household User Guide (HH-334) says unreported
+time can be encoded as assumed parental care and derived summaries are not
+adjusted for missing-calendar status. Partial-calendar zeros therefore cannot
+be treated as observed nonattendance. Summary hours from the regular instrument
+derive from the same calendar and cannot independently recover its missing time.
+Summer/fall regular hours remain a separate measurement, as before.
+
+The new fields are diagnostics, not imputed attendance inputs. Unknown schedules
+stay unknown. Bounds use known ECE blocks as the lower endpoint and all unresolved
+blocks as possible ECE at the upper endpoint. A wholly missing calendar has the
+uninformative interval 0–168 hours and 0–7 days. Complete calendars have equal
+endpoints. These are identification ranges conditional on the published calendar
+classifications, not confidence intervals, plausible point estimates, or benefit
+bounds.
+
+| Regular-questionnaire group | Children | Weighted mean weekly-hours interval |
+| --- | ---: | ---: |
+| Complete calendars | 7,460 | 14.24–14.24 |
+| Ambiguous classifications | 882 | 9.86–32.60 |
+| Partial calendars | 174 | 13.19–149.35 |
+| All regular-questionnaire children | 8,516 | 13.75–19.28 |
+
+These broad ranges explain why simply filling the excluded calendars is not a
+measured solution. Only 11.4% of the ambiguous-calendar design weight has an
+hours interval no wider than one hour. The 149-hour partial-calendar upper bound
+means the questionnaire supplies little information; it is not a proposed
+attendance schedule. See the [bounds and composition report](calendar-selection-validation.json)
+and [plan recorded before that comparison](calendar-selection-plan.txt).
+
+## Additional model comparisons
+
+The composition model adds the full roster's under-6 and school-age counts,
+youngest age band, and presence of a younger sibling to the pooled matcher.
+Missing calendars still count toward these features. The separately declared
+QRF experiment uses `microcosm.fit`'s canonical weighted-bootstrap conditional
+model, adding measured household income, resident count, and resident-parent
+count. An ordinal schedule code is decoded to an observed joint day/hour pair
+at the child's exact age. No source response indicator, care outcome, or
+incompatible annual/weekly care-expense measure is used as a predictor.
+
+Every model excludes the evaluation household from training. All 7,460 measured
+children are evaluated in the same five folds, including 761 children whose
+siblings have unresolved calendars. The QRF uses a fixed 128-point integration
+grid; its failed marginal screen did not justify proceeding to dependence fitting
+or production integration. All these survey partitions are development data.
+
+| Model | Failed household screens / 15 | Failed child screens / 18 | Hours error for observed children with unresolved siblings |
+| --- | ---: | ---: | ---: |
+| Previous pooled population-moment model | 2 | 3 | −40.7% |
+| Composition-aware pooled model | 1 | 3 | −42.8% |
+| Canonical QRF marginal diagnostic | Not evaluated | 3 | −36.9% |
+
+The composition model improves the joint-screen count but worsens the important
+subgroup. QRF reproduces overall mean weekly hours (14.285 predicted versus
+14.240 observed), yet predicts only 15.047 versus 23.830 for the unresolved-sibling
+group. Its conditional-mean hours MSE is 495.370 versus 482.798 for the previous
+pooled model; subgroup MSE also worsens. Better overall means are insufficient
+to adopt either model. These subgroup discrepancies indicate a selection concern;
+they do not identify the missing children's outcomes or prove a causal
+missingness effect.
+
+- [QRF plan recorded before its results](qrf-calendar-plan.txt)
+- [QRF model, fold counts and marginal diagnostics](qrf-calendar-validation.json)
+
+## Population rebuilt under PolicyEngine-US 2.2.1
+
+The current candidate contains **166,321 people, 57,240 households and 31,889
+children ages 0–12**, with every under-13 attendance input resolved. It uses the
+existing default attendance recipe; none of the experimental models above is
+used. The current source adapter's bounds do not change the donor attendance.
+
+The attendance-only counterfactual now reduces all-zero results from **31 to 2
+jurisdictions (MD and NV)**. Annual potential modeled benefits rise from
+**$2.254 billion to $5.998 billion**. These use 2026 policies on the parent's
+fixed ages/incomes, without aging or uprating; they are not calibrated spending
+or caseload estimates. Positive benefits alone do not validate attendance.
+
+- [Current source-stage report](calendar-review-2.2.1-source-stage.json)
+- [Current population and all-state comparison](calendar-review-2.2.1-population.json)
+- [Current native-loader verification](calendar-review-2.2.1-verification.json)
+- [Current noncalendar sensitivity](calendar-review-2.2.1-sensitivity.json)
+
+Both native loaders verify the saved attendance binding against the current
+recipe and runtime. Verification compares every attendance value, every original
+population column and all weights with the checkpoint/parent. Only the pandas
+string-storage backend is normalized for the comparison; values, missingness and
+other dtypes must match exactly. The source-stage exporter also verifies period
+preservation. No stale-receipt override is used.
+
+The noncalendar stress test preserves measured regular weekly hours and varies
+only reconstructed schedules, then repeats the transfer with the same seed and
+weights. Its baseline and candidate results match the population report exactly
+in every state, and both reports bind the same current recipe.
+
+| Noncalendar assumption | Annual potential benefits | Change from candidate |
+| --- | ---: | ---: |
+| No modeled irregular hours | $5.792 billion | −3.43% |
+| One fewer modeled day | $5.934 billion | −1.06% |
+| One more modeled day | $6.010 billion | +0.20% |
+
+All three national changes remain below the provisional 10% screen. Six state
+comparisons exceed 20%: TN (−36.0%, no irregular hours), IA (+60.0%), KS (−49.4%),
+MS (−69.6%) and OK (−40.0%) with one fewer day, and AR (+43.9%) with one more
+day. The OK flag represents only about $2 on a roughly $5 baseline; the report
+includes absolute changes so tiny denominators are visible. Days and daily-hour
+rates interact, so benefit changes need not follow the direction of the day
+change. These are assumption scenarios, not confidence intervals, and they do
+not resolve the underlying measurement gap.
+
+## Reproduction and remaining decision
+
+Run the source experiments on the two licensed files with fresh report paths:
+
+```bash
+uv run python tools/validate_us_childcare_calendar_selection.py \
+  --household-tsv /local/39466-0005-Data.tsv \
+  --calendar-tsv /local/39466-0004-Data.tsv \
+  --report /local/calendar-selection.json
+uv run python tools/validate_us_childcare_qrf.py \
+  --household-tsv /local/39466-0005-Data.tsv \
+  --calendar-tsv /local/39466-0004-Data.tsv \
+  --report /local/qrf-calendar.json
+```
+
+Rebuild with `tools/prepare_us_childcare_attendance.py --production-stage
+--extended-assessment --inherit-outside-domain-baseline`, the original pinned
+parent, both source files and the pinned ASEC cache. Then run
+`tools/validate_us_childcare_population.py`,
+`tools/validate_us_childcare_sensitivity.py`, and
+`tools/verify_us_childcare_candidate.py` on those explicit local artifacts.
+Each tool's `--help` lists the required file/hash arguments; no report is
+overwritten. Only aggregate reports are committed.
+
+**Decision:** retain the draft and fail-closed release checks. The current-runtime
+rebuild closes the stale-runtime evidence gap. Calendar nonresponse and transport
+of unmeasured days/irregular care remain substantive model limitations. A defensible
+next model needs independent measured attendance information or a declared
+missingness model evaluated across plausible assumptions, followed by fresh
+validation. Reusing calendar-derived summaries as truth, conditioning target
+predictions on a source-only response flag, or tuning against these already
+inspected screens would not resolve those limitations. Provider/activity inputs
+and care outside ages 0–12 remain separate gaps.
+
+## Code validation for this update
+
+All **1,048 distinct local regression checks** pass in their latest applicable
+run: 547 source, attendance, pooling, builder, coverage, export and serializer
+checks, plus the final 501-test QRF/architecture rerun. The initial architecture
+failure required making the QRF predictor selection explicit; the guard remains
+unchanged. The final real-source QRF replay reproduces every earlier metric
+exactly and records the final code hash.
+
+Repository-wide ruff lint, changed-file formatting, tracked CI inventory and
+built-wheel source-byte checks pass. A repository-wide formatting check reports
+77 pre-existing files; none is part of this update, and they were not reformatted.
+The new flat `test_us_childcare_qrf.py` enters the US CI inventory; CI uses
+synthetic records only. Native artifact verification runs separately on the
+licensed local inputs. GitHub CI has not been monitored.
+
+## Earlier pooled-model investigation — 2026-09-16
 
 **PR #916 remains draft.** A partially pooled donor model improves conditional
 child predictions and larger-family means. An exploratory population-moment
@@ -6,12 +176,11 @@ dependence fit passes 13 of the original 15 household screens, but still fails
 two hours checks and all three checks for observed children with unresolved
 siblings. Neither experimental model has replaced the production-stage recipe.
 
-**Runtime update after merging main:** the branch now uses PolicyEngine-US
-2.2.1 and Core 3.32.5. Population artifacts, native-loader receipts and benefit
-estimates below were produced with PolicyEngine-US 1.819.0 and Core 3.31.0.
-They remain historical evidence, not validation of a population under the new
-runtime. Runtime-bound attendance receipts require rebuilding from the original
-parent before a new candidate can be used; the merge does not bypass that check.
+**Historical runtime note:** the earlier population artifacts, native-loader
+receipts and benefit estimates below used PolicyEngine-US 1.819.0 and Core
+3.31.0. The current-runtime rebuild above supersedes their population evidence.
+The merge itself did not bypass the requirement to rebuild from the original
+parent when the receipt's runtime changed.
 The complete three-model survey comparison was rerun with 2.2.1: every model
 result and diagnostic code hash matches the pre-upgrade run exactly. The linked
 pooled report records the new runtime; this survey replay is separate from

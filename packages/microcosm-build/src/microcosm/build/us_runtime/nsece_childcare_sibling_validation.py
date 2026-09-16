@@ -114,6 +114,7 @@ def assess_sibling_schedules(
     pooled=False,
     include_observed_children=False,
     pooling_fit_objective="pair_squared_error",
+    composition=False,
 ):
     """Evaluate pair intensity and larger-household totals with disjoint training.
 
@@ -122,6 +123,8 @@ def assess_sibling_schedules(
     merely because a new split is used.
     """
     children = source.children.loc[source.children.age.between(0, 12)].copy()
+    if composition and not pooled:
+        raise ValueError("Composition matching requires the pooled model.")
     if pooled or include_observed_children:
         from microcosm.build.us_runtime.nsece_childcare_pooling import (
             PooledScheduleDonors,
@@ -159,14 +162,18 @@ def assess_sibling_schedules(
             }
         )
         fitted = (
-            fit_pooled_sibling_dependence(training, objective=pooling_fit_objective)
+            fit_pooled_sibling_dependence(
+                training, objective=pooling_fit_objective, composition=composition
+            )
             if pooled
             else fit_nsece_sibling_dependence(training, match_columns=match_columns)
         )
         rho = fitted["rho"]
         dependence_fits.append(fitted)
         fold_fits.append(rho)
-        pooled_model = PooledScheduleDonors(training) if pooled else None
+        pooled_model = (
+            PooledScheduleDonors(training, composition=composition) if pooled else None
+        )
         train = training.loc[training.attendance_status.eq("complete")].sort_values(
             [days, hours, "donor_id"]
         )
@@ -382,18 +389,23 @@ def assess_sibling_schedules(
     result["diagnostic_screen"] = sibling_schedule_screen(result)
     if pooled:
         from microcosm.build.us_runtime.nsece_childcare_pooling import (
+            COMPOSITION_CHILDCARE_LEVELS,
             POOLED_CHILDCARE_LEVELS,
             POOLED_CHILDCARE_STRENGTH,
         )
 
+        pooling_levels = (
+            COMPOSITION_CHILDCARE_LEVELS if composition else POOLED_CHILDCARE_LEVELS
+        )
         result["model"] = {
             "name": "partially_pooled_empirical_schedules",
-            "levels": POOLED_CHILDCARE_LEVELS,
+            "levels": pooling_levels,
+            "composition": composition,
             "strength": POOLED_CHILDCARE_STRENGTH,
             "dependence_objective": pooling_fit_objective,
             "dependence_fits": dependence_fits,
         }
-        result["match_columns"] = POOLED_CHILDCARE_LEVELS[-1]
+        result["match_columns"] = pooling_levels[-1]
         result["fallback_match_columns"] = ()
     if include_observed_children:
         result["matching_count_universe"] = (

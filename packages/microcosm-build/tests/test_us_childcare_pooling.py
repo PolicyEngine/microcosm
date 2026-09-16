@@ -13,6 +13,7 @@ from microcosm.build.us_runtime.childcare_attendance import (
 )
 from microcosm.build.us_runtime.nsece_childcare import NSECEChildcareSource
 from microcosm.build.us_runtime.nsece_childcare_pooling import (
+    COMPOSITION_CHILDCARE_LEVELS,
     POOLED_CHILDCARE_LEVELS,
     POOLED_CHILDCARE_MATCH_COLUMNS,
     PooledScheduleDonors,
@@ -109,6 +110,31 @@ def test_roster_count_includes_unknown_attendance_but_not_older_children():
     assert counted.childcare_household_size.tolist() == [3, 3, 3, 2, 2, 2]
     assert children.loc[2, "attendance_status"] == "partial_calendar"
     assert "childcare_household_size" not in children
+
+
+def test_composition_counts_full_roster_and_never_reads_attendance():
+    rows = _children(1)
+    rows["age"] = [1, 4, 9]
+    rows.loc[2, "attendance_status"] = "partial_calendar"
+    counted = with_childcare_household_size(rows)
+    assert counted.childcare_under6_count.tolist() == [2, 2, 2]
+    assert counted.childcare_schoolage_count.tolist() == [1, 1, 1]
+    assert counted.childcare_youngest_age_band.tolist() == [0, 0, 0]
+    assert counted.childcare_has_younger_sibling.tolist() == [0, 1, 1]
+    rows["attendance_status"] = "missing_calendar"
+    changed = with_childcare_household_size(rows)
+    columns = COMPOSITION_CHILDCARE_LEVELS[-1]
+    assert_frame_equal(counted[list(columns)], changed[list(columns)])
+
+
+def test_composition_distributions_exclude_the_whole_household_and_retain_age():
+    rows = _children()
+    model = PooledScheduleDonors(rows, composition=True)
+    values, _, weights = model.distribution(rows.iloc[0], exclude_household="h0")
+    assert model.levels == COMPOSITION_CHILDCARE_LEVELS
+    assert len(values) == len(model.pool.loc[model.pool.source_household_id.ne("h0")])
+    assert weights.sum() == pytest.approx(1)
+    assert set(map(tuple, values)) == {(0, 0, 0), (1, 5, 40)}
 
 
 def test_dependence_uses_observed_pairs_in_incomplete_households(monkeypatch):

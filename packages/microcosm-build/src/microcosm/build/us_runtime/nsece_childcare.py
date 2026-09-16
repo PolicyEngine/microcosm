@@ -188,6 +188,15 @@ def derive_nsece_childcare(
             default="complete",
         )
         complete = reason == "complete"
+        # HH-334: unreported time can be encoded as assumed parental care (0).
+        # For partial calendars those zeros are not observed nonattendance.
+        # Missing calendars contribute no informative bound, including when
+        # derived summaries misleadingly describe a parental-care-only week.
+        definite = ece & (status != 0)[:, None]
+        unresolved = (
+            ~known | ((status == 1)[:, None] & (values == 0)) | (status == 0)[:, None]
+        )
+        possible = definite | unresolved
         summary_hours = rows[
             [f"HHC4_NPC_HRSWEEK_TOC{kind}_{child}" for kind in range(1, 10)]
         ].to_numpy(dtype=float)
@@ -225,6 +234,16 @@ def derive_nsece_childcare(
                     complete, weekly_hours - regular_hours, np.nan
                 ),
                 "attendance_status": reason,
+                "calendar_status_code": status.astype(int),
+                "calendar_unknown_hours": unresolved.sum(axis=1) / 4,
+                "calendar_ece_hours_lower": definite.sum(axis=1) / 4,
+                "calendar_ece_hours_upper": possible.sum(axis=1) / 4,
+                "calendar_ece_days_lower": definite.reshape(-1, 7, 96)
+                .any(axis=2)
+                .sum(axis=1),
+                "calendar_ece_days_upper": possible.reshape(-1, 7, 96)
+                .any(axis=2)
+                .sum(axis=1),
                 "child_weight": weight.to_numpy(),
                 "household_weight": rows.HH4_METH_WEIGHT.to_numpy(),
                 "ece_provider_count": np.where(complete, provider_count, np.nan),
@@ -252,6 +271,12 @@ def derive_nsece_childcare(
             "measurement": "union_of_ECE_calendar_blocks_excluding_K8",
             "monthly_conversion": "floor(days_per_week * 52 / 12 + 0.5)",
             "national_representativeness_validated": False,
+            "calendar_bounds": {
+                "source": "NSECE 2024 Household User Guide HH-334, HH-565--568",
+                "meaning": "definite and possible ECE blocks; not imputations or confidence intervals",
+                "partial_calendar_zero": "unresolved assumed parental care, not observed nonattendance",
+                "missing_calendar": "uninformative 0--168 hours and 0--7 days",
+            },
         },
     )
 
