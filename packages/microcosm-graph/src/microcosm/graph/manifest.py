@@ -443,6 +443,12 @@ class RunManifest:
     timestamps, and attached ``Frame`` instances are also outside the
     content-addressed body. Computational reuse continues to use node keys,
     not this run-manifest identity.
+
+    :attr:`source_identities` is attached in the same way: the executor's
+    run-end re-derivation of every declared source's content key, recorded so a
+    reader can see which bytes the run actually finished against. Like
+    ``populations`` and ``mass_ledgers`` it is outside :attr:`key`, outside
+    ``to_json``, and outside every node receipt and cache record.
     """
 
     country: str
@@ -455,6 +461,9 @@ class RunManifest:
         default_factory=dict, repr=False, compare=False
     )
     mass_ledgers: Mapping[str, tuple[MassRecord, ...]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    source_identities: Mapping[str, str] = field(
         default_factory=dict, repr=False, compare=False
     )
 
@@ -507,6 +516,16 @@ class RunManifest:
                 )
             mass_ledgers[version_id] = frozen_records
         object.__setattr__(self, "mass_ledgers", MappingProxyType(mass_ledgers))
+        source_identities: dict[str, str] = {}
+        for name, identity in self.source_identities.items():
+            if not isinstance(name, str):
+                raise TypeError("RunManifest.source_identities keys must be strings")
+            if not isinstance(identity, str):
+                raise TypeError("RunManifest.source_identities values must be strings")
+            source_identities[name] = identity
+        object.__setattr__(
+            self, "source_identities", MappingProxyType(source_identities)
+        )
 
     @property
     def content_addressed(self) -> Mapping[str, object]:
