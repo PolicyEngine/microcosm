@@ -401,6 +401,10 @@ AGE_BAND_TARGETS = (
 )
 REGION_TARGETS = ("hmrc.cgt.taxpayers_by_region", "hmrc.cgt.gains_by_region")
 GAIN_BAND_TARGETS = ("hmrc.cgt.taxpayers_by_gain_band", "hmrc.cgt.gains_by_gain_band")
+RESIDENTIAL_TARGETS = (
+    "hmrc.cgt.residential_property_taxpayers",
+    "hmrc.cgt.residential_property_gains",
+)
 GAIN_BAND_METRICS = {
     "hmrc.cgt.taxpayers_by_gain_band": "hmrc/cgt_taxpayers_band",
     "hmrc.cgt.gains_by_gain_band": "hmrc/capital_gains_band",
@@ -486,6 +490,49 @@ def test_region_rows_cover_the_tier_and_declare_the_ratio_translation():
             )
 
 
+def test_residential_rows_bind_the_asset_type_flag_and_the_table8b_share():
+    """Table 8a totals restated on the individuals basis, over flagged gainers."""
+    for target_id in RESIDENTIAL_TARGETS:
+        rows = _references_for(target_id)
+        assert [r.name for r in rows] == [f"{target_id}.ty2024"]
+        reference = rows[0]
+        assert reference.value_operation == "scaled_by_ratio"
+        assert [operand["role"] for operand in reference.value_operands] == [
+            "base",
+            "numerator",
+            "denominator",
+        ]
+        assert reference.ledger_selector["dimension_values"] == {"channel": "total"}
+        assert reference.ledger_selector["source_table"].startswith(
+            "Capital Gains Tax statistics Table 8"
+        )
+        binding = reference.metadata
+        assert binding["contract_target_id"] == target_id
+        assert binding["measurement_period"] == "2024"
+    contract = json.loads(
+        (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "microcosm"
+            / "build"
+            / "uk"
+            / "uk_population_targets.json"
+        ).read_text(encoding="utf-8")
+    )
+    targets = {t["target_id"]: t for t in contract["targets"]}
+    for target_id in RESIDENTIAL_TARGETS:
+        binding = targets[target_id]["bindings"]["policyengine"]
+        assert binding["kind"] == "parameter_gated_threshold"
+        assert binding["filters"] == [
+            {
+                "variable": "capital_gains_asset_type",
+                "equals": "residential_land_buildings",
+            }
+        ]
+        assert target_id in contract["registry_parity"]["unmapped_declarations"]
+        assert target_id in contract["registry_parity"]["scope_target_ids"]
+
+
 def test_gain_band_rows_reuse_incumbent_names_and_skip_the_sub_aea_band():
     for target_id in GAIN_BAND_TARGETS:
         rows = _references_for(target_id)
@@ -538,7 +585,12 @@ def _pinned_feed_rows():
 def test_banded_rows_partition_the_national_observations_on_the_pinned_feed():
     facts = _pinned_feed_rows()
     spec = load_country_spec("uk")
-    wanted = {*AGE_BAND_TARGETS, *REGION_TARGETS, *GAIN_BAND_TARGETS}
+    wanted = {
+        *AGE_BAND_TARGETS,
+        *REGION_TARGETS,
+        *GAIN_BAND_TARGETS,
+        *RESIDENTIAL_TARGETS,
+    }
     references = [
         r
         for r in spec.target_references
@@ -581,3 +633,15 @@ def test_banded_rows_partition_the_national_observations_on_the_pinned_feed():
             assert (
                 compiled.metadata["ledger_geography_id"] == compiled.name.split("@")[1]
             )
+    # Residential rows: Table 8a all-channel totals times the Table 8b
+    # individuals/all share for the same measure (microcosm#725).
+    for target_id, published, share in (
+        ("hmrc.cgt.residential_property_taxpayers", 205_000, 171_000 / 173_000),
+        ("hmrc.cgt.residential_property_gains", 12_914e6, 10_337e6 / 10_904e6),
+    ):
+        (compiled,) = by_target[target_id]
+        assert compiled.value == pytest.approx(published * share, rel=1e-9)
+        assert float(compiled.metadata["ledger_value_ratio"]) == pytest.approx(share)
+        assert compiled.metadata["ledger_value_formula"] == (
+            "base * numerator / denominator"
+        )

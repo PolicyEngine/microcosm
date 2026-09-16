@@ -721,7 +721,9 @@
       "hmrc.cgt.gains_by_age_band": "New declaration backed by the HMRC CGT Table 6 2024-25 age-band facts in Chronicle (cgt_age_2026); the incumbent registry has no age-band CGT metric (microcosm#725).",
       "hmrc.cgt.tax_by_age_band": "New declaration backed by the HMRC CGT Table 6 2024-25 age-band facts in Chronicle (cgt_age_2026); the incumbent registry has no age-band CGT metric (microcosm#725).",
       "hmrc.cgt.taxpayers_by_region": "New declaration backed by the HMRC CGT Table 5 2024-25 country/region facts in Chronicle (cgt_country_region_2026), scaled to the individuals basis by the Table 1 share; the incumbent registry has no regional CGT metric (microcosm#725).",
-      "hmrc.cgt.gains_by_region": "New declaration backed by the HMRC CGT Table 5 2024-25 country/region facts in Chronicle (cgt_country_region_2026), scaled to the individuals basis by the Table 1 share; the incumbent registry has no regional CGT metric (microcosm#725)."
+      "hmrc.cgt.gains_by_region": "New declaration backed by the HMRC CGT Table 5 2024-25 country/region facts in Chronicle (cgt_country_region_2026), scaled to the individuals basis by the Table 1 share; the incumbent registry has no regional CGT metric (microcosm#725).",
+      "hmrc.cgt.residential_property_taxpayers": "New declaration backed by the HMRC CGT Table 8a 2024-25 residential property facts in Chronicle (cgt_residential_property_2026), scaled to the individuals basis by the Table 8b share; the incumbent registry has no residential-property CGT metric (microcosm#725).",
+      "hmrc.cgt.residential_property_gains": "New declaration backed by the HMRC CGT Table 8a 2024-25 residential property facts in Chronicle (cgt_residential_property_2026), scaled to the individuals basis by the Table 8b share; the incumbent registry has no residential-property CGT metric (microcosm#725)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -813,6 +815,8 @@
       "hmrc.cgt.gains_by_region",
       "hmrc.cgt.taxpayers_by_gain_band",
       "hmrc.cgt.gains_by_gain_band",
+      "hmrc.cgt.residential_property_taxpayers",
+      "hmrc.cgt.residential_property_gains",
       "dwp.benefit_cap.capped_households",
       "dwp.pip.daily_living_standard_claimants",
       "dwp.pip.daily_living_enhanced_claimants",
@@ -3876,6 +3880,180 @@
       },
       "category_id": "hmrc.capital_gains_tax",
       "label": "Capital Gains Tax gains by size of gain"
+    },
+    {
+      "target_id": "hmrc.cgt.residential_property_taxpayers",
+      "family": "hmrc_cgt",
+      "geography_levels": [
+        "country"
+      ],
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.cgt_residential_property_taxpayers",
+          "groupby_dimension": "taxpayer_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:7ea881ca1e22de079bf8d892"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.cgt_residential_property_taxpayers",
+          "groupby_dimension": "taxpayer_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:7a9a96e371320c0f4e21261f"
+        }
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.income.capital_gains.amount",
+            "operator": ">",
+            "value": "gov.hmrc.cgt.annual_exempt_amount"
+          },
+          {
+            "concept": "uk.income.capital_gains.asset_type",
+            "operator": "==",
+            "value": "residential_land_buildings"
+          }
+        ],
+        "observation_basis": "uk_residents_reporting_residential_property_disposals_disposal_year_2024_all_channels_scaled_to_individuals_by_table8b_share"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/cgt_residential_property_taxpayers",
+          "kind": "parameter_gated_threshold",
+          "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+          "gated_variable": "cgt_2024_gains",
+          "gate_comparison": ">",
+          "from_entity": "person",
+          "map_to": "household",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true,
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "capital_gains_asset_type",
+              "equals": "residential_land_buildings"
+            }
+          ],
+          "notes": "HMRC Table 8a 2024-25 counts UK residents reporting residential property disposals across the CGT on UK Property service and Self Assessment (all taxpayer types) while the national CGT targets are individuals (Table 1). The cell is the published all-channel total multiplied by the Table 8b 2024-25 individuals/all share for the same measure on the UK Property service, on the declared assumption that trusts hold the same share of the Self Assessment component; the base, numerator, denominator, ratio and member fact keys are recorded on every compiled spec. The binding counts liable gainers the hmrc_cgt_asset_type_spine stage flagged residential (capital_gains_asset_type == residential_land_buildings), the same population the stage solved to these two totals, and attributes a flagged person's whole net gain to residential property (microcosm#725)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/cgt_residential_property_taxpayers",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_concept": "hmrc.cgt_residential_property_taxpayers",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "entity_name": "tax_unit",
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:a26f1261bd153727b83045de",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.capital_gains_tax",
+      "label": "Capital Gains Tax residential property taxpayers"
+    },
+    {
+      "target_id": "hmrc.cgt.residential_property_gains",
+      "family": "hmrc_cgt",
+      "geography_levels": [
+        "country"
+      ],
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.cgt_residential_property_gains",
+          "groupby_dimension": "taxpayer_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a0b79c3ba46671e0dfd8f878"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.cgt_residential_property_gains",
+          "groupby_dimension": "taxpayer_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:0be097fa0d180fb2c5c66661"
+        }
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.capital_gains.amount",
+        "filters": [
+          {
+            "concept": "uk.income.capital_gains.amount",
+            "operator": ">",
+            "value": "gov.hmrc.cgt.annual_exempt_amount"
+          },
+          {
+            "concept": "uk.income.capital_gains.asset_type",
+            "operator": "==",
+            "value": "residential_land_buildings"
+          }
+        ],
+        "observation_basis": "uk_residents_reporting_residential_property_disposals_disposal_year_2024_all_channels_scaled_to_individuals_by_table8b_share"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/cgt_residential_property_gains",
+          "kind": "parameter_gated_threshold",
+          "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+          "gated_variable": "cgt_2024_gains",
+          "gate_comparison": ">",
+          "from_entity": "person",
+          "map_to": "household",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true,
+          "value_variable": "cgt_2024_gains",
+          "filters": [
+            {
+              "variable": "capital_gains_asset_type",
+              "equals": "residential_land_buildings"
+            }
+          ],
+          "notes": "HMRC Table 8a 2024-25 counts UK residents reporting residential property disposals across the CGT on UK Property service and Self Assessment (all taxpayer types) while the national CGT targets are individuals (Table 1). The cell is the published all-channel total multiplied by the Table 8b 2024-25 individuals/all share for the same measure on the UK Property service, on the declared assumption that trusts hold the same share of the Self Assessment component; the base, numerator, denominator, ratio and member fact keys are recorded on every compiled spec. The binding counts liable gainers the hmrc_cgt_asset_type_spine stage flagged residential (capital_gains_asset_type == residential_land_buildings), the same population the stage solved to these two totals, and attributes a flagged person's whole net gain to residential property (microcosm#725)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/cgt_residential_property_gains",
+          "status": "pending",
+          "value_rule": "uk.income.capital_gains.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_concept": "hmrc.cgt_residential_property_gains",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "entity_name": "tax_unit",
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:1f8003c937764e4184da3f24",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.capital_gains_tax",
+      "label": "Capital Gains Tax residential property gains"
     },
     {
       "target_id": "dwp.benefit_cap.capped_households",

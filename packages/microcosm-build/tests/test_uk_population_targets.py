@@ -184,7 +184,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "operation": "sum",
         "assertion_policy": "observed_only",
     }
-    assert len(resource["targets"]) == 286
+    assert len(resource["targets"]) == 288
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -198,10 +198,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 235
+    assert len(registry_scope) == 237
     assert len(profile_scope) == 51
-    assert target_ids[:235] == registry_scope
-    assert target_ids[235:] == profile_scope
+    assert target_ids[:237] == registry_scope
+    assert target_ids[237:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -215,7 +215,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
     assert len(mapped_target_ids) == 194
-    assert len(unmapped_declarations) == 41
+    assert len(unmapped_declarations) == 43
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -334,7 +334,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 286
+    assert len(target_ids) == 288
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -425,6 +425,7 @@ def test_childcare_bus_observation_basis_and_entity_pins_are_closed_world() -> N
         "individuals_observed_disposal_year_2024_liability_by_age_band",
         "individuals_observed_disposal_year_2024_net_gains_and_aea_by_size_of_gain",
         "all_taxpayers_by_area_disposal_year_2024_scaled_to_individuals_by_table1_share",
+        "uk_residents_reporting_residential_property_disposals_disposal_year_2024_all_channels_scaled_to_individuals_by_table8b_share",
     }
     allowed_operations = set(resource["allowed_value_operations"])
     for target in resource["targets"]:
@@ -799,7 +800,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 286
+    assert len(targets) == 288
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
@@ -883,6 +884,8 @@ def test_uk_population_cgt_contract_names_match_runtime_specs() -> None:
         "hmrc/capital_gains_total",
         "hmrc/cgt_liability",
         "hmrc/cgt_liability_by_age_band",
+        "hmrc/cgt_residential_property_gains",
+        "hmrc/cgt_residential_property_taxpayers",
         "hmrc/cgt_taxpayers",
         "hmrc/cgt_taxpayers_band",
         "hmrc/cgt_taxpayers_by_age_band",

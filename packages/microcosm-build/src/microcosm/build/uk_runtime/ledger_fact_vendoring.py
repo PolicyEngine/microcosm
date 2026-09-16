@@ -30,6 +30,7 @@ from microcosm.build.ledger_targets import (
 from microcosm.build.target_reference_authoring import _json_safe_ledger_id
 from microcosm.build.uk_runtime.chronicle_feed import (
     UKChronicleFeed,
+    load_uk_chronicle_feed,
 )
 
 VENDOR_SELECTIONS_RESOURCE = "ledger_fact_vendor_selections.json"
@@ -339,6 +340,46 @@ def load_vendored_resource(name: str) -> dict[str, Any]:
     if payload.get("row_count") != len(payload.get("rows", ())):
         raise ValueError(f"{name}: row_count disagrees with the rows carried.")
     return payload
+
+
+_FEED_IDENTITY_KEYS = (
+    "source_commit",
+    "facts_sha256",
+    "manifest_sha256",
+    "fact_row_count",
+)
+
+
+def verify_vendored_resource_feed_identity(
+    payload: Mapping[str, Any], *, pin: UKChronicleFeed | None = None
+) -> None:
+    """Refuse a vendored resource that was not taken from the committed pin.
+
+    Every vendored resource records the feed it was copied from; a stage
+    reading one at build time checks that record against the packaged
+    ``chronicle_feed.json`` before it reads a row, so a resource left behind
+    by an earlier pin (or vendored with ``--allow-unpinned-feed``) fails by
+    name rather than conditioning a build on stale facts.
+    """
+
+    pin = pin or load_uk_chronicle_feed()
+    recorded = payload.get("source_fact_feed")
+    if not isinstance(recorded, Mapping):
+        raise ValueError(
+            f"Vendored resource {payload.get('resource')!r} records no source_fact_feed."
+        )
+    drifted = {
+        key: (recorded.get(key), getattr(pin, key))
+        for key in _FEED_IDENTITY_KEYS
+        if recorded.get(key) != getattr(pin, key)
+    }
+    if drifted:
+        raise ValueError(
+            f"Vendored resource {payload.get('resource')!r} was taken from a "
+            "Chronicle feed that differs from the committed UK pin on "
+            f"{sorted(drifted)}: {drifted}. Re-vendor it with "
+            f"{VENDOR_TOOL} against the pinned artifact."
+        )
 
 
 def rows_matching(

@@ -112,7 +112,6 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "etb_services": ("etb",),
     "frs_hmrc_spine_leaves": ("frs",),
     "hmrc_spi_income_spine": ("spi", "hmrc_income"),
-    "hmrc_cgt_gains_spine": ("hmrc_cgt",),
 }
 
 _SPLIT_SOURCE_DESCRIPTIONS = {
@@ -123,7 +122,6 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
     "etb": "Pinned local ETB household donor table.",
     "spi": "Pinned local SPI donor table.",
     "hmrc_income": "Pinned local HMRC income facts workbook.",
-    "hmrc_cgt": "Pinned local HMRC capital-gains facts workbook.",
 }
 
 # ``None`` means the implementation genuinely has an open formula/model
@@ -237,6 +235,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "region"),
         }
     ),
+    # The asset-type stage classifies the redrawn net gains; the AEA it
+    # gates on is a policy parameter, not a frame column (microcosm#725).
+    "hmrc_cgt_asset_type_spine": frozenset({("person", "capital_gains")}),
     "salary_sacrifice": None,
     "student_loans": frozenset(
         {
@@ -588,6 +589,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "capital_gains", "float64"),
     ),
     "hmrc_cgt_gains_spine": (_Cell("person", "capital_gains", "float64"),),
+    "hmrc_cgt_asset_type_spine": (
+        _Cell("person", "capital_gains_asset_type", "string"),
+        _Cell("person", "capital_gains_residential_property", "float64"),
+    ),
     "salary_sacrifice": _cells(
         "person",
         (

@@ -1,11 +1,11 @@
 {
-  "source_fact_feed": "chronicle-uk-df35af7e-consumer-facts",
+  "source_fact_feed": "chronicle-uk-c5e5bf8a-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 704,
-  "contract_target_count": 235,
-  "active_reference_count": 685,
+  "candidate_count": 706,
+  "contract_target_count": 237,
+  "active_reference_count": 687,
   "status_counts": {
-    "active": 685,
+    "active": 687,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 12
   },
@@ -335,6 +335,14 @@
       "geography_id": "K02000001"
     },
     "hmrc.cgt.gains_by_gain_band": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.cgt.residential_property_taxpayers": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.cgt.residential_property_gains": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -3425,6 +3433,16 @@
     },
     {
       "name": "hmrc/capital_gains_band_6000",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.cgt.residential_property_taxpayers.ty2024",
+      "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "hmrc.cgt.residential_property_gains.ty2024",
       "from": "2024",
       "to": "2025"
     },
@@ -8303,6 +8321,36 @@
           "resolved_value": 448000000.0,
           "resolved_fact_period": "2024",
           "resolved_fact_key": "ledger_aggregate_fact_v2_f808792afed121cadff6f396"
+        }
+      ]
+    },
+    "hmrc.cgt.residential_property_taxpayers": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.cgt.residential_property_taxpayers.ty2024",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 202630.0578034682,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a26f1261bd153727b83045de"
+        }
+      ]
+    },
+    "hmrc.cgt.residential_property_gains": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.cgt.residential_property_gains.ty2024",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 12242481474.688189,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1f8003c937764e4184da3f24"
         }
       ]
     },
@@ -14036,7 +14084,7 @@
     {
       "family": "hmrc_cgt",
       "status": "active_with_row_level_signed_exclusions",
-      "active_reference_count": 72,
+      "active_reference_count": 74,
       "signed_rationale": "The FY2024-25 individual CGT observations fan out three ways (microcosm#725, #467): Table 6 age bands as dimension rows (the 0-15 band and the all-ages total are signed out row by row), Table 5 country/region cells over the twelve-area region tier restated on the individuals basis by the Table 1 share through the scaled_by_ratio operation, and Table 2.1a size-of-gain bands under the incumbent banded names (the 0-2,999 band below the 2024 annual exempt amount is signed out). Table 2.1a publishes no tax column, so liability binds nationally and by age band only."
     },
     {

@@ -256,6 +256,8 @@
       "hmrc.cgt.gains_by_region": "hmrc.capital_gains_tax",
       "hmrc.cgt.gains_total": "hmrc.capital_gains_tax",
       "hmrc.cgt.liability_total": "hmrc.capital_gains_tax",
+      "hmrc.cgt.residential_property_gains": "hmrc.capital_gains_tax",
+      "hmrc.cgt.residential_property_taxpayers": "hmrc.capital_gains_tax",
       "hmrc.cgt.tax_by_age_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_by_age_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_by_gain_band": "hmrc.capital_gains_tax",
@@ -479,6 +481,8 @@
       "hmrc.cgt.gains_by_region": "Capital Gains Tax gains by region",
       "hmrc.cgt.gains_total": "Capital Gains Tax gains",
       "hmrc.cgt.liability_total": "Capital Gains Tax liability",
+      "hmrc.cgt.residential_property_gains": "Capital Gains Tax residential property gains",
+      "hmrc.cgt.residential_property_taxpayers": "Capital Gains Tax residential property taxpayers",
       "hmrc.cgt.tax_by_age_band": "Capital Gains Tax liability by age band",
       "hmrc.cgt.taxpayers_by_age_band": "Capital Gains Tax taxpayers by age band",
       "hmrc.cgt.taxpayers_by_gain_band": "Capital Gains Tax taxpayers by size of gain",
@@ -7420,6 +7424,116 @@
         "measurement_period": "2024",
         "source_period_policy": "exact_observation"
       },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.residential_property_taxpayers.ty2024",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_concept": "hmrc.cgt_residential_property_taxpayers",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "entity_name": "tax_unit",
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:a26f1261bd153727b83045de",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "channel": "total"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.residential_property_taxpayers.ty2024",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.residential_property_taxpayers",
+        "measure_kind": "prepared_column",
+        "observation_basis": "uk_residents_reporting_residential_property_disposals_disposal_year_2024_all_channels_scaled_to_individuals_by_table8b_share",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.cgt_residential_property_taxpayers",
+          "groupby_dimension": "taxpayer_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:7ea881ca1e22de079bf8d892"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.cgt_residential_property_taxpayers",
+          "groupby_dimension": "taxpayer_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:7a9a96e371320c0f4e21261f"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.residential_property_gains.ty2024",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_concept": "hmrc.cgt_residential_property_gains",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "entity_name": "tax_unit",
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:1f8003c937764e4184da3f24",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "channel": "total"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.residential_property_gains.ty2024",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.residential_property_gains",
+        "measure_kind": "prepared_column",
+        "observation_basis": "uk_residents_reporting_residential_property_disposals_disposal_year_2024_all_channels_scaled_to_individuals_by_table8b_share",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "value_operation": "scaled_by_ratio",
+      "value_operands": [
+        {
+          "role": "base"
+        },
+        {
+          "role": "numerator",
+          "source_concept": "hmrc.cgt_residential_property_gains",
+          "groupby_dimension": "taxpayer_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:a0b79c3ba46671e0dfd8f878"
+        },
+        {
+          "role": "denominator",
+          "source_concept": "hmrc.cgt_residential_property_gains",
+          "groupby_dimension": "taxpayer_type",
+          "entity_name": "tax_unit",
+          "geography_level": "country",
+          "geography_id": "K02000001",
+          "aggregate_fact_key": "ledger.aggregate_fact.v2:0be097fa0d180fb2c5c66661"
+        }
+      ],
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },

@@ -112,13 +112,17 @@ _CGT_NEW_ROW_PREFIXES = (
     "hmrc/capital_gains_band_3000",
     "hmrc/capital_gains_band_6000",
     "hmrc/capital_gains_band_10000",
+    "hmrc.cgt.residential_property_taxpayers",
+    "hmrc.cgt.residential_property_gains",
 )
 _CGT_NEW_ROW_LEDGER_ONLY_RATIONALE = (
     "Declared ledger-only observation: HMRC CGT statistics 2026 release, "
     "FY2024-25 individual rows by age band (Table 6), by country and region "
     "on the individuals basis via the Table 1 share (Table 5), and the "
-    "size-of-gain bands the incumbent never carried (Table 2.1a). The frozen "
-    "incumbent fixture has no equivalent row (microcosm#725, #467)."
+    "size-of-gain bands the incumbent never carried (Table 2.1a), and the "
+    "residential property taxpayers and gains on the individuals basis via "
+    "the Table 8b share (Table 8a). The frozen incumbent fixture has no "
+    "equivalent row (microcosm#725, #467)."
 )
 
 _UC_PAID_WINDOW_NAMES = frozenset(

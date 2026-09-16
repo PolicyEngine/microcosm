@@ -2020,7 +2020,6 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
     pins = tool._input_artifact_pins(stages)
 
     assert set(pins) == {
-        "cgt_published_fact_surface",
         "etb_household_tab",
         "lcfs_household_tab",
         "lcfs_person_tab",
@@ -2069,6 +2068,10 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     }
     assert declared["cgt_band_donors"] == {"stack_band_donor_households": 1}
     assert declared["hmrc_cgt_gains_spine"] == {"within_band_draws": 552}
+    assert declared["hmrc_cgt_asset_type_spine"] == {
+        "assign_residential_property_flag": 553,
+        "assign_main_asset_type": 554,
+    }
     assert declared["salary_sacrifice"] == {
         "salary_sacrifice": 42,
         "salary_sacrifice_conversion": 2024,

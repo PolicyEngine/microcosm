@@ -53,6 +53,8 @@ def uk_stage_health_gate(
         return _cgt_band_donor_support_gate(stage, evidence, parameters)
     if check == "cgt_imputation_summary":
         return _cgt_imputation_summary_gate(stage, evidence, parameters)
+    if check == "cgt_asset_type_summary":
+        return _cgt_asset_type_summary_gate(stage, evidence, parameters)
     if check == "latent_attribute_realization":
         return _latent_attribute_realization_gate(stage, evidence)
     if check == "household_composition":
@@ -556,6 +558,69 @@ def _cgt_imputation_summary_gate(
             failures.append(f"{stage}: allocation.fallback_released_mass is negative.")
         details["ipf_max_abs_margin_error"] = rake.get("ipf_max_abs_margin_error")
         details["fallback_released_mass"] = released
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _cgt_asset_type_summary_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The residential flag realised the Table 8a totals it was solved to.
+
+    The stage solves the logistic exactly in expectation and realises it by
+    systematic sampling; this gate holds the realised weighted count and
+    gains to the reviewed relative tolerance of their individuals-basis
+    targets, requires every liable gainer to carry an asset type, and
+    requires the composition receipt to be finite (microcosm#725).
+    """
+
+    check = "cgt_asset_type_summary"
+    failures: list[str] = []
+    residential = _mapping(evidence.get("residential"), label=f"{stage}.residential")
+    max_relative = _finite_number(
+        parameters["maximum_relative_deviation"],
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    details: dict[str, object] = {}
+    for measure in ("count", "gains"):
+        target = _finite_number(
+            residential.get(f"{measure}_target_individuals_basis"),
+            label=f"{stage}.residential.{measure}_target_individuals_basis",
+        )
+        achieved = _finite_number(
+            residential.get(f"achieved_{measure}"),
+            label=f"{stage}.residential.achieved_{measure}",
+        )
+        if target <= 0.0:
+            failures.append(f"{stage}: residential {measure} target is not positive.")
+            continue
+        relative = abs(achieved - target) / target
+        details[f"residential_{measure}_relative_deviation"] = relative
+        if relative > max_relative:
+            failures.append(
+                f"{stage}: residential {measure} relative deviation {relative} "
+                f"exceeds {max_relative}."
+            )
+    counts = _mapping(evidence.get("value_counts"), label=f"{stage}.value_counts")
+    for value, rows in counts.items():
+        if not isinstance(rows, int) or isinstance(rows, bool) or rows < 0:
+            failures.append(f"{stage}: value_counts[{value!r}] is not a row count.")
+    asset_type = _mapping(evidence.get("asset_type"), label=f"{stage}.asset_type")
+    shares = _mapping(
+        asset_type.get("achieved_gains_share"),
+        label=f"{stage}.asset_type.achieved_gains_share",
+    )
+    for name, share in shares.items():
+        value = _finite_number(share, label=f"{stage}.asset_type.{name}")
+        if value < 0.0 or value > 1.0:
+            failures.append(f"{stage}: {name} gains share {value} is not a share.")
+    details["residential_rows"] = residential.get("achieved_rows")
+    details["classified_values"] = sorted(counts)
     return (
         _fail(stage, check, failures, details)
         if failures

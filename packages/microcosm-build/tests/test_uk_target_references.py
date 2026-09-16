@@ -61,7 +61,7 @@ from tools.generate_uk_target_references import (
     _value_operation_by_target_id,
 )
 
-ACTIVE_REFERENCE_COUNT = 685
+ACTIVE_REFERENCE_COUNT = 687
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -741,7 +741,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 685,
+        "active": 687,
         "no_fact_at_or_before_period": 7,
         "signed_excluded": 12,
     }
@@ -752,7 +752,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     # 24 age-band rows, 24 region-tier cells and 24 size-of-gain rows
     # (microcosm#725, #467).
     assert cgt_outcome["status"] == "active_with_row_level_signed_exclusions"
-    assert cgt_outcome["active_reference_count"] == 72
+    assert cgt_outcome["active_reference_count"] == 74
     assert "scaled_by_ratio" in cgt_outcome["signed_rationale"]
     assert [entry for entry in outcomes if entry["family"] != "hmrc_cgt"] == [
         {

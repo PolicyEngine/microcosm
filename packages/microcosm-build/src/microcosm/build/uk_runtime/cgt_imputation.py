@@ -36,8 +36,8 @@ Three documented approximations, in order of consequence:
    (gain band, income band) shortfall to the income band's pooled walk over
    its still-unassigned gainers (microcosm#725).
 3. **Rounded published values are repaired, not trusted raw.** Counts round
-   to the nearest thousand and amounts to the nearest million, and four
-   cells of the 2023-24 table imply a mean outside their own band. Implied
+   to the nearest thousand and amounts to the nearest million, and two
+   cells of the 2024-25 table imply a mean below their own band. Implied
    means are clamped just inside the violated boundary, keeping the signal
    that the cell's mass sits near that edge; suppressed-count cells are
    allocated the count their own published gains imply at the band mean,
@@ -50,13 +50,13 @@ Three documented approximations, in order of consequence:
    with a CGT liability, so the candidate's remaining gainers are treated as
    sub-AEA gainers rather than being invented into the liability
    distribution or deleted.
-5. **The joint is moved onto the 2024-25 band levels.** Table 3 is
-   published for 2023-24 only; the calibration fits the 2024-25 individual
-   observations. Each gain band's row is rescaled onto the Table 2.1a
-   2024-25 count (folded to Table 3's bands) and its cell means so the
-   band's mass times means equals the 2024-25 band gains, keeping the
-   2023-24 income-column shares. The vintage move is declared, not
-   silent; the summary reports the residual the in-band mean repair leaves.
+5. **The joint is the published 2024-25 surface, not an aged one.** The
+   2026 release publishes Table 3 for 2024-25, the tax year of the Table 1
+   observations the calibration fits, and its rows are vendored verbatim
+   from the pinned Chronicle feed. Table 2.1a's thirteen size bands folded
+   onto Table 3's ten must agree with the joint's row totals within
+   publication rounding; the summary reports the difference band by band
+   and nothing is rescaled.
 6. **Age and region margins are raked, not observed jointly.** No table
    publishes gains by age or region crossed with income, so the allocation
    targets are raked (iterative proportional fitting) from the joint, the
@@ -75,7 +75,7 @@ says nothing about losses, so the stage neither redraws nor zeroes them.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 
@@ -85,13 +85,16 @@ import pandas as pd
 from microcosm.build.raking import MarginSpec, iterative_proportional_fit
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
+    HMRC_CGT_BUILD_PERIOD,
+    HMRC_CGT_CONDITIONING_RECORD_SETS,
+    HMRC_CGT_CONDITIONING_RESOURCE,
     HMRC_CGT_GAIN_BAND_LOWER_BOUNDS,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
     HMRC_CGT_SOURCE_VINTAGE,
     HMRCCapitalGainsJointDistribution,
     HMRCCGTConditioningFacts,
     load_hmrc_cgt_conditioning_facts,
-    materialize_hmrc_capital_gains_joint_distribution,
+    load_hmrc_cgt_joint_distribution,
 )
 from microcosm.build.uk_runtime.national_frame import (
     UKNationalStage,
@@ -170,7 +173,7 @@ UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS: tuple[str, ...] = (
 #: A cell mean must sit strictly inside its band for a within-band
 #: distribution to match it. Published values round to the nearest thousand
 #: people and million pounds, and a rounded count of 1 against a rounded
-#: amount can imply a mean outside the band — four cells of the 2023-24
+#: amount can imply a mean outside the band — two cells of the 2024-25
 #: table do exactly that — so implied means are repaired into the band by
 #: this margin (a fraction of band width) rather than trusted raw.
 _MEAN_MARGIN = 0.02
@@ -616,80 +619,54 @@ def _person_conditioning_cells(
     return age, age_group, region, region_group
 
 
-def _joint_plans_2024(
+def _joint_plans(
     distribution: HMRCCapitalGainsJointDistribution,
     conditioning: HMRCCGTConditioningFacts,
     *,
     annual_exempt_amount: float,
 ) -> tuple[dict[tuple[int, int], _CellPlan], tuple[dict[str, object], ...]]:
-    """Table 3's joint, moved onto the Table 2.1a 2024-25 band levels.
+    """Table 3's 2024-25 joint, reconciled column by column, with a receipt.
 
-    Every gain band's row of Table 3 (2023-24) is rescaled so its taxpayers
-    equal the 2024-25 band count and its cell means so the band's mass times
-    means equals the 2024-25 band gains; the income-column shares within a
-    band stay 2023-24, the latest published joint. Suppression, rounding
-    repair and the liability floor come from :func:`_band_plans` unchanged.
+    Suppression, rounding repair, the liability floor and the column
+    reconciliation onto the published All-row totals come from
+    :func:`_band_plans` unchanged. The receipt compares each gain band's
+    published row total with the Table 2.1a 2024-25 rows folded onto it;
+    the two tables describe one universe at one vintage, and the vendored
+    resource's loader refuses a pair that disagrees beyond publication
+    rounding, so the difference here is a report, not a gate.
     """
 
     aggregated = conditioning.size_bands_aggregated(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS)
-    plans_by_income = {
-        income_lower: {
-            plan.gain_lower_bound: plan
-            for plan in _band_plans(
-                distribution, income_lower, annual_exempt_amount=annual_exempt_amount
-            )
-        }
-        for income_lower in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
-    }
+    incomes = HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
     joint: dict[tuple[int, int], _CellPlan] = {}
+    for income_lower in incomes:
+        for plan in _band_plans(
+            distribution, income_lower, annual_exempt_amount=annual_exempt_amount
+        ):
+            joint[(plan.gain_lower_bound, income_lower)] = plan
     band_rows: list[dict[str, object]] = []
     for gain_lower in HMRC_CGT_GAIN_BAND_LOWER_BOUNDS:
-        people_2024, gains_2024 = aggregated[gain_lower]
-        people_2023 = sum(
-            plans_by_income[income_lower][gain_lower].allocation_people
-            for income_lower in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
+        total = distribution.band_total(gain_lower)
+        folded_people, folded_gains = aggregated[gain_lower]
+        people_difference = (
+            None if total.individuals is None else total.individuals - folded_people
         )
-        people_scale = people_2024 / people_2023 if people_2023 > 0 else 0.0
-        counts = {}
-        for income_lower in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS:
-            count = plans_by_income[income_lower][gain_lower].allocation_people
-            count *= people_scale
-            counts[income_lower] = count if count >= _MINIMUM_ALLOCATION_PEOPLE else 0.0
-        gains_at_2023_means = sum(
-            counts[income_lower] * plans_by_income[income_lower][gain_lower].mean
-            for income_lower in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
-        )
-        mean_scale = (
-            gains_2024 / gains_at_2023_means if gains_at_2023_means > 0 else 1.0
-        )
-        achieved_gains = 0.0
-        repaired = 0
-        for income_lower in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS:
-            plan = plans_by_income[income_lower][gain_lower]
-            mean, was_repaired = _repair_mean(
-                plan.mean * mean_scale,
-                effective_lower=plan.effective_lower_bound,
-                upper=plan.gain_upper_bound,
-            )
-            repaired += int(was_repaired)
-            joint[(gain_lower, income_lower)] = replace(
-                plan,
-                allocation_people=counts[income_lower],
-                mean=mean,
-                mean_repaired=plan.mean_repaired or was_repaired,
-            )
-            achieved_gains += counts[income_lower] * mean
+        gains_difference = total.gains - folded_gains
+        plans = [joint[(gain_lower, income_lower)] for income_lower in incomes]
         band_rows.append(
             {
                 "gain_lower_bound": gain_lower,
-                "people_2023": people_2023,
-                "published_people": people_2024,
-                "target_people": sum(counts.values()),
-                "published_gains": gains_2024,
-                "people_scale": people_scale,
-                "mean_scale": mean_scale,
-                "gains_identity_residual": achieved_gains - gains_2024,
-                "means_repaired": repaired,
+                "published_people": total.individuals,
+                "published_gains": total.gains,
+                "table2_1a_people": folded_people,
+                "table2_1a_gains": folded_gains,
+                "people_difference": people_difference,
+                "gains_difference": gains_difference,
+                "target_people": sum(plan.allocation_people for plan in plans),
+                "target_gains_at_cell_means": sum(
+                    plan.allocation_people * plan.mean for plan in plans
+                ),
+                "means_repaired": sum(int(plan.mean_repaired) for plan in plans),
             }
         )
     return joint, tuple(band_rows)
@@ -979,7 +956,7 @@ def impute_uk_capital_gains_with_report(
     is_gainer = existing > 0
     assigned = np.zeros(len(person), dtype=bool)
 
-    joint, band_rows = _joint_plans_2024(
+    joint, band_rows = _joint_plans(
         distribution, conditioning, annual_exempt_amount=parameters.annual_exempt_amount
     )
     targets, rake_report = _rake_allocation_targets(
@@ -1128,6 +1105,12 @@ def impute_uk_capital_gains_with_report(
             "resource_sha256": conditioning.resource_sha256,
             "source_commit": conditioning.source_commit,
             "vintage_tax_year": conditioning.tax_year,
+            "joint_resource": distribution.source.resource,
+            "joint_resource_sha256": distribution.source.resource_sha256,
+            "joint_record_set_prefix": distribution.source.record_set_prefix,
+            "joint_source_file": distribution.source.source_file,
+            "joint_source_sha256": distribution.source.source_sha256,
+            "joint_vintage": distribution.source.source_vintage,
             "age_group_lower_bounds": list(UK_CGT_AGE_GROUP_LOWER_BOUNDS),
             "region_groups": dict(UK_CGT_REGION_GROUPS),
             "fallback_policy": UK_CGT_FALLBACK_POLICY,
@@ -1291,31 +1274,27 @@ def summarize_uk_cgt_imputation(
 
 
 def uk_capital_gains_imputation_stage(
-    ods_path: str | Path,
     *,
-    tax_year: str = HMRC_CGT_SOURCE_VINTAGE,
     parameters: UKCGTPolicyParameters | None = None,
+    distribution: HMRCCapitalGainsJointDistribution | None = None,
     conditioning: HMRCCGTConditioningFacts | None = None,
     seed: int = UK_CGT_IMPUTATION_SEED,
     mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
 ) -> UKNationalStage:
     """Build the national stage that redraws capital gains amounts.
 
-    The published artifact is verified against its pinned fingerprint before
-    it is read. Parameters default to the policyengine-uk tree at the
-    dataset's build period, resolved when the stage runs; the conditioning
-    facts default to the committed vendored 2024-25 resource.
+    The joint and the conditioning facts default to the committed vendored
+    2024-25 resource, which is checked against the pinned Chronicle feed
+    before a row is read. Parameters default to the policyengine-uk tree at
+    the dataset's build period, resolved when the stage runs.
     """
-    artifact_path = Path(ods_path)
 
     def transform(frame: Frame) -> Frame:
-        distribution = materialize_hmrc_capital_gains_joint_distribution(
-            artifact_path, tax_year=tax_year
-        )
+        joint = distribution or load_hmrc_cgt_joint_distribution()
         resolved = parameters or uk_cgt_policy_parameters(uk_time_period(frame))
         return impute_uk_capital_gains(
             frame,
-            distribution,
+            joint,
             resolved,
             conditioning=conditioning or load_hmrc_cgt_conditioning_facts(),
             seed=seed,
@@ -1327,7 +1306,6 @@ def uk_capital_gains_imputation_stage(
 
 def uk_cgt_spine_stage_transform(
     stage: SourceStageSpec,
-    ods_path: str | Path,
     *,
     distribution: HMRCCapitalGainsJointDistribution | None = None,
     parameters: UKCGTPolicyParameters | None = None,
@@ -1342,7 +1320,6 @@ def uk_cgt_spine_stage_transform(
     _assert_cgt_spine_stage_parameters(stage)
     return UKCGTSpineStageTransform(
         stage=stage,
-        ods_path=Path(ods_path),
         distribution=distribution,
         parameters=parameters,
         conditioning=conditioning,
@@ -1354,7 +1331,6 @@ class UKCGTSpineStageTransform:
     """Source-plan CGT amounts redraw with a stage-time summary receipt."""
 
     stage: SourceStageSpec
-    ods_path: Path
     distribution: HMRCCapitalGainsJointDistribution | None = None
     parameters: UKCGTPolicyParameters | None = None
     conditioning: HMRCCGTConditioningFacts | None = None
@@ -1364,10 +1340,7 @@ class UKCGTSpineStageTransform:
         _assert_cgt_spine_stage_parameters(self.stage)
         distribution = self.distribution
         if distribution is None:
-            distribution = materialize_hmrc_capital_gains_joint_distribution(
-                self.ods_path,
-                tax_year=HMRC_CGT_SOURCE_VINTAGE,
-            )
+            distribution = load_hmrc_cgt_joint_distribution()
         parameters = self.parameters
         if parameters is None:
             parameters = uk_cgt_policy_parameters(uk_time_period(frame))
@@ -1409,7 +1382,7 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
     """Arm 1 of the #730/#684 two-arm rule for the spine projection."""
 
     expected_kinds = (
-        "verify_pinned_cgt_ods",
+        "verify_vendored_fact_resource",
         "taxable_income_proxy",
         "rake_allocation_targets",
         "rank_preserving_allocation",
@@ -1432,8 +1405,14 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
     # behavioral declarations without a matching reviewed code change; whole-
     # mapping equality also rejects extra keys).
     expected_operations = {
-        "verify_pinned_cgt_ods": {
-            "artifact_role": "cgt_published_fact_surface",
+        "verify_vendored_fact_resource": {
+            "artifact_role": "cgt_conditioning_facts",
+            "resource": HMRC_CGT_CONDITIONING_RESOURCE,
+            "feed_pin": "chronicle_feed.json",
+            "record_sets": list(HMRC_CGT_CONDITIONING_RECORD_SETS),
+            "source_vintage": HMRC_CGT_SOURCE_VINTAGE,
+            "mapped_build_period": int(HMRC_CGT_BUILD_PERIOD),
+            "period_mapping": "published_tax_year_equals_build_period",
             "require_before_source_read": True,
             "runtime_sha256_required": True,
             "fail_on_mismatch": True,
@@ -1455,14 +1434,18 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
         "rake_allocation_targets": {
             "resource": "hmrc_cgt_conditioning_facts.json",
             "joint_margin": (
-                "Table 3 2023-24 reconciled cells, each gain band's row rescaled "
-                "onto the Table 2.1a 2024-25 individual taxpayer count folded to "
-                "Table 3 bands; income-column shares stay 2023-24"
+                "Table 3 2024-25 reconciled cells (2026 release; individuals with "
+                "a liability by size of gain and taxable income), every income "
+                "column rescaled onto its published All-row taxpayer total; the "
+                "same tax year as the Table 1 observations the calibration fits, "
+                "so no vintage move is applied"
             ),
             "band_aggregation": (
                 "Table 2.1a bands 0, 3,000 and 6,000 fold into Table 3 band 0; "
                 "10,000 and 12,300 fold into 10,000; the remaining bands map one "
-                "to one"
+                "to one; the folded rows must agree with Table 3's row totals "
+                "within publication rounding and the difference is reported per "
+                "band"
             ),
             "age_margin": (
                 "Table 6 2024-25 individual taxpayers by age band, folded to the "
@@ -1533,9 +1516,10 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             "mean_repair_margin": _MEAN_MARGIN,
             "mean_repair_reason": (
                 "Published counts round to the nearest thousand and amounts "
-                "to the nearest million; four cells of the 2023-24 table "
-                "imply a mean outside their own band, and repaired means "
-                "clamp just inside the violated boundary."
+                "to the nearest million; two cells of the 2024-25 table (gains "
+                "of GBP 1m to 2m at taxable incomes of GBP 37,700 to 49,999 and "
+                "GBP 100,000 to 125,139) imply a mean below their own band, and "
+                "repaired means clamp just inside the violated boundary."
             ),
             "bottom_band_floor": "annual exempt amount plus one pound",
             "seed_base": UK_CGT_IMPUTATION_SEED,
@@ -1545,9 +1529,8 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             ),
             "deterministic": True,
             "cell_means": (
-                "Table 3 2023-24 cell means rescaled per gain band so the "
-                "joint's mass times means equals the Table 2.1a 2024-25 band "
-                "gains, then repaired into the band"
+                "Table 3 2024-25 published cell means, with suppressed-count "
+                "cells at the band-total mean, repaired into the band"
             ),
         },
         "sub_aea_remainder": {
@@ -1575,7 +1558,8 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
             "fenced_fact_count": 76,
             "fenced_fact_composition": (
-                "60 joint cells, 10 gain-band row totals, 6 income-column totals"
+                "60 joint cells, 10 gain-band row totals, 6 income-column totals "
+                "(Table 3 2024-25, 2026 release)"
             ),
             "classification_rationale": (
                 "The taxpayer count is endogenous to policy, the income "
@@ -1589,8 +1573,10 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "hmrc.cgt.liability_total; UK_CGT_TARGET_COVERAGE_REQUIREMENTS) "
                 "and the Table 2.1a size-of-gain, Table 6 age-band and Table 5 "
                 "region rows declared in uk_population_targets.json "
-                "(microcosm#467, #725); the 76 Table 3 2023-24 joint and "
-                "marginal cells stay fenced and condition the imputation only."
+                "(microcosm#467, #725); the 76 Table 3 2024-25 joint and "
+                "marginal cells stay fenced and condition the imputation only, "
+                "and Table 3's all-gains, all-incomes pair restates the Table 1 "
+                "individual observations already bound."
             ),
             "promotion_path": (
                 "A separately reviewed target profile may lift specific band "

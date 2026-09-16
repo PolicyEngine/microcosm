@@ -66,6 +66,7 @@ E8_STAGE_NAMES = [
     "cgt_incidence_clone",
     "cgt_band_donors",
     "hmrc_cgt_gains_spine",
+    "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
     "student_loans",
 ]
@@ -322,6 +323,7 @@ class TestUKSourceStagesManifest:
                     "cgt_incidence_clone": _identity,
                     "cgt_band_donors": _identity,
                     "hmrc_cgt_gains_spine": _identity,
+                    "hmrc_cgt_asset_type_spine": _identity,
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "age_tail": _identity,
@@ -700,7 +702,7 @@ class TestE3ManifestLockstep:
             "stack_band_donor_households"
         ]
         assert [op.kind for op in stages["hmrc_cgt_gains_spine"].operations] == [
-            "verify_pinned_cgt_ods",
+            "verify_vendored_fact_resource",
             "taxable_income_proxy",
             "rake_allocation_targets",
             "rank_preserving_allocation",

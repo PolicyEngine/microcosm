@@ -5429,22 +5429,225 @@
       "fail_on_mismatch": {
        "type": "boolean"
       },
+      "feed_pin": {
+       "type": "string"
+      },
       "kind": {
-       "const": "verify_pinned_cgt_ods"
+       "const": "verify_vendored_fact_resource"
+      },
+      "mapped_build_period": {
+       "type": "number"
+      },
+      "period_mapping": {
+       "type": "string"
+      },
+      "record_sets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
       },
       "require_before_source_read": {
        "type": "boolean"
       },
+      "resource": {
+       "type": "string"
+      },
       "runtime_sha256_required": {
        "type": "boolean"
+      },
+      "source_vintage": {
+       "type": "string"
       }
      },
      "required": [
       "artifact_role",
       "fail_on_mismatch",
+      "feed_pin",
       "kind",
+      "record_sets",
       "require_before_source_read",
-      "runtime_sha256_required"
+      "resource",
+      "runtime_sha256_required",
+      "source_vintage"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "basis_assumption": {
+       "type": "string"
+      },
+      "count_target": {
+       "type": "string"
+      },
+      "gains_target": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "assign_residential_property_flag"
+      },
+      "model": {
+       "type": "string"
+      },
+      "output_column": {
+       "type": "string"
+      },
+      "output_semantics": {
+       "type": "string"
+      },
+      "parameter_solver": {
+       "type": "string"
+      },
+      "population": {
+       "type": "string"
+      },
+      "realization": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "number"
+      },
+      "seed_mixing": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "basis_assumption",
+      "count_target",
+      "gains_target",
+      "kind",
+      "model",
+      "output_column",
+      "output_semantics",
+      "parameter_solver",
+      "population",
+      "realization",
+      "seed",
+      "seed_mixing"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "categories": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "diagnostic_only": {
+       "const": true
+      },
+      "kernel": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "assign_main_asset_type"
+      },
+      "log_sigma": {
+       "type": "number"
+      },
+      "none_semantics": {
+       "type": "string"
+      },
+      "output_column": {
+       "type": "string"
+      },
+      "population": {
+       "type": "string"
+      },
+      "realization": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "number"
+      },
+      "seed_mixing": {
+       "type": "string"
+      },
+      "share_targets": {
+       "type": "string"
+      },
+      "sub_aea_semantics": {
+       "type": "string"
+      },
+      "value_domain": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "weight_fitting": {
+       "type": "string"
+      },
+      "weight_fitting_iterations": {
+       "type": "number"
+      },
+      "weight_fitting_tolerance": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "categories",
+      "diagnostic_only",
+      "kernel",
+      "kind",
+      "log_sigma",
+      "none_semantics",
+      "output_column",
+      "population",
+      "realization",
+      "seed",
+      "seed_mixing",
+      "share_targets",
+      "sub_aea_semantics",
+      "value_domain",
+      "weight_fitting",
+      "weight_fitting_iterations",
+      "weight_fitting_tolerance"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "adjudication": {
+       "type": "string"
+      },
+      "calibrated_facts": {
+       "type": "string"
+      },
+      "calibration_permitted": {
+       "const": false
+      },
+      "classification_rationale": {
+       "type": "string"
+      },
+      "fact_fence_id": {
+       "type": "string"
+      },
+      "fenced_fact_composition": {
+       "type": "string"
+      },
+      "fenced_fact_count": {
+       "type": "number"
+      },
+      "kind": {
+       "const": "classify_cgt_asset_type_facts_with_reviewed_fence"
+      }
+     },
+     "required": [
+      "adjudication",
+      "calibrated_facts",
+      "calibration_permitted",
+      "classification_rationale",
+      "fact_fence_id",
+      "fenced_fact_composition",
+      "fenced_fact_count",
+      "kind"
      ]
     },
     {
