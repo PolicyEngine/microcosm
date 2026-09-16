@@ -269,6 +269,13 @@ $ uv lock --check
 Resolved 125 packages in 6ms
 ```
 
+**CI does not run on this pull request, by design.** `.github/workflows/test.yml`
+triggers on `pull_request: branches: [main]`, and this PR is stacked on
+`microcosm-us-launch-integration-20260909`. Only that branch's own PR (#893)
+reaches CI. Everything below was therefore run locally, against the same
+`uv sync --all-packages --locked --extra us` environment CI uses
+(Python 3.14.4, pandas 3.0.3, numpy 2.4.6).
+
 All four new test files land in the groups they should and none under
 `[defaulted]`: `test_us_acs_record_fence_scan.py` and both graph files in
 `rest` / `us-am` / `wheels`, `test_us_native_verify_once_epoch.py` in `rest` /
