@@ -705,7 +705,15 @@
       "scotgov.bus.government_support": "No incumbent target: uk-data uplifted DfT England support to the UK by population; microcosm#890 binds the Scotland leg from Scottish Transport Statistics.",
       "welshgov.bus.public_support": "No incumbent target: uk-data uplifted DfT England support to the UK by population; microcosm#890 binds the Wales leg (local-authority route) from the StatsWales revenue outturn.",
       "dfi_ni.bus.passenger_receipts": "No incumbent target: uk-data uplifted DfT England fares to the UK by population; microcosm#890 binds the Northern Ireland leg from DfI Public Transport Statistics.",
-      "nithc.public_transport_support": "No incumbent target: uk-data uplifted DfT England support to the UK by population; microcosm#890 binds Northern Ireland public transport support from the NITHC accounts as a joint bus-plus-rail cell."
+      "nithc.public_transport_support": "No incumbent target: uk-data uplifted DfT England support to the UK by population; microcosm#890 binds Northern Ireland public transport support from the NITHC accounts as a joint bus-plus-rail cell.",
+      "dwp.uc.households_lcwra_element": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
+      "dwp.uc.households_carer_element": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
+      "dwp.uc.households_housing_element": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
+      "dwp.uc.households_housing_element_social_rented": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
+      "dwp.uc.households_housing_element_private_rented": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
+      "dwp.uc.households_childcare_element": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
+      "dwp.uc.households_with_deduction": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
+      "obr.universal_credit": "#882 UC expenditure total over the two OBR welfare-cap cells; the incumbent binds only the split, which is excluded."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -947,7 +955,15 @@
       "scotgov.bus.government_support",
       "welshgov.bus.public_support",
       "dfi_ni.bus.passenger_receipts",
-      "nithc.public_transport_support"
+      "nithc.public_transport_support",
+      "dwp.uc.households_lcwra_element",
+      "dwp.uc.households_carer_element",
+      "dwp.uc.households_housing_element",
+      "dwp.uc.households_housing_element_social_rented",
+      "dwp.uc.households_housing_element_private_rented",
+      "dwp.uc.households_childcare_element",
+      "dwp.uc.households_with_deduction",
+      "obr.universal_credit"
     ]
   },
   "profile_parity": {
@@ -13279,6 +13295,875 @@
       },
       "category_id": "nithc.public_transport_finances",
       "label": "Bus and rail support"
+    },
+    {
+      "target_id": "dwp.uc.households_lcwra_element",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.universal_credit.lcwra_element",
+            "operator": ">",
+            "value": 0
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/uc/elements/lcwra",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_LCWRA_element",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "notes": "Mean monthly paid GB benefit units over the declared months. Benefit units with a positive LCWRA element among positive UC awards, against DWP's Stat-Xplore element entitlement crossed with Payment Indicator = Yes (chronicle#260), the same paid-claim basis as the family-type rows. The publisher group value 'LCWRA' covers both rates; before April 2026 every LCWRA household is 'LCWRA - Higher'. The engine's LCWRA flag is the is_disabled_for_benefits input, not a work-capability assessment; the row stays in the objective because the mismatch leaves it inside the 25 percent release bound at the 10 September 2026 baseline (+15 percent on Q50f, +20 percent on D2), while carer and childcare, whose concept gaps put them outside it, sit on the measure-exclusion register. Whether the passthrough itself warrants an engine change is a Step 3 question under #882. Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset Source: https://github.com/PolicyEngine/chronicle/pull/260",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/uc/elements/lcwra",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "dimensions": [
+          "limited_capability_for_work_entitlement",
+          "payment_indicator"
+        ],
+        "dimension_values": {
+          "limited_capability_for_work_entitlement": "LCWRA",
+          "payment_indicator": "Yes"
+        },
+        "source_measure_id": "benefit_units",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "category_id": "dwp.universal_credit",
+      "label": "Households with LCWRA entitlement"
+    },
+    {
+      "target_id": "dwp.uc.households_carer_element",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.universal_credit.carer_element",
+            "operator": ">",
+            "value": 0
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/uc/elements/carer",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_carer_element",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "notes": "Mean monthly paid GB benefit units over the declared months. Benefit units with a positive carer element among positive UC awards, against DWP's Stat-Xplore element entitlement crossed with Payment Indicator = Yes (chronicle#260), the same paid-claim basis as the family-type rows. The engine's carer condition is Carer's Allowance receipt (is_carer_for_benefits); the UC carer element needs 35 hours a week of care without Carer's Allowance, so the row undercounts by construction until the spine carries care hours (#882). Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset Source: https://github.com/PolicyEngine/chronicle/pull/260",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/uc/elements/carer",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
+        "groupby_dimension": "dwp.carer_entitlement",
+        "dimensions": [
+          "carer_entitlement",
+          "payment_indicator"
+        ],
+        "dimension_values": {
+          "carer_entitlement": "Yes",
+          "payment_indicator": "Yes"
+        },
+        "source_measure_id": "benefit_units",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "category_id": "dwp.universal_credit",
+      "label": "Households with carer entitlement"
+    },
+    {
+      "target_id": "dwp.uc.households_housing_element",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.universal_credit.housing_costs_element",
+            "operator": ">",
+            "value": 0
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/uc/elements/housing",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_housing_costs_element",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "notes": "Mean monthly paid GB benefit units over the declared months. Benefit units with a positive housing costs element among positive UC awards, against DWP's Stat-Xplore element entitlement crossed with Payment Indicator = Yes (chronicle#260), the same paid-claim basis as the family-type rows. 'Yes' is DWP's any-tenure housing entitlement value: social plus private plus 'Other or unknown' tenure, which the model cannot carry (uc_housing_costs_element pays only council, housing-association and private renters and TenureType has no other/unknown value), so the model's any-tenure count is identically the social plus private rows and this row overstates the reachable total by the other/unknown cell (112,518 of 4,037,650 in calendar 2025, 2.8 percent). It is therefore measured but held out of the objective on the measure-exclusion register; the two tenure rows carry the housing element in the fit. Never sum it with the tenure rows. Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset Source: https://github.com/PolicyEngine/chronicle/pull/260",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/uc/elements/housing",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
+        "groupby_dimension": "dwp.housing_entitlement_tenure",
+        "dimensions": [
+          "housing_entitlement_tenure",
+          "payment_indicator"
+        ],
+        "dimension_values": {
+          "housing_entitlement_tenure": "Yes",
+          "payment_indicator": "Yes"
+        },
+        "source_measure_id": "benefit_units",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "category_id": "dwp.universal_credit",
+      "label": "Households with housing entitlement"
+    },
+    {
+      "target_id": "dwp.uc.households_housing_element_social_rented",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.universal_credit.housing_costs_element",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.household.tenure",
+            "operator": "in",
+            "value": [
+              "rent_from_council",
+              "rent_from_housing_association"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/uc/elements/housing_social_rented",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_housing_costs_element",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "benunit_tenure_type",
+              "operator": "in",
+              "value": [
+                "RENT_FROM_COUNCIL",
+                "RENT_FROM_HA"
+              ]
+            }
+          ],
+          "notes": "Mean monthly paid GB benefit units over the declared months. Benefit units with a positive housing costs element among positive UC awards, against DWP's Stat-Xplore element entitlement crossed with Payment Indicator = Yes (chronicle#260), the same paid-claim basis as the family-type rows. Tenure from the benefit unit's household (benunit_tenure_type): council and housing-association renters. Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset Source: https://github.com/PolicyEngine/chronicle/pull/260",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/uc/elements/housing_social_rented",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
+        "groupby_dimension": "dwp.housing_entitlement_tenure",
+        "dimensions": [
+          "housing_entitlement_tenure",
+          "payment_indicator"
+        ],
+        "dimension_values": {
+          "housing_entitlement_tenure": "Social Rented Sector",
+          "payment_indicator": "Yes"
+        },
+        "source_measure_id": "benefit_units",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "category_id": "dwp.universal_credit",
+      "label": "Households with housing entitlement, social rented"
+    },
+    {
+      "target_id": "dwp.uc.households_housing_element_private_rented",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.universal_credit.housing_costs_element",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.household.tenure",
+            "operator": "==",
+            "value": "rent_privately"
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/uc/elements/housing_private_rented",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_housing_costs_element",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "benunit_tenure_type",
+              "operator": "==",
+              "value": "RENT_PRIVATELY"
+            }
+          ],
+          "notes": "Mean monthly paid GB benefit units over the declared months. Benefit units with a positive housing costs element among positive UC awards, against DWP's Stat-Xplore element entitlement crossed with Payment Indicator = Yes (chronicle#260), the same paid-claim basis as the family-type rows. Tenure from the benefit unit's household (benunit_tenure_type): private renters. Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset Source: https://github.com/PolicyEngine/chronicle/pull/260",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/uc/elements/housing_private_rented",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
+        "groupby_dimension": "dwp.housing_entitlement_tenure",
+        "dimensions": [
+          "housing_entitlement_tenure",
+          "payment_indicator"
+        ],
+        "dimension_values": {
+          "housing_entitlement_tenure": "Private Rented Sector",
+          "payment_indicator": "Yes"
+        },
+        "source_measure_id": "benefit_units",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "category_id": "dwp.universal_credit",
+      "label": "Households with housing entitlement, private rented"
+    },
+    {
+      "target_id": "dwp.uc.households_childcare_element",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.universal_credit.childcare_element",
+            "operator": ">",
+            "value": 0
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/uc/elements/childcare",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_childcare_element",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "notes": "Mean monthly paid GB benefit units over the declared months. Benefit units with a positive childcare element among positive UC awards, against DWP's childcare element statistics Table 1 (chronicle#260): an all-claims count rounded to the nearest 1,000 with no payment-indicator split, so the published side is up to the nil-payment share (about 8 percent) above a paid-claim basis. The engine pays the element to every benefit unit where all adults work and childcare costs are reported, with no take-up lever, so the row overcounts by construction until that lever exists (#882). Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset Source: https://github.com/PolicyEngine/chronicle/pull/260",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/uc/elements/childcare",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households_receiving_childcare_element",
+        "groupby_dimension": "dwp.uc_element",
+        "dimensions": [
+          "uc_element"
+        ],
+        "dimension_values": {
+          "uc_element": "childcare"
+        },
+        "source_measure_id": "benefit_units",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "category_id": "dwp.universal_credit",
+      "label": "Households receiving the childcare element"
+    },
+    {
+      "target_id": "dwp.uc.households_with_deduction",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.universal_credit.deductions",
+            "operator": ">",
+            "value": 0
+          }
+        ],
+        "source_months": [
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/uc/elements/deductions",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "uc_deductions",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "notes": "Mean monthly paid GB benefit units over the declared months. Benefit units with a positive deduction among positive UC awards, against DWP's Universal Credit deductions statistics Table 1 (households with a deduction; DWP publishes rounded counts), whose published history starts in March 2025; the ten months March to December 2025 are the declared window. The deduction incidence stage (#850) draws to the published share, so this row is a regression guard. Count only the Great Britain regions, matching K03000001; DWP removes Northern Ireland-office claims from these statistics. Source: https://www.gov.uk/government/publications/universal-credit-statistics-background-information-and-methodology/universal-credit-statistics-background-information-and-methodology#creating-a-great-britain-dataset Source: https://github.com/PolicyEngine/chronicle/pull/260",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/uc/elements/deductions",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households_with_deduction",
+        "source_measure_id": "units_with_deduction",
+        "period_type": "month",
+        "period_value": [
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "category_id": "dwp.universal_credit",
+      "label": "Households with a deduction"
+    },
+    {
+      "target_id": "obr.universal_credit",
+      "family": "obr",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefits.universal_credit.amount",
+        "map_to": "household"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "obr/universal_credit",
+          "value_variable": "universal_credit",
+          "from_entity": "benunit",
+          "map_to": "household",
+          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap, FY2025/26 incl. the provisional March 2026 month) against the model's annual award after the benefit cap and deductions at policy year 2025, UK incl. Northern Ireland. The split rows stay excluded: the model cannot attribute spend to the welfare-cap concept (microcosm#757). Cash advances and third-party payments are not modelled (#882)."
+        },
+        "axiom": {
+          "metric_name": "obr/universal_credit",
+          "status": "pending",
+          "value_rule": "uk.benefits.universal_credit.amount"
+        }
+      },
+      "assertion_policy": "allow_source_projection",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": [
+          "obr.universal_credit_in_cap",
+          "obr.universal_credit_outside_cap"
+        ],
+        "entity_name": "person"
+      },
+      "value_operation": "sum",
+      "expected_member_count": 2,
+      "category_id": "obr.efo_expenditure",
+      "label": "Universal Credit expenditure"
     },
     {
       "target_id": "hmrc.self_employment_income.amount",

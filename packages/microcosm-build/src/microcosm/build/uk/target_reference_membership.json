@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-474a0ae1-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 609,
-  "contract_target_count": 210,
-  "active_reference_count": 595,
+  "candidate_count": 617,
+  "contract_target_count": 218,
+  "active_reference_count": 603,
   "status_counts": {
-    "active": 595,
+    "active": 603,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 7
   },
@@ -1605,6 +1605,38 @@
     "nithc.public_transport_support": {
       "geography_level": "country",
       "geography_id": "N92000002"
+    },
+    "dwp.uc.households_lcwra_element": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.households_carer_element": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.households_housing_element": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.households_housing_element_social_rented": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.households_housing_element_private_rented": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.households_childcare_element": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.uc.households_with_deduction": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "obr.universal_credit": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
     }
   },
   "genuine_sum_residue": [
@@ -1612,6 +1644,7 @@
     "dfi_ni.bus.passenger_receipts",
     "nithc.public_transport_support",
     "obr.esa",
+    "obr.universal_credit",
     "ons.population.age_0_9_by_region@E12000001",
     "ons.population.age_0_9_by_region@E12000002",
     "ons.population.age_0_9_by_region@E12000003",
@@ -11975,6 +12008,133 @@
           "resolved_value": 111700000.0,
           "resolved_fact_period": "2024",
           "resolved_fact_key": "ledger_aggregate_fact_v2_be8eb7011b6f65fa65d52fcb"
+        }
+      ]
+    },
+    "dwp.uc.households_lcwra_element": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.households_lcwra_element",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 2272425.1666666665,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f59149c4c514e1acffb728a8"
+        }
+      ]
+    },
+    "dwp.uc.households_carer_element": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.households_carer_element",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 1078514.5,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d56ddfa58d7ebb3ff0178b0a"
+        }
+      ]
+    },
+    "dwp.uc.households_housing_element": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.households_housing_element",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 4037650.3333333335,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_04b7ec6d195e6682f0421672"
+        }
+      ]
+    },
+    "dwp.uc.households_housing_element_social_rented": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.households_housing_element_social_rented",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 2354587.5833333335,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_109598f6aaa42fe1387d30d1"
+        }
+      ]
+    },
+    "dwp.uc.households_housing_element_private_rented": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.households_housing_element_private_rented",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 1570545.4166666667,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7a31b88dfcd4b3d0c758a1c3"
+        }
+      ]
+    },
+    "dwp.uc.households_childcare_element": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.households_childcare_element",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 178666.66666666666,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0c1aa0cc56d86c50d6b2560a"
+        }
+      ]
+    },
+    "dwp.uc.households_with_deduction": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.uc.households_with_deduction",
+          "status": "active",
+          "matched_fact_count_overall": 10,
+          "matched_fact_count_at_or_before_period": 10,
+          "matched_fact_count_in_source_window": 10,
+          "resolved_period": 2025,
+          "resolved_value": 3130000.0,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f7bfdb41a462c417535602d2"
+        }
+      ]
+    },
+    "obr.universal_credit": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "obr.universal_credit",
+          "status": "active",
+          "matched_fact_count_overall": 14,
+          "matched_fact_count_at_or_before_period": 4,
+          "resolved_period": 2025,
+          "resolved_value": 79286349139.54411,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e680fe36115d1372d12072e1"
         }
       ]
     }

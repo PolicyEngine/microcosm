@@ -25,18 +25,14 @@ EXPECTED_RESOURCES = {
     "spine",
     "vintages",
 }
-# Resolved country identities include the shared legacy-v1 seed protocol.
-# Reviewed snapshot iteration labels in solve.py change its source attestation;
-# AM/BE/UK authored resources and draw-site bindings remain unchanged.
-AM_SPEC_SHA256 = "ab8458f8520ffe8325bf9193a7c4f3cb76bade3944522fba5f9ab3f9c4b235b6"
 
 
 @pytest.mark.parametrize(
-    ("country", "expected_spec_sha256", "expected_columns", "expected_entities"),
+    ("country", "expected_period", "expected_columns", "expected_entities"),
     [
         (
             "am",
-            AM_SPEC_SHA256,
+            2024,
             {
                 "household.household_id",
                 "person.age",
@@ -48,7 +44,7 @@ AM_SPEC_SHA256 = "ab8458f8520ffe8325bf9193a7c4f3cb76bade3944522fba5f9ab3f9c4b235
         ),
         (
             "be",
-            "44cabc2b42e47090605a9e9947eb71e0b894d008babdfe7415faf894aa330bf2",
+            2023,
             {
                 "household.household_id",
                 "person.person_id",
@@ -58,7 +54,7 @@ AM_SPEC_SHA256 = "ab8458f8520ffe8325bf9193a7c4f3cb76bade3944522fba5f9ab3f9c4b235
         ),
         (
             "uk",
-            "81099c1986b54ec92a3efceb72867938887cd4e7e3c9a81bb21630154824e1d9",
+            2023,
             {
                 "benunit.benunit_id",
                 "household.household_id",
@@ -71,7 +67,7 @@ AM_SPEC_SHA256 = "ab8458f8520ffe8325bf9193a7c4f3cb76bade3944522fba5f9ab3f9c4b235
 )
 def test_country_bundle_loads_once_and_compiles_through_the_shared_core(
     country: str,
-    expected_spec_sha256: str,
+    expected_period: int,
     expected_columns: set[str],
     expected_entities: set[str],
 ) -> None:
@@ -86,7 +82,6 @@ def test_country_bundle_loads_once_and_compiles_through_the_shared_core(
 
     assert country_spec.resolved_spec is not None
     assert country_spec.resolved_spec.spec_sha256 == direct.spec_sha256
-    assert direct.spec_sha256 == expected_spec_sha256
 
     compiled = compile_spec(direct)
     assert set(compiled.resources_wire()) == EXPECTED_RESOURCES
@@ -94,6 +89,14 @@ def test_country_bundle_loads_once_and_compiles_through_the_shared_core(
     assert compiled.nodes == ()
     assert {column.key for column in direct.columns} == expected_columns
     assert {column.entity.id for column in direct.columns} == expected_entities
+    bundle = compiled.resource("bundle")
+    assert {key: bundle[key] for key in bundle if key != "status"} == {
+        "country": country,
+        "dataset_run": {"target_period": expected_period},
+        "identity_generation": 1,
+        "seed_protocol": "legacy-v1",
+    }
+    assert isinstance(bundle["status"], str) and bundle["status"].strip()
 
 
 def test_country_bundles_exercise_distinct_support_and_geography_kinds() -> None:

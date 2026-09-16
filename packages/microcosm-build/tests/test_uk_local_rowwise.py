@@ -1447,6 +1447,52 @@ def test_size_refit_pi_hi_promotes_learned_certainties_and_is_recorded():
             )
 
 
+def test_size_refit_baseline_pi_floor_trims_the_baseline_and_is_recorded():
+    from microcosm.build.uk_runtime.dataset_size import refit_uk_dataset_size
+    from microcosm.calibrate import Target, TargetSet, calibrate
+
+    frame = _clone_frame()
+    dense = calibrate(
+        frame,
+        TargetSet(
+            [Target("count", "household", lambda f: np.ones(f.n("household")), 3)]
+        ),
+        epochs=2,
+    )
+    common = dict(households=2, epochs=2, learning_rate=0.02, seed=7, pi_hi=0.5)
+    plain = refit_uk_dataset_size(frame, dense, **common)
+    floored = refit_uk_dataset_size(frame, dense, baseline_pi_floor=1.0, **common)
+    assert plain.receipt["baseline_pi_floor"] == 0.0
+    assert plain.receipt["refit_baseline"] == "normalized_horvitz_thompson_w_over_q"
+    assert plain.receipt["stretch_reference"] == plain.receipt["refit_baseline"]
+    assert plain.receipt["baseline_floored_rows"] == 0
+    assert floored.receipt["baseline_pi_floor"] == 1.0
+    assert (
+        floored.receipt["refit_baseline"]
+        == "normalized_horvitz_thompson_w_over_q_floored"
+    )
+    assert floored.receipt["stretch_reference"] == floored.receipt["refit_baseline"]
+    # The same draw either way: the floor is a refit setting, not a selection one.
+    assert floored.receipt["pool_row_indices"] == plain.receipt["pool_row_indices"]
+    assert (
+        floored.receipt["inclusion_probabilities"]
+        == (plain.receipt["inclusion_probabilities"])
+    )
+    q = np.asarray(plain.receipt["inclusion_probabilities"])
+    assert floored.receipt["baseline_floored_rows"] == int((q < 1.0).sum())
+    for receipt in (plain.receipt, floored.receipt):
+        share = receipt["baseline_mass_share_certainties"]
+        assert share is None or 0.0 <= share <= 1.0
+    # With every probability floored at one, the baseline is the dense weights
+    # renormalised to the pool mass, so no row is inflated by its draw.
+    baseline = np.asarray(floored.result.initial_weights)
+    dense_selected = np.asarray(dense.weights)[np.asarray(floored.support)]
+    assert np.allclose(baseline / baseline.sum(), dense_selected / dense_selected.sum())
+    for bad in (-0.1, 1.5, True):
+        with pytest.raises(ValueError, match="baseline_pi_floor"):
+            refit_uk_dataset_size(frame, dense, baseline_pi_floor=bad, **common)
+
+
 def test_size_refit_refuses_unsupported_nonzero_targets_by_name():
     from microcosm.build.uk_runtime.dataset_size import (
         refit_uk_dataset_size,

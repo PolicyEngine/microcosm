@@ -363,7 +363,7 @@
     },
     {
       "name": "ons.savings_interest_income",
-      "reason": "The spine carries \u00a313.8bn of savings interest income against the ONS \u00a395.5bn (-86% at initialization on spine-m, -89% after the solve): the FRS interest income capture, not the weights. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
+      "reason": "The spine carries £13.8bn of savings interest income against the ONS £95.5bn (-86% at initialization on spine-m, -89% after the solve): the FRS interest income capture, not the weights. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
       "tracking": "microcosm#866",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md)",
@@ -372,7 +372,7 @@
     },
     {
       "name": "obr.housing_benefit",
-      "reason": "The spine carries \u00a32.7bn of housing benefit against the OBR \u00a312.1bn (-78% at initialization on spine-m). Under grain_equal the solver chases the aggregate by multiplying the few HB households (\u00a39.4bn at 512 epochs, \u00a311.4bn at 1500), which halves the effective sample and doubles Glasgow's social-rent count; under uniform it is ignored. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
+      "reason": "The spine carries £2.7bn of housing benefit against the OBR £12.1bn (-78% at initialization on spine-m). Under grain_equal the solver chases the aggregate by multiplying the few HB households (£9.4bn at 512 epochs, £11.4bn at 1500), which halves the effective sample and doubles Glasgow's social-rent count; under uniform it is ignored. Unreachable by reweighting within the stretch bound: a frame-side gap, not a weight question; while bound it pulls the joint solve toward weight concentration (housing benefit alone triples the max/median ratio under grain_equal). One-month window: correct the spine or re-adjudicate.",
       "tracking": "microcosm#867",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#762 (A16, ruling 2026-09-03; receipts R8-R10 in experiments/762-uk-rowwise-candidate-receipts.md)",
@@ -411,7 +411,7 @@
       "reason": "Zero-support channel under the corrected UC composition proxy: since #879 the payment-distribution rows are measured on the relationship-based uc_calibration_family_type, and no benefit unit in the spine is a couple without children with an annual UC award in this band (final estimate 0.0, -100% on #879's corrected comparison; no pool carrier on the K=15 rowwise clone of spine-p either, where the #355 size selection refuses the row by name). The dense seam carries the row as a capped miss; a size selection cannot carry it. The band catalogue and the unbounded top band are tracked in microcosm#736; the sibling 26,400-27,600 band already sits in this register.",
       "tracking": "microcosm#736",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#355 (dataset-size experiment; ruling by Mar\u00eda 2026-09-08 after the 45,800 smoke's by-name refusal)",
+      "adjudication": "microcosm#355 (dataset-size experiment; ruling by María 2026-09-08 after the 45,800 smoke's by-name refusal)",
       "approved_on": "2026-09-08",
       "expires_on": "2026-12-08"
     },
@@ -420,7 +420,7 @@
       "reason": "Zero-support channel under the corrected UC composition proxy: since #879 the payment-distribution rows are measured on the relationship-based uc_calibration_family_type, and no benefit unit in the spine is a couple without children with an annual UC award in this band (final estimate 0.0, -100% on #879's corrected comparison; no pool carrier on the K=15 rowwise clone of spine-p either, where the #355 size selection refuses the row by name). The dense seam carries the row as a capped miss; a size selection cannot carry it. The band catalogue and the unbounded top band are tracked in microcosm#736; the sibling 26,400-27,600 band already sits in this register.",
       "tracking": "microcosm#736",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#355 (dataset-size experiment; ruling by Mar\u00eda 2026-09-08 after the 45,800 smoke's by-name refusal)",
+      "adjudication": "microcosm#355 (dataset-size experiment; ruling by María 2026-09-08 after the 45,800 smoke's by-name refusal)",
       "approved_on": "2026-09-08",
       "expires_on": "2026-12-08"
     },
@@ -429,7 +429,7 @@
       "reason": "Spine support absent for band H in the North East region-tier cell: the spine carries no council-tax band-H household there (spine-m held 170 band-H households from 49 raw FRS households, none in the North East, North West or Yorkshire and the Humber; microcosm#762 A14), so the cell measures 0 against the VOA stock (-100% on the #905 spine-q comparison, docs/evidence/uk-region-tier-905/calibration-comparison.json) while the other 78 VOA region cells fit within 5%. The same class is signed for the local band-H family under council_tax_band_h_spine_support_absent; the cell binds when a spine vintage carries broader band-H support.",
       "tracking": "microcosm#796",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#905 (region-tier activation; ruling by Mar\u00eda 2026-09-14 on PR #906, the #762 A14 spine-support class)",
+      "adjudication": "microcosm#905 (region-tier activation; ruling by María 2026-09-14 on PR #906, the #762 A14 spine-support class)",
       "approved_on": "2026-09-14",
       "expires_on": "2026-11-26"
     },
@@ -438,7 +438,7 @@
       "reason": "Spine support absent for band H in the North West region-tier cell: the spine carries no council-tax band-H household there (spine-m held 170 band-H households from 49 raw FRS households, none in the North East, North West or Yorkshire and the Humber; microcosm#762 A14), so the cell measures 0 against the VOA stock (-100% on the #905 spine-q comparison, docs/evidence/uk-region-tier-905/calibration-comparison.json) while the other 78 VOA region cells fit within 5%. The same class is signed for the local band-H family under council_tax_band_h_spine_support_absent; the cell binds when a spine vintage carries broader band-H support.",
       "tracking": "microcosm#796",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#905 (region-tier activation; ruling by Mar\u00eda 2026-09-14 on PR #906, the #762 A14 spine-support class)",
+      "adjudication": "microcosm#905 (region-tier activation; ruling by María 2026-09-14 on PR #906, the #762 A14 spine-support class)",
       "approved_on": "2026-09-14",
       "expires_on": "2026-11-26"
     },
@@ -447,9 +447,36 @@
       "reason": "Spine support absent for band H in the Yorkshire and The Humber region-tier cell: the spine carries no council-tax band-H household there (spine-m held 170 band-H households from 49 raw FRS households, none in the North East, North West or Yorkshire and the Humber; microcosm#762 A14), so the cell measures 0 against the VOA stock (-100% on the #905 spine-q comparison, docs/evidence/uk-region-tier-905/calibration-comparison.json) while the other 78 VOA region cells fit within 5%. The same class is signed for the local band-H family under council_tax_band_h_spine_support_absent; the cell binds when a spine vintage carries broader band-H support.",
       "tracking": "microcosm#796",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#905 (region-tier activation; ruling by Mar\u00eda 2026-09-14 on PR #906, the #762 A14 spine-support class)",
+      "adjudication": "microcosm#905 (region-tier activation; ruling by María 2026-09-14 on PR #906, the #762 A14 spine-support class)",
       "approved_on": "2026-09-14",
       "expires_on": "2026-11-26"
+    },
+    {
+      "name": "dwp/uc/elements/carer",
+      "reason": "Model concept gap, not a weight question: the engine's carer condition is Carer's Allowance receipt (is_carer_for_benefits = receives_carer_benefit) while the UC carer element needs 35 hours a week of care for a qualifying-benefit recipient with no Carer's Allowance requirement; the spine never fills the engine's care_hours input. Measured at the 10 September 2026 baseline against the bound calendar-2025 paid target: Q50f 595,807 / D2 602,749 paid-UC benefit units against 1,078,514 (-45%). Fitting it would move half the carriers' weight against a definition mismatch. Repair: care hours from the FRS care file and a regulation-based carer condition, then activation.",
+      "tracking": "microcosm#882",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#882 (element sizing at the 10 September 2026 baseline, docs/uk-uc-baseline-2026-09-10.md; María's sign-off in review of microcosm#921 on 2026-09-15, setting the one-month window)",
+      "approved_on": "2026-09-15",
+      "expires_on": "2026-10-15"
+    },
+    {
+      "name": "dwp/uc/elements/childcare",
+      "reason": "Model concept gap, not a weight question: the engine pays the childcare element to every benefit unit where all adults work and childcare costs are reported, with no take-up or incidence lever, while DWP publishes 160-193k households a month receiving it in 2025. Measured at the 10 September 2026 baseline against the bound calendar-2025 target: Q50f 455,634 / D2 451,401 paid-UC benefit units (GBP 2.06bn) against 178,667 published (+155%). Repair: an incidence stage modelled on uc_deduction_attributes drawing to the published count, then activation.",
+      "tracking": "microcosm#882",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#882 (element sizing at the 10 September 2026 baseline, docs/uk-uc-baseline-2026-09-10.md; María's sign-off in review of microcosm#921 on 2026-09-15, setting the one-month window)",
+      "approved_on": "2026-09-15",
+      "expires_on": "2026-10-15"
+    },
+    {
+      "name": "dwp/uc/elements/housing",
+      "reason": "Structural bias, not a weight question: DWP's any-tenure housing-entitlement count is social plus private plus 'Other or unknown' tenure, and the model has no other/unknown tenure (uc_housing_costs_element pays only council, housing-association and private renters), so the model's any-tenure count is identically the social plus private rows, which are bound and fit; the row overstates the reachable total by the other/unknown cell, 112,518 of 4,037,650 in calendar 2025 (2.8 percent; the published any-tenure mean, which the three tenure cells reproduce to the unit). Fitting all three housing rows would ask the solver to over-fill the tenure rows by that amount. Measured on every evaluation as the housing-element caseload diagnostic (Q50f -0.8 percent, D2 +0.6 percent at the baseline).",
+      "tracking": "microcosm#882",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#882 (element sizing at the 10 September 2026 baseline, docs/uk-uc-baseline-2026-09-10.md; María's sign-off in review of microcosm#921 on 2026-09-15, setting the one-month window)",
+      "approved_on": "2026-09-15",
+      "expires_on": "2026-10-15"
     }
   ]
 }

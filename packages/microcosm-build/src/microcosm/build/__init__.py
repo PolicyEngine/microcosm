@@ -161,6 +161,15 @@ from microcosm.build.monetary_targets import (  # noqa: E402 - after compat gate
     bind_monetary_target,
     prepare_monetary_measure,
 )
+from microcosm.build.observation import (  # noqa: E402 - after the compat gate
+    ObservedTransform,
+    StageEventObserver,
+    StageEventRun,
+    StageEventStatus,
+    StageObservation,
+    StageObservationRun,
+    StageObserver,
+)
 from microcosm.build.plan import (  # noqa: E402 - after the compat gate
     DonorSpec,
     Stage,
@@ -210,6 +219,10 @@ __all__ = [
     "ReleaseContractManifest",
     "ResolvedCountrySpec",
     "Stage",
+    "StageEventObserver",
+    "StageEventRun",
+    "StageEventStatus",
+    "StageObservation",
     "StagePlan",
     "StageRecord",
     "SourceRuntimeConfig",
@@ -235,7 +248,10 @@ __all__ = [
     "MonetaryBasis",
     "MonetaryTargetContract",
     "MonetaryTargetProfile",
+    "ObservedTransform",
     "PreparedMonetaryMeasure",
+    "StageObservationRun",
+    "StageObserver",
     "add_ledger_artifact_args",
     "logbook_env_names",
     "fact_key_epoch",

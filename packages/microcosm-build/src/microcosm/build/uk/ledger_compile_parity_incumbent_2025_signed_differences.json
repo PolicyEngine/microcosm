@@ -1,11 +1,11 @@
 {
- "compiled_count": 595,
+ "compiled_count": 603,
  "counts_by_kind": {
   "calibration_drift": 280,
   "fixture_only": 80,
-  "ledger_only": 38
+  "ledger_only": 46
  },
- "difference_count": 398,
+ "difference_count": 406,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -625,6 +625,55 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 1078514.5,
+   "name": "dwp.uc.households_carer_element",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 178666.66666666666,
+   "name": "dwp.uc.households_childcare_element",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4037650.3333333335,
+   "name": "dwp.uc.households_housing_element",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1570545.4166666667,
+   "name": "dwp.uc.households_housing_element_private_rented",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2354587.5833333335,
+   "name": "dwp.uc.households_housing_element_social_rented",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2272425.1666666665,
+   "name": "dwp.uc.households_lcwra_element",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3130000.0,
+   "name": "dwp.uc.households_with_deduction",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 597920.0,
    "name": "dwp.uc.two_child_limit.children_affected",
    "period": 2025,
@@ -781,6 +830,13 @@
    "kind": "ledger_only",
    "ledger_value": 14400000000.0,
    "name": "obr.fuel_duties_cars",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 79286349139.54411,
+   "name": "obr.universal_credit",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

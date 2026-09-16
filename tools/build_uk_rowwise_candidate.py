@@ -723,6 +723,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--baseline-pi-floor",
+        type=float,
+        default=0.0,
+        help=(
+            "Floor on the inclusion probability the refit's Horvitz-Thompson "
+            "baseline divides each selected row's dense weight by: a boundary "
+            "row drawn at a few in a million otherwise starts at millions of "
+            "households and starves every other row under the stretch bound "
+            "(microcosm#355, Q50 2026-09-10). 0 (default) is the untrimmed "
+            "baseline. Candidate-only; recorded in the size receipt with the "
+            "rows it trimmed. Requires --dataset-households; a resumed "
+            "checkpoint may use a different floor."
+        ),
+    )
+    parser.add_argument(
         "--no-size-checkpoint",
         action="store_true",
         help=(
@@ -1152,6 +1167,7 @@ def _run_candidate(
             seed=args.seed,
             selection_seed=args.selection_seed,
             selection_pi_hi=args.selection_pi_hi,
+            baseline_pi_floor=args.baseline_pi_floor,
             size_checkpoint_dir=out_dir if write_checkpoint else None,
             resume_size_checkpoint=resume_checkpoint,
             checkpoint_identity=checkpoint_identity,
@@ -1277,6 +1293,7 @@ def _run_candidate(
                 solve_seed=args.seed,
                 selection_seed=args.selection_seed,
                 selection_pi_hi=args.selection_pi_hi,
+                baseline_pi_floor=args.baseline_pi_floor,
             )
         args._rotated_holdout = rotated_holdout
 
@@ -2710,6 +2727,9 @@ def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]
         "selection_pi_hi": None
         if args.dataset_households is None
         else float(args.selection_pi_hi),
+        "baseline_pi_floor": None
+        if args.dataset_households is None
+        else float(args.baseline_pi_floor),
         "size_checkpoint": bool(
             args.dataset_households is not None
             and not args.no_size_checkpoint
@@ -2954,6 +2974,10 @@ def _validate_cli_args(args: argparse.Namespace) -> None:
         raise ValueError("--selection-pi-hi must be in (0, 1].")
     if args.selection_pi_hi != 1.0 and args.dataset_households is None:
         raise ValueError("--selection-pi-hi requires --dataset-households.")
+    if not (0.0 <= args.baseline_pi_floor <= 1.0):
+        raise ValueError("--baseline-pi-floor must be in [0, 1].")
+    if args.baseline_pi_floor != 0.0 and args.dataset_households is None:
+        raise ValueError("--baseline-pi-floor requires --dataset-households.")
     if args.no_size_checkpoint and args.dataset_households is None:
         raise ValueError("--no-size-checkpoint requires --dataset-households.")
     if args.resume_size_checkpoint is not None:

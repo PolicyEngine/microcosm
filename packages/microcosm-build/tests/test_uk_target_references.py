@@ -60,7 +60,7 @@ from tools.generate_uk_target_references import (
     _value_operation_by_target_id,
 )
 
-ACTIVE_REFERENCE_COUNT = 595
+ACTIVE_REFERENCE_COUNT = 603
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -518,6 +518,18 @@ def test_ons_age_total_targets_pin_exact_age_dimension_set() -> None:
     ] == ["age"]
 
 
+UC_ELEMENT_TARGET_IDS = frozenset(
+    {
+        "dwp.uc.households_lcwra_element",
+        "dwp.uc.households_carer_element",
+        "dwp.uc.households_housing_element",
+        "dwp.uc.households_housing_element_social_rented",
+        "dwp.uc.households_housing_element_private_rented",
+        "dwp.uc.households_childcare_element",
+    }
+)
+
+
 def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> None:
     contract = _load_uk_resource("uk_population_targets.json")
     targets = {target["target_id"]: target for target in contract["targets"]}
@@ -557,6 +569,24 @@ def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> N
             assert pins["child_entitlement"] == ["No", "Yes"]
             assert selector["source_measure_id"] == "benefit_units"
             assert operations[target_id] == "monthly_window_sum_average"
+        elif target_id in UC_ELEMENT_TARGET_IDS:
+            # #882 element rows: one paid-claim cell per month from the
+            # chronicle#260 crosses (the childcare count is the ODS all-claims
+            # series and carries no payment indicator), averaged over the
+            # declared calendar-2025 window. The month list makes them sum
+            # candidates like the ten broad rows; the declared operation
+            # averages instead.
+            if target_id != "dwp.uc.households_childcare_element":
+                assert "payment_indicator" in selector["dimensions"]
+                assert pins["payment_indicator"] == "Yes"
+            assert selector["source_measure_id"] == "benefit_units"
+            assert operations[target_id] == "monthly_window_average"
+            assert target["period_match_policy"] == "source_window"
+            assert target_id in sum_target_ids
+            assert selector["period_value"] == [
+                f"2025-{month:02d}" for month in range(1, 13)
+            ]
+            continue
         else:
             # Merely naming a dimension set still does not request a sum.
             assert target_id not in sum_target_ids
@@ -667,7 +697,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 595,
+        "active": 603,
         "no_fact_at_or_before_period": 7,
         "signed_excluded": 7,
     }
@@ -904,6 +934,15 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
     monthly_average_ids = {
         f"dwp.uc.households_children_{children}"
         for children in ("1", "2", "3", "4", "5_or_more")
+    } | {
+        # #882 element rows: paid-claim crosses on declared month windows.
+        "dwp.uc.households_lcwra_element",
+        "dwp.uc.households_carer_element",
+        "dwp.uc.households_housing_element",
+        "dwp.uc.households_housing_element_social_rented",
+        "dwp.uc.households_housing_element_private_rented",
+        "dwp.uc.households_childcare_element",
+        "dwp.uc.households_with_deduction",
     }
     uc_target_ids = {
         target["target_id"]

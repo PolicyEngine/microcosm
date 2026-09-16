@@ -589,7 +589,18 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "ons.savings_interest_income": 1,
     "obr.housing_benefit": 1,
     "dwp.jsa_claimants": 1,
+    # microcosm#882 (2026-09-15): the three UC element rows measured but
+    # held out of the objective — carer and childcare as model concept gaps,
+    # the any-tenure housing row as a structural bias — signed by María in
+    # review of microcosm#921 with a one-month window.
+    "dwp/uc/elements/": 3,
 }
+
+_UC_ELEMENT_REGISTER_ROWS = (
+    "dwp/uc/elements/carer",
+    "dwp/uc/elements/childcare",
+    "dwp/uc/elements/housing",
+)
 
 _A16_UNREACHABLE_ROWS = (
     "ons.savings_interest_income",
@@ -603,7 +614,7 @@ _A16_UNREACHABLE_ROWS = (
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 50
+    assert len(names) == len(set(names)) == 53
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -667,6 +678,36 @@ def test_packaged_exclusions_load():
         assert entry["expires_on"] == "2026-10-03", entry["name"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
         assert "A16" in entry["adjudication"], entry["name"]
+
+    # The 2026-09-15 tranche is #882's element rows: carer and childcare are
+    # model concept gaps (the engine's carer condition is Carer's Allowance
+    # receipt; the childcare element has no take-up lever) and the any-tenure
+    # housing row a structural bias (DWP's 'Yes' includes an other/unknown
+    # tenure the model cannot carry). Each is adjudicated to microcosm#882
+    # and the committed baseline doc, signed in review of microcosm#921, and
+    # windowed to one month so the repair or re-adjudication is forced.
+    elements = [e for e in exclusions if e["approved_on"] == "2026-09-15"]
+    assert sorted(e["name"] for e in elements) == sorted(_UC_ELEMENT_REGISTER_ROWS)
+    for entry in elements:
+        assert entry["expires_on"] == "2026-10-15", entry["name"]
+        assert entry["tracking"] == "microcosm#882", entry["name"]
+        assert entry["approved_by"] == "juaristi22", entry["name"]
+        assert "microcosm#882" in entry["adjudication"], entry["name"]
+        assert "microcosm#921" in entry["adjudication"], entry["name"]
+        assert "docs/uk-uc-baseline-2026-09-10.md" in entry["adjudication"], entry[
+            "name"
+        ]
+    housing = next(e for e in elements if e["name"] == "dwp/uc/elements/housing")
+    assert "112,518 of 4,037,650" in housing["reason"]
+    # The four element rows that stay in the objective are not on the register.
+    for riding in (
+        "dwp/uc/elements/lcwra",
+        "dwp/uc/elements/housing_social_rented",
+        "dwp/uc/elements/housing_private_rented",
+        "dwp/uc/elements/deductions",
+        "obr/universal_credit",
+    ):
+        assert riding not in names, riding
 
     # The lever targets are deliberately NOT excluded: the six UC
     # caseload / two-child-limit cells ride the would_claim_uc lever run.

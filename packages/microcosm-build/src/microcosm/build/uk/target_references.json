@@ -208,6 +208,8 @@
       "dwp.esa_income_claimants": "dwp.legacy_benefits",
       "dwp.jsa_claimants": "dwp.legacy_benefits",
       "dwp.uc.households": "dwp.universal_credit",
+      "dwp.uc.households_carer_element": "dwp.universal_credit",
+      "dwp.uc.households_childcare_element": "dwp.universal_credit",
       "dwp.uc.households_children_1": "dwp.universal_credit",
       "dwp.uc.households_children_2": "dwp.universal_credit",
       "dwp.uc.households_children_3": "dwp.universal_credit",
@@ -215,8 +217,13 @@
       "dwp.uc.households_children_5_or_more": "dwp.universal_credit",
       "dwp.uc.households_couple_no_children": "dwp.universal_credit",
       "dwp.uc.households_couple_with_children": "dwp.universal_credit",
+      "dwp.uc.households_housing_element": "dwp.universal_credit",
+      "dwp.uc.households_housing_element_private_rented": "dwp.universal_credit",
+      "dwp.uc.households_housing_element_social_rented": "dwp.universal_credit",
+      "dwp.uc.households_lcwra_element": "dwp.universal_credit",
       "dwp.uc.households_single_no_children": "dwp.universal_credit",
       "dwp.uc.households_single_with_children": "dwp.universal_credit",
+      "dwp.uc.households_with_deduction": "dwp.universal_credit",
       "dwp.uc.payment_distribution_couple_no_children": "dwp.universal_credit",
       "dwp.uc.payment_distribution_couple_with_children": "dwp.universal_credit",
       "dwp.uc.payment_distribution_lone_parent": "dwp.universal_credit",
@@ -282,6 +289,7 @@
       "obr.state_pension": "obr.efo_expenditure",
       "obr.statutory_maternity_pay": "obr.efo_expenditure",
       "obr.tv_licence_fee": "obr.efo_expenditure",
+      "obr.universal_credit": "obr.efo_expenditure",
       "obr.universal_credit_in_cap": "obr.efo_expenditure",
       "obr.universal_credit_outside_cap": "obr.efo_expenditure",
       "obr.vat": "obr.efo_receipts",
@@ -406,6 +414,8 @@
       "dwp.esa_income_claimants": "Employment and Support Allowance income claimants",
       "dwp.jsa_claimants": "Jobseeker\u2019s Allowance claimants",
       "dwp.uc.households": "Universal Credit households",
+      "dwp.uc.households_carer_element": "Households with carer entitlement",
+      "dwp.uc.households_childcare_element": "Households receiving the childcare element",
       "dwp.uc.households_children_1": "Households children 1",
       "dwp.uc.households_children_2": "Households children 2",
       "dwp.uc.households_children_3": "Households children 3",
@@ -413,8 +423,13 @@
       "dwp.uc.households_children_5_or_more": "Households children 5 or more",
       "dwp.uc.households_couple_no_children": "Households couple no children",
       "dwp.uc.households_couple_with_children": "Households couple with children",
+      "dwp.uc.households_housing_element": "Households with housing entitlement",
+      "dwp.uc.households_housing_element_private_rented": "Households with housing entitlement, private rented",
+      "dwp.uc.households_housing_element_social_rented": "Households with housing entitlement, social rented",
+      "dwp.uc.households_lcwra_element": "Households with LCWRA entitlement",
       "dwp.uc.households_single_no_children": "Households single no children",
       "dwp.uc.households_single_with_children": "Households single with children",
+      "dwp.uc.households_with_deduction": "Households with a deduction",
       "dwp.uc.payment_distribution_couple_no_children": "Payment distribution couple no children",
       "dwp.uc.payment_distribution_couple_with_children": "Payment distribution couple with children",
       "dwp.uc.payment_distribution_lone_parent": "Payment distribution lone parent",
@@ -480,6 +495,7 @@
       "obr.state_pension": "State pension",
       "obr.statutory_maternity_pay": "Statutory maternity pay",
       "obr.tv_licence_fee": "TV licence fee",
+      "obr.universal_credit": "Universal Credit expenditure",
       "obr.universal_credit_in_cap": "Universal Credit inside the benefit cap",
       "obr.universal_credit_outside_cap": "Universal Credit outside the benefit cap",
       "obr.vat": "VAT",
@@ -17973,6 +17989,332 @@
       "expected_member_count": 2,
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.uc.households_lcwra_element",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
+        "groupby_dimension": "dwp.limited_capability_for_work_entitlement",
+        "dimensions": [
+          "limited_capability_for_work_entitlement",
+          "payment_indicator"
+        ],
+        "dimension_values": {
+          "limited_capability_for_work_entitlement": "LCWRA",
+          "payment_indicator": "Yes"
+        },
+        "source_measure_id": "benefit_units",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/uc/elements/lcwra",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.households_lcwra_element",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.uc.households_carer_element",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
+        "groupby_dimension": "dwp.carer_entitlement",
+        "dimensions": [
+          "carer_entitlement",
+          "payment_indicator"
+        ],
+        "dimension_values": {
+          "carer_entitlement": "Yes",
+          "payment_indicator": "Yes"
+        },
+        "source_measure_id": "benefit_units",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/uc/elements/carer",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.households_carer_element",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.uc.households_housing_element",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
+        "groupby_dimension": "dwp.housing_entitlement_tenure",
+        "dimensions": [
+          "housing_entitlement_tenure",
+          "payment_indicator"
+        ],
+        "dimension_values": {
+          "housing_entitlement_tenure": "Yes",
+          "payment_indicator": "Yes"
+        },
+        "source_measure_id": "benefit_units",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/uc/elements/housing",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.households_housing_element",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.uc.households_housing_element_social_rented",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
+        "groupby_dimension": "dwp.housing_entitlement_tenure",
+        "dimensions": [
+          "housing_entitlement_tenure",
+          "payment_indicator"
+        ],
+        "dimension_values": {
+          "housing_entitlement_tenure": "Social Rented Sector",
+          "payment_indicator": "Yes"
+        },
+        "source_measure_id": "benefit_units",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/uc/elements/housing_social_rented",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.households_housing_element_social_rented",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.uc.households_housing_element_private_rented",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households",
+        "groupby_dimension": "dwp.housing_entitlement_tenure",
+        "dimensions": [
+          "housing_entitlement_tenure",
+          "payment_indicator"
+        ],
+        "dimension_values": {
+          "housing_entitlement_tenure": "Private Rented Sector",
+          "payment_indicator": "Yes"
+        },
+        "source_measure_id": "benefit_units",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/uc/elements/housing_private_rented",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.households_housing_element_private_rented",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.uc.households_childcare_element",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households_receiving_childcare_element",
+        "groupby_dimension": "dwp.uc_element",
+        "dimensions": [
+          "uc_element"
+        ],
+        "dimension_values": {
+          "uc_element": "childcare"
+        },
+        "source_measure_id": "benefit_units",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/uc/elements/childcare",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.households_childcare_element",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.uc.households_with_deduction",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_households_with_deduction",
+        "source_measure_id": "units_with_deduction",
+        "period_type": "month",
+        "period_value": [
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/uc/elements/deductions",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.households_with_deduction",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "obr.universal_credit",
+      "ledger_selector": {
+        "source_name": "obr",
+        "source_concept": [
+          "obr.universal_credit_in_cap",
+          "obr.universal_credit_outside_cap"
+        ],
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "benunit",
+      "measure": "obr/universal_credit",
+      "family": "obr",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "obr.universal_credit",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "sum",
+      "expected_member_count": 2
     }
   ]
 }

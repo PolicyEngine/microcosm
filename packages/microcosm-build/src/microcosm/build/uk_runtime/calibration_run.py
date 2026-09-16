@@ -11,7 +11,7 @@ import os
 import platform
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import metadata
@@ -44,6 +44,7 @@ from microcosm.build.logbook_adoption import (
     role_pins_digest,
     write_error_receipt,
 )
+from microcosm.build.staging_v2 import validate_staging_delivery
 from microcosm.build.target_materialization import assert_calibration_input_finite
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.diagnostics import (
@@ -265,6 +266,11 @@ def run_uk_calibration(
     run_config_extra: Mapping[str, object],
     release_id: str,
     logbook_prev_row_digest: str | None = None,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
+    event_callback: (Callable[[str, str, Mapping[str, object]], None] | None) = None,
+    staging_delivery: Mapping[str, object] | None = None,
+    staging_finalizer: Callable[[], None] | None = None,
+    staging_delivery_provider: Callable[[], Mapping[str, object]] | None = None,
 ) -> UKCalibrationRunResult:
     """Run the UK national calibration seam and write its sidecars."""
 
@@ -278,6 +284,10 @@ def run_uk_calibration(
         band_edge_registry=band_edge_registry,
         exclusion_receipt=exclusion_receipt,
     )
+    if (staging_finalizer is None) != (staging_delivery_provider is None):
+        raise ValueError(
+            "staging_finalizer and staging_delivery_provider must be supplied together."
+        )
     edge_registry = band_edge_registry
     code_pin = git_code_pin(_REPOSITORY)
     # Predecessor configuration is validated before anything is written: a
@@ -330,6 +340,11 @@ def run_uk_calibration(
             started_ts=started_ts,
             predecessor=predecessor,
             spool_dir=spool_dir,
+            progress_callback=progress_callback,
+            event_callback=event_callback,
+            staging_delivery=staging_delivery,
+            staging_finalizer=staging_finalizer,
+            staging_delivery_provider=staging_delivery_provider,
         )
     except BaseException as error:
         # Every terminal disposition records a row — successful, failed, or
@@ -458,7 +473,13 @@ def _run_uk_calibration_attempt(
     started_ts: datetime,
     predecessor: str | None,
     spool_dir: Path,
+    progress_callback: Callable[[dict[str, object]], None] | None,
+    event_callback: Callable[[str, str, Mapping[str, object]], None] | None,
+    staging_delivery: Mapping[str, object] | None,
+    staging_finalizer: Callable[[], None] | None,
+    staging_delivery_provider: Callable[[], Mapping[str, object]] | None,
 ) -> UKCalibrationRunResult:
+    _notify_run_event(event_callback, "input_loading", "started")
     measured_input_sha = _sha256_file(paths.input_h5)
     if measured_input_sha != input_sha256:
         raise ValueError(
@@ -473,6 +494,14 @@ def _run_uk_calibration_attempt(
     append_phase(state, "input_sidecar_bound")
     assert_calibration_input_finite(frame)
     append_phase(state, "input_finite")
+    _notify_run_event(
+        event_callback,
+        "input_loading",
+        "completed",
+        entity_row_counts={
+            entity: int(len(frame.table(entity))) for entity in frame.entities
+        },
+    )
 
     stage = UKNationalCalibrationStage(
         register_registry,
@@ -483,9 +512,21 @@ def _run_uk_calibration_attempt(
         doctrine=doctrine,
         measure_resolver=measure_resolver,
         band_edge_registry=band_edge_registry,
+        progress_callback=progress_callback,
+        stage_callback=event_callback,
     )
+    _notify_run_event(event_callback, "calibration", "started")
     calibrated = stage(frame)
     append_phase(state, "national_calibration_solved")
+    _notify_run_event(
+        event_callback,
+        "calibration",
+        "completed",
+        target_count=len(stage.registry.specs),
+        entity_row_counts={
+            entity: int(len(calibrated.table(entity))) for entity in calibrated.entities
+        },
+    )
 
     build_block = {
         "build_id": state.build_id,
@@ -516,6 +557,7 @@ def _run_uk_calibration_attempt(
         ),
         "score_vs_enhanced_frs": None,
     }
+    _notify_run_event(event_callback, "diagnostics", "started")
     write_uk_calibration_diagnostics(
         stage.solve_result,
         paths.diagnostics_json,
@@ -526,7 +568,14 @@ def _run_uk_calibration_attempt(
     )
     diagnostics_sha = _sha256_file(paths.diagnostics_json)
     append_phase(state, "diagnostics_written")
+    _notify_run_event(
+        event_callback,
+        "diagnostics",
+        "completed",
+        target_count=len(stage.diagnostics),
+    )
 
+    _notify_run_event(event_callback, "release_check_evaluation", "started")
     gate_report = _run_calibration_gate_battery(
         calibrated,
         stage,
@@ -535,16 +584,30 @@ def _run_uk_calibration_attempt(
         diagnostics_sha256=diagnostics_sha,
     )
     append_phase(state, "calibration_gates_evaluated")
+    _notify_run_event(
+        event_callback,
+        "release_check_evaluation",
+        "completed",
+        check_count=len(gate_report["gates"]),
+    )
     for gate_id, payload in gate_report["gates"].items():
         state.gate_verdicts[gate_id] = {
             "verdict": payload["status"],
             "receipt": f"local://{paths.terminal_gate_json.name}#/gates/{gate_id}",
         }
 
+    _notify_run_event(event_callback, "candidate_h5_creation", "started")
     write_uk_national_frame(calibrated, paths.staging_h5)
     staging_sha = _sha256_file(paths.staging_h5)
     append_phase(state, "staging_h5_written")
+    _notify_run_event(
+        event_callback,
+        "candidate_h5_creation",
+        "completed",
+        size_bytes=paths.staging_h5.stat().st_size,
+    )
 
+    _notify_run_event(event_callback, "build_record_creation", "started")
     record = {
         "schema_version": 1,
         "pipeline": _PIPELINE,
@@ -578,12 +641,30 @@ def _run_uk_calibration_attempt(
             },
         },
     }
+    if staging_delivery is not None:
+        record["staging_delivery"] = validate_staging_delivery(staging_delivery)
     _write_json(paths.build_record_json, record)
     build_record_sha = _sha256_file(paths.build_record_json)
     append_phase(state, "build_record_written")
+    _notify_run_event(
+        event_callback,
+        "build_record_creation",
+        "completed",
+        size_bytes=paths.build_record_json.stat().st_size,
+    )
     state.artifact_location = local_artifact_reference(
         paths.staging_h5, repository_hint=_REPOSITORY
     )
+    if staging_finalizer is not None:
+        assert staging_delivery_provider is not None
+        try:
+            staging_finalizer()
+        finally:
+            record["staging_delivery"] = validate_staging_delivery(
+                staging_delivery_provider()
+            )
+            _write_json(paths.build_record_json, record)
+            build_record_sha = _sha256_file(paths.build_record_json)
     spool = record_terminal_attempt(
         state=state,
         started_at=started_at,
@@ -606,6 +687,16 @@ def _run_uk_calibration_attempt(
         gate_report=gate_report,
         build_record=record,
     )
+
+
+def _notify_run_event(
+    callback: Callable[[str, str, Mapping[str, object]], None] | None,
+    stage_id: str,
+    status: str,
+    **details: object,
+) -> None:
+    if callback is not None:
+        callback(stage_id, status, details)
 
 
 def _run_calibration_gate_battery(

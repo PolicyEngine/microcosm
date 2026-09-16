@@ -583,6 +583,24 @@ def test_run_acceptance_statuses_and_bad_digest(tmp_path: Path) -> None:
         "not_applicable",
     }
 
+    # A refit whose baseline was trimmed (--baseline-pi-floor) names its stretch
+    # reference with the _floored suffix; the acceptance accepts either name.
+    manifest_path = path / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    floored_name = "normalized_horvitz_thompson_w_over_q_floored"
+    manifest["weights"]["stretch_reference"] = floored_name
+    manifest["solve"]["dataset_size"]["stretch_reference"] = floored_name
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    floored = run_acceptance(
+        load_run(path, label="candidate"),
+        expected_households=6,
+        expected_pool=30,
+        expected_epochs=10,
+    )
+    stretch = next(row for row in floored["checks"] if row["id"] == "stretch_reference")
+    assert stretch["status"] == "pass"
+    assert stretch["observed"] == floored_name
+
     (path / "solve_diagnostics.csv").write_text("wrong\n", encoding="utf-8")
     bad = run_acceptance(run)
     assert not bad["passed"]

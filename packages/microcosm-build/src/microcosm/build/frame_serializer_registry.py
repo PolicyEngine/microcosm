@@ -194,6 +194,14 @@ HDF_WRITE_EXCLUSIONS = (
         reason="Adds weight-kind and mass-log root attributes only.",
     ),
     HdfWriteExclusion(
+        exclusion_id="uk_smoke_non_release_root_attrs",
+        writer=HdfWriteSite(
+            "tools/build_uk_frs_spine.py",
+            "_mark_non_release_h5",
+        ),
+        reason="Adds non-release smoke metadata to existing root attributes only.",
+    ),
+    HdfWriteExclusion(
         exclusion_id="puf_equivalence_raw_draw_observer",
         writer=HdfWriteSite(
             "tools/build_us_puf_support_base.py",

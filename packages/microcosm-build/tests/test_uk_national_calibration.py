@@ -41,7 +41,7 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
-ACTIVE_REFERENCE_COUNT = 595
+ACTIVE_REFERENCE_COUNT = 603
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
@@ -403,6 +403,44 @@ def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None
     assert stage.manifest["weights"]["mass_log_records"] == 1
     assert stage.manifest["solve"]["n_targets"] == 1
     assert stage.manifest["solve"]["n_households"] == 4
+
+
+def test_stage_forwards_solver_progress_and_complete_lifecycle() -> None:
+    progress: list[dict[str, object]] = []
+    stages: list[tuple[str, str, dict[str, object]]] = []
+    stage = UKNationalCalibrationStage(
+        _registry(),
+        band_edge_registry=_registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
+        progress_callback=progress.append,
+        stage_callback=lambda stage_id, status, details: stages.append(
+            (stage_id, status, dict(details))
+        ),
+    )
+
+    stage(_frame())
+
+    assert progress
+    assert all(event["kind"] == "calibration_epoch" for event in progress)
+    assert [(stage_id, status) for stage_id, status, _details in stages] == [
+        ("calibration_input_validation", "started"),
+        ("calibration_input_validation", "completed"),
+        ("measure_resolution", "started"),
+        ("measure_resolution", "completed"),
+        ("target_materialization", "started"),
+        ("target_materialization", "completed"),
+        ("solver_preparation", "started"),
+        ("solver_preparation", "completed"),
+        ("solver_execution", "started"),
+        ("solver_execution", "completed"),
+        ("calibration_result_validation", "started"),
+        ("calibration_result_validation", "completed"),
+        ("calibration_evidence_construction", "started"),
+        ("calibration_evidence_construction", "completed"),
+    ]
+    assert stages[-1][2]["diagnostic_count"] == 1
+    assert all(details["elapsed_seconds"] >= 0 for _, _, details in stages)
 
 
 def test_uc_calibration_stage_accepts_benunit_grain_reference_on_nested_frame() -> None:
@@ -1098,3 +1136,38 @@ def test_packaged_uc_headline_refuses_incomplete_month_cell_fixture(defect) -> N
 
     with pytest.raises(ValueError, match="monthly window"):
         compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test_stage_attributes_failure_to_the_operation_actually_executing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stages: list[tuple[str, str]] = []
+    stage = UKNationalCalibrationStage(
+        _registry(),
+        band_edge_registry=_registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
+        stage_callback=lambda stage_id, status, details: stages.append(
+            (stage_id, status)
+        ),
+    )
+
+    def fail_materialization(*args, **kwargs):
+        raise RuntimeError("materialization failed")
+
+    monkeypatch.setattr(
+        "microcosm.build.uk_runtime.national_calibration.materialize_uk_ledger_targets",
+        fail_materialization,
+    )
+
+    with pytest.raises(RuntimeError, match="materialization failed"):
+        stage(_frame())
+
+    assert stages == [
+        ("calibration_input_validation", "started"),
+        ("calibration_input_validation", "completed"),
+        ("measure_resolution", "started"),
+        ("measure_resolution", "completed"),
+        ("target_materialization", "started"),
+        ("target_materialization", "failed"),
+    ]

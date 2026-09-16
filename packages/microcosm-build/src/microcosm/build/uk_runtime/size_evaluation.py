@@ -339,13 +339,17 @@ def run_acceptance(
     stretch_reference = weights_manifest.get(
         "stretch_reference", "pool_design" if not is_size else None
     )
+    # The refit's stretch reference is the normalised Horvitz-Thompson
+    # baseline, trimmed or not (--baseline-pi-floor records which).
+    accepted_stretch_references = (
+        "normalized_horvitz_thompson_w_over_q",
+        "normalized_horvitz_thompson_w_over_q_floored",
+    )
     add(
         "stretch_reference",
-        stretch_reference == "normalized_horvitz_thompson_w_over_q"
-        if is_size
-        else None,
+        stretch_reference in accepted_stretch_references if is_size else None,
         stretch_reference,
-        "normalized_horvitz_thompson_w_over_q",
+        " | ".join(accepted_stretch_references),
     )
     selection_receipt = _mapping(size_receipt.get("selection_receipt"))
     add(

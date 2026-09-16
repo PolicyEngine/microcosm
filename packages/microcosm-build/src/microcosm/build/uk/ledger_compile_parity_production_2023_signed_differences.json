@@ -1,11 +1,11 @@
 {
- "compiled_count": 337,
+ "compiled_count": 344,
  "counts_by_kind": {
   "calibration_drift": 120,
   "fixture_only": 17,
-  "ledger_only": 205
+  "ledger_only": 212
  },
- "difference_count": 342,
+ "difference_count": 349,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -184,6 +184,20 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 1078514.5,
+   "name": "dwp.uc.households_carer_element",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 178666.66666666666,
+   "name": "dwp.uc.households_childcare_element",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 1190123.8333333333,
    "name": "dwp.uc.households_children_1",
    "period": 2023,
@@ -233,6 +247,34 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 4037650.3333333335,
+   "name": "dwp.uc.households_housing_element",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1570545.4166666667,
+   "name": "dwp.uc.households_housing_element_private_rented",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2354587.5833333335,
+   "name": "dwp.uc.households_housing_element_social_rented",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2272425.1666666665,
+   "name": "dwp.uc.households_lcwra_element",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 2990070.1666666665,
    "name": "dwp.uc.households_single_no_children",
    "period": 2023,
@@ -244,6 +286,13 @@
    "name": "dwp.uc.households_single_with_children",
    "period": 2023,
    "reason": "Inherited PR #891 contract: current paid-UC counts use the explicit January-December 2025 source windows on the ec7169 national feed. This compares that declaration with the frozen 2023 production baseline; it does not redatum the observations to the comparison year or create a new year ruling."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3130000.0,
+   "name": "dwp.uc.households_with_deduction",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
