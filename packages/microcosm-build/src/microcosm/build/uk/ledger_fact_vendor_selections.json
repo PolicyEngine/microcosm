@@ -176,7 +176,7 @@
             ],
             "period_type": "calendar_year"
           },
-          "expected_row_count": 228
+          "expected_row_count": 456
         }
       ]
     },
@@ -385,13 +385,24 @@
     },
     {
       "resource": "hmrc_cgt_conditioning_facts.json",
-      "purpose": "HMRC Capital Gains Tax statistics 2026 release, tax year 2024-25 individual observations the CGT amounts imputation conditions on and the size-band donor stage weights by: Table 2.1a individuals by size of gain (taxpayers and gains, 13 bands), Table 6 individuals by age band (taxpayers, gains and tax, 9 bands plus the all-ages total), Table 5 taxpayers, gains and tax by UK country and region (all taxpayers including trusts; 12 region-tier areas plus the England and UK totals) and Table 1 individuals, trusts and total lines (the individuals/total shares that translate Table 5 onto the individuals basis). The stage rakes its allocation targets to these margins and reports achieved versus published at the same grain; no value is derived here.",
+      "purpose": "HMRC Capital Gains Tax statistics 2026 release, tax year 2024-25 individual observations the CGT amounts imputation draws from and conditions on and the size-band donor stage weights by: Table 3 individuals by size of gain crossed with taxable income (the joint the amounts are drawn from: 10 gain bands x 6 income bands, the all-incomes row totals, the all-gains column totals and the grand total; cells too small to publish are absent), Table 2.1a individuals by size of gain (taxpayers and gains, 13 bands), Table 6 individuals by age band (taxpayers, gains and tax, 9 bands plus the all-ages total), Table 5 taxpayers, gains and tax by UK country and region (all taxpayers including trusts; 12 region-tier areas plus the England and UK totals) and Table 1 individuals, trusts and total lines (the individuals/total shares that translate Table 5 onto the individuals basis). The stage rakes its allocation targets to these margins and reports achieved versus published at the same grain; no value is derived here.",
       "consumers": [
         "uk_runtime.hmrc_capital_gains",
         "uk_runtime.cgt_structure"
       ],
       "planned_consumers": [],
       "selections": [
+        {
+          "label": "table3_ty2024_individuals_by_size_of_gain_and_taxable_income",
+          "selector": {
+            "source_name": "hmrc",
+            "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+            "entity_name": "person",
+            "period_type": "tax_year",
+            "period_value": 2024
+          },
+          "expected_row_count": 147
+        },
         {
           "label": "table2_1a_ty2024_individuals_by_size_of_gain",
           "selector": {
@@ -431,6 +442,64 @@
             "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024"
           },
           "expected_row_count": 9
+        }
+      ]
+    },
+    {
+      "resource": "hmrc_cgt_asset_type_facts.json",
+      "purpose": "HMRC Capital Gains Tax statistics 2026 release rows the CGT asset-type stage assigns from and reports against: Table 8a tax year 2024-25 UK residents reporting residential property disposals (taxpayers, disposals, gains and tax by reporting channel: the CGT on UK Property service, the Self Assessment component and their total), Table 8b tax year 2024-25 UK Property service returns by taxpayer type (individuals, trusts and all; the individuals/all shares that restate Table 8a on the individuals basis of the national targets) and Table 7 tax year 2023-24 disposals, disposal proceeds and gains by asset category and asset type (sample-based; the composition prior for the non-residential asset-type draw, fenced from calibration). No value is derived here.",
+      "consumers": [
+        "uk_runtime.cgt_asset_type"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "table8a_ty2024_residential_property_by_channel",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024"
+          },
+          "expected_row_count": 12
+        },
+        {
+          "label": "table8b_ty2024_uk_property_service_by_taxpayer_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024"
+          },
+          "expected_row_count": 15
+        },
+        {
+          "label": "table7_ty2023_by_asset_category",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table7_2026.asset_category.ty2023"
+          },
+          "expected_row_count": 6
+        },
+        {
+          "label": "table7_ty2023_asset_category_total",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table7_2026.asset_category_total.ty2023"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table7_ty2023_by_financial_asset_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023"
+          },
+          "expected_row_count": 12
+        },
+        {
+          "label": "table7_ty2023_by_non_financial_asset_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023"
+          },
+          "expected_row_count": 12
         }
       ]
     }

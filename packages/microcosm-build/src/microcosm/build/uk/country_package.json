@@ -88,6 +88,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "hmrc_cgt_asset_type_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "advani_summers_capital_gains_distribution.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

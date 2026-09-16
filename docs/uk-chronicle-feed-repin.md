@@ -67,4 +67,7 @@ Universal Credit packages); the `df35af7` re-pin (#929, chronicle #264 and #267)
 moved the rows to `chronicle.consumer_fact.v3`, which adds the publisher's
 `geography.name` to every fact (the label the hierarchy needs for constituencies
 and local authorities, microcosm#920) and brought the council taxbase packages
-for England, Wales and Scotland (266,390 rows).
+for England, Wales and Scotland (266,390 rows); the `c5e5bf8` re-pin (microcosm#725,
+chronicle #271 and #273) brought the DESNZ subnational energy and NEED 2024 packages
+and the HMRC CGT Tables 7, 8 and 9 (asset type, residential property, carried
+interest), 276,205 rows, with no compiled value moving on either surface.
