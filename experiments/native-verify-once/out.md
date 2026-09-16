@@ -324,6 +324,40 @@ below were re-derived: `moved: 0`, `all stage manifests build`. The `git diff`
 of that file against the base branch is exactly two `unbound_uses_sha256`
 lines.
 
+## The five copies of one stat helper, and why four of them stay
+
+`_path_stat` -- one path's `(st_dev, st_ino, st_size, st_mtime_ns,
+st_ctime_ns)`, or `("absent", errno)`, never raising -- is written out verbatim
+in four modules: `acs_native_coverage_binding.py:415`,
+`acs_population_catalogue.py:178`, `asec_2024_native_population.py:456` and
+`asec_population_catalogue.py:423`. A fifth copy, `_stat_or_absent` in
+`survey_population_preparation.py`, had no caller at all and is deleted.
+`docs/shared-constants.md` asks for one definition of shared static data, so
+the remaining duplication is a deliberate choice and is stated here rather than
+left to be discovered.
+
+Consolidating them costs inventory pins. `graph_implementation._dependency_details`
+records every relative import as an unbound use (`import:microcosm.build.us_runtime:<module>`)
+and every *scope-qualified* use of the resulting alias
+(`<scope>:microcosm.build.us_runtime:<alias>`), and `_dependency_contract`
+hashes that set into `unbound_uses_sha256`, which
+`graph_implementation_inventory.json` pins per module and
+`implementation_manifest` refuses on mismatch. Importing a shared helper into
+`asec_population_catalogue.py` was tried against the module's own generator to
+check rather than assume: `imports` does not move (the package is already
+there), and `unbound_uses_sha256` does. Four capsule modules would therefore
+re-pin, on top of the two `unbound_uses_sha256` pins this lane already moves,
+in the same file that binds what each authentication capsule is allowed to
+reach. That is a larger and more security-relevant diff than the duplication it
+removes, so the four copies stay and this lane does not widen its pin surface
+for a style fix. A lane that consolidates them should do it as its own change,
+with those four pins re-derived and stated.
+
+The same argument applies with more force to `_stat_identity`, which exists in
+both `survey_population_preparation.py:268` and `executor.py:2100`: those are
+different packages, so a cross-package import would move `imports` as well and
+would require a new entry in `import_classifications`.
+
 ## Pins re-derived
 
 | pin | old | new | command |

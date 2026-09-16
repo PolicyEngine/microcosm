@@ -1019,14 +1019,6 @@ _MEMO = {}
 _EPOCH_RECORD = None
 
 
-def _stat_or_absent(path):
-    """One path's stat identity, or why it has none. Never raises."""
-    try:
-        return _stat_identity(Path(path).lstat())
-    except OSError as error:
-        return ("absent", error.errno)
-
-
 def _array_witness(values):
     """A read-free identity of one column's live storage.
 
