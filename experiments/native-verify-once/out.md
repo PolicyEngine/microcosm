@@ -414,6 +414,15 @@ are rebuilt.
 
 ### The lane's own runs, as each mechanism landed
 
+**These eight lines are historical, and they are not reproduced anywhere else
+in this report.** Each was pasted from the run the lane made as that mechanism
+landed, at that day's branch head and on whatever machine state existed then;
+none of them is a verdict about the branch as it now stands, and the test
+counts in several of them have since moved, because the verification findings
+added tests. What stands for the branch now is the CI-shaped battery below and
+the post-findings section at the end of it. They are kept because they are the
+record of what each mechanism cost as it landed.
+
 ```
 $ .venv/bin/python -I -B -m pytest packages/microcosm-graph/tests -p no:randomly
 766 passed, 1 skipped, 1 warning in 71.81s (0:01:11)
@@ -802,16 +811,22 @@ the run's own written objects when the run-end re-derivation refuses. (c) Write
 a refusal marker into the store so a later run cannot silently reuse those
 objects.
 
-**4. The main-only split.** The graph-shard hunks (`executor.py`,
-`manifest.py`, `codecs.py` and the two new graph test files) depend on nothing
-in this stack. The work exists locally at branch
-`graph-verify-once-main-stale-20260916-0057` (`eb7cdcab2`, worktree
-`~/PolicyEngine/_worktrees/microcosm-graph-verify-once-main`, clean) — note the
-plain name `graph-verify-once-main` now points at `d69a543e5`, which is
-`origin/main` and carries none of those commits. Nothing is pushed and no PR
-exists. (a) Push the `-stale-` branch under a clean name and open its draft PR
-against `main` now, so those hunks get real CI. (b) Hold until #893 merges and
-let the whole stack go through together. (c) Drop the split.
+**4. The main-only split — answered 2026-09-16, option (a).** The graph-shard
+hunks (`executor.py`, `manifest.py`, `codecs.py` and the two new graph test
+files) depend on nothing in this stack, and they are now
+[#938](https://github.com/PolicyEngine/microcosm/pull/938): draft, base `main`,
+head `8ea48447cf3245a8ac4acc0242cc9178d50acb13`, 6 files, +988 / −8,
+`MERGEABLE` (checked with `gh pr view 938` while writing this). At the time it
+was opened its five graph files differed from this branch's only by the
+documented `import struct` and `type(value) is float` removals, which belong to
+#893.
+
+**What is left of it.** Four graph-shard changes made on this branch after the
+verification findings are **not** in #938 yet, and mirroring them is the open
+item: the member-symlink follow in `_source_stat_signature`, the native-order
+float cast in `_object_stream` (the endianness item #938's own author flagged),
+`RunManifest.verification_epoch`, and the `_verification_epoch` parameter on
+`run_graph`. The commits that carry them are listed in the lane's journal.
 
 **5. Twenty-seven build tests were not run.** They reach the graph shard through
 `from microcosm.graph import …` rather than by dotted module path, so the

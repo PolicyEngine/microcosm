@@ -1489,8 +1489,12 @@ without moving any digest value.
   `~/PolicyEngine/_worktrees/microcosm-verify-once-baseline` is detached at
   `f7bb88525`.
 
-**Next:** Max's rulings on the report's seven open questions; push the split
-branch under a clean name and open its draft PR against `main` if he says so.
+**Next:** Max's rulings on the report's remaining open questions. Open question
+4 is answered: the split is draft PR
+[#938](https://github.com/PolicyEngine/microcosm/pull/938) (base `main`, head
+`8ea48447c`, 6 files +988/−8, MERGEABLE, still draft), opened 2026-09-16. The
+graph-shard commits made after the verification findings are not mirrored into
+it yet.
 #935's body already carries the measurement table. Measured: nine-node prefix
 before 1,803.87 CPU s without completing (ceiling) against after 1,444.78 CPU s
 completing; nineteen-node 5,278.61 -> 2,010.07 CPU s (2.63x) against the v4 cold
