@@ -452,24 +452,6 @@
       "expires_on": "2026-11-26"
     },
     {
-      "name": "dwp.uc.households_carer_element",
-      "reason": "Model concept gap, not a weight question: the engine's carer condition is Carer's Allowance receipt (is_carer_for_benefits = receives_carer_benefit) while the UC carer element needs 35 hours a week of care for a qualifying-benefit recipient with no Carer's Allowance requirement; the spine never fills the engine's care_hours input. Measured at the 10 September 2026 baseline against the bound calendar-2025 paid target: Q50f 595,807 / D2 602,749 paid-UC benefit units against 1,078,514 (-45%). Fitting it would move half the carriers' weight against a definition mismatch. Repair: care hours from the FRS care file and a regulation-based carer condition, then activation.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (element sizing at the 10 September 2026 baseline, docs/uk-uc-baseline-2026-09-10.md; María's sign-off in review of microcosm#921 on 2026-09-15, setting the one-month window)",
-      "approved_on": "2026-09-15",
-      "expires_on": "2026-10-15"
-    },
-    {
-      "name": "dwp.uc.households_childcare_element",
-      "reason": "Model concept gap, not a weight question: the engine pays the childcare element to every benefit unit where all adults work and childcare costs are reported, with no take-up or incidence lever, while DWP publishes 160-193k households a month receiving it in 2025. Measured at the 10 September 2026 baseline against the bound calendar-2025 target: Q50f 455,634 / D2 451,401 paid-UC benefit units (GBP 2.06bn) against 178,667 published (+155%). Repair: an incidence stage modelled on uc_deduction_attributes drawing to the published count, then activation.",
-      "tracking": "microcosm#882",
-      "approved_by": "juaristi22",
-      "adjudication": "microcosm#882 (element sizing at the 10 September 2026 baseline, docs/uk-uc-baseline-2026-09-10.md; María's sign-off in review of microcosm#921 on 2026-09-15, setting the one-month window)",
-      "approved_on": "2026-09-15",
-      "expires_on": "2026-10-15"
-    },
-    {
       "name": "dwp.uc.households_housing_element",
       "reason": "Structural bias, not a weight question: DWP's any-tenure housing-entitlement count is social plus private plus 'Other or unknown' tenure, and the model has no other/unknown tenure (uc_housing_costs_element pays only council, housing-association and private renters), so the model's any-tenure count is identically the social plus private rows, which are bound and fit; the row overstates the reachable total by the other/unknown cell, 112,518 of 4,037,650 in calendar 2025 (2.8 percent; the published any-tenure mean, which the three tenure cells reproduce to the unit). Fitting all three housing rows would ask the solver to over-fill the tenure rows by that amount. Measured on every evaluation as the housing-element caseload diagnostic (Q50f -0.8 percent, D2 +0.6 percent at the baseline).",
       "tracking": "microcosm#882",

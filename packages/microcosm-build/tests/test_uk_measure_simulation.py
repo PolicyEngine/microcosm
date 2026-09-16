@@ -589,11 +589,12 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "ons.savings_interest_income": 1,
     "obr.housing_benefit": 1,
     "dwp.jsa_claimants": 1,
-    # microcosm#882 (2026-09-15): the three UC element rows measured but
-    # held out of the objective — carer and childcare as model concept gaps,
-    # the any-tenure housing row as a structural bias — signed by María in
-    # review of microcosm#921 with a one-month window.
-    "dwp.uc.households_": 3,
+    # microcosm#882 (2026-09-15): three UC element rows were held out of the
+    # objective, signed by María in review of microcosm#921 with a one-month
+    # window. The carer and childcare rows retired on 2026-09-16 with their
+    # repairs (care hours and the childcare take-up draw on policyengine-uk
+    # 2.98.0); the any-tenure housing row stays held out as a structural bias.
+    "dwp.uc.households_": 1,
     # microcosm#882 repairs (2026-09-16): the three Housing Benefit caseload
     # rows and the thirteen benefit-cap amount bands outside the 25 percent
     # bound are measured on every evaluation but held out of the objective;
@@ -603,11 +604,10 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "dwp.benefit_cap.capped_households_": 13,
 }
 
-_UC_ELEMENT_REGISTER_ROWS = (
-    "dwp.uc.households_carer_element",
-    "dwp.uc.households_childcare_element",
-    "dwp.uc.households_housing_element",
-)
+# The carer and childcare rows were retired on 2026-09-16 with the repairs
+# (care hours and the childcare take-up draw on policyengine-uk 2.98.0);
+# only the any-tenure housing row remains held out.
+_UC_ELEMENT_REGISTER_ROWS = ("dwp.uc.households_housing_element",)
 
 _A16_UNREACHABLE_ROWS = (
     "ons.savings_interest_income",
@@ -622,7 +622,7 @@ _A16_READJUDICATED_ROWS = ("obr.housing_benefit", "dwp.jsa_claimants")
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 69
+    assert len(names) == len(set(names)) == 67
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -714,13 +714,11 @@ def test_packaged_exclusions_load():
     assert "dwp.benefit_cap.capped_households_up_to_100" not in names
     assert "dwp.benefit_cap.capped_households" not in names
 
-    # The 2026-09-15 tranche is #882's element rows: carer and childcare are
-    # model concept gaps (the engine's carer condition is Carer's Allowance
-    # receipt; the childcare element has no take-up lever) and the any-tenure
-    # housing row a structural bias (DWP's 'Yes' includes an other/unknown
-    # tenure the model cannot carry). Each is adjudicated to microcosm#882
-    # and the committed baseline doc, signed in review of microcosm#921, and
-    # windowed to one month so the repair or re-adjudication is forced.
+    # The 2026-09-15 tranche was #882's element rows. Carer and childcare
+    # retired on 2026-09-16 with their repairs; the any-tenure housing row (a
+    # structural bias: DWP's 'Yes' includes an other/unknown tenure the model
+    # cannot carry) remains, adjudicated to microcosm#882 and the committed
+    # baseline doc, signed in review of microcosm#921, windowed to one month.
     elements = [e for e in exclusions if e["approved_on"] == "2026-09-15"]
     assert sorted(e["name"] for e in elements) == sorted(_UC_ELEMENT_REGISTER_ROWS)
     for entry in elements:
@@ -738,6 +736,8 @@ def test_packaged_exclusions_load():
     assert "112,518 of 4,037,650" in housing["reason"]
     # The four element rows that stay in the objective are not on the register.
     for riding in (
+        "dwp.uc.households_carer_element",
+        "dwp.uc.households_childcare_element",
         "dwp.uc.households_lcwra_element",
         "dwp.uc.households_housing_element_social_rented",
         "dwp.uc.households_housing_element_private_rented",
