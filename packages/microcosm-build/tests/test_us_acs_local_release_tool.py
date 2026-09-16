@@ -163,10 +163,16 @@ def test_parse_args_enforces_stage_requirements(tmp_path: Path) -> None:
     assert args.gate_report == tmp_path / "ckpt" / "gate_summary.json"
 
 
-def test_release_id_prefix_and_manifest_constants() -> None:
+def test_release_naming_derives_from_the_donor_campaign() -> None:
+    """The campaign letter names the donor lineage, not the tool's birthday."""
+
     module = _load_tool_module()
-    assert module.RELEASE_ID_PREFIX == "populace-us-2024-buildo-acs-local"
-    assert module.RELEASE_NAMESPACE == "buildo_acs_local"
+    buildp = {"release_id": "populace-us-2024-buildp-sparse-rmloss100-x"}
+    assert module.release_id_prefix(buildp) == "populace-us-2024-buildp-acs-local"
+    assert module.release_namespace(buildp) == "buildp_acs_local"
+    # No pinned donor identity falls back to the tool line's birth campaign.
+    assert module.release_id_prefix(None) == "populace-us-2024-buildo-acs-local"
+    assert module.release_namespace({}) == "buildo_acs_local"
     assert module.ARTIFACT_FILENAME == "populace_us_2024_acs_local.h5"
     assert module.HF_REPO_ID == "policyengine/populace-us"
 

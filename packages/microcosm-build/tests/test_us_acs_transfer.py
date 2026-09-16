@@ -742,7 +742,19 @@ def test_declared_families_are_independent_of_release_coverage_surface() -> None
         }
     )
     assert "has_esi" in production_declared["person"]["model_required_boolean"]
-    assert "receives_wic" in production_declared["person"]["model_required_boolean"]
+    # The #600 enrollment leaves (receives_wic, receives_snap, and
+    # receives_tanf — formerly is_tanf_enrolled) postdate the newest
+    # certified release; the plan stays honest to the certified donor until
+    # a release carrying them certifies.
+    declared_targets = {
+        target
+        for entity_families in production_declared.values()
+        for targets in entity_families.values()
+        for target in targets
+    }
+    assert declared_targets.isdisjoint(
+        {"receives_wic", "receives_snap", "receives_tanf", "is_tanf_enrolled"}
+    )
 
 
 def test_declared_plan_carries_the_23_stage_base_surface() -> None:
@@ -783,9 +795,9 @@ def test_declared_plan_carries_the_23_stage_base_surface() -> None:
             "second_home_mortgage_origination_year",
         }
     )
-    assert declared_acs_transfer_target_families()["spm_unit"][
-        "model_required_boolean"
-    ] == ("receives_snap", "receives_tanf")
+    assert "model_required_boolean" not in (
+        declared_acs_transfer_target_families()["spm_unit"]
+    )
 
 
 def test_explicit_transfer_adds_requested_model_inputs(
