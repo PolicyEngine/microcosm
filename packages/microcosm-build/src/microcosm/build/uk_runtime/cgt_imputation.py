@@ -27,11 +27,14 @@ Three documented approximations, in order of consequence:
    other taxable benefits are not persisted; reliefs such as pension
    contributions and Gift Aid are not deducted. Both push the proxy up or
    down at the margins, which can move a person one income band.
-2. **Allocation is rank-preserving within income band.** Within each income
-   band, gainers are ranked by their existing gains and the top of the
-   ranking absorbs the published taxpayer mass, highest gain band first. A
-   person is not split across bands, so band mass is matched to the
-   granularity of one household weight.
+2. **Allocation is rank-preserving within a conditioning cell.** Within
+   each income band x age group x region group cell, gainers are ranked by
+   their existing gains and the top of the ranking absorbs the cell's raked
+   taxpayer mass, highest gain band first. A person is not split across
+   bands, so band mass is matched to the granularity of one household
+   weight. A cell short of support scales its targets down and releases the
+   (gain band, income band) shortfall to the income band's pooled walk over
+   its still-unassigned gainers (microcosm#725).
 3. **Rounded published values are repaired, not trusted raw.** Counts round
    to the nearest thousand and amounts to the nearest million, and four
    cells of the 2023-24 table imply a mean outside their own band. Implied
@@ -47,6 +50,21 @@ Three documented approximations, in order of consequence:
    with a CGT liability, so the candidate's remaining gainers are treated as
    sub-AEA gainers rather than being invented into the liability
    distribution or deleted.
+5. **The joint is moved onto the 2024-25 band levels.** Table 3 is
+   published for 2023-24 only; the calibration fits the 2024-25 individual
+   observations. Each gain band's row is rescaled onto the Table 2.1a
+   2024-25 count (folded to Table 3's bands) and its cell means so the
+   band's mass times means equals the 2024-25 band gains, keeping the
+   2023-24 income-column shares. The vintage move is declared, not
+   silent; the summary reports the residual the in-band mean repair leaves.
+6. **Age and region margins are raked, not observed jointly.** No table
+   publishes gains by age or region crossed with income, so the allocation
+   targets are raked (iterative proportional fitting) from the joint, the
+   Table 6 age counts and the Table 5 region counts on the individuals
+   basis, seeded by the frame's own weighted (age, region | income band)
+   shares among gainers. The rake works at a coarser grain than the
+   publications (six age groups, four region groups); the summary reports
+   achieved against published at the full Table 6 and Table 5 grain.
 
 Only persons with positive existing gains are gainers. The certified
 candidate also carries net losses (negative amounts) and zeros; both pass
@@ -56,18 +74,23 @@ says nothing about losses, so the stage neither redraws nor zeroes them.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.raking import MarginSpec, iterative_proportional_fit
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_GAIN_BAND_LOWER_BOUNDS,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
     HMRC_CGT_SOURCE_VINTAGE,
     HMRCCapitalGainsJointDistribution,
+    HMRCCGTConditioningFacts,
+    load_hmrc_cgt_conditioning_facts,
     materialize_hmrc_capital_gains_joint_distribution,
 )
 from microcosm.build.uk_runtime.national_frame import (
@@ -77,6 +100,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
+from microcosm.calibrate.geography_constants import UK_REGION_TIER_ENUM
 from microcosm.frame import Frame, MassChangeRecord
 
 __all__ = [
@@ -87,7 +111,15 @@ __all__ = [
     "UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS",
     "UKCGTImputationSummary",
     "UKCGTPolicyParameters",
+    "UK_CGT_AGE_GROUP_LOWER_BOUNDS",
+    "UK_CGT_CONDITIONING_DIMENSIONS",
+    "UK_CGT_FALLBACK_POLICY",
+    "UK_CGT_IPF_ITERATIONS",
+    "UK_CGT_REGION_GROUP_LABELS",
+    "UK_CGT_REGION_GROUPS",
+    "UKCGTAllocationReport",
     "impute_uk_capital_gains",
+    "impute_uk_capital_gains_with_report",
     "summarize_uk_cgt_imputation",
     "uk_capital_gains_imputation_stage",
     "uk_cgt_spine_stage_transform",
@@ -151,6 +183,59 @@ _MINIMUM_ALLOCATION_PEOPLE = 1.0
 #: repaired before they reach the solvers, so a violation here signals a
 #: caller passing an unrepaired mean, not published data.
 _MEAN_POSITION_TOLERANCE = 1e-9
+
+#: Age groups the allocation conditions on (lower bounds, ascending). Every
+#: gainer below the second bound falls in the first group; carriers are
+#: adults, so the group is 16-34 in practice. Coarser than Table 6's nine
+#: bands because a few hundred effective carriers cannot populate
+#: 9 x 12 x 6 cells; the summary still reports at the published grain.
+UK_CGT_AGE_GROUP_LOWER_BOUNDS: tuple[int, ...] = (16, 35, 45, 55, 65, 75)
+
+#: Region groups the allocation conditions on: spine ``region`` enum name
+#: -> group label. London and the South East plus East of England hold
+#: over half of published gains; the remaining English regions and the
+#: three devolved nations are pooled.
+UK_CGT_REGION_GROUPS: Mapping[str, str] = MappingProxyType(
+    {
+        "LONDON": "london",
+        "SOUTH_EAST": "south_east_and_east_of_england",
+        "EAST_OF_ENGLAND": "south_east_and_east_of_england",
+        "NORTH_EAST": "rest_of_england",
+        "NORTH_WEST": "rest_of_england",
+        "YORKSHIRE": "rest_of_england",
+        "EAST_MIDLANDS": "rest_of_england",
+        "WEST_MIDLANDS": "rest_of_england",
+        "SOUTH_WEST": "rest_of_england",
+        "WALES": "wales_scotland_northern_ireland",
+        "SCOTLAND": "wales_scotland_northern_ireland",
+        "NORTHERN_IRELAND": "wales_scotland_northern_ireland",
+    }
+)
+if set(UK_CGT_REGION_GROUPS) != set(UK_REGION_TIER_ENUM.values()):
+    raise RuntimeError("UK_CGT_REGION_GROUPS must cover exactly the region tier.")
+
+#: Group labels in a fixed order, the index the allocation uses.
+UK_CGT_REGION_GROUP_LABELS: tuple[str, ...] = tuple(
+    dict.fromkeys(UK_CGT_REGION_GROUPS.values())
+)
+
+#: Iterations of the proportional fit that rakes the allocation targets to
+#: the published margins; feasible margins converge geometrically.
+UK_CGT_IPF_ITERATIONS = 200
+
+#: How a (gain band, income band) shortfall left by the conditioned cells is
+#: met: the income band's still-unassigned gainers are pooled across age and
+#: region groups and walked by rank, so the joint is met wherever the band
+#: has pooled support instead of being split into allotments below one
+#: carrier's weight.
+UK_CGT_FALLBACK_POLICY = "pooled_income_band_rank_walk"
+
+#: The dimensions the allocation conditions on, in nesting order.
+UK_CGT_CONDITIONING_DIMENSIONS: tuple[str, ...] = (
+    "income band",
+    "age group",
+    "region group",
+)
 
 
 @dataclass(frozen=True)
@@ -433,33 +518,429 @@ def _draw_amounts(plan: _CellPlan, quantiles: np.ndarray) -> np.ndarray:
 
 
 @dataclass(frozen=True)
+class UKCGTAllocationReport:
+    """What the rake asked for and what the walk delivered, cell by cell."""
+
+    band_rows: tuple[dict[str, object], ...]
+    joint_rows: tuple[dict[str, object], ...]
+    rake: Mapping[str, object]
+    fallback_released_mass: float
+    fallback_share_by_band: Mapping[int, float]
+    conditioning: Mapping[str, object]
+
+    def evidence(self) -> dict[str, object]:
+        return {
+            "band_rows": [dict(row) for row in self.band_rows],
+            "joint_rows": [dict(row) for row in self.joint_rows],
+            "rake": dict(self.rake),
+            "fallback_released_mass": self.fallback_released_mass,
+            "fallback_share_by_band": {
+                str(key): value for key, value in self.fallback_share_by_band.items()
+            },
+            "conditioning": dict(self.conditioning),
+        }
+
+
+@dataclass(frozen=True)
 class UKCGTImputationSummary:
-    """Achieved allocation against the published surface, for reporting."""
+    """Achieved allocation against the published surface, for reporting.
+
+    ``rows`` compares the Table 3 gain bands with the 2024-25 Table 2.1a
+    levels folded onto them; ``age_rows`` and ``region_rows`` compare the
+    published Table 6 and Table 5 grain (the region rows scaled to the
+    individuals basis); ``age_by_band_rows`` is the joint the #725 finding
+    was measured on.
+    """
 
     rows: pd.DataFrame
     taxpayer_mass: float
     published_taxpayer_mass: float
     remainder_mass: float
+    age_rows: pd.DataFrame = field(default_factory=pd.DataFrame)
+    region_rows: pd.DataFrame = field(default_factory=pd.DataFrame)
+    age_by_band_rows: pd.DataFrame = field(default_factory=pd.DataFrame)
+    allocation: UKCGTAllocationReport | None = None
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "stage": UK_CGT_IMPUTATION_STAGE_NAME,
             "rows": self.rows.to_dict(orient="records"),
             "taxpayer_mass": self.taxpayer_mass,
             "published_taxpayer_mass": self.published_taxpayer_mass,
             "remainder_mass": self.remainder_mass,
+            "age_rows": self.age_rows.to_dict(orient="records"),
+            "region_rows": self.region_rows.to_dict(orient="records"),
+            "age_by_band_rows": self.age_by_band_rows.to_dict(orient="records"),
         }
+        if self.allocation is not None:
+            evidence["allocation"] = self.allocation.evidence()
+        return evidence
 
 
-def impute_uk_capital_gains(
+def _person_conditioning_cells(
+    person: pd.DataFrame, household: pd.DataFrame
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Age, age group, region and region group for every person row.
+
+    Region is a household column; it reaches persons through the household
+    id, and a person without a region or with an unknown region name
+    refuses the stage rather than falling into a silent group.
+    """
+
+    if "age" not in person.columns:
+        raise ValueError("Person table has no age column to condition on.")
+    if "region" not in household.columns:
+        raise ValueError("Household table has no region column to condition on.")
+    age = pd.to_numeric(person["age"], errors="raise").to_numpy(dtype=float)
+    if not np.isfinite(age).all():
+        raise ValueError("Person ages must be finite to condition the redraw.")
+    region_by_household = pd.Series(
+        household["region"].astype(str).to_numpy(), index=household["household_id"]
+    )
+    mapped = person["person_household_id"].map(region_by_household)
+    if mapped.isna().any():
+        raise ValueError(
+            "CGT conditioning cannot map every person to a household region."
+        )
+    region = mapped.astype(str).to_numpy()
+    unknown = sorted(set(region) - set(UK_CGT_REGION_GROUPS))
+    if unknown:
+        raise ValueError(f"Unknown region name(s) for CGT conditioning: {unknown}.")
+    age_group = np.digitize(age, UK_CGT_AGE_GROUP_LOWER_BOUNDS[1:])
+    label_index = {
+        label: index for index, label in enumerate(UK_CGT_REGION_GROUP_LABELS)
+    }
+    region_group = np.asarray(
+        [label_index[UK_CGT_REGION_GROUPS[name]] for name in region], dtype=int
+    )
+    return age, age_group, region, region_group
+
+
+def _joint_plans_2024(
+    distribution: HMRCCapitalGainsJointDistribution,
+    conditioning: HMRCCGTConditioningFacts,
+    *,
+    annual_exempt_amount: float,
+) -> tuple[dict[tuple[int, int], _CellPlan], tuple[dict[str, object], ...]]:
+    """Table 3's joint, moved onto the Table 2.1a 2024-25 band levels.
+
+    Every gain band's row of Table 3 (2023-24) is rescaled so its taxpayers
+    equal the 2024-25 band count and its cell means so the band's mass times
+    means equals the 2024-25 band gains; the income-column shares within a
+    band stay 2023-24, the latest published joint. Suppression, rounding
+    repair and the liability floor come from :func:`_band_plans` unchanged.
+    """
+
+    aggregated = conditioning.size_bands_aggregated(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS)
+    plans_by_income = {
+        income_lower: {
+            plan.gain_lower_bound: plan
+            for plan in _band_plans(
+                distribution, income_lower, annual_exempt_amount=annual_exempt_amount
+            )
+        }
+        for income_lower in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
+    }
+    joint: dict[tuple[int, int], _CellPlan] = {}
+    band_rows: list[dict[str, object]] = []
+    for gain_lower in HMRC_CGT_GAIN_BAND_LOWER_BOUNDS:
+        people_2024, gains_2024 = aggregated[gain_lower]
+        people_2023 = sum(
+            plans_by_income[income_lower][gain_lower].allocation_people
+            for income_lower in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
+        )
+        people_scale = people_2024 / people_2023 if people_2023 > 0 else 0.0
+        counts = {}
+        for income_lower in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS:
+            count = plans_by_income[income_lower][gain_lower].allocation_people
+            count *= people_scale
+            counts[income_lower] = count if count >= _MINIMUM_ALLOCATION_PEOPLE else 0.0
+        gains_at_2023_means = sum(
+            counts[income_lower] * plans_by_income[income_lower][gain_lower].mean
+            for income_lower in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
+        )
+        mean_scale = (
+            gains_2024 / gains_at_2023_means if gains_at_2023_means > 0 else 1.0
+        )
+        achieved_gains = 0.0
+        repaired = 0
+        for income_lower in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS:
+            plan = plans_by_income[income_lower][gain_lower]
+            mean, was_repaired = _repair_mean(
+                plan.mean * mean_scale,
+                effective_lower=plan.effective_lower_bound,
+                upper=plan.gain_upper_bound,
+            )
+            repaired += int(was_repaired)
+            joint[(gain_lower, income_lower)] = replace(
+                plan,
+                allocation_people=counts[income_lower],
+                mean=mean,
+                mean_repaired=plan.mean_repaired or was_repaired,
+            )
+            achieved_gains += counts[income_lower] * mean
+        band_rows.append(
+            {
+                "gain_lower_bound": gain_lower,
+                "people_2023": people_2023,
+                "published_people": people_2024,
+                "target_people": sum(counts.values()),
+                "published_gains": gains_2024,
+                "people_scale": people_scale,
+                "mean_scale": mean_scale,
+                "gains_identity_residual": achieved_gains - gains_2024,
+                "means_repaired": repaired,
+            }
+        )
+    return joint, tuple(band_rows)
+
+
+def _fold_age_margin(conditioning: HMRCCGTConditioningFacts) -> np.ndarray:
+    margin = np.zeros(len(UK_CGT_AGE_GROUP_LOWER_BOUNDS))
+    for band in conditioning.age_bands:
+        group = int(np.digitize(band.lower_bound, UK_CGT_AGE_GROUP_LOWER_BOUNDS[1:]))
+        margin[group] += band.taxpayers
+    return margin
+
+
+def _fold_region_margin(conditioning: HMRCCGTConditioningFacts) -> np.ndarray:
+    share = conditioning.table1.individuals_share("taxpayers")
+    margin = np.zeros(len(UK_CGT_REGION_GROUP_LABELS))
+    for row in conditioning.regions:
+        group = UK_CGT_REGION_GROUP_LABELS.index(UK_CGT_REGION_GROUPS[row.region])
+        margin[group] += row.taxpayers * share
+    return margin
+
+
+def _rake_allocation_targets(
+    joint: Mapping[tuple[int, int], _CellPlan],
+    conditioning: HMRCCGTConditioningFacts,
+    *,
+    is_gainer: np.ndarray,
+    person_weight: np.ndarray,
+    income_band: np.ndarray,
+    age_group: np.ndarray,
+    region_group: np.ndarray,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Rake taxpayer targets over gain band x income band x age x region.
+
+    The seed is the joint cell mass spread by the frame's own weighted (age
+    group, region group | income band) shares among gainers, so the frame's
+    incidence structure is the prior; the margins are the joint itself, the
+    Table 6 age counts and the Table 5 region counts on the individuals
+    basis, every margin first normalised onto the joint's total so rounding
+    cannot make them mutually infeasible. Cells the frame cannot support
+    keep a zero seed and are reported, never invented.
+    """
+
+    gains = HMRC_CGT_GAIN_BAND_LOWER_BOUNDS
+    incomes = HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
+    n_gain, n_income = len(gains), len(incomes)
+    n_age, n_region = (
+        len(UK_CGT_AGE_GROUP_LOWER_BOUNDS),
+        len(UK_CGT_REGION_GROUP_LABELS),
+    )
+    joint_mass = np.zeros((n_gain, n_income))
+    for gi, gain_lower in enumerate(gains):
+        for ii, income_lower in enumerate(incomes):
+            joint_mass[gi, ii] = joint[(gain_lower, income_lower)].allocation_people
+    total = float(joint_mass.sum())
+
+    shares = np.zeros((n_income, n_age, n_region))
+    for ii, income_lower in enumerate(incomes):
+        in_band = is_gainer & (income_band == income_lower)
+        if not in_band.any():
+            continue
+        np.add.at(
+            shares[ii],
+            (age_group[in_band], region_group[in_band]),
+            person_weight[in_band],
+        )
+        band_mass = shares[ii].sum()
+        if band_mass > 0:
+            shares[ii] /= band_mass
+    seed = joint_mass[:, :, None, None] * shares[None, :, :, :]
+
+    age_margin_raw = _fold_age_margin(conditioning)
+    region_margin_raw = _fold_region_margin(conditioning)
+    age_margin = (
+        age_margin_raw * (total / age_margin_raw.sum())
+        if age_margin_raw.sum() > 0
+        else age_margin_raw
+    )
+    region_margin = (
+        region_margin_raw * (total / region_margin_raw.sum())
+        if region_margin_raw.sum() > 0
+        else region_margin_raw
+    )
+
+    gi_index, ii_index, a_index, r_index = np.meshgrid(
+        np.arange(n_gain),
+        np.arange(n_income),
+        np.arange(n_age),
+        np.arange(n_region),
+        indexing="ij",
+    )
+    cells = pd.DataFrame(
+        {
+            "gi": (gi_index * n_income + ii_index).ravel(),
+            "a": a_index.ravel(),
+            "r": r_index.ravel(),
+            "n": seed.ravel(),
+        }
+    )
+    rows_per_gi = n_age * n_region
+    rows_per_age = n_gain * n_income * n_region
+    rows_per_region = n_gain * n_income * n_age
+    margins = [
+        MarginSpec(
+            "gi",
+            {
+                int(key): {"n": float(joint_mass.ravel()[key]) / rows_per_gi}
+                for key in range(n_gain * n_income)
+            },
+        ),
+        MarginSpec(
+            "a", {a: {"n": float(age_margin[a]) / rows_per_age} for a in range(n_age)}
+        ),
+        MarginSpec(
+            "r",
+            {
+                r: {"n": float(region_margin[r]) / rows_per_region}
+                for r in range(n_region)
+            },
+        ),
+    ]
+    raked = iterative_proportional_fit(
+        cells, columns=("n",), margins=margins, iterations=UK_CGT_IPF_ITERATIONS
+    )
+    targets = (
+        raked["n"].to_numpy(dtype=float).reshape(n_gain, n_income, n_age, n_region)
+    )
+
+    # A margin category the frame cannot support at all (no gainer in any
+    # of its cells) is unattainable however the fit iterates; its mass is
+    # reported apart from the fit error over the categories that have seed.
+    def margin_errors(
+        achieved: np.ndarray, target: np.ndarray, seeded: np.ndarray
+    ) -> tuple[list[float], float]:
+        errors: list[float] = []
+        unattainable = 0.0
+        for have, want, has_seed in zip(
+            achieved.ravel(), target.ravel(), seeded.ravel(), strict=True
+        ):
+            if want <= 0:
+                continue
+            if not has_seed:
+                unattainable += float(want)
+                continue
+            errors.append(abs(float(have) - float(want)) / float(want))
+        return errors, unattainable
+
+    seeded_joint = seed.sum(axis=(2, 3)) > 0
+    seeded_age = seed.sum(axis=(0, 1, 3)) > 0
+    seeded_region = seed.sum(axis=(0, 1, 2)) > 0
+    joint_errors, joint_unattainable = margin_errors(
+        targets.sum(axis=(2, 3)), joint_mass, seeded_joint
+    )
+    age_errors, age_unattainable = margin_errors(
+        targets.sum(axis=(0, 1, 3)), age_margin, seeded_age
+    )
+    region_errors, region_unattainable = margin_errors(
+        targets.sum(axis=(0, 1, 2)), region_margin, seeded_region
+    )
+    errors = [*joint_errors, *age_errors, *region_errors]
+    zero_seed = raked.attrs.get("raking_zero_current_cells", ())
+    report: dict[str, object] = {
+        "ipf_iterations": UK_CGT_IPF_ITERATIONS,
+        "ipf_max_abs_margin_error": max(errors) if errors else 0.0,
+        "ipf_unattainable_margin_mass": {
+            "joint": joint_unattainable,
+            "age": age_unattainable,
+            "region": region_unattainable,
+        },
+        "ipf_zero_seed_cells": len(zero_seed),
+        "joint_total_people": total,
+        "age_margin": {
+            str(UK_CGT_AGE_GROUP_LOWER_BOUNDS[a]): {
+                "published": float(age_margin_raw[a]),
+                "normalised": float(age_margin[a]),
+                "raked": float(targets.sum(axis=(0, 1, 3))[a]),
+            }
+            for a in range(n_age)
+        },
+        "region_margin": {
+            UK_CGT_REGION_GROUP_LABELS[r]: {
+                "published_individuals_basis": float(region_margin_raw[r]),
+                "normalised": float(region_margin[r]),
+                "raked": float(targets.sum(axis=(0, 1, 2))[r]),
+            }
+            for r in range(n_region)
+        },
+        "income_bands_without_gainers": [
+            int(income_lower)
+            for ii, income_lower in enumerate(incomes)
+            if shares[ii].sum() <= 0
+        ],
+    }
+    return targets, report
+
+
+def _walk_bands(
+    *,
+    ranked: np.ndarray,
+    weights: np.ndarray,
+    boundaries: Sequence[tuple[int, float]],
+    plans: Mapping[int, _CellPlan],
+    rng: np.random.Generator,
+    new_gains: np.ndarray,
+) -> tuple[np.ndarray, dict[int, float]]:
+    """Assign ranked gainers to bands, highest first, and draw their amounts.
+
+    ``boundaries`` lists ``(gain band lower bound, people mass)`` from the
+    top band down; a person joins the band whose cumulative boundary first
+    covers the midpoint of their weight, so no person splits across bands.
+    Returns the mask of assigned positions in ``ranked`` and the mass each
+    band received.
+    """
+
+    cumulative = np.cumsum(weights)
+    boundary = 0.0
+    assigned = np.zeros(len(ranked), dtype=bool)
+    achieved: dict[int, float] = {}
+    for gain_lower, mass in boundaries:
+        boundary += mass
+        in_cell = ~assigned & (cumulative - weights / 2.0 <= boundary)
+        count = int(in_cell.sum())
+        if count == 0:
+            continue
+        assigned |= in_cell
+        quantiles = rng.random(count)
+        new_gains[ranked[in_cell]] = _draw_amounts(plans[gain_lower], quantiles)
+        achieved[gain_lower] = float(weights[in_cell].sum())
+    return assigned, achieved
+
+
+def _ranked(
+    indices: np.ndarray, *, person_id: np.ndarray, existing: np.ndarray
+) -> np.ndarray:
+    # Rank by existing gains, largest first; person_id breaks ties so the
+    # ordering, and with it every draw, is deterministic.
+    order = np.lexsort((person_id[indices], -existing[indices]))
+    return indices[order]
+
+
+def impute_uk_capital_gains_with_report(
     frame: Frame,
     distribution: HMRCCapitalGainsJointDistribution,
     parameters: UKCGTPolicyParameters,
     *,
+    conditioning: HMRCCGTConditioningFacts,
     seed: int = UK_CGT_IMPUTATION_SEED,
     mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
-) -> Frame:
-    """Redraw gainers' amounts from the published joint distribution."""
+) -> tuple[Frame, UKCGTAllocationReport]:
+    """Redraw gainers' amounts, conditioned on income, age and region."""
+
     validate_uk_national_frame(frame)
     time_period = uk_time_period(frame)
     person = frame.table("person").reset_index(drop=True)
@@ -482,6 +963,7 @@ def impute_uk_capital_gains(
     person_weight = (
         person["person_household_id"].map(weights_by_household).to_numpy(dtype=float)
     )
+    person_id = person["person_id"].to_numpy()
 
     existing = pd.to_numeric(person["capital_gains"], errors="raise").to_numpy(
         dtype=float
@@ -490,62 +972,111 @@ def impute_uk_capital_gains(
     income_band = np.asarray(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS)[
         np.digitize(taxable_income, HMRC_CGT_INCOME_BAND_LOWER_BOUNDS[1:])
     ]
+    _, age_group, _, region_group = _person_conditioning_cells(person, household)
 
     rng = np.random.default_rng((seed, int(time_period)))
     new_gains = existing.copy()
     is_gainer = existing > 0
+    assigned = np.zeros(len(person), dtype=bool)
 
-    for income_lower_bound in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS:
-        in_band = is_gainer & (income_band == income_lower_bound)
-        if not in_band.any():
-            continue
-        indices = np.flatnonzero(in_band)
-        # Rank by existing gains, largest first; person_id breaks ties so
-        # the ordering, and with it every draw, is deterministic.
-        order = np.lexsort(
-            (person["person_id"].to_numpy()[indices], -existing[indices])
-        )
-        ranked = indices[order]
-        band_weights = person_weight[ranked]
-        cumulative = np.cumsum(band_weights)
+    joint, band_rows = _joint_plans_2024(
+        distribution, conditioning, annual_exempt_amount=parameters.annual_exempt_amount
+    )
+    targets, rake_report = _rake_allocation_targets(
+        joint,
+        conditioning,
+        is_gainer=is_gainer,
+        person_weight=person_weight,
+        income_band=income_band,
+        age_group=age_group,
+        region_group=region_group,
+    )
 
-        plans = _band_plans(
-            distribution,
-            income_lower_bound,
-            annual_exempt_amount=parameters.annual_exempt_amount,
-        )
-        published_mass = sum(plan.allocation_people for plan in plans)
-        available_mass = float(cumulative[-1])
-        if published_mass <= 0.0:
-            # No published taxpayer mass in this income band: every gainer
-            # here is a sub-AEA remainder.
-            new_gains[ranked] = np.minimum(
-                existing[ranked], parameters.annual_exempt_amount
+    gains = HMRC_CGT_GAIN_BAND_LOWER_BOUNDS
+    incomes = HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
+    achieved_pass1 = np.zeros(targets.shape)
+    achieved_fallback = np.zeros((len(gains), len(incomes)))
+
+    # Pass 1: every (income, age, region) cell walks its raked targets.
+    for ii, income_lower in enumerate(incomes):
+        plans = {gain_lower: joint[(gain_lower, income_lower)] for gain_lower in gains}
+        for a in range(len(UK_CGT_AGE_GROUP_LOWER_BOUNDS)):
+            for r in range(len(UK_CGT_REGION_GROUP_LABELS)):
+                in_cell = (
+                    is_gainer
+                    & (income_band == income_lower)
+                    & (age_group == a)
+                    & (region_group == r)
+                )
+                cell_targets = targets[:, ii, a, r]
+                total_target = float(cell_targets.sum())
+                if not in_cell.any() or total_target <= 0.0:
+                    continue
+                ranked = _ranked(
+                    np.flatnonzero(in_cell), person_id=person_id, existing=existing
+                )
+                weights = person_weight[ranked]
+                # When the cell holds less gainer mass than its target,
+                # allocate what exists in the raked proportions; the
+                # shortfall goes to the income band's pooled walk.
+                scale = min(1.0, float(weights.sum()) / total_target)
+                boundaries = [
+                    (gain_lower, float(cell_targets[gi]) * scale)
+                    for gi, gain_lower in reversed(list(enumerate(gains)))
+                ]
+                cell_assigned, achieved = _walk_bands(
+                    ranked=ranked,
+                    weights=weights,
+                    boundaries=boundaries,
+                    plans=plans,
+                    rng=rng,
+                    new_gains=new_gains,
+                )
+                assigned[ranked[cell_assigned]] = True
+                for gi, gain_lower in enumerate(gains):
+                    achieved_pass1[gi, ii, a, r] = achieved.get(gain_lower, 0.0)
+
+    # Pass 2: the joint's shortfall is walked over each income band's
+    # pooled unassigned gainers, largest first.
+    for ii, income_lower in enumerate(incomes):
+        plans = {gain_lower: joint[(gain_lower, income_lower)] for gain_lower in gains}
+        shortfall = {
+            gain_lower: max(
+                0.0,
+                joint[(gain_lower, income_lower)].allocation_people
+                - float(achieved_pass1[gi, ii].sum()),
             )
+            for gi, gain_lower in enumerate(gains)
+        }
+        total_shortfall = sum(shortfall.values())
+        pool = is_gainer & (income_band == income_lower) & ~assigned
+        if total_shortfall <= 0.0 or not pool.any():
             continue
-        # When the population holds less gainer mass than HMRC's taxpayers,
-        # allocate what exists in the published proportions rather than
-        # exhausting the top bands and emptying the bottom ones.
-        scale = min(1.0, available_mass / published_mass)
-
-        boundary = 0.0
-        assigned = np.zeros(len(ranked), dtype=bool)
-        for plan in plans:
-            boundary += plan.allocation_people * scale
-            in_cell = ~assigned & (cumulative - band_weights / 2.0 <= boundary)
-            count = int(in_cell.sum())
-            if count == 0:
-                continue
-            assigned |= in_cell
-            quantiles = rng.random(count)
-            new_gains[ranked[in_cell]] = _draw_amounts(plan, quantiles)
-
-        # Below the published taxpayer mass: sub-AEA gainers keep their
-        # existing amounts, capped at the annual exempt amount.
-        remainder = ranked[~assigned]
-        new_gains[remainder] = np.minimum(
-            existing[remainder], parameters.annual_exempt_amount
+        ranked = _ranked(np.flatnonzero(pool), person_id=person_id, existing=existing)
+        weights = person_weight[ranked]
+        scale = min(1.0, float(weights.sum()) / total_shortfall)
+        boundaries = [
+            (gain_lower, shortfall[gain_lower] * scale)
+            for gain_lower in reversed(gains)
+        ]
+        pool_assigned, achieved = _walk_bands(
+            ranked=ranked,
+            weights=weights,
+            boundaries=boundaries,
+            plans=plans,
+            rng=rng,
+            new_gains=new_gains,
         )
+        assigned[ranked[pool_assigned]] = True
+        for gi, gain_lower in enumerate(gains):
+            achieved_fallback[gi, ii] = achieved.get(gain_lower, 0.0)
+
+    # Below the published taxpayer mass: sub-AEA gainers keep their
+    # existing amounts, capped at the annual exempt amount.
+    remainder = is_gainer & ~assigned
+    new_gains[remainder] = np.minimum(
+        existing[remainder], parameters.annual_exempt_amount
+    )
 
     if not np.isfinite(new_gains).all():
         raise ValueError("Imputed capital gains contain non-finite values.")
@@ -557,6 +1088,51 @@ def impute_uk_capital_gains(
         raise ValueError("Redrawn capital gains contain negative values.")
     if (new_gains[~is_gainer] != existing[~is_gainer]).any():
         raise ValueError("Non-gainer capital gains were modified by the redraw.")
+
+    joint_rows = []
+    pass1_by_band = achieved_pass1.sum(axis=(2, 3))
+    for gi, gain_lower in enumerate(gains):
+        for ii, income_lower in enumerate(incomes):
+            plan = joint[(gain_lower, income_lower)]
+            joint_rows.append(
+                {
+                    "gain_lower_bound": gain_lower,
+                    "income_lower_bound": income_lower,
+                    "target_people": plan.allocation_people,
+                    "achieved_pass1": float(pass1_by_band[gi, ii]),
+                    "achieved_fallback": float(achieved_fallback[gi, ii]),
+                    "residual": plan.allocation_people
+                    - float(pass1_by_band[gi, ii])
+                    - float(achieved_fallback[gi, ii]),
+                    "mean": plan.mean,
+                    "mean_repaired": plan.mean_repaired,
+                }
+            )
+    band_mass = pass1_by_band.sum(axis=1) + achieved_fallback.sum(axis=1)
+    fallback_share = {
+        gain_lower: (
+            float(achieved_fallback[gi].sum() / band_mass[gi])
+            if band_mass[gi] > 0
+            else 0.0
+        )
+        for gi, gain_lower in enumerate(gains)
+    }
+    report = UKCGTAllocationReport(
+        band_rows=band_rows,
+        joint_rows=tuple(joint_rows),
+        rake=rake_report,
+        fallback_released_mass=float(achieved_fallback.sum()),
+        fallback_share_by_band=fallback_share,
+        conditioning={
+            "resource": conditioning.resource,
+            "resource_sha256": conditioning.resource_sha256,
+            "source_commit": conditioning.source_commit,
+            "vintage_tax_year": conditioning.tax_year,
+            "age_group_lower_bounds": list(UK_CGT_AGE_GROUP_LOWER_BOUNDS),
+            "region_groups": dict(UK_CGT_REGION_GROUPS),
+            "fallback_policy": UK_CGT_FALLBACK_POLICY,
+        },
+    )
 
     new_person = person.copy()
     new_person["capital_gains"] = new_gains
@@ -583,7 +1159,32 @@ def impute_uk_capital_gains(
         mass_log=(*frame.mass_log, receipt),
     )
     validate_uk_national_frame(result_frame)
-    return result_frame
+    return result_frame, report
+
+
+def impute_uk_capital_gains(
+    frame: Frame,
+    distribution: HMRCCapitalGainsJointDistribution,
+    parameters: UKCGTPolicyParameters,
+    *,
+    conditioning: HMRCCGTConditioningFacts | None = None,
+    seed: int = UK_CGT_IMPUTATION_SEED,
+    mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
+) -> Frame:
+    """Redraw gainers' amounts from the published joint distribution.
+
+    ``conditioning`` defaults to the committed vendored 2024-25 resource.
+    """
+
+    result, _ = impute_uk_capital_gains_with_report(
+        frame,
+        distribution,
+        parameters,
+        conditioning=conditioning or load_hmrc_cgt_conditioning_facts(),
+        seed=seed,
+        mass_change_reason=mass_change_reason,
+    )
+    return result
 
 
 def summarize_uk_cgt_imputation(
@@ -591,14 +1192,22 @@ def summarize_uk_cgt_imputation(
     after: Frame,
     distribution: HMRCCapitalGainsJointDistribution,
     parameters: UKCGTPolicyParameters,
+    *,
+    conditioning: HMRCCGTConditioningFacts | None = None,
+    report: UKCGTAllocationReport | None = None,
 ) -> UKCGTImputationSummary:
-    """Compare achieved band totals with the published surface.
+    """Compare achieved totals with the published 2024-25 surface.
 
     Reporting, not a gate: where the population holds less gainer mass than
     HMRC's taxpayers the achieved totals sit below the published ones by
     construction, and holding levels to the published surface is the
-    calibration adjudication's question.
+    calibration adjudication's question. Bands compare with Table 2.1a
+    folded onto Table 3's bands, ages with Table 6, regions with Table 5 on
+    the individuals basis.
     """
+
+    del distribution  # the 2024-25 levels come from the conditioning facts
+    conditioning = conditioning or load_hmrc_cgt_conditioning_facts()
     person = after.table("person").reset_index(drop=True)
     household = after.table("household")
     weights_by_household = pd.Series(
@@ -610,27 +1219,74 @@ def summarize_uk_cgt_imputation(
     )
     gains = pd.to_numeric(person["capital_gains"], errors="raise").to_numpy(dtype=float)
     liable = gains > parameters.annual_exempt_amount
+    age, _, region, _ = _person_conditioning_cells(person, household)
 
     bounds = HMRC_CGT_GAIN_BAND_LOWER_BOUNDS
     uppers = (*bounds[1:], np.inf)
+    published = conditioning.size_bands_aggregated(bounds)
     rows = []
     for lower, upper in zip(bounds, uppers, strict=True):
         in_band = liable & (gains >= lower) & (gains < upper)
-        band_total = distribution.band_total(lower)
         rows.append(
             {
                 "gain_lower_bound": lower,
                 "achieved_people": float(weight[in_band].sum()),
-                "published_people": band_total.individuals,
+                "published_people": published[lower][0],
                 "achieved_gains": float((gains[in_band] * weight[in_band]).sum()),
-                "published_gains": band_total.gains,
+                "published_gains": published[lower][1],
             }
         )
+
+    age_rows = []
+    age_by_band_rows = []
+    for band in conditioning.age_bands:
+        upper = np.inf if band.upper_bound is None else band.upper_bound
+        in_age = liable & (age >= band.lower_bound) & (age < upper)
+        age_rows.append(
+            {
+                "age_lower_bound": band.lower_bound,
+                "achieved_people": float(weight[in_age].sum()),
+                "published_people": band.taxpayers,
+                "achieved_gains": float((gains[in_age] * weight[in_age]).sum()),
+                "published_gains": band.gains,
+            }
+        )
+        for lower, gain_upper in zip(bounds, uppers, strict=True):
+            in_cell = in_age & (gains >= lower) & (gains < gain_upper)
+            age_by_band_rows.append(
+                {
+                    "age_lower_bound": band.lower_bound,
+                    "gain_lower_bound": lower,
+                    "achieved_people": float(weight[in_cell].sum()),
+                    "achieved_gains": float((gains[in_cell] * weight[in_cell]).sum()),
+                }
+            )
+
+    taxpayer_share = conditioning.table1.individuals_share("taxpayers")
+    gains_share = conditioning.table1.individuals_share("gains")
+    region_rows = []
+    for row in conditioning.regions:
+        in_region = liable & (region == row.region)
+        region_rows.append(
+            {
+                "region": row.region,
+                "geography_id": row.geography_id,
+                "achieved_people": float(weight[in_region].sum()),
+                "published_people_individuals_basis": row.taxpayers * taxpayer_share,
+                "achieved_gains": float((gains[in_region] * weight[in_region]).sum()),
+                "published_gains_individuals_basis": row.gains * gains_share,
+            }
+        )
+
     return UKCGTImputationSummary(
         rows=pd.DataFrame(rows),
         taxpayer_mass=float(weight[liable].sum()),
-        published_taxpayer_mass=float(distribution.total_individuals),
+        published_taxpayer_mass=float(conditioning.table1.individuals_taxpayers),
         remainder_mass=float(weight[(gains > 0) & ~liable].sum()),
+        age_rows=pd.DataFrame(age_rows),
+        region_rows=pd.DataFrame(region_rows),
+        age_by_band_rows=pd.DataFrame(age_by_band_rows),
+        allocation=report,
     )
 
 
@@ -639,6 +1295,7 @@ def uk_capital_gains_imputation_stage(
     *,
     tax_year: str = HMRC_CGT_SOURCE_VINTAGE,
     parameters: UKCGTPolicyParameters | None = None,
+    conditioning: HMRCCGTConditioningFacts | None = None,
     seed: int = UK_CGT_IMPUTATION_SEED,
     mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
 ) -> UKNationalStage:
@@ -646,7 +1303,8 @@ def uk_capital_gains_imputation_stage(
 
     The published artifact is verified against its pinned fingerprint before
     it is read. Parameters default to the policyengine-uk tree at the
-    dataset's build period, resolved when the stage runs.
+    dataset's build period, resolved when the stage runs; the conditioning
+    facts default to the committed vendored 2024-25 resource.
     """
     artifact_path = Path(ods_path)
 
@@ -659,6 +1317,7 @@ def uk_capital_gains_imputation_stage(
             frame,
             distribution,
             resolved,
+            conditioning=conditioning or load_hmrc_cgt_conditioning_facts(),
             seed=seed,
             mass_change_reason=mass_change_reason,
         )
@@ -672,6 +1331,7 @@ def uk_cgt_spine_stage_transform(
     *,
     distribution: HMRCCapitalGainsJointDistribution | None = None,
     parameters: UKCGTPolicyParameters | None = None,
+    conditioning: HMRCCGTConditioningFacts | None = None,
 ):
     """Bind the spine manifest, then reuse the reviewed merged CGT runtime.
 
@@ -685,6 +1345,7 @@ def uk_cgt_spine_stage_transform(
         ods_path=Path(ods_path),
         distribution=distribution,
         parameters=parameters,
+        conditioning=conditioning,
     )
 
 
@@ -696,6 +1357,7 @@ class UKCGTSpineStageTransform:
     ods_path: Path
     distribution: HMRCCapitalGainsJointDistribution | None = None
     parameters: UKCGTPolicyParameters | None = None
+    conditioning: HMRCCGTConditioningFacts | None = None
     last_result: UKCGTImputationSummary | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
@@ -709,14 +1371,25 @@ class UKCGTSpineStageTransform:
         parameters = self.parameters
         if parameters is None:
             parameters = uk_cgt_policy_parameters(uk_time_period(frame))
-        result = impute_uk_capital_gains(
+        conditioning = self.conditioning
+        if conditioning is None:
+            conditioning = load_hmrc_cgt_conditioning_facts()
+        result, report = impute_uk_capital_gains_with_report(
             frame,
             distribution,
             parameters,
+            conditioning=conditioning,
             seed=UK_CGT_IMPUTATION_SEED,
             mass_change_reason=UK_CGT_SPINE_MASS_CONSERVATION_REASON,
         )
-        summary = summarize_uk_cgt_imputation(frame, result, distribution, parameters)
+        summary = summarize_uk_cgt_imputation(
+            frame,
+            result,
+            distribution,
+            parameters,
+            conditioning=conditioning,
+            report=report,
+        )
         object.__setattr__(self, "last_result", summary)
         return result
 
@@ -738,6 +1411,7 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
     expected_kinds = (
         "verify_pinned_cgt_ods",
         "taxable_income_proxy",
+        "rake_allocation_targets",
         "rank_preserving_allocation",
         "within_band_draws",
         "sub_aea_remainder",
@@ -778,8 +1452,54 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             ),
             "fail_on_missing_component": True,
         },
+        "rake_allocation_targets": {
+            "resource": "hmrc_cgt_conditioning_facts.json",
+            "joint_margin": (
+                "Table 3 2023-24 reconciled cells, each gain band's row rescaled "
+                "onto the Table 2.1a 2024-25 individual taxpayer count folded to "
+                "Table 3 bands; income-column shares stay 2023-24"
+            ),
+            "band_aggregation": (
+                "Table 2.1a bands 0, 3,000 and 6,000 fold into Table 3 band 0; "
+                "10,000 and 12,300 fold into 10,000; the remaining bands map one "
+                "to one"
+            ),
+            "age_margin": (
+                "Table 6 2024-25 individual taxpayers by age band, folded to the "
+                "age groups"
+            ),
+            "region_margin": (
+                "Table 5 2024-25 taxpayers by country and region (all taxpayers) "
+                "times the Table 1 2024-25 individuals/total taxpayer share, "
+                "folded to the region groups"
+            ),
+            "margin_normalization": (
+                "every margin is rescaled onto the joint's total taxpayer mass "
+                "before raking, so rounding cannot make the margins mutually "
+                "infeasible"
+            ),
+            "seed_joint": (
+                "joint cell mass times the frame's household-weighted (age "
+                "group, region group | income band) shares among gainers"
+            ),
+            "age_group_lower_bounds": list(UK_CGT_AGE_GROUP_LOWER_BOUNDS),
+            "region_groups": dict(UK_CGT_REGION_GROUPS),
+            "ipf_iterations": UK_CGT_IPF_ITERATIONS,
+            "ipf_helper": "microcosm.build.raking.iterative_proportional_fit",
+            "zero_seed_policy": (
+                "a cell with no frame support keeps a zero target and is "
+                "reported; its joint mass is met from the income band's pooled "
+                "fallback where support exists"
+            ),
+            "fallback_policy": UK_CGT_FALLBACK_POLICY,
+            "conditioning_dimensions": list(UK_CGT_CONDITIONING_DIMENSIONS),
+            "reporting_grain": "Table 6 age bands and the twelve region-tier areas",
+        },
         "rank_preserving_allocation": {
-            "within": "income band",
+            "within": (
+                "income band x age group x region group cell, then the income "
+                "band's pooled unassigned gainers"
+            ),
             "ordering": "existing gains descending, person_id ascending on ties",
             "band_order": "highest gain band first",
             "suppressed_cell_allocation": (
@@ -789,12 +1509,20 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "every income column rescales onto its published All-row taxpayer total"
             ),
             "shortfall_policy": (
-                "proportional scale-down when the population holds less "
-                "gainer mass than published taxpayers"
+                "proportional scale-down inside a cell that holds less gainer "
+                "mass than its raked target; the remaining (gain band, income "
+                "band) shortfall is walked over the income band's pooled "
+                "unassigned gainers, scaled down proportionally when the pool "
+                "is short"
             ),
             "minimum_allocation_people": int(_MINIMUM_ALLOCATION_PEOPLE),
             "weights": (
                 "household_weight mapped to persons; no person splits across bands"
+            ),
+            "cell_order": (
+                "income band ascending, age group ascending, region group "
+                "ascending, gain bands highest first inside a cell; then the "
+                "pooled walk per income band"
             ),
         },
         "within_band_draws": {
@@ -812,9 +1540,15 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             "bottom_band_floor": "annual exempt amount plus one pound",
             "seed_base": UK_CGT_IMPUTATION_SEED,
             "seed_mixing": (
-                "seed combined with the build period; draws ordered by allocation rank"
+                "seed combined with the build period; draws consumed in cell "
+                "order, then in pooled-fallback order"
             ),
             "deterministic": True,
+            "cell_means": (
+                "Table 3 2023-24 cell means rescaled per gain band so the "
+                "joint's mass times means equals the Table 2.1a 2024-25 band "
+                "gains, then repaired into the band"
+            ),
         },
         "sub_aea_remainder": {
             "policy": (
@@ -850,13 +1584,22 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "before any per-band fact is exact."
             ),
             "calibrated_facts_unchanged": (
-                "The two aggregate facts in UK_CGT_TARGET_SPECS remain the "
-                "only calibrated CGT facts."
+                "The calibrated CGT facts are the FY2024-25 individual Table 1 "
+                "references (hmrc.cgt.taxpayers_total, hmrc.cgt.gains_total, "
+                "hmrc.cgt.liability_total; UK_CGT_TARGET_COVERAGE_REQUIREMENTS) "
+                "and the Table 2.1a size-of-gain, Table 6 age-band and Table 5 "
+                "region rows declared in uk_population_targets.json "
+                "(microcosm#467, #725); the 76 Table 3 2023-24 joint and "
+                "marginal cells stay fenced and condition the imputation only."
             ),
             "promotion_path": (
-                "A separately reviewed target profile may lift specific "
-                "band facts after the reconciliation and proxy adequacy "
-                "are adjudicated."
+                "A separately reviewed target profile may lift specific band "
+                "facts after the reconciliation and proxy adequacy are "
+                "adjudicated; the Table 2.1a, 6 and 5 rows were promoted under "
+                "microcosm#467 and #725 on the FY2024-25 individual "
+                "observations, while the Table 3 joint cells remain fenced "
+                "because the taxable-income proxy is still an arithmetic "
+                "approximation."
             ),
             "adjudication": "https://github.com/PolicyEngine/microcosm/issues/552",
         },

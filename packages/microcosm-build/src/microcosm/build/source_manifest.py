@@ -129,6 +129,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "map_uniform_to_categorical",
         "materialize_hmrc_income_bands_fail_closed",
         "materialize_rules_engine_predictors",
+        "rake_allocation_targets",
         "rank_preserving_allocation",
         "read_table",
         "read_tables",

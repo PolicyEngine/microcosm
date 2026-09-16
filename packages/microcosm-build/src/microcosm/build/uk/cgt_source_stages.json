@@ -5,7 +5,7 @@
   "stages": [
     {
       "stage": "hmrc_cgt_gains",
-      "survey": "HMRC Capital Gains Tax statistics table 3 (size of gain by taxable income), 2020-21 to 2023-24",
+      "survey": "HMRC Capital Gains Tax statistics table 3 (size of gain by taxable income, 2020-21 to 2023-24) conditioned on the 2026 release's 2024-25 Tables 2.1a, 5, 6 and 1",
       "source": "https://assets.publishing.service.gov.uk/media/6878ac62760bf6cedaf5bd93/Table_3_2025_Size_of_gain_by_income.ods",
       "grain": "person",
       "base_candidate": {
@@ -53,6 +53,13 @@
           "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
           "runtime_sha256_required": false,
           "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time"
+        },
+        {
+          "role": "cgt_conditioning_facts",
+          "kind": "public_aggregate_reference",
+          "resource": "hmrc_cgt_conditioning_facts.json",
+          "format": "json",
+          "runtime_sha256_required": true
         }
       ],
       "operations": [
@@ -86,15 +93,58 @@
           "fail_on_missing_component": true
         },
         {
+          "kind": "rake_allocation_targets",
+          "resource": "hmrc_cgt_conditioning_facts.json",
+          "joint_margin": "Table 3 2023-24 reconciled cells, each gain band's row rescaled onto the Table 2.1a 2024-25 individual taxpayer count folded to Table 3 bands; income-column shares stay 2023-24",
+          "band_aggregation": "Table 2.1a bands 0, 3,000 and 6,000 fold into Table 3 band 0; 10,000 and 12,300 fold into 10,000; the remaining bands map one to one",
+          "age_margin": "Table 6 2024-25 individual taxpayers by age band, folded to the age groups",
+          "region_margin": "Table 5 2024-25 taxpayers by country and region (all taxpayers) times the Table 1 2024-25 individuals/total taxpayer share, folded to the region groups",
+          "margin_normalization": "every margin is rescaled onto the joint's total taxpayer mass before raking, so rounding cannot make the margins mutually infeasible",
+          "seed_joint": "joint cell mass times the frame's household-weighted (age group, region group | income band) shares among gainers",
+          "age_group_lower_bounds": [
+            16,
+            35,
+            45,
+            55,
+            65,
+            75
+          ],
+          "region_groups": {
+            "LONDON": "london",
+            "SOUTH_EAST": "south_east_and_east_of_england",
+            "EAST_OF_ENGLAND": "south_east_and_east_of_england",
+            "NORTH_EAST": "rest_of_england",
+            "NORTH_WEST": "rest_of_england",
+            "YORKSHIRE": "rest_of_england",
+            "EAST_MIDLANDS": "rest_of_england",
+            "WEST_MIDLANDS": "rest_of_england",
+            "SOUTH_WEST": "rest_of_england",
+            "WALES": "wales_scotland_northern_ireland",
+            "SCOTLAND": "wales_scotland_northern_ireland",
+            "NORTHERN_IRELAND": "wales_scotland_northern_ireland"
+          },
+          "ipf_iterations": 200,
+          "ipf_helper": "microcosm.build.raking.iterative_proportional_fit",
+          "zero_seed_policy": "a cell with no frame support keeps a zero target and is reported; its joint mass is met from the income band's pooled fallback where support exists",
+          "fallback_policy": "pooled_income_band_rank_walk",
+          "conditioning_dimensions": [
+            "income band",
+            "age group",
+            "region group"
+          ],
+          "reporting_grain": "Table 6 age bands and the twelve region-tier areas"
+        },
+        {
           "kind": "rank_preserving_allocation",
-          "within": "income band",
+          "within": "income band x age group x region group cell, then the income band's pooled unassigned gainers",
           "ordering": "existing gains descending, person_id ascending on ties",
           "band_order": "highest gain band first",
           "suppressed_cell_allocation": "count implied by the cell's published gains at the band-total mean",
           "column_reconciliation": "every income column rescales onto its published All-row taxpayer total",
-          "shortfall_policy": "proportional scale-down when the population holds less gainer mass than published taxpayers",
+          "shortfall_policy": "proportional scale-down inside a cell that holds less gainer mass than its raked target; the remaining (gain band, income band) shortfall is walked over the income band's pooled unassigned gainers, scaled down proportionally when the pool is short",
           "minimum_allocation_people": 1,
-          "weights": "household_weight mapped to persons; no person splits across bands"
+          "weights": "household_weight mapped to persons; no person splits across bands",
+          "cell_order": "income band ascending, age group ascending, region group ascending, gain bands highest first inside a cell; then the pooled walk per income band"
         },
         {
           "kind": "within_band_draws",
@@ -104,8 +154,9 @@
           "mean_repair_reason": "Published counts round to the nearest thousand and amounts to the nearest million; four cells of the 2023-24 table imply a mean outside their own band, and repaired means clamp just inside the violated boundary.",
           "bottom_band_floor": "annual exempt amount plus one pound, since every allocated person is a taxpayer with a liability",
           "seed_base": 552,
-          "seed_mixing": "seed combined with the build period; draws ordered by allocation rank",
-          "deterministic": true
+          "seed_mixing": "seed combined with the build period; draws consumed in cell order, then in pooled-fallback order",
+          "deterministic": true,
+          "cell_means": "Table 3 2023-24 cell means rescaled per gain band so the joint's mass times means equals the Table 2.1a 2024-25 band gains, then repaired into the band"
         },
         {
           "kind": "sub_aea_remainder",
@@ -126,15 +177,15 @@
           "fenced_fact_count": 76,
           "fenced_fact_composition": "60 joint cells, 10 gain-band row totals, 6 income-column totals",
           "classification_rationale": "The taxpayer count is endogenous to policy (liability requires gains above the annual exempt amount computed by the model under simulation), the income conditioning is an arithmetic proxy that can move a person one band, and the published surface needs rounding and suppression reconciliation before any per-band fact is exact. The SPI 208-fact fence is the precedent.",
-          "calibrated_facts_unchanged": "The two aggregate facts in UK_CGT_TARGET_SPECS (total gains, taxpayer count; table 1 basis including trusts) remain the only calibrated CGT facts.",
-          "promotion_path": "A separately reviewed target profile may lift specific band facts out of the fence after the rounding/suppression reconciliation and the taxable-income-proxy adequacy are adjudicated on their own evidence.",
+          "calibrated_facts_unchanged": "The calibrated CGT facts are the FY2024-25 individual Table 1 references (hmrc.cgt.taxpayers_total, hmrc.cgt.gains_total, hmrc.cgt.liability_total; UK_CGT_TARGET_COVERAGE_REQUIREMENTS) and the Table 2.1a size-of-gain, Table 6 age-band and Table 5 region rows declared in uk_population_targets.json (microcosm#467, #725); the 76 Table 3 2023-24 joint and marginal cells stay fenced and condition the imputation only.",
+          "promotion_path": "A separately reviewed target profile may lift specific band facts after the reconciliation and proxy adequacy are adjudicated; the Table 2.1a, 6 and 5 rows were promoted under microcosm#467 and #725 on the FY2024-25 individual observations, while the Table 3 joint cells remain fenced because the taxable-income proxy is still an arithmetic approximation.",
           "adjudication": "https://github.com/PolicyEngine/microcosm/issues/552"
         }
       ],
       "outputs": [
         "capital_gains"
       ],
-      "notes": "Amounts-only replacement: who has gains comes from the candidate, how much they have comes from the published joint distribution, and household weights pass through unchanged, the weight kind carries through, and the stage appends the mass-conservation receipt the terminal family gate requires. Only persons with positive existing gains are redrawn; the candidate's net losses (negative amounts) and zeros pass through byte-identical, since Table 3 covers only individuals with a liability and says nothing about losses. The stage runs after hmrc_spi_income so the taxable-income proxy sees the restored income surface. Requires the microcosm-build uk extra at build time for the policy_parameters artifact.",
+      "notes": "Amounts-only replacement: who has gains comes from the candidate, how much they have comes from the published joint distribution, and household weights pass through unchanged, the weight kind carries through, and the stage appends the mass-conservation receipt the terminal family gate requires. Only persons with positive existing gains are redrawn; the candidate's net losses (negative amounts) and zeros pass through byte-identical, since Table 3 covers only individuals with a liability and says nothing about losses. The stage runs after hmrc_spi_income so the taxable-income proxy sees the restored income surface. Requires the microcosm-build uk extra at build time for the policy_parameters artifact. The allocation targets are raked to the 2024-25 Table 6 age and Table 5 region margins from the vendored conditioning resource and walked inside income x age x region cells (microcosm#725).",
       "output_weight_kind": "importance",
       "output_weight_kind_rationale": "The stage preserves whatever kind it receives; it runs after hmrc_spi_income, whose prior allocation establishes importance-kind household weights, so the final frame carries importance."
     }

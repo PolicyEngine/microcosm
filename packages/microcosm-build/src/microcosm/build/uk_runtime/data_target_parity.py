@@ -226,7 +226,7 @@ _CONCERN_DECLARATIONS: tuple[dict[str, Any], ...] = (
         "concern_id": "national_hmrc_cgt_size_bands",
         "status": "ported_national",
         "classification": "national_registry_family",
-        "evidence": "uk-data targets/sources/hmrc_cgt.py:195; Microcosm hmrc_cgt_size_bands.json and uk_population_targets.json CGT rows.",
+        "evidence": "uk-data targets/sources/hmrc_cgt.py:195; Microcosm hmrc_cgt_conditioning_facts.json (vendored HMRC Table 2.1a 2024-25 rows read by the donor stage and the amounts redraw) and uk_population_targets.json CGT rows.",
     },
     {
         "concern_id": "national_hmrc_salary_sacrifice",

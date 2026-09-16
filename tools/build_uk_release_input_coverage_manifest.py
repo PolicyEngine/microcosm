@@ -898,12 +898,17 @@ def _cgt_family_coverage_contract(
         for operation in stage.get("operations", [])
         if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
     }
-    required_artifacts = {"published_fact_surface", "policy_parameters"}
+    required_artifacts = {
+        "published_fact_surface",
+        "policy_parameters",
+        "cgt_conditioning_facts",
+    }
     missing_artifacts = sorted(required_artifacts - set(artifacts))
     required_operations = {
         "verify_certified_candidate",
         "verify_pinned_cgt_ods",
         "taxable_income_proxy",
+        "rake_allocation_targets",
         "rank_preserving_allocation",
         "within_band_draws",
         "sub_aea_remainder",
@@ -956,6 +961,10 @@ def _cgt_family_coverage_contract(
         "source_vintages": {
             "hmrc_surface": str(surface["vintage"]),
             "mapped_build_period": str(surface["mapped_build_period"]),
+            "conditioning_surface": "2024-25",
+            "conditioning_resource": str(
+                artifacts["cgt_conditioning_facts"]["resource"]
+            ),
         },
         "output_weight_kind": str(stage["output_weight_kind"]),
         "required_mass_change_reason": str(
@@ -1064,10 +1073,15 @@ def _cgt_spine_family_coverage_contract(
         for operation in stage.get("operations", [])
         if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
     }
-    required_artifacts = {"cgt_published_fact_surface", "policy_parameters"}
+    required_artifacts = {
+        "cgt_published_fact_surface",
+        "policy_parameters",
+        "cgt_conditioning_facts",
+    }
     required_operations = {
         "verify_pinned_cgt_ods",
         "taxable_income_proxy",
+        "rake_allocation_targets",
         "rank_preserving_allocation",
         "within_band_draws",
         "sub_aea_remainder",
@@ -1103,6 +1117,10 @@ def _cgt_spine_family_coverage_contract(
         "source_vintages": {
             "hmrc_surface": str(surface["vintage"]),
             "mapped_build_period": str(surface["mapped_build_period"]),
+            "conditioning_surface": "2024-25",
+            "conditioning_resource": str(
+                artifacts["cgt_conditioning_facts"]["resource"]
+            ),
         },
         "output_weight_kind": "importance",
         "required_mass_change_reason": str(

@@ -4,11 +4,11 @@
   "kind": "uk_vendored_ledger_facts",
   "resource": "hmrc_cgt_conditioning_facts.json",
   "purpose": "HMRC Capital Gains Tax statistics 2026 release, tax year 2024-25 individual observations the CGT amounts imputation conditions on and the size-band donor stage weights by: Table 2.1a individuals by size of gain (taxpayers and gains, 13 bands), Table 6 individuals by age band (taxpayers, gains and tax, 9 bands plus the all-ages total), Table 5 taxpayers, gains and tax by UK country and region (all taxpayers including trusts; 12 region-tier areas plus the England and UK totals) and Table 1 individuals, trusts and total lines (the individuals/total shares that translate Table 5 onto the individuals basis). The stage rakes its allocation targets to these margins and reports achieved versus published at the same grain; no value is derived here.",
-  "consumers": [],
-  "planned_consumers": [
-    "hmrc_cgt_gains_spine",
-    "cgt_band_donors"
+  "consumers": [
+    "uk_runtime.hmrc_capital_gains",
+    "uk_runtime.cgt_structure"
   ],
+  "planned_consumers": [],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
   "generator": {
     "tool": "tools/vendor_uk_ledger_facts.py",

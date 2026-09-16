@@ -7,14 +7,20 @@ import pytest
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime import cgt_imputation
 from microcosm.build.uk_runtime.cgt_imputation import (
+    UK_CGT_AGE_GROUP_LOWER_BOUNDS,
     UK_CGT_IMPUTATION_STAGE_NAME,
     UK_CGT_MASS_CONSERVATION_REASON,
+    UK_CGT_REGION_GROUP_LABELS,
+    UK_CGT_REGION_GROUPS,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
     UKCGTPolicyParameters,
     _band_plans,
+    _joint_plans_2024,
     _pareto_quantile,
+    _rake_allocation_targets,
     _truncated_exponential_quantile,
     impute_uk_capital_gains,
+    impute_uk_capital_gains_with_report,
     summarize_uk_cgt_imputation,
     uk_capital_gains_imputation_stage,
     uk_cgt_spine_stage_transform,
@@ -29,6 +35,7 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRCCapitalGainsIncomeTotal,
     HMRCCapitalGainsJointDistribution,
     HMRCCapitalGainsSourceProvenance,
+    load_hmrc_cgt_conditioning_facts,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.frame import Frame
@@ -114,7 +121,15 @@ def _distribution(
     )
 
 
-def _frame(person_rows: int, *, gains, incomes) -> Frame:
+def _frame(
+    person_rows: int,
+    *,
+    gains,
+    incomes,
+    ages=None,
+    regions=None,
+    weights=None,
+) -> Frame:
     person = pd.DataFrame(
         {
             "person_id": np.arange(person_rows, dtype="int64"),
@@ -122,6 +137,11 @@ def _frame(person_rows: int, *, gains, incomes) -> Frame:
             "person_benunit_id": np.arange(person_rows, dtype="int64"),
             "capital_gains": np.asarray(gains, dtype=float),
             "employment_income": np.asarray(incomes, dtype=float),
+            "age": (
+                np.full(person_rows, 45, dtype="int64")
+                if ages is None
+                else np.asarray(ages, dtype="int64")
+            ),
         }
     )
     for column in UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS:
@@ -130,7 +150,16 @@ def _frame(person_rows: int, *, gains, incomes) -> Frame:
     household = pd.DataFrame(
         {
             "household_id": np.arange(person_rows, dtype="int64"),
-            "household_weight": np.full(person_rows, 100.0),
+            "household_weight": (
+                np.full(person_rows, 100.0)
+                if weights is None
+                else np.asarray(weights, dtype=float)
+            ),
+            "region": (
+                np.full(person_rows, "LONDON", dtype=object)
+                if regions is None
+                else np.asarray(regions, dtype=object)
+            ),
         }
     )
     benunit = pd.DataFrame({"benunit_id": np.arange(person_rows, dtype="int64")})
@@ -340,10 +369,25 @@ class TestImputation:
         result = impute_uk_capital_gains(frame, distribution, PARAMETERS)
         summary = summarize_uk_cgt_imputation(frame, result, distribution, PARAMETERS)
 
+        conditioning = load_hmrc_cgt_conditioning_facts()
         assert len(summary.rows) == len(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS)
-        assert summary.published_taxpayer_mass == distribution.total_individuals
+        # Levels are the 2024-25 individual observations, not the joint's
+        # own 2023-24 total.
+        assert summary.published_taxpayer_mass == (
+            conditioning.table1.individuals_taxpayers
+        )
         assert summary.taxpayer_mass > 0
         assert (summary.rows["published_gains"] > 0).all()
+        assert summary.rows["published_people"].sum() == pytest.approx(
+            conditioning.table1.individuals_taxpayers
+        )
+        assert len(summary.age_rows) == len(conditioning.age_bands)
+        assert len(summary.region_rows) == len(conditioning.regions)
+        assert len(summary.age_by_band_rows) == len(conditioning.age_bands) * len(
+            HMRC_CGT_GAIN_BAND_LOWER_BOUNDS
+        )
+        evidence = summary.evidence()
+        assert {"rows", "age_rows", "region_rows", "age_by_band_rows"} <= set(evidence)
 
 
 class TestStage:
@@ -675,3 +719,243 @@ class TestPolicyParameters:
         assert parameters.personal_allowance_taper_rate == 0.5
         assert parameters.annual_exempt_amount == 6_000.0
         assert parameters.instant == "2023-06-01"
+
+
+class TestConditionedAllocation:
+    """Age and region conditioning on the 2024-25 band vintage (microcosm#725)."""
+
+    def test_joint_moves_to_the_2024_25_band_levels(self) -> None:
+        conditioning = load_hmrc_cgt_conditioning_facts()
+        joint, band_rows = _joint_plans_2024(
+            _real_distribution(),
+            conditioning,
+            annual_exempt_amount=3_000.0,
+        )
+        published = conditioning.size_bands_aggregated(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS)
+        for row in band_rows:
+            lower = row["gain_lower_bound"]
+            assert row["target_people"] == pytest.approx(published[lower][0], rel=1e-9)
+            # Every cell mean sits inside its band after the rescale.
+            for income_lower in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS:
+                plan = joint[(lower, income_lower)]
+                assert plan.effective_lower_bound < plan.mean
+                assert plan.mean < plan.gain_upper_bound
+        # The rescale keeps the gains identity up to the in-band repair.
+        residual = sum(abs(row["gains_identity_residual"]) for row in band_rows)
+        assert residual < 0.05 * conditioning.table1.individuals_gains
+
+    def test_rake_meets_feasible_margins(self) -> None:
+        conditioning = load_hmrc_cgt_conditioning_facts()
+        joint, _ = _joint_plans_2024(
+            _real_distribution(), conditioning, annual_exempt_amount=3_000.0
+        )
+        rows = 6 * len(UK_CGT_AGE_GROUP_LOWER_BOUNDS) * len(UK_CGT_REGION_GROUP_LABELS)
+        rng = np.random.default_rng(7)
+        # Every (income band, age group, region group) cell has gainers, so
+        # the seed is strictly positive and every margin is attainable.
+        income_band = np.repeat(
+            np.asarray(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS), rows // 6
+        )
+        age_group = np.tile(
+            np.repeat(
+                np.arange(len(UK_CGT_AGE_GROUP_LOWER_BOUNDS)),
+                len(UK_CGT_REGION_GROUP_LABELS),
+            ),
+            6,
+        )
+        region_group = np.tile(
+            np.arange(len(UK_CGT_REGION_GROUP_LABELS)),
+            rows // len(UK_CGT_REGION_GROUP_LABELS),
+        )
+        targets, report = _rake_allocation_targets(
+            joint,
+            conditioning,
+            is_gainer=np.ones(rows, dtype=bool),
+            person_weight=rng.uniform(50.0, 150.0, rows),
+            income_band=income_band,
+            age_group=age_group,
+            region_group=region_group,
+        )
+        assert report["ipf_max_abs_margin_error"] < 1e-6
+        assert report["ipf_zero_seed_cells"] == 0
+        assert targets.sum() == pytest.approx(report["joint_total_people"])
+        raked_by_age = targets.sum(axis=(0, 1, 3))
+        for index, lower in enumerate(UK_CGT_AGE_GROUP_LOWER_BOUNDS):
+            assert raked_by_age[index] == pytest.approx(
+                report["age_margin"][str(lower)]["normalised"], rel=1e-6
+            )
+
+    def test_rake_reports_an_income_band_without_gainers(self) -> None:
+        conditioning = load_hmrc_cgt_conditioning_facts()
+        joint, _ = _joint_plans_2024(
+            _real_distribution(), conditioning, annual_exempt_amount=3_000.0
+        )
+        rows = 40
+        targets, report = _rake_allocation_targets(
+            joint,
+            conditioning,
+            is_gainer=np.ones(rows, dtype=bool),
+            person_weight=np.full(rows, 100.0),
+            income_band=np.full(rows, 0),
+            age_group=np.arange(rows) % len(UK_CGT_AGE_GROUP_LOWER_BOUNDS),
+            region_group=np.arange(rows) % len(UK_CGT_REGION_GROUP_LABELS),
+        )
+        assert report["income_bands_without_gainers"] == list(
+            HMRC_CGT_INCOME_BAND_LOWER_BOUNDS[1:]
+        )
+        assert report["ipf_zero_seed_cells"] > 0
+        # Nothing is invented for the empty bands.
+        assert targets[:, 1:, :, :].sum() == 0.0
+
+    def test_age_conditioning_moves_taxpayer_mass_toward_table_6(self) -> None:
+        # Six ages x twelve regions x six income bands, every combination
+        # present with the same prior, so the margins are attainable and any
+        # age shape in the result comes from the rake, not from the priors.
+        # 24 persons per (age, region, income) combination at weight 500:
+        # every cell holds more support than its raked target, and one
+        # person is small next to the smallest age group (32,000).
+        rows = 6 * 12 * 6 * 24
+        rng = np.random.default_rng(11)
+        gains = rng.lognormal(10, 1, rows)
+        incomes = np.asarray(
+            # After the personal allowance these land in the six Table 3
+            # taxable-income bands (45,000 would share band 0 with 20,000).
+            [20_000.0, 55_000.0, 75_000.0, 120_000.0, 180_000.0, 300_000.0]
+        )
+        index = np.arange(rows)
+        ages = np.asarray([20, 40, 50, 60, 70, 80])[index % 6]
+        regions = np.asarray(sorted(UK_CGT_REGION_GROUPS))[(index // 6) % 12]
+        frame = _frame(
+            rows,
+            gains=gains,
+            incomes=incomes[(index // 72) % 6],
+            ages=ages,
+            regions=regions,
+            # Enough support in every cell that no cell scales down and
+            # the pooled walk is never needed: the achieved shape is the rake's.
+            weights=np.full(rows, 500.0),
+        )
+        conditioning = load_hmrc_cgt_conditioning_facts()
+
+        result, report = impute_uk_capital_gains_with_report(
+            frame, _real_distribution(), PARAMETERS, conditioning=conditioning
+        )
+
+        assert report.rake["ipf_max_abs_margin_error"] < 1e-3
+        assert report.rake["ipf_zero_seed_cells"] == 0
+        drawn = result.table("person")["capital_gains"].to_numpy()
+        liable = drawn > PARAMETERS.annual_exempt_amount
+        weight = 500.0
+        share = {
+            lower: float(liable[ages_group == index].sum() * weight)
+            for index, lower in enumerate(UK_CGT_AGE_GROUP_LOWER_BOUNDS)
+            for ages_group in [np.digitize(ages, UK_CGT_AGE_GROUP_LOWER_BOUNDS[1:])]
+        }
+        total = sum(share.values())
+        published = {
+            band.lower_bound: band.taxpayers for band in conditioning.age_bands
+        }
+        # Uniform support would give each group a sixth; Table 6 gives
+        # 16-34 under 6 % of taxpayers and 55-64 over a quarter.
+        assert share[16] / total < 0.10
+        assert share[55] / total > 0.20
+        older = (share[65] + share[75]) / total
+        published_older = (
+            published[65] + published[75] + published[85]
+        ) / conditioning.table1.individuals_taxpayers
+        assert abs(older - published_older) < 0.10
+        # The tail follows the same shape: no longer a working-age monopoly
+        # (the #725 finding was 2 % at 65+ above GBP 2m). Read at GBP 500k
+        # and above so the check rests on dozens of persons, not a handful.
+        tail = drawn >= 500_000.0
+        assert tail.sum() >= 30
+        assert float((tail & (ages >= 65)).sum() / tail.sum()) > 0.2
+
+    def test_fallback_meets_the_joint_where_a_cell_has_no_support(self) -> None:
+        rows = 1_500
+        rng = np.random.default_rng(13)
+        gains = rng.lognormal(10, 1, rows)
+        # Everyone is a 45-year-old Londoner: five age groups and three
+        # region groups have no support, so pass 1 can only fill one cell
+        # per income band and the pooled walk must carry the rest.
+        frame = _frame(
+            rows,
+            gains=gains,
+            incomes=np.full(rows, 20_000.0),
+            weights=np.full(rows, 300.0),
+        )
+
+        result, report = impute_uk_capital_gains_with_report(
+            frame,
+            _real_distribution(),
+            PARAMETERS,
+            conditioning=load_hmrc_cgt_conditioning_facts(),
+        )
+
+        assert report.rake["ipf_zero_seed_cells"] > 0
+        assert report.fallback_released_mass > 0.0
+        joint_rows = pd.DataFrame(report.joint_rows)
+        low_income = joint_rows[joint_rows["income_lower_bound"] == 0]
+        achieved = low_income["achieved_pass1"] + low_income["achieved_fallback"]
+        # The band's pooled support (450,000 people) exceeds the low-income
+        # column's 2024-25 target, so the joint is met in full despite the
+        # empty conditioning cells; a person never splits, so allow one
+        # weight of slack per band.
+        assert (achieved + 300.0 >= low_income["target_people"]).all()
+        assert abs(achieved.sum() - low_income["target_people"].sum()) < 300.0 * len(
+            low_income
+        )
+        drawn = result.table("person")["capital_gains"].to_numpy()
+        assert drawn.max() >= 5_000_000.0
+
+    def test_unknown_region_and_missing_age_refuse(self) -> None:
+        frame = _frame(
+            4,
+            gains=[1_000.0, 2_000.0, 3_000.0, 4_000.0],
+            incomes=[20_000.0] * 4,
+            regions=["LONDON", "LONDON", "MARS", "LONDON"],
+        )
+        with pytest.raises(ValueError, match="Unknown region name"):
+            impute_uk_capital_gains(frame, _distribution(), PARAMETERS)
+
+        person = frame.table("person").drop(columns=["age"])
+        stripped = uk_national_frame(
+            person=person,
+            benunit=frame.table("benunit"),
+            household=frame.table("household"),
+            time_period="2023",
+            household_weights=frame.weights_for("household").values,
+        )
+        with pytest.raises(ValueError, match="no age column"):
+            impute_uk_capital_gains(stripped, _distribution(), PARAMETERS)
+
+    def test_region_groups_cover_the_tier_once(self) -> None:
+        assert set(UK_CGT_REGION_GROUPS.values()) == set(UK_CGT_REGION_GROUP_LABELS)
+        assert UK_CGT_REGION_GROUPS["LONDON"] == "london"
+        assert (
+            UK_CGT_REGION_GROUPS["SOUTH_EAST"]
+            == UK_CGT_REGION_GROUPS["EAST_OF_ENGLAND"]
+        )
+
+    def test_report_records_the_conditioning_resource(self) -> None:
+        conditioning = load_hmrc_cgt_conditioning_facts()
+        frame = _frame(
+            12,
+            gains=[float(10_000 * (i + 1)) for i in range(12)],
+            incomes=[20_000.0] * 12,
+        )
+        _, report = impute_uk_capital_gains_with_report(
+            frame, _distribution(), PARAMETERS, conditioning=conditioning
+        )
+        assert report.conditioning["resource_sha256"] == conditioning.resource_sha256
+        assert report.conditioning["vintage_tax_year"] == 2024
+        assert report.conditioning["fallback_policy"] == "pooled_income_band_rank_walk"
+        evidence = report.evidence()
+        assert set(evidence) == {
+            "band_rows",
+            "joint_rows",
+            "rake",
+            "fallback_released_mass",
+            "fallback_share_by_band",
+            "conditioning",
+        }

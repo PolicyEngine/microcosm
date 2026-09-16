@@ -702,6 +702,7 @@ class TestE3ManifestLockstep:
         assert [op.kind for op in stages["hmrc_cgt_gains_spine"].operations] == [
             "verify_pinned_cgt_ods",
             "taxable_income_proxy",
+            "rake_allocation_targets",
             "rank_preserving_allocation",
             "within_band_draws",
             "sub_aea_remainder",
@@ -946,7 +947,7 @@ class TestE3ManifestLockstep:
         assert stages["cgt_incidence_clone"].operations[1].parameters["seed"] == 0
         assert stages["cgt_band_donors"].operations[0].parameters["seed"] == 1
         assert (
-            stages["hmrc_cgt_gains_spine"].operations[3].parameters["seed_base"] == 552
+            stages["hmrc_cgt_gains_spine"].operations[4].parameters["seed_base"] == 552
         )
         assert stages["salary_sacrifice"].operations[0].parameters["seed"] == 42
         assert stages["salary_sacrifice"].operations[1].parameters["seed"] == 2024

@@ -171,7 +171,11 @@ def _support_clip_gate(
         "columns_checked": len(expected_columns) - len(exempt_columns),
         "exempt_columns": sorted(exempt_columns),
     }
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _realization_target_gate(
@@ -205,7 +209,11 @@ def _realization_target_gate(
     if bool(receipt.get("cap_bound")) and not bool(parameters.get("allow_cap_bound")):
         failures.append(f"{stage}: cap_bound is true but not allowed.")
     details = {"target": target, "abs_realization_deviation": deviation}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _student_loan_plans_gate(
@@ -228,7 +236,9 @@ def _student_loan_plans_gate(
             failures.append(f"{stage}: missing receipt for {plan}.")
             continue
         stock = _finite_number(receipt.get("stock"), label=f"{stage}.{plan}.stock")
-        expected = _finite_number(declared_stock, label=f"{stage}.{plan}.declared_stock")
+        expected = _finite_number(
+            declared_stock, label=f"{stage}.{plan}.declared_stock"
+        )
         if stock != expected:
             failures.append(f"{stage}: {plan} stock {stock} != declared {expected}.")
         final = _finite_number(
@@ -249,7 +259,11 @@ def _student_loan_plans_gate(
                 f"{stage}: {plan} realization_deviation {deviation} exceeds {max_deviation}."
             )
     details = {"plans_checked": len(declared_stocks), "worst_abs_deviation": worst}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _cgt_incidence_mass_gate(
@@ -258,7 +272,9 @@ def _cgt_incidence_mass_gate(
     parameters: Mapping[str, object],
 ) -> GateResult:
     check = "cgt_incidence_mass"
-    mass = _mapping(evidence.get("mass_by_clone_flag"), label=f"{stage}.mass_by_clone_flag")
+    mass = _mapping(
+        evidence.get("mass_by_clone_flag"), label=f"{stage}.mass_by_clone_flag"
+    )
     original = _finite_number(mass.get("false"), label=f"{stage}.mass.false")
     clone = _finite_number(mass.get("true"), label=f"{stage}.mass.true")
     tolerance = _finite_number(
@@ -286,7 +302,11 @@ def _cgt_incidence_mass_gate(
         "floating_point_relative_tolerance": _FLOAT_RELATIVE_TOLERANCE,
         "effective_relative_tolerance": effective_tolerance,
     }
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _spi_support_channel_gate(
@@ -305,13 +325,24 @@ def _spi_support_channel_gate(
     if abs(share - expected_share) > _finite_number(
         parameters.get("absolute_tolerance", 0.0), label=f"{stage}.absolute_tolerance"
     ):
-        failures.append(f"{stage}: spi_prior_mass_share {share} != declared {expected_share}.")
+        failures.append(
+            f"{stage}: spi_prior_mass_share {share} != declared {expected_share}."
+        )
     if evidence.get("household_weight_kind") != parameters.get("household_weight_kind"):
         failures.append(f"{stage}: household_weight_kind drifted.")
-    if int(evidence.get("spi_households", 0)) < int(parameters["minimum_spi_households"]):
+    if int(evidence.get("spi_households", 0)) < int(
+        parameters["minimum_spi_households"]
+    ):
         failures.append(f"{stage}: spi_households below declared minimum.")
-    details = {"spi_prior_mass_share": share, "spi_households": evidence.get("spi_households")}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    details = {
+        "spi_prior_mass_share": share,
+        "spi_households": evidence.get("spi_households"),
+    }
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _spi_income_spine_gate(
@@ -333,15 +364,26 @@ def _spi_income_spine_gate(
     expected_share = _finite_number(
         parameters["spi_prior_mass_share"], label=f"{stage}.spi_prior_mass_share"
     )
-    share = _finite_number(prior.get("mass_share"), label=f"{stage}.spi_prior.mass_share")
+    share = _finite_number(
+        prior.get("mass_share"), label=f"{stage}.spi_prior.mass_share"
+    )
     if abs(share - expected_share) > _finite_number(
         parameters.get("absolute_tolerance", 0.0), label=f"{stage}.absolute_tolerance"
     ):
-        failures.append(f"{stage}: spi prior mass share {share} != declared {expected_share}.")
+        failures.append(
+            f"{stage}: spi prior mass share {share} != declared {expected_share}."
+        )
     if int(targets.get("count", 0)) < int(parameters["minimum_target_count"]):
         failures.append(f"{stage}: target count below declared minimum.")
-    details = {"identity_rows": identity.get("rows_checked"), "target_count": targets.get("count")}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    details = {
+        "identity_rows": identity.get("rows_checked"),
+        "target_count": targets.get("count"),
+    }
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _source_signal_gate(
@@ -350,20 +392,37 @@ def _source_signal_gate(
     parameters: Mapping[str, object],
 ) -> GateResult:
     check = "source_signal"
-    rows = _mapping(evidence.get("source_signal_rows"), label=f"{stage}.source_signal_rows")
-    allowed_zero = {str(column) for column in parameters.get("structural_zero_columns", ())}
-    reported_zero = {str(column) for column in evidence.get("structural_zero_columns", ())}
+    rows = _mapping(
+        evidence.get("source_signal_rows"), label=f"{stage}.source_signal_rows"
+    )
+    allowed_zero = {
+        str(column) for column in parameters.get("structural_zero_columns", ())
+    }
+    reported_zero = {
+        str(column) for column in evidence.get("structural_zero_columns", ())
+    }
     minimum = int(parameters["minimum_signal_rows"])
     failures: list[str] = []
     if reported_zero - allowed_zero:
-        failures.append(f"{stage}: unreviewed structural zero columns {sorted(reported_zero - allowed_zero)}.")
+        failures.append(
+            f"{stage}: unreviewed structural zero columns {sorted(reported_zero - allowed_zero)}."
+        )
     for column, value in rows.items():
         if str(column) in allowed_zero:
             continue
         if int(value) < minimum:
-            failures.append(f"{stage}: {column} has {value} source-signal row(s), below {minimum}.")
-    details = {"columns_checked": len(rows), "structural_zero_columns": sorted(reported_zero)}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+            failures.append(
+                f"{stage}: {column} has {value} source-signal row(s), below {minimum}."
+            )
+    details = {
+        "columns_checked": len(rows),
+        "structural_zero_columns": sorted(reported_zero),
+    }
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _age_tail_targets_gate(
@@ -372,8 +431,12 @@ def _age_tail_targets_gate(
     parameters: Mapping[str, object],
 ) -> GateResult:
     check = "age_tail_targets"
-    achieved = _mapping(evidence.get("achieved_weighted"), label=f"{stage}.achieved_weighted")
-    targets = _mapping(evidence.get("band_populations"), label=f"{stage}.band_populations")
+    achieved = _mapping(
+        evidence.get("achieved_weighted"), label=f"{stage}.achieved_weighted"
+    )
+    targets = _mapping(
+        evidence.get("band_populations"), label=f"{stage}.band_populations"
+    )
     max_relative = _finite_number(
         parameters["maximum_relative_deviation"],
         label=f"{stage}.maximum_relative_deviation",
@@ -393,9 +456,15 @@ def _age_tail_targets_gate(
         relative = abs(value - target) / max(abs(target), 1.0)
         worst = max(worst, relative)
         if relative > max_relative:
-            failures.append(f"{stage}: {key} relative deviation {relative} exceeds {max_relative}.")
+            failures.append(
+                f"{stage}: {key} relative deviation {relative} exceeds {max_relative}."
+            )
     details = {"bands_checked": len(targets), "worst_relative_deviation": worst}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _cgt_band_donor_support_gate(
@@ -417,16 +486,32 @@ def _cgt_band_donor_support_gate(
         if not isinstance(row, Mapping):
             failures.append(f"{stage}: band row is not an object.")
             continue
-        realized_min = _finite_number(row.get("realized_min_gain"), label=f"{stage}.realized_min_gain")
-        realized_max = _finite_number(row.get("realized_max_gain"), label=f"{stage}.realized_max_gain")
-        lower_limit = _finite_number(row.get("lower_limit"), label=f"{stage}.lower_limit")
+        realized_min = _finite_number(
+            row.get("realized_min_gain"), label=f"{stage}.realized_min_gain"
+        )
+        realized_max = _finite_number(
+            row.get("realized_max_gain"), label=f"{stage}.realized_max_gain"
+        )
+        lower_limit = _finite_number(
+            row.get("lower_limit"), label=f"{stage}.lower_limit"
+        )
         band_floor = max(global_lower, lower_limit)
         if realized_min < band_floor:
-            failures.append(f"{stage}: realized gain {realized_min} falls below {band_floor}.")
-        if upper is not None and realized_max >= _finite_number(upper, label="capital_gains.upper"):
-            failures.append(f"{stage}: realized gain {realized_max} exceeds open upper bound.")
+            failures.append(
+                f"{stage}: realized gain {realized_min} falls below {band_floor}."
+            )
+        if upper is not None and realized_max >= _finite_number(
+            upper, label="capital_gains.upper"
+        ):
+            failures.append(
+                f"{stage}: realized gain {realized_max} exceeds open upper bound."
+            )
     details = {"bands_checked": len(bands), "minimum_lower_limit": global_lower}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _cgt_imputation_summary_gate(
@@ -447,7 +532,35 @@ def _cgt_imputation_summary_gate(
         if value < 0.0:
             failures.append(f"{stage}: {key} is negative.")
     details = {"band_rows": len(rows), "taxpayer_mass": evidence.get("taxpayer_mass")}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    # The conditioned redraw (microcosm#725) reports its rake and fallback;
+    # a receipt that carries them must carry them finite and non-negative.
+    # No threshold is held yet: the first measured builds set it.
+    allocation = evidence.get("allocation")
+    if allocation is not None:
+        if not isinstance(allocation, Mapping):
+            raise ValueError(f"{stage}.allocation must be a mapping.")
+        rake = allocation.get("rake")
+        if not isinstance(rake, Mapping):
+            raise ValueError(f"{stage}.allocation.rake must be a mapping.")
+        for key in ("ipf_max_abs_margin_error", "ipf_zero_seed_cells"):
+            value = _finite_number(
+                rake.get(key), label=f"{stage}.allocation.rake.{key}"
+            )
+            if value < 0.0:
+                failures.append(f"{stage}: allocation.rake.{key} is negative.")
+        released = _finite_number(
+            allocation.get("fallback_released_mass"),
+            label=f"{stage}.allocation.fallback_released_mass",
+        )
+        if released < 0.0:
+            failures.append(f"{stage}: allocation.fallback_released_mass is negative.")
+        details["ipf_max_abs_margin_error"] = rake.get("ipf_max_abs_margin_error")
+        details["fallback_released_mass"] = released
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _latent_attribute_realization_gate(

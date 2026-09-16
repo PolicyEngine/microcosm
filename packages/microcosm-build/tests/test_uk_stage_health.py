@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 
@@ -342,6 +343,49 @@ def test_age_tail_relative_deviation_parameter_is_live() -> None:
             "maximum_relative_deviation": 0.09,
         },
     ).passed
+
+
+def test_cgt_summary_allocation_receipt_must_be_finite_and_non_negative() -> None:
+    parameters = {
+        "stage": "hmrc_cgt_gains_spine",
+        "check": "cgt_imputation_summary",
+        "minimum_band_rows": 1,
+    }
+
+    def evidence(error: float, released: float) -> dict:
+        return {
+            "stage": "hmrc_cgt_gains_spine",
+            "rows": [{"gain_lower_bound": 12300.0}],
+            "taxpayer_mass": 1.0,
+            "published_taxpayer_mass": 1.0,
+            "remainder_mass": 0.0,
+            "allocation": {
+                "rake": {"ipf_max_abs_margin_error": error, "ipf_zero_seed_cells": 0},
+                "fallback_released_mass": released,
+            },
+        }
+
+    assert _passed(
+        uk_stage_health_gate(
+            evidence=evidence(0.01, 250.0),
+            stage="hmrc_cgt_gains_spine",
+            check="cgt_imputation_summary",
+            parameters=parameters,
+        )
+    )
+    assert not uk_stage_health_gate(
+        evidence=evidence(0.01, -1.0),
+        stage="hmrc_cgt_gains_spine",
+        check="cgt_imputation_summary",
+        parameters=parameters,
+    ).passed
+    with pytest.raises(ValueError):
+        uk_stage_health_gate(
+            evidence=evidence(float("nan"), 0.0),
+            stage="hmrc_cgt_gains_spine",
+            check="cgt_imputation_summary",
+            parameters=parameters,
+        )
 
 
 def test_cgt_summary_minimum_rows_parameter_is_live() -> None:

@@ -213,20 +213,29 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "uc_deduction_attributes": frozenset({("household", "region")}),
     "cgt_incidence_clone": None,
     "cgt_band_donors": None,
+    # The amounts redraw conditions on age and household region as well as
+    # the income proxy (microcosm#725); both are context carriers, declared
+    # here so the ownership record names them.
     "hmrc_cgt_gains_spine": frozenset(
-        ("person", column)
-        for column in (
-            "capital_gains",
-            "employment_income",
-            "self_employment_income",
-            "savings_interest_income",
-            "dividend_income",
-            "miscellaneous_income",
-            "private_pension_income",
-            "property_income",
-            "state_pension_reported",
-            "tax_free_savings_income",
-        )
+        {
+            *(
+                ("person", column)
+                for column in (
+                    "capital_gains",
+                    "employment_income",
+                    "self_employment_income",
+                    "savings_interest_income",
+                    "dividend_income",
+                    "miscellaneous_income",
+                    "private_pension_income",
+                    "property_income",
+                    "state_pension_reported",
+                    "tax_free_savings_income",
+                    "age",
+                )
+            ),
+            ("household", "region"),
+        }
     ),
     "salary_sacrifice": None,
     "student_loans": frozenset(

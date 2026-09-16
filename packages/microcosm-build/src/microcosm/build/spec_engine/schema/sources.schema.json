@@ -4547,6 +4547,88 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
+      "age_group_lower_bounds": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "age_margin": {
+       "type": "string"
+      },
+      "band_aggregation": {
+       "type": "string"
+      },
+      "conditioning_dimensions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "fallback_policy": {
+       "type": "string"
+      },
+      "ipf_helper": {
+       "type": "string"
+      },
+      "ipf_iterations": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "joint_margin": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "rake_allocation_targets"
+      },
+      "margin_normalization": {
+       "type": "string"
+      },
+      "region_groups": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "region_margin": {
+       "type": "string"
+      },
+      "reporting_grain": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "seed_joint": {
+       "type": "string"
+      },
+      "zero_seed_policy": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "age_group_lower_bounds",
+      "age_margin",
+      "band_aggregation",
+      "conditioning_dimensions",
+      "fallback_policy",
+      "ipf_helper",
+      "ipf_iterations",
+      "joint_margin",
+      "kind",
+      "margin_normalization",
+      "region_groups",
+      "region_margin",
+      "reporting_grain",
+      "resource",
+      "seed_joint",
+      "zero_seed_policy"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
       "band_order": {
        "type": "string"
       },
@@ -4573,10 +4655,14 @@
       },
       "within": {
        "type": "string"
+      },
+      "cell_order": {
+       "type": "string"
       }
      },
      "required": [
       "band_order",
+      "cell_order",
       "column_reconciliation",
       "kind",
       "minimum_allocation_people",
@@ -5563,11 +5649,15 @@
       },
       "seed_mixing": {
        "type": "string"
+      },
+      "cell_means": {
+       "type": "string"
       }
      },
      "required": [
       "bottom_band_floor",
       "bounded_band_family",
+      "cell_means",
       "deterministic",
       "kind",
       "mean_repair_margin",
@@ -7518,7 +7608,10 @@
       "initial_weight",
       "never_zero_weight",
       "weight_kind_out",
-      "reason"
+      "reason",
+      "size_band_vintage",
+      "retained_taxpayers",
+      "retained_gains_gbp"
      ],
      "properties": {
       "kind": {
@@ -7574,6 +7667,15 @@
       },
       "reason": {
        "type": "string"
+      },
+      "size_band_vintage": {
+       "type": "string"
+      },
+      "retained_taxpayers": {
+       "type": "number"
+      },
+      "retained_gains_gbp": {
+       "type": "number"
       }
      }
     },

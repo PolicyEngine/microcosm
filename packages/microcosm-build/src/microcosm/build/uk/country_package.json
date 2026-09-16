@@ -83,11 +83,6 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "hmrc_cgt_size_bands.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
       "path": "hmrc_cgt_conditioning_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
