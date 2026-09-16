@@ -22,6 +22,10 @@ from microcosm.build.ledger_targets import (
 from microcosm.calibrate import TargetRegistry
 
 EXPECTED_SOURCE_MONTHS = "uk_uc_expected_source_months"
+# The DWP families whose monthly Stat-Xplore series declare their source
+# window: Universal Credit (the paid-claim and element rows) and, since #882,
+# the Housing Benefit caseload rows bound on the same calendar-2025 window.
+SOURCE_MONTH_FAMILIES = frozenset({"dwp_universal_credit", "dwp_housing_benefit"})
 
 
 def uc_source_month_metadata(
@@ -60,12 +64,13 @@ def validate_uc_source_month_coverage(
     encoded = reference.metadata.get(EXPECTED_SOURCE_MONTHS)
     if encoded is None:
         return registry
-    if reference.family != "dwp_universal_credit" or reference.value_operation not in {
+    if reference.family not in SOURCE_MONTH_FAMILIES or reference.value_operation not in {
         "calendar_year_average",
         *MONTHLY_WINDOW_OPERATIONS,
     }:
         raise ValueError(
-            "UK UC source-month coverage requires a UC calendar_year_average or explicit monthly window reference."
+            "UK DWP source-month coverage requires a UC or Housing Benefit "
+            "calendar_year_average or explicit monthly window reference."
         )
     try:
         expected = json.loads(encoded)

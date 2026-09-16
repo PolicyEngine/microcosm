@@ -442,7 +442,7 @@ def test_generator_preserves_observation_basis_and_explicit_months():
         "uc": {"observation_basis": "monthly_stock", **uc_source_month_metadata(MONTHS)}
     }
     contract["targets"][0]["family"] = "other"
-    with pytest.raises(ValueError, match="UK UC-only"):
+    with pytest.raises(ValueError, match="declared only by the UK DWP monthly families"):
         _reference_metadata(contract)
 
 
@@ -511,8 +511,26 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == expected_months
     assert new_paid <= {reference.name for reference in monthly}
     assert set(element_windows) <= {reference.name for reference in monthly}
+    # The #882 Housing Benefit caseload rows bind the Stat-Xplore client-type
+    # by tenure cube on the same calendar-2025 window; no other family
+    # declares source months.
+    housing_benefit = [
+        reference
+        for reference in references
+        if reference.family == "dwp_housing_benefit"
+    ]
+    assert sorted(reference.name for reference in housing_benefit) == [
+        "dwp.hb.households",
+        "dwp.hb.households_private_rented",
+        "dwp.hb.households_social_rented",
+    ]
+    for reference in housing_benefit:
+        assert reference.ledger_selector["period_value"] == calendar_2025
+        assert reference.value_operation == "monthly_window_average"
+        assert reference.period_match_policy == "source_window"
+        assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == calendar_2025
     assert not any(
         EXPECTED_SOURCE_MONTHS in reference.metadata
         for reference in references
-        if reference.family != "dwp_universal_credit"
+        if reference.family not in {"dwp_universal_credit", "dwp_housing_benefit"}
     )

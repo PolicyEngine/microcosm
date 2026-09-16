@@ -45,6 +45,16 @@ UK_TAKE_UP_ANCHOR_AGGREGATES = {
     "universal_credit_reported_anchor": "universal_credit_reported",
 }
 UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
+# Universal Credit is claimable only by a benefit unit with an adult under
+# State Pension age (policyengine-uk ``is_uc_eligible`` requires a working-age
+# adult). The draw's population is therefore those units; a unit with every
+# adult at or over State Pension age is never drawn (#882, microcosm#867).
+# State Pension age is 66 for everyone who can reach it in the 2024-25 release
+# and the 2025 calibration year (it rises from April 2026); the engine
+# lockstep test pins that equivalence.
+UK_STATE_PENSION_AGE = 66
+UK_UC_AGE_ELIGIBLE_AGGREGATE = "uc_age_eligible"
+UK_UC_AGE_ELIGIBLE_METHOD = "any_adult_under_state_pension_age"
 UK_TAKE_UP_SIGNAL_OUTPUTS = (
     ("benunit", "would_claim_child_benefit", "child_benefit"),
     ("benunit", "child_benefit_opts_out", "child_benefit_opts_out_rate"),
@@ -86,7 +96,10 @@ def add_frs_take_up(frame: Frame, *, contract: UKTakeUpContract) -> Frame:
     person = frame.table("person").copy()
     benunit = frame.table("benunit").copy()
     anchors = aggregate_person_reported_to_benunit(person, benunit)
-    derived = derive_frs_take_up(benunit, anchors=anchors, contract=contract)
+    uc_age_eligible = uc_age_eligible_benunits(person, benunit)
+    derived = derive_frs_take_up(
+        benunit, anchors=anchors, contract=contract, uc_age_eligible=uc_age_eligible
+    )
     for column in FRS_TAKE_UP_OUTPUT_COLUMNS:
         benunit[column] = derived[column].to_numpy()
     result = uk_national_frame(
@@ -122,14 +135,34 @@ def aggregate_person_reported_to_benunit(
     return grouped.reset_index(drop=True)
 
 
+def uc_age_eligible_benunits(
+    person: pd.DataFrame, benunit: pd.DataFrame
+) -> np.ndarray:
+    """True where the benefit unit has an adult under State Pension age."""
+
+    if "age" not in person.columns:
+        raise KeyError(
+            "person.age is missing; the Universal Credit take-up population "
+            "cannot be formed without it"
+        )
+    age = pd.to_numeric(person["age"], errors="coerce").fillna(0)
+    eligible_adult = (age >= 16) & (age < UK_STATE_PENSION_AGE)
+    eligible_ids = set(person.loc[eligible_adult, "person_benunit_id"])
+    return benunit["benunit_id"].isin(eligible_ids).to_numpy(dtype=bool)
+
+
 def derive_frs_take_up(
     benunit: pd.DataFrame,
     *,
     anchors: pd.DataFrame,
     contract: UKTakeUpContract,
+    uc_age_eligible: np.ndarray,
 ) -> pd.DataFrame:
     ids = benunit["benunit_id"].to_numpy()
     values = pd.DataFrame(index=benunit.index)
+    population = np.asarray(uc_age_eligible, dtype=bool)
+    if population.shape != ids.shape:
+        raise ValueError("uc_age_eligible must align with the benefit-unit table")
     values["would_claim_child_benefit"] = assign_binary_with_anchored_residual(
         _draws(ids, "would_claim_child_benefit"),
         contract.rate("child_benefit"),
@@ -148,6 +181,7 @@ def derive_frs_take_up(
         _draws(ids, "would_claim_uc"),
         contract.rate("universal_credit"),
         anchors["universal_credit_reported_anchor"].to_numpy(dtype=bool),
+        population=population,
     )
     for output, key in (
         ("would_claim_tfc", "tax_free_childcare"),
@@ -194,13 +228,28 @@ def uk_take_up_signal_gate(
         values = np.asarray(table[output], dtype=bool)
         unique_count = int(pd.Series(values).nunique(dropna=False))
         weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
-        share = float(np.average(values.astype(float), weights=weights))
+        population = np.ones(values.shape, dtype=bool)
+        if key == "universal_credit":
+            # The contract rate is a share of the units that can claim: those
+            # with an adult under State Pension age. The gate measures the
+            # realized share on the same population.
+            population = uc_age_eligible_benunits(frame.table("person"), table)
+        if not population.any() or float(weights[population].sum()) <= 0.0:
+            failures.append(
+                f"{entity}.{output}: no unit in the draw's population carries "
+                "weight; the take-up share cannot be measured."
+            )
+            continue
+        share = float(
+            np.average(values[population].astype(float), weights=weights[population])
+        )
         target = _target_share(table, key, resolved, weights)
         details[f"{entity}.{output}"] = {
             "weighted_share": share,
             "target": target,
             "absolute_deviation": abs(share - target),
             "unique_count": unique_count,
+            "population_units": int(population.sum()),
         }
         if unique_count < 2:
             failures.append(

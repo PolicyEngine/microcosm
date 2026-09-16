@@ -593,6 +593,7 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["frs_take_up"].operations] == [
             "aggregate_person_to_benunit",
+            "aggregate_person_to_benunit",
             "assign_binary_with_anchored_residual",
             "assign_binary_from_rate",
             "assign_binary_with_anchored_residual",

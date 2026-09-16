@@ -1096,10 +1096,11 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 613
+            len(references) == 630
         )  # microcosm#905: 424 - 18 country rows + 189 region-tier cells;
         # microcosm#929: the 81 VOA region cells become 81 composed MHCLG
-        # cells and Wales gains ten country rows (bands A-I + total)
+        # cells and Wales gains ten country rows (bands A-I + total);
+        # microcosm#882: 3 Housing Benefit caseload rows + 14 benefit-cap bands
         assert references["obr.esa"].value_operation == "sum"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"

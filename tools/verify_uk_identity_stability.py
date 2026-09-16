@@ -30,6 +30,7 @@ from microcosm.build.uk_runtime.frs_person_draws import derive_frs_person_draws
 from microcosm.build.uk_runtime.frs_take_up import (
     aggregate_person_reported_to_benunit,
     derive_frs_take_up,
+    uc_age_eligible_benunits,
 )
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
@@ -104,7 +105,12 @@ def e4_identity_receipt(
 
     def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
         anchors = aggregate_person_reported_to_benunit(person_t, benunit_t)
-        take_up = derive_frs_take_up(benunit_t, anchors=anchors, contract=contract)
+        take_up = derive_frs_take_up(
+            benunit_t,
+            anchors=anchors,
+            contract=contract,
+            uc_age_eligible=uc_age_eligible_benunits(person_t, benunit_t),
+        )
         take_up.index = benunit_t["benunit_id"].to_numpy()
         person_draws = derive_frs_person_draws(person_t, contract=contract)
         person_draws.index = person_t["person_id"].to_numpy()

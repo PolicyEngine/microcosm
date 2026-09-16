@@ -46,7 +46,7 @@ def _frame(*, brma_values=("LONDON_A", "LONDON_B")):
             "person_id": np.arange(101, 101 + n),
             "person_benunit_id": np.arange(201, 201 + n),
             "person_household_id": household_ids,
-            "age": [5, 6] * 5,
+            "age": [30, 40] * 5,
         }
     )
     benunit = pd.DataFrame({"benunit_id": np.arange(201, 201 + n)})
@@ -143,3 +143,32 @@ def test_gate_registry_vocabulary_round_trip() -> None:
     assert "take_up_signal" in UK_GATE_REGISTRY
     assert "enum_domain" in UK_GATE_REGISTRY
     assert FRS_BRMA_OUTPUT_COLUMNS == ("brma",)
+
+
+def test_take_up_gate_measures_uc_share_over_units_with_a_working_age_adult() -> None:
+    """Units with every adult at or over State Pension age are outside the draw."""
+
+    frame = _frame()
+    person = frame.table("person")
+    # Persons 101-110 sit one per benefit unit; make the last four benefit
+    # units all-pension-age and mark them as claimants: they must not count.
+    person.loc[person["person_id"] >= 107, "age"] = 70
+    benunit = frame.table("benunit")
+    benunit.loc[benunit["benunit_id"] >= 207, "would_claim_uc"] = True
+
+    result = uk_take_up_signal_gate(frame, contract=_Contract())
+
+    detail = result.details["benunit.would_claim_uc"]
+    assert detail["population_units"] == 6
+    assert detail["weighted_share"] == 0.5
+    assert result.passed is True
+
+
+def test_take_up_gate_fails_when_the_uc_population_is_empty() -> None:
+    frame = _frame()
+    frame.table("person")["age"] = 70
+
+    result = uk_take_up_signal_gate(frame, contract=_Contract())
+
+    assert result.passed is False
+    assert "would_claim_uc: no unit in the draw's population" in " ".join(result.failures)
