@@ -1244,11 +1244,16 @@ def verification_epoch():
         raise
     finally:
         _EPOCHS.pop()
-        # The nested capsule's epoch closes first, so this owner's own final
-        # validation reaches the nested population's complete file check rather
-        # than its memo. Both refusals are collected and this owner's is
-        # preferred, because this owner's error class is the one every borrow
-        # through it raises; a refusal is never dropped, only ordered.
+        # The nested capsule's epoch closes first. At the outermost close its
+        # depth reaches zero and its memo is cleared, so this owner's own final
+        # validation reaches the nested population's complete file check; at an
+        # inner nested close the depth stays above zero and `_epoch_exit`
+        # refreshes the nested memo's signature instead, so this owner's
+        # validation is a memo hit there. Nothing is skipped in net either way,
+        # because the nested capsule's own exit has just re-validated it in
+        # full. Both refusals are collected and this owner's is preferred,
+        # because this owner's error class is the one every borrow through it
+        # raises; the other is chained onto it, never dropped.
         nested = None
         try:
             asec_native._epoch_exit(failed)
@@ -1266,6 +1271,8 @@ def verification_epoch():
                 _MEMO.clear()
             _EPOCH_RECORD = outer
         if not failed and (own is not None or nested is not None):
+            if own is not None and nested is not None:
+                raise own from nested
             raise own if own is not None else nested
 
 

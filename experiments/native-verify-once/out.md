@@ -73,8 +73,10 @@ memoised at all.
 `test_a_file_added_to_a_source_directory_mid_epoch_refuses`,
 `test_a_touched_source_refuses_on_its_stat_identity_alone`,
 `test_a_change_a_signature_cannot_see_refuses_when_the_epoch_closes`.
-Each asserts the refusal **twice**: at the borrow that follows the mutation, and
-again when the epoch declines to close over it.
+Each asserts the refusal **twice** — at the borrow that follows the mutation,
+and again when the epoch declines to close over it — except the last, which
+asserts it once by design: that mutation is the one a signature cannot see, so
+the borrow after it is a memo hit and the close is the only refusal.
 
 **Before/after CPU.** Unit level, from
 `test_an_epoch_validates_once_and_reuses_it`: six borrows of one preparation
@@ -127,8 +129,11 @@ every borrow, and the signature carries the stat identity of all seven source
 files *and of their parent directories*, which `_file_identity` does not cover
 because it opens `O_NOFOLLOW` on the final component only — so a roster change
 reaches a memo that never lists the roster. The capsule's epoch closes **before**
-its owner's, so the owner's final validation reaches the complete file check
-rather than the memo.
+its owner's: at the outermost close its memo is already cleared, so the owner's
+final validation reaches the complete file check; at an inner nested close the
+memo is live with a refreshed signature and the owner's validation is a memo
+hit, with nothing skipped in net because the capsule's own exit has just
+re-validated it in full.
 
 **Mutation test.**
 `test_the_native_capsule_still_refuses_a_changed_source_inside_an_epoch`

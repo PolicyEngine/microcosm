@@ -166,10 +166,17 @@ both frame identities are re-checked *after* the file loop as well as before.
 the stat identity of the seven `state.source_files` paths and of their parent
 directories (which `_file_identity` does not cover: it opens `O_NOFOLLOW` on
 the final component only). `_State` here is a `NamedTuple` and a test pins its
-immutability, so the memo lives in a side table keyed by the identity of the
-`_ISSUED` entry tuple and torn down by the same weakref callback that clears
-`_ISSUED` — the entry tuple itself is never replaced, because about twenty-five
-call sites compare it with `is`.
+immutability, so the memo lives in a side table keyed by `id(owner)`, holding a
+weak reference to the owner beside the signature and the state. An entry
+answers only when that reference still resolves to the same object, dead
+entries are dropped as the epoch closes, and the whole table is cleared when
+the outermost epoch exits.
+
+The owner's own close runs after this capsule's. At the outermost close this
+capsule's memo is already cleared, so the owner's final validation reaches the
+complete file check; at an inner nested close the memo is still live with a
+refreshed signature, so the owner's validation is a memo hit — and nothing is
+skipped in net, because this capsule's exit has just re-validated it in full.
 
 **Why the guarantee survives.** As in mechanism 1. The documented
 yield-tolerance pattern is preserved intact: a memo hit runs neither the file

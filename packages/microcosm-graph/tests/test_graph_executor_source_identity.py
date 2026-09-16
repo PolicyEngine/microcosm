@@ -252,7 +252,15 @@ def test_a_source_changed_during_a_source_free_node_refuses_at_run_end(
 def test_a_rewritten_source_still_refuses_when_only_its_bytes_moved(
     tmp_path: Path,
 ) -> None:
-    """Same length, restored mtime: the cache must not answer from memory."""
+    """Same length and modification time: st_ctime_ns is what still moves.
+
+    This is the strongest rewrite an unprivileged process can perform here, and
+    it is *not* stat-preserving: st_ctime_ns moves, so the signature moves and
+    the node refuses. The genuinely stat-preserving case -- all five fields
+    identical -- is the residual the run-end re-derivation exists for, and
+    `test_a_source_changed_during_a_source_free_node_refuses_at_run_end`
+    reaches that re-derivation by the other route.
+    """
 
     source = _source_path(tmp_path / "source")
     store = ContentStore(tmp_path / "store")
