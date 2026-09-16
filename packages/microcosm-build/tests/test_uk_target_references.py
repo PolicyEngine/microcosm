@@ -34,9 +34,13 @@ from microcosm.build.target_reference_authoring import (
     TargetReferenceAuthoringConfig,
     author_target_references,
 )
+from microcosm.build.uk_runtime.chronicle_feed import (
+    load_uk_chronicle_feed,
+)
 from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
-from microcosm.build.uk_runtime.national_chronicle_feed import (
-    load_uk_national_chronicle_feed,
+from microcosm.calibrate.geography_constants import (
+    UK_REGION_TIER,
+    UK_REGION_TIER_ENUM,
 )
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
@@ -56,7 +60,8 @@ from tools.generate_uk_target_references import (
     _value_operation_by_target_id,
 )
 
-ACTIVE_REFERENCE_COUNT = 415
+ACTIVE_REFERENCE_COUNT = 613
+REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
 
@@ -101,15 +106,12 @@ def test_committed_surfaces_regenerate_from_pinned_feed(
     tmp_path: Path, surface: str
 ) -> None:
     root = Path(__file__).resolve().parents[3]
-    # Local references keep their independently reviewed historical input.
-    # Never fall back to the configured national feed for the local surface.
-    environment_key = (
-        "CHRONICLE_UK_FACTS" if surface == "national" else "CHRONICLE_UK_LOCAL_FACTS"
-    )
-    configured = os.environ.get(environment_key)
+    # Both surfaces regenerate from the one reviewed pin (uk/chronicle_feed.json);
+    # the artifact location is the same untracked default or CHRONICLE_UK_FACTS.
+    configured = os.environ.get("CHRONICLE_UK_FACTS")
     feed = Path(configured) if configured else root / STABLE_UK_FACT_FEED_NAME
     if not feed.exists():
-        pytest.skip(f"pinned UK Chronicle {surface} consumer feed is not present")
+        pytest.skip("pinned UK Chronicle consumer feed is not present")
 
     if feed.is_dir():
         artifact_path = feed
@@ -119,22 +121,20 @@ def test_committed_surfaces_regenerate_from_pinned_feed(
             default_manifest if not configured else feed.with_name("manifest.json")
         )
         if not manifest.is_file():
-            pytest.skip(
-                f"pinned UK Chronicle {surface} consumer manifest is not present"
-            )
+            pytest.skip("pinned UK Chronicle consumer manifest is not present")
         artifact_path = tmp_path / "consumer-artifact"
         artifact_path.mkdir()
         (artifact_path / "consumer_facts.jsonl").symlink_to(feed.resolve())
         (artifact_path / "manifest.json").symlink_to(manifest.resolve())
 
-    if surface == "national":
-        pin = load_uk_national_chronicle_feed()
-        facts_sha256, manifest_sha256 = pin.facts_sha256, pin.manifest_sha256
-        expected_rows = pin.fact_row_count
-    else:
-        facts_sha256 = _LEDGER_FACT_FEED_PIN["facts_sha256"]
-        manifest_sha256 = _LEDGER_FACT_FEED_PIN["manifest_sha256"]
-        expected_rows = int(_LEDGER_FACT_FEED_PIN["fact_row_count"])
+    pin = load_uk_chronicle_feed()
+    facts_sha256, manifest_sha256 = pin.facts_sha256, pin.manifest_sha256
+    expected_rows = pin.fact_row_count
+    if surface == "local":
+        # The local census restates the same pin; regeneration must agree.
+        assert _LEDGER_FACT_FEED_PIN["facts_sha256"] == facts_sha256
+        assert _LEDGER_FACT_FEED_PIN["manifest_sha256"] == manifest_sha256
+        assert int(_LEDGER_FACT_FEED_PIN["fact_row_count"]) == expected_rows
     artifact = load_ledger_consumer_artifact(
         artifact_path,
         expected_facts_sha256=facts_sha256,
@@ -155,7 +155,7 @@ def test_committed_surfaces_regenerate_from_pinned_feed(
     membership_name = f"{prefix}target_reference_membership.json"
     generator = f"generate_uk_{prefix}target_references.py"
     # This stable provenance label is independent of the artifact location;
-    # the facts and manifest above must still match the surface-specific pin.
+    # the facts and manifest above must still match the shared pin.
     source_fact_feed = _load_uk_resource(membership_name)["source_fact_feed"]
     arguments = [
         sys.executable,
@@ -203,6 +203,11 @@ def test_uk_target_references_load_as_typed_non_empty_resource() -> None:
     )
 
 
+def membership_composition_member_count(target_id: str, cell: str) -> int:
+    pins = _load_uk_resource("target_reference_membership.json")["geography_pins"]
+    return int(pins[target_id]["geography_composition"][cell]["member_count"])
+
+
 def test_uk_target_references_follow_contract_derivation_rules() -> None:
     resource = _load_uk_resource("target_references.json")
     targets_by_id = _contract_targets_by_id()
@@ -217,6 +222,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "calendar_year_average",
         "latest_plateau",
         "count_x_mean",
+        "linear_combination",
         "monthly_window_average",
         "monthly_window_sum_average",
     ]
@@ -226,14 +232,45 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         contract_target_id = reference["metadata"]["contract_target_id"]
         target = targets_by_id[contract_target_id]
         binding = target["bindings"]["policyengine"]
+        fanout_cell = reference["metadata"].get("geography_id")
 
         for key, value in target["ledger_selector"].items():
             if key == "dimension_values":
                 assert value.items() <= reference["ledger_selector"][key].items()
                 continue
             assert reference["ledger_selector"][key] == value
-        assert reference["ledger_selector"]["geography_level"] == "country"
-        assert reference["ledger_selector"]["geography_id"]
+        if fanout_cell:
+            # Two-level (country + region) targets fan out over the region
+            # tier: each cell pins the tier's level for its area and is named
+            # and measured target_id@geography_id (microcosm#905).
+            assert reference["name"] == f"{contract_target_id}@{fanout_cell}"
+            assert sorted(target["geography_levels"]) == ["country", "region"]
+            composed_from = reference["metadata"].get("composed_from_level")
+            if composed_from:
+                # A composed cell (microcosm#929) selects its member rows one
+                # grain below and keeps the tier cell as its own geography.
+                assert reference["ledger_selector"]["geography_level"] == composed_from
+                assert isinstance(reference["ledger_selector"]["geography_id"], list)
+                assert (
+                    reference["metadata"]["geography_level"]
+                    == (REGION_TIER_LEVEL[fanout_cell])
+                )
+            else:
+                assert (
+                    reference["ledger_selector"]["geography_level"]
+                    == (REGION_TIER_LEVEL[fanout_cell])
+                )
+                assert reference["ledger_selector"]["geography_id"] == fanout_cell
+        else:
+            # Region-only contract targets (the DfT London bus rows) pin the
+            # publisher's region-stamped fact; everything else pins a country.
+            expected_level = (
+                "region"
+                if list(target.get("geography_levels") or ()) == ["region"]
+                else "country"
+            )
+            assert reference["ledger_selector"]["geography_level"] == expected_level
+            assert reference["ledger_selector"]["geography_id"]
         assert reference["entity"] == _expected_reference_entity(target)
         expected_measure = (
             binding["metric_name"]
@@ -259,6 +296,36 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
             expected_metadata["measurement_period"] = str(binding["measurement_period"])
         if binding.get("require_matching_fact_period"):
             expected_metadata["source_period_policy"] = "exact_observation"
+        if fanout_cell:
+            if target.get("region_composition"):
+                members = membership_composition_member_count(
+                    contract_target_id, fanout_cell
+                )
+                expected_metadata.update(
+                    {
+                        "composed_from_level": "local_authority",
+                        "composed_member_count": str(members),
+                    }
+                )
+            expected_metadata.update(
+                {
+                    "geography_level": REGION_TIER_LEVEL[fanout_cell],
+                    "geography_id": fanout_cell,
+                    "geography_predicate": json.dumps(
+                        {
+                            "entity": "household",
+                            "variable": "region",
+                            "operator": "==",
+                            "value": UK_REGION_TIER_ENUM[fanout_cell],
+                            "reduce": "any",
+                            "map_to": _expected_reference_entity(target),
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    "cross_grain_grain": "region",
+                }
+            )
         assert reference["metadata"] == expected_metadata
         category_id = target["category_id"]
         category = resource["hierarchy"]["categories"][category_id]
@@ -312,19 +379,54 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         source_name = fact.get("source", {}).get("source_name") or fact.get(
             "observed_measure", {}
         ).get("source_name")
-        if source_name in {"hmrc", "dfe", "dft"}:
+        if source_name in {
+            "hmrc",
+            "dfe",
+            "dft",
+            "scotgov",
+            "welshgov",
+            "dfi_ni",
+            "nithc",
+        }:
             facts.append(fact)
 
-    registry = compile_ledger_target_references(facts, references, country="uk")
-    specs = {spec.name: spec for spec in registry.specs}
+    from microcosm.build.uk_runtime.ledger_targets import apply_declared_uk_uprating
+
+    # Compile through the UK path: the generic compiler resolves the facts and
+    # records each reference's declared uprating_index; the UK applier then
+    # transports the two fare-receipt rows with BUS0415, so the values below
+    # are the ones the membership, the parity receipts and the runtime carry.
+    specs = {}
+    for reference in references:
+        registry = compile_ledger_target_references(facts, [reference], country="uk")
+        (spec,) = apply_declared_uk_uprating(reference, registry).specs
+        specs[spec.name] = spec
+    membership = _load_uk_resource("target_reference_membership.json")
+    for name in ("dft.bus_fare_receipts.england", "dft.bus_fare_receipts.london"):
+        assert specs[name].metadata["uprating_index"] == "dft.local_bus_fares_index"
+        (candidate,) = membership["targets"][name]["candidates"]
+        assert specs[name].value == pytest.approx(candidate["resolved_value"])
+    assert (
+        specs["dft.bus_fare_receipts.england"].metadata["ledger_value_before_alignment"]
+        == "3417388656.43538"
+    )
     assert {name: spec.value for name, spec in specs.items()} == {
         "hmrc.tfc.government_top_up": 599_800_000.0,
         "hmrc.tfc.children_with_used_accounts": 1_151_515.0,
         "dfe.funded_childcare.working_parent_children_2_to_4": 621_482.0,
         "dfe.funded_childcare.early_learning_2_year_olds": 95_031.0,
         "dfe.funded_childcare.universal_only_children": 396_965.0,
-        "dft.bus_fare_receipts.england": 3_417_388_656.43538,
+        "dft.bus_fare_receipts.england": pytest.approx(
+            3_417_388_656.43538 * 204.125 / 193.125
+        ),
         "dft.bus_net_support.england": 3_024_904_320.8399997,
+        "dft.bus_fare_receipts.london": 1_347_434_943.01459,
+        "dft.bus_net_support.london": 1_130_214_000.0,
+        "scotgov.bus.passenger_revenue": 391_000_000.0,
+        "scotgov.bus.government_support": 499_000_000.0,
+        "welshgov.bus.public_support": 131_489_970.0,
+        "dfi_ni.bus.passenger_receipts": 150_082_817.48999995,
+        "nithc.public_transport_support": 111_700_000.0,
     }
     assert {
         name: spec.metadata["ledger_entity_name"] for name, spec in specs.items()
@@ -336,6 +438,40 @@ def test_childcare_and_bus_references_compile_with_declared_provenance() -> None
         "dfe.funded_childcare.universal_only_children": "person",
         "dft.bus_fare_receipts.england": "institutional_sector",
         "dft.bus_net_support.england": "institutional_sector",
+        "dft.bus_fare_receipts.london": "institutional_sector",
+        "dft.bus_net_support.london": "institutional_sector",
+        "scotgov.bus.passenger_revenue": "institutional_sector",
+        "scotgov.bus.government_support": "government",
+        "welshgov.bus.public_support": "government",
+        "dfi_ni.bus.passenger_receipts": "institutional_sector",
+        "nithc.public_transport_support": "government",
+    }
+    assert {
+        name: (
+            spec.metadata["ledger_geography_level"],
+            spec.metadata["ledger_geography_id"],
+        )
+        for name, spec in specs.items()
+        if name.startswith("dft.")
+    } == {
+        "dft.bus_fare_receipts.england": ("country", "E92000001"),
+        "dft.bus_net_support.england": ("country", "E92000001"),
+        "dft.bus_fare_receipts.london": ("region", "E12000007"),
+        "dft.bus_net_support.london": ("region", "E12000007"),
+    }
+    assert {
+        name: (
+            spec.metadata["ledger_geography_level"],
+            spec.metadata["ledger_geography_id"],
+        )
+        for name, spec in specs.items()
+        if name.split(".", 1)[0] in {"scotgov", "welshgov", "dfi_ni", "nithc"}
+    } == {
+        "scotgov.bus.passenger_revenue": ("country", "S92000003"),
+        "scotgov.bus.government_support": ("country", "S92000003"),
+        "welshgov.bus.public_support": ("country", "W92000004"),
+        "dfi_ni.bus.passenger_receipts": ("country", "N92000002"),
+        "nithc.public_transport_support": ("country", "N92000002"),
     }
     assert (
         specs["dfe.funded_childcare.universal_only_children"].metadata[
@@ -409,6 +545,18 @@ def test_ons_age_total_targets_pin_exact_age_dimension_set() -> None:
     ] == ["age"]
 
 
+UC_ELEMENT_TARGET_IDS = frozenset(
+    {
+        "dwp.uc.households_lcwra_element",
+        "dwp.uc.households_carer_element",
+        "dwp.uc.households_housing_element",
+        "dwp.uc.households_housing_element_social_rented",
+        "dwp.uc.households_housing_element_private_rented",
+        "dwp.uc.households_childcare_element",
+    }
+)
+
+
 def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> None:
     contract = _load_uk_resource("uk_population_targets.json")
     targets = {target["target_id"]: target for target in contract["targets"]}
@@ -448,6 +596,24 @@ def test_uc_composition_targets_pin_paid_cells_and_explicit_month_windows() -> N
             assert pins["child_entitlement"] == ["No", "Yes"]
             assert selector["source_measure_id"] == "benefit_units"
             assert operations[target_id] == "monthly_window_sum_average"
+        elif target_id in UC_ELEMENT_TARGET_IDS:
+            # #882 element rows: one paid-claim cell per month from the
+            # chronicle#260 crosses (the childcare count is the ODS all-claims
+            # series and carries no payment indicator), averaged over the
+            # declared calendar-2025 window. The month list makes them sum
+            # candidates like the ten broad rows; the declared operation
+            # averages instead.
+            if target_id != "dwp.uc.households_childcare_element":
+                assert "payment_indicator" in selector["dimensions"]
+                assert pins["payment_indicator"] == "Yes"
+            assert selector["source_measure_id"] == "benefit_units"
+            assert operations[target_id] == "monthly_window_average"
+            assert target["period_match_policy"] == "source_window"
+            assert target_id in sum_target_ids
+            assert selector["period_value"] == [
+                f"2025-{month:02d}" for month in range(1, 13)
+            ]
+            continue
         else:
             # Merely naming a dimension set still does not request a sum.
             assert target_id not in sum_target_ids
@@ -481,13 +647,23 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         str(target["target_id"])
         for target in contract["targets"]
         if str(target["target_id"]).startswith("scotgov.")
+        and set(target.get("geography_levels") or ()) <= {"country", "region"}
     }
     assert scotgov_ids == {
         f"scotgov.council_tax_stock.band_{band}" for band in "abcdefgh"
     } | {
         "scotgov.council_tax_stock.total",
         "scotgov.scottish_child_payment_spending",
+        "scotgov.bus.passenger_revenue",
+        "scotgov.bus.government_support",
     }
+    # The council-area cells of the same publication are local-authority
+    # targets (microcosm#929) and take their geography from the roster.
+    assert {
+        str(target["target_id"])
+        for target in contract["targets"]
+        if str(target["target_id"]).startswith("scotgov.council_tax_stock.by_area.")
+    } == {f"scotgov.council_tax_stock.by_area.band_{band}" for band in "abcdefgh"}
     assert {pins[target_id]["geography_id"] for target_id in scotgov_ids} == {
         "S92000003"
     }
@@ -526,10 +702,17 @@ def test_prefix_geography_pins_carry_scotgov_and_england_scoped_slc_families() -
         and "northern" not in haystack(target)
         and "domestic_rates" not in haystack(target)
     }
+    # The by_area council-tax cells carry the same prefix pin, but they sit on
+    # the local surface, where the roster (not the pin) fixes the geography.
+    national_target_ids = {
+        str(target["target_id"])
+        for target in contract["targets"]
+        if set(target.get("geography_levels") or ()) <= {"country", "region"}
+    }
     scotland_pinned = {
         target_id
         for target_id, pin in pins.items()
-        if pin["geography_id"] == "S92000003"
+        if pin["geography_id"] == "S92000003" and target_id in national_target_ids
     }
     assert scotland_pinned == scotgov_ids | substring_scotland
 
@@ -556,9 +739,9 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 415,
+        "active": 613,
         "no_fact_at_or_before_period": 7,
-        "signed_excluded": 8,
+        "signed_excluded": 7,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
@@ -595,12 +778,33 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "council_tax_stock",
             "status": "active_declared_rows",
-            "active_reference_count": 18,
+            "active_reference_count": 100,
             "signed_rationale": (
-                "VOA (England and Wales) and Scottish Government CTAXBASE "
-                "(Scotland) council-tax stock bands are declared as nine "
-                "explicit target rows each, including total, and each resolves "
-                "with its country-level geography and band pin."
+                "MHCLG council taxbase (England), Welsh Government CT1 "
+                "(Wales) and Scottish Government CTAXBASE (Scotland) "
+                "council-tax stock bands are declared as explicit target rows "
+                "per band plus total (England and Scotland A-H, Wales A-I). "
+                "The Welsh and Scottish rows resolve with their country-level "
+                "geography and band pin; the English rows fan out over the "
+                "nine English regions of the region tier (microcosm#905), each "
+                "cell composed as the linear combination of the billing-"
+                "authority facts the crosswalk places in that region "
+                "(microcosm#929)."
+            ),
+        },
+        {
+            "family": "ons_population",
+            "status": "active_region_tier_fanout",
+            "active_reference_count": 108,
+            "signed_rationale": (
+                "The nine ONS population-by-age-band targets fan out over the "
+                "twelve-area region tier (nine English regions at Chronicle's "
+                "region level, Wales, Scotland and Northern Ireland at country "
+                "level), one reference per area, each scoped on the spine by "
+                "a household-region predicate and placed at the region grain "
+                "of the cross-grain rule (microcosm#905). The former single "
+                "UK-wide row per band is retired: the tier sums to it within "
+                "the same publication."
             ),
         },
     ]
@@ -775,6 +979,15 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
     monthly_average_ids = {
         f"dwp.uc.households_children_{children}"
         for children in ("1", "2", "3", "4", "5_or_more")
+    } | {
+        # #882 element rows: paid-claim crosses on declared month windows.
+        "dwp.uc.households_lcwra_element",
+        "dwp.uc.households_carer_element",
+        "dwp.uc.households_housing_element",
+        "dwp.uc.households_housing_element_social_rented",
+        "dwp.uc.households_housing_element_private_rented",
+        "dwp.uc.households_childcare_element",
+        "dwp.uc.households_with_deduction",
     }
     uc_target_ids = {
         target["target_id"]
@@ -1089,7 +1302,7 @@ def test_current_national_compile_parity_regenerates_and_passes_with_pinned_feed
     path = Path(configured)
     if path.is_file():
         path = path.parent
-    pin = load_uk_national_chronicle_feed()
+    pin = load_uk_chronicle_feed()
     artifact = load_ledger_consumer_artifact(
         path,
         expected_facts_sha256=pin.facts_sha256,
@@ -1177,3 +1390,72 @@ def test_public_cgt_parity_fixture_rejects_stale_values_and_unsigned_names(mutat
         signed = [r for r in signed if r["name"] != omitted]
     gate = ledger_compile_parity_gate(actual, fixture, signed_differences=signed)
     assert not gate.passed
+
+
+def test_two_level_targets_fan_out_over_the_region_tier() -> None:
+    resource = _load_uk_resource("target_references.json")
+    membership = _load_uk_resource("target_reference_membership.json")
+    contract = _load_uk_resource("uk_population_targets.json")
+    two_level = [
+        target["target_id"]
+        for target in contract["targets"]
+        if sorted(target.get("geography_levels") or ()) == ["country", "region"]
+    ]
+    assert len(two_level) == 18
+    ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
+    mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
+    assert len(ons) == 9 and len(mhclg) == 9
+    by_contract: dict[str, list[dict]] = {}
+    for reference in resource["target_references"]:
+        by_contract.setdefault(reference["metadata"]["contract_target_id"], []).append(
+            reference
+        )
+    tier_codes = [code for _, code in UK_REGION_TIER]
+    english = [code for code in tier_codes if code.startswith("E12")]
+    for target_id in two_level:
+        rows = by_contract[target_id]
+        cells = [row["metadata"]["geography_id"] for row in rows]
+        # The retired single country row is gone: every row is a tier cell.
+        assert all("@" in row["name"] for row in rows), target_id
+        assert cells == (tier_codes if target_id in ons else english), target_id
+        assert [row["measure"] for row in rows] == [row["name"] for row in rows]
+        assert {row["metadata"]["cross_grain_grain"] for row in rows} == {"region"}
+        for row in rows:
+            predicate = json.loads(row["metadata"]["geography_predicate"])
+            assert (
+                predicate["value"]
+                == UK_REGION_TIER_ENUM[row["metadata"]["geography_id"]]
+            )
+            assert predicate["map_to"] == row["entity"]
+            if target_id in mhclg:
+                # The English stock cells are composed from their authorities'
+                # MHCLG taxbase rows (microcosm#929): the selector names the
+                # member level and codes, the row keeps the region geography.
+                assert row["metadata"]["composed_from_level"] == "local_authority"
+                assert row["ledger_selector"]["geography_level"] == "local_authority"
+                assert row["value_operation"] == "linear_combination"
+                members = int(row["metadata"]["composed_member_count"])
+                assert {
+                    operand["expected_member_count"]
+                    for operand in row["value_operands"]
+                } == {members}
+        pins = membership["geography_pins"][target_id]
+        assert [cell["geography_id"] for cell in pins["geography_fanout"]] == cells
+        if target_id in mhclg:
+            assert (
+                sum(
+                    cell["member_count"]
+                    for cell in pins["geography_composition"].values()
+                )
+                == 296
+            )
+        candidates = membership["targets"][target_id]["candidates"]
+        assert [entry["geography_id"] for entry in candidates] == cells
+        assert {entry["status"] for entry in candidates} == {"active"}
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 189
+    # The twelve ONS cells of a band sum to the retired UK row of the same
+    # publication (the 0-9 band: 7,553,013 at mid-2024).
+    zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]
+    assert sum(entry["resolved_value"] for entry in zero_to_nine["candidates"]) == (
+        7_553_013.0
+    )

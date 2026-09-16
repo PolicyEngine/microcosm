@@ -63,7 +63,7 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "national_chronicle_feed.json",
+      "path": "chronicle_feed.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -324,6 +324,56 @@
     },
     {
       "path": "local_target_reference_membership.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "ledger_fact_vendor_selections.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "dft_bus_value_anchors.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "road_fuel_anchors.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "licensed_cars_fuel_type.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "need_energy_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "ofgem_price_cap_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "nts_bus_use_frequency.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "devolved_bus_finance.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "orr_rail_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "ons_household_expenditure_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     }

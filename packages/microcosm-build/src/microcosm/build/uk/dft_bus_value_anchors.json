@@ -1,0 +1,3610 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "dft_bus_value_anchors.json",
+  "purpose": "DfT BUS05i passenger fare receipts and total estimated net support for England, London and England outside London (year-ending-March labels 2023 to 2025); BUS0415 local bus fares index quarter-end months for the same three areas; NTS0705a local bus trips per person by household income quintile, both series, 2023 and 2024. Consumed by the LCFS and ETB bus-fare and bus-support rakes and by the BUS0415 period-alignment pass.",
+  "consumers": [
+    "uk_runtime.ledger_targets"
+  ],
+  "planned_consumers": [
+    "lcfs_consumption",
+    "etb_services"
+  ],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "df35af7e7ccf689ad2a5b6e47ce33e99b8c9d3fb",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 266390,
+    "facts_sha256": "3e7d5a4fe18be9e5a19e5475a6e9f91a5d5b0ab827faedccdc755584957e59e7",
+    "manifest_sha256": "51aab3411e803cac7b9bbd1b1bf9250a87cd43bfd0ba35d0cd653e31821d0364"
+  },
+  "selections": [
+    {
+      "label": "bus05ai_fare_receipts",
+      "selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_passenger_fare_receipts",
+        "period_type": "fiscal_year",
+        "geography_id": [
+          "E92000001",
+          "E12000007",
+          "dft:england_outside_london"
+        ]
+      },
+      "row_count": 9
+    },
+    {
+      "label": "bus05bi_net_support",
+      "selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_total_estimated_net_support",
+        "period_type": "fiscal_year",
+        "geography_id": [
+          "E92000001",
+          "E12000007",
+          "dft:england_outside_london"
+        ]
+      },
+      "row_count": 9
+    },
+    {
+      "label": "bus0415_fares_index",
+      "selector": {
+        "source_name": "dft",
+        "source_concept": "dft.local_bus_fares_index",
+        "period_type": "month",
+        "geography_id": [
+          "E92000001",
+          "E12000007",
+          "dft:england_outside_london"
+        ]
+      },
+      "row_count": 39
+    },
+    {
+      "label": "nts0705a_local_bus_trips_by_income_quintile",
+      "selector": {
+        "source_name": "dft",
+        "source_concept": [
+          "dft.other_local_bus_trips_per_person",
+          "dft.bus_in_london_trips_per_person"
+        ],
+        "period_type": "calendar_year"
+      },
+      "row_count": 24
+    }
+  ],
+  "row_count": 81,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6c0c0fe6db683509b2109f3a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9598aa3edb90ca01d5fccab1",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2023.all.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2023",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 14.0687444929693
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a08fcfbda1c8891d3225e7ee",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c32eb66393e31b754893ff70",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2023.fourth.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2023",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "fourth",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "fourth"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 9.0529496258137
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4fd07107506c2f39286a831c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ecf85e006f7e6ba8f5b83088",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2023.highest.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2023",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "highest",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "highest"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 12.6391860781017
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_de83ab8fc8366476d215dc97",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2398dcece4b8e53a27ae5c15",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2023.lowest.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2023",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "lowest",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "lowest"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 25.8600467872356
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f710d19dde9e580ed88e1f5e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e46fd90b7f005c960a8ae27f",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2023.second.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2023",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "second",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "second"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 13.5776752478466
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_35357335d6b71f4fd54c9193",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2cc5768963c140ec39ca331c",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2023.third.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2023",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "third",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "third"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 9.70190372096091
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_aaf69b1eb6241ecdd1bc8daa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7f937f775f3aa7c7248e0235",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2024.all.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2024",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 13.1155774642333
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_192b0b4048c12d5145a5ef33",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bb8786cbf36083fd6119506b",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2024.fourth.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2024",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "fourth",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "fourth"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 11.5980508472558
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4ad7ceff49af993551743ff2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c7c6410c90e3def161e1792a",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2024.highest.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2024",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "highest",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "highest"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 15.8521163541941
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_55ee7e0cab4cb9a7e5458475",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c7179f6cb9e770aa616f103e",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2024.lowest.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2024",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "lowest",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "lowest"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 18.8305197145527
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_181751dc132ec827bcfcc99c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_367ec0878476f0c0e5e05678",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2024.second.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2024",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "second",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "second"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 12.2638405672301
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5d4ae713c3be7a40ea23fb4b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0b71320a85105d5b2abcfda8",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2024.third.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2024",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "third",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "third"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 7.3860783332291
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9fdbb0de4ae0221745874ab0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_eb7367331bbcabfbc77937b5",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202303.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2023-03"
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-03-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202303",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 194.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_83ff55657231934c7a10004c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_15e7fdd3b80bbaacfea5525c",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202306.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2023-06"
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2023-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202306",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 194.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_965e0e155523b757546a3162",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ea9e11e955a2ebd25aa34191",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202309.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2023-09"
+      },
+      "period_coverage": {
+        "start_date": "2023-07-01",
+        "end_date": "2023-09-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202309",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 194.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_88c2bde5dc77d99af73ce80f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c6eb950baf8e11b10340b026",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202312.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2023-12"
+      },
+      "period_coverage": {
+        "start_date": "2023-10-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202312",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 194.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2ae33aef73f3fdb0e59f565e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3cdf54a3c54b0b01d018134b",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202403.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2024-03"
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-03-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202403",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 196.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bca1216dc1d4a68abc548cec",
+      "semantic_fact_key": "ledger_semantic_fact_v2_78f9eb451586465bc7e3f61c",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202406.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2024-06"
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2024-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202406",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 196.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e4e8ee86a482a25aa2f1181c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f55c8ce80f914966bc459f02",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202409.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2024-09"
+      },
+      "period_coverage": {
+        "start_date": "2024-07-01",
+        "end_date": "2024-09-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202409",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 196.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6987b234fa9f385c200523ad",
+      "semantic_fact_key": "ledger_semantic_fact_v2_34434f3b3e4eb684bd07c136",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202412.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2024-12"
+      },
+      "period_coverage": {
+        "start_date": "2024-10-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202412",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 196.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b03f4cb009d76645b3baf52d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7d8079cbb6edc9cbfbb4f3f4",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202503.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-03"
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-03-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202503",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 196.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bfa26857bf62bb25d22fff52",
+      "semantic_fact_key": "ledger_semantic_fact_v2_76ee0572608d089e8cd8ea12",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202506.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-06"
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2025-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202506",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 196.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0c523798b4f5070f504a22a1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dc8451325c6145c24b6bf9e1",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202509.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-09"
+      },
+      "period_coverage": {
+        "start_date": "2025-07-01",
+        "end_date": "2025-09-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202509",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 196.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_64d0e89c3b8c54bd3a65859a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_328067b2d1ce3367ff9401be",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202512.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-12"
+      },
+      "period_coverage": {
+        "start_date": "2025-10-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202512",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 196.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_24d3c8d6e816d6e564d198ac",
+      "semantic_fact_key": "ledger_semantic_fact_v2_aa9abeede941900f767120ad",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202603.london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-03"
+      },
+      "period_coverage": {
+        "start_date": "2026-01-01",
+        "end_date": "2026-03-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202603",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 196.10649454164795
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_30a5df1bf875934a6fdd5602",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3cb81f30015cfb948d08e117",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202303.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2023-03"
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-03-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202303",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 182.9
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a2b76fe875c1b0b15cddad77",
+      "semantic_fact_key": "ledger_semantic_fact_v2_aadb4e59d87795c9562d1014",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202306.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2023-06"
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2023-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202306",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 184.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2698b09516bfa694d0bf85f0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_10a5e85fd69669bce0504061",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202309.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2023-09"
+      },
+      "period_coverage": {
+        "start_date": "2023-07-01",
+        "end_date": "2023-09-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202309",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 185.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_77146f71d0efc7f2ebc96b4a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a73936362084994571eab9db",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202312.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2023-12"
+      },
+      "period_coverage": {
+        "start_date": "2023-10-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202312",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 186.2
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_db3f05ef1ebf2d72a68883aa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cf326c22083d0d47300de969",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202403.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2024-03"
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-03-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202403",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 187.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c82802cad14085780aa77d40",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e69b5be80dd09f7999dc81b6",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202406.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2024-06"
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2024-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202406",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 188.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_38c1a5515b7cd53f27cd0603",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3cd26b13a5055251efa4889a",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202409.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2024-09"
+      },
+      "period_coverage": {
+        "start_date": "2024-07-01",
+        "end_date": "2024-09-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202409",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 191
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_50a9815ac27c31830ff3cac6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d4dc628723efd199f489c778",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202412.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2024-12"
+      },
+      "period_coverage": {
+        "start_date": "2024-10-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202412",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 191.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_23ba44a8980ab3878c513263",
+      "semantic_fact_key": "ledger_semantic_fact_v2_748442ff1a5457a2b5efb6f8",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202503.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-03"
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-03-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202503",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 201.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2f56e1fdb61975a9f272644a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_25bbd70d00bbfefb05cdd872",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202506.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-06"
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2025-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202506",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 203.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0a7a5663b283a6577fb3f4b4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_10454fb240def468319b8c18",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202509.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-09"
+      },
+      "period_coverage": {
+        "start_date": "2025-07-01",
+        "end_date": "2025-09-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202509",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 205.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e3e8759c4ee839647519aa62",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a95c95f9ce64c78c62056ff7",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202512.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-12"
+      },
+      "period_coverage": {
+        "start_date": "2025-10-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202512",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 205.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f2225b47b3a374dcc396bb67",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b1ad4612604c64be40b66393",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202603.england.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-03"
+      },
+      "period_coverage": {
+        "start_date": "2026-01-01",
+        "end_date": "2026-03-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202603",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 207.57608832488305
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b9d2481db547ac00c10ff984",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d4d55229e21348110ef11ca3",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202303.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2023-03"
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-03-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202303",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 173.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a19e652f54c74b2087376dbc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ef991eca83495f07571ce981",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202306.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2023-06"
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2023-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202306",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 175.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bcd1ab4c9677ba978ac2c076",
+      "semantic_fact_key": "ledger_semantic_fact_v2_34b5fbbc8e9e600cae053f25",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202309.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2023-09"
+      },
+      "period_coverage": {
+        "start_date": "2023-07-01",
+        "end_date": "2023-09-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202309",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 177.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b8f3b5129ff7b15bc9607512",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fb38ffbfab064f7bbde5bd6f",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202312.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2023-12"
+      },
+      "period_coverage": {
+        "start_date": "2023-10-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202312",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 178.8
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e99ea1d8edfa0763b8dc308b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5690e8a6e58eda05fcb51235",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202403.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2024-03"
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-03-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202403",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 179.9
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_91a71741000dffed0bd24328",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9ce3684d66cfad2e2aa01088",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202406.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2024-06"
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2024-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202406",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 181.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_26065fb721b32da11f1a89a7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_461bd0da9f61c144b245a335",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202409.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2024-09"
+      },
+      "period_coverage": {
+        "start_date": "2024-07-01",
+        "end_date": "2024-09-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202409",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 185.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7e1447fe13f788a47069045b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_abd933f7fc36334adac1b4d4",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202412.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2024-12"
+      },
+      "period_coverage": {
+        "start_date": "2024-10-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202412",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 185.9
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_380c723838f68b7ce6f8a5c6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_deaebec81b841e4bf9c5015e",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202503.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-03"
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-03-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202503",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 206.4
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a11ad640f9b0337c5b1cf724",
+      "semantic_fact_key": "ledger_semantic_fact_v2_85b030b2aa9c9d7c813e30c4",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202506.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-06"
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2025-06-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202506",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 210.5
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_688fb7b7b091c8376ab641ac",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1e06443cd5d69c7e0036a641",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202509.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-09"
+      },
+      "period_coverage": {
+        "start_date": "2025-07-01",
+        "end_date": "2025-09-30",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202509",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 213.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dc11d433e294b95231446d71",
+      "semantic_fact_key": "ledger_semantic_fact_v2_78b7ba060e8aa5ebd9f9951d",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202512.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2025-12"
+      },
+      "period_coverage": {
+        "start_date": "2025-10-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202512",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 214.3
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7f82f08e3b783eaa59a31152",
+      "semantic_fact_key": "ledger_semantic_fact_v2_18dfc76a59ab00c604a276a2",
+      "source_record_id": "dft.bus0415a.local_bus_fares_index.m202603.england_outside_london.local_bus_fares_index",
+      "concept": "dft.local_bus_fares_index",
+      "measure_id": "local_bus_fares_index",
+      "unit": "index_march_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_services"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "month",
+        "value": "2026-03"
+      },
+      "period_coverage": {
+        "start_date": "2026-01-01",
+        "end_date": "2026-03-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.bus0415a.local_bus_fares_index.m202603",
+        "groupby_dimension": "dft.bus_fares_index_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS0415a local bus fares index by metropolitan area status and country",
+        "source_file": "bus0415.ods",
+        "source_sha256": "04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf",
+        "vintage": "bus_statistics_2026_q1",
+        "raw_r2_key": "raw/dft/dft-bus0415-fares-index-2026/2026/04721e9ade3b39c415ce2a0bcc045ec6d4ccb8afb6e33d525f619cf452bc7adf/bus0415.ods"
+      },
+      "value": 217.95569364121366
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dd2f3034c9cb6369e0f75eea",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f64077ddfaccc7560bdda1ac",
+      "source_record_id": "dft.bus05i.bus05ai.fare_receipts.fy2023.london.passenger_fare_receipts",
+      "concept": "dft.local_bus_passenger_fare_receipts",
+      "measure_id": "passenger_fare_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05ai.fare_receipts.fy2023",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 1212065129.25873
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ebf1639656d41b2f42dcd9ad",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2a8ec7218e9f86856385450b",
+      "source_record_id": "dft.bus05i.bus05ai.fare_receipts.fy2024.london.passenger_fare_receipts",
+      "concept": "dft.local_bus_passenger_fare_receipts",
+      "measure_id": "passenger_fare_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05ai.fare_receipts.fy2024",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 1342087642.33642
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_33611c64d2048fe660501802",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8587d34e39717bcb3abf7e1b",
+      "source_record_id": "dft.bus05i.bus05ai.fare_receipts.fy2025.london.passenger_fare_receipts",
+      "concept": "dft.local_bus_passenger_fare_receipts",
+      "measure_id": "passenger_fare_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05ai.fare_receipts.fy2025",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 1347434943.01459
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a80c1fdac1658daddcb7e7ff",
+      "semantic_fact_key": "ledger_semantic_fact_v2_00d8d9d2379db72608394280",
+      "source_record_id": "dft.bus05i.bus05ai.fare_receipts.fy2023.england.passenger_fare_receipts",
+      "concept": "dft.local_bus_passenger_fare_receipts",
+      "measure_id": "passenger_fare_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05ai.fare_receipts.fy2023",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 3105254075.49544
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a042884c4d97209c3db1a40d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4b913b97a0513b3bd606d077",
+      "source_record_id": "dft.bus05i.bus05ai.fare_receipts.fy2024.england.passenger_fare_receipts",
+      "concept": "dft.local_bus_passenger_fare_receipts",
+      "measure_id": "passenger_fare_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05ai.fare_receipts.fy2024",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 3278976692.6359496
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2ece7c3d283b6de43b30389f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9760cf3d8cd14de93b09968f",
+      "source_record_id": "dft.bus05i.bus05ai.fare_receipts.fy2025.england.passenger_fare_receipts",
+      "concept": "dft.local_bus_passenger_fare_receipts",
+      "measure_id": "passenger_fare_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05ai.fare_receipts.fy2025",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 3417388656.43538
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9328a861a0b4ed62357e19e2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c863134e679b8ede3a502606",
+      "source_record_id": "dft.bus05i.bus05ai.fare_receipts.fy2023.england_outside_london.passenger_fare_receipts",
+      "concept": "dft.local_bus_passenger_fare_receipts",
+      "measure_id": "passenger_fare_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05ai.fare_receipts.fy2023",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 1893188946.23671
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_edba4d0a19a1c09ab1aaadfc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0299e3715f9735dc7eff4d42",
+      "source_record_id": "dft.bus05i.bus05ai.fare_receipts.fy2024.england_outside_london.passenger_fare_receipts",
+      "concept": "dft.local_bus_passenger_fare_receipts",
+      "measure_id": "passenger_fare_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05ai.fare_receipts.fy2024",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 1936889050.29953
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_465d300355c85e7c498397dd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_79496e0e39d6a38e3fa97c67",
+      "source_record_id": "dft.bus05i.bus05ai.fare_receipts.fy2025.england_outside_london.passenger_fare_receipts",
+      "concept": "dft.local_bus_passenger_fare_receipts",
+      "measure_id": "passenger_fare_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05ai.fare_receipts.fy2025",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 2069953713.42079
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_eb637416cc203d3c477c00eb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5ce675da4a86f56f4169328e",
+      "source_record_id": "dft.bus05i.bus05bi.net_support.fy2023.london.total_estimated_net_support",
+      "concept": "dft.local_bus_total_estimated_net_support",
+      "measure_id": "total_estimated_net_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05bi.net_support.fy2023",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 938040000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cb4fb0903abe0119a044bbb3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1371ba021ea12057a7917bc3",
+      "source_record_id": "dft.bus05i.bus05bi.net_support.fy2024.london.total_estimated_net_support",
+      "concept": "dft.local_bus_total_estimated_net_support",
+      "measure_id": "total_estimated_net_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05bi.net_support.fy2024",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 954406918.7
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d8e40cee2fc723b719ff4680",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a338ed4747a2538f660d0fff",
+      "source_record_id": "dft.bus05i.bus05bi.net_support.fy2025.london.total_estimated_net_support",
+      "concept": "dft.local_bus_total_estimated_net_support",
+      "measure_id": "total_estimated_net_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05bi.net_support.fy2025",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 1130214000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e89c824a7e7b414503746541",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e4cd5838d7b6607a9191c51f",
+      "source_record_id": "dft.bus05i.bus05bi.net_support.fy2023.england.total_estimated_net_support",
+      "concept": "dft.local_bus_total_estimated_net_support",
+      "measure_id": "total_estimated_net_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05bi.net_support.fy2023",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 2247884765.6
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1085667f2638aadc22f148df",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f14f4f17d7b674b74c18b3fb",
+      "source_record_id": "dft.bus05i.bus05bi.net_support.fy2024.england.total_estimated_net_support",
+      "concept": "dft.local_bus_total_estimated_net_support",
+      "measure_id": "total_estimated_net_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05bi.net_support.fy2024",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 2651721003.6800003
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a12dfcdc0662c8a5e48bf003",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d6c31dbfd7e23d0a705861ca",
+      "source_record_id": "dft.bus05i.bus05bi.net_support.fy2025.england.total_estimated_net_support",
+      "concept": "dft.local_bus_total_estimated_net_support",
+      "measure_id": "total_estimated_net_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05bi.net_support.fy2025",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 3024904320.8399997
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_555920791138ab05c843c05d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_54a806e5080b33ea05fefa59",
+      "source_record_id": "dft.bus05i.bus05bi.net_support.fy2023.england_outside_london.total_estimated_net_support",
+      "concept": "dft.local_bus_total_estimated_net_support",
+      "measure_id": "total_estimated_net_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05bi.net_support.fy2023",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 1309844765.6000001
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_12efc43d192b68eb7c8bc4ee",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6482e359ce082e8fb83bb779",
+      "source_record_id": "dft.bus05i.bus05bi.net_support.fy2024.england_outside_london.total_estimated_net_support",
+      "concept": "dft.local_bus_total_estimated_net_support",
+      "measure_id": "total_estimated_net_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05bi.net_support.fy2024",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 1697314084.98
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7ab0c5007c9a6ad38aaa1468",
+      "semantic_fact_key": "ledger_semantic_fact_v2_55f8ff103004096b2a950d9f",
+      "source_record_id": "dft.bus05i.bus05bi.net_support.fy2025.england_outside_london.total_estimated_net_support",
+      "concept": "dft.local_bus_total_estimated_net_support",
+      "measure_id": "total_estimated_net_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_service_operators"
+      },
+      "geography": {
+        "id": "dft:england_outside_london",
+        "level": "statistical_scope",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dft.bus05i.bus05bi.net_support.fy2025",
+        "groupby_dimension": "dft.bus_area",
+        "groupby_value_id": "england_outside_london",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "BUS05i estimated operating revenue and net support for local bus services",
+        "source_file": "bus05i.ods",
+        "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+        "vintage": "bus_statistics_2025",
+        "raw_r2_key": "raw/dft/dft-bus05i-revenue-support-2025/2025/a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5/bus05i.ods"
+      },
+      "value": 1894690320.84
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_49959ab4ea1741f6c67134e3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bc72172f341a84aa234452f9",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2023.all.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2023",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 25.0671459605513
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f6f761cdcc2bcbce32534099",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1c0635cdce39876d59c6308b",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2023.fourth.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2023",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "fourth",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "fourth"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 15.5683872140266
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c58cc6390709efa3b2ad54cf",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f93f43be786f51fb67384268",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2023.highest.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2023",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "highest",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "highest"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 11.9706300086954
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dae2e121a7e0374c3bc7e8a7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7a68685079486822ba314f30",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2023.lowest.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2023",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "lowest",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "lowest"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 41.5847185034131
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f151bb5c2bb10f4946dc3867",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5ed2bc1c3862ac8b6d082adc",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2023.second.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2023",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "second",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "second"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 32.1666052141132
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e69df241e8ad4b96d983ad3b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_796dc53a00d8faa5d0d1ac22",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2023.third.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2023",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "third",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "third"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 24.4504711968579
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4a5ba0fd1761fb713026c8c6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0298115c7956775d9878017b",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2024.all.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2024",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 28.0685543170643
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7ec9d10b6837042afd3fe455",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5277cbaf35a46b0271b0c98a",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2024.fourth.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2024",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "fourth",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "fourth"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 18.452183580748
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3ef33c1270828725ddbc98d3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_17f0ad20f237bb05033326e3",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2024.highest.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2024",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "highest",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "highest"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 12.9783877477853
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7ede678b145b2c546a1b146c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_155e5c2b6b1927c28d7a60d3",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2024.lowest.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2024",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "lowest",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "lowest"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 47.6103908829756
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b4dd3467437f2db9163a1a54",
+      "semantic_fact_key": "ledger_semantic_fact_v2_24557bb0bf6dd18ed26ab881",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2024.second.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2024",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "second",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "second"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 37.4511307673326
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_449c1907391cfcfabe7a776e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d0eb30e171a6e11f8b357fea",
+      "source_record_id": "dft.nts0705a.local_bus_trips.cy2024.third.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0705a.local_bus_trips.cy2024",
+        "groupby_dimension": "dft.household_income_quintile",
+        "groupby_value_id": "third",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "household_income_quintile": "third"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0705a average trips by household income quintile and main mode",
+        "source_file": "nts0705.ods",
+        "source_sha256": "b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17",
+        "vintage": "national_travel_survey_2024",
+        "raw_r2_key": "raw/dft/dft-nts0705-local-bus-trips-2024/2024/b69f135d23cf3c10a3c10f6b5d4ffe1c6ae053013a36c4ad9c72b2920c438e17/nts0705.ods"
+      },
+      "value": 24.8420426924424
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import sys
+from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,7 +15,9 @@ import pytest
 
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.logbook import load_spool_rows
+from microcosm.build.observation import StageObservation
 from microcosm.build.source_manifest import SourceManifest, SourceStageSpec
+from microcosm.build.staging_v2 import validate_v2_bundle
 from microcosm.build.uk_runtime import (
     frs_disability,
     frs_education_grants,
@@ -54,6 +57,38 @@ def _load_tool():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_staging_stage_observer_translates_shared_observation() -> None:
+    tool = _load_tool()
+    calls = []
+
+    class RecordingTelemetry:
+        def stage(self, stage_id: str, **payload: object) -> None:
+            calls.append((stage_id, payload))
+
+    observer = tool._staging_stage_observer(RecordingTelemetry())
+    observer(
+        StageObservation(
+            stage_id="frs_spine",
+            status="completed",
+            elapsed_seconds=1.25,
+            produced_column_count=4,
+            entity_row_counts={"household": 2},
+        )
+    )
+
+    assert calls == [
+        (
+            "frs_spine",
+            {
+                "event_status": "completed",
+                "elapsed_seconds": 1.25,
+                "entity_row_counts": {"household": 2},
+                "produced_column_count": 4,
+            },
+        )
+    ]
 
 
 def _write_tab(root: Path, table: str, rows: list[dict[str, object]]) -> None:
@@ -1289,6 +1324,7 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
                 str(hmrc_ods),
                 "--emit-nonzero-shares",
                 str(shares),
+                "--no-staging",
             ]
         )
         == 0
@@ -1409,6 +1445,7 @@ def test_driver_writes_payload_identical_h5s(
                 str(spi_tab),
                 "--hmrc-ods",
                 str(hmrc_ods),
+                "--no-staging",
             ]
         )
         == 0
@@ -1425,6 +1462,7 @@ def test_driver_writes_payload_identical_h5s(
                 str(spi_tab),
                 "--hmrc-ods",
                 str(hmrc_ods),
+                "--no-staging",
             ]
         )
         == 0
@@ -1562,6 +1600,129 @@ def test_driver_derives_rung_tokens_from_sample_fraction() -> None:
     assert tool.UK_SAMPLE_RUNG_TOKENS[tool._rung_sample_fraction("1.0")] == "f100"
 
 
+def test_driver_accepts_full_fixture_smoke_posture(tmp_path: Path) -> None:
+    tool = _load_tool()
+
+    args = tool._parse_args(
+        [
+            "--frs-raw-dir",
+            str(tmp_path),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(tmp_path / "put2223uk.tab"),
+            "--hmrc-ods",
+            str(tmp_path / "hmrc.ods"),
+            "--sample-seed",
+            "41",
+            "--smoke",
+        ]
+    )
+
+    assert args.sample_fraction == 1.0
+    assert tool._sample_token(args) == "f100"
+    assert (
+        tool._new_build_id(datetime(2026, 9, 8, tzinfo=UTC))
+        == "uk-frs-spine-20260908T000000Z"
+    )
+
+
+def test_driver_accepts_synthetic_fixture_for_remote_smoke(tmp_path: Path) -> None:
+    tool = _load_tool()
+
+    args = tool._parse_args(
+        [
+            "--synthetic-fixture-dir",
+            str(tmp_path / "fixture"),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--smoke",
+            "--staging-read-back",
+        ]
+    )
+
+    assert args.smoke
+    assert args.staging_read_back
+    assert not args.staging_local_only
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--smoke", "--release-candidate"],
+        [
+            "--sample-fraction",
+            "0.10",
+            "--checkpoint-dir",
+            "checkpoints",
+        ],
+    ],
+)
+def test_driver_refuses_incompatible_smoke_or_sampling_options(
+    tmp_path: Path, extra: list[str]
+) -> None:
+    tool = _load_tool()
+
+    with pytest.raises(SystemExit):
+        tool._parse_args(
+            [
+                "--frs-raw-dir",
+                str(tmp_path),
+                "--spine-h5",
+                str(tmp_path / "spine.h5"),
+                "--spi-tab",
+                str(tmp_path / "put2223uk.tab"),
+                "--hmrc-ods",
+                str(tmp_path / "hmrc.ods"),
+                *extra,
+            ]
+        )
+
+
+def test_driver_refuses_synthetic_fixture_without_smoke(tmp_path: Path) -> None:
+    tool = _load_tool()
+
+    with pytest.raises(SystemExit):
+        tool._parse_args(
+            [
+                "--synthetic-fixture-dir",
+                str(tmp_path / "fixture"),
+                "--spine-h5",
+                str(tmp_path / "spine.h5"),
+                "--staging-local-only",
+            ]
+        )
+
+
+def test_driver_exposes_all_staging_modes_and_rejects_empty_remote(
+    tmp_path: Path,
+) -> None:
+    tool = _load_tool()
+    base = [
+        "--frs-raw-dir",
+        str(tmp_path),
+        "--spine-h5",
+        str(tmp_path / "spine.h5"),
+        "--spi-tab",
+        str(tmp_path / "put2223uk.tab"),
+        "--hmrc-ods",
+        str(tmp_path / "hmrc.ods"),
+    ]
+
+    remote = tool._parse_args(base)
+    local = tool._parse_args([*base, "--staging-local-only"])
+    disabled = tool._parse_args([*base, "--no-staging"])
+
+    assert remote.staging_repo_id == "policyengine/populace-uk-staging"
+    assert not remote.staging_local_only and not remote.no_staging
+    assert local.staging_local_only and not local.no_staging
+    assert disabled.no_staging and not disabled.staging_local_only
+    with pytest.raises(SystemExit):
+        tool._parse_args([*base, "--staging-repo-id", ""])
+    with pytest.raises(SystemExit):
+        tool._parse_args([*base, "--staging-local-only", "--staging-read-back"])
+
+
 def test_driver_refuses_checkpoint_dir_on_sampled_rung(tmp_path: Path) -> None:
     tool = _load_tool()
 
@@ -1627,6 +1788,7 @@ def test_driver_records_sampled_spine_sidecar(
                 "0.10",
                 "--sample-seed",
                 "999",
+                "--no-staging",
             ]
         )
         == 0
@@ -1644,6 +1806,119 @@ def test_driver_records_sampled_spine_sidecar(
     }
     rows = load_spool_rows(tmp_path / "logbook-spool")
     assert rows[0].rung == "f010"
+
+
+def test_driver_marks_full_fixture_smoke_outputs_non_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("tables")
+    h5py = pytest.importorskip("h5py")
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "smoke.h5"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--sample-seed",
+                "41",
+                "--smoke",
+                "--staging-local-only",
+                "--staging-run-id",
+                "full-smoke-test",
+                "--staging-dir",
+                str(tmp_path / "staging"),
+            ]
+        )
+        == 0
+    )
+
+    sidecar = json.loads(output.with_suffix(".build.json").read_text())
+    assert sidecar["non_release"] is True
+    assert sidecar["release_posture"] == "non_release_smoke"
+    assert sidecar["sampling"] is None
+    bundle = validate_v2_bundle(tmp_path / "staging", "full-smoke-test")
+    assert bundle["run_manifest"]["non_release"] is True
+    assert bundle["run_manifest"]["sample"] == {"mode": "full"}
+    assert sidecar["staging_delivery"] == bundle["run_manifest"]["delivery"]
+    event_pairs = [(event["stage_id"], event["status"]) for event in bundle["events"]]
+    assert ("frs_spine", "started") in event_pairs
+    assert ("frs_spine", "completed") in event_pairs
+    assert ("sampling", "completed") in event_pairs
+    assert ("spine_h5_creation", "completed") in event_pairs
+    assert ("sidecar_creation", "completed") in event_pairs
+    assert event_pairs[-1] == ("complete", "completed")
+    with h5py.File(output, mode="r") as file:
+        assert bool(file.attrs["populace_non_release"]) is True
+        assert file.attrs["populace_release_posture"] == "smoke"
+        assert file.attrs["populace_smoke_build_id"].startswith("uk-frs-spine-")
+    rows = load_spool_rows(tmp_path / "logbook-spool")
+    assert rows[0].rung == "f100"
+
+
+def test_driver_records_sanitized_failed_staging_lifecycle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "failed.h5"
+    staging_dir = tmp_path / "staging"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    secret = "operator-secret-value"
+
+    def _fail_graph(*args, **kwargs):
+        raise RuntimeError(f"{tmp_path}/adult.tab token={secret}")
+
+    monkeypatch.setattr(tool, "run_graph", _fail_graph)
+
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--staging-local-only",
+                "--staging-dir",
+                str(staging_dir),
+                "--staging-run-id",
+                "failed-staging-test",
+            ]
+        )
+        == 1
+    )
+
+    bundle = validate_v2_bundle(staging_dir, "failed-staging-test")
+    manifest = bundle["run_manifest"]
+    serialized = json.dumps(bundle, default=str)
+    assert manifest["status"] == "failed"
+    assert manifest["failure"]["error_code"] == "BUILD_FAILED"
+    assert secret not in serialized
+    assert str(tmp_path) not in serialized
 
 
 def test_driver_sampled_named_edge_aborts_with_receipt(
@@ -1678,6 +1953,7 @@ def test_driver_sampled_named_edge_aborts_with_receipt(
                 str(hmrc_ods),
                 "--sample-fraction",
                 "0.10",
+                "--no-staging",
             ]
         )
         == tool._RUNG_ABORT_EXIT_CODE

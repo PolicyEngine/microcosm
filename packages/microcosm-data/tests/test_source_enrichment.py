@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import warnings
 
 import h5py
 import numpy as np
@@ -344,7 +345,7 @@ def test_unknown_release_type_cannot_fall_back_to_calibration(candidate):
         validate_release_dir(release)
 
 
-def _qualify_candidate(candidate, tmp_path, monkeypatch):
+def _qualify_candidate(candidate, tmp_path, monkeypatch, **claim):
     from importlib import metadata
 
     release, parent, root = candidate
@@ -376,6 +377,7 @@ def _qualify_candidate(candidate, tmp_path, monkeypatch):
         parent_h5=parent,
         artifact_root=root,
         compatibility_wheels=(tmp_path / "country.whl",),
+        **claim,
     )
     assert result == output
     return output, calls
@@ -834,3 +836,1103 @@ def test_producer_identity_rejects_uncommitted_source_mutation(tmp_path, monkeyp
     monkeypatch.setattr(subprocess, "run", git_result)
     with pytest.raises(ValueError, match="checkout source differs"):
         enrichment._check_producer_source_identity(code)
+
+
+DECLARED_RANGE = "policyengine-us>=1.999.0,<2"
+DECLARED_BY = "PolicyEngine data release owner"
+DECLARED_ENTRY = {
+    "name": "policyengine-us",
+    "specifier": ">=1.999.0,<2",
+    "basis": enrichment.PUBLISHER_CLAIM_BASIS,
+    "declared_by": DECLARED_BY,
+}
+
+
+def _declare(**overrides):
+    return {
+        "compatible_model_specifier": DECLARED_RANGE,
+        "compatibility_claim_declared_by": DECLARED_BY,
+        **overrides,
+    }
+
+
+def _certified(output):
+    return (
+        json.loads((output / "release_manifest.json").read_text()),
+        json.loads((output / enrichment.SOURCE_ENRICHMENT_FILE).read_text()),
+    )
+
+
+def test_default_certification_pins_the_tested_version_and_declares_nothing(
+    candidate, tmp_path, monkeypatch
+):
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    manifest, report = _certified(output)
+    assert manifest["compatible_model_packages"] == [
+        {"name": "policyengine-us", "specifier": "==1.999.0"}
+    ]
+    assert manifest["compatible_core_packages"] == [
+        {"name": "policyengine-core", "specifier": "==3.99.0"}
+    ]
+    assert "publisher_claims" not in report["compatibility"]
+
+
+def test_declared_model_range_is_emitted_verbatim_and_replayed_by_preflight(
+    candidate, tmp_path, monkeypatch
+):
+    import microcosm.data.release as release_module
+
+    monkeypatch.setattr(
+        release_module,
+        "_hf_api",
+        lambda: pytest.fail("successful preflight constructed a Hub client"),
+    )
+    release, parent, root = candidate
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    manifest, report = _certified(output)
+    assert manifest["compatible_model_packages"] == [DECLARED_ENTRY]
+    assert report["compatibility"]["publisher_claims"] == {"model": DECLARED_ENTRY}
+    # The claim widens the binding; it never restates what was measured.
+    assert manifest["build"]["built_with_model_package"] == {
+        "name": "policyengine-us",
+        "version": "1.999.0",
+    }
+    assert manifest["compatible_core_packages"] == [
+        {"name": "policyengine-core", "specifier": "==3.99.0"}
+    ]
+    assert (
+        publish_main(
+            [
+                str(output),
+                "--parent-h5",
+                str(parent),
+                "--artifact-root",
+                str(root),
+                "--compatibility-wheel",
+                str(tmp_path / "country.whl"),
+                "--preflight-only",
+            ]
+        )
+        == 0
+    )
+
+
+@pytest.mark.parametrize(
+    ("specifier", "message"),
+    [
+        ("policyengine-us>=2.0,<3", "excludes the tested policyengine-us version"),
+        ("policyengine-uk>=1.999.0,<2", "declares compatibility for the built-with"),
+        ("policyengine-us>=1.999.0", "reaches 2.0.0 and beyond"),
+        ("policyengine-us>=1.999.0,!=99999", "reaches 2.0.0 and beyond"),
+        ("policyengine-us>=1.999.0,<99998", "reaches 2.0.0 and beyond"),
+        # Excluding exactly the next major walks past that probe while still
+        # certifying every release after it, which the far-future probe catches.
+        ("policyengine-us>=1.999.0,!=2.0.0", "still admits 99999.0.0"),
+        # Bounded above and open below: it covers the tested version and every
+        # release that ever preceded it, back to the first.
+        ("policyengine-us<2", "must also state a lower bound"),
+        ("policyengine-us", "needs a PEP 440 specifier"),
+        ("policyengine-us[us]>=1.999.0,<2", "bare name and specifier"),
+        (
+            'policyengine-us>=1.999.0,<2; python_version>"3"',
+            "bare name and specifier",
+        ),
+        (
+            "policyengine-us@https://example.invalid/pe.whl",
+            "bare name and specifier",
+        ),
+        ("policyengine-us>=oops", "is not a PEP 508 requirement"),
+    ],
+)
+def test_certification_refuses_an_unsound_claim(
+    candidate, tmp_path, monkeypatch, specifier, message
+):
+    with pytest.raises(ValueError, match=message):
+        _qualify_candidate(
+            candidate,
+            tmp_path,
+            monkeypatch,
+            **_declare(compatible_model_specifier=specifier),
+        )
+
+
+@pytest.mark.parametrize("specifier", [None, "", "   ", ","])
+def test_a_report_claim_without_a_usable_specifier_is_refused(specifier):
+    """The entry builder shares the parser's rules, reached from the report side.
+
+    A claim read back out of a certified report never passes through
+    :func:`parse_compatibility_claim_requirement`, so the one specifier
+    validator has to hold on this path too.
+    """
+    with pytest.raises(ValueError, match="needs a PEP 440 specifier|must constrain"):
+        enrichment.compatibility_claim_entry(
+            specifier,
+            package="policyengine-us",
+            version="1.999.0",
+            declared_by=DECLARED_BY,
+        )
+
+
+def test_a_whole_major_range_is_accepted_on_purpose():
+    """`>=2.0.1,<3` is bounded at the next major, and the guard allows it.
+
+    Not an oversight and not a probe that missed: the tooling's line is the next
+    major version, while the runbook recommends bounding at the next minor. A
+    reader who finds this range certified is looking at a deliberate ceiling.
+    """
+    assert enrichment.compatibility_claim_entry(
+        ">=2.0.1,<3",
+        package="policyengine-us",
+        version="2.0.1",
+        declared_by=DECLARED_BY,
+    ) == {
+        "name": "policyengine-us",
+        "specifier": ">=2.0.1,<3",
+        "basis": enrichment.PUBLISHER_CLAIM_BASIS,
+        "declared_by": DECLARED_BY,
+    }
+
+
+@pytest.mark.parametrize(
+    "specifier", [">=2.0.1,<2.1", "~=2.0.1", "==2.0.*", ">=2.0.1,<3"]
+)
+def test_a_bounded_claim_over_a_2_0_1_build_is_accepted(specifier):
+    assert (
+        enrichment.compatibility_claim_entry(
+            specifier,
+            package="policyengine-us",
+            version="2.0.1",
+            declared_by=DECLARED_BY,
+        )["specifier"]
+        == specifier
+    )
+
+
+@pytest.mark.parametrize(
+    "specifier",
+    [
+        ">=2.0.1",
+        ">=2.0.1,<3.0.1",
+        # Excludes the next major by name, and certifies 4.x and 5.x anyway.
+        ">=2.0.1,!=3.0.0",
+        # Bounded above, open below: it certifies every release back to the
+        # first one ever made, including versions predating the loader path
+        # certification measures.
+        "<2.1",
+        "<=2.0.5",
+    ],
+)
+def test_an_unbounded_claim_over_a_2_0_1_build_is_refused(specifier):
+    with pytest.raises(
+        ValueError,
+        match="reaches 3.0.0|still admits 99999.0.0|must also state a lower bound",
+    ):
+        enrichment.compatibility_claim_entry(
+            specifier,
+            package="policyengine-us",
+            version="2.0.1",
+            declared_by=DECLARED_BY,
+        )
+
+
+@pytest.mark.parametrize(
+    ("specifier", "admits"),
+    [
+        # Excludes the next major and the far-future probe by name, and
+        # certifies 4.x and 5.x anyway.
+        (">=2.0.1,!=3.0.0,!=99999.0.0", "5.0"),
+        # The exact mirror below: excludes the zero probe by name, and
+        # certifies the 0.x releases the lower bound exists to keep out.
+        ("<2.1,!=0", "0.9.0"),
+    ],
+)
+def test_the_documented_probe_residue_is_still_exactly_that(specifier, admits):
+    """Characterization: probes bound a claim, they do not prove one bounded.
+
+    The runbook says a specifier that names the probe versions and excludes
+    them passes while admitting others, above and below alike. Pinning both
+    mirrors keeps that sentence honest and stops the residue widening past
+    what is written down. Passes before and after the lower-bound probe; it
+    describes the guard's stated limit rather than a change to it.
+    """
+    from packaging.specifiers import SpecifierSet
+    from packaging.version import Version
+
+    assert (
+        enrichment.compatibility_claim_entry(
+            specifier,
+            package="policyengine-us",
+            version="2.0.1",
+            declared_by=DECLARED_BY,
+        )["specifier"]
+        == specifier
+    )
+    assert Version(admits) in SpecifierSet(specifier)
+
+
+def test_the_lower_bound_probe_sits_at_the_tested_version_epoch():
+    """A claim may mix epochs, and only a probe at the tested epoch catches it.
+
+    `>=2.0.1,<1!2.1` over a `1!2.0.1` build is open below within epoch 1 — it
+    admits `1!0` — while excluding a bare `Version("0")`, which sorts under
+    every epoch-1 release. A probe at plain zero would accept it. (`<1!2.1` on
+    its own is refused either way, so it is not the case that pins the carry.)
+    """
+    with pytest.raises(ValueError, match="must also state a lower bound"):
+        enrichment.compatibility_claim_entry(
+            ">=2.0.1,<1!2.1",
+            package="policyengine-us",
+            version="1!2.0.1",
+            declared_by=DECLARED_BY,
+        )
+    assert (
+        enrichment.compatibility_claim_entry(
+            ">=1!2.0.1,<1!2.1",
+            package="policyengine-us",
+            version="1!2.0.1",
+            declared_by=DECLARED_BY,
+        )["specifier"]
+        == ">=1!2.0.1,<1!2.1"
+    )
+
+
+@pytest.mark.parametrize(
+    ("specifier", "accepted"),
+    [
+        # A prerelease sorts below its own release, so the ranges written the
+        # usual way exclude the build they were written for. Not a prerelease
+        # exclusion: `packaging` matches prereleases by default, following
+        # PEP 440's recommendation, and `SpecifierSet.contains` says so.
+        (">=2.0.1,<2.1", False),
+        ("~=2.0.1", False),
+        # Naming the prerelease, or matching the series with a prefix, works.
+        (">=2.0.1rc1,<2.1", True),
+        ("==2.0.*", True),
+        # And the default pin certification writes with no options always does.
+        ("==2.0.1rc1", True),
+    ],
+)
+def test_a_prerelease_build_takes_a_range_only_if_the_range_reaches_it(
+    specifier, accepted
+):
+    """Characterization: what a claim over a prerelease build can say.
+
+    Pins the behaviour the runbook now describes. Both outcomes are ordering,
+    not a prerelease rule, so a `packaging` release that changed either would
+    fail here rather than silently rewrite the runbook.
+    """
+
+    def claim():
+        return enrichment.compatibility_claim_entry(
+            specifier,
+            package="policyengine-us",
+            version="2.0.1rc1",
+            declared_by=DECLARED_BY,
+        )
+
+    if accepted:
+        assert claim()["specifier"] == specifier
+    else:
+        with pytest.raises(ValueError, match="excludes the tested"):
+            claim()
+
+
+@pytest.mark.parametrize("declared_by", [None, "   ", "x" * 201, "two\nlines"])
+def test_claim_must_record_an_accountable_declarer(
+    candidate, tmp_path, monkeypatch, declared_by
+):
+    with pytest.raises(ValueError, match="who declared it|accountable for it"):
+        _qualify_candidate(
+            candidate,
+            tmp_path,
+            monkeypatch,
+            **_declare(compatibility_claim_declared_by=declared_by),
+        )
+
+
+def test_declarer_without_a_specifier_is_refused(candidate, tmp_path, monkeypatch):
+    with pytest.raises(ValueError, match="accountable for it"):
+        _qualify_candidate(
+            candidate,
+            tmp_path,
+            monkeypatch,
+            **_declare(compatible_model_specifier=None),
+        )
+
+
+def test_manifest_widened_after_certification_has_no_declaration_to_stand_on(
+    candidate, tmp_path, monkeypatch
+):
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    _, parent, root = candidate
+    path = output / "release_manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["compatible_model_packages"] = [DECLARED_ENTRY]
+    _write(path, manifest)
+    with pytest.raises(
+        ReleaseContractError, match="must pin exactly the tested version unless"
+    ):
+        enrichment.validate_source_enrichment_candidate(
+            output,
+            parent_h5=parent,
+            artifact_root=root,
+            require_compatibility=True,
+            compatibility_wheels=(tmp_path / "country.whl",),
+        )
+
+
+def test_manifest_must_match_the_claim_the_report_declares(
+    candidate, tmp_path, monkeypatch
+):
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    _, parent, root = candidate
+    path = output / "release_manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["compatible_model_packages"] = [
+        {**DECLARED_ENTRY, "specifier": ">=1.999.0,<3"}
+    ]
+    _write(path, manifest)
+    with pytest.raises(ReleaseContractError, match="must match the declared publisher"):
+        enrichment.validate_source_enrichment_candidate(
+            output,
+            parent_h5=parent,
+            artifact_root=root,
+            require_compatibility=True,
+            compatibility_wheels=(tmp_path / "country.whl",),
+        )
+
+
+def test_report_claim_widened_after_certification_is_revalidated(
+    candidate, tmp_path, monkeypatch
+):
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    _, parent, root = candidate
+    unbounded = {**DECLARED_ENTRY, "specifier": ">=1.999.0"}
+    report_path = output / enrichment.SOURCE_ENRICHMENT_FILE
+    report = json.loads(report_path.read_text())
+    report["compatibility"]["publisher_claims"]["model"] = unbounded
+    _write(report_path, report)
+    manifest_path = output / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["compatible_model_packages"] = [unbounded]
+    _write(manifest_path, manifest)
+    _refresh(output, enrichment.SOURCE_ENRICHMENT_FILE)
+    with pytest.raises(ReleaseContractError, match="reaches 2.0.0 and beyond"):
+        enrichment.validate_source_enrichment_candidate(
+            output,
+            parent_h5=parent,
+            artifact_root=root,
+            require_compatibility=True,
+            compatibility_wheels=(tmp_path / "country.whl",),
+        )
+
+
+def test_report_claim_that_constrains_nothing_is_refused(
+    candidate, tmp_path, monkeypatch
+):
+    """``,`` parses as an empty specifier set, so the validator refuses it."""
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    _, parent, root = candidate
+    empty = {**DECLARED_ENTRY, "specifier": ","}
+    report_path = output / enrichment.SOURCE_ENRICHMENT_FILE
+    report = json.loads(report_path.read_text())
+    report["compatibility"]["publisher_claims"]["model"] = empty
+    _write(report_path, report)
+    manifest_path = output / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["compatible_model_packages"] = [empty]
+    _write(manifest_path, manifest)
+    _refresh(output, enrichment.SOURCE_ENRICHMENT_FILE)
+    with pytest.raises(ReleaseContractError, match="must constrain the version"):
+        enrichment.validate_source_enrichment_candidate(
+            output,
+            parent_h5=parent,
+            artifact_root=root,
+            require_compatibility=True,
+            compatibility_wheels=(tmp_path / "country.whl",),
+        )
+
+
+@pytest.mark.parametrize(
+    "claims",
+    [
+        [],
+        {},
+        {"bogus": DECLARED_ENTRY},
+        "model",
+        # Core is not a field a publisher may widen, so a forged core claim is
+        # refused rather than honoured: origin/main pinned Core unconditionally.
+        {"core": {**DECLARED_ENTRY, "name": "policyengine-core"}},
+        {"model": DECLARED_ENTRY, "core": DECLARED_ENTRY},
+    ],
+)
+def test_malformed_publisher_claims_block_certification_readback(
+    candidate, tmp_path, monkeypatch, claims
+):
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    _, parent, root = candidate
+    report_path = output / enrichment.SOURCE_ENRICHMENT_FILE
+    report = json.loads(report_path.read_text())
+    report["compatibility"]["publisher_claims"] = claims
+    _write(report_path, report)
+    _refresh(output, enrichment.SOURCE_ENRICHMENT_FILE)
+    with pytest.raises(ReleaseContractError, match="publisher_claims must map"):
+        enrichment.validate_source_enrichment_candidate(
+            output,
+            parent_h5=parent,
+            artifact_root=root,
+            require_compatibility=True,
+            compatibility_wheels=(tmp_path / "country.whl",),
+        )
+
+
+def test_pending_candidate_cannot_declare_a_publisher_claim(candidate):
+    release, _, _ = candidate
+    path = release / enrichment.SOURCE_ENRICHMENT_FILE
+    report = json.loads(path.read_text())
+    report["compatibility"]["publisher_claims"] = {"model": DECLARED_ENTRY}
+    _write(path, report)
+    _refresh(release, enrichment.SOURCE_ENRICHMENT_FILE)
+    with pytest.raises(
+        ReleaseContractError, match="pending source enrichment must not declare"
+    ):
+        _validate(candidate)
+
+
+def test_declared_range_certifies_a_later_patch_for_both_readers(
+    candidate, tmp_path, monkeypatch
+):
+    """The point of the range: the consumers accept a version it covers."""
+    from packaging.specifiers import SpecifierSet
+    from packaging.version import Version
+
+    from microcosm.data.loader import _package_certification
+
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    manifest, _ = _certified(output)
+    certification = _package_certification(
+        manifest,
+        field="compatible_model_packages",
+        package_name="policyengine-us",
+        built_field="built_with_model_package",
+        release_id=output.name,
+    )
+    assert certification.specifiers == (">=1.999.0,<2",)
+    assert certification.built_version == "1.999.0"
+
+    def wrapper_specifier_matches(version, specifier):
+        # policyengine.provenance.manifest._specifier_matches, mirrored.
+        return Version(version) in SpecifierSet(specifier)
+
+    claim = manifest["compatible_model_packages"][0]["specifier"]
+    assert wrapper_specifier_matches("1.999.1", claim)
+    assert wrapper_specifier_matches("1.999.0", claim)
+    assert not wrapper_specifier_matches("2.0.0", claim)
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (["--compatible-model-specifier", DECLARED_RANGE], "declared together"),
+        (["--compatibility-claim-declared-by", DECLARED_BY], "declared together"),
+        (
+            [
+                "--compatible-model-specifier",
+                DECLARED_RANGE,
+                "--compatibility-claim-declared-by",
+                DECLARED_BY,
+            ],
+            "applies to --certify",
+        ),
+    ],
+)
+def test_cli_refuses_a_half_declared_or_uncertified_claim(
+    candidate, capsys, argv, message
+):
+    release, parent, root = candidate
+    with pytest.raises(SystemExit):
+        enrichment.main(
+            [
+                "--release-dir",
+                str(release),
+                "--parent-h5",
+                str(parent),
+                "--artifact-root",
+                str(root),
+                *argv,
+            ]
+        )
+    assert message in capsys.readouterr().err
+
+
+def test_cli_certify_declares_the_claim_it_was_given(
+    candidate, tmp_path, monkeypatch, capsys
+):
+    from importlib import metadata
+
+    release, parent, root = candidate
+    monkeypatch.setattr(
+        enrichment,
+        "run_native_loader_compatibility",
+        lambda *args, **kwargs: {
+            "status": "passed",
+            "dataset_sha256": enrichment.sha256_file(root / "populace_us_2024.h5"),
+            "packages": {
+                "policyengine-us": {"version": "1.999.0"},
+                "policyengine-core": {"version": "3.99.0"},
+                "policyengine": {"version": "5.99.0"},
+                "spm-calculator": {"version": "1.0.0"},
+            },
+        },
+    )
+    monkeypatch.setattr(metadata, "version", lambda name: "0.1.0")
+    monkeypatch.setattr(
+        enrichment, "_check_producer_source_identity", lambda code: None
+    )
+    output = tmp_path / "certified" / release.name
+    assert (
+        enrichment.main(
+            [
+                "--certify",
+                "--release-dir",
+                str(release),
+                "--output-dir",
+                str(output),
+                "--parent-h5",
+                str(parent),
+                "--artifact-root",
+                str(root),
+                "--compatibility-wheel",
+                str(tmp_path / "country.whl"),
+                "--compatible-model-specifier",
+                DECLARED_RANGE,
+                "--compatibility-claim-declared-by",
+                DECLARED_BY,
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out) == {
+        "certified_bundle": str(output),
+        "published": False,
+    }
+    manifest, report = _certified(output)
+    assert manifest["compatible_model_packages"] == [DECLARED_ENTRY]
+    assert report["compatibility"]["publisher_claims"] == {"model": DECLARED_ENTRY}
+
+
+def test_the_certify_cli_reports_a_narrowing_it_just_caused(
+    candidate, tmp_path, monkeypatch, capsys
+):
+    """The run that narrows says so in its verdict, not only in a warning.
+
+    Its `RuntimeWarning` is the live signal, and it is the one thing this
+    reporting path cannot rely on: stderr under CI, or nothing at all under
+    `PYTHONWARNINGS=ignore`. All three verdicts carry the record, so whatever
+    captures stdout has it too.
+    """
+    _, parent, root = candidate
+    declared, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    capsys.readouterr()
+    output = tmp_path / "recertified-cli" / declared.name
+    with pytest.warns(RuntimeWarning, match="narrows the policyengine-us"):
+        assert (
+            enrichment.main(
+                [
+                    "--certify",
+                    "--release-dir",
+                    str(declared),
+                    "--output-dir",
+                    str(output),
+                    "--parent-h5",
+                    str(parent),
+                    "--artifact-root",
+                    str(root),
+                    "--compatibility-wheel",
+                    str(tmp_path / "country.whl"),
+                ]
+            )
+            == 0
+        )
+    assert json.loads(capsys.readouterr().out) == {
+        "certified_bundle": str(output),
+        "published": False,
+        "narrowed_claims": NARROWED_RECORD,
+    }
+
+
+@pytest.mark.parametrize(
+    ("report", "expected"),
+    [
+        ([], {}),
+        ("not a mapping", {}),
+        ({}, {}),
+        ({"compatibility": 3}, {}),
+        ({"compatibility": {}}, {}),
+        ({"compatibility": {"narrowed_claims": [1, 2]}}, {}),
+        ({"compatibility": {"narrowed_claims": "model"}}, {}),
+        ({"compatibility": {"narrowed_claims": {"model": {}}}}, {"model": {}}),
+    ],
+)
+def test_both_narrowing_readers_agree_on_what_counts_as_a_record(
+    tmp_path, report, expected
+):
+    """One tolerance, so the three verdicts cannot disagree about one bundle.
+
+    The validation path has the report in hand and the publisher paths read it
+    off disk; if they applied different rules, a malformed record would show up
+    in one verdict and not the others.
+    """
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / enrichment.SOURCE_ENRICHMENT_FILE).write_text(json.dumps(report))
+    assert enrichment._narrowed_claims(report) == expected
+    assert enrichment.recorded_narrowed_claims(bundle) == expected
+
+
+def test_core_stays_pinned_when_the_model_range_is_declared(
+    candidate, tmp_path, monkeypatch
+):
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    manifest, report = _certified(output)
+    assert manifest["compatible_core_packages"] == [
+        {"name": "policyengine-core", "specifier": "==3.99.0"}
+    ]
+    assert set(report["compatibility"]["publisher_claims"]) == {"model"}
+
+
+def test_parenthesised_requirement_records_the_bare_specifier(
+    candidate, tmp_path, monkeypatch
+):
+    output, _ = _qualify_candidate(
+        candidate,
+        tmp_path,
+        monkeypatch,
+        **_declare(compatible_model_specifier="policyengine-us (>=1.999.0,<2)"),
+    )
+    manifest, _ = _certified(output)
+    assert manifest["compatible_model_packages"] == [DECLARED_ENTRY]
+
+
+def _recertify(source, candidate, tmp_path, monkeypatch, name, **claim):
+    """Certify an already-certified bundle again, as a re-release would."""
+    _, parent, root = candidate
+    output = tmp_path / name / source.name
+    enrichment.certify_source_enrichment(
+        source,
+        output,
+        parent_h5=parent,
+        artifact_root=root,
+        compatibility_wheels=(tmp_path / "country.whl",),
+        **claim,
+    )
+    return output
+
+
+def test_recertifying_without_the_flag_warns_that_it_narrows_the_claim(
+    candidate, tmp_path, monkeypatch
+):
+    """A declared range must not vanish into an exact pin without a word."""
+    declared, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    with pytest.warns(RuntimeWarning, match="narrows the policyengine-us") as caught:
+        narrowed = _recertify(declared, candidate, tmp_path, monkeypatch, "recertified")
+    assert REMEDIATION in _narrowing_warning(caught, "policyengine-us")
+    manifest, report = _certified(narrowed)
+    assert manifest["compatible_model_packages"] == [
+        {"name": "policyengine-us", "specifier": "==1.999.0"}
+    ]
+    # Recorded in the bundle too, so the narrowing survives the terminal that
+    # printed the warning.
+    assert report["compatibility"]["narrowed_claims"] == {
+        "model": {
+            "previous_specifiers": [">=1.999.0,<2"],
+            "emitted_specifier": "==1.999.0",
+            "first_version_no_longer_covered": "1.999.1",
+        }
+    }
+
+
+REMEDIATION = "Pass --compatible-model-specifier"
+
+
+def _narrowing_warning(caught, package):
+    """The one narrowing warning ``caught`` holds for ``package``."""
+    messages = [
+        str(entry.message)
+        for entry in caught
+        if f"the {package} compatibility" in str(entry.message)
+    ]
+    assert len(messages) == 1, messages
+    return messages[0]
+
+
+def test_the_flags_remediation_is_offered_only_when_the_flags_were_missing(
+    candidate, tmp_path, monkeypatch
+):
+    """Advice to pass the flags is noise to the run that just passed them.
+
+    Re-certifying with a tighter range — dropping a patch release found bad
+    after the fact — is a legitimate narrowing, and the warning naming what it
+    gives up is the point. The remediation belongs to the run that forgot the
+    options, not the one that used them.
+    """
+    wider, _ = _qualify_candidate(
+        candidate,
+        tmp_path,
+        monkeypatch,
+        **_declare(compatible_model_specifier="policyengine-us>=1.998.0,<2"),
+    )
+    with pytest.warns(RuntimeWarning) as forgot:
+        _recertify(wider, candidate, tmp_path, monkeypatch, "reverted")
+    assert REMEDIATION in _narrowing_warning(forgot, "policyengine-us")
+
+    with pytest.warns(RuntimeWarning) as retightened:
+        _recertify(wider, candidate, tmp_path, monkeypatch, "tightened", **_declare())
+    message = _narrowing_warning(retightened, "policyengine-us")
+    assert "1.998.0" in message
+    assert REMEDIATION not in message
+
+
+def test_recertifying_with_the_same_range_narrows_nothing(
+    candidate, tmp_path, monkeypatch
+):
+    declared, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        again = _recertify(
+            declared, candidate, tmp_path, monkeypatch, "recertified", **_declare()
+        )
+    assert not [entry for entry in caught if "narrows" in str(entry.message)]
+    manifest, report = _certified(again)
+    assert manifest["compatible_model_packages"] == [DECLARED_ENTRY]
+    assert "narrowed_claims" not in report["compatibility"]
+
+
+LOST_CORE = {
+    "previous_specifiers": ["==3.99.0"],
+    "emitted_specifier": "==3.100.0",
+    "first_version_no_longer_covered": "3.99.0",
+}
+
+
+def test_a_moved_core_pin_is_reported_as_a_pin_not_a_claim():
+    """Core has no claim to narrow: `CLAIM_FIELD` is `model` and only `model`.
+
+    The loop that names lost coverage runs over Core too, and it should — if a
+    bundle's Core pin ever moved it would drop every consumer on the old one.
+    But Core's entry is always the exact tested pin, so calling that a narrowed
+    "claim" would name a thing no producer can declare.
+    """
+    core = enrichment._narrowing_notice(
+        "core", "policyengine-core", LOST_CORE, offer_flags=False
+    )
+    assert core == (
+        "certification moves the policyengine-core compatibility pin this "
+        "bundle already carried: ==3.99.0 covered 3.99.0 and the ==3.100.0 "
+        "this run emits does not."
+    )
+    assert "claim" not in core
+    model = enrichment._narrowing_notice(
+        enrichment.CLAIM_FIELD,
+        "policyengine-us",
+        {
+            "previous_specifiers": [">=1.999.0,<2"],
+            "emitted_specifier": "==1.999.0",
+            "first_version_no_longer_covered": "1.999.1",
+        },
+        offer_flags=True,
+    )
+    assert model.startswith("certification narrows the policyengine-us ")
+    assert model.endswith(
+        REMEDIATION
+        + " with --compatibility-claim-declared-by to keep a declared range."
+    )
+
+
+def test_a_moved_core_runtime_is_refused_before_certification_narrows_anything(
+    candidate, tmp_path, monkeypatch
+):
+    """Why the Core branch above has no end-to-end test: it cannot be reached.
+
+    Re-certification validates the input bundle first, and that gate re-runs
+    the loader qualification and requires the recorded receipt to equal the
+    current runtime. A Core version that moved fails there, before the emitted
+    pin could differ from the one the bundle carries. The Core branch stays in
+    the loop as defence in depth — a silent revert is what the warning exists
+    to prevent — but this is the wall it sits behind.
+    """
+    _, parent, root = candidate
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        enrichment,
+        "run_native_loader_compatibility",
+        lambda *args, **kwargs: {
+            "status": "passed",
+            "dataset_sha256": enrichment.sha256_file(root / "populace_us_2024.h5"),
+            "packages": {
+                "policyengine-us": {"version": "1.999.0"},
+                "policyengine-core": {"version": "3.100.0"},
+                "policyengine": {"version": "5.99.0"},
+                "spm-calculator": {"version": "1.0.0"},
+            },
+        },
+    )
+    with pytest.raises(ReleaseContractError, match="receipt differs from actual"):
+        _recertify(output, candidate, tmp_path, monkeypatch, "newer-core")
+
+
+def test_first_certification_narrows_nothing(candidate, tmp_path, monkeypatch):
+    """A pending candidate declares no compatibility, so there is none to lose."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    assert not [entry for entry in caught if "narrows" in str(entry.message)]
+    _, report = _certified(output)
+    assert "narrowed_claims" not in report["compatibility"]
+
+
+NARROWED_RECORD = {
+    "model": {
+        "previous_specifiers": [">=1.999.0,<2"],
+        "emitted_specifier": "==1.999.0",
+        "first_version_no_longer_covered": "1.999.1",
+    }
+}
+
+
+def _narrowed_bundle(candidate, tmp_path, monkeypatch):
+    """A certified bundle whose report records a narrowing, and a clean one."""
+    declared, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    with pytest.warns(RuntimeWarning, match="narrows the policyengine-us"):
+        narrowed = _recertify(declared, candidate, tmp_path, monkeypatch, "recertified")
+    return narrowed, declared
+
+
+def test_validation_output_surfaces_a_recorded_narrowing(
+    candidate, tmp_path, monkeypatch, capsys
+):
+    """The record has to reach someone after the terminal that printed it.
+
+    `certify_source_enrichment` warns on stderr, where CI noise or
+    `PYTHONWARNINGS=ignore` buries it, and records `narrowed_claims` in the
+    bundle. Validation is the next gate a later operator runs, so it reads the
+    record back instead of reporting only `passed`.
+    """
+    _, parent, root = candidate
+    narrowed, declared = _narrowed_bundle(candidate, tmp_path, monkeypatch)
+
+    def _validate(bundle):
+        assert (
+            enrichment.main(
+                [
+                    "--release-dir",
+                    str(bundle),
+                    "--parent-h5",
+                    str(parent),
+                    "--artifact-root",
+                    str(root),
+                ]
+            )
+            == 0
+        )
+        return json.loads(capsys.readouterr().out)
+
+    assert _validate(narrowed) == {
+        "valid": True,
+        "compatibility": "passed",
+        "narrowed_claims": NARROWED_RECORD,
+    }
+    # A bundle that gave nothing up says nothing, so the key's presence is the
+    # signal rather than an empty object every run has to read past.
+    assert _validate(declared) == {"valid": True, "compatibility": "passed"}
+
+
+def test_publish_preflight_surfaces_a_recorded_narrowing(
+    candidate, tmp_path, monkeypatch, capsys
+):
+    """The publisher's own preflight is where the later operator actually is."""
+    import microcosm.data.release as release_module
+
+    monkeypatch.setattr(
+        release_module,
+        "_hf_api",
+        lambda: pytest.fail("successful preflight constructed a Hub client"),
+    )
+    _, parent, root = candidate
+    narrowed, declared = _narrowed_bundle(candidate, tmp_path, monkeypatch)
+
+    def _preflight(bundle):
+        assert (
+            publish_main(
+                [
+                    str(bundle),
+                    "--parent-h5",
+                    str(parent),
+                    "--artifact-root",
+                    str(root),
+                    "--compatibility-wheel",
+                    str(tmp_path / "country.whl"),
+                    "--preflight-only",
+                ]
+            )
+            == 0
+        )
+        return json.loads(capsys.readouterr().out)
+
+    assert _preflight(narrowed) == {
+        "valid": True,
+        "published": False,
+        "narrowed_claims": NARROWED_RECORD,
+    }
+    assert _preflight(declared) == {"valid": True, "published": False}
+
+
+def test_publication_says_on_stderr_what_the_preflight_says_in_json(
+    candidate, tmp_path, monkeypatch, capsys
+):
+    """Publication is reachable without ever running the preflight.
+
+    `tools/publish_release.sh` passes its arguments straight through, so the
+    runbook's "remove --preflight-only" step is a habit rather than a gate. The
+    JSON verdict belongs to whatever parses stdout; the operator reading the
+    terminal gets the same record on stderr, on both paths.
+    """
+    from microcosm.data import publish_cli
+
+    _, parent, root = candidate
+    narrowed, declared = _narrowed_bundle(candidate, tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        publish_cli, "publish_release", lambda *args, **kwargs: {"published": True}
+    )
+    tail = [
+        "--parent-h5",
+        str(parent),
+        "--artifact-root",
+        str(root),
+        "--compatibility-wheel",
+        str(tmp_path / "country.whl"),
+    ]
+    assert publish_main([str(narrowed), *tail]) == 0
+    published = capsys.readouterr()
+    assert json.loads(published.out) == {"published": True}
+    assert "compatibility narrowing" in published.err
+    assert ">=1.999.0,<2" in published.err
+
+    assert publish_main([str(declared), *tail]) == 0
+    assert "narrowing" not in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        {"compatible_model_specifier": "policyengine-uk>=1.999.0,<2"},
+        {"compatibility_claim_declared_by": "  "},
+        # A bare package name carries no specifier at all, which is checkable
+        # without the tested version and so must be refused at the door.
+        {"compatible_model_specifier": "policyengine-us"},
+    ],
+)
+def test_an_unsound_claim_costs_no_qualification_run(
+    candidate, tmp_path, monkeypatch, claim
+):
+    """The checks that need no tested version run before the long probe."""
+    from importlib import metadata
+
+    release, parent, root = candidate
+    monkeypatch.setattr(
+        enrichment,
+        "run_native_loader_compatibility",
+        lambda *args, **kwargs: pytest.fail("an unsound claim ran qualification"),
+    )
+    monkeypatch.setattr(
+        enrichment,
+        "validate_source_enrichment_candidate",
+        lambda *args, **kwargs: pytest.fail(
+            "an unsound claim ran candidate validation"
+        ),
+    )
+    monkeypatch.setattr(metadata, "version", lambda name: "0.1.0")
+    output = tmp_path / "certified" / release.name
+    with pytest.raises(ValueError):
+        enrichment.certify_source_enrichment(
+            release,
+            output,
+            parent_h5=parent,
+            artifact_root=root,
+            compatibility_wheels=(tmp_path / "country.whl",),
+            **_declare(**claim),
+        )
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "forged",
+    [
+        {**DECLARED_ENTRY, "note": "approved verbally"},
+        {**DECLARED_ENTRY, "name": "policyengine_us"},
+        {k: v for k, v in DECLARED_ENTRY.items() if k != "basis"},
+    ],
+)
+def test_declared_claim_carries_only_the_validated_fields(
+    candidate, tmp_path, monkeypatch, forged
+):
+    """A report entry the validator cannot rebuild exactly is refused."""
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch, **_declare())
+    _, parent, root = candidate
+    report_path = output / enrichment.SOURCE_ENRICHMENT_FILE
+    report = json.loads(report_path.read_text())
+    report["compatibility"]["publisher_claims"]["model"] = forged
+    _write(report_path, report)
+    # The manifest keeps the canonical entry, so only the report-shape guard
+    # can refuse this: the manifest-vs-report comparison is satisfied.
+    _refresh(output, enrichment.SOURCE_ENRICHMENT_FILE)
+    assert json.loads((output / "release_manifest.json").read_text())[
+        "compatible_model_packages"
+    ] == [DECLARED_ENTRY]
+    with pytest.raises(ReleaseContractError, match="must record only"):
+        enrichment.validate_source_enrichment_candidate(
+            output,
+            parent_h5=parent,
+            artifact_root=root,
+            require_compatibility=True,
+            compatibility_wheels=(tmp_path / "country.whl",),
+        )
+
+
+def test_producer_validation_is_not_the_tamper_control(
+    candidate, tmp_path, monkeypatch
+):
+    """A coordinated report+manifest edit validates, and that is not the guard.
+
+    The report's only integrity anchor is its ``artifacts`` entry in the very
+    manifest it authenticates, so an editor who rewrites both and restamps the
+    hash produces a bundle this validator accepts — exactly as, before publisher
+    claims existed, one who rewrote the exact pin did. What stands between an
+    edited bundle and the Hub is :func:`_check_producer_source_identity`, the
+    publish preflight, and the human publication decision. Pinned here so a
+    later reader does not mistake the cross-check for a seal.
+    """
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    _, parent, root = candidate
+    widened = {
+        "name": "policyengine-us",
+        "specifier": ">=1.999.0,<2",
+        "basis": enrichment.PUBLISHER_CLAIM_BASIS,
+        "declared_by": "nobody who ran certification",
+    }
+    report_path = output / enrichment.SOURCE_ENRICHMENT_FILE
+    report = json.loads(report_path.read_text())
+    report["compatibility"]["publisher_claims"] = {"model": widened}
+    _write(report_path, report)
+    manifest_path = output / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["compatible_model_packages"] = [widened]
+    _write(manifest_path, manifest)
+    _refresh(output, enrichment.SOURCE_ENRICHMENT_FILE)
+    enrichment.validate_source_enrichment_candidate(
+        output,
+        parent_h5=parent,
+        artifact_root=root,
+        require_compatibility=True,
+        compatibility_wheels=(tmp_path / "country.whl",),
+    )

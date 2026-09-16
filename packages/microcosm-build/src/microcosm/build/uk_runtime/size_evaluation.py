@@ -339,13 +339,17 @@ def run_acceptance(
     stretch_reference = weights_manifest.get(
         "stretch_reference", "pool_design" if not is_size else None
     )
+    # The refit's stretch reference is the normalised Horvitz-Thompson
+    # baseline, trimmed or not (--baseline-pi-floor records which).
+    accepted_stretch_references = (
+        "normalized_horvitz_thompson_w_over_q",
+        "normalized_horvitz_thompson_w_over_q_floored",
+    )
     add(
         "stretch_reference",
-        stretch_reference == "normalized_horvitz_thompson_w_over_q"
-        if is_size
-        else None,
+        stretch_reference in accepted_stretch_references if is_size else None,
         stretch_reference,
-        "normalized_horvitz_thompson_w_over_q",
+        " | ".join(accepted_stretch_references),
     )
     selection_receipt = _mapping(size_receipt.get("selection_receipt"))
     add(
@@ -874,16 +878,17 @@ def frozen_vs_recomputed(
     )
     recomputed: dict[str, float] = {}
     for row in _surface_rows(payload):
+        status = str(row.get("status") or "")
+        if status.startswith("rolled_up:") or status.startswith("not_ported"):
+            # A rolled-up incumbent row (a region cell measured on the frame
+            # for comparison) is not one of our references: summing it into
+            # the contract id it points at inflated the England VOA rows by
+            # the Wales rollup in the 2026-09-10 report (microcosm#929).
+            continue
         name = next(
             (
                 str(row[key])
-                for key in (
-                    "name",
-                    "our_name",
-                    "contract_target_id",
-                    "target_name",
-                    "id",
-                )
+                for key in ("name", "our_name", "target_name", "id")
                 if row.get(key)
             ),
             "",
@@ -901,8 +906,14 @@ def frozen_vs_recomputed(
             ),
             None,
         )
-        if name and estimate is not None:
-            recomputed[name] = recomputed.get(name, 0.0) + estimate
+        if not name or estimate is None:
+            continue
+        if name in recomputed:
+            raise ValueError(
+                f"frozen_vs_recomputed: surface row {name!r} appears more than "
+                "once; a recomputed national row must be one row."
+            )
+        recomputed[name] = estimate
     national = run.targets.loc[run.targets["grain"] == "national"]
     output_rows: list[dict[str, Any]] = []
     divergences: list[float] = []

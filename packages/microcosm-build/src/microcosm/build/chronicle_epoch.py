@@ -65,6 +65,7 @@ __all__ = [
     "ACCEPTED_CONSUMER_FACT_SCHEMA_VERSIONS",
     "CHRONICLE_CONSUMER_ARTIFACT_SCHEMA_VERSION",
     "CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION",
+    "CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V3",
     "CHRONICLE_EPOCH",
     "CHRONICLE_FACT_KEY_DOMAINS",
     "CHRONICLE_NAMESPACES",
@@ -201,11 +202,15 @@ CHRONICLE_CONSUMER_ARTIFACT_SCHEMA_VERSION = (
     "policyengine_chronicle.consumer_artifact.v3"
 )
 
-#: The per-row consumer-fact ``schema_version`` Chronicle stamps today
-#: (``chronicle/consumer_contract.py`` on chronicle ``main``), and its
-#: chronicle-era successor.
+#: The per-row consumer-fact ``schema_version`` Chronicle stamped before
+#: chronicle#261, its chronicle-era successor (the v2 row adds the dimension
+#: and value labels), and the v3 row chronicle#266 (PR #267) emits today: the
+#: v2 row plus the publisher's ``geography.name``. Every declared row contract
+#: keeps loading; the name and the labels are display metadata and never enter
+#: a fact key, so the keys of a v3 row are the v2 bytes.
 LEDGER_CONSUMER_FACT_SCHEMA_VERSION = "ledger.consumer_fact.v1"
 CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION = "chronicle.consumer_fact.v2"
+CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V3 = "chronicle.consumer_fact.v3"
 
 #: Fact-key domains, ledger-era spelling beside its chronicle-era successor.
 #: The ledger column is what Chronicle's ``main`` hashes with today; the
@@ -258,6 +263,11 @@ DECLARED_IDENTITIES: tuple[DeclaredIdentity, ...] = (
     ),
     _declare(
         CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
+        epoch=CHRONICLE_EPOCH,
+        kind=CONSUMER_FACT_SCHEMA_IDENTITY_KIND,
+    ),
+    _declare(
+        CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION_V3,
         epoch=CHRONICLE_EPOCH,
         kind=CONSUMER_FACT_SCHEMA_IDENTITY_KIND,
     ),

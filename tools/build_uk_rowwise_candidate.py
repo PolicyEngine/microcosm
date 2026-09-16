@@ -90,6 +90,7 @@ from microcosm.build.uk_runtime import (
     runtime_provenance,
     solve_uk_rowwise_weights_under_doctrine,
     spine_provenance_from_sidecar,
+    uk_area_region_codes,
     uk_census_household_uprating,
     uk_fit_by_family,
     uk_household_weight_kind,
@@ -722,6 +723,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--baseline-pi-floor",
+        type=float,
+        default=0.0,
+        help=(
+            "Floor on the inclusion probability the refit's Horvitz-Thompson "
+            "baseline divides each selected row's dense weight by: a boundary "
+            "row drawn at a few in a million otherwise starts at millions of "
+            "households and starves every other row under the stretch bound "
+            "(microcosm#355, Q50 2026-09-10). 0 (default) is the untrimmed "
+            "baseline. Candidate-only; recorded in the size receipt with the "
+            "rows it trimmed. Requires --dataset-households; a resumed "
+            "checkpoint may use a different floor."
+        ),
+    )
+    parser.add_argument(
         "--no-size-checkpoint",
         action="store_true",
         help=(
@@ -1151,6 +1167,7 @@ def _run_candidate(
             seed=args.seed,
             selection_seed=args.selection_seed,
             selection_pi_hi=args.selection_pi_hi,
+            baseline_pi_floor=args.baseline_pi_floor,
             size_checkpoint_dir=out_dir if write_checkpoint else None,
             resume_size_checkpoint=resume_checkpoint,
             checkpoint_identity=checkpoint_identity,
@@ -1276,6 +1293,7 @@ def _run_candidate(
                 solve_seed=args.seed,
                 selection_seed=args.selection_seed,
                 selection_pi_hi=args.selection_pi_hi,
+                baseline_pi_floor=args.baseline_pi_floor,
             )
         args._rotated_holdout = rotated_holdout
 
@@ -1540,6 +1558,7 @@ def _build_joint_problem(
         period=period,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         census_household_uprating=census_household_uprating,
+        area_region_codes=uk_area_region_codes(assignment.ladder),
     )
     covered = {
         grain: set(values.astype(str).tolist()) for grain, values in assigned.items()
@@ -1667,6 +1686,7 @@ def _joint_dry_run_plan(
         bound_national_target_ids=_national_contract_target_ids(national_registry),
         period=joint_inputs["calibration_year"],
         reviewed_unbound_higher_targets=joint_inputs["reviewed_unbound_higher_targets"],
+        area_region_codes=uk_area_region_codes(ladder),
         census_household_uprating=joint_inputs.get("census_household_uprating"),
     )
     household = clone.frame.table("household")
@@ -1847,6 +1867,7 @@ def _build_bound_problem(
         bound_national_target_ids=BOUND_NATIONAL_TARGETS,
         period=period,
         census_household_uprating=census_household_uprating,
+        area_region_codes=uk_area_region_codes(assignment.ladder),
     )
     surface = surface.sort_values("area_code", kind="mergesort").reset_index(drop=True)
     targets = pd.DataFrame(
@@ -2706,6 +2727,9 @@ def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]
         "selection_pi_hi": None
         if args.dataset_households is None
         else float(args.selection_pi_hi),
+        "baseline_pi_floor": None
+        if args.dataset_households is None
+        else float(args.baseline_pi_floor),
         "size_checkpoint": bool(
             args.dataset_households is not None
             and not args.no_size_checkpoint
@@ -2950,6 +2974,10 @@ def _validate_cli_args(args: argparse.Namespace) -> None:
         raise ValueError("--selection-pi-hi must be in (0, 1].")
     if args.selection_pi_hi != 1.0 and args.dataset_households is None:
         raise ValueError("--selection-pi-hi requires --dataset-households.")
+    if not (0.0 <= args.baseline_pi_floor <= 1.0):
+        raise ValueError("--baseline-pi-floor must be in [0, 1].")
+    if args.baseline_pi_floor != 0.0 and args.dataset_households is None:
+        raise ValueError("--baseline-pi-floor requires --dataset-households.")
     if args.no_size_checkpoint and args.dataset_households is None:
         raise ValueError("--no-size-checkpoint requires --dataset-households.")
     if args.resume_size_checkpoint is not None:

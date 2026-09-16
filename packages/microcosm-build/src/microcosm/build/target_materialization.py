@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections.abc import Callable, Mapping, Sequence
@@ -490,6 +491,7 @@ def materialize_target_bindings(
         contract_target_id = spec.metadata.get("contract_target_id")
         target = contract_targets.get(str(contract_target_id))
         binding = target["bindings"]["policyengine"] if target is not None else {}
+        binding = _with_geography_predicate(binding, spec)
         if (
             hasattr(adapter, "has_column")
             and adapter.has_column(spec.entity, spec.measure)
@@ -627,6 +629,54 @@ def input_substitution_counterfactual(
     if hasattr(adapter, "counterfactual_delta"):
         return np.asarray(adapter.counterfactual_delta(binding, period), dtype=float)
     raise ValueError("adapter does not provide counterfactual_delta")
+
+
+def _with_geography_predicate(
+    binding: Mapping[str, Any],
+    spec: Any,
+) -> Mapping[str, Any]:
+    """Scope a contract binding to one reference's declared geography.
+
+    A reference authored by a geography fan-out shares its contract binding
+    with every sibling cell; what distinguishes the cells is the predicate the
+    authoring stamped into ``metadata.geography_predicate`` (a JSON object in
+    the ordinary predicate vocabulary). It is appended to the binding's
+    ``filters`` verbatim. References without the key are untouched, so no
+    existing country-level reference is re-scoped by its geography stamp.
+    """
+
+    metadata = getattr(spec, "metadata", None) or {}
+    raw = metadata.get("geography_predicate")
+    if not raw:
+        return binding
+    name = getattr(spec, "name", "<unnamed>")
+    try:
+        predicate = json.loads(str(raw))
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"{name!r}: metadata.geography_predicate is not valid JSON: {error}"
+        ) from None
+    if not isinstance(predicate, Mapping) or not predicate.get("variable"):
+        raise ValueError(
+            f"{name!r}: metadata.geography_predicate must be a predicate object "
+            "naming a variable."
+        )
+    if binding.get("kind"):
+        raise ValueError(
+            f"{name!r}: a geography predicate cannot scope a provider binding "
+            f"of kind {binding['kind']!r}; providers do not read filters."
+        )
+    map_to = predicate.get("map_to")
+    entity = getattr(spec, "entity", None)
+    if map_to is not None and entity and str(map_to) != str(entity):
+        raise ValueError(
+            f"{name!r}: metadata.geography_predicate projects to {map_to!r} but "
+            f"the reference measures {entity!r}; the mask would misalign."
+        )
+    return {
+        **binding,
+        "filters": [*binding.get("filters", ()), dict(predicate)],
+    }
 
 
 def _prepared_column_values(

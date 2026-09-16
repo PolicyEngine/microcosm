@@ -892,10 +892,10 @@ def test_summary_reports_shares_and_bands() -> None:
 
 
 @requires_us
-def test_policyengine_1_819_0_net_worth_input_contract() -> None:
+def test_policyengine_2_2_1_net_worth_input_contract() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
-    assert version("policyengine-us") == "1.819.0"
+    assert version("policyengine-us") == "2.2.1"
     variable = CountryTaxBenefitSystem().variables["net_worth"]
     assert variable.is_input_variable()
     assert variable.entity.key == "household"

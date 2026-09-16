@@ -6,6 +6,17 @@ dependence fit passes 13 of the original 15 household screens, but still fails
 two hours checks and all three checks for observed children with unresolved
 siblings. Neither experimental model has replaced the production-stage recipe.
 
+**Runtime update after merging main:** the branch now uses PolicyEngine-US
+2.2.1 and Core 3.32.5. Population artifacts, native-loader receipts and benefit
+estimates below were produced with PolicyEngine-US 1.819.0 and Core 3.31.0.
+They remain historical evidence, not validation of a population under the new
+runtime. Runtime-bound attendance receipts require rebuilding from the original
+parent before a new candidate can be used; the merge does not bypass that check.
+The complete three-model survey comparison was rerun with 2.2.1: every model
+result and diagnostic code hash matches the pre-upgrade run exactly. The linked
+pooled report records the new runtime; this survey replay is separate from
+population and benefit validation.
+
 - [Initial pooling and evaluation plan](pooled-matching-plan.txt)
 - [Subsequent exploratory dependence-objective plan](pooled-moments-plan.txt)
 - [All three models, full diagnostics and structural check](pooled-matching-validation.json)
@@ -98,8 +109,10 @@ and row-order invariance, whole-household exclusions at both fit and evaluation
 boundaries, inclusion of partially observed families, joint schedule preservation,
 structural screen compatibility, and JSON-safe undefined metrics. Tests reside
 directly in the build shard's tracked CI inventory; CI does not access survey data.
-Production recipe hashes match the last verified population artifact exactly,
-so no population rebuild or new state benefit estimate is claimed by this experiment.
+Attendance recipe code is unchanged by this experiment. Before the main merge,
+its full recipe identity matched the last verified population artifact. The
+engine upgrade changes that runtime-bound identity; no population rebuild or
+new state benefit estimate is claimed here.
 
 The 616-test attendance/source/architecture regression run passed. After making
 undefined relative-error flags JSON-safe, all 96 focused source/pooling tests
@@ -107,6 +120,13 @@ passed again. Lint, formatting, tracked CI inventory and build-wheel source-byte
 checks passed. The final real-source run reproduces both initial model arms
 exactly and records the current diagnostic code hashes; only aggregate evidence
 is committed. GitHub CI is separate and has not been monitored.
+
+After the main merge, 1,142 attendance/source, architecture, fiscal-builder,
+coverage, serializer and native-adapter tests passed under the updated lock.
+A separate 249-test pool-tool/specification run also passed. The merged coverage
+report and spec digest were regenerated; lint, formatting, tracked CI inventory
+and current-wheel source/engine-lock byte checks passed. The complete survey
+replay above reproduces every model result exactly under PolicyEngine-US 2.2.1.
 
 ## Previous hard household-size investigation — 2026-09-16
 
@@ -117,7 +137,7 @@ as an experiment and **has not replaced the production-stage matching recipe**.
 - [Comparison plan recorded before the new results](household-size-plan.txt)
 - [Development comparison and calendar-selection diagnostics](household-size-development.json)
 - [Reserved-household comparison](household-size-reserved-validation.json)
-- [Current artifact verification](household-review-artifact-verification.json)
+- [Pre-upgrade artifact verification](household-review-artifact-verification.json)
 
 The challenger adds the number of rostered children ages 0–12, capped at three,
 to the existing age/region/work/income matching. Missing calendars still count

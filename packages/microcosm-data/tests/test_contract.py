@@ -19,6 +19,7 @@ import pytest
 from microcosm.data import (
     EVIDENCE_RELEASE_ID_SEGMENT,
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+    PUBLISHER_CLAIM_BASIS,
     RELEASE_MANIFEST_SCHEMA_VERSION,
     US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
     ReleaseContractError,
@@ -3977,6 +3978,91 @@ def test_release_manifest_compatible_specifier_must_be_valid(
 
     failures = "\n".join(excinfo.value.failures)
     assert "valid PEP 440 specifier" in failures
+
+
+def _declare_model_claim(release_dir: Path, entry: dict) -> None:
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["compatible_model_packages"] = [entry]
+    manifest_path.write_text(json.dumps(manifest))
+
+
+def test_release_manifest_accepts_a_declared_publisher_compatibility_range(
+    release_dir: Path,
+) -> None:
+    _declare_model_claim(
+        release_dir,
+        {
+            "name": "policyengine-us",
+            "specifier": ">=1.729.0,<1.730",
+            "basis": PUBLISHER_CLAIM_BASIS,
+            "declared_by": "PolicyEngine data release owner",
+        },
+    )
+
+    validate_release_dir(release_dir)
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        (
+            {"basis": "vibes", "declared_by": "someone"},
+            "is not a recognised compatibility basis",
+        ),
+        ({"basis": PUBLISHER_CLAIM_BASIS}, "declared_by is required"),
+        (
+            {"basis": PUBLISHER_CLAIM_BASIS, "declared_by": "  "},
+            "declared_by is required",
+        ),
+        ({"declared_by": "someone"}, "declared_by needs the matching"),
+    ],
+)
+def test_release_manifest_rejects_an_unattributed_compatibility_claim(
+    release_dir: Path, entry: dict, message: str
+) -> None:
+    _declare_model_claim(
+        release_dir,
+        {"name": "policyengine-us", "specifier": ">=1.729.0,<1.730", **entry},
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    assert message in "\n".join(excinfo.value.failures)
+
+
+@pytest.mark.parametrize(
+    ("declared_by", "message"),
+    [
+        ("x" * 201, "at most 200 characters"),
+        ("two\nlines", "printable"),
+        (" padded ", "whitespace"),
+    ],
+)
+def test_release_manifest_rejects_a_declarer_the_producer_would_refuse(
+    release_dir: Path, declared_by: str, message: str
+) -> None:
+    """Both layers apply one declarer rule, so neither can admit the other's junk.
+
+    ``check_compatibility_claim_declarer`` refuses these at certification. A
+    bundle carrying one reached this contract from somewhere other than the
+    producer, and the contract is where publication reads it.
+    """
+    _declare_model_claim(
+        release_dir,
+        {
+            "name": "policyengine-us",
+            "specifier": ">=1.729.0,<1.730",
+            "basis": PUBLISHER_CLAIM_BASIS,
+            "declared_by": declared_by,
+        },
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    assert message in "\n".join(excinfo.value.failures)
 
 
 def test_release_manifest_compatible_model_package_must_cover_build_version(

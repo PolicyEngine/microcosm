@@ -2245,6 +2245,10 @@ def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
     assert size["seed"] == 11
     assert manifest["parameters"]["selection_pi_hi"] == 1.0
     assert size["selection_pi_hi"] == 1.0
+    assert manifest["parameters"]["baseline_pi_floor"] == 0.0
+    assert size["baseline_pi_floor"] == 0.0
+    assert size["baseline_floored_rows"] == 0
+    assert size["refit_baseline"] == "normalized_horvitz_thompson_w_over_q"
     assert size["selection_receipt"]["pi_hi"] == 1.0
     assert size["selection_feasibility"]["requested_pi_hi"] == 1.0
     assert size["selection_feasibility"]["feasible_at_requested_pi_hi"] is True
@@ -2319,6 +2323,9 @@ def test_selection_seed_requires_a_dataset_size(tmp_path):
         (["--selection-pi-hi", "0.95"], "requires --dataset-households"),
         (["--dataset-households", "10", "--selection-pi-hi", "0"], r"in \(0, 1\]"),
         (["--dataset-households", "10", "--selection-pi-hi", "1.5"], r"in \(0, 1\]"),
+        (["--baseline-pi-floor", "0.01"], "requires --dataset-households"),
+        (["--dataset-households", "10", "--baseline-pi-floor", "-0.1"], r"in \[0, 1\]"),
+        (["--dataset-households", "10", "--baseline-pi-floor", "1.5"], r"in \[0, 1\]"),
     ],
 )
 def test_selection_pi_hi_is_candidate_only_and_bounded(tmp_path, argv_tail, message):

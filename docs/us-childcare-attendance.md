@@ -15,6 +15,13 @@ build inputs; CI does not download or redistribute survey records. This PR
 provides build integration and a local population candidate under review; it does
 not publish a replacement population or certify national CCDF spending.
 
+The September 16 main merge upgrades the branch to PolicyEngine-US 2.2.1.
+Existing population candidates and state-benefit reports were generated with
+1.819.0 and remain historical evidence. Their runtime-bound attendance receipts
+cannot be reused under 2.2.1: a new candidate must be rebuilt from the original
+parent and revalidated before use. The survey-model experiments do not provide
+that population validation.
+
 ## Source and mapping
 
 The [2024 NSECE V1 release](https://www.childandfamilydataarchive.org/cfda/archives/cfda/studies/39466/datadocumentation)

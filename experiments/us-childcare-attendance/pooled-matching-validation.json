@@ -22,7 +22,7 @@
     "runtime_versions": {
       "numpy": "2.4.6",
       "pandas": "3.0.3",
-      "policyengine-us": "1.819.0"
+      "policyengine-us": "2.2.1"
     },
     "code_sha256": {
       "childcare_attendance.py": "da00ef1fb45232a731bd4a3b33d93cd0aeac0682b28d50e4d53cb79db12ce96e",

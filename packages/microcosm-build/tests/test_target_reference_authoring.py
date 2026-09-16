@@ -10,7 +10,9 @@ import pytest
 from microcosm.build.target_reference_authoring import (
     AreaSignedDeferral,
     AreaTargetReferenceAuthoringConfig,
+    TargetReferenceAuthoringConfig,
     author_area_target_references,
+    author_target_references,
     target_references_resource,
 )
 
@@ -584,3 +586,326 @@ def _area_fact(
             "measure_id": measure_id,
         },
     }
+
+
+_REGION_TIER_CELLS = (
+    ("region", "E12000007"),
+    ("region", "E12000001"),
+    ("country", "W92000004"),
+)
+
+
+def _tier_fact(level: str, area_id: str, value: float, fact_key: str) -> dict:
+    fact = _area_fact("ons", "population", value, area_id=area_id, fact_key=fact_key)
+    fact["geography"] = {"level": level, "id": area_id, "vintage": "gss_2024"}
+    return fact
+
+
+def _two_level_contract() -> dict:
+    contract = _single_age_contract()
+    target = contract["targets"][0]
+    target["target_id"] = "ons.age.0_10_by_region"
+    target["geography_levels"] = ["country", "region"]
+    return contract
+
+
+def _tier_metadata(
+    target: dict, geography_level: str, geography_id: str, entity: str
+) -> dict[str, str]:
+    del target, geography_level
+    return {
+        "geography_predicate": json.dumps(
+            {
+                "variable": "region",
+                "operator": "==",
+                "value": geography_id,
+                "map_to": entity,
+            }
+        ),
+        "cross_grain_grain": "region",
+    }
+
+
+def _tier_facts() -> list[dict]:
+    return [
+        _tier_fact("region", "E12000007", 10.0, "london"),
+        _tier_fact("region", "E12000001", 20.0, "north-east"),
+        _tier_fact("country", "W92000004", 30.0, "wales"),
+        _tier_fact("country", "K02000001", 60.0, "uk"),
+    ]
+
+
+def test_author_target_references_fans_out_over_a_geography_roster() -> None:
+    config = TargetReferenceAuthoringConfig(
+        target_period=2025,
+        geography_fanout_by_target_id={"ons.age.0_10_by_region": _REGION_TIER_CELLS},
+        geography_fanout_metadata=_tier_metadata,
+        source_fact_feed="synthetic",
+    )
+    authored = author_target_references(_two_level_contract(), _tier_facts(), config)
+    names = [row["name"] for row in authored.references]
+    assert names == [
+        "ons.age.0_10_by_region@E12000007",
+        "ons.age.0_10_by_region@E12000001",
+        "ons.age.0_10_by_region@W92000004",
+    ]
+    london = authored.references[0]
+    # Each cell is its own measure column, never the shared metric name.
+    assert london["measure"] == london["name"]
+    assert london["entity"] == "person"
+    assert london["ledger_selector"]["geography_level"] == "region"
+    assert london["ledger_selector"]["geography_id"] == "E12000007"
+    assert london["metadata"]["contract_target_id"] == "ons.age.0_10_by_region"
+    assert london["metadata"]["geography_level"] == "region"
+    assert london["metadata"]["geography_id"] == "E12000007"
+    assert json.loads(london["metadata"]["geography_predicate"]) == {
+        "variable": "region",
+        "operator": "==",
+        "value": "E12000007",
+        "map_to": "person",
+    }
+    assert london["metadata"]["cross_grain_grain"] == "region"
+    wales = authored.references[2]
+    assert wales["ledger_selector"]["geography_level"] == "country"
+    # The UK-wide fact is no cell of the roster: nothing binds it.
+    assert "K02000001" not in json.dumps(authored.references)
+
+    report = authored.membership_report
+    assert report["active_reference_count"] == 3
+    assert report["status_counts"] == {"active": 3}
+    assert report["geography_pins"]["ons.age.0_10_by_region"] == {
+        "geography_fanout": [
+            {"geography_level": level, "geography_id": area_id}
+            for level, area_id in _REGION_TIER_CELLS
+        ]
+    }
+    candidates = report["targets"]["ons.age.0_10_by_region"]["candidates"]
+    assert [
+        (
+            entry["geography_level"],
+            entry["geography_id"],
+            entry["status"],
+            entry["resolved_value"],
+        )
+        for entry in candidates
+    ] == [
+        ("region", "E12000007", "active", 10.0),
+        ("region", "E12000001", "active", 20.0),
+        ("country", "W92000004", "active", 30.0),
+    ]
+
+
+def test_geography_fanout_refuses_an_absent_roster_cell() -> None:
+    config = TargetReferenceAuthoringConfig(
+        target_period=2025,
+        geography_fanout_by_target_id={"ons.age.0_10_by_region": _REGION_TIER_CELLS},
+        source_fact_feed="synthetic",
+    )
+    facts = [fact for fact in _tier_facts() if fact["geography"]["id"] != "W92000004"]
+    with pytest.raises(ValueError, match="Unsigned geography fan-out absence") as info:
+        author_target_references(_two_level_contract(), facts, config)
+    assert "W92000004" in str(info.value)
+
+
+def test_geography_fanout_refuses_a_pin_on_the_same_target() -> None:
+    config = TargetReferenceAuthoringConfig(
+        target_period=2025,
+        geography_pins={
+            "ons.age.0_10_by_region": {
+                "geography_level": "country",
+                "geography_id": "K02000001",
+            }
+        },
+        geography_fanout_by_target_id={"ons.age.0_10_by_region": _REGION_TIER_CELLS},
+        source_fact_feed="synthetic",
+    )
+    with pytest.raises(ValueError, match="both a geography pin"):
+        author_target_references(_two_level_contract(), _tier_facts(), config)
+
+
+def test_geography_fanout_refuses_duplicate_cells_and_non_string_metadata() -> None:
+    duplicated = TargetReferenceAuthoringConfig(
+        target_period=2025,
+        geography_fanout_by_target_id={
+            "ons.age.0_10_by_region": (("region", "E12000007"), ("region", "E12000007"))
+        },
+        source_fact_feed="synthetic",
+    )
+    with pytest.raises(ValueError, match="twice"):
+        author_target_references(_two_level_contract(), _tier_facts(), duplicated)
+
+    non_string = TargetReferenceAuthoringConfig(
+        target_period=2025,
+        geography_fanout_by_target_id={"ons.age.0_10_by_region": _REGION_TIER_CELLS},
+        geography_fanout_metadata=lambda *args: {"cross_grain_grain": 1},
+        source_fact_feed="synthetic",
+    )
+    with pytest.raises(ValueError, match="must be a string"):
+        author_target_references(_two_level_contract(), _tier_facts(), non_string)
+
+
+def test_area_scope_limits_a_target_to_its_declared_roster_areas() -> None:
+    contract = _contract()
+    facts = [
+        _area_fact("ons", "population", 10.0, area_id="A1", fact_key="a1-age-0"),
+        _area_fact("ons", "population", 30.0, area_id="A2", fact_key="a2-age-0"),
+        _area_fact("hmrc", "employment_income_count", 2.0, area_id="A1", fact_key="c1"),
+        _area_fact(
+            "hmrc",
+            "employment_income_mean",
+            100.0,
+            area_id="A1",
+            fact_key="m1",
+            aggregation="mean",
+        ),
+    ]
+    config = AreaTargetReferenceAuthoringConfig(
+        target_period=2025,
+        areas_by_geography_level={"constituency": ("A1", "A2")},
+        value_operation_by_target_id={
+            "ons.age.0_10": "sum",
+            "hmrc.employment_income.amount": "count_x_mean",
+        },
+        area_scope_by_target_id={
+            "hmrc.employment_income.amount": {"constituency": frozenset({"A1"})}
+        },
+        source_fact_feed="synthetic",
+    )
+
+    authored = author_area_target_references(contract, facts, config)
+
+    assert [row["name"] for row in authored.references] == [
+        "ons.age.0_10@A1",
+        "ons.age.0_10@A2",
+        "hmrc.employment_income.amount@A1",
+    ]
+    report = authored.membership_report
+    assert report["candidate_count"] == 3
+    assert report["area_scope_by_target_id"] == {
+        "hmrc.employment_income.amount": {"constituency": ["A1"]}
+    }
+
+
+def test_area_scope_naming_an_area_outside_the_roster_refuses() -> None:
+    config = AreaTargetReferenceAuthoringConfig(
+        target_period=2025,
+        areas_by_geography_level={"constituency": ("A1",)},
+        area_scope_by_target_id={"ons.age.0_10": {"constituency": frozenset({"Z9"})}},
+        source_fact_feed="synthetic",
+    )
+    with pytest.raises(ValueError, match="names areas the roster does not carry"):
+        author_area_target_references(_contract(), [], config)
+
+
+def test_area_id_aliases_select_the_publisher_recoding_and_keep_the_roster_code() -> (
+    None
+):
+    contract = _contract()
+    contract["targets"] = [
+        target
+        for target in contract["targets"]
+        if target["target_id"] == "ons.age.0_10"
+    ]
+    old = _area_fact("ons", "population", 10.0, area_id="A1", fact_key="a1-old")
+    old["period"]["value"] = 2024
+    new = _area_fact("ons", "population", 12.0, area_id="A1X", fact_key="a1-new")
+    new["geography"]["name"] = "Area A1"
+    other = _area_fact("ons", "population", 30.0, area_id="A2", fact_key="a2")
+    config = AreaTargetReferenceAuthoringConfig(
+        target_period=2025,
+        areas_by_geography_level={"constituency": ("A1", "A2")},
+        value_operation_by_target_id={"ons.age.0_10": "sum"},
+        area_id_aliases={"constituency": {"A1": ("A1X",)}},
+        source_fact_feed="synthetic",
+    )
+
+    authored = author_area_target_references(contract, [old, new, other], config)
+
+    row = authored.references[0]
+    assert row["name"] == "ons.age.0_10@A1"
+    assert row["ledger_selector"]["geography_id"] == ["A1", "A1X"]
+    assert row["metadata"]["geography_id"] == "A1"
+    assert row["metadata"]["geography_id_aliases"] == "A1X"
+    # The 2025 row filed under the alias wins over the 2024 row under the
+    # roster code: the alias is a spelling of the same area, not a new one.
+    assert (
+        _candidate(authored.membership_report, "ons.age.0_10", "A1")["resolved_value"]
+        == 12.0
+    )
+    assert authored.membership_report["uprating_holds"] == []
+
+
+def test_geography_composition_sums_member_rows_into_the_declared_cell() -> None:
+    contract = _two_level_contract()
+    contract["targets"][0]["value_operation"] = "sum"
+    facts = [
+        _tier_fact("local_authority", "L1", 4.0, "l1"),
+        _tier_fact("local_authority", "L2", 6.0, "l2"),
+        _tier_fact("local_authority", "L2X", 7.0, "l2x"),
+        _tier_fact("local_authority", "L3", 9.0, "l3"),
+    ]
+    facts[2]["period"]["value"] = 2025
+    for fact in facts[:2] + facts[3:]:
+        fact["period"]["value"] = 2025
+    facts[1]["period"]["value"] = 2024  # L2's row under the roster code is stale
+    config = TargetReferenceAuthoringConfig(
+        target_period=2025,
+        geography_fanout_by_target_id={
+            "ons.age.0_10_by_region": (("region", "E12000007"),)
+        },
+        geography_fanout_metadata=_tier_metadata,
+        geography_composition_by_target_id={
+            "ons.age.0_10_by_region": {
+                "E12000007": ("local_authority", ("L1", "L2", "L2X"))
+            }
+        },
+        geography_composition_aliases={"local_authority": {"L2": ("L2X",)}},
+        value_operation_by_target_id={"ons.age.0_10_by_region": "sum"},
+        source_fact_feed="synthetic",
+    )
+
+    authored = author_target_references(contract, facts, config)
+
+    row = authored.references[0]
+    assert row["name"] == "ons.age.0_10_by_region@E12000007"
+    assert row["ledger_selector"] == {
+        "source_name": "ons",
+        "source_measure_id": "population",
+        "record_set_spec_id": "uk.local_geography.population.age_0_10.v1",
+        "geography_level": "local_authority",
+        "geography_id": ["L1", "L2", "L2X"],
+    }
+    assert row["expected_member_count"] == 2
+    assert row["metadata"]["geography_level"] == "region"
+    assert row["metadata"]["geography_id"] == "E12000007"
+    assert row["metadata"]["composed_from_level"] == "local_authority"
+    assert row["metadata"]["composed_member_count"] == "2"
+    assert row["metadata"]["cross_grain_grain"] == "region"
+    candidates = authored.membership_report["targets"]["ons.age.0_10_by_region"][
+        "candidates"
+    ]
+    assert candidates[0]["status"] == "active"
+    assert candidates[0]["resolved_value"] == 4.0 + 7.0
+    assert authored.membership_report["geography_pins"]["ons.age.0_10_by_region"][
+        "geography_composition"
+    ] == {"E12000007": {"member_level": "local_authority", "member_count": 2}}
+
+
+def test_geography_composition_refuses_a_non_aggregating_operation() -> None:
+    config = TargetReferenceAuthoringConfig(
+        target_period=2025,
+        geography_fanout_by_target_id={
+            "ons.age.0_10_by_region": (("region", "E12000007"),)
+        },
+        geography_fanout_metadata=_tier_metadata,
+        geography_composition_by_target_id={
+            "ons.age.0_10_by_region": {"E12000007": ("local_authority", ("L1",))}
+        },
+        source_fact_feed="synthetic",
+    )
+    with pytest.raises(ValueError, match="needs an aggregating operation"):
+        author_target_references(
+            _two_level_contract(),
+            [_tier_fact("local_authority", "L1", 4.0, "l1")],
+            config,
+        )

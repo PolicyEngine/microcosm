@@ -12,9 +12,10 @@ calibration residual. Related work remains in [#882](https://github.com/PolicyEn
 payment indicator × child entitlement crossed separately with family type and
 reported child count. The pinned complete UK artifact comes from
 `ec7169b5db40b9f54117c80f70f14efc1dd0fedd`: all 100 source suites pass and its
-131,450 facts validate. The packaged `uk/national_chronicle_feed.json` records
+131,450 facts validate. The packaged `uk/chronicle_feed.json` records
 the facts, manifest and schema hashes. National calibration checks both artifact
-digests before compiling targets; local surfaces retain their separate pins.
+digests before compiling targets; since #890 the local surfaces restate the same
+pin (the artifact has since moved on, see `uk/chronicle_feed.json`).
 
 | Target group | Source operation | Model counterpart |
 |---|---|---|

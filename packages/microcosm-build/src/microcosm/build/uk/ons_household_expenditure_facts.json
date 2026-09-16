@@ -1,0 +1,871 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "ons_household_expenditure_facts.json",
+  "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual, for COICOP 04.5 electricity, gas and other fuels, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, 2020 to 2025. Consumed by the domestic energy spend target and the motor-fuel spend diagnostic.",
+  "consumers": [],
+  "planned_consumers": [
+    "uk_aggregate_admin"
+  ],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "df35af7e7ccf689ad2a5b6e47ce33e99b8c9d3fb",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 266390,
+    "facts_sha256": "3e7d5a4fe18be9e5a19e5475a6e9f91a5d5b0ab827faedccdc755584957e59e7",
+    "manifest_sha256": "51aab3411e803cac7b9bbd1b1bf9250a87cd43bfd0ba35d0cd653e31821d0364"
+  },
+  "selections": [
+    {
+      "label": "ons_consumer_trends_annual_coicop",
+      "selector": {
+        "source_name": "ons",
+        "source_concept": [
+          "ons.household_expenditure.electricity_gas_other_fuels",
+          "ons.household_expenditure.personal_transport_fuels_lubricants",
+          "ons.household_expenditure.road_transport_services"
+        ],
+        "period_type": "calendar_year"
+      },
+      "row_count": 18
+    }
+  ],
+  "row_count": 18,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3cd88a21220794f9b66e2186",
+      "semantic_fact_key": "ledger_semantic_fact_v2_69ab36c8d0410c47801330e7",
+      "source_record_id": "ons.consumer_trends.04cn.cy2020.coicop_04_5.expenditure",
+      "concept": "ons.household_expenditure.electricity_gas_other_fuels",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-01-01",
+        "end_date": "2020-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.04cn.cy2020",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_04_5",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "04.5",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 31805000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_00d155a3964927da87c5424a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f9e2ed660c7bf05bcbc24719",
+      "source_record_id": "ons.consumer_trends.04cn.cy2021.coicop_04_5.expenditure",
+      "concept": "ons.household_expenditure.electricity_gas_other_fuels",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-01-01",
+        "end_date": "2021-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.04cn.cy2021",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_04_5",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "04.5",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 34437000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_45a1dcd4688e4b1af441dec8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_db656012dccfacaea215be01",
+      "source_record_id": "ons.consumer_trends.04cn.cy2022.coicop_04_5.expenditure",
+      "concept": "ons.household_expenditure.electricity_gas_other_fuels",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.04cn.cy2022",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_04_5",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "04.5",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 49403000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_373356553e5ac91d15c27eb4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_21f4d1c7024d0cd2312f7a61",
+      "source_record_id": "ons.consumer_trends.04cn.cy2023.coicop_04_5.expenditure",
+      "concept": "ons.household_expenditure.electricity_gas_other_fuels",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.04cn.cy2023",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_04_5",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "04.5",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 52505000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c02320ecb93dfd12bd18bb07",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e44470dd8eef345c701a1879",
+      "source_record_id": "ons.consumer_trends.04cn.cy2024.coicop_04_5.expenditure",
+      "concept": "ons.household_expenditure.electricity_gas_other_fuels",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.04cn.cy2024",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_04_5",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "04.5",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 42288000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a139145f4db5fea0260908f8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_19164e8ab903fc254989a703",
+      "source_record_id": "ons.consumer_trends.04cn.cy2025.coicop_04_5.expenditure",
+      "concept": "ons.household_expenditure.electricity_gas_other_fuels",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.04cn.cy2025",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_04_5",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "04.5",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 43427000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_22f12b595a38d5c76b706e64",
+      "semantic_fact_key": "ledger_semantic_fact_v2_457efbb72200c875fc717ccb",
+      "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2020.coicop_07_2_2.expenditure",
+      "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-01-01",
+        "end_date": "2020-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.07cn_07_2_2.cy2020",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_07_2_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "07.2.2",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 23650000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f89c1149b40887c248083737",
+      "semantic_fact_key": "ledger_semantic_fact_v2_39a2389150f9ee33c003967a",
+      "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2021.coicop_07_2_2.expenditure",
+      "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-01-01",
+        "end_date": "2021-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.07cn_07_2_2.cy2021",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_07_2_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "07.2.2",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 31684000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_76497f62baedb20f24935f0d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_42eb52d1c607395c11b54801",
+      "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2022.coicop_07_2_2.expenditure",
+      "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.07cn_07_2_2.cy2022",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_07_2_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "07.2.2",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 42154000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_74431c9bd6815c5351745e5c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_718d62d2f741137d8391c48a",
+      "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2023.coicop_07_2_2.expenditure",
+      "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.07cn_07_2_2.cy2023",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_07_2_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "07.2.2",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 38504000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_70cbae2800a99998514ca211",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7ee16cb0e147fc07abc5af13",
+      "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2024.coicop_07_2_2.expenditure",
+      "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.07cn_07_2_2.cy2024",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_07_2_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "07.2.2",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 37025000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5f09d8c219289c6331c51da6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f7b73574b7f8043be4a9e029",
+      "source_record_id": "ons.consumer_trends.07cn_07_2_2.cy2025.coicop_07_2_2.expenditure",
+      "concept": "ons.household_expenditure.personal_transport_fuels_lubricants",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.07cn_07_2_2.cy2025",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_07_2_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "07.2.2",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 35099000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6a07671fe15ee44be43f9485",
+      "semantic_fact_key": "ledger_semantic_fact_v2_70cf2f5eace47e8536ec747b",
+      "source_record_id": "ons.consumer_trends.07cn_07_3_2.cy2020.coicop_07_3_2.expenditure",
+      "concept": "ons.household_expenditure.road_transport_services",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-01-01",
+        "end_date": "2020-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.07cn_07_3_2.cy2020",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_07_3_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "07.3.2",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 5042000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5f27204b555a1b49249f6523",
+      "semantic_fact_key": "ledger_semantic_fact_v2_82e867dffc14d333d7d6df70",
+      "source_record_id": "ons.consumer_trends.07cn_07_3_2.cy2021.coicop_07_3_2.expenditure",
+      "concept": "ons.household_expenditure.road_transport_services",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-01-01",
+        "end_date": "2021-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.07cn_07_3_2.cy2021",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_07_3_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "07.3.2",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 5629000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_efbc618e51efbb1e0911be4d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c08698481263e03a03c9ec0d",
+      "source_record_id": "ons.consumer_trends.07cn_07_3_2.cy2022.coicop_07_3_2.expenditure",
+      "concept": "ons.household_expenditure.road_transport_services",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.07cn_07_3_2.cy2022",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_07_3_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "07.3.2",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 6928000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_66f4aea3e385952c4d63c4b9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b5c8c12172549bce45edb088",
+      "source_record_id": "ons.consumer_trends.07cn_07_3_2.cy2023.coicop_07_3_2.expenditure",
+      "concept": "ons.household_expenditure.road_transport_services",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.07cn_07_3_2.cy2023",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_07_3_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "07.3.2",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 6851000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ccaddb1fba83105aac821ecc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_be085b83df878a24a170f971",
+      "source_record_id": "ons.consumer_trends.07cn_07_3_2.cy2024.coicop_07_3_2.expenditure",
+      "concept": "ons.household_expenditure.road_transport_services",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.07cn_07_3_2.cy2024",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_07_3_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "07.3.2",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 8000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4bb51039d900197468abc60e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2a1ae3a8aa83c0f99609c9ac",
+      "source_record_id": "ons.consumer_trends.07cn_07_3_2.cy2025.coicop_07_3_2.expenditure",
+      "concept": "ons.household_expenditure.road_transport_services",
+      "measure_id": "expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "household",
+        "role": "resident_households"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "ons.consumer_trends.07cn_07_3_2.cy2025",
+        "groupby_dimension": "ons.coicop",
+        "groupby_value_id": "coicop_07_3_2",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "coicop": "07.3.2",
+        "frequency": "annual"
+      },
+      "source": {
+        "source_name": "ons",
+        "source_table": "Consumer Trends current price, not seasonally adjusted, sheets 04CN and 07CN",
+        "source_file": "cpnsa.xlsx",
+        "source_sha256": "109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c",
+        "vintage": "current_2026_09_09",
+        "raw_r2_key": "raw/ons/ons-consumer-trends-current-price-2026/2026/109e53de0c09d30327ae2053a0487cee159fe44135884707c9000c252438143c/cpnsa.xlsx"
+      },
+      "value": 8603000000
+    }
+  ]
+}

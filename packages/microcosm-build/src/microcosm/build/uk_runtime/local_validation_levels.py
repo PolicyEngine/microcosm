@@ -7,6 +7,8 @@ import json
 from importlib.resources import files
 from typing import Any
 
+from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
+
 LOCAL_VALIDATION_LEVELS_RESOURCE = "local_validation_levels.json"
 VALID_LEVEL_STATUSES = frozenset({"available", "awaiting_facts"})
 
@@ -21,6 +23,11 @@ def load_uk_local_validation_levels() -> dict[str, Any]:
     return copy.deepcopy(payload)
 
 
+#: The one UK Chronicle pin (uk/chronicle_feed.json), read once at import so
+#: register validation compares against the declaration without re-parsing it.
+_EXPECTED_FEED_PIN = load_uk_chronicle_feed()
+
+
 def _validate(payload: Any) -> None:
     if not isinstance(payload, dict):
         raise ValueError("UK local validation-level register must be an object.")
@@ -29,10 +36,17 @@ def _validate(payload: Any) -> None:
     if payload.get("register_kind") != "uk_local_validation_levels":
         raise ValueError("UK local validation-level register_kind is invalid.")
     feed = payload.get("source_feed")
-    if not isinstance(feed, dict) or feed.get("sha256") != (
-        "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5"
+    pin = _EXPECTED_FEED_PIN
+    if (
+        not isinstance(feed, dict)
+        or feed.get("sha256") != pin.facts_sha256
+        or feed.get("manifest_sha256") != pin.manifest_sha256
+        or feed.get("source_commit") != pin.source_commit
     ):
-        raise ValueError("UK local validation-level feed pin is missing or stale.")
+        raise ValueError(
+            "UK local validation-level feed pin is missing or stale against "
+            "uk/chronicle_feed.json."
+        )
     rows = payload.get("rows")
     if not isinstance(rows, list) or not rows:
         raise ValueError("UK local validation-level register needs rows.")

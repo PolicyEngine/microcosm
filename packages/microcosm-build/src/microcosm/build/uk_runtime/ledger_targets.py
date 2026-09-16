@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import math
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from importlib import resources as importlib_resources
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -29,10 +31,16 @@ from microcosm.build.target_materialization import (
     materialize_target_bindings,
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
+from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
+from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
+from microcosm.build.uk_runtime.ledger_fact_vendoring import (
+    feed_identity,
+    load_vendored_resource,
+    rows_matching,
+)
 from microcosm.build.uk_runtime.local_target_census import family_for_metric
 from microcosm.build.uk_runtime.local_targets import (
     AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL,
-    area_groups_from_codes,
     load_uk_local_geography_contract,
     metric_names,
 )
@@ -40,6 +48,10 @@ from microcosm.build.uk_runtime.uc_source_periods import (
     validate_uc_source_month_coverage,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate.geography_constants import (
+    UK_REGION_TIER,
+    UK_REGION_TIER_ENUM,
+)
 from microcosm.frame import Frame
 
 
@@ -61,20 +73,107 @@ _UK_LOCAL_FIXTURE_METRIC_ALIASES = {
 UK_CENSUS_HOUSEHOLDS_TARGET_ID = "ons.census.households"
 
 
-def _uk_cross_grain_leg_of_area(area_code: str) -> str:
-    # area_groups_from_codes maps code -> country group, so the single value is
-    # this code's leg. It refuses an unknown prefix itself; the explicit miss
-    # below keeps the refusal fail-closed rather than a bare StopIteration if
-    # that mapping ever returns nothing for a code.
-    leg = next(iter(area_groups_from_codes((area_code,)).values()), "")
-    if not leg:
-        raise ValueError(
-            f"UK cross-grain area code {area_code!r} maps to no country leg."
+#: Every region-tier code is a leg of its own; the national parents cover the
+#: tier members they contain (microcosm#905).
+UK_REGION_TIER_CODES: tuple[str, ...] = tuple(code for _, code in UK_REGION_TIER)
+_UK_ENGLISH_REGION_CODES: tuple[str, ...] = tuple(
+    code for level, code in UK_REGION_TIER if level == "region"
+)
+_UK_NATION_LEG_BY_PREFIX = {
+    "W": "W92000004",
+    "S": "S92000003",
+    "N": "N92000002",
+}
+
+
+@functools.lru_cache(maxsize=1)
+def _uk_crosswalk_region_by_area() -> Mapping[str, str]:
+    """Area id -> region-tier code from the committed local-area crosswalk.
+
+    Cached for the process (the resolver runs per surface row); a test that
+    monkeypatches the crosswalk loader clears it with ``cache_clear()``.
+    """
+
+    mapping: dict[str, str] = {}
+    levels = load_uk_local_area_crosswalk().get("levels") or {}
+    for level, payload in levels.items():
+        by_area = payload.get("region_code_by_area") if payload else None
+        if not isinstance(by_area, Mapping) or not by_area:
+            raise ValueError(
+                f"UK local area crosswalk level {level!r} carries no "
+                "region_code_by_area; regenerate it from the ladder "
+                "(tools/generate_uk_local_area_crosswalk.py)."
+            )
+        for area_id, region in by_area.items():
+            previous = mapping.setdefault(str(area_id), str(region))
+            if previous != str(region):
+                raise ValueError(
+                    f"UK local area crosswalk maps {area_id!r} to both "
+                    f"{previous!r} and {region!r}."
+                )
+    return MappingProxyType(mapping)
+
+
+def uk_cross_grain_leg_of_area(
+    area_region_codes: Mapping[str, str] | None = None,
+) -> Callable[[str], str]:
+    """Build the leg resolver for one run (microcosm#905).
+
+    A region-tier code is its own leg. A Welsh, Scottish or Northern Irish
+    area maps to its nation by GSS prefix: the tier does not subdivide the
+    nations. An English constituency or authority resolves through
+    ``area_region_codes`` — the run's ladder-derived membership when the
+    caller has a ladder in hand, otherwise the committed crosswalk's — and an
+    English code the mapping does not carry refuses rather than falling back
+    to an ``England`` leg that no control covers.
+    """
+
+    def leg_of_area(area_code: str) -> str:
+        code = str(area_code).strip()
+        if not code:
+            raise ValueError("UK cross-grain area code must not be blank.")
+        if code in UK_REGION_TIER_CODES:
+            return code
+        prefix = code[0].upper()
+        nation = _UK_NATION_LEG_BY_PREFIX.get(prefix)
+        if nation is not None:
+            return nation
+        if prefix != "E":
+            raise ValueError(
+                f"Unknown UK area code prefix {prefix!r} for code {code!r}."
+            )
+        mapping = (
+            _uk_crosswalk_region_by_area()
+            if area_region_codes is None
+            else area_region_codes
         )
-    return leg
+        region = mapping.get(code)
+        if region is None:
+            source = (
+                "the local-area crosswalk"
+                if area_region_codes is None
+                else "the run's ladder membership"
+            )
+            raise ValueError(
+                f"UK cross-grain area code {code!r} is not in {source}, so it "
+                "has no region-tier leg."
+            )
+        return str(region)
+
+    return leg_of_area
 
 
-UK_CROSS_GRAIN_GRAIN_PRECEDENCE = ("country", "constituency", "la")
+#: The committed-crosswalk resolver: the standing rule's default, and the one
+#: the leg licences derive from.
+_uk_cross_grain_leg_of_area = uk_cross_grain_leg_of_area()
+
+UK_CROSS_GRAIN_GRAIN_PRECEDENCE = ("country", "region", "constituency", "la")
+UK_CROSS_GRAIN_PARENT_GEOGRAPHY_LEGS: dict[str, tuple[str, ...]] = {
+    **{code: (code,) for code in UK_REGION_TIER_CODES},
+    "K02000001": UK_REGION_TIER_CODES,
+    "K03000001": (*_UK_ENGLISH_REGION_CODES, "W92000004", "S92000003"),
+    "E92000001": _UK_ENGLISH_REGION_CODES,
+}
 UK_CROSS_GRAIN_BRIDGES = (
     CrossGrainBridge(
         bridge_id="national_household_composition_partition_vs_census_households",
@@ -99,11 +198,11 @@ UK_CROSS_GRAIN_BRIDGES = (
         higher_target_ids=("dwp.uc.households",),
         lower_side="contract:dwp.uc.households_by_area",
     ),
-    # The national ONS controls use inclusive integer-age bands (0--9), while
-    # local targets use equivalent half-open encodings (0--10), so their
-    # signatures cannot match directly. These bridges let the K02000001 UK
-    # control rescale both constituency and local-authority bands over its
-    # England/Wales/Scotland/Northern Ireland legs.
+    # The ONS controls use inclusive integer-age bands (0--9), while local
+    # targets use equivalent half-open encodings (0--10), so their signatures
+    # cannot match directly. These bridges let the region-tier controls (one
+    # row per English region and per nation, microcosm#905) rescale both
+    # constituency and local-authority bands over their twelve legs.
     CrossGrainBridge(
         bridge_id="national_age_0_9_vs_local_age_0_10",
         concept="uk.person.count",
@@ -160,15 +259,95 @@ UK_CROSS_GRAIN_RULE = CrossGrainRule(
     signature_fields=("concept", "entity", "map_to", "filters"),
     bridges=UK_CROSS_GRAIN_BRIDGES,
     leg_of_area=_uk_cross_grain_leg_of_area,
-    parent_geography_legs={
-        "K02000001": ("England", "Wales", "Scotland", "Northern Ireland"),
-        "K03000001": ("England", "Wales", "Scotland"),
-        "E92000001": ("England",),
-        "W92000004": ("Wales",),
-        "S92000003": ("Scotland",),
-        "N92000002": ("Northern Ireland",),
-    },
+    parent_geography_legs=UK_CROSS_GRAIN_PARENT_GEOGRAPHY_LEGS,
+    # Country and region rows control the grains below them. With no
+    # control-tier row in a group the operator keeps the standing
+    # single-winner rule, so a local-only family still reconciles authorities
+    # to constituencies over their legs, as it did before the region tier.
+    control_grains=("country", "region"),
 )
+
+
+#: The incumbent's regional row spellings: ``ons/<slug>_age_<lo>_<hi>`` uses
+#: these slugs, ``voa/council_tax/<REGION>/<band>`` the spine's enum names.
+_UK_INCUMBENT_REGION_SLUG_CODES: dict[str, str] = {
+    "north_east": "E12000001",
+    "north_west": "E12000002",
+    "yorkshire_and_the_humber": "E12000003",
+    "east_midlands": "E12000004",
+    "west_midlands": "E12000005",
+    "east": "E12000006",
+    "london": "E12000007",
+    "south_east": "E12000008",
+    "south_west": "E12000009",
+    "wales": "W92000004",
+    "scotland": "S92000003",
+    "northern_ireland": "N92000002",
+}
+_UK_INCUMBENT_REGION_ENUM_CODES: dict[str, str] = {
+    enum: code for code, enum in UK_REGION_TIER_ENUM.items()
+}
+
+
+def align_uk_national_registry_parity_fixture(
+    fixture: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Align the incumbent's regional rows to the region-tier reference names.
+
+    The incumbent measures ``ons/london_age_0_9`` and
+    ``voa/council_tax/LONDON/A``; the region tier names the same cells
+    ``ons.population.age_0_9_by_region@E12000007`` and
+    ``voa.council_tax_stock.band_a@E12000007`` (microcosm#905). Renaming the
+    fixture rows lets the compile-parity receipt compare values instead of
+    recording 189 ``fixture_only`` rows against 189 ``ledger_only`` rows.
+    Rows that are not regional cells pass through untouched.
+    """
+
+    rows: list[dict[str, Any]] = []
+    for row in fixture.get("rows", ()):
+        if not isinstance(row, Mapping):
+            rows.append(row)
+            continue
+        updated = dict(row)
+        aligned = _uk_region_tier_fixture_name(str(updated.get("name") or ""))
+        if aligned is not None:
+            updated["name"] = aligned
+            updated["measure"] = aligned
+            updated["contract_target_id"] = aligned.split("@", 1)[0]
+        rows.append(updated)
+    result = dict(fixture)
+    result["rows"] = rows
+    return result
+
+
+def _uk_region_tier_fixture_name(name: str) -> str | None:
+    if name.startswith("ons/") and "_age_" in name:
+        slug, _, band = name.removeprefix("ons/").partition("_age_")
+        code = _UK_INCUMBENT_REGION_SLUG_CODES.get(slug)
+        lower, _, upper = band.partition("_")
+        if code is None or not (lower.isdigit() and upper.isdigit()):
+            return None
+        return f"ons.population.age_{lower}_{upper}_by_region@{code}"
+    if name.startswith("voa/council_tax/"):
+        parts = name.removeprefix("voa/council_tax/").split("/")
+        if len(parts) != 2:
+            return None
+        region, band = parts
+        code = _UK_INCUMBENT_REGION_ENUM_CODES.get(region)
+        if code is None:
+            return None
+        suffix = "total" if band == "total" else f"band_{band.lower()}"
+        if band != "total" and band not in tuple("ABCDEFGH"):
+            return None
+        if code.startswith("E12"):
+            # The English region cells are composed from the MHCLG taxbase
+            # authority rows (microcosm#929); the incumbent's VOA rows are the
+            # same concept on the valuation-list basis.
+            return f"mhclg.council_tax_stock.{suffix}@{code}"
+        if code == "W92000004":
+            # Wales is one country row per band from the StatsWales CT1 return.
+            return f"welshgov.council_tax_stock.{suffix}"
+    return None
 
 
 def align_uk_local_registry_parity_fixture(
@@ -184,7 +363,6 @@ def align_uk_local_registry_parity_fixture(
     exclusions.
     """
 
-    metric_target_ids = _uk_local_metric_target_ids()
     rows: list[dict[str, Any]] = []
     for row in fixture.get("rows", ()):
         if not isinstance(row, Mapping):
@@ -195,12 +373,13 @@ def align_uk_local_registry_parity_fixture(
             updated.get("metric") or str(updated.get("name", "")).split("@")[0]
         )
         contract_metric = _UK_LOCAL_FIXTURE_METRIC_ALIASES.get(metric, metric)
-        target_id = metric_target_ids.get(contract_metric)
+        name = str(updated.get("name", ""))
+        geography_id = str(
+            updated.get("geography_id")
+            or (name.split("@", 1)[1] if "@" in name else "")
+        )
+        target_id = _uk_local_metric_target_id(contract_metric, geography_id)
         if target_id is not None:
-            geography_id = str(
-                updated.get("geography_id")
-                or str(updated.get("name", "")).split("@", 1)[1]
-            )
             updated["name"] = f"{target_id}@{geography_id}"
             updated["contract_target_id"] = updated["name"]
             updated.setdefault("measure", metric)
@@ -210,9 +389,18 @@ def align_uk_local_registry_parity_fixture(
     return aligned
 
 
-def _uk_local_metric_target_ids() -> dict[str, str]:
+def _uk_local_metric_targets() -> dict[str, tuple[tuple[str, tuple[str, ...]], ...]]:
+    """Metric name -> the contract targets that measure it, with their scopes.
+
+    One local metric is normally one contract target. Nation-scoped families
+    (the council-tax stock by_area rows, microcosm#929: England, Wales and
+    Scotland each bind their own return) share a metric name and split the
+    roster by GSS code prefix (``area_scope``); such a metric maps to several
+    targets whose prefixes must be disjoint, so any area names exactly one.
+    """
+
     contract = load_uk_local_geography_contract()
-    mapping: dict[str, str] = {}
+    entries: dict[str, list[tuple[str, tuple[str, ...]]]] = {}
     for target in contract.get("targets", ()):
         if not isinstance(target, Mapping):
             continue
@@ -226,14 +414,70 @@ def _uk_local_metric_target_ids() -> dict[str, str]:
         target_id = target.get("target_id")
         if not isinstance(metric_name, str) or not isinstance(target_id, str):
             continue
-        existing = mapping.get(metric_name)
-        if existing is not None and existing != target_id:
+        scope = target.get("area_scope") or {}
+        prefixes = tuple(
+            str(prefix)
+            for level_rule in scope.values()
+            if isinstance(level_rule, Mapping)
+            for prefix in level_rule.get("gss_prefixes", ())
+        )
+        if any(existing == target_id for existing, _ in entries.get(metric_name, ())):
+            continue
+        entries.setdefault(metric_name, []).append((target_id, prefixes))
+    for metric_name, sharers in entries.items():
+        if len(sharers) < 2:
+            continue
+        unscoped = [target_id for target_id, prefixes in sharers if not prefixes]
+        if unscoped:
             raise ValueError(
                 "UK local geography contract maps metric "
                 f"{metric_name!r} to multiple target ids: "
-                f"{existing!r} and {target_id!r}."
+                f"{[target_id for target_id, _ in sharers]!r}; a shared metric "
+                "needs a disjoint area_scope on every sharer, "
+                f"{unscoped!r} declare none."
             )
-        mapping[metric_name] = target_id
+        for index, (_, prefixes) in enumerate(sharers):
+            for _, other in sharers[index + 1 :]:
+                if any(
+                    left.startswith(right) or right.startswith(left)
+                    for left in prefixes
+                    for right in other
+                ):
+                    raise ValueError(
+                        "UK local geography contract maps metric "
+                        f"{metric_name!r} to targets whose area scopes overlap: "
+                        f"{prefixes!r} and {other!r}."
+                    )
+    return {metric: tuple(sharers) for metric, sharers in entries.items()}
+
+
+def _uk_local_metric_target_id(metric_name: str, area_id: str) -> str | None:
+    """The contract target measuring ``metric_name`` for ``area_id``."""
+
+    sharers = _uk_local_metric_targets().get(metric_name)
+    if not sharers:
+        return None
+    if len(sharers) == 1 and not sharers[0][1]:
+        return sharers[0][0]
+    for target_id, prefixes in sharers:
+        if any(area_id.startswith(prefix) for prefix in prefixes):
+            return target_id
+    return None
+
+
+def _uk_local_metric_target_ids() -> dict[str, str | dict[str, str]]:
+    """Metric name -> target id, or ``{gss_prefix: target_id}`` when scoped."""
+
+    mapping: dict[str, str | dict[str, str]] = {}
+    for metric_name, sharers in _uk_local_metric_targets().items():
+        if len(sharers) == 1 and not sharers[0][1]:
+            mapping[metric_name] = sharers[0][0]
+        else:
+            mapping[metric_name] = {
+                prefix: target_id
+                for target_id, prefixes in sharers
+                for prefix in prefixes
+            }
     return mapping
 
 
@@ -254,12 +498,24 @@ def compile_uk_target_registry(
             **{**reference.__dict__, "period": target_period}
         )
         candidate_facts = _candidate_facts_for_reference(fact_rows, restamped)
+        if restamped.uprating_index is not None and (
+            str(restamped.uprating_index) not in UK_UPRATING_APPLIERS
+        ):
+            # A declared index the runtime cannot apply is a contract error,
+            # not a fact gap: refuse the whole compile rather than report it
+            # as an unsupported row.
+            apply_declared_uk_uprating(
+                restamped, registry=TargetRegistry((), country="uk")
+            )
         try:
+            _assert_national_region_pin(restamped)
             registry = compile_ledger_target_references(
                 candidate_facts,
                 [restamped],
                 country="uk",
             )
+            registry = _assert_region_facts_resolved_at_region(restamped, registry)
+            registry = apply_declared_uk_uprating(restamped, registry)
             registry = validate_uc_source_month_coverage(
                 restamped, registry, candidate_facts
             )
@@ -286,6 +542,232 @@ def compile_uk_target_registry(
         TargetRegistry(compiled, country="uk"),
         tuple(unsupported),
     )
+
+
+#: DfT BUS05ai fare receipts are aligned from the publisher's year-ending-March
+#: period to the calibration year with the BUS0415 local bus fares index (a
+#: ruling of 2026-09-10: calendar-year basis). The contract declares the index
+#: on the fare-receipt rows (``uprating_index``); net support declares none and
+#: is never aligned. The index series is read from the vendored resource
+#: ``dft_bus_value_anchors.json`` (hash-pinned to the same Chronicle feed as
+#: the references), so the factor is reproducible without the licensed feed.
+UK_DFT_BUS_FARE_RECEIPTS_CONCEPT = "dft.local_bus_passenger_fare_receipts"
+UK_DFT_BUS_FARES_INDEX_CONCEPT = "dft.local_bus_fares_index"
+UK_DFT_BUS_FARES_INDEX_RESOURCE = "dft_bus_value_anchors.json"
+UK_DFT_BUS_FARE_INDEX_BASIS = (
+    "mean of the quarter-end BUS0415 index (March, June, September, December) "
+    "inside the calibration calendar year over the mean of the four quarter-ends "
+    "inside the receipts' April-to-March fiscal year"
+)
+
+
+def _vendored_fares_index_rows() -> list[Mapping[str, Any]]:
+    """BUS0415 rows from the vendored resource, refused if it lags the feed pin."""
+
+    payload = load_vendored_resource(UK_DFT_BUS_FARES_INDEX_RESOURCE)
+    expected = feed_identity(load_uk_chronicle_feed())
+    if payload.get("source_fact_feed") != expected:
+        raise ValueError(
+            f"{UK_DFT_BUS_FARES_INDEX_RESOURCE} was vendored from a different "
+            "Chronicle feed than uk/chronicle_feed.json declares; regenerate it "
+            "with tools/vendor_uk_ledger_facts.py before compiling."
+        )
+    return rows_matching(
+        payload, concept=UK_DFT_BUS_FARES_INDEX_CONCEPT, period_type="month"
+    )
+
+
+def _fares_index_series(
+    rows: Iterable[Mapping[str, Any]], geography_id: str
+) -> dict[str, tuple[float, str]]:
+    """Month -> (index value, source record id) for one vendored BUS0415 series."""
+
+    series: dict[str, tuple[float, str]] = {}
+    for row in rows:
+        if row.get("concept") != UK_DFT_BUS_FARES_INDEX_CONCEPT:
+            continue
+        geography = row.get("geography")
+        if not isinstance(geography, Mapping) or geography.get("id") != geography_id:
+            continue
+        period = row.get("period")
+        if not isinstance(period, Mapping) or period.get("type") != "month":
+            continue
+        month = str(period.get("value"))
+        value = row.get("value")
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            continue
+        record_id = str(row.get("source_record_id") or "")
+        if month in series and series[month][0] != float(value):
+            raise ValueError(
+                f"BUS0415 series {geography_id!r} carries two values for {month!r}."
+            )
+        series[month] = (float(value), record_id)
+    return series
+
+
+def _quarter_end_months(start_year: int, start_month: int) -> tuple[str, ...]:
+    months = []
+    year, month = start_year, start_month
+    for _ in range(4):
+        # advance to the next quarter-end month (3, 6, 9, 12) on or after
+        # (year, month), then step past it
+        while month not in (3, 6, 9, 12):
+            month += 1
+            if month > 12:
+                month, year = 1, year + 1
+        months.append(f"{year:04d}-{month:02d}")
+        month += 1
+        if month > 12:
+            month, year = 1, year + 1
+    return tuple(months)
+
+
+def align_dft_bus_fare_receipts_to_period(
+    reference: LedgerTargetReference,
+    registry: TargetRegistry,
+    *,
+    index_rows: Iterable[Mapping[str, Any]] | None = None,
+) -> TargetRegistry:
+    """Transport BUS05ai fare receipts to the reference period with BUS0415.
+
+    Applies to references that declare ``uprating_index`` equal to the BUS0415
+    concept; any other reference passes through untouched. The generator and
+    the runtime both call this on the compiled registry, so the committed
+    membership, the parity receipts and the run manifest carry one value. The
+    factor is declared on the spec's metadata with the index concept, the
+    series geography, the months used, their source record ids and the
+    pre-alignment value.
+    """
+
+    if reference.uprating_index != UK_DFT_BUS_FARES_INDEX_CONCEPT:
+        return registry
+    if str(reference.ledger_selector.get("source_concept") or "") != (
+        UK_DFT_BUS_FARE_RECEIPTS_CONCEPT
+    ):
+        raise ValueError(
+            f"UK reference {reference.name!r} declares the BUS0415 fares index on "
+            f"concept {reference.ledger_selector.get('source_concept')!r}; the "
+            f"index transports {UK_DFT_BUS_FARE_RECEIPTS_CONCEPT!r} only."
+        )
+    if reference.period is None or not str(reference.period).isdigit():
+        raise ValueError(
+            f"UK reference {reference.name!r}: BUS0415 alignment needs a "
+            "calendar-year reference period."
+        )
+    target_period = int(str(reference.period))
+    rows = list(index_rows) if index_rows is not None else _vendored_fares_index_rows()
+    aligned = []
+    for spec in registry.specs:
+        geography_id = str(spec.metadata.get("ledger_geography_id") or "")
+        fact_period = str(spec.metadata.get("ledger_fact_period") or "")
+        if not geography_id or not fact_period.isdigit():
+            raise ValueError(
+                f"UK target {spec.name!r}: cannot align fare receipts without a "
+                "resolved Ledger geography and fiscal start year."
+            )
+        start_year = int(fact_period)
+        from_months = _quarter_end_months(start_year, 4)
+        to_months = _quarter_end_months(target_period, 1)
+        series = _fares_index_series(rows, geography_id)
+        missing = [m for m in (*from_months, *to_months) if m not in series]
+        if missing:
+            raise ValueError(
+                f"UK target {spec.name!r}: BUS0415 series {geography_id!r} lacks "
+                f"quarter-end month(s) {missing}; refusing to align fare receipts."
+            )
+        from_mean = sum(series[m][0] for m in from_months) / len(from_months)
+        to_mean = sum(series[m][0] for m in to_months) / len(to_months)
+        if from_mean <= 0 or to_mean <= 0:
+            raise ValueError(
+                f"UK target {spec.name!r}: BUS0415 index means must be positive."
+            )
+        factor = to_mean / from_mean
+        record_ids = ",".join(series[m][1] for m in (*from_months, *to_months))
+        metadata = {
+            **spec.metadata,
+            "uprating_index": UK_DFT_BUS_FARES_INDEX_CONCEPT,
+            "uprating_index_basis": UK_DFT_BUS_FARE_INDEX_BASIS,
+            "uprating_index_resource": UK_DFT_BUS_FARES_INDEX_RESOURCE,
+            "uprating_index_series_geography_id": geography_id,
+            "uprating_index_from_months": ",".join(from_months),
+            "uprating_index_to_months": ",".join(to_months),
+            "uprating_index_from_mean": f"{from_mean:.15g}",
+            "uprating_index_to_mean": f"{to_mean:.15g}",
+            "uprating_index_source_record_ids": record_ids,
+            "uprating_factor": f"{factor:.15g}",
+            "ledger_value_before_alignment": f"{spec.value:.15g}",
+            "uprating_adjudication": "microcosm#890 (ruling 2026-09-10: calendar-year basis)",
+        }
+        aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
+    return TargetRegistry(aligned, country="uk")
+
+
+#: Every ``uprating_index`` a UK reference may declare, with the applier the
+#: generator and the runtime share. A declared index outside this table is a
+#: contract error, refused before compilation.
+UK_UPRATING_APPLIERS: Mapping[str, Any] = {
+    UK_DFT_BUS_FARES_INDEX_CONCEPT: align_dft_bus_fare_receipts_to_period,
+}
+
+
+def apply_declared_uk_uprating(
+    reference: LedgerTargetReference, registry: TargetRegistry
+) -> TargetRegistry:
+    """Apply the reference's declared ``uprating_index`` (identity when none)."""
+
+    if reference.uprating_index is None:
+        return registry
+    applier = UK_UPRATING_APPLIERS.get(str(reference.uprating_index))
+    if applier is None:
+        raise ValueError(
+            f"UK reference {reference.name!r} declares uprating_index "
+            f"{reference.uprating_index!r}, which no UK applier implements "
+            f"(known: {sorted(UK_UPRATING_APPLIERS)})."
+        )
+    return applier(reference, registry)
+
+
+#: National references may pin a region only from the published English
+#: region roster; the codes are the ladder's own (geography_ladder), so no
+#: second register carries them.
+UK_NATIONAL_REGION_ROSTER: frozenset[str] = frozenset(
+    code for code in UK_ENGLAND_WALES_REGION_CODES if code.startswith("E12")
+)
+
+
+def _assert_national_region_pin(reference: LedgerTargetReference) -> None:
+    """Refuse a region-pinned national reference outside the region roster."""
+
+    selector = reference.ledger_selector
+    level = str(selector.get("geography_level") or "")
+    if level != "region":
+        return
+    geography_id = str(selector.get("geography_id") or "")
+    if geography_id not in UK_NATIONAL_REGION_ROSTER:
+        raise ValueError(
+            f"UK national reference {reference.name!r} pins region "
+            f"{geography_id!r}, which is not in the English region roster "
+            f"{sorted(UK_NATIONAL_REGION_ROSTER)}."
+        )
+
+
+def _assert_region_facts_resolved_at_region(
+    reference: LedgerTargetReference, registry: TargetRegistry
+) -> TargetRegistry:
+    """A region-pinned reference must resolve a region-stamped fact."""
+
+    if str(reference.ledger_selector.get("geography_level") or "") != "region":
+        return registry
+    for spec in registry.specs:
+        level = str(spec.metadata.get("ledger_geography_level") or "")
+        geography_id = str(spec.metadata.get("ledger_geography_id") or "")
+        if level != "region" or geography_id not in UK_NATIONAL_REGION_ROSTER:
+            raise ValueError(
+                f"UK national reference {reference.name!r} resolved a fact at "
+                f"{level!r} {geography_id!r}; a region pin must resolve a "
+                "region-stamped fact inside the roster."
+            )
+    return registry
 
 
 def _cgt_cash_diagnostic_metadata(
@@ -383,8 +865,35 @@ def load_uk_local_target_reference_membership() -> dict[str, Any]:
 
 def _uk_licensed_empty_legs_from_membership(
     membership: Mapping[str, Any],
+    *,
+    leg_of_area: Callable[[str], str] | None = None,
 ) -> dict[str, frozenset[str]]:
-    """Derive wholly deferred target legs from committed membership rosters."""
+    """Derive wholly deferred target legs from committed membership rosters.
+
+    ``leg_of_area`` is the resolver the surface reconciles with, so a licence
+    is read on the same legs the run assigns; the default is the committed
+    crosswalk's resolver, the standing rule's own.
+
+    A leg is licensed empty for a target when every roster area the target
+    could bind on that leg is signed deferred. A target with an ``area_scope``
+    (microcosm#929: one nation's publication) can bind only the scoped areas,
+    so a leg holding none of them is licensed outright and a leg holding some
+    is licensed once those are all deferred.
+    """
+
+    resolve = _uk_cross_grain_leg_of_area if leg_of_area is None else leg_of_area
+
+    def place(area_id: str) -> str | None:
+        # Under the committed-crosswalk resolver an unplaceable roster area is
+        # a register defect and refuses. Under a run's own resolver it is an
+        # area the run's ladder does not carry, so it can sit on no surface
+        # row and its licence is moot: skip it rather than refuse.
+        try:
+            return resolve(area_id)
+        except ValueError:
+            if leg_of_area is None:
+                raise
+            return None
 
     areas_by_level = membership.get("areas_by_geography_level")
     if not isinstance(areas_by_level, Mapping):
@@ -404,7 +913,9 @@ def _uk_licensed_empty_legs_from_membership(
                     "UK local target membership rosters must not contain blank "
                     "area ids."
                 )
-            leg = _uk_cross_grain_leg_of_area(area_id)
+            leg = place(area_id)
+            if leg is None:
+                continue
             roster_by_level_leg.setdefault((str(geography_level), leg), set()).add(
                 area_id
             )
@@ -432,7 +943,9 @@ def _uk_licensed_empty_legs_from_membership(
             )
         for raw_area_id in raw_area_ids:
             area_id = str(raw_area_id).strip()
-            leg = _uk_cross_grain_leg_of_area(area_id)
+            leg = place(area_id)
+            if leg is None:
+                continue
             roster = roster_by_level_leg.get((geography_level, leg), set())
             if area_id not in roster:
                 raise ValueError(
@@ -443,19 +956,75 @@ def _uk_licensed_empty_legs_from_membership(
                 (target_id, geography_level, leg), set()
             ).add(area_id)
 
+    scope_by_target_level = _uk_area_scope_by_target_level(
+        membership, roster_by_level_leg
+    )
     licensed: dict[str, set[str]] = {}
-    for (
-        target_id,
-        geography_level,
-        leg,
-    ), deferred in deferred_by_target_level_leg.items():
-        roster = roster_by_level_leg[(geography_level, leg)]
-        if roster and deferred == roster:
-            licensed.setdefault(target_id, set()).add(leg)
+    target_levels = {key[:2] for key in deferred_by_target_level_leg} | set(
+        scope_by_target_level
+    )
+    for target_id, geography_level in sorted(target_levels):
+        scope = scope_by_target_level.get((target_id, geography_level))
+        for (level, leg), roster in roster_by_level_leg.items():
+            if level != geography_level or not roster:
+                continue
+            bindable = roster if scope is None else roster & scope
+            deferred = deferred_by_target_level_leg.get(
+                (target_id, geography_level, leg), set()
+            )
+            if not bindable or deferred >= bindable:
+                licensed.setdefault(target_id, set()).add(leg)
     return {
         target_id: frozenset(sorted(legs))
         for target_id, legs in sorted(licensed.items())
     }
+
+
+def _uk_area_scope_by_target_level(
+    membership: Mapping[str, Any],
+    roster_by_level_leg: Mapping[tuple[str, str], set[str]],
+) -> dict[tuple[str, str], set[str]]:
+    """The membership's ``area_scope_by_target_id`` as (target, level) -> areas."""
+
+    del roster_by_level_leg  # legs are read by the caller; validation is roster-wide
+
+    raw_scopes = membership.get("area_scope_by_target_id", {})
+    if not isinstance(raw_scopes, Mapping):
+        raise ValueError(
+            "UK local target membership area_scope_by_target_id must be a mapping."
+        )
+    # Validate scoped areas against the committed rosters, not the placed
+    # ones: under a run's own resolver an area its ladder does not carry is
+    # skipped above, and a scope naming it is not a register defect.
+    roster_by_level: dict[str, set[str]] = {
+        str(level): {str(area_id).strip() for area_id in area_ids}
+        for level, area_ids in membership.get("areas_by_geography_level", {}).items()
+    }
+    scopes: dict[tuple[str, str], set[str]] = {}
+    for raw_target_id, levels in raw_scopes.items():
+        target_id = str(raw_target_id).strip()
+        if not target_id or not isinstance(levels, Mapping):
+            raise ValueError(
+                "UK local target membership area scopes must map a target id to "
+                "{geography_level: [area_id, ...]}."
+            )
+        for raw_level, raw_area_ids in levels.items():
+            geography_level = str(raw_level).strip()
+            if not geography_level or not isinstance(raw_area_ids, (list, tuple)):
+                raise ValueError(
+                    f"UK local target membership area scope for {target_id!r} "
+                    "must list area ids per geography level."
+                )
+            area_ids = {str(area_id).strip() for area_id in raw_area_ids}
+            unknown = area_ids - roster_by_level.get(geography_level, set())
+            if "" in area_ids or unknown:
+                raise ValueError(
+                    f"UK local target membership area scope for {target_id!r} "
+                    f"names areas absent from the {geography_level!r} roster: "
+                    f"{sorted(unknown)[:5]}."
+                )
+            scopes[(target_id, geography_level)] = area_ids
+    return scopes
 
 
 def compile_uk_local_target_registry(
@@ -534,12 +1103,14 @@ def _assert_local_fact_vintages(
             f"{level!r}, which declares no expected boundary vintage in the "
             "crosswalk."
         )
+    aliases = rosters.get(level, {}).get("aliases", {})
     for fact in facts:
         geography = fact.get("geography")
         if not isinstance(geography, Mapping):
             continue
         vintage = str(geography.get("vintage") or "")
         code = str(geography.get("id") or "")
+        alias = aliases.get(code)
         if isinstance(expected, Mapping):
             wanted = expected.get(code[:1])
             if wanted is None:
@@ -553,6 +1124,15 @@ def _assert_local_fact_vintages(
         accepted = (
             {str(wanted)} if isinstance(wanted, str) else {str(v) for v in wanted}
         )
+        if alias is not None:
+            # A recoded authority's fact is filed under the alias code: some
+            # publishers stamp it with the alias vintage the crosswalk
+            # declares (MHCLG's taxbase, lad_2025), others keep the roster
+            # frame's label on the new code (PIPR, lad_2023). Both are the
+            # same authority; the roster code stays the identity.
+            _, alias_vintage = alias
+            if alias_vintage:
+                accepted = accepted | {alias_vintage}
         if not vintage:
             raise ValueError(
                 f"UK local target reference {reference.name!r} matched a fact "
@@ -636,6 +1216,13 @@ def _local_crosswalk_rosters(
         rosters[str(level)] = {
             "area_ids": frozenset(str(area_id) for area_id in area_ids),
             "expected_vintage": payload.get("expected_vintage", ""),
+            # alias code -> (roster code, alias vintage): publisher recodings
+            # the crosswalk declares (microcosm#929).
+            "aliases": {
+                str(code): (str(area_id), str(alias.get("alias_vintage") or ""))
+                for area_id, alias in (payload.get("code_aliases") or {}).items()
+                for code in alias.get("alias_codes", ())
+            },
         }
     return rosters
 
@@ -694,7 +1281,14 @@ def _assert_local_reference_in_crosswalk(
 ) -> None:
     selector = reference.ledger_selector
     geography_level = str(selector.get("geography_level") or "")
-    geography_id = str(selector.get("geography_id") or "")
+    selected = selector.get("geography_id")
+    # An aliased cell selects under the roster code and its alias code(s); the
+    # roster code is the identity checked here.
+    geography_id = (
+        str(selected[0])
+        if isinstance(selected, list) and selected
+        else str(selected or "")
+    )
     if not geography_level or not geography_id:
         raise ValueError(
             f"UK local target reference {reference.name!r} must pin "
@@ -966,7 +1560,17 @@ def _spec_geography(spec: TargetSpec) -> tuple[str, str]:
 
     local = spelling("", "local")
     ledger = spelling("ledger_", "ledger")
-    if local is not None and ledger is not None and local != ledger:
+    aliases = {
+        code.strip()
+        for code in str(metadata.get("geography_id_aliases") or "").split(",")
+        if code.strip()
+    }
+    if (
+        local is not None
+        and ledger is not None
+        and local != ledger
+        and not (local[0] == ledger[0] and ledger[1] in aliases)
+    ):
         raise ValueError(
             f"UK target {spec.name!r} geography spellings disagree: "
             f"local={local!r}, ledger={ledger!r}."
@@ -1009,6 +1613,7 @@ def apply_uk_cross_grain_reconciliation(
     *,
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
+    area_region_codes: Mapping[str, str] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Apply the standing UK rule to a bound mixed-grain target surface.
 
@@ -1017,18 +1622,28 @@ def apply_uk_cross_grain_reconciliation(
     cannot be bypassed.
     """
 
+    leg_of_area = (
+        _uk_cross_grain_leg_of_area
+        if area_region_codes is None
+        else uk_cross_grain_leg_of_area(area_region_codes)
+    )
     licences = (
         _uk_licensed_empty_legs_from_membership(
-            load_uk_local_target_reference_membership()
+            load_uk_local_target_reference_membership(), leg_of_area=leg_of_area
         )
         if licensed_empty_legs is None
         else licensed_empty_legs
+    )
+    rule = (
+        UK_CROSS_GRAIN_RULE
+        if area_region_codes is None
+        else replace(UK_CROSS_GRAIN_RULE, leg_of_area=leg_of_area)
     )
     return apply_cross_grain_reconciliation(
         local_frame,
         bound_higher_targets,
         _uk_contract_targets(national_only=False),
-        UK_CROSS_GRAIN_RULE,
+        rule,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licences,
     )
@@ -1335,6 +1950,7 @@ def uk_local_target_surface(
     reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
     licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
     census_household_uprating: Mapping[str, Any] | None = None,
+    area_region_codes: Mapping[str, str] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Assemble and reconcile the present-cell UK local target surface.
 
@@ -1378,7 +1994,9 @@ def uk_local_target_surface(
         for area_type, level in AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL.items()
     }
     target_id_to_metric = {
-        target_id: metric for metric, target_id in _uk_local_metric_target_ids().items()
+        target_id: metric
+        for metric, sharers in _uk_local_metric_targets().items()
+        for target_id, _ in sharers
     }
     output_rows: list[dict[str, Any]] = []
     reconciliation_rows: list[dict[str, Any]] = []
@@ -1488,9 +2106,22 @@ def uk_local_target_surface(
                     f"UK national target cell {spec.name!r} has non-finite "
                     f"value {value!r}."
                 )
+            # A region-tier row declares the grain the cross-grain operator
+            # places it at (``cross_grain_grain``): Chronicle stamps the
+            # Welsh, Scottish and Northern Irish population at ``country``,
+            # but on the surface those rows are the same ITL1 tier as the
+            # nine English regions and must not outrank them (microcosm#905).
+            # The selector and ledger metadata keep Chronicle's level.
+            grain = str(spec.metadata.get("cross_grain_grain") or geography_level)
+            if grain not in UK_CROSS_GRAIN_GRAIN_PRECEDENCE:
+                raise ValueError(
+                    f"UK national target cell {spec.name!r} declares "
+                    f"cross_grain_grain {grain!r}, which is not one of "
+                    f"{UK_CROSS_GRAIN_GRAIN_PRECEDENCE}."
+                )
             national_control_groups.setdefault(
                 (contract_target_id, geography_id), []
-            ).append((spec.name, geography_level, value))
+            ).append((spec.name, grain, value))
         else:
             raise ValueError(
                 f"UK target {spec.name!r} names unsupported geography_level "
@@ -1589,6 +2220,7 @@ def uk_local_target_surface(
         bound_control_ids,
         reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
         licensed_empty_legs=licensed_empty_legs,
+        area_region_codes=area_region_codes,
     )
     receipt["fanout_targets_not_controls"] = fanout_targets_not_controls
 

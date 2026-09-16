@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from microcosm.build.staging_v2 import validate_v2_bundle
 from microcosm.build.uk_runtime.ledger_targets import UKLedgerTargetCompilation
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
@@ -67,6 +69,7 @@ def _args(tmp_path: Path) -> list[str]:
         str(paths["record"]),
         "--release-id",
         "dev-calibration",
+        "--no-staging",
     ]
 
 
@@ -129,7 +132,7 @@ def test_driver_refuses_feed_outside_the_committed_pin_without_override():
     with pytest.raises(SystemExit, match="committed UK national feed pin"):
         driver._check_committed_ledger_feed_pin(
             "b" * 64,
-            manifest_sha256=driver.load_uk_national_chronicle_feed().manifest_sha256,
+            manifest_sha256=driver.load_uk_chronicle_feed().manifest_sha256,
             allow_unpinned_feed=False,
         )
 
@@ -142,13 +145,16 @@ def test_driver_refuses_feed_outside_the_committed_pin_without_override():
 
 @pytest.mark.parametrize("allow_unpinned_feed", [False, True])
 def test_driver_threads_registry_exclusions_resolver_and_overrides(
-    monkeypatch, tmp_path, capsys, allow_unpinned_feed
+    monkeypatch,
+    tmp_path,
+    capsys,
+    allow_unpinned_feed,
 ):
     driver = _load_driver_module()
     calls = []
     registry = _registry()
     pruned_registry = TargetRegistry([], country="uk")
-    pin = driver.load_uk_national_chronicle_feed()
+    pin = driver.load_uk_chronicle_feed()
     artifact = SimpleNamespace(
         path=tmp_path / "ledger",
         facts=({"fact": 1},),
@@ -225,9 +231,160 @@ def test_driver_threads_registry_exclusions_resolver_and_overrides(
     assert call["run_config_extra"] == {
         "calibration_year": 2025,
         "allow_unpinned_feed": allow_unpinned_feed,
-        "national_chronicle_feed_pin": pin.to_dict(),
+        "chronicle_feed_pin": pin.to_dict(),
+    }
+    assert call["progress_callback"] is None
+    assert call["event_callback"] is None
+    assert call["staging_finalizer"] is None
+    assert call["staging_delivery_provider"] is None
+    assert call["staging_delivery"] == {
+        "contract_version": 2,
+        "enabled": False,
+        "mode": "disabled",
+        "run_id": None,
+        "configured_repository": None,
+        "upload_attempts": 0,
+        "upload_successes": 0,
+        "read_back": "not_requested",
+        "last_error_code": None,
+        "opt_out_reason": "--no-staging",
     }
     assert "uk_target_fit" in capsys.readouterr().out
+
+
+def test_driver_exposes_shared_staging_modes(tmp_path: Path) -> None:
+    driver = _load_driver_module()
+    base = _args(tmp_path)
+    without_disabled = base[: base.index("--no-staging")]
+
+    remote = driver._parse_args(without_disabled)
+    local = driver._parse_args([*without_disabled, "--staging-local-only"])
+
+    assert remote.staging_repo_id == "policyengine/populace-uk-staging"
+    assert not remote.staging_local_only and not remote.no_staging
+    assert local.staging_local_only and not local.no_staging
+    with pytest.raises(SystemExit):
+        driver._parse_args([*without_disabled, "--staging-repo-id", ""])
+    with pytest.raises(SystemExit):
+        driver._parse_args(
+            [*without_disabled, "--staging-local-only", "--staging-read-back"]
+        )
+
+
+def test_driver_records_local_calibration_stage_coverage(
+    monkeypatch, tmp_path: Path
+) -> None:
+    driver = _load_driver_module()
+    registry = _registry()
+    pin = driver.load_uk_chronicle_feed()
+    artifact = SimpleNamespace(
+        path=tmp_path / "ledger",
+        facts=({"fact": 1},),
+        facts_sha256=pin.facts_sha256,
+        manifest_sha256=pin.manifest_sha256,
+    )
+    artifact.path.mkdir()
+    (artifact.path / "consumer_facts.jsonl").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        driver, "load_ledger_consumer_artifact", lambda *args, **kwargs: artifact
+    )
+    monkeypatch.setattr(
+        driver,
+        "compile_uk_target_registry",
+        lambda facts, target_period: UKLedgerTargetCompilation(registry, ()),
+    )
+    monkeypatch.setattr(
+        driver, "load_uk_frs_release", lambda: SimpleNamespace(calibration_year=2025)
+    )
+    monkeypatch.setattr(
+        driver, "load_uk_calibration_measure_exclusions", lambda path: ()
+    )
+    monkeypatch.setattr(
+        driver,
+        "apply_uk_calibration_measure_exclusions",
+        lambda active, exclusions: (active, {}),
+    )
+    monkeypatch.setattr(driver, "UKMeasureResolver", lambda **kwargs: object())
+
+    def fake_run(**kwargs):
+        callback = kwargs["event_callback"]
+        for stage_id in (
+            "input_loading",
+            "measure_resolution",
+            "calibration",
+            "diagnostics",
+            "release_check_evaluation",
+            "candidate_h5_creation",
+            "build_record_creation",
+        ):
+            callback(stage_id, "started", {})
+            callback(stage_id, "completed", {"aggregate_count": 1})
+        kwargs["progress_callback"](
+            {
+                "kind": "calibration_epoch",
+                "epoch": 1,
+                "epochs": 2,
+                "phase": "solve",
+                "loss": 1.5,
+                "iteration": 1,
+            }
+        )
+        delivery = kwargs["staging_delivery"]
+        if kwargs["staging_finalizer"] is not None:
+            kwargs["staging_finalizer"]()
+            delivery = kwargs["staging_delivery_provider"]()
+        record = {
+            "gate_summary": {"uk_target_fit": "passed"},
+            "staging_delivery": delivery,
+        }
+        driver._write_json(kwargs["paths"].build_record_json, record)
+        return SimpleNamespace(
+            staging_sha256="1" * 64,
+            diagnostics_sha256="2" * 64,
+            terminal_gate_sha256="3" * 64,
+            build_record_sha256=driver._sha256_file(kwargs["paths"].build_record_json),
+            build_record=record,
+        )
+
+    monkeypatch.setattr(driver, "run_uk_calibration", fake_run)
+    argv = _args(tmp_path)
+    argv = argv[: argv.index("--no-staging")]
+    input_path = Path(argv[argv.index("--input-h5") + 1])
+    argv[argv.index("--input-sha256") + 1] = driver._sha256_file(input_path)
+    staging_root = tmp_path / "telemetry"
+    argv.extend(
+        [
+            "--staging-local-only",
+            "--staging-dir",
+            str(staging_root),
+            "--staging-run-id",
+            "calibration-stage-test",
+        ]
+    )
+
+    assert driver.main(argv) == 0
+
+    bundle = validate_v2_bundle(staging_root, "calibration-stage-test")
+    assert bundle["calibration_progress"]["events"][0]["epoch"] == 1
+    completed = {
+        event["stage_id"]
+        for event in bundle["events"]
+        if event["status"] == "completed"
+    }
+    assert {
+        "target_compilation",
+        "input_loading",
+        "measure_resolution",
+        "calibration",
+        "diagnostics",
+        "release_check_evaluation",
+        "candidate_h5_creation",
+        "build_record_creation",
+        "complete",
+    } <= completed
+    record_path = Path(argv[argv.index("--build-record-json") + 1])
+    record = json.loads(record_path.read_text())
+    assert record["staging_delivery"]["mode"] == "local_only"
 
 
 def test_driver_refuses_the_national_release_id(tmp_path: Path):
@@ -241,25 +398,23 @@ def test_driver_refuses_the_national_release_id(tmp_path: Path):
         driver._parse_args(args)
 
 
-def test_driver_accepts_the_merged_national_feed_without_local_promotion():
+def test_driver_and_local_census_read_the_one_chronicle_pin():
     from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
 
     driver = _load_driver_module()
+    pin = driver.load_uk_chronicle_feed()
     driver._check_committed_ledger_feed_pin(
-        "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
-        manifest_sha256="a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f",
+        pin.facts_sha256,
+        manifest_sha256=pin.manifest_sha256,
         allow_unpinned_feed=False,
     )
-    # The local pin is its own reviewed declaration: microcosm#887 moved it to
-    # the same chronicle ec7169b artifact after a separate local re-pin review,
-    # so the national acceptance above neither reads nor promotes it.
-    assert _LEDGER_FACT_FEED_PIN["facts_sha256"] == (
-        "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5"
-    )
-    assert _LEDGER_FACT_FEED_PIN["manifest_sha256"] == (
-        "a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f"
-    )
-    assert _LEDGER_FACT_FEED_PIN["source_commit"] == "ec7169b"
+    # The local census restates the same declaration (microcosm#890 review:
+    # the national and local surfaces share uk/chronicle_feed.json, so a
+    # re-pin is one reviewed change and the two cannot drift apart).
+    assert _LEDGER_FACT_FEED_PIN["facts_sha256"] == pin.facts_sha256
+    assert _LEDGER_FACT_FEED_PIN["manifest_sha256"] == pin.manifest_sha256
+    assert _LEDGER_FACT_FEED_PIN["source_commit"] == pin.source_commit
+    assert _LEDGER_FACT_FEED_PIN["fact_row_count"] == pin.fact_row_count
 
 
 @pytest.mark.parametrize("manifest_sha256", ["c" * 64, None])
@@ -267,7 +422,7 @@ def test_driver_refuses_unpinned_national_manifest(manifest_sha256):
     driver = _load_driver_module()
     with pytest.raises(SystemExit, match="manifest"):
         driver._check_committed_ledger_feed_pin(
-            "4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5",
+            driver.load_uk_chronicle_feed().facts_sha256,
             manifest_sha256=manifest_sha256,
             allow_unpinned_feed=False,
         )
@@ -275,7 +430,7 @@ def test_driver_refuses_unpinned_national_manifest(manifest_sha256):
 
 def test_driver_checks_loaded_manifest_before_compiling_targets(monkeypatch, tmp_path):
     driver = _load_driver_module()
-    pin = driver.load_uk_national_chronicle_feed()
+    pin = driver.load_uk_chronicle_feed()
     artifact = SimpleNamespace(facts_sha256=pin.facts_sha256, manifest_sha256="c" * 64)
     monkeypatch.setattr(
         driver, "load_ledger_consumer_artifact", lambda *a, **k: artifact

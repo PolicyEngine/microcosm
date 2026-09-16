@@ -1058,6 +1058,7 @@ def solve_uk_rowwise_weights_under_doctrine(
     seed: int = 0,
     selection_seed: int | None = None,
     selection_pi_hi: float = 1.0,
+    baseline_pi_floor: float = 0.0,
     size_checkpoint_dir: Path | None = None,
     resume_size_checkpoint: Path | None = None,
     checkpoint_identity: Mapping[str, Any] | None = None,
@@ -1077,7 +1078,10 @@ def solve_uk_rowwise_weights_under_doctrine(
     checkpoint instead of solving and searching again, refusing when the
     identity, the pool or the target surface differ. The draw's threshold
     (``selection_pi_hi``) may differ from the one the search stopped on; the
-    size receipt records both.
+    size receipt records both. ``baseline_pi_floor`` trims the refit's
+    Horvitz–Thompson baseline (see
+    :func:`~microcosm.build.uk_runtime.dataset_size.refit_uk_dataset_size`);
+    it is a refit setting, so a resumed checkpoint may use a different one.
 
     ``progress`` receives one readable line per hundred epochs of the dense
     solve, of every budget probe and of the refit, one line per finished
@@ -1314,6 +1318,7 @@ def solve_uk_rowwise_weights_under_doctrine(
             learning_rate=learning_rate,
             seed=size_seed,
             pi_hi=selection_pi_hi,
+            baseline_pi_floor=baseline_pi_floor,
             selection=size_selection,
             progress_callback=progress_callback,
         )
@@ -1660,6 +1665,7 @@ def rotated_uk_local_holdout(
     solve_seed: int = 0,
     selection_seed: int | None = None,
     selection_pi_hi: float = 1.0,
+    baseline_pi_floor: float = 0.0,
 ) -> dict[str, object]:
     """Run five local-row rotations with national rows fixed in training."""
 
@@ -1707,6 +1713,7 @@ def rotated_uk_local_holdout(
             seed=solve_seed,
             selection_seed=selection_seed,
             selection_pi_hi=selection_pi_hi,
+            baseline_pi_floor=baseline_pi_floor,
         )
         held_targets = problem.targets[holdout_indices]
         held_estimates = np.asarray(

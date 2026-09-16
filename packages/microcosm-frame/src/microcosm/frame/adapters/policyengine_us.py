@@ -114,69 +114,127 @@ _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
 # (``"eternity"``, ``"day"``) is point-in-time state.
 _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
 
-# PolicyEngine-US 1.819.0 creates 110 default-system variables outside ordinary
-# top-level ``class ...(Variable)`` declarations. Keep the compact metadata
-# snapshot tied to every source/activation surface that produced it: a changed
-# wheel must fail closed until this audit is refreshed, never silently omit a
-# newly generated formula-owned output.
-_GENERATED_SOURCE_VERSION = "1.819.0"
+# --- BEGIN GENERATED VARIABLE AUDIT ---
+# Regenerate with:
+#   uv run python tools/refresh_us_generated_variable_audit.py
+# The block below is generated from the installed wheels; never edit a
+# digest or a name by hand. 119 default-system variables are
+# created outside ordinary top-level ``class ...(Variable)``
+# declarations, so the snapshot is tied to every source and activation
+# surface that produced it: a changed wheel fails closed until this
+# audit is refreshed, and never silently omits a newly generated
+# formula-owned output.
+_GENERATED_SOURCE_VERSION = "2.2.1"
 _GENERATED_SOURCE_SHA256: dict[str, str] = {
     "model_api.py": "d7edb7436b84733f179fe223376fb588bb7a3ad6817d119703faeb599d4bb9c7",
-    "variables/household/demographic/geographic/state/in_state.py": (
-        "a3792c642387b652752461c85c03e5a9cb39fab55b4e038270374dd7e7d8aa60"
+    "reforms/reforms.py": (
+        "b4077ecee0342080f9a738422f2275479f1b8923366700aece79ef92c64baa61"
     ),
+    "reforms/states/mi/surtax.py": (
+        "e1d0c0207c46243d3509b22b15fbdc07aa02b4df9461f7b93bec872dc7124ea9"
+    ),
+    "system.py": "1c8539dcb8aeba4973823887895f5cd42bb9a2ee1270b0a947c9e7c185571302",
     "variables/gov/puf.py": (
         "17545c43549ecf34016107bc8ed2dce25a53610afb802431a1b0ea6724215e7b"
     ),
     "variables/gov/states/tax/income/_generate_state_mfs_variables.py": (
         "a0c9decd81b6eb76ac7edcddfc913d89ee86e0f18d8c51702bcb2a015dc2fabe"
     ),
-    "reforms/states/mi/surtax.py": (
-        "e1d0c0207c46243d3509b22b15fbdc07aa02b4df9461f7b93bec872dc7124ea9"
+    "variables/household/demographic/geographic/state/in_state.py": (
+        "a3792c642387b652752461c85c03e5a9cb39fab55b4e038270374dd7e7d8aa60"
     ),
-    "reforms/reforms.py": (
-        "9846915c2b03e776dc37cdd6d92566de117f6eebafbf5508179e196fce28d474"
-    ),
-    "system.py": "820dadeb7d22ef14d9cb2c34607f2afe68ba5fae616e05e634c2319e61eb457d",
 }
-_GENERATED_VARIABLE_GROUPS: tuple[tuple[tuple[str, ...], str, str, bool], ...] = (
+_GENERATED_SPM_SOURCE_VERSION = "1.0.0"
+_GENERATED_SPM_SOURCE_SHA256: dict[str, str] = {
+    "policyengine_adapter.py": (
+        "aa5c20cd94abd3287bec097e6f3544f1c822d708cf63cf34c9ce294c3a1e85f7"
+    ),
+}
+_GENERATED_VARIABLE_GROUPS: tuple[tuple[tuple[str, ...], str, str, str, bool], ...] = (
     (
-        tuple(
-            "AL AK AZ AR CA CO CT DC DE FL GA HI ID IL IN IA KS KY LA ME MD MA "
-            "MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX "
-            "UT VT VA WA WV WI WY PR VI".split()
-        ),
-        "household",
-        "bool",
+        ("mi_surtax",),
+        "tax_unit",
+        "float",
+        "year",
         True,
     ),
     (
         tuple(
-            "e02000 e26270 e19200 e18500 e19800 e20400 e20100 e00700 e03270 "
-            "e24515 e03300 e07300 e62900 e32800 e87530 e03240 e01100 e01200 "
-            "e24518 e09900 e27200 e03290 e58990 e03230 e11200 e07260 e07240 "
-            "e03220 p08000 e03400 e09800 e09700 e03500 e87521".split()
+            "e00700 e01100 e01200 e02000 e03220 e03230 e03240 e03270 "
+            "e03290 e03300 e03400 e03500 e07240 e07260 e07300 e09700 "
+            "e09800 e09900 e11200 e18500 e19200 e19800 e20100 e20400 "
+            "e24515 e24518 e26270 e27200 e32800 e58990 e62900 e87521 "
+            "e87530 p08000".split()
         ),
         "person",
         "float",
+        "year",
         False,
     ),
     (
         tuple(
-            "ar_standard_deduction ar_itemized_deductions ar_taxable_income ar_agi "
-            "dc_taxable_income de_standard_deduction de_itemized_deductions "
-            "de_taxable_income de_agi ia_standard_deduction ia_itemized_deductions "
-            "ia_taxable_income ia_agi ky_standard_deduction ky_itemized_deductions "
-            "ky_taxable_income ms_standard_deduction ms_itemized_deductions "
-            "ms_taxable_income mt_standard_deduction mt_itemized_deductions "
+            "ar_agi ar_itemized_deductions ar_standard_deduction "
+            "ar_taxable_income dc_taxable_income de_agi "
+            "de_itemized_deductions de_standard_deduction "
+            "de_taxable_income ia_agi ia_itemized_deductions "
+            "ia_standard_deduction ia_taxable_income "
+            "ky_itemized_deductions ky_standard_deduction "
+            "ky_taxable_income ms_itemized_deductions "
+            "ms_standard_deduction ms_taxable_income "
+            "mt_itemized_deductions mt_standard_deduction "
             "mt_taxable_income".split()
         ),
         "tax_unit",
         "float",
+        "year",
         True,
     ),
-    (("mi_surtax",), "tax_unit", "float", True),
+    (
+        tuple(
+            "AK AL AR AZ CA CO CT DC DE FL GA HI IA ID IL IN KS KY LA MA "
+            "MD ME MI MN MO MS MT NC ND NE NH NJ NM NV NY OH OK OR PA PR "
+            "RI SC SD TN TX UT VA VI VT WA WI WV WY".split()
+        ),
+        "household",
+        "bool",
+        "year",
+        True,
+    ),
+    (
+        ("is_household_spouse",),
+        "person",
+        "bool",
+        "point",
+        False,
+    ),
+    (
+        ("is_spm_independent_minor_role",),
+        "person",
+        "bool",
+        "point",
+        True,
+    ),
+    (
+        tuple(
+            "spm_unit_geographic_adjustment "
+            "spm_unit_reference_spm_threshold spm_unit_spm_threshold "
+            "spm_unit_spm_threshold_housing_portion "
+            "spm_unit_unadjusted_spm_threshold".split()
+        ),
+        "spm_unit",
+        "float",
+        "year",
+        True,
+    ),
+    (
+        tuple("spm_measurement_adults spm_measurement_children".split()),
+        "spm_unit",
+        "int",
+        "year",
+        True,
+    ),
 )
+# --- END GENERATED VARIABLE AUDIT ---
 
 
 def _index_policyengine_us_sources(
@@ -200,26 +258,30 @@ def _index_policyengine_us_variable_sources(
     return _index_policyengine_us_sources(variables_root).definitions
 
 
-def _index_policyengine_us_generated_variable_sources(
+def _audit_pinned_sources(
+    label: str,
     package_root: Path,
-    *,
     version: str,
-) -> Mapping[str, _SourceVariableDefinition]:
-    """Return the audited generated-variable snapshot or fail closed."""
+    *,
+    expected_version: str,
+    digests: Mapping[str, str],
+) -> None:
+    """Fail closed unless the installed distribution is the audited one."""
 
-    if version != _GENERATED_SOURCE_VERSION:
+    if version != expected_version:
         raise RuntimeError(
-            "PolicyEngine-US generated-variable metadata has not been audited for "
-            f"installed version {version!r}; expected {_GENERATED_SOURCE_VERSION!r}."
+            "PolicyEngine-US generated-variable metadata has not been audited "
+            f"for installed {label} version {version!r}; expected "
+            f"{expected_version!r}."
         )
-    for relative_path, expected_digest in _GENERATED_SOURCE_SHA256.items():
+    for relative_path, expected_digest in digests.items():
         source_path = package_root / relative_path
         try:
             actual_digest = sha256(source_path.read_bytes()).hexdigest()
         except OSError as exc:
             raise RuntimeError(
-                f"Required PolicyEngine-US generated-variable source is unavailable: "
-                f"{source_path}."
+                f"Required PolicyEngine-US generated-variable source is "
+                f"unavailable: {source_path}."
             ) from exc
         if actual_digest != expected_digest:
             raise RuntimeError(
@@ -227,8 +289,41 @@ def _index_policyengine_us_generated_variable_sources(
                 f"metadata audit: {source_path}."
             )
 
+
+def _index_policyengine_us_generated_variable_sources(
+    package_root: Path,
+    *,
+    version: str,
+    spm_package_root: Path,
+    spm_version: str,
+) -> Mapping[str, _SourceVariableDefinition]:
+    """Return the audited generated-variable snapshot or fail closed.
+
+    Two distributions produce the default system's generated variables:
+    policyengine-us itself (the 50-state flags, the PUF leaves, the state MFS
+    factory and the Michigan surtax reform) and spm-calculator, whose
+    ``build_policyengine_variables`` ``system.py`` calls to install the SPM
+    measurement thresholds and independence roles. Both are pinned, because a
+    new spm-calculator alone can add a formula-owned output.
+    """
+
+    _audit_pinned_sources(
+        "policyengine-us",
+        package_root,
+        version,
+        expected_version=_GENERATED_SOURCE_VERSION,
+        digests=_GENERATED_SOURCE_SHA256,
+    )
+    _audit_pinned_sources(
+        "spm-calculator",
+        spm_package_root,
+        spm_version,
+        expected_version=_GENERATED_SPM_SOURCE_VERSION,
+        digests=_GENERATED_SPM_SOURCE_SHA256,
+    )
+
     definitions: dict[str, _SourceVariableDefinition] = {}
-    for names, entity, dtype, formula_owned in _GENERATED_VARIABLE_GROUPS:
+    for names, entity, dtype, period, formula_owned in _GENERATED_VARIABLE_GROUPS:
         for name in names:
             if name in definitions:
                 raise RuntimeError(
@@ -239,7 +334,7 @@ def _index_policyengine_us_generated_variable_sources(
                     name=name,
                     entity=entity,
                     dtype=dtype,
-                    period="year",
+                    period=period,
                 ),
                 always_computed=formula_owned,
                 formula_starts=(),
@@ -263,9 +358,20 @@ def _installed_policyengine_us_variable_sources() -> _PolicyEngineUSSourceIndex:
             "The installed PolicyEngine-US variable source tree is unavailable "
             f"at {variables_root}."
         )
+    try:
+        spm_package = distribution("spm-calculator")
+    except PackageNotFoundError as exc:
+        raise ImportError(
+            "The PolicyEngine-US metadata index requires the 'spm-calculator' "
+            "package, which policyengine-us 2.x installs to generate the SPM "
+            "measurement variables. Install it with "
+            "'microcosm-frame[policyengine]'."
+        ) from exc
     generated = _index_policyengine_us_generated_variable_sources(
         package_root,
         version=package.version,
+        spm_package_root=Path(spm_package.locate_file("spm_calculator")),
+        spm_version=spm_package.version,
     )
     source_index = _index_policyengine_us_sources(
         variables_root,
@@ -511,9 +617,22 @@ class PolicyEngineUSEngine:
         self,
         contract: ExportContract | None = None,
         defaults: Mapping[str, object] | None = None,
+        spm: Mapping[str, object] | None = None,
     ) -> None:
         self._contract = contract if contract is not None else ExportContract.empty()
         self._defaults = dict(defaults or {})
+        # Explicit SPM measurement selection, forwarded verbatim to the engine
+        # as ``Microsimulation(spm=...)``.  PolicyEngine-US 2.0.0 stopped
+        # inferring SPM geography from an absent county: an SPM-dependent
+        # variable now raises ``SPMInputError(SPM_GEOGRAPHY_REQUIRED)`` unless
+        # the caller supplies five-digit string county FIPS or selects
+        # ``{"geography_kind": "national"}`` (or a fixed ``"metro"`` area with
+        # its ``geography_id``).  ``None`` keeps the engine default, which is
+        # county measurement, so a Frame that already carries ``county_fips``
+        # is measured on its own counties exactly as before.  A stage that runs
+        # before geography assignment must pass the national selection rather
+        # than let the default raise.
+        self._spm = None if spm is None else dict(spm)
         self._system: Any = None
 
     # ------------------------------------------------------------------
@@ -755,7 +874,10 @@ class PolicyEngineUSEngine:
         microsimulation_class = self._import_policyengine_us().Microsimulation
         tables = self._engine_tables(bundle)
         dataset = self._build_dataset(tables, period)
-        simulation = microsimulation_class(dataset=dataset)
+        simulation = microsimulation_class(
+            dataset=dataset,
+            **({"spm": dict(self._spm)} if self._spm is not None else {}),
+        )
         results: dict[str, np.ndarray] = {}
         for name in variables:
             entity = self._entity_of(name)

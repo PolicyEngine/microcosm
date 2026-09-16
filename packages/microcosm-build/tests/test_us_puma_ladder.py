@@ -465,3 +465,29 @@ def _minimal_us_frame() -> Frame:
     }
     strata = pd.Series(["acs_2023", "acs_2023"], name="stratum")
     return Frame(tables, US_SCHEMA, weights, strata)
+
+
+def test_gate_fails_when_county_fips_is_carried_as_integers() -> None:
+    household, weights = _gated_household()
+    household = household.assign(
+        county_fips=np.asarray([36061, 36001, 6037, 48001], dtype="int64")
+    )
+
+    result = us_puma_ladder_gate(household, weights)
+
+    assert not result.passed
+    assert any(
+        failure.startswith("county_fips: values are carried as int")
+        for failure in result.failures
+    ), result.failures
+
+
+def test_gate_accepts_numpy_str_county_fips() -> None:
+    household, weights = _gated_household()
+    household = household.assign(
+        county_fips=np.asarray(["36061", "36001", "06037", "48001"], dtype=np.str_)
+    )
+
+    result = us_puma_ladder_gate(household, weights)
+
+    assert result.passed, result.failures

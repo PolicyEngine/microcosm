@@ -55,7 +55,10 @@ from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
-from microcosm.build.us_runtime.geography_ladder import US_NYC_COUNTY_FIPS
+from microcosm.build.us_runtime.geography_ladder import (
+    US_NYC_COUNTY_FIPS,
+    non_text_county_fips_failure,
+)
 from microcosm.build.us_runtime.puma_ladder_sources import (
     COUNTY_FROM_TRACT_DIVISOR,
     PUMA_GEOID_STATE_DIVISOR,
@@ -511,6 +514,11 @@ def us_puma_ladder_gate(
         )
 
     state = _state_fips_strings(household[state_fips_column])
+    non_text = non_text_county_fips_failure(
+        household["county_fips"], column="county_fips"
+    )
+    if non_text is not None:
+        failures.append(non_text)
     puma = household["puma"].astype(str).to_numpy()
     county = household["county_fips"].astype(str).to_numpy()
     for label, values, width in (("puma", puma, 7), ("county_fips", county, 5)):

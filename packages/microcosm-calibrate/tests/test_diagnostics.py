@@ -66,6 +66,15 @@ def test_shared_geography_constant_views_are_consistent() -> None:
         "W92000004": "Wales",
         "S92000003": "Scotland",
         "N92000002": "Northern Ireland",
+        "E12000001": "North East",
+        "E12000002": "North West",
+        "E12000003": "Yorkshire and The Humber",
+        "E12000004": "East Midlands",
+        "E12000005": "West Midlands",
+        "E12000006": "East of England",
+        "E12000007": "London",
+        "E12000008": "South East",
+        "E12000009": "South West",
     }
     assert len(US_STATE_FIPS_TO_POSTAL) == 51
     assert US_STATE_FIPS_TO_POSTAL["01"] == "AL"

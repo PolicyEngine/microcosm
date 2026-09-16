@@ -1,69 +1,61 @@
 {
- "schema_version": 1,
- "exclusions": [
-  {
-   "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
-   "reason_id": "property_income_undercount_adjustment_missing",
-   "rationale": "Signed out pending a first-class value-scaling operation or a Chronicle package for HMRC Property Rental Income Statistics with declared reconciliation: the Ledger facts are official HMRC SPI Table 3.7 net property-income amounts, while the incumbent calibration target applies the populace-side x1.9 property-income undercount adjustment. The x1.9 trace is uk-data PR #311 / issue uk-data#230: SPI covers only taxpayers with liability, and HMRC Property Rental Income Statistics show GBP 46.68bn versus SPI about GBP 24.5bn for 2020-21. Binding the raw SPI facts would knowingly calibrate to 10/19 of the incumbent surface.",
-   "tracking": "uk-data#230",
-   "approved_by": "juaristi22",
-   "approved_on": "2026-09-05"
-  },
-  {
-   "target_id": "ons.population.scotland_households_3plus_children",
-   "reason_id": "no_household_composition_fact",
-   "rationale": "Signed out pending a Scotland household-composition fact: the current selector reaches person-level ONS mid-year population age rows, not households with three or more children. microcosm#736 tracks the missing declaration.",
-   "tracking": "microcosm#736",
-   "approved_by": "juaristi22",
-   "approved_on": "2026-09-05"
-  },
-  {
-   "target_id": "dft.bus_fare_receipts.london",
-   "reason_id": "region_pin_unsupported",
-   "rationale": "Region target held until the UK target compiler has a declared region roster and cross-grain leg; tracked by #790.",
-   "tracking": "microcosm#790",
-   "approved_by": "juaristi22",
-   "approved_on": "2026-09-05"
-  },
-  {
-   "target_id": "dft.bus_net_support.london",
-   "reason_id": "region_pin_unsupported",
-   "rationale": "Region target held until the UK target compiler has a declared region roster and cross-grain leg; tracked by #790.",
-   "tracking": "microcosm#790",
-   "approved_by": "juaristi22",
-   "approved_on": "2026-09-05"
-  },
-  {
-   "target_id": "dft.bus_fare_receipts.england_outside_london",
-   "reason_id": "statistical_scope_unsupported",
-   "rationale": "Chronicle stamps this row at statistical_scope; Microcosm has no declared statistical-scope pin and must not bind the England total accidentally.",
-   "tracking": "microcosm#789",
-   "approved_by": "juaristi22",
-   "approved_on": "2026-09-05"
-  },
-  {
-   "target_id": "dft.bus_net_support.england_outside_london",
-   "reason_id": "statistical_scope_unsupported",
-   "rationale": "Chronicle stamps this row at statistical_scope; Microcosm has no declared statistical-scope pin and must not bind the England total accidentally.",
-   "tracking": "microcosm#789",
-   "approved_by": "juaristi22",
-   "approved_on": "2026-09-05"
-  },
-  {
-   "target_id": "dft.bus_fare_receipts.uk",
-   "reason_id": "no_publisher_uk_total",
-   "rationale": "BUS05i publishes no UK total and Microcosm declares no method to construct one.",
-   "tracking": "microcosm#789",
-   "approved_by": "juaristi22",
-   "approved_on": "2026-09-05"
-  },
-  {
-   "target_id": "dft.bus_net_support.uk",
-   "reason_id": "no_publisher_uk_total",
-   "rationale": "BUS05i publishes no UK total and Microcosm declares no method to construct one.",
-   "tracking": "microcosm#789",
-   "approved_by": "juaristi22",
-   "approved_on": "2026-09-05"
-  }
- ]
+  "schema_version": 1,
+  "exclusions": [
+    {
+      "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+      "reason_id": "property_income_undercount_adjustment_missing",
+      "rationale": "Signed out pending a first-class value-scaling operation or a Chronicle package for HMRC Property Rental Income Statistics with declared reconciliation: the Ledger facts are official HMRC SPI Table 3.7 net property-income amounts, while the incumbent calibration target applies the populace-side x1.9 property-income undercount adjustment. The x1.9 trace is uk-data PR #311 / issue uk-data#230: SPI covers only taxpayers with liability, and HMRC Property Rental Income Statistics show GBP 46.68bn versus SPI about GBP 24.5bn for 2020-21. Binding the raw SPI facts would knowingly calibrate to 10/19 of the incumbent surface.",
+      "tracking": "uk-data#230",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-05"
+    },
+    {
+      "target_id": "ons.population.scotland_households_3plus_children",
+      "reason_id": "no_household_composition_fact",
+      "rationale": "Signed out pending a Scotland household-composition fact: the current selector reaches person-level ONS mid-year population age rows, not households with three or more children. microcosm#736 tracks the missing declaration.",
+      "tracking": "microcosm#736",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-05"
+    },
+    {
+      "target_id": "dft.bus_fare_receipts.england_outside_london",
+      "reason_id": "derived_partition_member",
+      "rationale": "England outside London is England minus London: the England row and the London row (pinned at region E12000007) are both bound, so this publisher partition member is derived rather than pinned; Chronicle stamps it at statistical_scope and test_uk_bus_targets asserts the partition reconciles to England within GBP 1,000.",
+      "tracking": "microcosm#890",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-11"
+    },
+    {
+      "target_id": "dft.bus_net_support.england_outside_london",
+      "reason_id": "derived_partition_member",
+      "rationale": "England outside London is England minus London: the England row and the London row (pinned at region E12000007) are both bound, so this publisher partition member is derived rather than pinned; Chronicle stamps it at statistical_scope and test_uk_bus_targets asserts the partition reconciles to England within GBP 1,000.",
+      "tracking": "microcosm#890",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-11"
+    },
+    {
+      "target_id": "dft.bus_fare_receipts.uk",
+      "reason_id": "no_publisher_uk_total",
+      "rationale": "BUS05i publishes no UK total and Microcosm declares no method to construct one.",
+      "tracking": "microcosm#789",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-05"
+    },
+    {
+      "target_id": "dft.bus_net_support.uk",
+      "reason_id": "replaced_by_heterogeneous_country_legs",
+      "rationale": "BUS05i publishes no UK total and no England-to-UK uplift is declared. Net support binds instead as four country legs whose scopes differ: DfT BUS05bi net support (England, operators' view), Scottish Transport Statistics all government support (Scotland), StatsWales revenue outturn gross expenditure on concessionary fares and support to operators through local authorities only (Wales: no operator-side series and no Welsh Government grants outside the outturn), and the NITHC accounts' Public Service Obligation plus concessionary compensation as one bus-plus-rail cell excluding GBP 53.2m of other revenue funding (Northern Ireland). The legs are bound on their own terms; they are not a UK total under another name.",
+      "tracking": "microcosm#890",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-11"
+    },
+    {
+      "target_id": "obr.fuel_duties",
+      "reason_id": "universe_scope_all_road_users",
+      "rationale": "The OBR fuel duties fact is all-road-users receipts (freight, vans, business mileage) against a household frame; obr.fuel_duties_cars binds the cars receipts from the OBR vehicle-type release instead (ruling 2026-09-10). The all-road-users row is retained in the contract for registry parity and signed out here rather than carried as a calibration measure exclusion.",
+      "tracking": "microcosm#890",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-11"
+    }
+  ]
 }

@@ -3052,6 +3052,15 @@ def _direct_reference_from_fact(
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
         hierarchy=_us_hierarchy_seed(source_name, family),
+        # These explicitly mapped CBO levels are publisher projections. Keep
+        # their assertion intact without admitting projections for other inputs.
+        assertion_policy=(
+            "allow_source_projection"
+            if source_name == "cbo"
+            and measure_id == "projected_amount"
+            and mapping is not None
+            else "observed_only"
+        ),
     )
 
 

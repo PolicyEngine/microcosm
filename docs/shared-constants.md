@@ -33,6 +33,9 @@ is the shared source for geography code mappings used by both the calibration
 and build packages. It currently defines:
 
 - `UK_GEOGRAPHY_ID_TO_LABEL`
+- `UK_REGION_TIER`, `UK_REGION_TIER_ENUM` and `UK_LADDER_NATION_REGION_CODES` (the
+  twelve-area region tier UK national references fan out over, its spine
+  `region` enum names, and the ladder's nation pseudo-codes; microcosm#905)
 - `US_STATE_FIPS_TO_POSTAL`
 - `US_STATE_NUMERIC_FIPS_TO_POSTAL`
 - `US_STATE_POSTAL_TO_NUMERIC_FIPS`

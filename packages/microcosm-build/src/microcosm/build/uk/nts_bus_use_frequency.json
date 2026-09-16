@@ -1,0 +1,2566 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "nts_bus_use_frequency.json",
+  "purpose": "DfT NTS0313 shares of people by frequency of local bus use (all ages, England) and NTS0621 the same bands for people aged 60 and over, 2023 to 2025, with the unweighted sample sizes. Consumed by the LCFS bus-use incidence calibration.",
+  "consumers": [],
+  "planned_consumers": [
+    "lcfs_consumption"
+  ],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "df35af7e7ccf689ad2a5b6e47ce33e99b8c9d3fb",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 266390,
+    "facts_sha256": "3e7d5a4fe18be9e5a19e5475a6e9f91a5d5b0ab827faedccdc755584957e59e7",
+    "manifest_sha256": "51aab3411e803cac7b9bbd1b1bf9250a87cd43bfd0ba35d0cd653e31821d0364"
+  },
+  "selections": [
+    {
+      "label": "nts0313_local_bus_all_ages",
+      "selector": {
+        "source_name": "dft",
+        "source_concept": [
+          "dft.nts.mode_use_frequency_share",
+          "dft.nts.unweighted_sample_size"
+        ],
+        "groupby_dimension": "dft.transport_mode",
+        "layout_groupby_value_id": "local_bus",
+        "period_type": "calendar_year",
+        "period_value": [
+          "2023",
+          "2024",
+          "2025"
+        ]
+      },
+      "row_count": 27
+    },
+    {
+      "label": "nts0621_local_bus_aged_60_and_over",
+      "selector": {
+        "source_name": "dft",
+        "source_concept": [
+          "dft.nts.mode_use_frequency_share",
+          "dft.nts.unweighted_sample_size"
+        ],
+        "groupby_dimension": "dft.survey_year",
+        "period_type": "calendar_year",
+        "period_value": [
+          "2023",
+          "2024",
+          "2025"
+        ]
+      },
+      "row_count": 27
+    }
+  ],
+  "row_count": 54,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b085fcf9300f28cb0420c754",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b97bdf6cfc321da9d8734065",
+      "source_record_id": "dft.nts0621.3_or_more_times_a_week.cy2023.cy2023.3_or_more_times_a_week",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "3_or_more_times_a_week",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.3_or_more_times_a_week.cy2023",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "3 or more times a week (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 11.637886866744
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4e0e79873ecc90e7079a3466",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fc745a9a6df46caa0444f14f",
+      "source_record_id": "dft.nts0621.less_than_once_a_month_more_than_twice_a_year.cy2023.cy2023.less_than_once_a_month_more_than_twice_a_year",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_month_more_than_twice_a_year",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.less_than_once_a_month_more_than_twice_a_year.cy2023",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Less than once a month, more than twice a year (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 6.68964888340855
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_60af041b72c1a78d48fa78cc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a3d3512340a3916cd7570ce5",
+      "source_record_id": "dft.nts0621.less_than_once_a_year_or_never.cy2023.cy2023.less_than_once_a_year_or_never",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_year_or_never",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.less_than_once_a_year_or_never.cy2023",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Less than once a year or never (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 51.7089025175506
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1a9aa887581a105c0f27a9eb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7651af1e1b15189f7186ac54",
+      "source_record_id": "dft.nts0621.less_than_once_per_week_more_than_twice_a_month.cy2023.cy2023.less_than_once_per_week_more_than_twice_a_month",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_per_week_more_than_twice_a_month",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.less_than_once_per_week_more_than_twice_a_month.cy2023",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Less than once per week, more than twice a month (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 3.50013128865735
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7f825d012c7e6ae3569eb509",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7845bfda9f02a1f685b44a93",
+      "source_record_id": "dft.nts0621.once_or_twice_a_month.cy2023.cy2023.once_or_twice_a_month",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_month",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.once_or_twice_a_month.cy2023",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Once or twice a month (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 9.62738222534377
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_63e28e8ec4287947e739f2e1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e86bec392504ba74660f9a8d",
+      "source_record_id": "dft.nts0621.once_or_twice_a_week.cy2023.cy2023.once_or_twice_a_week",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_week",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.once_or_twice_a_week.cy2023",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Once or twice a week (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 10.284053725527
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4d9c1eb783bdb222a69b6dd3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3cddd4ab2e9d0f04441262c2",
+      "source_record_id": "dft.nts0621.once_or_twice_a_year.cy2023.cy2023.once_or_twice_a_year",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_year",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.once_or_twice_a_year.cy2023",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Once or twice a year (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 6.55199449276871
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4a7066753f92c4c7b71135dd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_18d98285e29c2f592b3c0e58",
+      "source_record_id": "dft.nts0621.total.cy2023.cy2023.total",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "total",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.total.cy2023",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 100
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_95a37f100542e90b4322e420",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ff67e27b5d6f5ff14e66f6c2",
+      "source_record_id": "dft.nts0313.3_or_more_times_a_week.cy2023.local_bus.3_or_more_times_a_week",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "3_or_more_times_a_week",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.3_or_more_times_a_week.cy2023",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "3 or more times a week (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 13.1728639627213
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a5934b5e352e49fb22bd8725",
+      "semantic_fact_key": "ledger_semantic_fact_v2_de677f72610b2600991d7833",
+      "source_record_id": "dft.nts0313.less_than_once_a_month_more_than_once_or_twice_a_year.cy2023.local_bus.less_than_once_a_month_more_than_once_or_twice_a_year",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_month_more_than_once_or_twice_a_year",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.less_than_once_a_month_more_than_once_or_twice_a_year.cy2023",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Less than once a month, more than once or twice a year (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 6.63780614582642
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_583c756d55021c43ec402633",
+      "semantic_fact_key": "ledger_semantic_fact_v2_393444a3be084974b0f8267e",
+      "source_record_id": "dft.nts0313.less_than_once_a_week_more_than_once_or_twice_a_month.cy2023.local_bus.less_than_once_a_week_more_than_once_or_twice_a_month",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_week_more_than_once_or_twice_a_month",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.less_than_once_a_week_more_than_once_or_twice_a_month.cy2023",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Less than once a week, more than once or twice a month (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 4.08870147714994
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_225b773206242c6e922fe9ae",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a7f36cd7a4a7ff26e81b66d4",
+      "source_record_id": "dft.nts0313.less_than_once_a_year_or_never.cy2023.local_bus.less_than_once_a_year_or_never",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_year_or_never",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.less_than_once_a_year_or_never.cy2023",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Less than once a year or never (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 52.1522558709378
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c3b814d08fb21ba851133df6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_032fcd78339fe7645f336e3f",
+      "source_record_id": "dft.nts0313.once_or_twice_a_month.cy2023.local_bus.once_or_twice_a_month",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_month",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.once_or_twice_a_month.cy2023",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Once or twice a month (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 8.68578178384181
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_360c1d768eafd2964c9940d4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1503a7799def4fc8af773cb2",
+      "source_record_id": "dft.nts0313.once_or_twice_a_week.cy2023.local_bus.once_or_twice_a_week",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_week",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.once_or_twice_a_week.cy2023",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Once or twice a week (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 8.29040916789502
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c43d0f0286c7f7946fa01b8b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2832fc05a2d916d267834944",
+      "source_record_id": "dft.nts0313.once_or_twice_a_year.cy2023.local_bus.once_or_twice_a_year",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_year",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.once_or_twice_a_year.cy2023",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Once or twice a year (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 6.9721815916277
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5157220129f3615623e176dc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8144372521ea4fc449fb1a9b",
+      "source_record_id": "dft.nts0313.total.cy2023.local_bus.total",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "total",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.total.cy2023",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 100
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3fdb95094f0c1f3988ec4e68",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b327131c85e33a3f44e96b79",
+      "source_record_id": "dft.nts0621.3_or_more_times_a_week.cy2024.cy2024.3_or_more_times_a_week",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "3_or_more_times_a_week",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.3_or_more_times_a_week.cy2024",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "3 or more times a week (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 12.3450739426843
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_71f9a0f0cb05ec0dbb193600",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d474e0d6777fd834dcfc6e7b",
+      "source_record_id": "dft.nts0621.less_than_once_a_month_more_than_twice_a_year.cy2024.cy2024.less_than_once_a_month_more_than_twice_a_year",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_month_more_than_twice_a_year",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.less_than_once_a_month_more_than_twice_a_year.cy2024",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Less than once a month, more than twice a year (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 6.70486954279459
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_60852f37043b7ea8d24bf6b6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1322e9a28b14a01d43b6a4dd",
+      "source_record_id": "dft.nts0621.less_than_once_a_year_or_never.cy2024.cy2024.less_than_once_a_year_or_never",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_year_or_never",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.less_than_once_a_year_or_never.cy2024",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Less than once a year or never (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 49.956784188763
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0ead8dc3aa51336fc3fe718f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f6d7d01b3971304ecd382d4f",
+      "source_record_id": "dft.nts0621.less_than_once_per_week_more_than_twice_a_month.cy2024.cy2024.less_than_once_per_week_more_than_twice_a_month",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_per_week_more_than_twice_a_month",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.less_than_once_per_week_more_than_twice_a_month.cy2024",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Less than once per week, more than twice a month (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 4.76813871430733
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a6205b7bd67af29f4bdd8f44",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9dc8880562a0e527883316a9",
+      "source_record_id": "dft.nts0621.once_or_twice_a_month.cy2024.cy2024.once_or_twice_a_month",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_month",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.once_or_twice_a_month.cy2024",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Once or twice a month (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 9.599722179726
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8c11886c4d345f705892eee2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7d95fb2309ed1c095864d97f",
+      "source_record_id": "dft.nts0621.once_or_twice_a_week.cy2024.cy2024.once_or_twice_a_week",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_week",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.once_or_twice_a_week.cy2024",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Once or twice a week (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 10.2430729882451
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e9cd7e34805218cc94813e88",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d67a003a56a7ae1bef6a162a",
+      "source_record_id": "dft.nts0621.once_or_twice_a_year.cy2024.cy2024.once_or_twice_a_year",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_year",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.once_or_twice_a_year.cy2024",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Once or twice a year (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 6.38233844347968
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_959fad9ab4fea0e6c4d9e08a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1aab81bde25ee8e6efc7a6b5",
+      "source_record_id": "dft.nts0621.total.cy2024.cy2024.total",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "total",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.total.cy2024",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 100
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_61f9927b41f06db7d57b28e6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_11f37c35121fb6ca493f3c62",
+      "source_record_id": "dft.nts0313.3_or_more_times_a_week.cy2024.local_bus.3_or_more_times_a_week",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "3_or_more_times_a_week",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.3_or_more_times_a_week.cy2024",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "3 or more times a week (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 13.5116305878593
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6de7a2be393cd00e2bc7cbdb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_108f90e4d8ae927064344406",
+      "source_record_id": "dft.nts0313.less_than_once_a_month_more_than_once_or_twice_a_year.cy2024.local_bus.less_than_once_a_month_more_than_once_or_twice_a_year",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_month_more_than_once_or_twice_a_year",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.less_than_once_a_month_more_than_once_or_twice_a_year.cy2024",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Less than once a month, more than once or twice a year (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 7.04904092034939
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0739697acef6cb6945a44240",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dec2d26ad634ef3fc4d1cb45",
+      "source_record_id": "dft.nts0313.less_than_once_a_week_more_than_once_or_twice_a_month.cy2024.local_bus.less_than_once_a_week_more_than_once_or_twice_a_month",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_week_more_than_once_or_twice_a_month",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.less_than_once_a_week_more_than_once_or_twice_a_month.cy2024",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Less than once a week, more than once or twice a month (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 4.28246360157717
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b7a50bd62a2c0a398dbc48cd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_faa3cd8b389e1283cc61d8be",
+      "source_record_id": "dft.nts0313.less_than_once_a_year_or_never.cy2024.local_bus.less_than_once_a_year_or_never",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_year_or_never",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.less_than_once_a_year_or_never.cy2024",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Less than once a year or never (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 49.5105713247745
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_93ee788cd94ddbdc64d8bbd4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c05d0258006b790d442a2f05",
+      "source_record_id": "dft.nts0313.once_or_twice_a_month.cy2024.local_bus.once_or_twice_a_month",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_month",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.once_or_twice_a_month.cy2024",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Once or twice a month (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 9.65513039279928
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_61f2932741c08a90dbee9d2d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b62195ed5b3b287df923265e",
+      "source_record_id": "dft.nts0313.once_or_twice_a_week.cy2024.local_bus.once_or_twice_a_week",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_week",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.once_or_twice_a_week.cy2024",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Once or twice a week (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 9.44658403041984
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5050eb17898450dd8455503a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a21ca7d9f6bcd6ffaf684b4e",
+      "source_record_id": "dft.nts0313.once_or_twice_a_year.cy2024.local_bus.once_or_twice_a_year",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_year",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.once_or_twice_a_year.cy2024",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Once or twice a year (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 6.5445791422205
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6174048c3d966d848822ab93",
+      "semantic_fact_key": "ledger_semantic_fact_v2_28a256b816cb784fe2a49f7d",
+      "source_record_id": "dft.nts0313.total.cy2024.local_bus.total",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "total",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.total.cy2024",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 100
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c05dfb9671c21fe3bc62d8da",
+      "semantic_fact_key": "ledger_semantic_fact_v2_32b831b133b56b2d5138f1e7",
+      "source_record_id": "dft.nts0621.3_or_more_times_a_week.cy2025.cy2025.3_or_more_times_a_week",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "3_or_more_times_a_week",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.3_or_more_times_a_week.cy2025",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2025",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "3 or more times a week (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 12.9723580412945
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_096e5a80c23581b2f217b89b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_193271afbc2d76d80bc672cb",
+      "source_record_id": "dft.nts0621.less_than_once_a_month_more_than_twice_a_year.cy2025.cy2025.less_than_once_a_month_more_than_twice_a_year",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_month_more_than_twice_a_year",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.less_than_once_a_month_more_than_twice_a_year.cy2025",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2025",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Less than once a month, more than twice a year (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 7.2776848955508
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8ec0dbaa08ff7f4411702b2d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ce53216b755a694801a0c4c5",
+      "source_record_id": "dft.nts0621.less_than_once_a_year_or_never.cy2025.cy2025.less_than_once_a_year_or_never",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_year_or_never",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.less_than_once_a_year_or_never.cy2025",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2025",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Less than once a year or never (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 48.5838186648884
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e79beef0a79bd4684cfd2318",
+      "semantic_fact_key": "ledger_semantic_fact_v2_adb584d4780dfcc0dc2765ea",
+      "source_record_id": "dft.nts0621.less_than_once_per_week_more_than_twice_a_month.cy2025.cy2025.less_than_once_per_week_more_than_twice_a_month",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_per_week_more_than_twice_a_month",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.less_than_once_per_week_more_than_twice_a_month.cy2025",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2025",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Less than once per week, more than twice a month (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 4.40428990949599
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_faf70aa7b635dbfe1024655c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ee69d24e4c44f11e481155ac",
+      "source_record_id": "dft.nts0621.once_or_twice_a_month.cy2025.cy2025.once_or_twice_a_month",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_month",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.once_or_twice_a_month.cy2025",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2025",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Once or twice a month (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 9.44929338718017
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4a2fcaa119d7bc68da51e04a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_63e60f4f3c15fd1be1e0ea57",
+      "source_record_id": "dft.nts0621.once_or_twice_a_week.cy2025.cy2025.once_or_twice_a_week",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_week",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.once_or_twice_a_week.cy2025",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2025",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Once or twice a week (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 10.3352881431694
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d5a9d255fe1cd5bedabf95a7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7176dd810087ba71ca6ac2e3",
+      "source_record_id": "dft.nts0621.once_or_twice_a_year.cy2025.cy2025.once_or_twice_a_year",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_year",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.once_or_twice_a_year.cy2025",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2025",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus",
+        "use_frequency_band": "Once or twice a year (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 6.97726695842072
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0f56c72b27760681affaee1d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7bad8803cd6f4d78539c4742",
+      "source_record_id": "dft.nts0621.total.cy2025.cy2025.total",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "total",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.total.cy2025",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2025",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 100
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_207ed5bc6a848e75b7b8f4e0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e4312dd1ca2d348d0fbdbdd3",
+      "source_record_id": "dft.nts0313.3_or_more_times_a_week.cy2025.local_bus.3_or_more_times_a_week",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "3_or_more_times_a_week",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.3_or_more_times_a_week.cy2025",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "3 or more times a week (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 14.8325312845427
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d18dbd3ddbac2d9618c075ad",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a2624e4e9744b0857c016d79",
+      "source_record_id": "dft.nts0313.less_than_once_a_month_more_than_once_or_twice_a_year.cy2025.local_bus.less_than_once_a_month_more_than_once_or_twice_a_year",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_month_more_than_once_or_twice_a_year",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.less_than_once_a_month_more_than_once_or_twice_a_year.cy2025",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Less than once a month, more than once or twice a year (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 6.98998807424697
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_730c39928f4bad25004eb81c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c634f00d3189c52366800666",
+      "source_record_id": "dft.nts0313.less_than_once_a_week_more_than_once_or_twice_a_month.cy2025.local_bus.less_than_once_a_week_more_than_once_or_twice_a_month",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_week_more_than_once_or_twice_a_month",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.less_than_once_a_week_more_than_once_or_twice_a_month.cy2025",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Less than once a week, more than once or twice a month (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 4.49663924214138
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1a8e9c2fa928a2fff3a52ecd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_62eeab3b388c77b61b854a18",
+      "source_record_id": "dft.nts0313.less_than_once_a_year_or_never.cy2025.local_bus.less_than_once_a_year_or_never",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "less_than_once_a_year_or_never",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.less_than_once_a_year_or_never.cy2025",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Less than once a year or never (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 48.1427909331924
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7eef0b40e38b934f976368f4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_41b77666c55099535d3af07b",
+      "source_record_id": "dft.nts0313.once_or_twice_a_month.cy2025.local_bus.once_or_twice_a_month",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_month",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.once_or_twice_a_month.cy2025",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Once or twice a month (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 9.02160369061883
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f8baa9b0eea5f5a0c31f66ff",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8fbb107c6309927020ccc297",
+      "source_record_id": "dft.nts0313.once_or_twice_a_week.cy2025.local_bus.once_or_twice_a_week",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_week",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.once_or_twice_a_week.cy2025",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Once or twice a week (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 9.23299228690409
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_78d4845c01404a6df184f723",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2aa11ce9e88aaba006f1868d",
+      "source_record_id": "dft.nts0313.once_or_twice_a_year.cy2025.local_bus.once_or_twice_a_year",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "once_or_twice_a_year",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.once_or_twice_a_year.cy2025",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]",
+        "use_frequency_band": "Once or twice a year (%)"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 7.28345448835361
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ef6bd19e6b68b9781100df73",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cb7d3053622698a9e3b430da",
+      "source_record_id": "dft.nts0313.total.cy2025.local_bus.total",
+      "concept": "dft.nts.mode_use_frequency_share",
+      "measure_id": "total",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.total.cy2025",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 100
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f0917aeaf3feab089e82c771",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cf95df5728bf7db86ae6598e",
+      "source_record_id": "dft.nts0621.unweighted_sample_size.cy2023.cy2023.unweighted_sample_size",
+      "concept": "dft.nts.unweighted_sample_size",
+      "measure_id": "unweighted_sample_size",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.unweighted_sample_size.cy2023",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 5384
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_efff7bd55f7019bc417c2775",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e69c5f0b63a42ecb71deb7a6",
+      "source_record_id": "dft.nts0313.unweighted_sample_size.cy2023.local_bus.unweighted_sample_size",
+      "concept": "dft.nts.unweighted_sample_size",
+      "measure_id": "unweighted_sample_size",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.unweighted_sample_size.cy2023",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 16783
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_83b38b246e06d4f1080b18a6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dca2763f90bc7237adcf5cc2",
+      "source_record_id": "dft.nts0621.unweighted_sample_size.cy2024.cy2024.unweighted_sample_size",
+      "concept": "dft.nts.unweighted_sample_size",
+      "measure_id": "unweighted_sample_size",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.unweighted_sample_size.cy2024",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 6727
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a65f2961cccaa213c5afe6c3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e0046235566085c22894f0a4",
+      "source_record_id": "dft.nts0313.unweighted_sample_size.cy2024.local_bus.unweighted_sample_size",
+      "concept": "dft.nts.unweighted_sample_size",
+      "measure_id": "unweighted_sample_size",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.unweighted_sample_size.cy2024",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 20145
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6f82ec7949865e4f401e49a1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_41f65f99ba1441e2f4ef67af",
+      "source_record_id": "dft.nts0621.unweighted_sample_size.cy2025.cy2025.unweighted_sample_size",
+      "concept": "dft.nts.unweighted_sample_size",
+      "measure_id": "unweighted_sample_size",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0621.unweighted_sample_size.cy2025",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2025",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "60 and over",
+        "transport_mode": "Local bus"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0621: Frequency of local bus use for those aged 60 years and over: England, 2003 onwards",
+        "source_file": "nts0621.ods",
+        "source_sha256": "ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0621-local-bus-use-frequency-2025/2025/ac4b39cabae39149d0cdd3ac000ea4517c40dd6ba90eaa461b356ccc8f36716b/nts0621.ods"
+      },
+      "value": 8147
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9bca3ca32be5544e092ccae5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fc6b1788ff4f48801980b75d",
+      "source_record_id": "dft.nts0313.unweighted_sample_size.cy2025.local_bus.unweighted_sample_size",
+      "concept": "dft.nts.unweighted_sample_size",
+      "measure_id": "unweighted_sample_size",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0313.unweighted_sample_size.cy2025",
+        "groupby_dimension": "dft.transport_mode",
+        "groupby_value_id": "local_bus",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "transport_mode": "Local bus [note 5]"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0313: Frequency of use of different transport modes: England, 2003 onwards",
+        "source_file": "nts0313.ods",
+        "source_sha256": "0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0313-mode-use-frequency-2025/2025/0d9f158cf31e76f6b773717f2657f22055500ff3b8f385a6f87d71342bfd2106/nts0313.ods"
+      },
+      "value": 24845
+    }
+  ]
+}

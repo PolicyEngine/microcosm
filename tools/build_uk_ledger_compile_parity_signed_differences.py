@@ -12,6 +12,7 @@ from microcosm.build.gates import ledger_compile_parity_signed_differences
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
+    align_uk_national_registry_parity_fixture,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
 )
@@ -129,17 +130,69 @@ _DEVOLVED_RENT_FIXTURE_ONLY_RATIONALE = (
 )
 
 _COUNCIL_TAX_BAND_DRIFT_RATIONALE = (
-    "Pinned-source snapshot class: Microcosm and the archived incumbent both "
-    "name the VOA 2025 stock publication, but 1,175 of the 2,541 comparable "
-    "band cells differ between the pinned Ledger release and the archived "
-    "committed CSV (delta -380 to +210 dwellings); the other 1,366 cells are "
-    "exact. Microcosm holds the pinned feed at identity."
+    "Signed basis translation (microcosm#929, ruled by María on 2026-09-11 and "
+    "2026-09-15): the incumbent binds the VOA CTSOP valuation-list stock, every "
+    "banded dwelling including exempt, empty and second homes; Microcosm binds "
+    "the MHCLG Council Taxbase return (chronicle#264), CTB line 7 chargeable "
+    "dwellings after the disabled-relief adjustment (band A adds the A- "
+    "column) minus line 11 second homes minus line 15 empty dwellings, the "
+    "dwellings a household file can carry. England's valuation list runs "
+    "6.3 % over the household rows, so the taxbase cells sit below the VOA "
+    "cells by roughly that margin, authority by authority (Westminster band A "
+    "1,660 VOA against 1,328 taxbase). Receipts: "
+    "experiments/929-council-tax-taxbase-receipts.md Parts C and D."
 )
 
 _COUNCIL_TAX_BAND_FIXTURE_ONLY_RATIONALE = (
-    "Signed coverage gap: Scotland and Northern Ireland are absent from the "
-    "pinned local-authority band feed, City of London band A is suppressed, "
-    "and two Welsh band H rows are absent."
+    "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's "
+    "English band-H cells stay deferred under "
+    "council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 "
+    "authorities), and the City of London and Isles of Scilly cells sit under "
+    "the local-authority support floor. Scotland and Wales now bind their own "
+    "returns, so no coverage gap remains on the incumbent's rows."
+)
+
+_COUNCIL_TAX_SCOTLAND_LEDGER_ONLY_RATIONALE = (
+    "No incumbent counterpart: the incumbent bound VOA local rows for England "
+    "only. Microsm binds the 32 Scottish councils' CTAXBASE chargeable "
+    "dwellings by band A-H (chronicle#264, the concept the "
+    "scotgov.council_tax_stock country rows already bind; Shetland band H is "
+    "signed deferred for support), microcosm#929."
+).replace("Microsm", "Microcosm")
+
+_COUNCIL_TAX_WALES_LEDGER_ONLY_RATIONALE = (
+    "No incumbent counterpart: the incumbent bound VOA local rows for England "
+    "only, and Wales alone has a band I. Microcosm binds the 22 Welsh "
+    "authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus "
+    "h7 empty minus h8 second homes; chronicle#264), microcosm#929."
+)
+
+_MHCLG_REGION_BASIS_RATIONALE = (
+    "Signed basis translation (microcosm#929): the incumbent's "
+    "voa/council_tax/<REGION>/<band> row is the VOA valuation-list stock, all "
+    "banded dwellings; Microcosm's region cell is composed from the 296 "
+    "billing authorities' MHCLG Council Taxbase rows (CTB line 7 plus A- for "
+    "band A, minus lines 11 and 15: occupied chargeable dwellings, "
+    "chronicle#264) and sums to the publisher's England row to the unit. The "
+    "valuation list runs 6.3 % over England's household rows, so the taxbase "
+    "cell sits below the VOA value (North East band A 667,540 VOA against "
+    "621,096 taxbase). Ruled by María 2026-09-11 / 2026-09-15; receipts "
+    "experiments/929-council-tax-taxbase-receipts.md."
+)
+
+_WELSHGOV_COUNTRY_BASIS_RATIONALE = (
+    "Signed basis translation (microcosm#929): the incumbent's "
+    "voa/council_tax/WALES/<band> row is the VOA valuation-list stock; "
+    "Microcosm binds the StatsWales CT1 2025-26 return's chargeable dwellings "
+    "by band A-I minus h7 empty and h8 second homes (chronicle#264; Wales A "
+    "215,380 VOA against 194,973 taxbase). Ruled by María 2026-09-11 / "
+    "2026-09-15; receipts experiments/929-council-tax-taxbase-receipts.md."
+)
+
+_WELSH_BAND_I_LEDGER_ONLY_RATIONALE = (
+    "No incumbent counterpart: Wales alone has a council tax band I and the "
+    "incumbent's VOA rows stop at band H; Microcosm binds welshgov.council_tax_stock.band_i "
+    "from the StatsWales CT1 return (microcosm#929)."
 )
 
 _COUNCIL_TAX_NET_FIXTURE_ONLY_RATIONALE = (
@@ -158,8 +211,8 @@ _DEVOLVED_RENT_METRICS = frozenset(
 )
 
 _COUNCIL_TAX_BAND_METRICS = frozenset(
-    {f"voa/council_tax/{band}" for band in "ABCDEFGH"}
-    | {f"council_tax/band_{band.lower()}" for band in "ABCDEFGH"}
+    {f"voa/council_tax/{band}" for band in "ABCDEFGHI"}
+    | {f"council_tax/band_{band.lower()}" for band in "ABCDEFGHI"}
 )
 
 _UC_METRICS = frozenset(
@@ -382,6 +435,18 @@ def _aligned_fixture(fixture: dict) -> dict:
     return aligned
 
 
+_REGION_TIER_ONS_DRIFT_RATIONALE = (
+    "Region-tier ONS population cell (microcosm#905): the Ledger row binds the "
+    "ONS mid-year estimate by single year of age at Chronicle's region or "
+    "country stamp, held to the comparison period as identity, while the "
+    "incumbent's regional row is an ONS subnational projection rounded to the "
+    "nearest thousand. The difference is projection-versus-estimate vintage "
+    "and rounding, never area or band definition: the nine English regions "
+    "and three nations sum exactly to the retired UK-wide row of the same "
+    "publication."
+)
+
+
 def _add_signed_rationale_notes(
     report: dict[str, object],
     *,
@@ -414,6 +479,20 @@ def _add_signed_rationale_notes(
                 "baseline; it does not redatum the observations to the comparison "
                 "year or create a new year ruling."
             )
+        elif "_by_region@" in name and row.get("kind") == "calibration_drift":
+            row["reason"] = _REGION_TIER_ONS_DRIFT_RATIONALE
+        elif (
+            name.startswith("mhclg.council_tax_stock.")
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _MHCLG_REGION_BASIS_RATIONALE
+        elif (
+            name.startswith("welshgov.council_tax_stock.")
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _WELSHGOV_COUNTRY_BASIS_RATIONALE
+        elif name.startswith("welshgov.council_tax_stock.band_i"):
+            row["reason"] = _WELSH_BAND_I_LEDGER_ONLY_RATIONALE
         elif fixture_resource != "registry_parity_fixture_2025.json":
             continue
         elif name in _CGT_OBSERVED_RATIONALES:
@@ -444,6 +523,10 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
             row["reason"] = _COUNCIL_TAX_BAND_DRIFT_RATIONALE
         elif kind == "fixture_only" and metric in _COUNCIL_TAX_BAND_METRICS:
             row["reason"] = _COUNCIL_TAX_BAND_FIXTURE_ONLY_RATIONALE
+        elif kind == "ledger_only" and prefix.startswith("scotgov.council_tax_stock."):
+            row["reason"] = _COUNCIL_TAX_SCOTLAND_LEDGER_ONLY_RATIONALE
+        elif kind == "ledger_only" and prefix.startswith("welshgov.council_tax_stock."):
+            row["reason"] = _COUNCIL_TAX_WALES_LEDGER_ONLY_RATIONALE
         elif metric == "housing/council_tax_net":
             row["reason"] = _COUNCIL_TAX_NET_FIXTURE_ONLY_RATIONALE
         elif kind == "calibration_drift" and metric in _LOCAL_DRIFT_RATIONALES:
@@ -475,7 +558,7 @@ def _fixture_for_receipt(spec: ParityReceiptSpec) -> dict:
     fixture = _aligned_fixture(_load_fixture(spec.fixture_resource))
     if spec.surface == "local":
         return align_uk_local_registry_parity_fixture(fixture)
-    return fixture
+    return align_uk_national_registry_parity_fixture(fixture)
 
 
 def main() -> None:
