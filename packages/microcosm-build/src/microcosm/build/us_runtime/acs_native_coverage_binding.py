@@ -402,6 +402,31 @@ def _owned(issuance):
     return owned
 
 
+def _verified_source_stats(issuance):
+    """Stat identities of every path ``_verify_sources`` re-reads, without reading."""
+    owned = _owned(issuance)
+    return tuple(
+        _path_stat(paths[role])
+        for paths in owned.snapshots
+        for role, _name, _digest, _size in owned.pins
+    )
+
+
+def _path_stat(path):
+    """One path's stat identity, or why it has none. Never raises."""
+    try:
+        info = Path(path).lstat()
+    except OSError as error:
+        return ("absent", error.errno)
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
 def _verify_sources(snapshots, pins):
     for paths in snapshots:
         for role, _name, digest, size in pins:

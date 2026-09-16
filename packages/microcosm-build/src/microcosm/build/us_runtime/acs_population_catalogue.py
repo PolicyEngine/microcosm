@@ -159,6 +159,37 @@ def _preflight(paths):
     return inventories
 
 
+def _verified_source_stats(value):
+    """Stat identities of every path ``_source_checks`` re-reads, without reading.
+
+    A caller memoising this catalogue's verification uses this as part of its
+    memo signature: the answer it may reuse depends on exactly these files, so
+    a change to any of them must move the signature and force the full check.
+    """
+    owned = _lookup(value)
+    paths = dict(owned.paths)
+    result = [_path_stat(owned.projection_path)]
+    for role, name, _digest, _size in owned.pins:
+        result.append(_path_stat(owned.source_dir / name))
+        result.append(_path_stat(paths[role]))
+    return tuple(result)
+
+
+def _path_stat(path):
+    """One path's stat identity, or why it has none. Never raises."""
+    try:
+        info = Path(path).lstat()
+    except OSError as error:
+        return ("absent", error.errno)
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
 def _source_checks(source_dir, paths, pins):
     _require(housing._pins() == pins, "SOURCE_AUTHORITY_CHANGED")
     for role, name, digest, size in pins:

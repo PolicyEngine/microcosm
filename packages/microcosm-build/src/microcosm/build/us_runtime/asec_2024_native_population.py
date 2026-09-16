@@ -440,6 +440,122 @@ def _validate_state(state):
     )
 
 
+# ---------------------------------------------------------------------------
+# Verification epoch support. The epoch itself is opened by
+# ``survey_population_preparation.verification_epoch``, which imports this
+# module; the state lives here so that this capsule's own borrows are memoised
+# even when they are reached directly rather than through the preparation.
+# Outside an epoch none of this is touched and every borrow re-authenticates in
+# full, exactly as before.
+# ---------------------------------------------------------------------------
+
+_EPOCH_DEPTH = [0]
+_MEMO: dict[int, tuple] = {}
+
+
+def _path_stat(path):
+    """One path's stat identity, or why it has none. Never raises."""
+    try:
+        info = Path(path).lstat()
+    except OSError as error:
+        return ("absent", error.errno)
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _verified_source_stats(value):
+    """Stat identities of the seven source files, and of their directories.
+
+    ``_file_identity`` opens ``O_NOFOLLOW`` on the final component only, so the
+    parent directories join the signature here: an added or removed sibling
+    moves a directory's own mtime and ctime, which is how a roster change
+    reaches a memo that never lists the roster.
+    """
+    entry = _ISSUED.get(id(value))
+    if entry is None or entry[0]() is not value:
+        return ("unissued",)
+    paths = [Path(row[0]) for row in entry[2].source_files]
+    directories = sorted({path.parent for path in paths})
+    return (
+        tuple(_path_stat(path) for path in paths),
+        tuple(_path_stat(directory) for directory in directories),
+    )
+
+
+def _parent_frame_witness(value):
+    """A read-free structural identity of this capsule's two live Frames."""
+    entry = _ISSUED.get(id(value))
+    if entry is None or entry[0]() is not value:
+        return ("unissued",)
+    state = entry[2]
+    return (
+        preparation_witness(state.frame),
+        preparation_witness(state.parent.frame),
+    )
+
+
+def preparation_witness(frame):
+    """Deferred to the preparation owner, which defines the witness shape.
+
+    Imported lazily: the preparation module imports this one, so the dependency
+    can only run in this direction once both modules exist.
+    """
+    from . import survey_population_preparation as preparation
+
+    return preparation._frame_witness(frame)
+
+
+def _memo_signature(value, state):
+    borrowed = (state.parent, state.coverage, state.anchors, state.fields)
+    return (
+        _verified_source_stats(value),
+        tuple(row[1] for row in state.source_files),
+        tuple((id(item), id(getattr(item, "payload", None))) for item in borrowed),
+        _parent_frame_witness(value),
+    )
+
+
+def _memoized_validate(owner, state):
+    """Validate ``state`` unless this epoch already validated it unchanged."""
+    if not _EPOCH_DEPTH[0]:
+        _validate_state(state)
+        return
+    _require(_encode(_implementation()) == state.producer, "PRODUCER_CHANGED")
+    signature = _memo_signature(owner, state)
+    entry = _MEMO.get(id(owner))
+    if entry is not None and entry[0]() is owner and entry[1] == signature:
+        return
+    _validate_state(state)
+    _MEMO[id(owner)] = (weakref.ref(owner), signature, state)
+
+
+def _epoch_enter():
+    _EPOCH_DEPTH[0] += 1
+
+
+def _epoch_exit(failed):
+    """Re-validate every memoised capsule in full, with the memo bypassed."""
+    _EPOCH_DEPTH[0] -= 1
+    try:
+        if failed:
+            return
+        for key, entry in list(_MEMO.items()):
+            owner = entry[0]()
+            if owner is None:
+                del _MEMO[key]
+                continue
+            _validate_state(entry[2])
+            _MEMO[key] = (entry[0], _memo_signature(owner, entry[2]), entry[2])
+    finally:
+        if not _EPOCH_DEPTH[0]:
+            _MEMO.clear()
+
+
 @dataclass(frozen=True, slots=True, weakref_slot=True)
 class AuthenticatedAsec2024NativePopulation:
     """Process-issued population; every accessor verifies its full live binding."""
@@ -457,7 +573,7 @@ class AuthenticatedAsec2024NativePopulation:
                 and self.payload == entry[1],
                 "UNISSUED_OR_CHANGED",
             )
-            _validate_state(entry[2])
+            _memoized_validate(self, entry[2])
             _require(
                 _ISSUED.get(id(self)) is entry
                 and type(self.payload) is bytes

@@ -412,6 +412,29 @@ def _current_records_identity(state):
     )
 
 
+def _verified_source_stats(value):
+    """Stat identities of every source file this catalogue re-reads per borrow."""
+    entry = _ISSUED.get(id(value))
+    if entry is None or entry[0]() is not value:
+        return ("unissued",)
+    return tuple(_path_stat(row[0]) for row in entry[2].source_files)
+
+
+def _path_stat(path):
+    """One path's stat identity, or why it has none. Never raises."""
+    try:
+        info = Path(path).lstat()
+    except OSError as error:
+        return ("absent", error.errno)
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
 def _validate_state(state):
     _require(_source_authority() == state.source_authority, "SOURCE_AUTHORITY_CHANGED")
     _require(_encode(_implementation()) == state.producer, "PRODUCER_CHANGED")

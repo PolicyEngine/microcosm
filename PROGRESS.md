@@ -1422,7 +1422,8 @@ Branch `native-verify-once`, worktree `~/PolicyEngine/_worktrees/microcosm-verif
 base `f7bb88525a78786f91bc3ebe2083ef4b1c85de18` (PR #893 head). Started
 2026-09-15.
 
-**State (2026-09-15, opening):** investigation only. Nothing edited yet.
+**State (2026-09-16):** mechanisms 3, 4 and 5 landed with proofs; the
+verification epoch (mechanisms 1 and 2) is implemented and under test.
 
 **Goal.** The 9/15 pilot v5 measurement
 (`~/PolicyEngine/_recovered/pilot-runs/native45-v5/out.md` §2) attributes ~79 %
@@ -1434,8 +1435,43 @@ without moving any digest value.
 
 **Done:** read the evidence base; located all five mechanisms at base HEAD.
 
-**Next:** pin-surface map, memo design note, implementation, tests, measurement,
+**Done (2026-09-16):**
+
+- `docs/us-native-verification-once.md` — the design note, written before any
+  capsule changed.
+- **Mechanism 5**: `_object_stream` builds each plain float/int/bool column's
+  context-digest bytes with numpy. Byte-identical against a verbatim copy of the
+  pre-change body over every column kind, the float specials, non-canonical NaN
+  payloads, both int64 endpoints and a 200-frame random sweep. 0.47 s -> 0.09 s
+  on a 6,928 x 240 frame.
+- **Mechanism 4**: the ACS record fence now uses `bytes.find`/`bytes.count` with
+  cached terminator cursors. Proven against the byte loop on 46,655 exhaustive
+  short strings across five ceiling settings, 4,500 random strings, and the real
+  staged `csv_pus.zip`: 3,422,890 records, identical digests, 226.9 s -> 4.6 s
+  (49x). Re-pins `_ACCEPTED["acs_person_coverage_authentication.py"]`.
+- **Mechanism 3**: `run_graph` carries a `_SourceIdentities` cache keyed on stat
+  signatures, and re-derives every source in full before building the manifest.
+  `RunManifest.source_identities` records it without moving any existing value.
+  The refusal it protects had no test at all; `test_graph_executor_source_identity`
+  now pins it. Graph suite 108 s -> 72 s.
+- **Mechanisms 1 and 2**: `survey_population_preparation.verification_epoch()`,
+  an opt-in scoped memo. Cheap tier every borrow (live authority, attached
+  payloads, producer encoding, roster stat identities); expensive tier skipped
+  only while a signature over every path it reads and every live buffer it
+  digests is unchanged; unconditional full re-validation on leaving the epoch.
+  The two moved inventory contracts are re-derived (below).
+
+**Next:** finish the epoch test run, wire the epoch into the graph entry points,
+before/after probe measurement, docs that call the executor check "post-run",
 draft PR.
+
+**Pins re-derived so far:**
+
+| pin | old | new |
+|---|---|---|
+| `acs_native_coverage_binding._ACCEPTED["acs_person_coverage_authentication.py"]` | `475aa795…fe85bcff` | `9ec68721…d88e8e49f` |
+| `graph_implementation_inventory.json` `survey_population_preparation.py` `unbound_uses_sha256` | `29c09f6f…d296ef91` | `d114117c…dd4005910` |
+| `graph_implementation_inventory.json` `asec_2024_native_population.py` `unbound_uses_sha256` | `71463df4…d7f287608` | `8e15860c…5ca2e902db` |
 
 **Lane notes.** Root `out.md` is a tracked file holding the Amendment 19 lane's
 committed report; this lane's report goes to
