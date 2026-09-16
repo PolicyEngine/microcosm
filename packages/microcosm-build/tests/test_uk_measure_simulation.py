@@ -593,13 +593,13 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # held out of the objective — carer and childcare as model concept gaps,
     # the any-tenure housing row as a structural bias — signed by María in
     # review of microcosm#921 with a one-month window.
-    "dwp/uc/elements/": 3,
+    "dwp.uc.households_": 3,
 }
 
 _UC_ELEMENT_REGISTER_ROWS = (
-    "dwp/uc/elements/carer",
-    "dwp/uc/elements/childcare",
-    "dwp/uc/elements/housing",
+    "dwp.uc.households_carer_element",
+    "dwp.uc.households_childcare_element",
+    "dwp.uc.households_housing_element",
 )
 
 _A16_UNREACHABLE_ROWS = (
@@ -697,15 +697,17 @@ def test_packaged_exclusions_load():
         assert "docs/uk-uc-baseline-2026-09-10.md" in entry["adjudication"], entry[
             "name"
         ]
-    housing = next(e for e in elements if e["name"] == "dwp/uc/elements/housing")
+    housing = next(
+        e for e in elements if e["name"] == "dwp.uc.households_housing_element"
+    )
     assert "112,518 of 4,037,650" in housing["reason"]
     # The four element rows that stay in the objective are not on the register.
     for riding in (
-        "dwp/uc/elements/lcwra",
-        "dwp/uc/elements/housing_social_rented",
-        "dwp/uc/elements/housing_private_rented",
-        "dwp/uc/elements/deductions",
-        "obr/universal_credit",
+        "dwp.uc.households_lcwra_element",
+        "dwp.uc.households_housing_element_social_rented",
+        "dwp.uc.households_housing_element_private_rented",
+        "dwp.uc.households_with_deduction",
+        "obr.universal_credit",
     ):
         assert riding not in names, riding
 
@@ -835,3 +837,26 @@ def test_exclusion_loader_requires_tracking(tmp_path: Path):
                 {"schema_version": 2, "exclusions": [_entry(tracking="")]},
             )
         )
+
+
+def test_packaged_exclusion_names_resolve_to_committed_references():
+    """Every register name must be a committed reference name, not a metric.
+
+    The applier matches ``spec.name``, which is the reference name
+    (``dwp.uc.households_carer_element``), so an entry keyed by the binding's
+    metric name (``dwp/uc/elements/carer``) matches nothing and the
+    calibration run refuses with "matched zero registry specs". The three
+    #882 element rows shipped that way in microcosm#921; this pins the
+    identity so a register edit cannot drift off the reference surface again.
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+
+    reference_names = {
+        reference.name for reference in load_country_spec("uk").target_references
+    }
+    exclusions = load_uk_calibration_measure_exclusions()
+    unresolved = sorted(
+        entry["name"] for entry in exclusions if entry["name"] not in reference_names
+    )
+    assert unresolved == [], unresolved
