@@ -1,11 +1,11 @@
 {
- "compiled_count": 613,
+ "compiled_count": 630,
  "counts_by_kind": {
   "calibration_drift": 370,
   "fixture_only": 71,
-  "ledger_only": 47
+  "ledger_only": 64
  },
- "difference_count": 488,
+ "difference_count": 505,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -557,6 +557,125 @@
    "kind": "ledger_only",
    "ledger_value": 1130214000.0,
    "name": "dft.bus_net_support.london",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 497.0,
+   "name": "dwp.benefit_cap.capped_households_1000_01_to_1100",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24274.0,
+   "name": "dwp.benefit_cap.capped_households_100_01_to_200",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 380.0,
+   "name": "dwp.benefit_cap.capped_households_1100_01_to_1200",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 239.0,
+   "name": "dwp.benefit_cap.capped_households_1200_01_to_1300",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 627.0,
+   "name": "dwp.benefit_cap.capped_households_1300_01_and_above",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16240.0,
+   "name": "dwp.benefit_cap.capped_households_200_01_to_300",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10562.0,
+   "name": "dwp.benefit_cap.capped_households_300_01_to_400",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7813.0,
+   "name": "dwp.benefit_cap.capped_households_400_01_to_500",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4431.0,
+   "name": "dwp.benefit_cap.capped_households_500_01_to_600",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3116.0,
+   "name": "dwp.benefit_cap.capped_households_600_01_to_700",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1902.0,
+   "name": "dwp.benefit_cap.capped_households_700_01_to_800",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1328.0,
+   "name": "dwp.benefit_cap.capped_households_800_01_to_900",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 824.0,
+   "name": "dwp.benefit_cap.capped_households_900_01_to_1000",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 38402.0,
+   "name": "dwp.benefit_cap.capped_households_up_to_100",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1685702.9166666667,
+   "name": "dwp.hb.households",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 304422.6666666667,
+   "name": "dwp.hb.households_private_rented",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1381089.75,
+   "name": "dwp.hb.households_social_rented",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

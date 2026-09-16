@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-df35af7e-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 627,
-  "contract_target_count": 228,
-  "active_reference_count": 613,
+  "candidate_count": 644,
+  "contract_target_count": 245,
+  "active_reference_count": 630,
   "status_counts": {
-    "active": 613,
+    "active": 630,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 7
   },
@@ -2019,6 +2019,74 @@
     "obr.universal_credit": {
       "geography_level": "country",
       "geography_id": "K02000001"
+    },
+    "dwp.hb.households": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.hb.households_social_rented": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.hb.households_private_rented": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_up_to_100": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_100_01_to_200": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_200_01_to_300": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_300_01_to_400": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_400_01_to_500": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_500_01_to_600": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_600_01_to_700": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_700_01_to_800": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_800_01_to_900": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_900_01_to_1000": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_1000_01_to_1100": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_1100_01_to_1200": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_1200_01_to_1300": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.benefit_cap.capped_households_1300_01_and_above": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
     }
   },
   "genuine_sum_residue": [
@@ -4893,6 +4961,76 @@
     {
       "name": "nithc.public_transport_support",
       "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_up_to_100",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_100_01_to_200",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_200_01_to_300",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_300_01_to_400",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_400_01_to_500",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_500_01_to_600",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_600_01_to_700",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_700_01_to_800",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_800_01_to_900",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_900_01_to_1000",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_1000_01_to_1100",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_1100_01_to_1200",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_1200_01_to_1300",
+      "from": "2025-11",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_1300_01_and_above",
+      "from": "2025-11",
       "to": "2025"
     }
   ],
@@ -12667,6 +12805,264 @@
           "resolved_value": 79286349139.54411,
           "resolved_fact_period": "2025",
           "resolved_fact_key": "ledger_aggregate_fact_v2_e680fe36115d1372d12072e1"
+        }
+      ]
+    },
+    "dwp.hb.households": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.hb.households",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 1685702.9166666667,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f2ecf4d38ef4dfc796336538"
+        }
+      ]
+    },
+    "dwp.hb.households_social_rented": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.hb.households_social_rented",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 1381089.75,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_40b45c74a40b8d085a8c28e2"
+        }
+      ]
+    },
+    "dwp.hb.households_private_rented": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.hb.households_private_rented",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 304422.6666666667,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_02281858b7b0d71477e429f3"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_up_to_100": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_up_to_100",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 38402.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_220b82ab05bec494e6dc9fe9"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_100_01_to_200": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_100_01_to_200",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 24274.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4a9e2cc181aee62e1eccd188"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_200_01_to_300": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_200_01_to_300",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 16240.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5ae8289242eabcffab23f32f"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_300_01_to_400": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_300_01_to_400",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 10562.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a503d4e938aaf386720b96c4"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_400_01_to_500": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_400_01_to_500",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 7813.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_df764409769b2078c69ff113"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_500_01_to_600": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_500_01_to_600",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 4431.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3d0e936b240ba62209777ee3"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_600_01_to_700": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_600_01_to_700",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 3116.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1d68398dd88958a8700dcfac"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_700_01_to_800": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_700_01_to_800",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1902.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_999288b0fa67d7f657810a11"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_800_01_to_900": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_800_01_to_900",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1328.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b7a2d0cec131abfd0cb81ba0"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_900_01_to_1000": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_900_01_to_1000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 824.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_80c8fa82f3e07357e677ae93"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_1000_01_to_1100": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_1000_01_to_1100",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 497.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cf55cee33404d2283800b2b5"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_1100_01_to_1200": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_1100_01_to_1200",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 380.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6f836a33391f4352151bd27f"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_1200_01_to_1300": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_1200_01_to_1300",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 239.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ad08714cf39be9ccf0450cf2"
+        }
+      ]
+    },
+    "dwp.benefit_cap.capped_households_1300_01_and_above": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.benefit_cap.capped_households_1300_01_and_above",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 627.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a3fee6cdec1b46a15a3b1434"
         }
       ]
     }
