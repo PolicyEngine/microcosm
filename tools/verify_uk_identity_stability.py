@@ -31,6 +31,7 @@ from microcosm.build.uk_runtime.frs_take_up import (
     aggregate_person_reported_to_benunit,
     derive_frs_take_up,
     uc_age_eligible_benunits,
+    uk_take_up_population_policy,
 )
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
@@ -98,6 +99,7 @@ def e4_identity_receipt(
     person = frame.table("person")
     benunit = frame.table("benunit").copy()
     household = frame.table("household")
+    population_policy = uk_take_up_population_policy(uk_time_period(frame))
     if len(lha_category) != len(benunit):
         raise ValueError("LHA_category materialization must align to benunit rows.")
     benunit["LHA_category"] = [_enum_name(value) for value in lha_category]
@@ -109,7 +111,9 @@ def e4_identity_receipt(
             benunit_t,
             anchors=anchors,
             contract=contract,
-            uc_age_eligible=uc_age_eligible_benunits(person_t, benunit_t),
+            uc_age_eligible=uc_age_eligible_benunits(
+                person_t, benunit_t, population_policy
+            ),
         )
         take_up.index = benunit_t["benunit_id"].to_numpy()
         person_draws = derive_frs_person_draws(person_t, contract=contract)

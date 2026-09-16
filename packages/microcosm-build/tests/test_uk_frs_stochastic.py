@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import json
+from dataclasses import replace
+from importlib import metadata, resources
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.source_manifest import (
+    SourceManifest,
+    SourceOperationSpec,
+    SourceStageSpec,
+)
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_brma import (
     UKFRSBRMAStageTransform,
@@ -23,13 +31,33 @@ from microcosm.build.uk_runtime.frs_person_draws import (
 )
 from microcosm.build.uk_runtime.frs_take_up import (
     FRS_TAKE_UP_OUTPUT_COLUMNS,
-    UK_STATE_PENSION_AGE,
     UKFRSTakeUpStageTransform,
+    UKTakeUpPopulationPolicy,
     aggregate_person_reported_to_benunit,
+    assert_take_up_stage_population_declaration,
     derive_frs_take_up,
     uc_age_eligible_benunits,
+    uk_take_up_population_policy,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
+
+# The engine's 2025 working-age bounds (is_adult at 18, State Pension age 66),
+# injected so the hermetic tests need no engine; the lockstep test below checks
+# the reader returns exactly this.
+_POLICY = UKTakeUpPopulationPolicy(
+    adult_age=18, state_pension_age=66, instant="2025-01-01", source="test"
+)
+
+
+def _take_up_stage() -> SourceStageSpec:
+    manifest = SourceManifest.from_mapping(
+        json.loads(
+            resources.files("microcosm.build.uk")
+            .joinpath("source_stages.json")
+            .read_text(encoding="utf-8")
+        )
+    )
+    return next(stage for stage in manifest.stages if stage.stage == "frs_take_up")
 
 
 class _Contract:
@@ -120,7 +148,9 @@ def test_take_up_anchor_missing_source_column_fails_loud() -> None:
 
 def test_take_up_anchors_or_over_persons_and_stage_writes_outputs() -> None:
     frame = _frame()
-    transformed = UKFRSTakeUpStageTransform(contract=_Contract(), stage=None)(frame)
+    transformed = UKFRSTakeUpStageTransform(
+        contract=_Contract(), stage=_take_up_stage(), population_policy=_POLICY
+    )(frame)
     benunit = transformed.table("benunit")
 
     anchors = aggregate_person_reported_to_benunit(
@@ -243,9 +273,15 @@ def test_uc_take_up_population_excludes_units_without_a_working_age_adult() -> N
     frame = _frame()
     person, benunit = frame.table("person"), frame.table("benunit")
 
-    eligible = uc_age_eligible_benunits(person, benunit)
+    eligible = uc_age_eligible_benunits(person, benunit, _POLICY)
     assert eligible.tolist() == [False, True, False]  # children only / 40 / 70
-    assert UK_STATE_PENSION_AGE == 66
+    # The bounds are the engine's is_WA_adult edges: 17 is out, 18 in, 66 out.
+    assert _POLICY.working_age(np.array([17, 18, 65, 66])).tolist() == [
+        False,
+        True,
+        True,
+        False,
+    ]
 
     anchors = aggregate_person_reported_to_benunit(person, benunit)
     derived = derive_frs_take_up(
@@ -265,16 +301,47 @@ def test_uc_take_up_population_excludes_units_without_a_working_age_adult() -> N
             benunit, anchors=anchors, contract=_Contract(), uc_age_eligible=eligible[:2]
         )
     with pytest.raises(KeyError, match="person.age is missing"):
-        uc_age_eligible_benunits(person.drop(columns=["age"]), benunit)
+        uc_age_eligible_benunits(person.drop(columns=["age"]), benunit, _POLICY)
+
+
+def test_take_up_stage_refuses_a_manifest_that_drops_the_population_declaration() -> (
+    None
+):
+    """The manifest's population declaration is read, not decorative."""
+
+    stage = _take_up_stage()
+    assert_take_up_stage_population_declaration(stage)
+
+    stripped = [
+        SourceOperationSpec(op.kind, {**op.parameters, "population": "everyone"})
+        if op.parameters.get("output") == "would_claim_uc"
+        else op
+        for op in stage.operations
+    ]
+    broken = replace(stage, operations=tuple(stripped))
+    with pytest.raises(ValueError, match="population='uc_age_eligible'"):
+        assert_take_up_stage_population_declaration(broken)
+    with pytest.raises(ValueError, match="population='uc_age_eligible'"):
+        UKFRSTakeUpStageTransform(
+            contract=_Contract(), stage=broken, population_policy=_POLICY
+        )(_frame())
 
 
 @pytest.mark.requires_uk
-def test_uc_take_up_state_pension_age_constant_matches_the_engine() -> None:
-    """The stage's 66 is the engine's State Pension age for every adult in 2025."""
+def test_uc_take_up_population_policy_matches_the_engine_working_age_test() -> None:
+    """The policy read from the engine reproduces is_WA_adult for every age."""
 
     policyengine_uk = pytest.importorskip("policyengine_uk")
 
-    ages = list(range(16, 101))
+    policy = uk_take_up_population_policy(2025)
+    assert policy == UKTakeUpPopulationPolicy(
+        adult_age=18,
+        state_pension_age=66,
+        instant="2025-01-01",
+        source="policyengine-uk parameters " + metadata.version("policyengine-uk"),
+    )
+
+    ages = list(range(0, 101))
     people = {f"p{age}": {"age": {2025: age}} for age in ages}
     sim = policyengine_uk.Simulation(
         situation={
@@ -283,9 +350,9 @@ def test_uc_take_up_state_pension_age_constant_matches_the_engine() -> None:
             "households": {f"h{age}": {"members": [f"p{age}"]} for age in ages},
         }
     )
-    is_sp_age = np.asarray(sim.calculate("is_SP_age", 2025), dtype=bool)
+    is_wa_adult = np.asarray(sim.calculate("is_WA_adult", 2025), dtype=bool)
 
-    assert is_sp_age.tolist() == [age >= UK_STATE_PENSION_AGE for age in ages]
+    assert is_wa_adult.tolist() == policy.working_age(np.array(ages)).tolist()
 
 
 def test_uc_childcare_take_up_is_drawn_by_family_type() -> None:
@@ -298,7 +365,7 @@ def test_uc_childcare_take_up_is_drawn_by_family_type() -> None:
         benunit,
         anchors=anchors,
         contract=_Contract(),
-        uc_age_eligible=uc_age_eligible_benunits(person, benunit),
+        uc_age_eligible=uc_age_eligible_benunits(person, benunit, _POLICY),
     )
     # Benefit unit 20 is the couple; its rate is 0.0 in the fixture contract.
     assert not derived.loc[1, "would_claim_uc_childcare"]
@@ -308,5 +375,5 @@ def test_uc_childcare_take_up_is_drawn_by_family_type() -> None:
             benunit.drop(columns=["is_married"]),
             anchors=anchors,
             contract=_Contract(),
-            uc_age_eligible=uc_age_eligible_benunits(person, benunit),
+            uc_age_eligible=uc_age_eligible_benunits(person, benunit, _POLICY),
         )

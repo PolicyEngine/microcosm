@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import metadata
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -46,16 +48,22 @@ UK_TAKE_UP_ANCHOR_AGGREGATES = {
     "universal_credit_reported_anchor": "universal_credit_reported",
 }
 UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
-# Universal Credit is claimable only by a benefit unit with an adult under
-# State Pension age (policyengine-uk ``is_uc_eligible`` requires a working-age
-# adult). The draw's population is therefore those units; a unit with every
-# adult at or over State Pension age is never drawn (#882, microcosm#867).
-# State Pension age is 66 for everyone who can reach it in the 2024-25 release
-# and the 2025 calibration year (it rises from April 2026); the engine
-# lockstep test pins that equivalence.
-UK_STATE_PENSION_AGE = 66
+# Universal Credit is claimable only by a benefit unit with a working-age
+# adult (policyengine-uk ``is_uc_eligible`` requires ``is_WA_adult``, which is
+# ``is_adult & ~is_SP_age``). The draw's population is therefore those units;
+# a unit with every adult at or over State Pension age is never drawn (#882,
+# microcosm#867). The bounds come from the engine at the build instant through
+# ``uk_take_up_population_policy``: State Pension age from the
+# ``gov.dwp.state_pension.age`` parameters and the adult threshold from the
+# engine's ``is_adult`` formula (a constant there, pinned by the lockstep test).
+# The stage manifest declares the same population on the ``would_claim_uc``
+# operation; ``assert_take_up_stage_population_declaration`` refuses a manifest
+# that stops saying so, so the declaration and the code cannot drift apart.
+UK_ENGINE_ADULT_AGE = 18
 UK_UC_AGE_ELIGIBLE_AGGREGATE = "uc_age_eligible"
 UK_UC_AGE_ELIGIBLE_METHOD = "any_adult_under_state_pension_age"
+UK_UC_AGE_ELIGIBLE_SOURCE = "age"
+UK_UC_TAKE_UP_OUTPUT = "would_claim_uc"
 # The Universal Credit childcare element is claimed at one rate per family
 # type (DWP publishes the single / couple split of the households receiving
 # it); the couple rate applies where the benefit unit is a couple (#882).
@@ -87,25 +95,113 @@ UK_TAKE_UP_SIGNAL_OUTPUTS = (
 
 
 @dataclass(frozen=True)
+class UKTakeUpPopulationPolicy:
+    """Engine bounds of the Universal Credit take-up population at one instant.
+
+    ``adult_age`` is the engine's ``is_adult`` threshold and
+    ``state_pension_age`` its ``gov.dwp.state_pension.age`` value, so a unit is
+    in the population exactly when the engine's ``is_WA_adult`` is true for one
+    of its members.
+    """
+
+    adult_age: int
+    state_pension_age: int
+    instant: str
+    source: str
+
+    def working_age(self, age: pd.Series | np.ndarray) -> np.ndarray:
+        values = np.asarray(age, dtype=float)
+        return (values >= self.adult_age) & (values < self.state_pension_age)
+
+
+def uk_take_up_population_policy(build_period: int | str) -> UKTakeUpPopulationPolicy:
+    """Read the working-age bounds from the engine at ``{year}-01-01``."""
+
+    try:
+        import policyengine_uk
+        from policyengine_core.parameters import ParameterNode
+    except ImportError as exc:
+        raise ImportError(
+            "UK take-up population bounds require `uv sync --all-packages --extra uk`."
+        ) from exc
+
+    parameters = ParameterNode(
+        directory_path=str(Path(policyengine_uk.__file__).parent / "parameters")
+    )
+    instant = f"{int(build_period)}-01-01"
+    ages = parameters.gov.dwp.state_pension.age
+    male, female = float(ages.male(instant)), float(ages.female(instant))
+    if male != female or not float(male).is_integer():
+        raise ValueError(
+            "the take-up population needs one State Pension age for every adult "
+            f"at {instant}; the engine has male {male} and female {female}, so the "
+            "stage must consume sex before it can form the population"
+        )
+    return UKTakeUpPopulationPolicy(
+        adult_age=UK_ENGINE_ADULT_AGE,
+        state_pension_age=int(male),
+        instant=instant,
+        source="policyengine-uk parameters " + metadata.version("policyengine-uk"),
+    )
+
+
+def assert_take_up_stage_population_declaration(stage: SourceStageSpec) -> None:
+    """Refuse a manifest whose declared UC population differs from the code's."""
+
+    declared_aggregate = any(
+        op.kind == "aggregate_person_to_benunit"
+        and op.parameters.get("method") == UK_UC_AGE_ELIGIBLE_METHOD
+        and dict(op.parameters.get("aggregates") or {})
+        == {UK_UC_AGE_ELIGIBLE_AGGREGATE: UK_UC_AGE_ELIGIBLE_SOURCE}
+        for op in stage.operations
+    )
+    declared_population = any(
+        op.kind == "assign_binary_with_anchored_residual"
+        and op.parameters.get("output") == UK_UC_TAKE_UP_OUTPUT
+        and op.parameters.get("population") == UK_UC_AGE_ELIGIBLE_AGGREGATE
+        for op in stage.operations
+    )
+    if not (declared_aggregate and declared_population):
+        raise ValueError(
+            f"stage {stage.stage!r} must declare the {UK_UC_AGE_ELIGIBLE_AGGREGATE!r} "
+            f"aggregate ({UK_UC_AGE_ELIGIBLE_METHOD} over "
+            f"{UK_UC_AGE_ELIGIBLE_SOURCE}) and population={UK_UC_AGE_ELIGIBLE_AGGREGATE!r} "
+            f"on the {UK_UC_TAKE_UP_OUTPUT!r} operation; the code draws Universal "
+            "Credit take-up over that population and refuses a manifest that says "
+            "otherwise"
+        )
+
+
+@dataclass(frozen=True)
 class UKFRSTakeUpStageTransform:
     """Whole-stage callable for UK benefit-unit take-up assignments."""
 
     contract: UKTakeUpContract
     stage: SourceStageSpec
+    population_policy: UKTakeUpPopulationPolicy | None = None
 
     def __call__(self, frame: Frame) -> Frame:
-        return add_frs_take_up(frame, contract=self.contract)
+        assert_take_up_stage_population_declaration(self.stage)
+        policy = self.population_policy or uk_take_up_population_policy(
+            uk_time_period(frame)
+        )
+        return add_frs_take_up(frame, contract=self.contract, population_policy=policy)
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
         return FRS_TAKE_UP_OUTPUT_COLUMNS
 
 
-def add_frs_take_up(frame: Frame, *, contract: UKTakeUpContract) -> Frame:
+def add_frs_take_up(
+    frame: Frame,
+    *,
+    contract: UKTakeUpContract,
+    population_policy: UKTakeUpPopulationPolicy,
+) -> Frame:
     person = frame.table("person").copy()
     benunit = frame.table("benunit").copy()
     anchors = aggregate_person_reported_to_benunit(person, benunit)
-    uc_age_eligible = uc_age_eligible_benunits(person, benunit)
+    uc_age_eligible = uc_age_eligible_benunits(person, benunit, population_policy)
     derived = derive_frs_take_up(
         benunit, anchors=anchors, contract=contract, uc_age_eligible=uc_age_eligible
     )
@@ -144,8 +240,12 @@ def aggregate_person_reported_to_benunit(
     return grouped.reset_index(drop=True)
 
 
-def uc_age_eligible_benunits(person: pd.DataFrame, benunit: pd.DataFrame) -> np.ndarray:
-    """True where the benefit unit has an adult under State Pension age."""
+def uc_age_eligible_benunits(
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    policy: UKTakeUpPopulationPolicy,
+) -> np.ndarray:
+    """True where the benefit unit has a working-age adult under ``policy``."""
 
     if "age" not in person.columns:
         raise KeyError(
@@ -153,7 +253,7 @@ def uc_age_eligible_benunits(person: pd.DataFrame, benunit: pd.DataFrame) -> np.
             "cannot be formed without it"
         )
     age = pd.to_numeric(person["age"], errors="coerce").fillna(0)
-    eligible_adult = (age >= 16) & (age < UK_STATE_PENSION_AGE)
+    eligible_adult = policy.working_age(age)
     eligible_ids = set(person.loc[eligible_adult, "person_benunit_id"])
     return benunit["benunit_id"].isin(eligible_ids).to_numpy(dtype=bool)
 
@@ -240,12 +340,14 @@ def uk_take_up_signal_gate(
     *,
     contract: UKTakeUpContract | None = None,
     maximum_share_deviation: float = 0.05,
+    population_policy: UKTakeUpPopulationPolicy | None = None,
 ) -> GateResult:
     """Require non-constant UK stochastic flags near contract target shares."""
 
     resolved = contract if contract is not None else load_uk_take_up_contract()
     failures: list[str] = []
     details: dict[str, object] = {}
+    policy: UKTakeUpPopulationPolicy | None = population_policy
     for entity, output, key in UK_TAKE_UP_SIGNAL_OUTPUTS:
         table = frame.table(entity)
         if output not in table.columns:
@@ -257,9 +359,18 @@ def uk_take_up_signal_gate(
         population = np.ones(values.shape, dtype=bool)
         if key == "universal_credit":
             # The contract rate is a share of the units that can claim: those
-            # with an adult under State Pension age. The gate measures the
-            # realized share on the same population.
-            population = uc_age_eligible_benunits(frame.table("person"), table)
+            # with a working-age adult under the engine's bounds at the build
+            # instant. The gate measures the realized share on the same
+            # population.
+            if policy is None:
+                policy = uk_take_up_population_policy(uk_time_period(frame))
+            population = uc_age_eligible_benunits(frame.table("person"), table, policy)
+            details["universal_credit_population_policy"] = {
+                "adult_age": policy.adult_age,
+                "state_pension_age": policy.state_pension_age,
+                "instant": policy.instant,
+                "source": policy.source,
+            }
         if not population.any() or float(weights[population].sum()) <= 0.0:
             failures.append(
                 f"{entity}.{output}: no unit in the draw's population carries "

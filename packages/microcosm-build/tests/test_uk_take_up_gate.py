@@ -11,9 +11,14 @@ from microcosm.build.uk_runtime.frs_household_draws import (
 )
 from microcosm.build.uk_runtime.frs_take_up import (
     FRS_TAKE_UP_OUTPUT_COLUMNS,
+    UKTakeUpPopulationPolicy,
     uk_take_up_signal_gate,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
+
+_POLICY = UKTakeUpPopulationPolicy(
+    adult_age=18, state_pension_age=66, instant="2025-01-01", source="test"
+)
 
 
 class _Contract:
@@ -79,7 +84,9 @@ def _frame(*, brma_values=("LONDON_A", "LONDON_B")):
 
 
 def test_take_up_gate_seeded_fixture_passes() -> None:
-    result = uk_take_up_signal_gate(_frame(), contract=_Contract())
+    result = uk_take_up_signal_gate(
+        _frame(), contract=_Contract(), population_policy=_POLICY
+    )
 
     assert result.passed is True
     assert "benunit.would_claim_child_benefit" in result.details
@@ -89,7 +96,9 @@ def test_take_up_gate_constant_column_fails() -> None:
     frame = _frame()
     frame.table("benunit")["would_claim_uc"] = True
 
-    result = uk_take_up_signal_gate(frame, contract=_Contract())
+    result = uk_take_up_signal_gate(
+        frame, contract=_Contract(), population_policy=_POLICY
+    )
 
     assert result.passed is False
     assert "constant column" in " ".join(result.failures)
@@ -99,7 +108,9 @@ def test_take_up_gate_out_of_band_share_fails() -> None:
     frame = _frame()
     frame.table("household")["property_purchased"] = [True] * 9 + [False]
 
-    result = uk_take_up_signal_gate(frame, contract=_Contract())
+    result = uk_take_up_signal_gate(
+        frame, contract=_Contract(), population_policy=_POLICY
+    )
 
     assert result.passed is False
     assert "property_purchased" in " ".join(result.failures)
@@ -160,7 +171,9 @@ def test_take_up_gate_measures_uc_share_over_units_with_a_working_age_adult() ->
     benunit = frame.table("benunit")
     benunit.loc[benunit["benunit_id"] >= 207, "would_claim_uc"] = True
 
-    result = uk_take_up_signal_gate(frame, contract=_Contract())
+    result = uk_take_up_signal_gate(
+        frame, contract=_Contract(), population_policy=_POLICY
+    )
 
     detail = result.details["benunit.would_claim_uc"]
     assert detail["population_units"] == 6
@@ -172,7 +185,9 @@ def test_take_up_gate_fails_when_the_uc_population_is_empty() -> None:
     frame = _frame()
     frame.table("person")["age"] = 70
 
-    result = uk_take_up_signal_gate(frame, contract=_Contract())
+    result = uk_take_up_signal_gate(
+        frame, contract=_Contract(), population_policy=_POLICY
+    )
 
     assert result.passed is False
     assert "would_claim_uc: no unit in the draw's population" in " ".join(
