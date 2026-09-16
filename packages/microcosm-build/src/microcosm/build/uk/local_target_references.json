@@ -306,6 +306,7 @@
     "calendar_year_average",
     "latest_plateau",
     "count_x_mean",
+    "scaled_by_ratio",
     "linear_combination"
   ],
   "target_references": [

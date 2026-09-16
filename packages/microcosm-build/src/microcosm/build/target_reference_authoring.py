@@ -24,6 +24,7 @@ from microcosm.build.ledger_targets import (  # pyright: ignore[reportPrivateUsa
     _period_key,
     _period_key_from_value,
     compile_ledger_target_references,
+    reference_fact_selectors,
 )
 
 if TYPE_CHECKING:
@@ -332,9 +333,25 @@ def author_target_references(
                 entry["matched_fact_count_in_source_window"] = sum(
                     _assertion_allowed(reference, fact) for fact in matched
                 )
+            compile_facts = matched
+            operand_selectors = reference_fact_selectors(reference)[1:]
+            if operand_selectors:
+                # A ratio-scaled cell resolves its quotient from facts the
+                # row selector never matches (national rows for a region
+                # cell), so the compile sees the source's facts that match
+                # any operand selector as well.
+                compile_facts = [
+                    fact
+                    for fact in source_facts
+                    if fact in matched
+                    or any(
+                        _fact_matches_selector(fact, selector)
+                        for selector in operand_selectors
+                    )
+                ]
             try:
                 registry = compile_ledger_target_references(
-                    matched,
+                    compile_facts,
                     [reference],
                     country=str(contract["country"]),
                 )
@@ -711,6 +728,7 @@ def target_references_resource(
             "calendar_year_average",
             "latest_plateau",
             "count_x_mean",
+            "scaled_by_ratio",
             *sorted(
                 {
                     row["value_operation"]

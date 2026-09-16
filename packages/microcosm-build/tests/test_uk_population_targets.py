@@ -176,6 +176,7 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "monthly_window_average",
         "monthly_window_sum_average",
         "linear_combination",
+        "scaled_by_ratio",
     ]
     assert resource["resolution_defaults"] == {
         "base_period_policy": "latest_not_after_build_base_period",

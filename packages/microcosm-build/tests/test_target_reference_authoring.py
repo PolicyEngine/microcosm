@@ -909,3 +909,84 @@ def test_geography_composition_refuses_a_non_aggregating_operation() -> None:
             [_tier_fact("local_authority", "L1", 4.0, "l1")],
             config,
         )
+
+
+def _ratio_tier_contract() -> dict:
+    contract = _two_level_contract()
+    target = contract["targets"][0]
+    target["value_operation"] = "scaled_by_ratio"
+    target["value_operands"] = [
+        {"role": "base"},
+        {
+            "role": "numerator",
+            "source_measure_id": "population_individuals",
+            "geography_level": "country",
+            "geography_id": "K02000001",
+        },
+        {
+            "role": "denominator",
+            "source_measure_id": "population_total",
+            "geography_level": "country",
+            "geography_id": "K02000001",
+        },
+    ]
+    return contract
+
+
+def _national_fact(measure_id: str, value: float, fact_key: str) -> dict:
+    fact = _tier_fact("country", "K02000001", value, fact_key)
+    fact["observed_measure"]["source_measure_id"] = measure_id
+    fact["layout"]["measure_id"] = measure_id
+    return fact
+
+
+def test_geography_fanout_cells_scale_by_a_national_ratio() -> None:
+    # The quotient's facts sit outside every cell's own selector (national
+    # rows for region cells); authoring must hand them to the compile or no
+    # cell can resolve.
+    config = TargetReferenceAuthoringConfig(
+        target_period=2025,
+        geography_fanout_by_target_id={"ons.age.0_10_by_region": _REGION_TIER_CELLS},
+        geography_fanout_metadata=_tier_metadata,
+        value_operation_by_target_id={"ons.age.0_10_by_region": "scaled_by_ratio"},
+        source_fact_feed="synthetic",
+    )
+    facts = [
+        *_tier_facts(),
+        _national_fact("population_individuals", 55.0, "uk-individuals"),
+        _national_fact("population_total", 110.0, "uk-total"),
+    ]
+    authored = author_target_references(_ratio_tier_contract(), facts, config)
+
+    london = authored.references[0]
+    assert london["value_operation"] == "scaled_by_ratio"
+    assert [operand["role"] for operand in london["value_operands"]] == [
+        "base",
+        "numerator",
+        "denominator",
+    ]
+    report = authored.membership_report
+    assert report["status_counts"] == {"active": 3}
+    candidates = report["targets"]["ons.age.0_10_by_region"]["candidates"]
+    assert [
+        (entry["geography_id"], entry["status"], entry["resolved_value"])
+        for entry in candidates
+    ] == [
+        ("E12000007", "active", 5.0),
+        ("E12000001", "active", 10.0),
+        ("W92000004", "active", 15.0),
+    ]
+
+
+def test_geography_fanout_ratio_without_the_national_facts_refuses() -> None:
+    # A cell whose quotient cannot resolve is a hole in the declared
+    # partition, refused like any other non-compiling roster cell.
+    config = TargetReferenceAuthoringConfig(
+        target_period=2025,
+        geography_fanout_by_target_id={"ons.age.0_10_by_region": _REGION_TIER_CELLS},
+        geography_fanout_metadata=_tier_metadata,
+        value_operation_by_target_id={"ons.age.0_10_by_region": "scaled_by_ratio"},
+        source_fact_feed="synthetic",
+    )
+    with pytest.raises(ValueError, match="Unsigned geography fan-out absence"):
+        author_target_references(_ratio_tier_contract(), _tier_facts(), config)

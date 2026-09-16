@@ -9,7 +9,8 @@
     "calendar_year_average",
     "monthly_window_average",
     "monthly_window_sum_average",
-    "linear_combination"
+    "linear_combination",
+    "scaled_by_ratio"
   ],
   "resolution_defaults": {
     "base_period_policy": "latest_not_after_build_base_period",

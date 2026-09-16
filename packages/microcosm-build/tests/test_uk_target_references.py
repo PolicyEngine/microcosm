@@ -222,6 +222,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "calendar_year_average",
         "latest_plateau",
         "count_x_mean",
+        "scaled_by_ratio",
         "linear_combination",
         "monthly_window_average",
         "monthly_window_sum_average",
