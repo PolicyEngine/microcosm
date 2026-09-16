@@ -716,6 +716,11 @@ stages:
       child_benefit_reported_anchor: child_benefit_reported
       pension_credit_reported_anchor: pension_credit_reported
       universal_credit_reported_anchor: universal_credit_reported
+  - kind: aggregate_person_to_benunit
+    method: any_adult_under_state_pension_age
+    consumed_only: true
+    aggregates:
+      uc_age_eligible: age
   - kind: assign_binary_with_anchored_residual
     output: would_claim_child_benefit
     draw: would_claim_child_benefit
@@ -738,6 +743,7 @@ stages:
     draw: would_claim_uc
     rate_key: universal_credit
     anchor: universal_credit_reported_anchor
+    population: uc_age_eligible
     seed: 0
   - kind: assign_binary_from_rate
     output: would_claim_tfc
@@ -776,7 +782,7 @@ stages:
   - maximum_extended_childcare_hours_usage
   nonnegative_outputs:
   - maximum_extended_childcare_hours_usage
-  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only.
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with an adult under State Pension age (66 for everyone who can reach it in this release; the engine lockstep test pins it), so the contract rate is a share of those units, an anchor outside them stays true, and a unit with every adult at or over State Pension age is never drawn; its reported Housing Benefit is no longer zeroed by a claim it cannot make (#882, microcosm#867).
 - stage: frs_person_draws
   survey: Family Resources Survey 2024-25
   source: Sourced UK take-up contract rates and identity-keyed deterministic draws.

@@ -594,6 +594,13 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # the any-tenure housing row as a structural bias — signed by María in
     # review of microcosm#921 with a one-month window.
     "dwp.uc.households_": 3,
+    # microcosm#882 repairs (2026-09-16): the three Housing Benefit caseload
+    # rows and the thirteen benefit-cap amount bands outside the 25 percent
+    # bound are measured on every evaluation but held out of the objective;
+    # the A16 rows obr.housing_benefit and dwp.jsa_claimants were
+    # re-adjudicated the same day on the mechanism receipts.
+    "dwp.hb.": 3,
+    "dwp.benefit_cap.capped_households_": 13,
 }
 
 _UC_ELEMENT_REGISTER_ROWS = (
@@ -604,17 +611,18 @@ _UC_ELEMENT_REGISTER_ROWS = (
 
 _A16_UNREACHABLE_ROWS = (
     "ons.savings_interest_income",
-    "obr.housing_benefit",
     "slc.borrowers.plan_2_liable",
     "slc.borrowers.plan_2_above_threshold",
+    "obr.housing_benefit",
     "dwp.jsa_claimants",
 )
+_A16_READJUDICATED_ROWS = ("obr.housing_benefit", "dwp.jsa_claimants")
 
 
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 53
+    assert len(names) == len(set(names)) == 69
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -662,11 +670,10 @@ def test_packaged_exclusions_load():
     assert not [n for n in names if n.startswith("ons.household_composition.")]
 
     # The 2026-09-03 tranche is #762's A16: five unreachable national rows,
-    # a one-month window, each row tracked on its spine-defect issue.
-    a16 = [e for e in exclusions if e["approved_on"] == "2026-09-03"]
-    assert sorted(e["name"] for e in a16) == sorted(_A16_UNREACHABLE_ROWS)
-    # Each row points at its own spine-defect issue (the October expiry follows
-    # the pointer); #736 carries the tranche as a whole.
+    # a one-month window, each row tracked on its spine-defect issue. Two of
+    # them (housing benefit, JSA) were re-adjudicated on 2026-09-16 with the
+    # mechanism receipts (#882) and moved to the 2026-12-08 clock; the other
+    # three still lapse on 2026-10-03.
     a16_issues = {
         "ons.savings_interest_income": "microcosm#866",
         "obr.housing_benefit": "microcosm#867",
@@ -674,10 +681,38 @@ def test_packaged_exclusions_load():
         "slc.borrowers.plan_2_above_threshold": "microcosm#868",
         "dwp.jsa_claimants": "microcosm#869",
     }
+    a16 = [e for e in exclusions if e["approved_on"] == "2026-09-03"]
+    assert sorted(e["name"] for e in a16) == sorted(_A16_UNREACHABLE_ROWS[:3])
     for entry in a16:
         assert entry["expires_on"] == "2026-10-03", entry["name"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
         assert "A16" in entry["adjudication"], entry["name"]
+    for name in _A16_READJUDICATED_ROWS:
+        entry = next(e for e in exclusions if e["name"] == name)
+        assert entry["approved_on"] == "2026-09-16", name
+        assert entry["expires_on"] == "2026-12-08", name
+        assert entry["tracking"] == a16_issues[name], name
+        assert "tools/diagnose_uk_legacy_benefits.py" in entry["adjudication"], name
+        assert "SPI support channel" in entry["reason"], name
+
+    # The 2026-09-16 tranche also carries the Housing Benefit caseload rows
+    # (tracked on #867 like the spend row) and the benefit-cap amount bands
+    # outside the bound (tracked on #882); every entry names its tool.
+    repairs = [
+        e for e in exclusions
+        if e["approved_on"] == "2026-09-16" and e["name"] not in _A16_READJUDICATED_ROWS
+    ]
+    assert len(repairs) == 16
+    for entry in repairs:
+        assert entry["expires_on"] == "2026-12-08", entry["name"]
+        if entry["name"].startswith("dwp.hb."):
+            assert entry["tracking"] == "microcosm#867", entry["name"]
+        else:
+            assert entry["name"].startswith("dwp.benefit_cap.capped_households_")
+            assert entry["tracking"] == "microcosm#882", entry["name"]
+            assert "tools/diagnose_uk_benefit_cap.py" in entry["reason"], entry["name"]
+    assert "dwp.benefit_cap.capped_households_up_to_100" not in names
+    assert "dwp.benefit_cap.capped_households" not in names
 
     # The 2026-09-15 tranche is #882's element rows: carer and childcare are
     # model concept gaps (the engine's carer condition is Carer's Allowance

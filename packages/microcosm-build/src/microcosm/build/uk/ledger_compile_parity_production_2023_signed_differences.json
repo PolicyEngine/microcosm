@@ -1,11 +1,11 @@
 {
- "compiled_count": 344,
+ "compiled_count": 347,
  "counts_by_kind": {
   "calibration_drift": 120,
   "fixture_only": 17,
-  "ledger_only": 212
+  "ledger_only": 215
  },
- "difference_count": 349,
+ "difference_count": 352,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -172,6 +172,27 @@
    "kind": "ledger_only",
    "ledger_value": 954406918.7,
    "name": "dft.bus_net_support.london",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1685702.9166666667,
+   "name": "dwp.hb.households",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 304422.6666666667,
+   "name": "dwp.hb.households_private_rented",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1381089.75,
+   "name": "dwp.hb.households_social_rented",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

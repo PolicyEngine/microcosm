@@ -175,6 +175,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "child_benefit_reported",
             "pension_credit_reported",
             "universal_credit_reported",
+            # The Universal Credit draw's population: units with an adult
+            # under State Pension age (#882).
+            "age",
         )
     ),
     "frs_person_draws": frozenset({("person", "age")}),

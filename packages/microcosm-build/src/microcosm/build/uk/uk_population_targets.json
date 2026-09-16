@@ -713,7 +713,24 @@
       "dwp.uc.households_housing_element_private_rented": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
       "dwp.uc.households_childcare_element": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
       "dwp.uc.households_with_deduction": "#882 UC element target from the chronicle#260 Payment Indicator crosses; the incumbent registry has no element rows.",
-      "obr.universal_credit": "#882 UC expenditure total over the two OBR welfare-cap cells; the incumbent binds only the split, which is excluded."
+      "obr.universal_credit": "#882 UC expenditure total over the two OBR welfare-cap cells; the incumbent binds only the split, which is excluded.",
+      "dwp.hb.households": "#882 Housing Benefit caseload diagnostic from the Stat-Xplore client-type-by-tenure cube (chronicle#259); the incumbent registry binds only the OBR spend line.",
+      "dwp.hb.households_social_rented": "#882 Housing Benefit caseload diagnostic from the Stat-Xplore client-type-by-tenure cube (chronicle#259); the incumbent registry binds only the OBR spend line.",
+      "dwp.hb.households_private_rented": "#882 Housing Benefit caseload diagnostic from the Stat-Xplore client-type-by-tenure cube (chronicle#259); the incumbent registry binds only the OBR spend line.",
+      "dwp.benefit_cap.capped_households_up_to_100": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_100_01_to_200": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_200_01_to_300": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_300_01_to_400": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_400_01_to_500": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_500_01_to_600": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_600_01_to_700": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_700_01_to_800": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_800_01_to_900": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_900_01_to_1000": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_1000_01_to_1100": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_1100_01_to_1200": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_1200_01_to_1300": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total.",
+      "dwp.benefit_cap.capped_households_1300_01_and_above": "#882 benefit-cap amount band from DWP Table 4; the incumbent registry binds only the capped-household total."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -963,7 +980,24 @@
       "dwp.uc.households_housing_element_private_rented",
       "dwp.uc.households_childcare_element",
       "dwp.uc.households_with_deduction",
-      "obr.universal_credit"
+      "obr.universal_credit",
+      "dwp.hb.households",
+      "dwp.hb.households_social_rented",
+      "dwp.hb.households_private_rented",
+      "dwp.benefit_cap.capped_households_up_to_100",
+      "dwp.benefit_cap.capped_households_100_01_to_200",
+      "dwp.benefit_cap.capped_households_200_01_to_300",
+      "dwp.benefit_cap.capped_households_300_01_to_400",
+      "dwp.benefit_cap.capped_households_400_01_to_500",
+      "dwp.benefit_cap.capped_households_500_01_to_600",
+      "dwp.benefit_cap.capped_households_600_01_to_700",
+      "dwp.benefit_cap.capped_households_700_01_to_800",
+      "dwp.benefit_cap.capped_households_800_01_to_900",
+      "dwp.benefit_cap.capped_households_900_01_to_1000",
+      "dwp.benefit_cap.capped_households_1000_01_to_1100",
+      "dwp.benefit_cap.capped_households_1100_01_to_1200",
+      "dwp.benefit_cap.capped_households_1200_01_to_1300",
+      "dwp.benefit_cap.capped_households_1300_01_and_above"
     ]
   },
   "profile_parity": {
@@ -3511,7 +3545,7 @@
           "value_variable": "benunit_count",
           "from_entity": "benunit",
           "map_to": "household",
-          "notes": "uk-data binds the combined count to the benunit-level esa variable."
+          "notes": "uk-data binds the combined count to the benunit-level esa variable. People on ESA at August 2025 (DWP benefit statistics, February 2026). The published total includes claimants on both contributory and income-related ESA and claimants receiving National Insurance credits only; the model's esa > 0 covers paid ESA of either type, so the total sits above what the frame can carry by the credits-only caseload, which DWP does not publish. The frame also carries fewer ESA reporters than the FRS: 791k on spine-q against 1.06m in FRS 2024-25 at design weights, the SPI support channel under-carrying them (#882, microcosm#869). Bound at benefit-unit grain for incumbent parity."
         },
         "axiom": {
           "metric_name": "dwp/esa_claimants",
@@ -3552,7 +3586,8 @@
           ],
           "value_variable": "person_count",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Contributory ESA at August 2025 (DWP benefit statistics, February 2026): a single-type count per the publication, excluding claimants on both contributory and income-related ESA. The model's esa_contrib > 0 includes dual claimants; on Q50f the overlap is about 4k of 707k (0.5 percent), recorded rather than filtered because esa_income is a benefit-unit variable (#882, microcosm#869)."
         },
         "axiom": {
           "metric_name": "dwp/esa_contrib_claimants",
@@ -3593,7 +3628,8 @@
           ],
           "value_variable": "benunit_count",
           "from_entity": "benunit",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Income-related ESA at August 2025 (DWP benefit statistics, February 2026): a single-type count per the publication, excluding claimants on both types. The model's esa_income > 0 includes dual claimants; the overlap is about 4k of 180k on Q50f, recorded rather than filtered (#882, microcosm#869)."
         },
         "axiom": {
           "metric_name": "dwp/esa_income_claimants",
@@ -3635,7 +3671,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "uk-data binds the JSA claimant count to contributory JSA only (jsa_contrib) - carried as-is for parity; adjudicate in microcosm#622."
+          "notes": "uk-data binds the JSA claimant count to contributory JSA only (jsa_contrib) - carried as-is for parity; adjudicate in microcosm#622. DWP's count (71,000 at August 2025) is New Style, contributory JSA only, after a methodology change from August 2025 that removed inactive claims; not comparable with earlier vintages. FRS 2024-25 reports 63k JSA benefit units at design weights, so the frame's excess is not the source: spine-q carries 181k contributory reporters, 161k of them in the SPI support channel's synthetic households (#882, microcosm#869)."
         },
         "axiom": {
           "metric_name": "dwp/jsa_claimants",
@@ -14166,6 +14202,1411 @@
       "label": "Universal Credit expenditure"
     },
     {
+      "target_id": "dwp.hb.households",
+      "family": "dwp_housing_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.housing_benefit.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/hb/households",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "housing_benefit",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "notes": "Mean monthly GB benefit units over the declared months with a positive engine Housing Benefit award, against DWP's Stat-Xplore Housing Benefit caseload by client type and tenure (chronicle#259/#260, concept dwp.housing_benefit_claimants). All client types and tenures (the publisher's Total items; DWP's 'Unknown or missing housing sector' cell is inside it). Measured, not fit: the row is on the reviewed measure-exclusion register while the frame cannot reach it (#882, microcosm#867): the SPI support channel carries reported Housing Benefit into owner-occupied synthetic households, the engine pays Housing Benefit only to reporting units not drawn into Universal Credit and with a rented tenure, and rent is carried by the household head's benefit unit alone. Count only the Great Britain regions, matching K03000001; DWP's Housing Benefit statistics cover Great Britain. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/hb_new/Accommodation%20Type.html",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/hb/households",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.housing_benefit_claimants",
+        "groupby_dimension": "dwp.hb_client_type",
+        "dimensions": [
+          "client_type",
+          "private_or_social_rented"
+        ],
+        "dimension_values": {
+          "client_type": "all",
+          "private_or_social_rented": "all"
+        },
+        "source_measure_id": "total_claimants",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "category_id": "dwp.housing_benefit",
+      "label": "Housing Benefit claimants, all tenures"
+    },
+    {
+      "target_id": "dwp.hb.households_social_rented",
+      "family": "dwp_housing_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.housing_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.household.tenure",
+            "operator": "in",
+            "value": [
+              "rent_from_council",
+              "rent_from_housing_association"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/hb/households_social_rented",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "housing_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "benunit_tenure_type",
+              "operator": "in",
+              "value": [
+                "RENT_FROM_COUNCIL",
+                "RENT_FROM_HA"
+              ]
+            }
+          ],
+          "notes": "Mean monthly GB benefit units over the declared months with a positive engine Housing Benefit award, against DWP's Stat-Xplore Housing Benefit caseload by client type and tenure (chronicle#259/#260, concept dwp.housing_benefit_claimants). Tenure from the benefit unit's household (benunit_tenure_type): council and housing-association renters. Measured, not fit: the row is on the reviewed measure-exclusion register while the frame cannot reach it (#882, microcosm#867): the SPI support channel carries reported Housing Benefit into owner-occupied synthetic households, the engine pays Housing Benefit only to reporting units not drawn into Universal Credit and with a rented tenure, and rent is carried by the household head's benefit unit alone. Count only the Great Britain regions, matching K03000001; DWP's Housing Benefit statistics cover Great Britain. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/hb_new/Accommodation%20Type.html",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/hb/households_social_rented",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.housing_benefit_claimants",
+        "groupby_dimension": "dwp.hb_client_type",
+        "dimensions": [
+          "client_type",
+          "private_or_social_rented"
+        ],
+        "dimension_values": {
+          "client_type": "all",
+          "private_or_social_rented": "Social Rented Sector"
+        },
+        "source_measure_id": "total_claimants",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "category_id": "dwp.housing_benefit",
+      "label": "Housing Benefit claimants, social rented"
+    },
+    {
+      "target_id": "dwp.hb.households_private_rented",
+      "family": "dwp_housing_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.housing_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.household.tenure",
+            "operator": "in",
+            "value": [
+              "rent_privately"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/hb/households_private_rented",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "housing_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "benunit_tenure_type",
+              "operator": "in",
+              "value": [
+                "RENT_PRIVATELY"
+              ]
+            }
+          ],
+          "notes": "Mean monthly GB benefit units over the declared months with a positive engine Housing Benefit award, against DWP's Stat-Xplore Housing Benefit caseload by client type and tenure (chronicle#259/#260, concept dwp.housing_benefit_claimants). Tenure from the benefit unit's household (benunit_tenure_type): private renters. Measured, not fit: the row is on the reviewed measure-exclusion register while the frame cannot reach it (#882, microcosm#867): the SPI support channel carries reported Housing Benefit into owner-occupied synthetic households, the engine pays Housing Benefit only to reporting units not drawn into Universal Credit and with a rented tenure, and rent is carried by the household head's benefit unit alone. Count only the Great Britain regions, matching K03000001; DWP's Housing Benefit statistics cover Great Britain. Source: https://stat-xplore.dwp.gov.uk/webapi/metadata/hb_new/Accommodation%20Type.html",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/hb/households_private_rented",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.housing_benefit_claimants",
+        "groupby_dimension": "dwp.hb_client_type",
+        "dimensions": [
+          "client_type",
+          "private_or_social_rented"
+        ],
+        "dimension_values": {
+          "client_type": "all",
+          "private_or_social_rented": "Private Rented Sector"
+        },
+        "source_measure_id": "total_claimants",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window",
+      "category_id": "dwp.housing_benefit",
+      "label": "Housing Benefit claimants, private rented"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_up_to_100",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 1200
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_up_to_100",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 1200
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band Up to £100 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_up_to_100",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_up_to_100"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, Up to £100 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_100_01_to_200",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 1200
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 2400
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_100_01_to_200",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 1200
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 2400
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £100.01 to £200 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_100_01_to_200",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_100_01_to_200"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £100.01 to £200 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_200_01_to_300",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 2400
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 3600
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_200_01_to_300",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 2400
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 3600
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £200.01 to £300 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_200_01_to_300",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_200_01_to_300"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £200.01 to £300 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_300_01_to_400",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 3600
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 4800
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_300_01_to_400",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 3600
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 4800
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £300.01 to £400 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_300_01_to_400",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_300_01_to_400"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £300.01 to £400 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_400_01_to_500",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 4800
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 6000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_400_01_to_500",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 4800
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 6000
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £400.01 to £500 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_400_01_to_500",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_400_01_to_500"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £400.01 to £500 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_500_01_to_600",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 6000
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 7200
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_500_01_to_600",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 6000
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 7200
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £500.01 to £600 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_500_01_to_600",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_500_01_to_600"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £500.01 to £600 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_600_01_to_700",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 7200
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 8400
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_600_01_to_700",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 7200
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 8400
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £600.01 to £700 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_600_01_to_700",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_600_01_to_700"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £600.01 to £700 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_700_01_to_800",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 8400
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 9600
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_700_01_to_800",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 8400
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 9600
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £700.01 to £800 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_700_01_to_800",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_700_01_to_800"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £700.01 to £800 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_800_01_to_900",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 9600
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 10800
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_800_01_to_900",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 9600
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 10800
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £800.01 to £900 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_800_01_to_900",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_800_01_to_900"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £800.01 to £900 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_900_01_to_1000",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 10800
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 12000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_900_01_to_1000",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 10800
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 12000
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £900.01 to £1,000 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_900_01_to_1000",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_900_01_to_1000"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £900.01 to £1,000 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_1000_01_to_1100",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 12000
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 13200
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_1000_01_to_1100",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 12000
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 13200
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £1,000.01 to £1,100 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_1000_01_to_1100",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_1000_01_to_1100"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £1,000.01 to £1,100 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_1100_01_to_1200",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 13200
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 14400
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_1100_01_to_1200",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 13200
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 14400
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £1,100.01 to £1,200 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_1100_01_to_1200",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_1100_01_to_1200"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £1,100.01 to £1,200 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_1200_01_to_1300",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 14400
+          },
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": "<=",
+            "value": 15600
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_1200_01_to_1300",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 14400
+            },
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": "<=",
+              "value": 15600
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £1,200.01 to £1,300 per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_1200_01_to_1300",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_1200_01_to_1300"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £1,200.01 to £1,300 a month"
+    },
+    {
+      "target_id": "dwp.benefit_cap.capped_households_1300_01_and_above",
+      "family": "dwp_benefit_cap",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.benefit_cap.reduction",
+            "operator": ">",
+            "value": 15600
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/benefit_cap/capped_households_1300_01_and_above",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "benefit_cap_reduction",
+              "operator": ">",
+              "value": 15600
+            }
+          ],
+          "notes": "GB benefit units whose benefit-cap reduction falls in the DWP amount band £1,300.01 and above per monthly assessment period, against Benefit cap tables to November 2025, Table 4 (point-in-time UC households capped at November 2025 by amount capped; one concept per band, no band dimension). The publisher band is a monthly amount; the engine's benefit_cap_reduction is annual, so the edges are the monthly edges times 12, half-open on the lower edge and closed on the upper (the last band open). DWP's 'UC household' is the unit of assessment, so the band rows bind at benefit-unit grain while the bound total keeps the incumbent's household indicator (a household with two capped units counts once there). Count only the Great Britain regions, matching K03000001. Source: https://www.gov.uk/government/collections/benefit-cap-statistics",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "dwp/benefit_cap/capped_households_1300_01_and_above",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_1300_01_and_above"
+      },
+      "category_id": "dwp.benefit_cap",
+      "label": "Capped households, £1,300.01 and above a month"
+    },
+    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -15860,6 +17301,10 @@
       "nithc.public_transport_finances": {
         "provider_id": "nithc",
         "label": "Public transport finances"
+      },
+      "dwp.housing_benefit": {
+        "provider_id": "dwp",
+        "label": "Housing Benefit"
       }
     }
   }

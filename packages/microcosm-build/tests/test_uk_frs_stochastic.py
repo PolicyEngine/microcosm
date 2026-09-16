@@ -23,8 +23,11 @@ from microcosm.build.uk_runtime.frs_person_draws import (
 )
 from microcosm.build.uk_runtime.frs_take_up import (
     FRS_TAKE_UP_OUTPUT_COLUMNS,
+    UK_STATE_PENSION_AGE,
     UKFRSTakeUpStageTransform,
     aggregate_person_reported_to_benunit,
+    derive_frs_take_up,
+    uc_age_eligible_benunits,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 
@@ -228,3 +231,54 @@ def test_brma_missing_cell_fails_closed() -> None:
 
     with pytest.raises(KeyError, match="missing BRMA"):
         assign_brma_by_cell(benunit, count_resource={"cells": {"LONDON": {}}}, seed=0)
+
+
+def test_uc_take_up_population_excludes_units_without_a_working_age_adult() -> None:
+    """A unit with no adult under State Pension age is never drawn into UC."""
+
+    frame = _frame()
+    person, benunit = frame.table("person"), frame.table("benunit")
+
+    eligible = uc_age_eligible_benunits(person, benunit)
+    assert eligible.tolist() == [False, True, False]  # children only / 40 / 70
+    assert UK_STATE_PENSION_AGE == 66
+
+    anchors = aggregate_person_reported_to_benunit(person, benunit)
+    derived = derive_frs_take_up(
+        benunit, anchors=anchors, contract=_Contract(), uc_age_eligible=eligible
+    )
+    assert derived["would_claim_uc"].tolist() == [False, True, False]
+
+    # An anchor outside the population stays true: reported receipt is a fact.
+    anchors.loc[2, "universal_credit_reported_anchor"] = True
+    derived = derive_frs_take_up(
+        benunit, anchors=anchors, contract=_Contract(), uc_age_eligible=eligible
+    )
+    assert derived["would_claim_uc"].tolist() == [False, True, True]
+
+    with pytest.raises(ValueError, match="uc_age_eligible must align"):
+        derive_frs_take_up(
+            benunit, anchors=anchors, contract=_Contract(), uc_age_eligible=eligible[:2]
+        )
+    with pytest.raises(KeyError, match="person.age is missing"):
+        uc_age_eligible_benunits(person.drop(columns=["age"]), benunit)
+
+
+@pytest.mark.requires_uk
+def test_uc_take_up_state_pension_age_constant_matches_the_engine() -> None:
+    """The stage's 66 is the engine's State Pension age for every adult in 2025."""
+
+    policyengine_uk = pytest.importorskip("policyengine_uk")
+
+    ages = list(range(16, 101))
+    people = {f"p{age}": {"age": {2025: age}} for age in ages}
+    sim = policyengine_uk.Simulation(
+        situation={
+            "people": people,
+            "benunits": {f"b{age}": {"members": [f"p{age}"]} for age in ages},
+            "households": {f"h{age}": {"members": [f"p{age}"]} for age in ages},
+        }
+    )
+    is_sp_age = np.asarray(sim.calculate("is_SP_age", 2025), dtype=bool)
+
+    assert is_sp_age.tolist() == [age >= UK_STATE_PENSION_AGE for age in ages]

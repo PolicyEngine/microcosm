@@ -60,7 +60,7 @@ from tools.generate_uk_target_references import (
     _value_operation_by_target_id,
 )
 
-ACTIVE_REFERENCE_COUNT = 603
+ACTIVE_REFERENCE_COUNT = 620
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -697,7 +697,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 603,
+        "active": 620,
         "no_fact_at_or_before_period": 7,
         "signed_excluded": 7,
     }

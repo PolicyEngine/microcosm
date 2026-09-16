@@ -1096,7 +1096,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 603
+            len(references) == 620
         )  # microcosm#905: 424 - 18 country rows + 189 region-tier cells
         assert references["obr.esa"].value_operation == "sum"
         assert references["dwp.uc.households"].value_operation == (

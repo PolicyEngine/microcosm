@@ -191,6 +191,10 @@
       "nithc.public_transport_finances": {
         "provider_id": "nithc",
         "label": "Public transport finances"
+      },
+      "dwp.housing_benefit": {
+        "provider_id": "dwp",
+        "label": "Housing Benefit"
       }
     },
     "target_categories": {
@@ -203,9 +207,26 @@
       "dft.bus_net_support.england": "dft.local_bus_finances",
       "dft.bus_net_support.london": "dft.local_bus_finances",
       "dwp.benefit_cap.capped_households": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_1000_01_to_1100": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_100_01_to_200": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_1100_01_to_1200": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_1200_01_to_1300": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_1300_01_and_above": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_200_01_to_300": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_300_01_to_400": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_400_01_to_500": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_500_01_to_600": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_600_01_to_700": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_700_01_to_800": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_800_01_to_900": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_900_01_to_1000": "dwp.benefit_cap",
+      "dwp.benefit_cap.capped_households_up_to_100": "dwp.benefit_cap",
       "dwp.esa_claimants": "dwp.legacy_benefits",
       "dwp.esa_contrib_claimants": "dwp.legacy_benefits",
       "dwp.esa_income_claimants": "dwp.legacy_benefits",
+      "dwp.hb.households": "dwp.housing_benefit",
+      "dwp.hb.households_private_rented": "dwp.housing_benefit",
+      "dwp.hb.households_social_rented": "dwp.housing_benefit",
       "dwp.jsa_claimants": "dwp.legacy_benefits",
       "dwp.uc.households": "dwp.universal_credit",
       "dwp.uc.households_carer_element": "dwp.universal_credit",
@@ -409,9 +430,26 @@
       "dft.bus_net_support.england": "England",
       "dft.bus_net_support.london": "London",
       "dwp.benefit_cap.capped_households": "Capped households",
+      "dwp.benefit_cap.capped_households_1000_01_to_1100": "Capped households, \u00a31,000.01 to \u00a31,100 a month",
+      "dwp.benefit_cap.capped_households_100_01_to_200": "Capped households, \u00a3100.01 to \u00a3200 a month",
+      "dwp.benefit_cap.capped_households_1100_01_to_1200": "Capped households, \u00a31,100.01 to \u00a31,200 a month",
+      "dwp.benefit_cap.capped_households_1200_01_to_1300": "Capped households, \u00a31,200.01 to \u00a31,300 a month",
+      "dwp.benefit_cap.capped_households_1300_01_and_above": "Capped households, \u00a31,300.01 and above a month",
+      "dwp.benefit_cap.capped_households_200_01_to_300": "Capped households, \u00a3200.01 to \u00a3300 a month",
+      "dwp.benefit_cap.capped_households_300_01_to_400": "Capped households, \u00a3300.01 to \u00a3400 a month",
+      "dwp.benefit_cap.capped_households_400_01_to_500": "Capped households, \u00a3400.01 to \u00a3500 a month",
+      "dwp.benefit_cap.capped_households_500_01_to_600": "Capped households, \u00a3500.01 to \u00a3600 a month",
+      "dwp.benefit_cap.capped_households_600_01_to_700": "Capped households, \u00a3600.01 to \u00a3700 a month",
+      "dwp.benefit_cap.capped_households_700_01_to_800": "Capped households, \u00a3700.01 to \u00a3800 a month",
+      "dwp.benefit_cap.capped_households_800_01_to_900": "Capped households, \u00a3800.01 to \u00a3900 a month",
+      "dwp.benefit_cap.capped_households_900_01_to_1000": "Capped households, \u00a3900.01 to \u00a31,000 a month",
+      "dwp.benefit_cap.capped_households_up_to_100": "Capped households, Up to \u00a3100 a month",
       "dwp.esa_claimants": "Employment and Support Allowance claimants",
       "dwp.esa_contrib_claimants": "Employment and Support Allowance contrib claimants",
       "dwp.esa_income_claimants": "Employment and Support Allowance income claimants",
+      "dwp.hb.households": "Housing Benefit claimants, all tenures",
+      "dwp.hb.households_private_rented": "Housing Benefit claimants, private rented",
+      "dwp.hb.households_social_rented": "Housing Benefit claimants, social rented",
       "dwp.jsa_claimants": "Jobseeker\u2019s Allowance claimants",
       "dwp.uc.households": "Universal Credit households",
       "dwp.uc.households_carer_element": "Households with carer entitlement",
@@ -18315,6 +18353,407 @@
       "assertion_policy": "allow_source_projection",
       "value_operation": "sum",
       "expected_member_count": 2
+    },
+    {
+      "name": "dwp.hb.households",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.housing_benefit_claimants",
+        "groupby_dimension": "dwp.hb_client_type",
+        "dimensions": [
+          "client_type",
+          "private_or_social_rented"
+        ],
+        "dimension_values": {
+          "client_type": "all",
+          "private_or_social_rented": "all"
+        },
+        "source_measure_id": "total_claimants",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/hb/households",
+      "family": "dwp_housing_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.hb.households",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.hb.households_social_rented",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.housing_benefit_claimants",
+        "groupby_dimension": "dwp.hb_client_type",
+        "dimensions": [
+          "client_type",
+          "private_or_social_rented"
+        ],
+        "dimension_values": {
+          "client_type": "all",
+          "private_or_social_rented": "Social Rented Sector"
+        },
+        "source_measure_id": "total_claimants",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/hb/households_social_rented",
+      "family": "dwp_housing_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.hb.households_social_rented",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.hb.households_private_rented",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.housing_benefit_claimants",
+        "groupby_dimension": "dwp.hb_client_type",
+        "dimensions": [
+          "client_type",
+          "private_or_social_rented"
+        ],
+        "dimension_values": {
+          "client_type": "all",
+          "private_or_social_rented": "Private Rented Sector"
+        },
+        "source_measure_id": "total_claimants",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/hb/households_private_rented",
+      "family": "dwp_housing_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.hb.households_private_rented",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_up_to_100",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_up_to_100",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_up_to_100",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_up_to_100",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_100_01_to_200",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_100_01_to_200",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_100_01_to_200",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_100_01_to_200",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_200_01_to_300",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_200_01_to_300",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_200_01_to_300",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_200_01_to_300",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_300_01_to_400",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_300_01_to_400",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_300_01_to_400",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_300_01_to_400",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_400_01_to_500",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_400_01_to_500",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_400_01_to_500",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_400_01_to_500",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_500_01_to_600",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_500_01_to_600",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_500_01_to_600",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_500_01_to_600",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_600_01_to_700",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_600_01_to_700",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_600_01_to_700",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_600_01_to_700",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_700_01_to_800",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_700_01_to_800",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_700_01_to_800",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_700_01_to_800",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_800_01_to_900",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_800_01_to_900",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_800_01_to_900",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_800_01_to_900",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_900_01_to_1000",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_900_01_to_1000",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_900_01_to_1000",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_900_01_to_1000",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_1000_01_to_1100",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_1000_01_to_1100",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_1000_01_to_1100",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_1000_01_to_1100",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_1100_01_to_1200",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_1100_01_to_1200",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_1100_01_to_1200",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_1100_01_to_1200",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_1200_01_to_1300",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_1200_01_to_1300",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_1200_01_to_1300",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_1200_01_to_1300",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.benefit_cap.capped_households_1300_01_and_above",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_capped_households_1300_01_and_above",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/benefit_cap/capped_households_1300_01_and_above",
+      "family": "dwp_benefit_cap",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.benefit_cap.capped_households_1300_01_and_above",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2025-11",
+      "uprating_to_period": 2025
     }
   ]
 }
