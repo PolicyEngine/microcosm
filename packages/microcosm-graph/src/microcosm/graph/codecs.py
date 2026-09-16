@@ -541,8 +541,10 @@ def load_raw_bytes(path: Path, *, store: ContentStore | None = None) -> bytes:
     itself opened, and the open is non-blocking, so the codec cannot be made
     to wait on a pipe or stream a device. The read is bounded rather than
     trusted to ``st_size``, because a file may grow after it is measured.
-    Detecting that a source moved is the executor's post-run content check;
-    this bound only keeps the codec from reading an unbounded amount first.
+    Detecting that a source moved is the executor's own content check -- after
+    every cold node that declares the source, and again over every source in
+    full before the run manifest is built; this bound only keeps the codec from
+    reading an unbounded amount first.
     """
 
     del store  # raw bytes are self-describing; no content store is consulted
