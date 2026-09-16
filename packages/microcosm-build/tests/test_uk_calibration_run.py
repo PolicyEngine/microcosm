@@ -391,7 +391,7 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(
 
 
 def test_readback_failure_updates_build_record_and_failed_attempt(
-    monkeypatch, tmp_path: Path
+    monkeypatch, tmp_path: Path, invented_code_pin
 ):
     pytest.importorskip("tables")
     monkeypatch.setattr(
@@ -458,7 +458,7 @@ def test_readback_failure_updates_build_record_and_failed_attempt(
 
 
 def test_run_uk_calibration_requires_the_band_edge_register(
-    tmp_path: Path,
+    tmp_path: Path, invented_code_pin
 ):
     # Required, never defaulted: an empty receipt is a claim that nothing was
     # pruned, not permission to skip the reconciliation, so the seam takes no
@@ -487,7 +487,7 @@ def test_run_uk_calibration_requires_the_band_edge_register(
 
 
 def test_run_uk_calibration_reconciles_an_empty_receipt_as_no_prunes(
-    tmp_path: Path,
+    tmp_path: Path, invented_code_pin
 ):
     # A pruned register handed in with an empty receipt must refuse: with
     # nothing declared excluded, the two rosters have to be name-identical.
@@ -517,7 +517,9 @@ def test_run_uk_calibration_reconciles_an_empty_receipt_as_no_prunes(
     assert not paths.build_record_json.exists()
 
 
-def test_run_uk_calibration_refuses_incoherent_band_edge_register(tmp_path: Path):
+def test_run_uk_calibration_refuses_incoherent_band_edge_register(
+    tmp_path: Path, invented_code_pin
+):
     paths = _paths(tmp_path)
     edge_registry = TargetRegistry(
         [
