@@ -990,3 +990,95 @@ def test_geography_fanout_ratio_without_the_national_facts_refuses() -> None:
     )
     with pytest.raises(ValueError, match="Unsigned geography fan-out absence"):
         author_target_references(_ratio_tier_contract(), _tier_facts(), config)
+
+
+def _banded_contract() -> dict:
+    contract = _single_age_contract()
+    target = contract["targets"][0]
+    target["target_id"] = "ons.age.by_band"
+    target["geography_levels"] = ["country"]
+    target["ledger_selector"] = {
+        "source_name": "ons",
+        "source_measure_id": "population",
+        "groupby_dimension": "synthetic_band",
+    }
+    return contract
+
+
+def _banded_facts() -> list[dict]:
+    return [
+        _tier_fact("country", "K02000001", 10.0, "band_a"),
+        _tier_fact("country", "K02000001", 20.0, "band_b"),
+    ]
+
+
+def _banded_config(**overrides) -> TargetReferenceAuthoringConfig:
+    values = {
+        "target_period": 2025,
+        "geography_pins": {
+            "ons.age.by_band": {
+                "geography_level": "country",
+                "geography_id": "K02000001",
+            }
+        },
+        "source_fact_feed": "synthetic",
+    }
+    values.update(overrides)
+    return TargetReferenceAuthoringConfig(**values)
+
+
+def test_row_level_signed_exclusion_skips_one_fanout_row_and_keeps_the_target_active() -> (
+    None
+):
+    # HMRC's CGT age table has a 0-15 band the frame cannot carry; signing
+    # out that one row must not turn the whole target partial or hide it.
+    config = _banded_config(
+        signed_row_exclusions_by_target_id={
+            "ons.age.by_band": {("synthetic_band", '"band_b"'): "no under-16 carriers"}
+        }
+    )
+    authored = author_target_references(_banded_contract(), _banded_facts(), config)
+
+    assert [row["name"] for row in authored.references] == ["ons.age.by_band.band_a"]
+    target = authored.membership_report["targets"]["ons.age.by_band"]
+    assert target["status"] == "active"
+    assert [(entry["name"], entry["status"]) for entry in target["candidates"]] == [
+        ("ons.age.by_band.band_a", "active"),
+        ("ons.age.by_band.band_b", "signed_excluded"),
+    ]
+    signed = target["candidates"][1]
+    assert signed["signed_row"] == {"dimension": "synthetic_band", "value": '"band_b"'}
+    assert signed["signed_rationale"] == "no under-16 carriers"
+    assert signed["matched_fact_count_overall"] == 1
+    assert authored.membership_report["status_counts"] == {
+        "active": 1,
+        "signed_excluded": 1,
+    }
+
+
+def test_row_level_signed_exclusion_that_matches_no_row_is_stale() -> None:
+    config = _banded_config(
+        signed_row_exclusions_by_target_id={
+            "ons.age.by_band": {("synthetic_band", '"band_c"'): "gone"}
+        }
+    )
+    with pytest.raises(ValueError, match="Stale row-level signed exclusion"):
+        author_target_references(_banded_contract(), _banded_facts(), config)
+
+
+def test_row_level_signed_exclusion_over_every_row_marks_the_target_signed_excluded() -> (
+    None
+):
+    config = _banded_config(
+        signed_row_exclusions_by_target_id={
+            "ons.age.by_band": {
+                ("synthetic_band", '"band_a"'): "a",
+                ("synthetic_band", '"band_b"'): "b",
+            }
+        }
+    )
+    authored = author_target_references(_banded_contract(), _banded_facts(), config)
+    assert authored.references == ()
+    assert authored.membership_report["targets"]["ons.age.by_band"]["status"] == (
+        "signed_excluded"
+    )

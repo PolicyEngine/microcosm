@@ -54,6 +54,7 @@ from tools.generate_uk_local_target_references import _support_floor_register_sc
 from tools.generate_uk_target_references import (
     POLICYENGINE_BINDING_KEYS,
     _annual_uc_award_band_token,
+    _fanout_name,
     _geography_pins,
     _reference_metadata,
     _sum_target_ids,
@@ -1460,3 +1461,77 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     assert sum(entry["resolved_value"] for entry in zero_to_nine["candidates"]) == (
         7_553_013.0
     )
+
+
+def _cgt_band_fact(value_id: str) -> dict:
+    return {
+        "dimensions": {"cgt_gain_band": value_id},
+        "layout": {"groupby_dimension": "cgt_gain_band", "groupby_value_id": value_id},
+    }
+
+
+_CGT_BAND_TARGET = {
+    "target_id": "hmrc.cgt.gains_by_gain_band",
+    "bindings": {"policyengine": {"metric_name": "hmrc/capital_gains_band"}},
+}
+_CGT_BAND_INVERSE = {
+    "hmrc.cgt.gains_by_gain_band": [
+        "hmrc/capital_gains_band_50000",
+        "hmrc/capital_gains_band_500000",
+        "hmrc/capital_gains_band_5000000",
+    ]
+}
+
+
+def test_cgt_band_fanout_names_match_incumbent_names_by_exact_suffix() -> None:
+    # ``_band_50000`` is a substring of ``_band_500000``; only the exact
+    # lower-edge suffix may claim an incumbent name.
+    assert (
+        _fanout_name(
+            _CGT_BAND_TARGET, _cgt_band_fact("gain_50000_to_99999"), _CGT_BAND_INVERSE
+        )
+        == "hmrc/capital_gains_band_50000"
+    )
+    assert (
+        _fanout_name(
+            _CGT_BAND_TARGET, _cgt_band_fact("gain_500000_to_999999"), _CGT_BAND_INVERSE
+        )
+        == "hmrc/capital_gains_band_500000"
+    )
+    assert (
+        _fanout_name(
+            _CGT_BAND_TARGET, _cgt_band_fact("gain_5000000_plus"), _CGT_BAND_INVERSE
+        )
+        == "hmrc/capital_gains_band_5000000"
+    )
+
+
+def test_cgt_band_fanout_row_without_incumbent_name_takes_the_declared_form() -> None:
+    fact = _cgt_band_fact("gain_3000_to_5999")
+    # Without the naming rule the row has no name and would be dropped, as
+    # every partially mapped family behaves today.
+    assert _fanout_name(_CGT_BAND_TARGET, fact, _CGT_BAND_INVERSE) is None
+    declared = {**_CGT_BAND_TARGET, "fanout_row_naming": "metric_name_band_lower"}
+    assert _fanout_name(declared, fact, _CGT_BAND_INVERSE) == (
+        "hmrc/capital_gains_band_3000"
+    )
+    # With no incumbent names at all the same form applies.
+    assert _fanout_name(declared, fact, {}) == "hmrc/capital_gains_band_3000"
+
+
+def test_cgt_band_fanout_naming_refuses_unrecognised_bands_and_rules() -> None:
+    declared = {**_CGT_BAND_TARGET, "fanout_row_naming": "metric_name_band_lower"}
+    with pytest.raises(ValueError, match="Unrecognised HMRC CGT gain band value"):
+        _fanout_name(declared, _cgt_band_fact("band_3000"), _CGT_BAND_INVERSE)
+    with pytest.raises(ValueError, match="Unsupported fanout_row_naming"):
+        _fanout_name(
+            {**_CGT_BAND_TARGET, "fanout_row_naming": "something_else"},
+            _cgt_band_fact("gain_3000_to_5999"),
+            _CGT_BAND_INVERSE,
+        )
+    with pytest.raises(ValueError, match="no recognised band dimension"):
+        _fanout_name(
+            declared,
+            {"dimensions": {"age_band": "age_16_to_24"}, "layout": {}},
+            _CGT_BAND_INVERSE,
+        )

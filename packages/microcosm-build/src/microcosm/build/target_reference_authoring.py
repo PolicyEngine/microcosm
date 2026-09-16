@@ -81,6 +81,14 @@ class TargetReferenceAuthoringConfig:
         default_factory=dict
     )
     signed_exclusions_by_target_id: Mapping[str, str] = field(default_factory=dict)
+    #: Row-level sign-outs inside a dimension fan-out: ``target_id -> {
+    #: (dimension, json-encoded value): rationale }``. The matching fan-out
+    #: row is recorded as ``signed_excluded`` and never compiled, while the
+    #: target's other rows stay active. A declared row that no fan-out row
+    #: matches is stale and refuses the run.
+    signed_row_exclusions_by_target_id: Mapping[str, Mapping[tuple[str, str], str]] = (
+        field(default_factory=dict)
+    )
     #: Targets that fan out over a declared geography roster instead of pinning
     #: one geography: one reference per ``(geography_level, geography_id)``,
     #: named ``target_id@geography_id`` with its own measure column, the same
@@ -311,7 +319,40 @@ def author_target_references(
             )
         )
         candidate_entries: list[dict[str, Any]] = []
+        row_exclusions = dict(
+            config.signed_row_exclusions_by_target_id.get(target_id, {})
+        )
+        unmatched_row_exclusions = set(row_exclusions)
         for row in candidates:
+            signed_row = _signed_row_exclusion(row, row_exclusions)
+            if signed_row is not None:
+                row_key, rationale = signed_row
+                unmatched_row_exclusions.discard(row_key)
+                matched = [
+                    fact
+                    for fact in source_facts
+                    if _fact_matches_selector(fact, row["ledger_selector"])
+                ]
+                candidate_entries.append(
+                    {
+                        "name": row["name"],
+                        "status": "signed_excluded",
+                        "matched_fact_count_overall": len(matched),
+                        "matched_fact_count_at_or_before_period": len(
+                            [
+                                fact
+                                for fact in matched
+                                if _not_after_target_period(
+                                    _period_key(fact),
+                                    _period_key_from_value(config.target_period),
+                                )
+                            ]
+                        ),
+                        "signed_row": {"dimension": row_key[0], "value": row_key[1]},
+                        "signed_rationale": rationale,
+                    }
+                )
+                continue
             reference = LedgerTargetReference(**row)
             matched = [
                 fact
@@ -409,6 +450,14 @@ def author_target_references(
                 if uprating:
                     entry["uprating"] = uprating
             candidate_entries.append(entry)
+        if unmatched_row_exclusions:
+            stale = sorted(
+                f"{dimension}={value}" for dimension, value in unmatched_row_exclusions
+            )
+            raise ValueError(
+                f"Stale row-level signed exclusion for {target_id!r}: no fan-out "
+                f"row carries {stale!r}."
+            )
         target_entries[target_id] = {
             "status": _target_status(candidate_entries),
             "candidates": candidate_entries,
@@ -1360,12 +1409,38 @@ def _classify_area_deferral(
 def _target_status(candidate_entries: list[dict[str, Any]]) -> str:
     if not candidate_entries:
         return "not_applicable"
-    if any(entry["status"] == "active" for entry in candidate_entries):
-        if all(entry["status"] == "active" for entry in candidate_entries):
+    # A row signed out of a fan-out is an adjudicated absence, not a deferral:
+    # it neither makes the target partial nor hides a real deferral.
+    considered = [
+        entry for entry in candidate_entries if entry["status"] != "signed_excluded"
+    ]
+    if not considered:
+        return "signed_excluded"
+    if any(entry["status"] == "active" for entry in considered):
+        if all(entry["status"] == "active" for entry in considered):
             return "active"
         return "partially_active"
-    statuses = sorted({entry["status"] for entry in candidate_entries})
+    statuses = sorted({entry["status"] for entry in considered})
     return statuses[0] if len(statuses) == 1 else "multiple_deferrals"
+
+
+def _signed_row_exclusion(
+    row: Mapping[str, Any],
+    row_exclusions: Mapping[tuple[str, str], str],
+) -> tuple[tuple[str, str], str] | None:
+    """The row-level sign-out this fan-out row matches, if any."""
+
+    if not row_exclusions:
+        return None
+    dimension_values = row.get("ledger_selector", {}).get("dimension_values")
+    if not isinstance(dimension_values, Mapping):
+        return None
+    for dimension, value in dimension_values.items():
+        key = (str(dimension), json.dumps(value, sort_keys=True))
+        rationale = row_exclusions.get(key)
+        if rationale is not None:
+            return key, rationale
+    return None
 
 
 def _apply_declared_uprating(
