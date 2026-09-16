@@ -168,9 +168,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "benunit.uc_deduction_type_random_draw",
     "benunit.uc_latent_deduction_rate",
     "benunit.uc_reported_capital",
-    # #882: the childcare-element take-up flag rides as an extra column until
-    # the policyengine-uk release that reads would_claim_uc_childcare lands,
-    # when it moves into the release-input coverage manifest.
+    # #882: engine inputs the incumbent never carried (policyengine-uk 2.98.0
+    # reads them); the coverage manifest measures the incumbent surface, so
+    # net-new inputs are declared here like the deduction draws above.
     "benunit.would_claim_uc_childcare",
     "household.bus_fare_spending",
     "household.bus_subsidy_spending",
@@ -201,6 +201,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.admitted_patient_visits",
     "person.age_started_or_accepted_current_education_or_training",
     "person.attends_private_school_random_draw",
+    "person.care_hours",
     "person.charitable_investment_gifts",
     "person.dla_m_category",
     "person.dla_sc_category",
@@ -228,6 +229,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.student_loan_balance",
     "person.student_loan_plan",
     "person.tax_free_childcare_spend_routed_share",
+    "person.would_claim_carers_allowance",
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",
 )

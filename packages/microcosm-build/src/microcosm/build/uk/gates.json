@@ -623,6 +623,7 @@
           "person.admitted_patient_visits",
           "person.age_started_or_accepted_current_education_or_training",
           "person.attends_private_school_random_draw",
+          "person.care_hours",
           "person.charitable_investment_gifts",
           "person.dla_m_category",
           "person.dla_sc_category",
@@ -650,6 +651,7 @@
           "person.student_loan_balance",
           "person.student_loan_plan",
           "person.tax_free_childcare_spend_routed_share",
+          "person.would_claim_carers_allowance",
           "person.would_claim_marriage_allowance",
           "person.would_claim_scp"
         ],
