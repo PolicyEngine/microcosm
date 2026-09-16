@@ -4394,3 +4394,82 @@ def test__given_an_aliased_row__then_hierarchy_keeps_the_roster_code_and_the_nam
     assert spec.hierarchy.geography.id == "E08000016"
     assert spec.hierarchy.geography.label == "Barnsley"
     assert spec.metadata["ledger_geography_id"] == "E08000038"
+
+
+def test__given_numeric_universe_constraints__then_band_edges_are_stamped_as_filters() -> (
+    None
+):
+    # HMRC's CGT size-of-gain and age tables publish a band as a categorical
+    # dimension plus explicit numeric constraints; the edges must reach the
+    # ``ledger_filter_*_lower_bound`` vocabulary the band materialization reads.
+    fact = _consumer_fact_row_for_period(2024, value=73_000)
+    fact["dimensions"] = {"cgt_gain_band": "gain_3000_to_5999"}
+    fact["universe_constraints"] = {
+        "domain": "capital_gains_tax",
+        "constraints": [
+            {"operator": "<", "role": "filter", "value": 6000, "variable": "cgt_gain"},
+            {
+                "operator": "==",
+                "role": "filter",
+                "value": "gain_3000_to_5999",
+                "variable": "cgt_gain_band",
+            },
+            {"operator": ">=", "role": "filter", "value": 3000, "variable": "cgt_gain"},
+        ],
+    }
+    reference = LedgerTargetReference(
+        name="cgt gains band 3000",
+        ledger_selector={"source_name": "irs_soi"},
+        entity="person",
+        measure="person_count",
+        period=2024,
+    )
+
+    registry = compile_ledger_target_references([fact], [reference], country="uk")
+
+    metadata = registry.specs[0].metadata
+    assert metadata["ledger_filter_cgt_gain_band"] == "gain_3000_to_5999"
+    assert metadata["ledger_filter_cgt_gain_lower_bound"] == "3000"
+    assert metadata["ledger_filter_cgt_gain_upper_bound"] == "6000"
+    assert "ledger_filter_cgt_gain_band_lower_bound" not in metadata
+
+
+def test__given_bound_already_a_dimension__then_constraint_does_not_restamp_it() -> (
+    None
+):
+    fact = _consumer_fact_row_for_period(2024, value=10.0)
+    fact["dimensions"] = {"total_income_lower_bound": 12570}
+    fact["universe_constraints"] = {
+        "domain": "personal_incomes",
+        "constraints": [
+            {
+                "operator": "==",
+                "role": "filter",
+                "value": 12570,
+                "variable": "total_income_lower_bound",
+            },
+            {
+                "operator": ">=",
+                "role": "filter",
+                "value": 12570,
+                "variable": "total_income",
+            },
+            {"operator": ">", "role": "filter", "value": "n/a", "variable": "ignored"},
+        ],
+    }
+    reference = LedgerTargetReference(
+        name="spi band",
+        ledger_selector={"source_name": "irs_soi"},
+        entity="person",
+        measure="person_count",
+        period=2024,
+    )
+
+    registry = compile_ledger_target_references([fact], [reference], country="uk")
+
+    metadata = registry.specs[0].metadata
+    assert metadata["ledger_filter_total_income_lower_bound"] == "12570"
+    # A constraint on a different variable adds its own edge; a non-numeric
+    # constraint adds nothing.
+    assert metadata["ledger_filter_total_income_lower_bound"] == "12570"
+    assert "ledger_filter_ignored_lower_bound_exclusive" not in metadata

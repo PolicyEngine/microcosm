@@ -42,6 +42,14 @@ _OPEN_LABEL = re.compile(
 )
 _MISSING_COLUMN = re.compile(r"^'(?:([a-z_0-9]+)\.)?([A-Za-z_0-9]+)'$")
 
+#: Provider kinds whose values are additionally masked by the binding's
+#: ``filters`` and ``household_conditions`` (and by a declared band on
+#: ``groupby_variable``) after the provider runs. A gated measure can then be
+#: scoped by a geography fan-out predicate or sliced into published bands the
+#: same way a plain prepared column is. Other providers compute their own
+#: population and stay closed to filters.
+FILTER_AWARE_PROVIDER_KINDS = frozenset({"parameter_gated_threshold"})
+
 
 class MeasureProvider(Protocol):
     """Provider of adapter-level variables needed for target materialization.
@@ -520,19 +528,27 @@ def materialize_target_bindings(
                     f"observation period {spec.metadata.get('ledger_fact_period')!r} "
                     f"does not match declared measurement period {measurement_period}"
                 )
+            filter_aware = not kind or str(kind) in FILTER_AWARE_PROVIDER_KINDS
+            band = None
+            if filter_aware and binding.get("groupby_variable"):
+                band = _band_bounds(
+                    spec,
+                    binding,
+                    band_edges.get(str(contract_target_id), ()),
+                )
             if kind:
                 provider = provider_registry.get(str(kind))
                 if provider is None:
                     raise ValueError(f"unsupported binding kind {kind!r}")
                 values = provider(adapter, binding, measurement_period)
-            else:
-                band = None
-                if binding.get("groupby_variable"):
-                    band = _band_bounds(
-                        spec,
-                        binding,
-                        band_edges.get(str(contract_target_id), ()),
+                if filter_aware:
+                    entity = str(binding.get("from_entity") or spec.entity)
+                    values = np.where(
+                        _binding_mask(adapter, entity, binding, values, band=band),
+                        values,
+                        0.0,
                     )
+            else:
                 values = _prepared_column_values(
                     adapter, spec.entity, binding, band=band
                 )
@@ -643,6 +659,9 @@ def _with_geography_predicate(
     the ordinary predicate vocabulary). It is appended to the binding's
     ``filters`` verbatim. References without the key are untouched, so no
     existing country-level reference is re-scoped by its geography stamp.
+    Provider bindings accept the predicate only when their kind is in
+    :data:`FILTER_AWARE_PROVIDER_KINDS`; other providers never read filters,
+    so scoping them would silently publish the unscoped population.
     """
 
     metadata = getattr(spec, "metadata", None) or {}
@@ -661,10 +680,11 @@ def _with_geography_predicate(
             f"{name!r}: metadata.geography_predicate must be a predicate object "
             "naming a variable."
         )
-    if binding.get("kind"):
+    if binding.get("kind") and str(binding["kind"]) not in FILTER_AWARE_PROVIDER_KINDS:
         raise ValueError(
             f"{name!r}: a geography predicate cannot scope a provider binding "
-            f"of kind {binding['kind']!r}; providers do not read filters."
+            f"of kind {binding['kind']!r}; only filter-aware providers "
+            f"({', '.join(sorted(FILTER_AWARE_PROVIDER_KINDS))}) read filters."
         )
     map_to = predicate.get("map_to")
     entity = getattr(spec, "entity", None)
@@ -691,6 +711,27 @@ def _prepared_column_values(
         values = _expression(adapter, entity, str(binding["value_expression"]))
     else:
         values = _column(adapter, entity, binding["value_variable"])
+    return np.where(
+        _binding_mask(adapter, entity, binding, values, band=band), values, 0.0
+    )
+
+
+def _binding_mask(
+    adapter: Any,
+    entity: str,
+    binding: Mapping[str, Any],
+    values: np.ndarray,
+    *,
+    band: tuple[float, float] | None = None,
+) -> np.ndarray:
+    """The population a binding measures: its filters, conditions and band.
+
+    Shared by plain prepared columns and by filter-aware providers, so a
+    geography fan-out predicate (appended to ``filters`` by
+    :func:`_with_geography_predicate`) and a published band slice mean the
+    same thing on both paths.
+    """
+
     mask = np.ones_like(values, dtype=bool)
     for predicate in binding.get("filters", ()):
         mask &= _predicate_mask(adapter, entity, predicate)
@@ -700,7 +741,7 @@ def _prepared_column_values(
         lower, upper = band
         banded = _column(adapter, entity, binding["groupby_variable"]).astype(float)
         mask &= (banded >= lower) & (banded < upper)
-    return np.where(mask, values, 0.0)
+    return mask
 
 
 def _entity_reduction(adapter: Any, reduction: Mapping[str, Any]) -> np.ndarray:

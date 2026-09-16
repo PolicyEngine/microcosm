@@ -3252,10 +3252,60 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
     constraint_rows = _constraint_rows(fact)
     if constraint_rows:
         metadata["ledger_universe_constraint_count"] = str(len(constraint_rows))
-    for key, value in sorted(_dimensions(fact).items()):
+    dimensions = _dimensions(fact)
+    for key, value in sorted(dimensions.items()):
         if value is not None:
             metadata[f"ledger_filter_{key}"] = str(value)
+    for key, value in sorted(_constraint_bound_filters(fact, dimensions).items()):
+        metadata.setdefault(f"ledger_filter_{key}", value)
     return {key: value for key, value in metadata.items() if value}
+
+
+#: Constraint operators that publish a numeric band edge, and the
+#: ``ledger_filter_<variable><suffix>`` key each one is stamped under. The
+#: ``_lower_bound`` suffix is the one the band materialization reads
+#: (``target_materialization._band_lower_edge``); the others record the
+#: publisher's upper edge and its openness for readers and receipts.
+_CONSTRAINT_BOUND_SUFFIXES: Mapping[str, str] = {
+    ">=": "_lower_bound",
+    ">": "_lower_bound_exclusive",
+    "<": "_upper_bound",
+    "<=": "_upper_bound_inclusive",
+}
+
+
+def _constraint_bound_filters(
+    fact: object, dimensions: Mapping[str, object]
+) -> dict[str, str]:
+    """Numeric band edges a fact declares as universe constraints.
+
+    Some publishers state a band as a categorical dimension plus explicit
+    numeric constraints (HMRC's CGT size-of-gain and age tables:
+    ``cgt_gain_band == gain_3000_to_5999`` with ``cgt_gain >= 3000`` and
+    ``cgt_gain < 6000``) rather than as a ``*_lower_bound`` dimension the way
+    the SPI income-band tables do. The edges are stamped under the same
+    ``ledger_filter_`` vocabulary so a banded measure can slice on them. A
+    variable that is already a dimension key is left to the dimension stamp;
+    non-numeric or non-filter constraints are ignored.
+    """
+
+    bounds: dict[str, str] = {}
+    for row in _constraint_rows(fact):
+        role = _str_at(row, "role") or "filter"
+        if role != "filter":
+            continue
+        variable = _str_at(row, "variable")
+        operator = _str_at(row, "operator")
+        suffix = _CONSTRAINT_BOUND_SUFFIXES.get(operator)
+        if not variable or suffix is None or variable in dimensions:
+            continue
+        value = _at(row, "value")
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            continue
+        if not math.isfinite(float(value)):
+            continue
+        bounds[f"{variable}{suffix}"] = str(value)
+    return bounds
 
 
 def _diagnostic_target_label_metadata(
