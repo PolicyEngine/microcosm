@@ -189,7 +189,7 @@ float64 182.6 → 17.9 ns, bool 225.6 → 13.9 ns, int64 383.3 → 119 ns.
 |---|---|---|---|
 | `acs_native_coverage_binding._ACCEPTED["acs_person_coverage_authentication.py"]` | `475aa795c8a5b49a0dd3405a0877866dddd03012a1f2b9743447fab1fe85bcff` | `9ec68721a4cf480ef412c51ab354db9000eb7a7989e35e6e09b1574d88e8e49f` | `shasum -a 256 packages/microcosm-build/src/microcosm/build/us_runtime/acs_person_coverage_authentication.py` (re-derived after the final formatting pass; a stale pin refuses with `UNREVIEWED_PREPARATION`) |
 | `graph_implementation_inventory.json` → `survey_population_preparation.py` → `unbound_uses_sha256` | `29c09f6fcb25ce8bc6111dd0dc76f3501d9a6b635929e94b80835889d296ef91` | `d114117ca19e9b866982147e5497d601ed91ca603d0568730d4051bdd4005910` | `graph_implementation._dependency_contract(payload, name, _covered_imports(name, inventory))` — the module's own generator |
-| `graph_implementation_inventory.json` → `asec_2024_native_population.py` → `unbound_uses_sha256` | `71463df4f645cd2a98f537a212187b4d1e52bffcc4d2317defe6968d7f287608` | `8e15860cf67c6b069bb9f76ca042ce5d15a6b357583dc7847f4fae5ca2e902db` | same |
+| `graph_implementation_inventory.json` → `asec_2024_native_population.py` → `unbound_uses_sha256` | `71463df4f645cd2a98f537a212187b4d1e52bffcc4d2317defe6968d7f287608` | `7bb20439da26f75b48551e21e304c4bb7f3983ee07ef78ed804411640d58cdf4` | same |
 
 No other pin moves. Verified by recomputing **every** contract in the inventory
 through `graph_implementation._dependency_contract` and building all ten stage

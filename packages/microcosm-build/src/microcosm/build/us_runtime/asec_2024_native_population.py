@@ -494,12 +494,12 @@ def _parent_frame_witness(value):
         return ("unissued",)
     state = entry[2]
     return (
-        preparation_witness(state.frame),
-        preparation_witness(state.parent.frame),
+        _preparation_witness(state.frame),
+        _preparation_witness(state.parent.frame),
     )
 
 
-def preparation_witness(frame):
+def _preparation_witness(frame):
     """Deferred to the preparation owner, which defines the witness shape.
 
     Imported lazily: the preparation module imports this one, so the dependency
