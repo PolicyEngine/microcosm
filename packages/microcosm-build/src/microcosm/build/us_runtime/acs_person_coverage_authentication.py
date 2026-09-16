@@ -38,6 +38,7 @@ MAX_BODY_BYTES = 64 * 1024**2
 MAX_RECORD_BYTES = 400_000
 MAX_CSV_HEADER_BYTES = 64 * 1024
 MAX_TOKEN_BYTES = 64 * 1024
+_SCAN_BLOCK = 1024**2
 _MAGIC = b"ACS-COVERAGE/1\n"
 _TOKEN = object()
 _CSV_READER = _csv.reader
@@ -185,46 +186,101 @@ def _producer():
     }
 
 
+def _fence(record, quoted, first):
+    """Charge one bounded record against the byte fence's own two ceilings.
+
+    The token counter resets at every record start, so it never exceeds the
+    record's own length. A record no longer than the smaller of the two live
+    ceilings therefore cannot have violated either one, whatever those
+    ceilings are set to. Anything longer is replayed byte by byte so that the
+    refusal code, and the byte at which it fires, stay exactly the fence's own.
+    """
+    cap = MAX_CSV_HEADER_BYTES if first else MAX_RECORD_BYTES
+    if len(record) <= min(cap, MAX_TOKEN_BYTES):
+        return
+    length, token_bytes, pending_cr = 0, 0, False
+    for byte in record:
+        if pending_cr:
+            # The LF closing a CRLF record is charged against the record
+            # ceiling only, exactly as the byte fence charges it.
+            _require(length < cap, "CSV_RECORD_BYTES")
+            length += 1
+            pending_cr = False
+            continue
+        _require(length < cap, "CSV_RECORD_BYTES")
+        if byte == 44 and not quoted:
+            token_bytes = 0
+        else:
+            token_bytes += 1
+            _require(token_bytes <= MAX_TOKEN_BYTES, "CSV_TOKEN_BYTES")
+        length += 1
+        if byte == 34:
+            quoted = not quoted
+        elif byte == 13 and not quoted:
+            pending_cr = True
+
+
 def _records(stream):
     """Fence raw logical records/tokens before UTF-8 decoding or CSV allocation.
 
     Quote parity only locates boundaries; the unchanged strict literal parser
     subsequently owns CSV validity. CR, LF and CRLF are preserved, including
     inside quotes. The conservative token ceiling includes raw CSV quoting.
+
+    Boundaries are located with the C scanners rather than a byte loop: parity
+    is a count of quotes between terminators, and each terminator cursor is
+    kept until the scan passes it, so an absent carriage return costs one
+    search per block instead of one per record. Quote parity persists across
+    records, exactly as the byte fence carried it. A record is at most one
+    ceiling long, so it spans at most two blocks and the carried head is
+    rescanned rather than tracked, which is what keeps the pending-CR case a
+    plain continuation instead of a separate state.
     """
-    record = bytearray()
-    quoted, pending_cr, first, token_bytes = False, False, True, 0
-    cap = MAX_CSV_HEADER_BYTES
-    while block := stream.read(4096):
-        for byte in block:
-            if pending_cr:
-                if byte == 10:
-                    _require(len(record) < cap, "CSV_RECORD_BYTES")
-                    record.append(byte)
-                yield bytes(record)
-                record.clear()
-                first, pending_cr, token_bytes = False, False, 0
-                if byte == 10:
-                    continue
-            cap = MAX_CSV_HEADER_BYTES if first else MAX_RECORD_BYTES
-            _require(len(record) < cap, "CSV_RECORD_BYTES")
-            if byte == 44 and not quoted:
-                token_bytes = 0
+    tail, tail_quoted, first = b"", False, True
+    while block := stream.read(_SCAN_BLOCK):
+        buffer = tail + block if tail else block
+        size = len(buffer)
+        pos, scan = 0, 0
+        record_quoted = tail_quoted
+        parity = record_quoted
+        line, carriage = buffer.find(10), buffer.find(13)
+        while True:
+            if 0 <= line < scan:
+                line = buffer.find(10, scan)
+            if 0 <= carriage < scan:
+                carriage = buffer.find(13, scan)
+            if line < 0:
+                index = carriage
+            elif carriage < 0 or line < carriage:
+                index = line
             else:
-                token_bytes += 1
-                _require(token_bytes <= MAX_TOKEN_BYTES, "CSV_TOKEN_BYTES")
-            record.append(byte)
-            if byte == 34:
-                quoted = not quoted
-            if not quoted and byte in (10, 13):
-                if byte == 13:
-                    pending_cr = True
-                else:
-                    yield bytes(record)
-                    record.clear()
-                    first, token_bytes = False, 0
-    if record:
-        yield bytes(record)
+                index = carriage
+            if index < 0:
+                break
+            parity ^= buffer.count(34, scan, index) & 1
+            if parity:
+                # A terminator inside quotes is literal record content.
+                scan = index + 1
+                continue
+            end = index + 1
+            if buffer[index] == 13:
+                if end == size:
+                    # Whether a LF joins this record is the next block's first
+                    # byte; carry the record and rescan it there.
+                    break
+                if buffer[end] == 10:
+                    end += 1
+            record = buffer[pos:end]
+            _fence(record, record_quoted, first)
+            yield record
+            first = False
+            pos = scan = end
+            record_quoted = parity
+        tail = buffer[pos:]
+        tail_quoted = record_quoted
+        _fence(tail, tail_quoted, first)
+    if tail:
+        yield tail
 
 
 def _decode_record(raw, *, first):
