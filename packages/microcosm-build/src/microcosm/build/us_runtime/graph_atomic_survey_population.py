@@ -149,8 +149,10 @@ def run_atomic_survey_population(
     # One verification epoch for the whole run: every native capsule this
     # run borrows is authenticated in full once, reused while its sources
     # and live storage are provably unchanged, and re-authenticated in
-    # full when the epoch closes -- before anything is returned.
-    with survey._source_owner().verification_epoch():
+    # full when the epoch closes -- before anything is returned. Its record
+    # is carried into the manifest below, so how many validations a real run
+    # performed is read from the run rather than inferred from a unit test.
+    with survey._source_owner().verification_epoch() as verification:
         survey._require(type(return_values) is bool, "RETURN_VALUES_FLAG")
         prefix = survey.run_authenticated_survey_population(
             source_dir,
@@ -233,6 +235,7 @@ def run_atomic_survey_population(
             kernels=kernels,
             resume=resume,
             _population_observer=observe,
+            _verification_epoch=verification,
         )
         survey._require(
             tuple(observed) == compiled.order, "POPULATION_OBSERVER_COVERAGE"

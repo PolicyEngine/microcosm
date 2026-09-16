@@ -449,6 +449,14 @@ class RunManifest:
     reader can see which bytes the run actually finished against. Like
     ``populations`` and ``mass_ledgers`` it is outside :attr:`key`, outside
     ``to_json``, and outside every node receipt and cache record.
+
+    :attr:`verification_epoch` is attached the same way again: counts a caller
+    that scoped its own source verification around this run hands in, so a
+    reader can see how many validations the run actually performed rather than
+    inferring it. It is the caller's own mapping and is kept as a live view of
+    it, not a copy, because such a record is finalised when that scope closes --
+    after ``run_graph`` returns and before the caller receives this manifest.
+    It holds counts and labels only: no key, digest or path.
     """
 
     country: str
@@ -464,6 +472,9 @@ class RunManifest:
         default_factory=dict, repr=False, compare=False
     )
     source_identities: Mapping[str, str] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    verification_epoch: Mapping[str, object] = field(
         default_factory=dict, repr=False, compare=False
     )
 
@@ -525,6 +536,29 @@ class RunManifest:
             source_identities[name] = identity
         object.__setattr__(
             self, "source_identities", MappingProxyType(source_identities)
+        )
+        verification_epoch = self.verification_epoch
+        if not isinstance(verification_epoch, Mapping):
+            raise TypeError("RunManifest.verification_epoch must be a mapping")
+        for name, value in verification_epoch.items():
+            if not isinstance(name, str):
+                raise TypeError("RunManifest.verification_epoch keys must be strings")
+            if not isinstance(value, (int, str)):
+                raise TypeError(
+                    "RunManifest.verification_epoch values must be integers or strings"
+                )
+        # A live view of the caller's record, deliberately not a copy: see the
+        # class docstring. Values are checked once, here.
+        object.__setattr__(
+            self,
+            "verification_epoch",
+            verification_epoch
+            if isinstance(verification_epoch, MappingProxyType)
+            else MappingProxyType(
+                verification_epoch
+                if isinstance(verification_epoch, dict)
+                else dict(verification_epoch)
+            ),
         )
 
     @property

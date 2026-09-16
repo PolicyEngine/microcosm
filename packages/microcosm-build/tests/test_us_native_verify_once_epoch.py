@@ -566,3 +566,54 @@ def test_an_in_epoch_refusal_carries_the_code_it_carries_today(
         owner.SurveyPopulationPreparationError,
     )
     assert borrow == closing == str(today.value) == expected
+
+
+# --------------------------------------------------------------------------
+# The record a real run leaves behind.
+# --------------------------------------------------------------------------
+
+
+def test_a_real_run_records_its_epoch_in_the_manifest(tmp_path, monkeypatch):
+    """How many validations a run performed, read from the run itself.
+
+    Everything above counts validations on a capsule held by the test. This
+    one runs the nine-node atomic survey population graph over invented
+    sources and reads the epoch's own record off the manifest it returns --
+    the record both runners now carry, and the only place a real run says how
+    often it re-authenticated. The epoch closes before the runner returns, so
+    the final re-validation count is already in the record the caller holds.
+    """
+
+    import hashlib
+
+    from test_us_current_asec_demographics import _demographic_arguments
+    from test_us_graph_atomic_survey_population import _support_payload
+
+    from microcosm.build.us_runtime import graph_atomic_survey_population as runner
+    from microcosm.build.us_runtime import survey_atomic_geography as reconstruction
+
+    arguments = _demographic_arguments(tmp_path, monkeypatch)
+    payload, source_ids = _support_payload()
+    support_path = tmp_path / "invented-block-support.npz"
+    support_path.write_bytes(payload)
+    config = reconstruction.AtomicSurveyReconstruction(
+        support_path=str(support_path),
+        support_sha256=hashlib.sha256(payload).hexdigest(),
+        source_ids=tuple(sorted(source_ids.items())),
+        seed=17,
+    )
+    manifest = runner.run_atomic_survey_population(
+        **arguments,
+        store_root=tmp_path / "store",
+        geography_config=config,
+        resume="auto",
+    )
+    record = manifest.verification_epoch
+    assert record["protocol"] == owner.PROTOCOL + "/verification-epoch/1"
+    assert record["capsules"] >= 1
+    assert record["hits"] >= 1
+    assert record["misses"] >= 1
+    # Every capsule the epoch memoised was re-validated in full as it closed.
+    assert record["final_validations"] == record["capsules"]
+    # And none of it moved anything the manifest is identified by.
+    assert "verification_epoch" not in manifest.to_json()

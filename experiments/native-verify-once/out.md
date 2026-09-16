@@ -82,6 +82,22 @@ cost six complete validations before (one `_source_files` pass each — the whol
 3.48 GiB roster) and one after, plus one unconditional pass when the epoch
 closes. Five of six borrows are memo hits; `_producer()` still runs on all six.
 
+**The record.** `verification_epoch()` yields its own record — the protocol
+label, the capsule count, the memo hits, the signature misses and the
+unconditional final re-validations — and both runners now bind it and hand it
+to `run_graph`, which attaches it to the manifest as
+`RunManifest.verification_epoch`: outside the manifest key, outside its JSON,
+outside every node receipt and cache record, exactly like `source_identities`.
+On an actual nine-node atomic survey population run over invented sources
+(`test_a_real_run_records_its_epoch_in_the_manifest`) the record reads
+`{"capsules": 1, "hits": 20, "misses": 3, "final_validations": 1}`. So that run
+borrowed the preparation capsule 23 times and paid four complete validations:
+three signature misses inside the run and the one unconditional pass that
+closed the epoch. **"Once per run" is the shape, not the literal count** — a
+signature miss re-runs the full validation, and this run had three. The counts
+come from a runner call over invented fixtures, not from the 19-node measured
+run: the measurement harness predates the record and captures nothing of it.
+
 **Probe level.** There is no per-mechanism before/after ratio for this
 mechanism, and the report does not manufacture one: the before probe stopped at
 its CPU ceiling inside source admission (file A below,

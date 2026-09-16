@@ -2416,6 +2416,7 @@ def run_graph(
     resume: ResumePolicy = "auto",
     decisions: tuple[Decision, ...] = (),
     _population_observer: Callable[[str, Population], None] | None = None,
+    _verification_epoch: Mapping[str, object] | None = None,
 ) -> RunManifest:
     """Execute a compiled graph with content-addressed reuse and receipts.
 
@@ -2426,6 +2427,13 @@ def run_graph(
     persistence, and an exception it raises refuses the run. It is never a
     kernel capability, enters no key or receipt, and an unreached node has no
     population to observe.
+
+    The private verification-epoch record is a caller's own counts mapping --
+    a country runtime that scopes source verification around the whole run
+    hands in the record that scope yields. It is attached to the manifest
+    unchanged, as a live view rather than a copy, so counts the caller
+    finalises when its scope closes are present by the time the caller holds
+    the manifest. It enters no key, no receipt and no cache record.
     """
 
     if resume not in ("auto", "require", "forbid"):
@@ -2816,6 +2824,7 @@ def run_graph(
         country=compiled.graph.country,
         nodes=MappingProxyType(receipts),
         source_identities=MappingProxyType(final_identities),
+        verification_epoch=({} if _verification_epoch is None else _verification_epoch),
         decisions=decisions,
         started_at=started_at,
         finished_at=_now(),

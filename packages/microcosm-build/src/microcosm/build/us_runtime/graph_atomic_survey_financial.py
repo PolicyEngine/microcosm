@@ -1292,8 +1292,10 @@ def run_atomic_survey_financial(
 ):
     """Verify the base financial graph and its explicitly selected extension."""
     # One verification epoch for the whole run; the prefix run below opens
-    # a nested one, and each closes with a full re-authentication.
-    with survey._source_owner().verification_epoch():
+    # a nested one, and each closes with a full re-authentication. This run's
+    # own record is carried into the manifest below; the prefix's record rides
+    # its own manifest the same way.
+    with survey._source_owner().verification_epoch() as verification:
         require(type(return_values) is bool, "RETURN_VALUES_FLAG")
         require(type(person_status) is bool, "PERSON_STATUS_FLAG")
         require(type(rebase_property_taxes) is bool, "PROPERTY_TAX_FLAG")
@@ -1649,6 +1651,7 @@ def run_atomic_survey_financial(
             kernels=kernels,
             resume=resume,
             _population_observer=observe,
+            _verification_epoch=verification,
         )
         require(tuple(observed) == compiled.order, "ATOMIC_OBSERVER_ROSTER")
         loaded = _artifacts(manifest, compiled, store, kernels, keys, implementations)

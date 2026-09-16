@@ -75,9 +75,20 @@ by `_checked`), and a touched roster file raises `SOURCE_STAT_CHANGED`.
 On leaving an epoch — and on leaving every nested epoch, so a run that ends
 early through an inner scope is still covered — every capsule the epoch
 validated is re-validated **in full, with the memo bypassed**, and the result
-is recorded. `verification_epoch.last_record()` reports the capsule count, the
-number of memo hits, the number of signature misses and the number of
-unconditional final re-validations.
+is recorded. `verification_epoch()` yields that record: the protocol label, the
+capsule count, the number of memo hits, the number of signature misses and the
+number of unconditional final re-validations. It is filled in as the epoch runs
+and completed as the epoch closes; `epoch_record()` returns the innermost open
+epoch's record, or `None` outside an epoch.
+
+Both native runners bind the record they open and hand it to `run_graph`, which
+attaches it to the manifest as `RunManifest.verification_epoch` — outside the
+manifest key, outside its JSON, and outside every node receipt and cache
+record, exactly like `source_identities`. The epoch closes before the runner
+returns, so the record a caller reads there is the closed one:
+`test_a_real_run_records_its_epoch_in_the_manifest` asserts that an actual
+nine-node run over invented sources reports memo hits, at least one signature
+miss, and one unconditional final re-validation for every capsule it memoised.
 
 ## The five mechanisms
 
