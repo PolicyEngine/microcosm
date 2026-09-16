@@ -29,21 +29,21 @@ def complete_sibling_pairs(children):
     )
 
 
-def fit_nsece_sibling_dependence(children) -> dict:
+def fit_nsece_sibling_dependence(
+    children, *, match_columns=NSECE_CHILDCARE_MATCH_COLUMNS
+) -> dict:
     pool = children.loc[children.attendance_status.eq("complete")].copy()
     pool["weighted_care"] = (pool.childcare_days_per_week > 0) * pool.child_weight
-    cells = pool.groupby(list(NSECE_CHILDCARE_MATCH_COLUMNS))[
-        ["weighted_care", "child_weight"]
-    ].sum()
+    cells = pool.groupby(list(match_columns))[["weighted_care", "child_weight"]].sum()
     cells["probability"] = cells.weighted_care / cells.child_weight
     pairs = complete_sibling_pairs(children)
     if pairs.empty:
         return {"rho": 0.0, "households": 0, "status": "no measured sibling pairs"}
     predicted = (
-        pairs[list(NSECE_CHILDCARE_MATCH_COLUMNS)]
+        pairs[list(match_columns)]
         .merge(
             cells[["probability"]],
-            left_on=list(NSECE_CHILDCARE_MATCH_COLUMNS),
+            left_on=list(match_columns),
             right_index=True,
             how="left",
             validate="many_to_one",

@@ -81,6 +81,17 @@ moments, correlations, and every child's contribution to totals in households
 with three or more children. Its provisional screens currently fail; matching
 the average participation rate does not qualify this household model.
 
+The September 16 [household-size experiment](../experiments/us-childcare-attendance/README.md)
+tested one additional predictor: all rostered under-13 children, capped at three.
+The challenger improves larger-family mean days/hours on a separately reserved
+internal partition, but still fails 8 of 15 joint-schedule screens and has much
+sparser donor support. It remains diagnostic-only; the build still uses the
+four matching fields above. Complete-household evaluation also selects children
+with lower observed attendance than children whose siblings have unresolved
+calendars. That selection is a separate limitation, not evidence that all
+population attendance should simply be scaled downward. The survey had already
+informed development, so the reserved comparison is not external validation.
+
 ## ASEC target harmonization
 
 `harmonize_asec_childcare_predictors` resolves `PEPAR1` and `PEPAR2` against

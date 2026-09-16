@@ -1,4 +1,96 @@
-# NSECE attendance review revision — 2026-09-15
+# NSECE attendance household-model investigation — 2026-09-16
+
+**PR #916 remains draft.** Adding household size improves larger-family means,
+but the proposed matcher still fails joint-schedule validation. It is retained
+as an experiment and **has not replaced the production-stage matching recipe**.
+
+- [Comparison plan recorded before the new results](household-size-plan.txt)
+- [Development comparison and calendar-selection diagnostics](household-size-development.json)
+- [Reserved-household comparison](household-size-reserved-validation.json)
+- [Current artifact verification](household-review-artifact-verification.json)
+
+The challenger adds the number of rostered children ages 0–12, capped at three,
+to the existing age/region/work/income matching. Missing calendars still count
+toward household size. Its fallback retains size until the final age-only level.
+Both donor selection and the sibling-dependence fit use the revised predictors.
+The shared-rank mixture cannot change each child's conditional mean: adjusting
+its dependence coefficient alone cannot correct a mean attendance discrepancy.
+
+Before fitting the challenger, a deterministic 20% household partition was
+reserved. Every development donor pool and dependence fit excludes it. Five-fold
+development used the remaining households; the fixed challenger was then scored
+once on the reserved households. All metrics integrate weighted donor CDFs
+exactly. Earlier diagnostics had already used this survey, so this is an
+internal comparison, **not untouched external validation**. No model was retuned
+after viewing the reserved results.
+
+| Reserved comparison, 128 complete households with 3+ children | Observed | Existing matcher | Size-conditioned challenger |
+| --- | ---: | ---: | ---: |
+| Mean total days/week | 4.332 | 5.892 (+36.0%) | 4.964 (+14.6%) |
+| Mean total hours/week | 32.575 | 40.793 (+25.2%) | 33.430 (+2.6%) |
+| SD of total hours/week | 54.828 | 49.677 | 43.246 (−21.1%) |
+
+The reserved comparison includes 376 complete sibling households overall.
+The existing matcher fails 10 of 15 provisional screens; the challenger fails
+8 of 15. Better larger-family means do not establish a realistic joint
+distribution. For example, the youngest-pair weekly-hours cross-product error
+in 3+ households increases from 18.8% to 36.6%. The challenger's dependence
+coefficient reaches its upper bound of one in every development fit and the
+reserved fit, yet several joint-participation/intensity checks still fail.
+On the development folds, the larger-family hours mean is still 21.2% high.
+
+Two limitations prevent treating the mean improvement as a resolved model:
+
+1. **Sparse conditioning:** in the development pool, the median exact cell
+   falls from 12 donor households to 5. The share of observed children in cells
+   with fewer than ten donor households rises from 37.2% to 87.9%. These counts
+   precede fold exclusions, which can further reduce support; ten is a
+   descriptive cutoff, not a tuned matching rule.
+2. **Selected validation households:** totals can be scored only when every
+   under-13 calendar is complete. In development households with 3+ children,
+   observed children in fully complete households average 9.86 hours/week;
+   observed children with unresolved siblings average 26.22. All observed
+   children in that size group average 12.62. These child-weighted means show
+   selection differences, not the missing children's outcomes or a causal
+   missingness effect. Forcing predictions down to the complete-household
+   average would not establish unbiased population attendance.
+
+**Decision:** do not adopt hard household-size strata on these results. The
+next model design needs to control sparse-cell instability and assess calendar
+selection explicitly, scoring all observed child marginals by household size
+alongside complete-household joint moments. A partial-pooling or household-level
+model requires a new evaluation plan; another split of this same inspected
+survey would still not be external acceptance evidence. Noncalendar transport
+sensitivity and older-child/provider gaps remain unresolved.
+
+Reproduce either partition, using a new report path for each run:
+
+```bash
+uv run python tools/validate_us_childcare_household_size.py \
+  --household-tsv /local/39466-0005-Data.tsv \
+  --calendar-tsv /local/39466-0004-Data.tsv \
+  --partition development --report /local/household-development.json
+# Repeat with --partition validation and a separate report path only after
+# freezing the challenger; do not use those outcomes for further tuning.
+```
+
+The tool verifies the original source hashes and reports the plan, diagnostic
+code, and recipe hashes. It writes aggregates only. Regression tests cover
+reserved-household exclusion from every fit and donor pool, poisoning reserved
+outcomes without changing development results, actual donor conditioning,
+counting unresolved siblings, and rejecting reconstructed calendars as truth.
+
+The 593-test source/attendance/architecture regression run passed, as did lint,
+formatting, the tracked CI test inventory, and exact source-byte checks for both
+updated modules in the built wheel. The current recipe was rebuilt from the
+original parent because the fitter's code hash changed. Both native loaders
+validate its receipt; all 166,321 people's attendance values and IDs and all
+57,240 household weights equal the previous candidate exactly. The default
+dependence fit and sensitivity evaluator are unchanged, so the historical
+benefit and sensitivity estimates still apply. These checks do not certify
+the statistical model or authorize population publication.
+
+## Review revision — 2026-09-15
 
 **PR #916 remains draft.** The engineering safeguards have been strengthened,
 but the expanded household diagnostics fail provisional statistical screens.
@@ -50,9 +142,9 @@ weighted donor CDFs exactly; no favorable simulation seed is selected.
 
 Nine of fifteen provisional screens fail. Larger-household mean total days are
 25.35% too high and hours 23.36% too high. A fitted binary-participation mixture
-is not enough to establish realistic household schedules. A next model revision
-should investigate household-size conditioning and joint schedule donors, then
-be evaluated with separately reserved household evidence; retuning on these
+is not enough to establish realistic household schedules. Household-size
+conditioning was investigated using the separately reserved internal comparison above.
+The tested hard household-size conditioning was not adopted; retuning on these
 folds would not create independent validation.
 
 ## Noncalendar assumption sensitivity

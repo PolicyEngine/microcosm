@@ -951,6 +951,168 @@ def test_undefined_sibling_metrics_do_not_pass_validation():
     assert all(not check["passed"] for check in result["checks"])
 
 
+def _sibling_source():
+    from microcosm.build.us_runtime.nsece_childcare import NSECEChildcareSource
+
+    rows = []
+    for household in range(100):
+        size = 1 if household % 2 else 3
+        for child in range(size):
+            days = 5.0 if size == 1 else 0.0
+            rows.append(
+                {
+                    "donor_id": f"h{household}:c{child}",
+                    "source_household_id": f"h{household}",
+                    "age": 3,
+                    "childcare_household_size": size,
+                    "region": 1,
+                    "parent_work_status": 2,
+                    "income_band": 1,
+                    "attendance_status": "complete",
+                    "household_weight": 1.0,
+                    "child_weight": 1.0,
+                    MONTH: 22.0 if days else 0.0,
+                    DAYS: days,
+                    HOURS: 8.0 if days else 0.0,
+                }
+            )
+    children = pd.DataFrame(rows)
+    return NSECEChildcareSource(
+        children, Weights(np.ones(len(children)), WeightKind.DESIGN), {}
+    )
+
+
+def test_reserved_households_are_excluded_from_every_development_split():
+    from microcosm.build.us_runtime.nsece_childcare_sibling_validation import (
+        _household_splits,
+    )
+
+    children = _sibling_source().children
+    arguments = {"seed": 271828, "validation_seed": 20260916}
+    train, reserved = _household_splits(children, partition="validation", **arguments)[
+        0
+    ]
+    heldout_ids = set(children.loc[reserved, "source_household_id"])
+    assert heldout_ids
+    scored = set()
+    for training, evaluation in _household_splits(
+        children, partition="development", **arguments
+    ):
+        training_ids = set(children.loc[training, "source_household_id"])
+        evaluation_ids = set(children.loc[evaluation, "source_household_id"])
+        assert training_ids.isdisjoint(evaluation_ids | heldout_ids)
+        assert evaluation_ids.isdisjoint(heldout_ids | scored)
+        scored.update(evaluation_ids)
+    assert scored == set(children.loc[train, "source_household_id"])
+
+
+def test_household_size_changes_actual_validation_donors_and_not_only_rho():
+    from microcosm.build.us_runtime.nsece_childcare_sibling_validation import (
+        assess_sibling_schedules,
+    )
+
+    source = _sibling_source()
+    settings = {
+        "fallback_match_columns": (),
+        "validation_seed": 20260916,
+        "partition": "validation",
+    }
+    legacy = assess_sibling_schedules(source, match_columns=("age",), **settings)
+    conditioned = assess_sibling_schedules(
+        source, match_columns=("age", "childcare_household_size"), **settings
+    )
+    assert legacy["larger_households"]["coupled"]["mean_total_days"] > 0
+    assert conditioned["larger_households"]["coupled"]["mean_total_days"] == 0
+    assert conditioned["matching_counts"] == {
+        "age,childcare_household_size": 3
+        * conditioned["larger_households"]["households"]
+    }
+
+
+def test_reserved_outcomes_cannot_influence_development(monkeypatch):
+    from microcosm.build.us_runtime import nsece_childcare_sibling_validation as module
+
+    source = _sibling_source()
+    settings = {"validation_seed": 20260916, "partition": "development"}
+    _, reserved = module._household_splits(
+        source.children, seed=271828, validation_seed=20260916, partition="validation"
+    )[0]
+    reserved_ids = set(source.children.loc[reserved, "source_household_id"])
+    original_fit = module.fit_nsece_sibling_dependence
+
+    def checked_fit(children, **kwargs):
+        assert set(children.source_household_id).isdisjoint(reserved_ids)
+        return original_fit(children, **kwargs)
+
+    monkeypatch.setattr(module, "fit_nsece_sibling_dependence", checked_fit)
+    before = module.assess_sibling_schedules(source, **settings)
+    source.children.loc[reserved, [MONTH, DAYS, HOURS]] = [30, 7, 24]
+    assert module.assess_sibling_schedules(source, **settings) == before
+
+
+def test_sibling_assessment_rejects_reconstructed_calendars():
+    from microcosm.build.us_runtime.nsece_childcare_sibling_validation import (
+        assess_sibling_schedules,
+    )
+
+    source = _sibling_source()
+    source.children.loc[0, "attendance_status"] = "summary_bridge"
+    with pytest.raises(ValueError, match="original measured"):
+        assess_sibling_schedules(source)
+
+
+def test_size_challenger_counts_missing_calendars_without_mutating_source(monkeypatch):
+    from microcosm.build.us_runtime import nsece_childcare_sibling_validation as module
+
+    source = _sibling_source()
+    first_household = source.children.index[
+        source.children.source_household_id.eq("h0")
+    ]
+    source.children.loc[first_household[1], "attendance_status"] = "missing_calendar"
+    source.children.loc[first_household[1], [MONTH, DAYS, HOURS]] = np.nan
+    source.children.loc[first_household[2], "age"] = 13
+    before = source.children.copy(deep=True)
+    calls = []
+
+    def capture(candidate, **kwargs):
+        calls.append((candidate.children.copy(), kwargs))
+        return {}
+
+    monkeypatch.setattr(module, "assess_sibling_schedules", capture)
+    report = module.compare_household_size_matching(source, partition="development")
+    assert len(calls) == 2
+    revised, settings = calls[1]
+    assert revised.loc[first_household, "childcare_household_size"].tolist() == [
+        2,
+        2,
+        2,
+    ]
+    assert "childcare_household_size" in settings["match_columns"]
+    assert settings["fallback_match_columns"][-2:] == (
+        ("age", "childcare_household_size"),
+        ("age",),
+    )
+    assert_frame_equal(source.children, before)
+    assert report["production_recipe_changed"] is False
+
+
+@pytest.mark.parametrize(
+    "partition,validation_seed", [("unknown", 1), ("all", 1), ("validation", None)]
+)
+def test_sibling_partition_configuration_fails_closed(partition, validation_seed):
+    from microcosm.build.us_runtime.nsece_childcare_sibling_validation import (
+        _household_splits,
+    )
+
+    with pytest.raises(ValueError):
+        _household_splits(
+            _sibling_source().children,
+            seed=1,
+            validation_seed=validation_seed,
+            partition=partition,
+        )
+
+
 @pytest.mark.parametrize(
     "irregular,shift,expected_days,expected_hours",
     [
