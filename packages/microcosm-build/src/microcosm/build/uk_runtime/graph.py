@@ -179,7 +179,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             # under State Pension age (#882).
             "age",
         )
-    ),
+    )
+    | frozenset({("benunit", "is_married")}),
     "frs_person_draws": frozenset({("person", "age")}),
     "frs_household_draws": frozenset(),
     "frs_brma": None,
@@ -439,6 +440,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "would_claim_extended_childcare",
                 "would_claim_universal_childcare",
                 "would_claim_targeted_childcare",
+                "would_claim_uc_childcare",
             ),
             "bool",
         ),

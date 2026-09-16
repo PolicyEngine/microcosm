@@ -42,6 +42,8 @@ class _Contract:
         "extended_childcare": 0.5,
         "universal_childcare": 0.5,
         "targeted_childcare": 0.5,
+        "uc_childcare_single": 0.5,
+        "uc_childcare_couple": 0.0,
         "marriage_allowance": 0.5,
         "scp_under_6": 0.97,
         "scp_6_plus": 0.85,
@@ -90,7 +92,9 @@ def _frame() -> object:
             "universal_credit_reported": [0, 0, 20, 0],
         }
     )
-    benunit = pd.DataFrame({"benunit_id": [10, 20, 30]})
+    benunit = pd.DataFrame(
+        {"benunit_id": [10, 20, 30], "is_married": [False, True, False]}
+    )
     household = pd.DataFrame(
         {
             "household_id": [1, 2],
@@ -282,3 +286,27 @@ def test_uc_take_up_state_pension_age_constant_matches_the_engine() -> None:
     is_sp_age = np.asarray(sim.calculate("is_SP_age", 2025), dtype=bool)
 
     assert is_sp_age.tolist() == [age >= UK_STATE_PENSION_AGE for age in ages]
+
+
+def test_uc_childcare_take_up_is_drawn_by_family_type() -> None:
+    """The couple rate applies where is_married is set; zero means never drawn."""
+
+    frame = _frame()
+    person, benunit = frame.table("person"), frame.table("benunit")
+    anchors = aggregate_person_reported_to_benunit(person, benunit)
+    derived = derive_frs_take_up(
+        benunit,
+        anchors=anchors,
+        contract=_Contract(),
+        uc_age_eligible=uc_age_eligible_benunits(person, benunit),
+    )
+    # Benefit unit 20 is the couple; its rate is 0.0 in the fixture contract.
+    assert not derived.loc[1, "would_claim_uc_childcare"]
+    assert derived["would_claim_uc_childcare"].dtype == bool
+    with pytest.raises(KeyError, match="benunit.is_married is missing"):
+        derive_frs_take_up(
+            benunit.drop(columns=["is_married"]),
+            anchors=anchors,
+            contract=_Contract(),
+            uc_age_eligible=uc_age_eligible_benunits(person, benunit),
+        )

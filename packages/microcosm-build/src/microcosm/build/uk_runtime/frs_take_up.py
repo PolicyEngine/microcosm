@@ -36,6 +36,7 @@ FRS_TAKE_UP_OUTPUT_COLUMNS = (
     "would_claim_extended_childcare",
     "would_claim_universal_childcare",
     "would_claim_targeted_childcare",
+    "would_claim_uc_childcare",
     "maximum_extended_childcare_hours_usage",
 )
 FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS = ("maximum_extended_childcare_hours_usage",)
@@ -55,6 +56,13 @@ UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
 UK_STATE_PENSION_AGE = 66
 UK_UC_AGE_ELIGIBLE_AGGREGATE = "uc_age_eligible"
 UK_UC_AGE_ELIGIBLE_METHOD = "any_adult_under_state_pension_age"
+# The Universal Credit childcare element is claimed at one rate per family
+# type (DWP publishes the single / couple split of the households receiving
+# it); the couple rate applies where the benefit unit is a couple (#882).
+UK_UC_CHILDCARE_RATE_KEYS = {
+    "single": "uc_childcare_single",
+    "couple": "uc_childcare_couple",
+}
 UK_TAKE_UP_SIGNAL_OUTPUTS = (
     ("benunit", "would_claim_child_benefit", "child_benefit"),
     ("benunit", "child_benefit_opts_out", "child_benefit_opts_out_rate"),
@@ -64,6 +72,7 @@ UK_TAKE_UP_SIGNAL_OUTPUTS = (
     ("benunit", "would_claim_extended_childcare", "extended_childcare"),
     ("benunit", "would_claim_universal_childcare", "universal_childcare"),
     ("benunit", "would_claim_targeted_childcare", "targeted_childcare"),
+    ("benunit", "would_claim_uc_childcare", "uc_childcare"),
     ("person", "would_claim_marriage_allowance", "marriage_allowance"),
     ("person", "would_claim_scp", "scp"),
     ("household", "household_owns_tv", "tv_ownership_rate"),
@@ -135,9 +144,7 @@ def aggregate_person_reported_to_benunit(
     return grouped.reset_index(drop=True)
 
 
-def uc_age_eligible_benunits(
-    person: pd.DataFrame, benunit: pd.DataFrame
-) -> np.ndarray:
+def uc_age_eligible_benunits(person: pd.DataFrame, benunit: pd.DataFrame) -> np.ndarray:
     """True where the benefit unit has an adult under State Pension age."""
 
     if "age" not in person.columns:
@@ -192,6 +199,9 @@ def derive_frs_take_up(
         values[output] = assign_binary_from_rate(
             _draws(ids, output), contract.rate(key)
         )
+    values["would_claim_uc_childcare"] = _draws(
+        ids, "would_claim_uc_childcare"
+    ) < uc_childcare_rates(benunit, contract)
     distribution = contract.continuous_entry("maximum_extended_childcare_hours_usage")
     values["maximum_extended_childcare_hours_usage"] = clipped_normal_from_uniforms(
         _draws(ids, "maximum_extended_childcare_hours_usage"),
@@ -201,6 +211,22 @@ def derive_frs_take_up(
         upper=float(distribution["upper"]),
     )
     return values
+
+
+def uc_childcare_rates(benunit: pd.DataFrame, contract: UKTakeUpContract) -> np.ndarray:
+    """Per-unit childcare-element take-up rate: the couple or single contract rate."""
+
+    if "is_married" not in benunit.columns:
+        raise KeyError(
+            "benunit.is_married is missing; the Universal Credit childcare "
+            "take-up rate is drawn by family type"
+        )
+    couple = benunit["is_married"].fillna(False).to_numpy(dtype=bool)
+    return np.where(
+        couple,
+        contract.rate(UK_UC_CHILDCARE_RATE_KEYS["couple"]),
+        contract.rate(UK_UC_CHILDCARE_RATE_KEYS["single"]),
+    )
 
 
 def _draws(ids: np.ndarray, output: str) -> np.ndarray:
@@ -276,6 +302,8 @@ def _target_share(
     contract: UKTakeUpContract,
     weights: np.ndarray,
 ) -> float:
+    if key == "uc_childcare":
+        return float(np.average(uc_childcare_rates(table, contract), weights=weights))
     if key != "scp":
         return contract.rate(key)
     age = pd.to_numeric(table["age"], errors="coerce").fillna(0).to_numpy()

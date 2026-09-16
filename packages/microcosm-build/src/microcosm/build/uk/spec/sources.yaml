@@ -765,6 +765,15 @@ stages:
     draw: would_claim_targeted_childcare
     rate_key: targeted_childcare
     seed: 0
+  - kind: assign_binary_from_banded_rates
+    output: would_claim_uc_childcare
+    draw: would_claim_uc_childcare
+    band_column: is_married
+    bands:
+    - upper_exclusive: 1
+      rate_key: uc_childcare_single
+    - rate_key: uc_childcare_couple
+    seed: 0
   - kind: assign_clipped_normal
     output: maximum_extended_childcare_hours_usage
     draw: maximum_extended_childcare_hours_usage
@@ -779,6 +788,7 @@ stages:
   - would_claim_extended_childcare
   - would_claim_universal_childcare
   - would_claim_targeted_childcare
+  - would_claim_uc_childcare
   - maximum_extended_childcare_hours_usage
   nonnegative_outputs:
   - maximum_extended_childcare_hours_usage

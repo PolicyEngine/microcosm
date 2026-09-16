@@ -168,6 +168,10 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "benunit.uc_deduction_type_random_draw",
     "benunit.uc_latent_deduction_rate",
     "benunit.uc_reported_capital",
+    # #882: the childcare-element take-up flag rides as an extra column until
+    # the policyengine-uk release that reads would_claim_uc_childcare lands,
+    # when it moves into the release-input coverage manifest.
+    "benunit.would_claim_uc_childcare",
     "household.bus_fare_spending",
     "household.bus_subsidy_spending",
     "household.cash_isa",

@@ -64,10 +64,14 @@ def validate_uc_source_month_coverage(
     encoded = reference.metadata.get(EXPECTED_SOURCE_MONTHS)
     if encoded is None:
         return registry
-    if reference.family not in SOURCE_MONTH_FAMILIES or reference.value_operation not in {
-        "calendar_year_average",
-        *MONTHLY_WINDOW_OPERATIONS,
-    }:
+    if (
+        reference.family not in SOURCE_MONTH_FAMILIES
+        or reference.value_operation
+        not in {
+            "calendar_year_average",
+            *MONTHLY_WINDOW_OPERATIONS,
+        }
+    ):
         raise ValueError(
             "UK DWP source-month coverage requires a UC or Housing Benefit "
             "calendar_year_average or explicit monthly window reference."

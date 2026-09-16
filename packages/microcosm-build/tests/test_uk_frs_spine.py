@@ -641,6 +641,11 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             "seed": 0,
                         },
                         {
+                            "kind": "assign_binary_from_banded_rates",
+                            "output": "would_claim_uc_childcare",
+                            "seed": 0,
+                        },
+                        {
                             "kind": "assign_clipped_normal",
                             "output": "maximum_extended_childcare_hours_usage",
                             "seed": 0,
@@ -655,6 +660,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "would_claim_extended_childcare",
                         "would_claim_universal_childcare",
                         "would_claim_targeted_childcare",
+                        "would_claim_uc_childcare",
                         "maximum_extended_childcare_hours_usage",
                     ),
                     nonnegative_outputs=("maximum_extended_childcare_hours_usage",),
