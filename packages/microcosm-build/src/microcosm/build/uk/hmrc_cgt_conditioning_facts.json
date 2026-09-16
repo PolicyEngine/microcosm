@@ -1,0 +1,4778 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "hmrc_cgt_conditioning_facts.json",
+  "purpose": "HMRC Capital Gains Tax statistics 2026 release, tax year 2024-25 individual observations the CGT amounts imputation conditions on and the size-band donor stage weights by: Table 2.1a individuals by size of gain (taxpayers and gains, 13 bands), Table 6 individuals by age band (taxpayers, gains and tax, 9 bands plus the all-ages total), Table 5 taxpayers, gains and tax by UK country and region (all taxpayers including trusts; 12 region-tier areas plus the England and UK totals) and Table 1 individuals, trusts and total lines (the individuals/total shares that translate Table 5 onto the individuals basis). The stage rakes its allocation targets to these margins and reports achieved versus published at the same grain; no value is derived here.",
+  "consumers": [],
+  "planned_consumers": [
+    "hmrc_cgt_gains_spine",
+    "cgt_band_donors"
+  ],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "df35af7e7ccf689ad2a5b6e47ce33e99b8c9d3fb",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 266390,
+    "facts_sha256": "3e7d5a4fe18be9e5a19e5475a6e9f91a5d5b0ab827faedccdc755584957e59e7",
+    "manifest_sha256": "51aab3411e803cac7b9bbd1b1bf9250a87cd43bfd0ba35d0cd653e31821d0364"
+  },
+  "selections": [
+    {
+      "label": "table2_1a_ty2024_individuals_by_size_of_gain",
+      "selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "groupby_dimension": "cgt_gain_band",
+        "entity_name": "person",
+        "source_concept": [
+          "hmrc.cgt_taxpayers_individuals",
+          "hmrc.cgt_gains_individuals"
+        ],
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "row_count": 26
+    },
+    {
+      "label": "table6_ty2024_individuals_by_age_band",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024"
+      },
+      "row_count": 30
+    },
+    {
+      "label": "table5_ty2024_all_taxpayers_by_country_region",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024"
+      },
+      "row_count": 42
+    },
+    {
+      "label": "table1_ty2024_individuals_trusts_total",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024"
+      },
+      "row_count": 9
+    }
+  ],
+  "row_count": 107,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bca8c14c307ca3e97c9ff444",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5dd0b61c8a8c947b0ad46421",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_0_to_15.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_0_to_15",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_0_to_15"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 54000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_af584dedce4184d834502e56",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b6285e0ed0154334a2d2f0a7",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_16_to_24.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_16_to_24",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_16_to_24"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 319000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_40c8b42d3904c8eb44297559",
+      "semantic_fact_key": "ledger_semantic_fact_v2_af905bdefd512d8c5d64ced5",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_25_to_34.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_25_to_34",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_25_to_34"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 2499000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_375b4cb880dcb4caacc5f003",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d20070b14ed1ad07062c675d",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_35_to_44.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_35_to_44",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_35_to_44"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 11775000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_567f8babf11f6356f72398de",
+      "semantic_fact_key": "ledger_semantic_fact_v2_18bab36c18a27167ab0f4fc0",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_45_to_54.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_45_to_54",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_45_to_54"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 28422000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_38da5aa08efc20c32951a860",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5cda6c02b852685c07ebccd2",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_55_to_64.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_55_to_64",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_55_to_64"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 38118000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_69e2dec98e4cdbe34c3a0572",
+      "semantic_fact_key": "ledger_semantic_fact_v2_466f23cae9e113a6f83dab94",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_65_to_74.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_65_to_74",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_65_to_74"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 24260000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9d0fb4e1a0c63f6d06b73e61",
+      "semantic_fact_key": "ledger_semantic_fact_v2_368547a6338a44531009ec28",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_75_to_84.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_75_to_84",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_75_to_84"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 11736000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ca2b09a93c8a40ea4766b341",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b9bf0d167d4e8810c75ec90f",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_85_plus.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_85_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_85_plus"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 2076000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fe706a0e8298c94322653b24",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4d5f1ef7fbc86dd79d1c669e",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.all_ages.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 119258000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dbfb0ef0e721759972a72895",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a7aaa545664f945dba784858",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_0_to_2999.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_0_to_2999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_0_to_2999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_0_to_2999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 1000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d4ad617897f228660a6a6be3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_34a813f514cdec162a4a91e3",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_1000000_to_1999999.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_1000000_to_1999999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_1000000_to_1999999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_1000000_to_1999999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 12806000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ed181e27011def0336c6cd99",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2ad9b63c21ba798f4e1acda3",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_100000_to_249999.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_100000_to_249999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_100000_to_249999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_100000_to_249999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 9487000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0ce43b4d53bb602f1b9fb49a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3c0c7b33c6dbd1823408cfa0",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_10000_to_12299.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_10000_to_12299",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_10000_to_12299",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_10000_to_12299"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 289000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_52d8b43cd07113d29860cd06",
+      "semantic_fact_key": "ledger_semantic_fact_v2_918185dcb5312069b9a2b410",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_12300_to_24999.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_12300_to_24999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_12300_to_24999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_12300_to_24999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 1747000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_36a58e75b04a937aa837b211",
+      "semantic_fact_key": "ledger_semantic_fact_v2_71f756933bc4231ca6641169",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_2000000_to_4999999.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_2000000_to_4999999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_2000000_to_4999999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_2000000_to_4999999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 16477000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e79c0dd87ea41c5469aa88af",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f03de569657aedd6bdc21c96",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_250000_to_499999.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_250000_to_499999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_250000_to_499999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_250000_to_499999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 8820000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_12a05bb18f0245343b24c882",
+      "semantic_fact_key": "ledger_semantic_fact_v2_602fe1ba623ede2cd0657e18",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_25000_to_49999.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_25000_to_49999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_25000_to_49999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_25000_to_49999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 3516000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_68d13fca859e018be0915149",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7e8f870a1c33a411f9867e14",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_3000_to_5999.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_3000_to_5999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_3000_to_5999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_3000_to_5999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 311000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e86658beb663c322dfe3f311",
+      "semantic_fact_key": "ledger_semantic_fact_v2_aab1cc68ae696f34c0d23885",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_5000000_plus.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_5000000_plus",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_5000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_5000000_plus"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 48474000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bcee60127caf8ba271530f73",
+      "semantic_fact_key": "ledger_semantic_fact_v2_55bc34f803390bec5f83c797",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_500000_to_999999.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_500000_to_999999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_500000_to_999999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_500000_to_999999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 11372000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6854e6a3ad1abc041042f35d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dc7b67c49c314a9e2c64b8fc",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_50000_to_99999.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_50000_to_99999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_50000_to_99999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_50000_to_99999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 5510000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f808792afed121cadff6f396",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3858372b298900fbba7b3e91",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_6000_to_9999.gains_individuals",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "gains_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_6000_to_9999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_6000_to_9999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_6000_to_9999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 448000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_12060d20a417d85d67cf24e8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1c1a1339fa42073bcb95e119",
+      "source_record_id": "hmrc.cgt_statistics_2026.table1.ty2024.ty2024.individuals_gains",
+      "concept": "hmrc.cgt_gains_individuals",
+      "measure_id": "individuals_gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024",
+        "groupby_dimension": "hmrc.cgt_table1_line",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 1: taxpayer numbers, gains and tax liabilities by year of disposal",
+        "source_file": "Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods",
+        "source_sha256": "d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-statistics-2026/2026/d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef/Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods"
+      },
+      "value": 119258000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c56796163e95a924ef066aeb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1a52b0ec48ae6f77731ab535",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.north_east.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000001",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "north_east",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 1599000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_07d5a851c664d71dad2233c6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e681112967bfe8ea1b6b8328",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.north_west.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000002",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "north_west",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 9384000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6b4137649b34773c10d9731d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e0b0c178d9e90679fee97893",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.yorkshire_humber.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000003",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "yorkshire_humber",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 7442000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_61b52be8ce7d4fc692817ba9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_39cdd06b16dab53ce6540002",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.east_midlands.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000004",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "east_midlands",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 6725000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_34a10615174b9297afe221b7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_659bb752d85e8b6b3467b9b1",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.west_midlands.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000005",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "west_midlands",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 6289000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f15225d0bcd17c6de4da7274",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6d4b194ccdfc3dfe61da6d98",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.east.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000006",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "east",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 12326000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1c9e621227b5e9e0de086a29",
+      "semantic_fact_key": "ledger_semantic_fact_v2_054c9798d675b4b188cb5d62",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.london.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 34717000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e292074b43a3aaf4dbd7700e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_54b9917679dff3d3b82b1ef5",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.south_east.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000008",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "south_east",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 27337000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c7cfe6f18b190daed3153cfc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c3af0dad88efbbae1887d871",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.south_west.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000009",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "south_west",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 11040000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f64100d179188f457b587977",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3da1d90251a3ffa51f41fe53",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.england.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 116859000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a9969c2a306f713f6bb203fc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b3278862060c7036e8477ea5",
+      "source_record_id": "hmrc.cgt_statistics_2026.table1.ty2024.ty2024.total_gains",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "total_gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024",
+        "groupby_dimension": "hmrc.cgt_table1_line",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 1: taxpayer numbers, gains and tax liabilities by year of disposal",
+        "source_file": "Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods",
+        "source_sha256": "d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-statistics-2026/2026/d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef/Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods"
+      },
+      "value": 127316000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d22ed55a7a2e1c97abc7a881",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b3278862060c7036e8477ea5",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.united_kingdom.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 127316000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8b23977ac0a2db5257dc6bfe",
+      "semantic_fact_key": "ledger_semantic_fact_v2_39f26f51e187f51d0e57fe00",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.northern_ireland.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "northern_ireland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 1876000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4af3f233994240b66f222933",
+      "semantic_fact_key": "ledger_semantic_fact_v2_03d7c36142bf210fb95000b0",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.scotland.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 6064000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6cf6ec1d6cf7a4545c25ccb3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bfc4588b97c42242c66c0ecb",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.wales.gains_total",
+      "concept": "hmrc.cgt_gains_total",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "wales",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 2518000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5a20a960eef81c041accc2b7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f442a22fe4737b7e12fc353d",
+      "source_record_id": "hmrc.cgt_statistics_2026.table1.ty2024.ty2024.trusts_gains",
+      "concept": "hmrc.cgt_gains_trusts",
+      "measure_id": "trusts_gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024",
+        "groupby_dimension": "hmrc.cgt_table1_line",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 1: taxpayer numbers, gains and tax liabilities by year of disposal",
+        "source_file": "Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods",
+        "source_sha256": "d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-statistics-2026/2026/d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef/Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods"
+      },
+      "value": 8057000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1501d79f7352f63b01f1ea14",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ef8eecdd2e94d475222c4146",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_0_to_15.tax_individuals",
+      "concept": "hmrc.cgt_tax_individuals",
+      "measure_id": "tax_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_0_to_15",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_0_to_15"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 9000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5e45e49cdf5771a4f3dbc0c6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_abf2878a22a4c8e310928752",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_16_to_24.tax_individuals",
+      "concept": "hmrc.cgt_tax_individuals",
+      "measure_id": "tax_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_16_to_24",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_16_to_24"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 59000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4f0a20f8646020c518ec1a6c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_85a1f608ab9319c74068dd7d",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_25_to_34.tax_individuals",
+      "concept": "hmrc.cgt_tax_individuals",
+      "measure_id": "tax_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_25_to_34",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_25_to_34"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 456000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_041101c10e8ee3a674596ab2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_76b126ce6f1658fda578f854",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_35_to_44.tax_individuals",
+      "concept": "hmrc.cgt_tax_individuals",
+      "measure_id": "tax_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_35_to_44",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_35_to_44"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 2246000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c678a6f27d3dc149131419ee",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fcd950398af11e9420dc66ab",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_45_to_54.tax_individuals",
+      "concept": "hmrc.cgt_tax_individuals",
+      "measure_id": "tax_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_45_to_54",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_45_to_54"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 5522000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_76990ed6855fce16817d5289",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e48fb35fb17d9923018112df",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_55_to_64.tax_individuals",
+      "concept": "hmrc.cgt_tax_individuals",
+      "measure_id": "tax_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_55_to_64",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_55_to_64"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 7152000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3d4b0b5873bbe5bce9c14381",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b82d9b99b1905af9aa6f7bab",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_65_to_74.tax_individuals",
+      "concept": "hmrc.cgt_tax_individuals",
+      "measure_id": "tax_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_65_to_74",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_65_to_74"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 4409000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9c1150dfbd7f4f3b6235050b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_574b03dc310106a670cc4c31",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_75_to_84.tax_individuals",
+      "concept": "hmrc.cgt_tax_individuals",
+      "measure_id": "tax_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_75_to_84",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_75_to_84"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 2260000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e60df0c2438533341e2f4b08",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4b2fefd32dd984ee0c70d506",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_85_plus.tax_individuals",
+      "concept": "hmrc.cgt_tax_individuals",
+      "measure_id": "tax_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_85_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_85_plus"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 390000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4d034cd5cdc3141e0aab937e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_614dce4828b709c69e55cf72",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.all_ages.tax_individuals",
+      "concept": "hmrc.cgt_tax_individuals",
+      "measure_id": "tax_individuals",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 22503000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_222c397017de7bff0a6583a7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9bcc5d8064b3b8a364fb8093",
+      "source_record_id": "hmrc.cgt_statistics_2026.table1.ty2024.ty2024.individuals_tax",
+      "concept": "hmrc.cgt_tax_individuals",
+      "measure_id": "individuals_tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024",
+        "groupby_dimension": "hmrc.cgt_table1_line",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 1: taxpayer numbers, gains and tax liabilities by year of disposal",
+        "source_file": "Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods",
+        "source_sha256": "d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-statistics-2026/2026/d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef/Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods"
+      },
+      "value": 22503000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_76e65ef3cf8c61eceba34785",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7e6056983802f9c3fd470b70",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.north_east.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000001",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "north_east",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 274000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a779be8d30ce3b18904a2c30",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9ef42526f5b1347c8d739de2",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.north_west.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000002",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "north_west",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 1711000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_564ca1c8f8adfbbdabc73c00",
+      "semantic_fact_key": "ledger_semantic_fact_v2_34ccccee580e5066daa41aa1",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.yorkshire_humber.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000003",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "yorkshire_humber",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 1385000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bc913fd19d9a62a161605265",
+      "semantic_fact_key": "ledger_semantic_fact_v2_144d32dc27943c9ebb41ef8a",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.east_midlands.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000004",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "east_midlands",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 1224000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6992cb599e4f10777ec618d4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5cd44c20c23960a634a888e9",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.west_midlands.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000005",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "west_midlands",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 1136000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_981952a0a88f9d227ca4f63c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d2ab0da99fd4a0bd7aa8b8ea",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.east.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000006",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "east",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 2324000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_076b33cf58d4ee90969991c8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9986001fcbdf36cccfbc1720",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.london.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 7036000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cc9c8878ae90aa8a63dcf327",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b5eba3651a60108d8b51c83b",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.south_east.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000008",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "south_east",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 5150000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b29f6b8a84ee7290c931a055",
+      "semantic_fact_key": "ledger_semantic_fact_v2_87f88fbe461a06a35d5370bb",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.south_west.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000009",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "south_west",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 2059000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c4fc72553fc302b77a588cc3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_179eed1d77422e4dbe46c837",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.england.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 22299000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_aa87a0bd1fe6700d48f0dc80",
+      "semantic_fact_key": "ledger_semantic_fact_v2_027911c8a8414df2698ace57",
+      "source_record_id": "hmrc.cgt_statistics_2026.table1.ty2024.ty2024.total_tax",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "total_tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024",
+        "groupby_dimension": "hmrc.cgt_table1_line",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 1: taxpayer numbers, gains and tax liabilities by year of disposal",
+        "source_file": "Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods",
+        "source_sha256": "d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-statistics-2026/2026/d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef/Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods"
+      },
+      "value": 24169000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2e6098699736f64d4d3d35f5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_027911c8a8414df2698ace57",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.united_kingdom.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 24169000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_15f6637258381a4996bca1f3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_23373a4c84576b5ba564e399",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.northern_ireland.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "northern_ireland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 332000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_29f08497d9341ce8f91cd0d1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5bafcca3d0cd1931d857cdb6",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.scotland.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 1090000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_990919a5a5fd36a42604aedb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4eed494932e149c29ba47b6e",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.wales.tax_total",
+      "concept": "hmrc.cgt_tax_total",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "wales",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 447000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ae9ac44489e0779eb7718310",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b68d592a2ccb8bb1aa89d67c",
+      "source_record_id": "hmrc.cgt_statistics_2026.table1.ty2024.ty2024.trusts_tax",
+      "concept": "hmrc.cgt_tax_trusts",
+      "measure_id": "trusts_tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024",
+        "groupby_dimension": "hmrc.cgt_table1_line",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 1: taxpayer numbers, gains and tax liabilities by year of disposal",
+        "source_file": "Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods",
+        "source_sha256": "d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-statistics-2026/2026/d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef/Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods"
+      },
+      "value": 1666000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e5423dfbc233e26052672b42",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4c5f2aa34d3c93b974769da9",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_0_to_15.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_0_to_15",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_0_to_15"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 1000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8c3d294de4cbdbe292815164",
+      "semantic_fact_key": "ledger_semantic_fact_v2_422945d3d86d62aa7d87959a",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_16_to_24.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_16_to_24",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_16_to_24"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 4000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cc8ef619f52f7f44a885ce52",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5b1c60e06cd04fa5405d4588",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_25_to_34.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_25_to_34",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_25_to_34"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 27000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8554e7f842699a5f49816a0d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1d547ad82a45c9eb283cbb73",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_35_to_44.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_35_to_44",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_35_to_44"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 65000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_794376b60fba0684412fdff8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1db44226a7b70ce461aac5dc",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_45_to_54.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_45_to_54",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_45_to_54"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 98000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0d6b6c36290ab598f74f6669",
+      "semantic_fact_key": "ledger_semantic_fact_v2_faa019b7094feb90a2a32503",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_55_to_64.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_55_to_64",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_55_to_64"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 144000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a725972fe4ee87a3bddee1cf",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fdf2f314a04503659912a591",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_65_to_74.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_65_to_74",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_65_to_74"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 125000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1e4899d950c2b2be8ae21459",
+      "semantic_fact_key": "ledger_semantic_fact_v2_41cca4757d803a52ad6820b6",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_75_to_84.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_75_to_84",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_75_to_84"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 68000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7c419e2a82d25fae0127fd1d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_893a832c90019c65969ec018",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.age_85_plus.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "age_85_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "age_85_plus"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 19000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4fd72cd3c2a4d4ab60fe2e79",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dbf2d7fa5b63cae2dda83f3f",
+      "source_record_id": "hmrc.cgt_table6_2026.age.ty2024.all_ages.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table6_2026.age.ty2024",
+        "groupby_dimension": "age_band",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 6: individual taxpayers, gains and liabilities by age",
+        "source_file": "Table_6_2026_Age_statistics.ods",
+        "source_sha256": "03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-age-2026/2026/03207433a4b07f9bb065bd9a45631cd4a48f97f9afef36fdfeab7819c81073fb/Table_6_2026_Age_statistics.ods"
+      },
+      "value": 551000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ac7f90209feb119ae9750061",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0f0fd1e91f268ca8ad2b6457",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_0_to_2999.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_0_to_2999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_0_to_2999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_0_to_2999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 3000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6a760ffb56140426b69a5269",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7897cf5c29ea2ebcecabf6ab",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_1000000_to_1999999.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_1000000_to_1999999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_1000000_to_1999999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_1000000_to_1999999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 9000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9abad7ce7e36bcbf61e93db0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_964e09464bd1c28d22dfbd50",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_100000_to_249999.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_100000_to_249999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_100000_to_249999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_100000_to_249999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 61000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2393740ba1c11b1a31e54e75",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b26bdc92814d8fb50811faef",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_10000_to_12299.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_10000_to_12299",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_10000_to_12299",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_10000_to_12299"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 26000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c5a351873a7b2c4cc4150711",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c41e2e24d8eee83f3263191a",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_12300_to_24999.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_12300_to_24999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_12300_to_24999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_12300_to_24999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 97000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7a32f131c687a8bed9ec747a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8b7f715bd5016a4577c8d9de",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_2000000_to_4999999.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_2000000_to_4999999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_2000000_to_4999999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_2000000_to_4999999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 5000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9df6b0435f02114bbff8b83e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_68f7d4608e2edc5a14ed1fc0",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_250000_to_499999.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_250000_to_499999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_250000_to_499999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_250000_to_499999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 25000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dbb814e164ce932da9f110e3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e3317f3970b655bbfd02985d",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_25000_to_49999.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_25000_to_49999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_25000_to_49999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_25000_to_49999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 98000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_445cdec889b5a04a38bfc529",
+      "semantic_fact_key": "ledger_semantic_fact_v2_08f343edb5fa441fd5121500",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_3000_to_5999.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_3000_to_5999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_3000_to_5999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_3000_to_5999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 73000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_185d64390d180e168f174c93",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3cd3130605dfeea1fddd407a",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_5000000_plus.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_5000000_plus",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_5000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_5000000_plus"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 3000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ff1311e347cb11ab13a55da8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_223cc1886d61900a88ee834a",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_500000_to_999999.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_500000_to_999999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_500000_to_999999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_500000_to_999999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 16000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_16303d73f7eadbadac68edc5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_64d13add00bfec9df7e7f2f7",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_50000_to_99999.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_50000_to_99999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_50000_to_99999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_50000_to_99999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 78000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2f1e03f344a1e1de11bf0fe3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_326c04f6b0186980bf7381d5",
+      "source_record_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_6000_to_9999.taxpayers_individuals",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "taxpayers_individuals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024.gain_6000_to_9999",
+        "groupby_dimension": "cgt_gain_band",
+        "groupby_value_id": "gain_6000_to_9999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_gain_band": "gain_6000_to_9999"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+        "source_file": "Table_2_2026_Size_of_gain.ods",
+        "source_sha256": "ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-size-of-gain-2026/2026/ad29223cc99f6e417a65f8de1d5415366e3bd918660cbcfc6232757597db667e/Table_2_2026_Size_of_gain.ods"
+      },
+      "value": 57000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_31d709fc393c2bf4d04efca5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_813226f79ce5af29f274cef7",
+      "source_record_id": "hmrc.cgt_statistics_2026.table1.ty2024.ty2024.individuals_count",
+      "concept": "hmrc.cgt_taxpayers_individuals",
+      "measure_id": "individuals_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024",
+        "groupby_dimension": "hmrc.cgt_table1_line",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 1: taxpayer numbers, gains and tax liabilities by year of disposal",
+        "source_file": "Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods",
+        "source_sha256": "d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-statistics-2026/2026/d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef/Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods"
+      },
+      "value": 551000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_06f4adc777a4a3036026872f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4bfc7fa5ae6baeb5322a64b1",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.north_east.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000001",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "north_east",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 12000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9c0d0cc201d3d0f86df9f485",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a41f3f13c705ca274218a1c2",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.north_west.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000002",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "north_west",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 44000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_abfee7a635221f3a6573857f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fa577f123e5f8fade8a1649e",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.yorkshire_humber.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000003",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "yorkshire_humber",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 34000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d8b059af35df8fc34df0ebfa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_df8dbf1b81b76ba01eaee1e8",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.east_midlands.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000004",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "east_midlands",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 33000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d003284169d6847765c66221",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1beb836df367b7ac3aa99ab9",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.west_midlands.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000005",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "west_midlands",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 35000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a48acd5e86822a82360de3c3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_29c1a8de871ec2e6df24a418",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.east.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000006",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "east",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 62000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7bde136c5103f6b31dc478ef",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b5130373305aa013f2bb17fe",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.london.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000007",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 113000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_228fb212eb226981e6213fb1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1e8b530b329fea3c8d766656",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.south_east.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000008",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "south_east",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 121000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_af8dd206a47ffbc3651ece3b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1efaf1bb8768472840f2bfd4",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.south_west.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E12000009",
+        "level": "region",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "south_west",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 64000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ca68e642bbbbf2909dd570d4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_95e7b51cba975a82cb43ea99",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.england.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "england",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 519000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ec8cf88ffb8304ce72228e8b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d8d5e36429e422aaaa00ae63",
+      "source_record_id": "hmrc.cgt_statistics_2026.table1.ty2024.ty2024.total_taxpayers",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "total_taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024",
+        "groupby_dimension": "hmrc.cgt_table1_line",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 1: taxpayer numbers, gains and tax liabilities by year of disposal",
+        "source_file": "Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods",
+        "source_sha256": "d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-statistics-2026/2026/d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef/Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods"
+      },
+      "value": 584000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6e1e95655544beac4dc9e457",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d8d5e36429e422aaaa00ae63",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.united_kingdom.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 584000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2779d0ba66235d3ec59280b8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fb4604558a1f25daeee3e7ff",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.northern_ireland.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "northern_ireland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 10000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e3b5a134b920d7bcf071dc5c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4ab94c80c58a2d7b36e71395",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.scotland.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 37000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c3fb868cb38397d0420cd136",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4279e37b14eb922407ae6f2d",
+      "source_record_id": "hmrc.cgt_table5_2026.country_region.ty2024.wales.taxpayers_total",
+      "concept": "hmrc.cgt_taxpayers_total",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024",
+        "groupby_dimension": "geography",
+        "groupby_value_id": "wales",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 5: taxpayers, gains and liabilities by UK country and region",
+        "source_file": "Table_5_2026_Regional_and_country_statistics.ods",
+        "source_sha256": "dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-country-region-2026/2026/dd3efb61a06bd794e605fc3b4a18401bb51828ba8f6dcb44e67c8fc3f6037509/Table_5_2026_Regional_and_country_statistics.ods"
+      },
+      "value": 18000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6f7f13193d14a25c19df5632",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a8b5ae8bb1e03513eb8f1572",
+      "source_record_id": "hmrc.cgt_statistics_2026.table1.ty2024.ty2024.trusts_count",
+      "concept": "hmrc.cgt_taxpayers_trusts",
+      "measure_id": "trusts_count",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024",
+        "groupby_dimension": "hmrc.cgt_table1_line",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 1: taxpayer numbers, gains and tax liabilities by year of disposal",
+        "source_file": "Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods",
+        "source_sha256": "d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-statistics-2026/2026/d1413c30486f590d952d6e9c8940af6356ec796414418781412a89ba4c90c1ef/Table_1_2026_Taxpayer_numbers_gains_and_tax_liabilities.ods"
+      },
+      "value": 32000
+    }
+  ]
+}

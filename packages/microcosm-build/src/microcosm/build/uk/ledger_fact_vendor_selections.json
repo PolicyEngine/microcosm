@@ -382,6 +382,57 @@
           "expected_row_count": 18
         }
       ]
+    },
+    {
+      "resource": "hmrc_cgt_conditioning_facts.json",
+      "purpose": "HMRC Capital Gains Tax statistics 2026 release, tax year 2024-25 individual observations the CGT amounts imputation conditions on and the size-band donor stage weights by: Table 2.1a individuals by size of gain (taxpayers and gains, 13 bands), Table 6 individuals by age band (taxpayers, gains and tax, 9 bands plus the all-ages total), Table 5 taxpayers, gains and tax by UK country and region (all taxpayers including trusts; 12 region-tier areas plus the England and UK totals) and Table 1 individuals, trusts and total lines (the individuals/total shares that translate Table 5 onto the individuals basis). The stage rakes its allocation targets to these margins and reports achieved versus published at the same grain; no value is derived here.",
+      "consumers": [],
+      "planned_consumers": [
+        "hmrc_cgt_gains_spine",
+        "cgt_band_donors"
+      ],
+      "selections": [
+        {
+          "label": "table2_1a_ty2024_individuals_by_size_of_gain",
+          "selector": {
+            "source_name": "hmrc",
+            "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+            "groupby_dimension": "cgt_gain_band",
+            "entity_name": "person",
+            "source_concept": [
+              "hmrc.cgt_taxpayers_individuals",
+              "hmrc.cgt_gains_individuals"
+            ],
+            "period_type": "tax_year",
+            "period_value": 2024
+          },
+          "expected_row_count": 26
+        },
+        {
+          "label": "table6_ty2024_individuals_by_age_band",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table6_2026.age.ty2024"
+          },
+          "expected_row_count": 30
+        },
+        {
+          "label": "table5_ty2024_all_taxpayers_by_country_region",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024"
+          },
+          "expected_row_count": 42
+        },
+        {
+          "label": "table1_ty2024_individuals_trusts_total",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024"
+          },
+          "expected_row_count": 9
+        }
+      ]
     }
   ]
 }
