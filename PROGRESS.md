@@ -1413,3 +1413,32 @@ adversaries, T6 actual fixture validation and T7 GQ/zero-weight scientific fixtu
 remain open with concrete reasons in FINAL_REPORT.md. The independently confirmed
 old status/tax42 owner repair, inventories, CI/source closure, scientific/native
 capacity and release/default/PR893 decisions remain separately owned.
+
+---
+
+# Lane: verify native sources once per run (`native-verify-once`)
+
+Branch `native-verify-once`, worktree `~/PolicyEngine/_worktrees/microcosm-verify-once`,
+base `f7bb88525a78786f91bc3ebe2083ef4b1c85de18` (PR #893 head). Started
+2026-09-15.
+
+**State (2026-09-15, opening):** investigation only. Nothing edited yet.
+
+**Goal.** The 9/15 pilot v5 measurement
+(`~/PolicyEngine/_recovered/pilot-runs/native45-v5/out.md` §2) attributes ~79 %
+of a native 1/1000 run to repeated admission and verification of 3.48 GiB of
+staged source: node execution is 1,143 s of a 5,362 s run. Make source
+authentication and identity verification happen once per run instead of once
+per accessor use and once per executed node, without weakening any refusal and
+without moving any digest value.
+
+**Done:** read the evidence base; located all five mechanisms at base HEAD.
+
+**Next:** pin-surface map, memo design note, implementation, tests, measurement,
+draft PR.
+
+**Lane notes.** Root `out.md` is a tracked file holding the Amendment 19 lane's
+committed report; this lane's report goes to
+`experiments/native-verify-once/out.md`. The v5 cold run (`run_v5.py`, pid
+81194) is live on this machine, so probe runs wait for the window the lane
+brief allows (`pgrep -f run_v5.py` empty, or > 40 GB free).
