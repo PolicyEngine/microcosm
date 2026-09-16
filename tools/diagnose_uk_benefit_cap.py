@@ -194,15 +194,25 @@ def _support(
     if "household_source_id" not in household.columns:
         return {"available": False}
     benunit = simulation.populations["benunit"]
-    household_ids = benunit.value_from_first_person(
-        np.asarray(simulation.calculate("person_household_id", year).values)
+    household_ids = np.asarray(
+        benunit.value_from_first_person(
+            np.asarray(simulation.calculate("person_household_id", year).values)
+        ),
+        dtype=np.float32,
     )
-    household_ids = np.asarray(household_ids).astype(np.int64)
-    source = household["household_source_id"].reindex(household_ids)
+    # The engine carries ids as float32, so join on the same lossy encoding of
+    # the spine's integer household ids rather than on exact integers.
+    keyed = pd.Series(
+        household["household_source_id"].to_numpy(),
+        index=household.index.to_numpy().astype(np.float32),
+    )
+    keyed = keyed[~keyed.index.duplicated()]
+    source = keyed.reindex(household_ids)
     if source.isna().any():
         return {
             "available": False,
             "reason": "candidate household ids are not spine ids",
+            "unmatched": int(source.isna().sum()),
         }
     source = source.to_numpy()
     out = {
