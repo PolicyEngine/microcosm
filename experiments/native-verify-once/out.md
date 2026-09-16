@@ -275,6 +275,20 @@ infinities, the subnormal extremes), non-canonical NaN payloads with their sign
 bit, both `int64` endpoints, empty/sliced/strided columns, labelled indexes, and
 a 200-frame random sweep over ten kinds.
 
+**The mutation guard, through the new path.** The second `_context_digest`
+call per node is the "did the kernel mutate its context" guard, and it is
+proven to still fire after the change by a test that predates it:
+`test_executor_detects_mutation_even_when_pandas_replaces_a_buffer`
+(`packages/microcosm-graph/tests/test_graph_executor.py:610-640`) adds one to
+the int64 `age` column inside a kernel and asserts the run refuses with
+`Node … mutated its input context`. That column now streams through
+`_object_stream`'s integer branch, so the guard is exercised through the new
+code rather than around it. The float and bool branches have **byte parity
+only**: no test mutates a float or bool column inside a kernel. Byte-identity
+makes the guard equivalent by construction on those branches, which is why this
+is a coverage statement and not a contract gap — but it is stated rather than
+implied.
+
 The first version of the fast path mistook a `Categorical` for an integer column
 because `Categorical._ndarray` is its codes array; that is now a named test,
 `test_categorical_is_not_mistaken_for_its_integer_codes`, and the shipped guard
