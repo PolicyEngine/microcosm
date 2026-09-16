@@ -247,6 +247,14 @@ def _map_tenure(
         transformation="ACS TEN enum recode through SPM membership",
         register=register,
     )
+    # These enum outputs are strings even when the selected source households
+    # all have unreported tenure. Declare that type without inventing a value;
+    # generic serialization cannot infer a type from an all-missing object axis.
+    string_dtype = pd.StringDtype(storage="python", na_value=np.nan)
+    household["tenure_type"] = household["tenure_type"].astype(string_dtype)
+    spm_unit["spm_unit_tenure_type"] = spm_unit["spm_unit_tenure_type"].astype(
+        string_dtype
+    )
 
 
 def _map_housing_amounts(

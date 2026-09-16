@@ -1,0 +1,197 @@
+{
+  "adopted_production_sha256": {
+    "packages/microcosm-build/src/microcosm/build/atomic_geography.py": "ed20cdec84eebe46fda5ae213522b6b6699812f04cc6699411c83f27df0ac82a",
+    "packages/microcosm-build/src/microcosm/build/graph_atomic_geography.py": "9972f125566c4b697f8f862d236f6ae8cd3eece43fddb5d82df46552b0723496",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/atomic_block_support.py": "c70cfb2cf8f7915666846e563fd3d729fcb814244fc4bc3b3292d064fd0fdd40",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/current_survey_predictors.py": "ecb883827ca47c1fb1f2bf3ff25328706d0cc5c187d7914749b3ede4bd3ced31",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_atomic_survey_clone.py": "9aef169897cb0f91d1414d607c5025e8c9d80bcc84c6eef269a27570aa8c12b0",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_atomic_survey_financial.py": "d407086f05311e721e8961707e9471f5abffd74cef100eee2620cc75294492fc",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_atomic_survey_population.py": "e8a92fc299d6a388a0ef9ebf26d842460aefda9370006a4b1d929c78983cba0e",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_current_survey_predictors.py": "291285c35b19ff9dfccffc37ac2e768a72021db4196f3f662d86d26626790253",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/survey_age_calibration.py": "f7169ef0631a25acb4ca2fea0b49e105a5ca97d8fe85da2ecb4a5bdd5669cbeb",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/survey_atomic_geography.py": "d4e80f94ba79c4bad4b47d18fcb5daad9469d45aeb81dea64fba101554080f91",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/survey_origin_budget.py": "b3a5596f3862c998a079e5d5368418df8169d3ddd262921632f587dbaab9c3fd"
+  },
+  "adopted_test_sha256": {
+    "packages/microcosm-build/tests/test_atomic_geography.py": "bc66ae7461a57ac21afd1bdeb59a11549a5b74c6b81274544de0c9423579f5c9",
+    "packages/microcosm-build/tests/test_us_atomic_survey_clone_graph.py": "9bfce65ca47f74a325e652684b7c47fcf4fae1561a465e8f87e7518786bd4efa",
+    "packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py": "59adfd2af5225ad7d08aba2a55872546b9f252f61baea5f2647863b0b13a8c03",
+    "packages/microcosm-build/tests/test_us_graph_atomic_survey_population.py": "c2474f4943a2ccb0d89b77f74e1fa991b293bc977139da2c4f28b8626aed0c37",
+    "packages/microcosm-build/tests/test_us_postclone_geography_identity.py": "763d15b4d543b1e5b294d20a55169138d1a5d54bac15c11a9e9dc6fa93376c14",
+    "packages/microcosm-build/tests/test_us_survey_age_calibration_atomic_geography.py": "8dca207eb22b0709358d97c723c2367820e586f443462fd9039372145ed827ab",
+    "packages/microcosm-build/tests/test_us_survey_origin_budget_atomic_geography.py": "91b3719210ca11e342b1bb0798ca615457b890fbe26f6be4b69c6c6aacff843f"
+  },
+  "adoption_exclusions": [
+    "PUF nineteen-node predecessor bridge",
+    "optional ACS source cache/fingerprint overlays",
+    "split control collectors",
+    "native guard or payload changes"
+  ],
+  "assignment_identity": [
+    "survey_geography_origin_key",
+    "household_support_clone_index"
+  ],
+  "compatibility": {
+    "default_no_geography_case_passed_separately": true,
+    "default_shared_gate_api_preserved": true,
+    "optional_typed_gate_artifact": "microcosm.geography.validation_result@1"
+  },
+  "controls": {
+    "all_original_selected_function_and_fixture_asts_match_adopted_tests": true,
+    "candidate_cases": 70,
+    "candidate_split": [
+      45,
+      8,
+      5,
+      5,
+      1,
+      4,
+      2
+    ],
+    "separate_default_compatibility_cases": 1,
+    "single_combined_suite_run": false
+  },
+  "graph_nodes": {
+    "age_extension_total": 12,
+    "financial_extension_total": 19,
+    "survey_prefix": 9
+  },
+  "historical_native_note": "Accepted twenty-node cold/replay evidence assigned geography before cloning and remains separately versioned; it does not certify this new ordering.",
+  "model_quality_accepted": false,
+  "national_or_local_fiscal_calibration_accepted": false,
+  "native_full_puf_enrichment_accepted": false,
+  "native_postclone_survey_accepted": false,
+  "new_order_puf_host_accepted": false,
+  "original_candidate_source_map_sha256": "dd1a782dceb020fcf8d9ff5ba94fb32035aa01e8d670ea3529a42a01b26ce9da",
+  "release_eligible": false,
+  "runs": [
+    {
+      "cases": 45,
+      "cpu_seconds": 3.744692,
+      "included_in_candidate70": true,
+      "label": "us-postclone-atomic-geography45-v2",
+      "model_sources": 0,
+      "physical_source_and_owned": 510,
+      "postcheck_sha256": "45efe59214d52901a9712304e8ca6f66175c13caaecba3ff773d7780bc2a5ffa",
+      "receipt_sha256": "f5d1390d9b5183d7f23a2e2492a2d24e06df44bb66cec6e33bc100e74659cfe3",
+      "resources": 12,
+      "source_count": 502,
+      "source_map_sha256": "a294308425861522235f68d025c3c5becf7c2922708ed70543ab54f6a5a15ba4",
+      "wall_seconds": 4.635587666998617,
+      "xml_sha256": "8fd2783fc1917170f7d6abcb7ee0c7154a794dcddf326b2c154d5d7b612a2f82"
+    },
+    {
+      "cases": 8,
+      "cpu_seconds": 235.803439,
+      "included_in_candidate70": true,
+      "label": "us-postclone-prefix-budget8-v3",
+      "model_sources": 0,
+      "physical_source_and_owned": 511,
+      "postcheck_sha256": "85695bedda8003c9278d2d2ac4fc8d4d6e659898c3f3f5e8d8efcae4b08d74ae",
+      "receipt_sha256": "3b3fe93a0fe65ba6fd63889afdf99a8f45ba4a37c11aa5e243557fa05352b07c",
+      "resources": 12,
+      "source_count": 503,
+      "source_map_sha256": "71812aeb4d1600223f90882d8652405876c05379acbe0828fbee41b24680d7a1",
+      "wall_seconds": 237.32238883303944,
+      "xml_sha256": "caffc1d0eefa51cb0a71338324a213224e67cac50692d1f62d6d61d3cdb328bf"
+    },
+    {
+      "cases": 5,
+      "cpu_seconds": 345.624984,
+      "included_in_candidate70": true,
+      "label": "us-postclone-financial5",
+      "model_sources": 0,
+      "physical_source_and_owned": 511,
+      "postcheck_sha256": "7e993eccb0085b7dfce203a50d43f868eb822068ab62b50f344f69ce8f478396",
+      "receipt_sha256": "e3d9e95210185976de73982f994b51386bf4aa1243cc10b4f8db893760e55a90",
+      "resources": 12,
+      "source_count": 503,
+      "source_map_sha256": "02ae2194338378ac652a4ee6c2049b68dd78a813962b665b010c947b5cab0a4b",
+      "wall_seconds": 352.15383283403935,
+      "xml_sha256": "224590dab0d79f68b30a8e50ef9e86e9144869d90521cd66c0689d2b21167ff5"
+    },
+    {
+      "cases": 5,
+      "cpu_seconds": 203.630023,
+      "included_in_candidate70": true,
+      "label": "us-postclone-budget5",
+      "model_sources": 0,
+      "physical_source_and_owned": 511,
+      "postcheck_sha256": "9056592f58e29a73ba8b9ac69314e78602015be112261212911ca19a517e1df0",
+      "receipt_sha256": "0d577da19dd0086c8d5c47a7fc91101ad708ac51a22c62d8a487f1684c3f1b47",
+      "resources": 12,
+      "source_count": 503,
+      "source_map_sha256": "d316393b1aadf99fefadc342dcd0a88575491665971c8a3908c07b14d7f81f05",
+      "wall_seconds": 206.07668850000482,
+      "xml_sha256": "6a189b65471483178fc3518bc68692cf1c88678ae214db5d4407e178394722a1"
+    },
+    {
+      "cases": 1,
+      "cpu_seconds": 549.278067,
+      "included_in_candidate70": true,
+      "label": "us-postclone-age1",
+      "model_sources": 0,
+      "physical_source_and_owned": 511,
+      "postcheck_sha256": "f2c6533c11be9b325e9a507e8356a1c516ca4b20a3f4aecc7721458a8480f9ff",
+      "receipt_sha256": "e3a513ba6483688fb30b6bd7199b690278f32a02bc49101c78385539447fd699",
+      "resources": 12,
+      "source_count": 503,
+      "source_map_sha256": "b8e4b18994687ea33bead77003ccaffc28d72de7b79d3a34316faa1c7f945b4f",
+      "wall_seconds": 552.7509316250216,
+      "xml_sha256": "621b6dff98084c6748eb4a57b3515ef98828ae634bda3362c1504a87c4aba937"
+    },
+    {
+      "cases": 4,
+      "cpu_seconds": 438.682175,
+      "included_in_candidate70": true,
+      "label": "us-postclone-prefix-late4",
+      "model_sources": 0,
+      "physical_source_and_owned": 511,
+      "postcheck_sha256": "f25adff98c4645dabb503cd155e2652c9988342fca1be108d8b5aea8ee77f90e",
+      "receipt_sha256": "973fad9735b877c2867bb37af9c60025e10ae7b91216d846b056b5164e39ee33",
+      "resources": 12,
+      "source_count": 503,
+      "source_map_sha256": "b6b9faabf3080fce9cb3c9d1ab9521ba69da615c12d0c2328d75a24f30c976ec",
+      "wall_seconds": 459.0505850840127,
+      "xml_sha256": "c0034d745588c5d3821fb73d7086ada5e44c334b2a3e0b52e4ae4116bbfff13d"
+    },
+    {
+      "cases": 2,
+      "cpu_seconds": 458.346596,
+      "included_in_candidate70": true,
+      "label": "us-postclone-financial-late2",
+      "model_sources": 0,
+      "physical_source_and_owned": 511,
+      "postcheck_sha256": "2ab808471fc7943f6a3e6a810480ef9a1dddc267a908f0df03fc11311915c37c",
+      "receipt_sha256": "306c8e250421248faf282a9ac89742a820684b2ba2f6072189426c8301bd5464",
+      "resources": 12,
+      "source_count": 503,
+      "source_map_sha256": "e62aac60cb960e323cbf127067b3c27aa22daf73cdc815e20b55683984ed3ce8",
+      "wall_seconds": 478.2829617500538,
+      "xml_sha256": "e303d11996dbe2289c612d5fc102f55da5724f3f259d2cd5de9610686c2d7bb4"
+    },
+    {
+      "cases": 1,
+      "cpu_seconds": 28.545443,
+      "included_in_candidate70": false,
+      "label": "us-postclone-default1",
+      "model_sources": 0,
+      "physical_source_and_owned": 511,
+      "postcheck_sha256": "157961870ad76565d8c3634a457e4ef8d5ac2245abd75e6b7dc789288cc13fae",
+      "receipt_sha256": "9c96d01404c8a48fac7b991c2c7d7742d586bdd2b6b754a694e31c451d1bd5ad",
+      "resources": 12,
+      "source_count": 503,
+      "source_map_sha256": "38d7f20d01526ff275c74a8fcd92404b1a572cadade7f896d602f974d275fe2d",
+      "wall_seconds": 29.92554637498688,
+      "xml_sha256": "d8da781a858400f3670031566d774d7148b1333cecd6feee543901e68383ec8f"
+    }
+  ],
+  "scope": "Complete initial survey clones before constrained block assignment; current financial and limited age-calibration interfaces on invented source/target fixtures",
+  "source_adoption_base_head": "94b7c2a5d73c1512efcc41425224bfbb7a04cbb7",
+  "source_peer_review_sha256": "08c53c53cbd63481279c7c003f536404ec0b2163151b152ff39a6a72b6a3f713",
+  "status": "invented_postclone_controls_accepted",
+  "test_only_corrections": {
+    "packages/microcosm-build/tests/test_atomic_geography.py": "bc66ae7461a57ac21afd1bdeb59a11549a5b74c6b81274544de0c9423579f5c9",
+    "packages/microcosm-build/tests/test_us_survey_origin_budget_atomic_geography.py": "91b3719210ca11e342b1bb0798ca615457b890fbe26f6be4b69c6c6aacff843f"
+  }
+}

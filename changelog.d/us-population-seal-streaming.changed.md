@@ -1,0 +1,1 @@
+Stream the US full-PUF placement's in-process population seal into its digest instead of expanding every part into one tuple first, preserving each part, its order, its length prefix and its bytes exactly.

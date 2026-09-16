@@ -1,0 +1,29 @@
+{
+  "code_resources": 12,
+  "control_accepted": false,
+  "cpu_seconds": 467.05899700000003,
+  "frozen_before_after_current_equal": true,
+  "model_source_files": 5983,
+  "native_payloads_read": 0,
+  "peak_rss_bytes": 565133312,
+  "publisher_provenance_established": false,
+  "receipt_sha256": "ae0397762505db7059865abf28e739b534026416cd39b690ca50dc27310cb34b",
+  "release_eligible": false,
+  "result": 1,
+  "scope": "Four invented atomic-plus-financial controls: twenty-node cold/required replay with five qualified features, default three-feature compatibility, detached money mutation refusal at final support return, and final geography mutation refusal. No fit quality, native admission, PUF recipient admission, budget successor, or release acceptance.",
+  "source_and_owned_files": 497,
+  "test_counts": {
+    "errors": 0,
+    "failures": 2,
+    "skipped": 0,
+    "tests": 4
+  },
+  "tested_source_changes": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/current_survey_predictors.py": "0e32704bd82e32382cd03936b8cb6faada32afc10e9256c78c9a4b2f9b3372c8",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_atomic_survey_financial.py": "af365e9135f2fffa9cdcaed643be9a082cb2d382255c9d93fdd4e7cd4cfe8a77",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_current_survey_predictors.py": "fd643fcaca956ea4830e2022ad737c7321dbc3e59057230c56c31f303e8f5c27",
+    "packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py": "8d0fc394f7f59bf64f387cb137819c1789bfdf310f1573a4b41d4bd3ea3cfcdb"
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 472.7063618339598
+}

@@ -1,0 +1,1 @@
+Add a pure UK household-lineage adapter that derives stable atomic-geography keys from explicit source identities and selection/expansion records, preserving exact IDs and refusing ambiguous ancestry without granting source authority or changing the full-build host.

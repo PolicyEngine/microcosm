@@ -1,0 +1,96 @@
+{
+  "scope": "invented columns, exact old byte-stream parity; no native build timing claim",
+  "baseline_commit": "d5cbe60b2c6402648565f5139dbf7d94be209def",
+  "before_source_sha256": "b1c0ba9856714ce2131f73af6daa7731265a4fcc50c696d095a28f80a9d7cd03",
+  "after_source_sha256": "9e6ecca118942f7a76a2ef66de22abc082d3e19ca87bca67ca01477958c5b7e2",
+  "cases": [
+    {
+      "case": "low_cardinality_python_strings",
+      "rows": 500000,
+      "dtype": "<StringDtype(storage='python', na_value=<NA>)>",
+      "exact_digest_equal": true,
+      "sha256": "44146e967c4e15ce95279827bcd34fed25b12731c223a3b2ffb16b50026df371",
+      "before_cpu_seconds": 0.15536000000000016,
+      "after_cpu_seconds": 0.0252460000000001,
+      "speedup": 6.1538461538461355,
+      "all_cpu_samples": {
+        "before": [
+          0.158949,
+          0.1550100000000001,
+          0.15536000000000016
+        ],
+        "after": [
+          0.025262000000000118,
+          0.024386999999999937,
+          0.0252460000000001
+        ]
+      }
+    },
+    {
+      "case": "low_cardinality_arrow_strings",
+      "rows": 500000,
+      "dtype": "<StringDtype(na_value=<NA>)>",
+      "exact_digest_equal": true,
+      "sha256": "03a54e7514b1419afbc6e092f3cd308e3c760be4f30c318e08ab85badc5f0241",
+      "before_cpu_seconds": 0.15287399999999995,
+      "after_cpu_seconds": 0.02783200000000008,
+      "speedup": 5.492742167289434,
+      "all_cpu_samples": {
+        "before": [
+          0.1512340000000001,
+          0.1538870000000001,
+          0.15287399999999995
+        ],
+        "after": [
+          0.028616999999999893,
+          0.02783200000000008,
+          0.027589000000000086
+        ]
+      }
+    },
+    {
+      "case": "unique_source_keys",
+      "rows": 100000,
+      "dtype": "<StringDtype(storage='python', na_value=<NA>)>",
+      "exact_digest_equal": true,
+      "sha256": "3fa0e7051459014e6069c01acde5e7afc8de133e769a52e0a520fe75821a6d0b",
+      "before_cpu_seconds": 0.031774999999999665,
+      "after_cpu_seconds": 0.035517999999999716,
+      "speedup": 0.8946168140097955,
+      "all_cpu_samples": {
+        "before": [
+          0.03200500000000028,
+          0.030060000000000198,
+          0.031774999999999665
+        ],
+        "after": [
+          0.035517999999999716,
+          0.035597999999999796,
+          0.03467199999999959
+        ]
+      }
+    },
+    {
+      "case": "numeric_control",
+      "rows": 500000,
+      "dtype": "dtype('int64')",
+      "exact_digest_equal": true,
+      "sha256": "d8577194aeb21cddc40a14a2e0a1f2f13dee18b0b9c26e83842214f3b98bb2ba",
+      "before_cpu_seconds": 0.0013450000000001516,
+      "after_cpu_seconds": 0.0013260000000001604,
+      "speedup": 1.0143288084464472,
+      "all_cpu_samples": {
+        "before": [
+          0.0014279999999997628,
+          0.0013450000000001516,
+          0.0013090000000000046
+        ],
+        "after": [
+          0.0013320000000001109,
+          0.0013260000000001604,
+          0.0012980000000002434
+        ]
+      }
+    }
+  ]
+}

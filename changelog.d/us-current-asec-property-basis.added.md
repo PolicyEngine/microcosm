@@ -1,0 +1,1 @@
+Add a pure ASEC property donor basis with separate reported and component totals, explicit retirement-slot routing derivations, exact identity alignment and original-design-weight exclusion diagnostics.

@@ -1,0 +1,52 @@
+{
+  "cpu_seconds": 11.761269,
+  "current_checkout_runtime_certification": false,
+  "failed_predecessor_accepted": false,
+  "guard_sha256": "3dd78388b0426c92183db97aaa48516903b61ef9f4f646f35b9301c56662aa7a",
+  "junit_sha256": "0e6a0a3d4f77363c7ccd1705afd75e8082219ca4a24cfc6d36db383b77e2daab",
+  "model_source_map_sha256": "018d739504f5919c65104ad44a46c1df045d0bf71002622e66e8b68c3192b035",
+  "native_access": false,
+  "observed_outcomes": {
+    "error": 0,
+    "failed": 0,
+    "passed": 47,
+    "skipped": 0
+  },
+  "peak_rss_bytes": 501907456,
+  "postcheck_script_sha256": "f1c8d68d9c4edd92391317683f308f599f6dbc771a4ef9c538acf7d6e4b679e0",
+  "preceding_stable47_failed_postcheck_sha256": "cb2e3a344b4fa2e7bef7b1e60cf085b8a583567e54c7c2c940345639bc9081ce",
+  "preserved_failed_predecessors": [
+    "us-puf55-canonical-create-failed-20260910.json",
+    "us-puf55-canonical-cycle39-failed-20260910.json"
+  ],
+  "receipt_sha256": "8f7ac625296fbb22dcd976918b4718af14cbaf31288e528583d1fb49ad6e95c9",
+  "release_acceptance": false,
+  "resource_map_sha256": "57927f284c647abf03ea1e8370ddeb6035b4e68ff93af1e4f745a5027307e7ef",
+  "root_postcheck_sha256": "5617f7949e261d42975cb088671f83bda71c37d424e190a209766df5e4ce20ec",
+  "scope": "47_invented_canonical_donor_and_converter_controls",
+  "scope_note": "The exact frozen canonical donor CREATE and projection controls pass cold execution and required replay. Source adopted locally. Native donor, complete survey attachment, calibration and release acceptance remain separate.",
+  "source_adoption": true,
+  "source_files": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_puf55_canonical_donor.py": "a04c8dd2d89b4d3e5c563707587545299bd218aadf567ee7e772b9bbc5755311",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/puf55_canonical_donor.py": "6a8d07e38f5f0bff2619a7eb53fd0f34a10eed798f79de44c82e7740db923066",
+    "packages/microcosm-build/tests/test_us_graph_puf55_canonical_donor.py": "675bd57728a6ef56e79a0a24c79713fbb98e454be385fae607528d57048ce76d",
+    "packages/microcosm-build/tests/test_us_puf59_canonical.py": "85a6d41e716e0d3f1794851dd6cc6007603834a22982f31058fa5bf6da31df6d"
+  },
+  "source_graph_control_execution": "actual canonical CREATE cold and required replay with all 47 selected assertions and original fixture teardown passed",
+  "source_map_sha256": "dd16d99e9d0bbc3b1bf3aacddcd1159887758c2a8183bcee0333715270bcd9bb",
+  "status": "frozen_canonical_create_and_converter_controls_accepted",
+  "survey_attachment_host_execution": false,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 47
+  },
+  "unexpected_refusals": {},
+  "verified_current": {
+    "code_resources": 12,
+    "model_source": 5983,
+    "source_and_owned": 509
+  },
+  "wall_seconds": 14.356884333014023
+}

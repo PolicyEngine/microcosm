@@ -320,15 +320,28 @@ def _fixture_puma_ladder(pool_tool: ModuleType):
         tract_overlap_puma=puma.copy(),
         tract_overlap_tract=np.asarray([6_001_000_100], dtype=np.int64),
         tract_overlap_population=population.copy(),
+        joint_overlap_puma=puma.copy(),
+        joint_overlap_tract=np.asarray([6_001_000_100], dtype=np.int64),
+        joint_overlap_cd=np.asarray([601], dtype=np.int64),
+        joint_overlap_population=np.asarray([100], dtype=np.int64),
         metadata={
-            "schema_version": 1,
+            "schema_version": 2,
             "kind": "us_puma_ladder",
             "puma_vintage": "2020_puma",
             "sampling_basis": "population",
             "layers": {
-                "congressional_district": {"vintage": "119th_congress"},
-                "county": {"vintage": "2020_census"},
-                "tract": {"vintage": "2020_census"},
+                "congressional_district": {
+                    "vintage": "119th_congress",
+                    "source": "invented joint PUMA/tract/CD fixture",
+                },
+                "county": {
+                    "vintage": "2020_census",
+                    "source": "invented joint PUMA/tract/CD fixture",
+                },
+                "tract": {
+                    "vintage": "2020_census",
+                    "source": "invented joint PUMA/tract/CD fixture",
+                },
             },
         },
     )
@@ -2160,6 +2173,7 @@ def test_stacked_operator_target_requires_preparation_before_activation_authorit
         ("error", None, "failed"),
     ],
 )
+@pytest.mark.requires_us
 def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_terminal_state(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -2315,6 +2329,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         }
 
 
+@pytest.mark.requires_us
 def test_stacked_pool_fixed_h5_reaches_release_cd_vintage_preflight(
     pool_tool: ModuleType,
     release_tool: ModuleType,
@@ -2504,7 +2519,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "1eeca53aa80da949a292fbd8cb0afefde95c68888ed35f3f477f3c962e6bc644",
+            "spec_sha256": "54aa5d96b062a66207dfe49d4a03817e9658bd0ac11acb37546b1bf2a01f533d",
         },
     }
 
@@ -2650,6 +2665,7 @@ def test_constants_adapter_failure_receipt_preserves_requested_resolution_state(
     assert "spec_sha256" not in json.dumps(error_receipt["run_config"])
 
 
+@pytest.mark.requires_us
 def test_constants_adapter_post_resolution_failure_receipt_retains_binding(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -2695,6 +2711,7 @@ def test_constants_adapter_post_resolution_failure_receipt_retains_binding(
     assert error_receipt["run_config"] == resolved_config
 
 
+@pytest.mark.requires_us
 def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_receipt_changes(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -2791,6 +2808,7 @@ def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_recei
     assert constants_receipt == adapter_receipt
 
 
+@pytest.mark.requires_us
 def test_stacked_entrypoint_rejects_noncanonical_post_puf_transfer_receipt(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -3260,6 +3278,7 @@ def test_publication_error_keeps_gate_receipts_and_does_not_claim_stale_h5(
     assert stale_h5.read_bytes() == b"prior-build-artifact"
 
 
+@pytest.mark.requires_us
 def test_logbook_gate_receipts_are_immutable_across_later_attempts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -4164,6 +4183,7 @@ def test_stacked_resume_rejects_noncanonical_post_puf_transfer_receipt(
         )
 
 
+@pytest.mark.requires_us
 def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -4274,6 +4294,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
     assert any(row.prev_row_digest == third_row.row_digest for row in final_rows)
 
 
+@pytest.mark.requires_us
 def test_stacked_resume_error_uses_realized_stack_identity(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,

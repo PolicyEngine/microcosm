@@ -1,0 +1,1 @@
+Allow host-owned target snapshots on the US dense fiscal calibration kernel while preserving result and cache identity. Align grouped snapshot epochs with completed optimizer updates and keep required cache replay silent.

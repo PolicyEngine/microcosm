@@ -1,0 +1,40 @@
+{
+  "code_resources": 12,
+  "cpu_seconds": 8.784642,
+  "expected_test_file_counts": {
+    "test_native_puf55_projection.py": 1
+  },
+  "first_attempt": "Value checks passed, but removing the diagnostic plugin also removed collection accounting. Guard refused the run. The replacement retained exact collection accounting while suppressing private failure context; neither values nor access permissions changed.",
+  "input_artifact_sha256": "28cd44bd59218c1e77f14fa35c510ab550d2035527e3c139e7d19875c12ac11c",
+  "model_source_files": 5983,
+  "native_input_hash_verified_inside_guard_before_and_after": true,
+  "native_payload_reopened_by_postcheck": false,
+  "native_resources": 1,
+  "original_canonical_artifact_unchanged": true,
+  "outputs": 55,
+  "peak_rss_bytes": 1431109632,
+  "predictors": 9,
+  "qrf_fitted": false,
+  "receipt_sha256": "ce09455947f0efbca16014a23baa19037ac6450876c639568af6584c81bfc45c",
+  "release_eligible": false,
+  "report_sha256": "7ade9f442fe25f02e013b39afa5bf8077e89a75b43b4c6c7d0d2dc123f052766",
+  "result": 0,
+  "rows": 207692,
+  "scope": "Native canonical59 artifact projected to the survey-SS PUF55 donor; no recipient fit or whole-Population attachment.",
+  "source_and_code_before_after_current_equal": true,
+  "source_authority_granted": false,
+  "source_commit": "74814151a89e9ffc0ace982846152ef87623e73d",
+  "source_owned_files": 478,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1
+  },
+  "test_file_counts": {
+    "test_native_puf55_projection.py": 1
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 11.048004040989326,
+  "whole_population_attachment": false
+}

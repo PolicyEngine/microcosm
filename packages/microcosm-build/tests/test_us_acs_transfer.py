@@ -1467,9 +1467,8 @@ def test_pregnancy_draws_once_per_eligible_source_person_and_fans_to_clones(
     )
 
     person = result.frame.person
-    eligible = (
-        person["is_female"].astype(bool)
-        & person["age"].between(15, 44, inclusive="both")
+    eligible = person["is_female"].astype(bool) & person["age"].between(
+        15, 44, inclusive="both"
     )
     assert person.loc[eligible, "is_pregnant"].all()
     assert not person.loc[~eligible, "is_pregnant"].any()
@@ -1490,7 +1489,9 @@ def test_pregnancy_draws_once_per_eligible_source_person_and_fans_to_clones(
         .first()
         .sum()
     )
-    record = next(item for item in result.imputed_inputs if item.column == "is_pregnant")
+    record = next(
+        item for item in result.imputed_inputs if item.column == "is_pregnant"
+    )
     receipt = record.structural_receipt
     assert receipt is not None
     assert sum(pattern.recipient_rows for pattern in record.patterns) == (
@@ -1576,12 +1577,8 @@ def test_pregnancy_partial_clone_fanout_receipt_categories_are_disjoint(
     record = result.imputed_inputs[0]
     receipt = record.structural_receipt
     assert receipt is not None
-    assert receipt["preexisting_value_fanout_rows"] == int(
-        (missing & eligible).sum()
-    )
-    assert receipt["ineligible_rows_assigned_false"] == int(
-        (missing & ~eligible).sum()
-    )
+    assert receipt["preexisting_value_fanout_rows"] == int((missing & eligible).sum())
+    assert receipt["ineligible_rows_assigned_false"] == int((missing & ~eligible).sum())
     assert (
         receipt["preexisting_value_fanout_rows"]
         + receipt["ineligible_rows_assigned_false"]
@@ -2468,7 +2465,12 @@ def test_strict_leaf_audit_reports_missing_us_extra(
     from microcosm.frame.adapters import policyengine_us as adapter_module
 
     class _MissingMetadataIndex:
-        def __init__(self) -> None:
+        # Mirrors PolicyEngineUSVariableMetadataIndex's keyword-only surface.
+        # The audit path constructs it twice: puf_support._formula_owned_engine
+        # passes include_consumers=False before the strict-leaf branch
+        # constructs it bare, and both must raise the absent-extra ImportError
+        # rather than a signature TypeError.
+        def __init__(self, *, include_consumers: bool = True) -> None:
             raise ImportError("policyengine-us is absent")
 
     monkeypatch.setattr(

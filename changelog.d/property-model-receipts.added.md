@@ -1,0 +1,1 @@
+Add source-blind verification of the four property fit/apply receipt pairs against authenticated original donor/recipient branches, with complete model history checks and deterministic application replay without refitting.

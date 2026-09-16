@@ -1,0 +1,32 @@
+{
+  "corrected_source_pending": true,
+  "cpu_seconds": 7.677668,
+  "date": "2026-09-10",
+  "failed_scope_accepted": false,
+  "failure_code": "PUF55_CANONICAL_SOURCE_LIVE_DEPTH",
+  "failure_stage": "kernel construction, while traversing cyclic function closure/mapping references",
+  "guard_sha256": "b50c65325ec901aada10368562ba481f3253f8d4fbdfba7c38fb6a5089de7612",
+  "independent_physical_postcheck": false,
+  "junit_sha256": "c9f6146ec4ada2ea277311ff8f9609207585acc7c12233ef6f9437f273a82e4d",
+  "native_input_access": false,
+  "passed_cases_reported": 1,
+  "peak_rss_bytes": 500629504,
+  "production_adopted": false,
+  "receipt_sha256": "fa34a78b323eda9873b24a0b11a8d7f84dc3696cd9e0eab0cfb8e409a1152da7",
+  "release_acceptance": false,
+  "result": 1,
+  "schema_version": "microcosm.failed-control-observation.v1",
+  "scope": "invented canonical donor CREATE and converter controls; no native input, current-checkout or release acceptance",
+  "source_before_after_equal_reported": true,
+  "source_count": 501,
+  "source_map_sha256": "6fdb0549fe8331db32450f3161a2d8cf1e00096c9245728e84360a08050277da",
+  "status": "failed_before_canonical_create",
+  "test_counts": {
+    "errors": 24,
+    "failures": 4,
+    "skipped": 0,
+    "tests": 29
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 10.18145758396713
+}

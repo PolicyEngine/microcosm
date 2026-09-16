@@ -1,0 +1,1 @@
+Add an explicit 55-output PUF profile that preserves survey Social Security components and requires a separate total as its ninth conditioning predictor. Validate canonical donor projection and whole-Population attachment/replay while retaining source identities, weights and Social Security unknownness.

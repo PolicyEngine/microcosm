@@ -1,0 +1,1 @@
+Construct the completion custody tests' ordinary parent with the shared full US schema, invented group sentinel columns and an explicit empty metadata context. Check emptiness through the mapping interface. Preserve the original generic fixture and private child-support frames, and verify that ordinary US routes reject undeclared private-support metadata.

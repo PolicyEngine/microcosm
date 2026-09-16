@@ -6,6 +6,7 @@ import hashlib
 import json
 import pickle
 import socket
+import struct
 import time
 from collections.abc import Callable, Mapping
 from copy import deepcopy
@@ -413,6 +414,12 @@ def _update_scalar(digest: hashlib._Hash, value: object) -> None:
         payload = b"pd.NaT"
     elif value is None:
         payload = b"None"
+    elif type(value) is float:
+        # Exact Python floats pack straight to the same eight IEEE-754 bytes
+        # the one-element float64 array below produces, sign, payload and all,
+        # without building that list and array. Subclasses and numpy floating
+        # scalars keep the array path: only an exact float is short-circuited.
+        payload = b"f" + struct.pack("=d", value)
     elif isinstance(value, (float, np.floating)):
         payload = b"f" + np.asarray([value], dtype=np.float64).tobytes()
     elif isinstance(value, (bool, np.bool_)):
