@@ -128,7 +128,7 @@ def test_cgt_period_measures_bypass_stored_inputs_without_mutation(
     monkeypatch.setitem(
         sys.modules,
         "policyengine_uk",
-        SimpleNamespace(__version__="2.97.0", Microsimulation=lambda **kw: sim),
+        SimpleNamespace(__version__="2.98.0", Microsimulation=lambda **kw: sim),
     )
     resolver = UKMeasureResolver(
         simulation_source=tmp_path / "input.h5",
@@ -235,7 +235,7 @@ def test_resolver_refuses_persisted_cgt_measure_aliases(monkeypatch, tmp_path):
         sys.modules,
         "policyengine_uk",
         SimpleNamespace(
-            __version__="2.97.0", Microsimulation=lambda **kw: SimulationStub({})
+            __version__="2.98.0", Microsimulation=lambda **kw: SimulationStub({})
         ),
     )
     with pytest.raises(ValueError, match="must not be persisted"):
@@ -693,23 +693,31 @@ def test_packaged_exclusions_load():
         assert entry["expires_on"] == "2026-12-08", name
         assert entry["tracking"] == a16_issues[name], name
         assert "tools/diagnose_uk_legacy_benefits.py" in entry["adjudication"], name
+        assert "issuecomment-5694598278" in entry["adjudication"], name
         assert "SPI support channel" in entry["reason"], name
 
     # The 2026-09-16 tranche also carries the Housing Benefit caseload rows
     # (tracked on #867 like the spend row) and the benefit-cap amount bands
     # outside the bound (tracked on #882); every entry names its tool.
     repairs = [
-        e for e in exclusions
+        e
+        for e in exclusions
         if e["approved_on"] == "2026-09-16" and e["name"] not in _A16_READJUDICATED_ROWS
     ]
     assert len(repairs) == 16
     for entry in repairs:
         assert entry["expires_on"] == "2026-12-08", entry["name"]
+        # Every entry of the tranche points at the ruling that exists (the
+        # 2026-09-16 status comment) and explains the shared expiry.
+        assert "issuecomment-5694598278" in entry["adjudication"], entry["name"]
+        assert "zero-band clock" in entry["adjudication"], entry["name"]
         if entry["name"].startswith("dwp.hb."):
             assert entry["tracking"] == "microcosm#867", entry["name"]
+            assert "tools/diagnose_uk_legacy_benefits.py" in entry["adjudication"]
         else:
             assert entry["name"].startswith("dwp.benefit_cap.capped_households_")
             assert entry["tracking"] == "microcosm#882", entry["name"]
+            assert "tools/diagnose_uk_benefit_cap.py" in entry["adjudication"]
             assert "tools/diagnose_uk_benefit_cap.py" in entry["reason"], entry["name"]
     assert "dwp.benefit_cap.capped_households_up_to_100" not in names
     assert "dwp.benefit_cap.capped_households" not in names
