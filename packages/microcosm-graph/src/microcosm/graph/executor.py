@@ -489,8 +489,13 @@ def _object_stream(series: pd.Series) -> bytes | None:
     if dtype.kind == "f":
         # Every float width boxes to an exact Python float, which packs to the
         # same eight native-order IEEE-754 bytes as the float64 cast, NaN
-        # payload, signed zero and infinities included.
-        wide = np.ascontiguousarray(values, dtype="<f8")
+        # payload, signed zero and infinities included. The cast is to
+        # `np.float64`, whose byte order is the host's, because the loop this
+        # replaces packs `struct.pack("=d", value)`: an explicit `<f8` would
+        # agree with it on every little-endian host and disagree on any other.
+        # The length prefixes stay explicitly little-endian, because the loop
+        # writes them with `int.to_bytes(8, "little")`.
+        wide = np.ascontiguousarray(values, dtype=np.float64)
         payloads = np.empty((rows, 9), dtype=np.uint8)
         payloads[:, 0] = ord("f")
         payloads[:, 1:] = np.frombuffer(wide.tobytes(), dtype=np.uint8).reshape(rows, 8)
