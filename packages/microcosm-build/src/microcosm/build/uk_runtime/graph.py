@@ -661,6 +661,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
     "is_severely_disabled_for_benefits",
+    # #882: the carer take-up flag follows the refilled Carer's Allowance
+    # receipt on the SPI-redrawn rows.
+    "would_claim_carers_allowance",
 )
 _STAGE_CELLS = {
     **_STAGE_CELLS,
