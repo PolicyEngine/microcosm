@@ -1422,8 +1422,10 @@ Branch `native-verify-once`, worktree `~/PolicyEngine/_worktrees/microcosm-verif
 base `f7bb88525a78786f91bc3ebe2083ef4b1c85de18` (PR #893 head). Started
 2026-09-15.
 
-**State (2026-09-16):** mechanisms 3, 4 and 5 landed with proofs; the
-verification epoch (mechanisms 1 and 2) is implemented and under test.
+**State (2026-09-16, second session):** all five mechanisms landed with
+proofs and the epoch wired into both atomic capsules; draft PR #935 open. The
+open work is the CI-shaped test sweep, the before/after probe measurement, the
+report and the main-only split.
 
 **Goal.** The 9/15 pilot v5 measurement
 (`~/PolicyEngine/_recovered/pilot-runs/native45-v5/out.md` §2) attributes ~79 %
@@ -1461,9 +1463,29 @@ without moving any digest value.
   digests is unchanged; unconditional full re-validation on leaving the epoch.
   The two moved inventory contracts are re-derived (below).
 
-**Next:** finish the epoch test run, wire the epoch into the graph entry points,
-before/after probe measurement, docs that call the executor check "post-run",
-draft PR.
+**Done (2026-09-16, second session):**
+
+- Draft PR [#935](https://github.com/PolicyEngine/microcosm/pull/935), base
+  `microcosm-us-launch-integration-20260909`.
+- Main-only split branch `graph-verify-once-main`, worktree
+  `~/PolicyEngine/_worktrees/microcosm-graph-verify-once-main`, branched from
+  `origin/main` (51c314382). It carries the graph-shard change only: the three
+  commits re-applied, plus a changelog fragment. Its one deliberate difference
+  from this branch is that `_update_scalar` has no exact-float `struct.pack`
+  shortcut on main -- that belongs to PR #893 -- so the parity test's reference
+  copy was aligned to main's actual pre-change body, which makes it a literal
+  verbatim copy there too.
+- Before/after measurement staging in `.measure/` (gitignored): a parameterised
+  copy of the v5 pilot probe that takes the source tree, the staged run inputs
+  and the output directory from the environment, asserts every imported
+  `microcosm` module resolves inside the measured tree, and enforces a 16 GiB
+  resident ceiling alongside the CPU one. Baseline worktree
+  `~/PolicyEngine/_worktrees/microcosm-verify-once-baseline` is detached at
+  `f7bb88525`.
+
+**Next:** finish both probe runs, the CI-shaped test sweep on this branch, the
+19-node harness if memory allows, the report, push the split branch and open
+its draft PR, and update #935's body with the measurement table.
 
 **Pins re-derived so far:**
 
