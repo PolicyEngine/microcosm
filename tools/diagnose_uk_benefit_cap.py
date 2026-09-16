@@ -188,35 +188,38 @@ def measure(dataset: str, year: int, spine: str | None = None) -> dict:
 def _support(
     spine: str, simulation, year: int, capped: np.ndarray, tail: np.ndarray, monthly
 ) -> dict:
-    """Distinct source households behind the capped units, from the spine tables."""
+    """Distinct source households behind the capped units, from the spine tables.
 
-    household = pd.read_hdf(spine, "/household").set_index("household_id")
+    The join is positional: the engine's household population keeps the spine
+    household table's row order, so each benefit unit's household position
+    (through its first member) indexes the spine's ``household_source_id``
+    directly. No id is cast, so no two households can collide.
+    """
+
+    household = pd.read_hdf(spine, "/household")
     if "household_source_id" not in household.columns:
         return {"available": False}
+    household_population = simulation.populations["household"]
+    person_household_position = np.asarray(
+        household_population.members_entity_id, dtype=np.int64
+    )
     benunit = simulation.populations["benunit"]
-    household_ids = np.asarray(
-        benunit.value_from_first_person(
-            np.asarray(simulation.calculate("person_household_id", year).values)
-        ),
-        dtype=np.float32,
+    positions = np.asarray(
+        benunit.value_from_first_person(person_household_position), dtype=np.int64
     )
-    # The engine carries ids as float32, so join on the same lossy encoding of
-    # the spine's integer household ids rather than on exact integers.
-    keyed = pd.Series(
-        household["household_source_id"].to_numpy(),
-        index=household.index.to_numpy().astype(np.float32),
-    )
-    keyed = keyed[~keyed.index.duplicated()]
-    source = keyed.reindex(household_ids)
-    if source.isna().any():
+    if len(household) != household_population.count or positions.max() >= len(
+        household
+    ):
         return {
             "available": False,
-            "reason": "candidate household ids are not spine ids",
-            "unmatched": int(source.isna().sum()),
+            "reason": "engine household order does not match the spine household table",
+            "spine_households": int(len(household)),
+            "engine_households": int(household_population.count),
         }
-    source = source.to_numpy()
+    source = household["household_source_id"].to_numpy()[positions]
     out = {
         "available": True,
+        "join": "positional (engine household order is spine table order)",
         "capped_records": int(capped.sum()),
         "capped_source_households": int(len(set(source[capped]))),
         "tail_records": int(tail.sum()),

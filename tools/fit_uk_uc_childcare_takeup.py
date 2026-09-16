@@ -7,7 +7,7 @@ statistics, Table 1). The spine's ``would_claim_uc_childcare`` flag is drawn
 at one rate per family type, and the quantity a rate controls is the
 expectation ``rate * sum(weight * paid_uc * element > 0)`` over the units of
 that family type, so each rate is the published calendar-year mean divided by
-that weighted base at design weights (the #834 expected-count objective, here
+that weighted base at the input's weights (the #834 expected-count objective, here
 with one target per rate and no cross-scheme interaction). The receipt lands
 in ``take_up_contract.json`` as the entries' ``fitting_receipt``.
 """
@@ -44,6 +44,17 @@ GB_REGIONS = (
     "WALES",
     "SCOTLAND",
 )
+
+
+ACCEPTANCE_ROOT_MARKER = "data/ukds/acceptance"
+
+
+def _portable_path(path: Path) -> str:
+    """Record the input relative to the licensed acceptance root, never a home path."""
+
+    text = str(path)
+    marker = text.find(ACCEPTANCE_ROOT_MARKER)
+    return text[marker:] if marker >= 0 else path.name
 
 
 def _sha256(path: Path) -> str:
@@ -159,7 +170,7 @@ def fit(
     receipt = {
         "tool": "fit_uk_uc_childcare_takeup",
         "tool_version": TOOL_VERSION,
-        "input_h5": str(input_h5),
+        "input_h5": _portable_path(input_h5),
         "input_sha256": _sha256(input_h5),
         "seed": 0,
         "objective": "expected_count",
@@ -169,15 +180,16 @@ def fit(
         "ledger_facts_sha256": published["facts_sha256"],
         "stochastic_contract_sha256_at_fit": load_uk_take_up_contract().resource_sha256,
         "basis": (
-            "rate = published calendar-year mean / weighted paid-UC GB benefit units with a positive "
-            "childcare element of that family type at design weights; one target per rate, so the "
-            "expected-count objective is exact and needs no optimizer"
+            "rate = published calendar-year mean / paid-UC GB benefit units with a positive "
+            "childcare element of that family type, weighted as the input H5 carries them (a "
+            "calibrated candidate fits at its calibrated weights, a spine at design weights); "
+            "one target per rate, so the expected-count objective is exact and needs no optimizer"
         ),
         "published_means": published["means"],
         "model": model,
         "rates": rates,
         "achieved": achieved,
-        "status": "fitted on the spine at design weights; measured at calibrated weights in the receipts",
+        "status": "fitted at the input's weights; realized counts are measured on the twins in the receipts",
     }
     receipt["receipt_sha256"] = hashlib.sha256(
         json.dumps(
@@ -190,7 +202,10 @@ def fit(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--input-h5", type=Path, required=True, help="spine H5 at design weights"
+        "--input-h5",
+        type=Path,
+        required=True,
+        help="an H5 the engine loads; the rates are fitted at the weights it carries",
     )
     parser.add_argument(
         "--ledger-facts",
