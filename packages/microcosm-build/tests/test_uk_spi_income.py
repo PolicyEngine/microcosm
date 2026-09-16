@@ -286,6 +286,38 @@ def test_spi_disability_refresh_reuses_frs_derivation_for_spi_people() -> None:
     )
 
 
+def test_spi_carer_take_up_refresh_follows_the_refilled_receipt() -> None:
+    """The carer flag is re-derived from the refilled receipt on SPI rows only."""
+
+    person = pd.DataFrame(
+        {
+            "carers_allowance_reported": [0.0, 0.0, 12.0, 5.0],
+            # Root-stage flags: row 20 kept its donor's True although the fill
+            # zeroed the receipt; row 30 kept a False although the fill gave
+            # it one; row 40 is a base row whose stale True must survive.
+            "would_claim_carers_allowance": [False, True, False, True],
+        },
+        index=[10, 20, 30, 40],
+    )
+    person["would_claim_carers_allowance"] = person[
+        "would_claim_carers_allowance"
+    ].astype(bool)
+    spi_people = pd.Series([False, True, True, False], index=person.index)
+
+    result = spi_income._refresh_carer_take_up_input(person, spi_people=spi_people)
+
+    assert result["would_claim_carers_allowance"].tolist() == [False, False, True, True]
+    assert result["would_claim_carers_allowance"].dtype == bool
+    # A frame without the flag (an older synthetic manifest) passes through.
+    bare = pd.DataFrame({"carers_allowance_reported": [1.0]}, index=[1])
+    assert (
+        "would_claim_carers_allowance"
+        not in spi_income._refresh_carer_take_up_input(
+            bare, spi_people=pd.Series([True], index=[1])
+        )
+    )
+
+
 @pytest.mark.requires_uk
 def test_spi_preserves_observed_children_outside_the_donor_age_domain(
     monkeypatch, tmp_path
