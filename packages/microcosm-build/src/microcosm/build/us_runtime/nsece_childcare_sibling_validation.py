@@ -111,6 +111,9 @@ def assess_sibling_schedules(
     fallback_match_columns=NSECE_CHILDCARE_FALLBACK_COLUMNS,
     validation_seed=None,
     partition="all",
+    pooled=False,
+    include_observed_children=False,
+    pooling_fit_objective="pair_squared_error",
 ):
     """Evaluate pair intensity and larger-household totals with disjoint training.
 
@@ -119,6 +122,14 @@ def assess_sibling_schedules(
     merely because a new split is used.
     """
     children = source.children.loc[source.children.age.between(0, 12)].copy()
+    if pooled or include_observed_children:
+        from microcosm.build.us_runtime.nsece_childcare_pooling import (
+            PooledScheduleDonors,
+            fit_pooled_sibling_dependence,
+            with_childcare_household_size,
+        )
+
+        children = with_childcare_household_size(children)
     if children.attendance_status.eq("summary_bridge").any():
         raise ValueError("Sibling validation requires original measured calendars.")
     levels = (match_columns, *fallback_match_columns)
@@ -126,9 +137,11 @@ def assess_sibling_schedules(
         children, seed=seed, validation_seed=validation_seed, partition=partition
     )
     pairs, large_pairs, larger = [], [], []
+    child_records, observed_pairs = [], []
+    observed_pair_households = 0
     month, days, hours = US_CHILDCARE_ATTENDANCE_COLUMNS
     del month
-    fold_fits, split_counts, matching_counts = [], [], {}
+    fold_fits, split_counts, matching_counts, dependence_fits = [], [], {}, []
     for training_mask, target_mask in splits:
         training = children.loc[training_mask]
         target = children.loc[target_mask]
@@ -145,8 +158,15 @@ def assess_sibling_schedules(
                 "household_overlap": 0,
             }
         )
-        rho = fit_nsece_sibling_dependence(training, match_columns=match_columns)["rho"]
+        fitted = (
+            fit_pooled_sibling_dependence(training, objective=pooling_fit_objective)
+            if pooled
+            else fit_nsece_sibling_dependence(training, match_columns=match_columns)
+        )
+        rho = fitted["rho"]
+        dependence_fits.append(fitted)
         fold_fits.append(rho)
+        pooled_model = PooledScheduleDonors(training) if pooled else None
         train = training.loc[training.attendance_status.eq("complete")].sort_values(
             [days, hours, "donor_id"]
         )
@@ -160,7 +180,13 @@ def assess_sibling_schedules(
             cache: dict = cache,
             groups: list = groups,
             train: pd.DataFrame = train,
+            pooled_model=pooled_model,
         ):
+            if pooled_model is not None:
+                matching_counts["partially_pooled"] = (
+                    matching_counts.get("partially_pooled", 0) + 1
+                )
+                return pooled_model.distribution(child)
             key = tuple(child.reindex(match_columns))
             if key not in cache:
                 for level, indices in groups:
@@ -184,10 +210,14 @@ def assess_sibling_schedules(
             return distribution_values
 
         for _, household in target.groupby("source_household_id"):
-            if (
-                len(household) < 2
-                or not household.attendance_status.eq("complete").all()
+            complete_household = bool(household.attendance_status.eq("complete").all())
+            if not include_observed_children and (
+                len(household) < 2 or not complete_household
             ):
+                continue
+            roster_size = len(household)
+            household = household.loc[household.attendance_status.eq("complete")]
+            if household.empty:
                 continue
             household = household.sort_values(["age", "donor_id"])
             w = household.household_weight.to_numpy(dtype=float)
@@ -205,6 +235,61 @@ def assess_sibling_schedules(
                     household[days] * household[hours],
                 )
             ).astype(float)
+            if include_observed_children:
+                for i, (_, child) in enumerate(household.iterrows()):
+                    child_records.append(
+                        (
+                            float(child.child_weight),
+                            min(roster_size, 3),
+                            complete_household,
+                            actual[i],
+                            means[i],
+                            seconds[i],
+                        )
+                    )
+                if len(household) >= 2:
+                    observed_pair_households += 1
+                    pair_weight = w[0] / (len(household) * (len(household) - 1) / 2)
+                    for i, j in combinations(range(len(household)), 2):
+                        independent_product = means[i] * means[j]
+                        shared_product = _joint_product(
+                            distributions[i][:2], distributions[j][:2]
+                        )
+                        observed_pairs.append(
+                            (
+                                pair_weight,
+                                np.array(
+                                    [
+                                        actual[i],
+                                        actual[j],
+                                        actual[i] ** 2,
+                                        actual[j] ** 2,
+                                        actual[i] * actual[j],
+                                    ]
+                                ),
+                                np.array(
+                                    [
+                                        means[i],
+                                        means[j],
+                                        seconds[i],
+                                        seconds[j],
+                                        independent_product,
+                                    ]
+                                ),
+                                np.array(
+                                    [
+                                        means[i],
+                                        means[j],
+                                        seconds[i],
+                                        seconds[j],
+                                        (1 - rho) * independent_product
+                                        + rho * shared_product,
+                                    ]
+                                ),
+                            )
+                        )
+            if len(household) < 2 or not complete_household:
+                continue
             joint = _joint_product(distributions[0][:2], distributions[1][:2])
             independent = means[0] * means[1]
             observed = np.array(
@@ -295,7 +380,197 @@ def assess_sibling_schedules(
                 "all_children_attend": float(values[6]),
             }
     result["diagnostic_screen"] = sibling_schedule_screen(result)
+    if pooled:
+        from microcosm.build.us_runtime.nsece_childcare_pooling import (
+            POOLED_CHILDCARE_LEVELS,
+            POOLED_CHILDCARE_STRENGTH,
+        )
+
+        result["model"] = {
+            "name": "partially_pooled_empirical_schedules",
+            "levels": POOLED_CHILDCARE_LEVELS,
+            "strength": POOLED_CHILDCARE_STRENGTH,
+            "dependence_objective": pooling_fit_objective,
+            "dependence_fits": dependence_fits,
+        }
+        result["match_columns"] = POOLED_CHILDCARE_LEVELS[-1]
+        result["fallback_match_columns"] = ()
+    if include_observed_children:
+        result["matching_count_universe"] = (
+            "every held-out child with an observed complete calendar"
+        )
+        result["observed_child_validation"] = _observed_child_summary(child_records)
+        if observed_pairs:
+            summary = _pair_summary(observed_pairs)
+            summary["observed_pairs"] = summary.pop("households")
+            summary["households"] = observed_pair_households
+            summary["interpretation"] = (
+                "all observed pairs including households with unresolved other siblings; household weight divided among observed pairs"
+            )
+            result["all_observed_sibling_pairs"] = summary
+        else:
+            result["all_observed_sibling_pairs"] = None
     return result
+
+
+def _observed_child_summary(records):
+    if not records:
+        raise ValueError("Observed-child validation requires measured calendars.")
+    outcomes = ("participation", "days", "weekly_hours")
+    comparisons, checks = [], []
+    for label, rows in (
+        ("all", records),
+        *(
+            (f"household_size_{size}", [r for r in records if r[1] == size])
+            for size in (1, 2, 3)
+        ),
+        ("complete_household", [r for r in records if r[2]]),
+        ("unresolved_siblings", [r for r in records if not r[2]]),
+    ):
+        if not rows:
+            comparisons.append({"group": label, "children": 0})
+            checks.append(
+                {"group": label, "passed": False, "reason": "no observed children"}
+            )
+            continue
+        weights = np.array([r[0] for r in rows])
+        actual = np.array([r[3] for r in rows])
+        means = np.array([r[4] for r in rows])
+        seconds = np.array([r[5] for r in rows])
+        observed = np.average(actual, weights=weights, axis=0)
+        expected = np.average(means, weights=weights, axis=0)
+        comparisons.append(
+            {
+                "group": label,
+                "children": len(rows),
+                "child_weight": float(weights.sum()),
+                "observed": dict(zip(outcomes, observed.tolist(), strict=True)),
+                "expected": dict(zip(outcomes, expected.tolist(), strict=True)),
+                "conditional_mean_squared_error": dict(
+                    zip(
+                        outcomes,
+                        np.average(
+                            (actual - means) ** 2, weights=weights, axis=0
+                        ).tolist(),
+                        strict=True,
+                    )
+                ),
+                "expected_draw_squared_error": dict(
+                    zip(
+                        outcomes,
+                        np.average(
+                            actual**2 - 2 * actual * means + seconds,
+                            weights=weights,
+                            axis=0,
+                        ).tolist(),
+                        strict=True,
+                    )
+                ),
+            }
+        )
+        for index, name in enumerate(outcomes):
+            relative = index != 0
+            gap = float(
+                abs(expected[index] - observed[index])
+                / (abs(observed[index]) if relative and observed[index] != 0 else 1)
+            )
+            defined = bool(not relative or observed[index] != 0)
+            limit = 0.20 if relative else 0.05
+            checks.append(
+                {
+                    "group": label,
+                    "metric": name,
+                    "relative": relative,
+                    "gap": gap if defined else None,
+                    "limit": limit,
+                    "passed": defined and gap <= limit,
+                }
+            )
+    return {
+        "comparisons": comparisons,
+        "screen": {"passed": all(c["passed"] for c in checks), "checks": checks},
+        "interpretation": "child-weighted predictions of observed calendars; missing children are not scored as zeros; previously used survey, not external validation",
+    }
+
+
+def coupling_screen_compatibility(result):
+    """Check whether changing dependence alone could satisfy BOTH joint screens.
+
+    Independent and coupled arms have identical marginal first/second moments.
+    Therefore correlation is affine in E[XY], regardless of the chosen copula.
+    Recover that line from the two arms and intersect the existing correlation
+    and cross-product screen intervals. Disjoint intervals prove those screens
+    require a change to marginal distributions, not merely a different rho.
+    This is conditional on the evaluated marginals, not an impossibility result
+    for other models or a claim that selected households represent the population.
+    """
+    comparisons = []
+    screens = {row["metric"]: row for row in result["diagnostic_screen"]["checks"]}
+    for population in ("youngest_pairs", "youngest_pairs_in_3plus_households"):
+        group = result.get(population)
+        for metric in ("days", "weekly_hours"):
+            entry = {"population": population, "metric": metric}
+            comparisons.append(entry)
+            if not group:
+                entry.update({"identified": False, "reason": "no evaluated pairs"})
+                continue
+            observed = group["observed"][metric]
+            independent = group["independent"][metric]
+            coupled = group["coupled"][metric]
+            correlations = [
+                arm["correlation"] for arm in (observed, independent, coupled)
+            ]
+            if any(c is None or not np.isfinite(c) for c in correlations) or np.isclose(
+                correlations[1], correlations[2]
+            ):
+                entry.update(
+                    {
+                        "identified": False,
+                        "reason": "marginal scale not recoverable from the two arms",
+                    }
+                )
+                continue
+            scale = (coupled["joint_product"] - independent["joint_product"]) / (
+                correlations[2] - correlations[1]
+            )
+            if not np.isfinite(scale) or scale <= 0:
+                entry.update({"identified": False, "reason": "invalid marginal scale"})
+                continue
+            product_of_means = independent["joint_product"] - correlations[1] * scale
+            # Consume the reported criteria so a screen change cannot leave
+            # this structural diagnostic silently using a different threshold.
+            correlation_limit = screens[f"{population}.{metric}.correlation"]["limit"]
+            product_limit = screens[f"{population}.{metric}.joint_product"]["limit"]
+            correlation_range = [
+                max(-1, correlations[0] - correlation_limit),
+                min(1, correlations[0] + correlation_limit),
+            ]
+            required_product = [
+                product_of_means + value * scale for value in correlation_range
+            ]
+            allowed_product = [
+                (1 - product_limit) * observed["joint_product"],
+                (1 + product_limit) * observed["joint_product"],
+            ]
+            lower, upper = (
+                max(required_product[0], allowed_product[0]),
+                min(required_product[1], allowed_product[1]),
+            )
+            entry.update(
+                {
+                    "identified": True,
+                    "predicted_product_of_marginal_means": product_of_means,
+                    "predicted_product_of_marginal_standard_deviations": scale,
+                    "joint_product_required_by_correlation_screen": required_product,
+                    "joint_product_allowed_by_product_screen": allowed_product,
+                    "screen_intervals_overlap": lower <= upper,
+                    "overlap_interval": [lower, upper] if lower <= upper else None,
+                }
+            )
+    return {
+        "comparisons": comparisons,
+        "interpretation": "disjoint screen intervals rule out a dependence-only fix for these conditional marginals; overlapping intervals do not establish that a feasible joint distribution exists",
+    }
 
 
 def sibling_schedule_screen(result):

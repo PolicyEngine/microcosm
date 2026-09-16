@@ -92,6 +92,18 @@ calendars. That selection is a separate limitation, not evidence that all
 population attendance should simply be scaled downward. The survey had already
 informed development, so the reserved comparison is not external validation.
 
+A subsequent diagnostic model partially pools sparse cells and fits measured
+sibling participation, days, and hours jointly. Its exploratory population-moment
+fit passes 13 of 15 original household screens. The remaining two hours screens
+require incompatible joint moments under its predicted marginal distributions;
+changing sibling dependence alone cannot fix both. All 18 observed-child checks
+are also reported, including three failures for children with unresolved siblings
+(hours underpredicted by 40.7%). This remains experimental, has no production
+source/target integration, and does not change population attendance values.
+See the [plans and full comparison](../experiments/us-childcare-attendance/README.md)
+for source-selection limits and reproducible commands. All inspected survey
+partitions now count as development evidence.
+
 ## ASEC target harmonization
 
 `harmonize_asec_childcare_predictors` resolves `PEPAR1` and `PEPAR2` against

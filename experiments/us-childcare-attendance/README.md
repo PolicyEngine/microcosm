@@ -1,4 +1,114 @@
-# NSECE attendance household-model investigation — 2026-09-16
+# NSECE attendance pooled-model investigation — 2026-09-16
+
+**PR #916 remains draft.** A partially pooled donor model improves conditional
+child predictions and larger-family means. An exploratory population-moment
+dependence fit passes 13 of the original 15 household screens, but still fails
+two hours checks and all three checks for observed children with unresolved
+siblings. Neither experimental model has replaced the production-stage recipe.
+
+- [Initial pooling and evaluation plan](pooled-matching-plan.txt)
+- [Subsequent exploratory dependence-objective plan](pooled-moments-plan.txt)
+- [All three models, full diagnostics and structural check](pooled-matching-validation.json)
+
+## What was tested
+
+The new donor model blends each sparse cell with broader empirical distributions
+at the same exact age. It adds household size, work, income, and region in that
+order. A cell's contribution is `effective_households / (effective_households + 10)`;
+the strength ten was fixed before inspecting results. Survey-weight concentration
+is measured at the donor-household level. Joint day/hour schedules, including
+measured nonattendance, remain intact.
+
+The sibling fit uses every available observed pair, including families with
+unresolved other siblings. Household weight is divided among the household's
+observed pairs. Every fitting pair's entire household is excluded from its donor
+distributions. The initial fit minimizes individual pair cross-product errors
+for participation, days and hours. It improved mean errors but worsened several
+correlations. A separately recorded exploratory alternative fits the three
+weighted population cross-product moments instead. It retains one shared-rank
+coefficient and the same fixed donor distributions; no per-outcome coefficients
+or revised thresholds are selected from the evaluation results.
+
+Every component is refitted inside five household-separated folds. All 7,460
+measured child calendars are scored, alongside 4,450 observed pairs from 2,106
+households and the original complete-household diagnostics. Previously inspected
+households, including the earlier reserved partition, are explicitly treated as
+development data. This is not independent validation or evidence of release readiness.
+
+| Quantity | Existing model | Pooled, individual-pair fit | Pooled, population-moment fit |
+| --- | ---: | ---: | ---: |
+| Failed original household screens / 15 | 9 | 4 | 2 |
+| Failed observed-child screens / 18 | 3 | 3 | 3 |
+| 3+ household mean-days error | +25.35% | +12.01% | +12.01% |
+| 3+ household mean-hours error | +23.36% | +15.91% | +15.91% |
+| Conditional mean days prediction MSE | 5.761 | 4.634 | 4.634 |
+| Conditional mean weekly-hours prediction MSE | 575.310 | 482.798 | 482.798 |
+
+Conditional-mean prediction errors improve approximately 20% for days and 16%
+for hours. This is not a claim that random donor draws are more accurate: the
+expected squared error of a single hours draw rises from 891.140 to 905.994.
+The report contains both quantities. Marginals are identical across the pooled
+fit objectives because the dependence coefficient changes only joint behavior.
+
+## What remains unresolved
+
+For the youngest pair in 3+ complete households, the population-moment model's
+weekly-hours correlation is 0.456 versus 0.562 observed (gap 0.106; limit 0.10).
+Its hours cross-product is 437.072 versus 337.347 (+29.6%; limit 20%). A change
+to sibling dependence alone cannot satisfy both with these predicted marginals:
+
+| Existing screen | Required hours cross-product interval |
+| --- | ---: |
+| Correlation within 0.10 of observed | 440.651–553.157 |
+| Cross-product within 20% of observed | 269.878–404.816 |
+
+The intervals do not overlap. Correlation equals `(E[XY] - E[X]E[Y]) / (SD[X]SD[Y])`.
+Independent and coupled arms have the same marginal means and variances, so the
+report can recover this relationship and test compatibility without choosing
+another coefficient. This rules out a dependence-only fix **for these evaluated
+marginals**; it does not rule out better marginal models or establish that the
+selected complete families represent the whole population.
+
+The 761 observed children whose siblings have unresolved calendars remain a
+material selection concern. Observed versus pooled predictions are 66.0% versus
+46.7% participation, 2.819 versus 1.915 days/week, and 23.830 versus 14.135 hours/week.
+Hours are underpredicted by 40.7%. Both pooled objectives share these failures;
+better complete-family results do not waive them. Missing children are never
+scored as zero, and these observed-subgroup differences do not identify their
+unobserved schedules or a causal missingness effect.
+
+**Decision:** keep pooling experimental. The next substantive change must improve
+the conditional marginal model and address calendar nonresponse using measured
+information or explicit, tested assumptions. Further rho tuning, resplitting this
+same survey, or lowering predictions to complete-household means would not close
+the evidence gap. A population trial would also require consistent source bridge
+and target integration, followed by new benefit/transport sensitivity evidence.
+
+Reproduce the complete comparison with new local output paths:
+
+```bash
+uv run python tools/validate_us_childcare_pooling.py \
+  --household-tsv /local/39466-0005-Data.tsv \
+  --calendar-tsv /local/39466-0004-Data.tsv \
+  --compare-moment-fit --report /local/pooled-comparison.json
+```
+
+Synthetic tests cover exact-age support, household-cluster pooling, survey-weight
+and row-order invariance, whole-household exclusions at both fit and evaluation
+boundaries, inclusion of partially observed families, joint schedule preservation,
+structural screen compatibility, and JSON-safe undefined metrics. Tests reside
+directly in the build shard's tracked CI inventory; CI does not access survey data.
+Production recipe hashes match the last verified population artifact exactly,
+so no population rebuild or new state benefit estimate is claimed by this experiment.
+
+The 616-test attendance/source/architecture regression run passed. After making
+undefined relative-error flags JSON-safe, all 96 focused source/pooling tests
+passed again. Lint, formatting, tracked CI inventory and build-wheel source-byte
+checks passed. The final real-source run reproduces both initial model arms
+exactly and records the current diagnostic code hashes; only aggregate evidence
+is committed. GitHub CI is separate and has not been monitored.
+
+## Previous hard household-size investigation — 2026-09-16
 
 **PR #916 remains draft.** Adding household size improves larger-family means,
 but the proposed matcher still fails joint-schedule validation. It is retained

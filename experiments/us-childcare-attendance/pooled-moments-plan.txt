@@ -1,0 +1,26 @@
+Exploratory dependence-objective comparison, specified after the first pooled
+results and before the alternative results, 2026-09-16.
+
+The first pooled model reduces mean errors and original-screen failures (9 to 4)
+but worsens all four screened sibling intensity correlations. Its rowwise
+cross-product squared-error fit targets individual conditional products, while
+the required diagnostics target weighted population joint moments. Retain that
+model as a comparator; do not describe its lower screen count as overall success.
+
+Test one alternative objective with the SAME donor pooling, fixed strength 10,
+all observed sibling pairs, household/pair weights, leave-household-out donor
+exclusion, training-only normalization scales, and five outer folds. Set rho to
+minimize the sum of squared normalized WEIGHTED MEAN cross-product residuals
+for participation, days and weekly hours. This has one analytic least-squares
+coefficient, clipped to [0, 1]; expose the raw value and moments. Do not choose
+separate coefficients for outcomes or alter thresholds after seeing results.
+
+Compare all three arms (original, pooled rowwise objective, pooled moment
+objective) including all original screens and all 18 observed-child checks.
+This ablation is motivated by already viewed outcomes. It is exploratory model
+development, not a confirmatory test, and the previous held-out sample is not
+reused under an independent-evidence label. Reproduce the first pooled arm
+numerically to ensure the objective is the only behavioral change.
+
+Calendar selection remains unidentified. An improvement in correlation cannot
+waive incomplete-family mean errors or authorize default population replacement.
