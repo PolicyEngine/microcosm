@@ -14,6 +14,25 @@ appended section of `PROGRESS.md`.
 calibration or release eligibility. Every measurement is descriptive; none is a
 build, a certification or a release artifact.
 
+**Status, 2026-09-16.** **No test group failed.** Every pytest group of the
+CI-shaped battery below exits 0, including the 3 h 15 min serial run of the 62
+`microcosm-build` test files that name or import a touched module. One
+non-test check does exit non-zero and is not softened here: `ruff format
+--check .` exits 1 with `77 files would be reformatted, 1110 files already
+formatted`. That condition is inherited, not earned by this branch — the
+intersection of those 77 files with `git diff --name-only
+origin/microcosm-us-launch-integration-20260909..HEAD` is empty (checked with
+`comm -12`), the branch does not touch `pyproject.toml`, where the ruff config
+lives, the 17 `.py` files it does touch report `17 files already formatted`,
+and CI's `lint` job runs `uv run --no-sync ruff check .` only
+(`.github/workflows/test.yml:183`), which passes. It is reported because the
+lane brief asked for `ruff format --check`.
+
+Every number below is traceable to a file path, and every number was measured
+at branch head `284bc6e9624d211ba9c16dcdf04df63b9e87b10c`, which this report
+commit sits directly on top of. Draft PR:
+[#935](https://github.com/PolicyEngine/microcosm/pull/935).
+
 ## The problem
 
 `~/PolicyEngine/_recovered/pilot-runs/native45-v5/out.md` §2, measured by stack
@@ -63,6 +82,25 @@ cost six complete validations before (one `_source_files` pass each — the whol
 3.48 GiB roster) and one after, plus one unconditional pass when the epoch
 closes. Five of six borrows are memo hits; `_producer()` still runs on all six.
 
+**Probe level.** There is no per-mechanism before/after ratio for this
+mechanism, and the report does not manufacture one: the before probe stopped at
+its CPU ceiling inside source admission (file A below,
+`CEILING_REACHED_PARTIAL_MEASUREMENT`), so it never reached the steady state
+this memo governs. What the after runs show is what remains. In the 19-node run
+(file C, 2,010.07 process CPU s) the preparation's own identity work is
+`asec_current_money_source._series_digest <- _frame_signature <-
+asec_2024_native_population._frame_identity <-
+survey_population_preparation._nested_seals` at **73.71 s (3.7 %)**, and the
+seven ledger chains running `survey_population_preparation.update_cell <-
+_frame_identity` under `survey_atomic_geography._population_stamp` sum to
+**159.31 s (7.9 %)**, with
+outer callers `run_atomic_survey_financial` (22.40 s),
+`reconstruct_atomic_survey_geography` (26.18 s), a `<genexpr>` (60.80 s),
+`survey_origin_budget._geography_binding` (16.06 s),
+`_node_population_stamp` (15.97 s), `run_atomic_survey_population` (11.84 s) and
+`observe` (6.07 s). How many full validations a run performs is pinned by the
+unit test above, not inferred from a stack sampler.
+
 ### 2. `AuthenticatedAsec2024NativePopulation.frame`
 
 Every `.frame`, `.context`, `.receipt` and `.to_bytes()` was a full
@@ -85,6 +123,17 @@ passes: it runs outside an epoch.
 **Before/after CPU.** `test_the_native_capsule_validates_once_per_epoch`: three
 `validate()` calls cost three complete seven-file passes before and one after,
 plus one at the close.
+
+**Probe level.** In file C the ASEC capture cost appears under exactly two outer
+callers: `asec_coverage_authentication._capture <- _reconstruct <-
+authenticate_asec_coverage <- asec_population_catalogue.issue_asec_source_catalogue`
+at **87.86 s (4.4 %)** and the same three inner frames under
+`asec_2024_native_population.load_authenticated_asec_2024_native_population` at
+**86.66 s (4.3 %)** — 174.52 s together. In the before probe (file A) the first
+of those chains is 88.36 s and no
+`load_authenticated_asec_2024_native_population` chain appears anywhere in its
+60-chain ledger (whose cut is 2.11 s); because that run is truncated, the pair
+is not a before/after comparison.
 
 ### 3. Per-node source content keys in the executor
 
@@ -115,6 +164,9 @@ and `test_an_unchanged_source_is_never_re_read_by_a_node`: two full derivations
 per run regardless of how many nodes declare the source. The
 `packages/microcosm-graph` suite fell from **108.28 s to 71.81 s** on the same
 machine — a synthetic toy source, so the real saving scales with source bytes.
+(The same suite is 46.66 s in the 2026-09-16 battery below on a differently
+loaded machine: the node counts are the durable part of this row, the seconds
+are not.)
 
 **The record.** `RunManifest.source_identities`, attached exactly like
 `populations` and `mass_ledgers`: `repr=False`, `compare=False`, outside
@@ -122,6 +174,19 @@ machine — a synthetic toy source, so the real saving scales with source bytes.
 record. `test_the_manifest_records_the_run_end_identities_without_moving_anything`
 asserts the manifest's key, its JSON and its content-addressed body are
 identical with and without it.
+
+**Probe level.** No chain naming `executor.py` or `keys.py` appears in any of
+the three ledgers. In file C the 60th and last listed chain is **5.00 s** of
+2,010.07 CPU s, so per-node source-key derivation is below that cut on a run
+that executed the 19-node graph and wrote **5,869** object files under
+`.measure/after/harness19/graph-store/objects` (counted with `find … -type f`;
+the v4 cold run's own store holds **5,866** — comparable volume, not identical
+keys, because every node key moves with the stage `implementation_hash`). On
+the before side absence proves nothing: neither `.measure/probe-before/graph-store`
+nor `.measure/before/probe/graph-store` exists, although both probe scripts pass
+`store_root=PROBE/"graph-store"`. That no node artifact was produced before the
+cap ran out is an **inference** from the missing store plus the ledger's
+contents; the receipts do not state it.
 
 ### 4. The ACS record fence
 
@@ -153,6 +218,15 @@ On the real staged archive
 
 **226.86 s → 4.63 s per pass**, 3,422,890 records, digests identical.
 
+**Probe level — the one chain-level before/after the partial run supports.**
+`__init__.py:_read1 <- __init__.py:read <-
+acs_person_coverage_authentication.py:_records <- _inventory` is **rank 1 at
+760.23 s** (3,061 samples, 42.1 % of the before probe's partial 1,803.87 CPU s)
+in file A, and it was still running when the ceiling hit, so that figure is a
+floor. The identical chain is **rank 23 at 10.80 s** (42 samples, 0.7 %) in the
+after probe (file B) and **rank 31 at 11.98 s** (46 samples, 0.6 %) in the
+19-node run (file C).
+
 ### 5. The kernel context digest
 
 `_update_series` boxed every value of a plain float, integer or boolean column
@@ -183,6 +257,46 @@ attribute.
 **Before/after CPU**, 6,928 × 240 frame: **0.466 s → 0.094 s**. Per value:
 float64 182.6 → 17.9 ns, bool 225.6 → 13.9 ns, int64 383.3 → 119 ns.
 
+**Probe level.** No `_update_series`, `_object_stream` or `_context_digest`
+chain appears in any of the three ledgers; in file C that places the whole
+mechanism under the 5.00 s cut of a 2,010.07 CPU-s run. The unit-level number
+above is the measurement that carries this mechanism; the probe neither
+confirms nor contradicts it.
+
+## Digest equality, in one place
+
+The rule the change obeys is that memoisation moves **when** a check runs, never
+**what** it computes. Three proofs carry it, and they are of two different
+kinds.
+
+**Proven by rebuilding the bytes and comparing them.** Two mechanisms rebuild
+bytes, and each is compared against a verbatim copy of the pre-change
+implementation rather than against a description of it:
+
+| what | comparison | scale |
+|---|---|---|
+| `_records`, the ACS record fence (mechanism 4) | shipped scan vs a verbatim copy of the byte loop — yielded record sequence **and** refusal compared together | 20 boundary + 6 block-boundary + 8 ceiling cases, 4,200 random strings, 300 row-shaped inputs, and all 9,331 strings up to five bytes over the branching alphabet under each of five ceiling settings (46,655 exhaustive comparisons); then the real staged `csv_pus.zip`: 3,422,890 records, `da955ca2…347fc827` and `9bbf6af8…90184bba` identical on both sides (`experiments/native-verify-once/record-fence-parity.json`, `"identical": true`) |
+| `_object_stream` / `_update_series` (mechanism 5) | shipped helper vs a verbatim copy of the pre-change body, compared **at the byte level**, not at the digest | 19 column kinds, float specials (signed zero, both infinities, subnormal extremes), non-canonical NaN payloads with sign bit, both `int64` endpoints, empty/sliced/strided columns, labelled indexes, 200-frame random sweep over ten kinds |
+
+**Proven by not rebuilding anything.** The other three mechanisms compute no
+receipt field. `_validate`, `_validate_state` and `source_content_key` only
+compare live values against values frozen at issuance, so deferring a comparison
+cannot move a recorded value; `_validate` and `_validate_state` are themselves
+untouched, and the memo is opt-in and scoped, so outside a `verification_epoch()`
+the capsules behave byte for byte as they do today. The one new recorded thing,
+`RunManifest.source_identities`, is pinned not to move anything by
+`test_the_manifest_records_the_run_end_identities_without_moving_anything`,
+which asserts the manifest's key, its JSON and its content-addressed body are
+identical with and without it.
+
+**Proven by recomputation over the whole inventory.** Every contract in
+`graph_implementation_inventory.json` was recomputed through
+`graph_implementation._dependency_contract` and all ten stage manifests were
+built against the file as it stands on this branch — that is, after the two pins
+below were re-derived: `moved: 0`, `all stage manifests build`. The `git diff`
+of that file against the base branch is exactly two `unbound_uses_sha256`
+lines.
+
 ## Pins re-derived
 
 | pin | old | new | command |
@@ -200,6 +314,18 @@ foreign owners that gained a `_verified_source_stats()` helper
 unchanged, because the additions introduce no `_RESOURCE_CALLS` name and no
 non-stdlib import.
 
+**Re-verified while writing this report**, in the clean worktree at `284bc6e96`:
+`shasum -a 256` on `acs_person_coverage_authentication.py` returns
+`9ec68721…d88e8e49f` and `acs_native_coverage_binding.py:38` holds that exact
+string; `git show origin/microcosm-us-launch-integration-20260909:<same path> |
+shasum -a 256` returns `475aa795…fe85bcff` and the base file's line 38 holds it,
+so both halves of the first row are checked against the tree rather than quoted
+from memory; and
+`git diff origin/microcosm-us-launch-integration-20260909..HEAD --
+…/graph_implementation_inventory.json` is exactly the two
+`unbound_uses_sha256` lines of rows two and three, with no other line changed in
+that file.
+
 **One thing that does move, by design and not by this lane's choice.** Each US
 stage's `implementation_hash` is `_digest(module bytes)` over its whole module
 roster, so editing any inventoried module moves it, and with it every node key.
@@ -210,6 +336,8 @@ keep their exact values, and the tests above prove it byte for byte where bytes
 are rebuilt.
 
 ## Test summaries, verbatim
+
+### The lane's own runs, as each mechanism landed
 
 ```
 $ .venv/bin/python -I -B -m pytest packages/microcosm-graph/tests -p no:randomly
@@ -281,4 +409,352 @@ All four new test files land in the groups they should and none under
 `rest` / `us-am` / `wheels`, `test_us_native_verify_once_epoch.py` in `rest` /
 `us-not` / `wheels`.
 
-*(Remaining runs and the probe measurement follow.)*
+### The CI-shaped battery, 2026-09-16
+
+Run on this branch at `284bc6e96` with the worktree clean and no measurement
+running, and `PYTHONDONTWRITEBYTECODE=1` on every pytest invocation so nothing
+was written into the package trees. Logs were kept outside the worktree in an
+ephemeral session scratchpad (`…/scratchpad/ci/g1.log` … `g5b.log`), so the
+lines below are the durable record: each is pasted exactly as the run printed
+it. Note that the repo's
+`addopts = "-q --import-mode=importlib"` makes an explicit `-q` into `-qq`,
+which prints **no** summary line at all; these runs therefore use the repo's own
+verbosity, which is also CI's invocation.
+
+```
+$ uv lock --check                                                    # rc 0
+Resolved 125 packages in 5ms
+```
+
+```
+$ uv run --no-sync ruff check .                                      # rc 0  (the lint lane's actual command)
+All checks passed!
+```
+
+```
+$ uv run --no-sync ruff format --check .                             # rc 1  (NOT run by CI; pre-existing, see Status)
+77 files would be reformatted, 1110 files already formatted
+```
+
+```
+$ uv run --no-sync ruff format --check $(git diff --name-only origin/microcosm-us-launch-integration-20260909..HEAD | grep -E '\.py$')   # rc 0
+17 files already formatted
+```
+
+```
+$ PYTHONDONTWRITEBYTECODE=1 uv run --no-sync pytest packages/microcosm-graph/tests -p no:cacheprovider    # rc 0
+766 passed, 1 skipped in 46.66s
+```
+
+```
+$ PYTHONDONTWRITEBYTECODE=1 uv run --no-sync pytest <62 files under packages/microcosm-build/tests> -p no:cacheprovider --durations=25   # rc 0
+2350 passed, 3 skipped, 438 warnings in 11678.22s (3:14:38)
+```
+
+```
+$ PYTHONDONTWRITEBYTECODE=1 uv run --no-sync pytest \
+    packages/microcosm-graph/tests/test_graph_executor_series_stream.py \
+    packages/microcosm-graph/tests/test_graph_executor_source_identity.py -p no:cacheprovider   # rc 0
+49 passed in 0.41s
+```
+
+```
+$ UV_PROJECT_ENVIRONMENT=.venv-noengine uv sync --all-packages --locked         # rc 0
+Installed 73 packages in 405ms
+```
+
+```
+$ UV_PROJECT_ENVIRONMENT=.venv-noengine PYTHONDONTWRITEBYTECODE=1 uv run --no-sync pytest packages/microcosm-graph/tests -p no:cacheprovider   # rc 0
+765 passed, 2 skipped in 48.63s
+```
+
+```
+$ python3 tools/ci_test_groups.py --verify                           # rc 0
+tracked_test_files=551
+verification=ok
+```
+
+```
+$ python3 -I -B -S packages/microcosm-build/tests/test_ci_test_groups.py   # rc 0
+Ran 15 tests in 0.298s -- OK
+```
+
+```
+$ uv run --no-sync python tools/graph_acceptance_burndown.py --verify        # rc 0
+verification=ok
+```
+
+`uv lock --check`, `ruff check .`, both `ci_test_groups` checks and the
+acceptance burndown were re-run while writing this report and gave the same
+verdicts (the stdlib matrix check reported `Ran 15 tests in 0.317s` / `OK` on
+the second run — wall times move, verdicts do not).
+
+**The 62-file selection.** The union of (a) the 47 build tests naming any
+touched `us_runtime` module or `verification_epoch` and (b) the 20 build tests
+importing `microcosm.graph.{executor,manifest,codecs}` by dotted path; 2,353
+tests, and it already contains both new build test files. Twenty-seven further
+build tests that reach the graph shard through the package-level re-export
+(`from microcosm.graph import …`) — `test_us_graph.py`,
+`test_us_survey_calibration.py`, `test_uk_graph.py` among them — were **not**
+run; that is an open question below. The two new graph test files live in
+`packages/microcosm-graph/tests`, so they ran inside the graph suite and again
+standalone.
+
+**The three skips in that run**, all expected: `test_uk_uc_capital_coherence.py`
+#13 (`requires_uk`; `policyengine-uk` is not installed in this `.venv`), and
+`test_us_atomic_block_api_sources_native_de.py` #1 and
+`test_us_atomic_block_api_sources_native_national.py` #1, which self-skip with
+"requires exact source pins from the external native DE guard", documented in
+their own headers. `policyengine-us` **is** installed, so the US engine tests
+really ran.
+
+**The engine-free skip delta is the marker contract working.** 765 passed /
+2 skipped against 766 / 1: the extra skip is
+`packages/microcosm-graph/tests/test_acceptance_h_parity.py:319`
+"requires policyengine-us extra"; the skip common to both environments is the
+same file's `:245` "requires policyengine-uk extra". Verified by running that
+one file with `-rs` in each environment.
+
+**Wall times in this battery are contended, not clean-machine numbers.** During
+the 62-file run an unrelated lane in `~/ThesisInstitute/procurement` was using
+~187 % and ~168 % CPU and the 1-minute load average peaked at 34.68. CI splits
+those same files across `us-am` / `us-p` / `us-qs` / `us-not` shards in
+parallel; this was one serial process. Its three slowest items, from
+`--durations=25`, are real cold graph runs against staged sources:
+`test_us_graph_atomic_completion_host.py::test_roles_disabled_status_enabled_49_cold_required_and_output_identity`
+1,228.96 s, `::test_roles_disabled_status_disabled_45_cold_required` 923.75 s,
+and 826.19 s of setup for
+`test_us_graph_us_survey_enrichment.py::test_actual_enrichment_cold_required_and_complete_parent_preservation`.
+The same caution applies to the graph-suite figure quoted in mechanism 3
+(108.28 s → 71.81 s on one machine state; the same suite is 46.66 s here): the
+node counts are the durable part, the seconds are not.
+
+## Measurement
+
+All figures in this section were read from the files named in the "file"
+column. Nothing was re-run to produce them and no source file was touched; the
+worktree was clean at `284bc6e96` throughout.
+
+### The files
+
+| | file | what it is |
+|---|---|---|
+| A | `.measure/repeated-verification-before.json` | 9-node prefix, **before** (base `f7bb88525`, source tree `.measure/source-before`) |
+| B | `.measure/after/probe/repeated-verification-measurement.json` | 9-node prefix, **after** (`284bc6e96`, source tree `.measure/source-after`) |
+| C | `.measure/after/harness19/repeated-verification-measurement.json` | 19-node financial graph, **after** |
+| D | `~/PolicyEngine/_recovered/pilot-runs/native19-v2/run/us-native-postclone-financial19-v4-cold.json` | 19-node financial graph, **before** = the accepted v4 cold receipt |
+| E | `~/PolicyEngine/_recovered/pilot-runs/native19-v2/run/native-financial-manifest.json` | the v4 run's `timing.case_phases`, which isolates the runner call |
+
+A, B and C are under `/Users/maxghenis/PolicyEngine/_worktrees/microcosm-verify-once/`
+and are gitignored measurement artifacts, not committed. Every one carries
+`"release_eligible": false` and a scope line ending "not a build, not a
+certification, not release eligible".
+
+**Provenance, verified.** `.measure/source-before/head.txt` is
+`f7bb88525a78786f91bc3ebe2083ef4b1c85de18` and its
+`acs_person_coverage_authentication.py` hashes to `475aa795…fe85bcff`, the old
+`_ACCEPTED` pin; `.measure/source-after/head.txt` is
+`284bc6e9624d211ba9c16dcdf04df63b9e87b10c` and the same module hashes to
+`9ec68721…d88e8e49f`, the new one. So the before run measured unchanged code and
+both after runs measured this branch. B and C both record
+`source_tree: .measure/source-after` and
+`staged_run_inputs: ~/PolicyEngine/_recovered/pilot-runs/native45-v5/run`.
+
+### Run level, as recorded
+
+| run | status in file | wall s | CPU s | peak RSS (bytes / decimal GB) | file |
+|---|---|---|---|---|---|
+| 9-node prefix, before | `CEILING_REACHED_PARTIAL_MEASUREMENT` | 1,853.894 | **1,803.870** (cap 1,800) | 8,612,429,824 / 8.61 | A |
+| 9-node prefix, after | `COMPLETED_PREFIX` | 1,451.762 | **1,444.776** | 12,285,526,016 / 12.29 | B |
+| 19-node graph, after | `COMPLETED_NINETEEN_NODE` | **2,016.079** | **2,010.072** | 13,309,181,952 / 13.31 | C |
+| 19-node graph, before (v4 cold receipt) | `result: 0` | 5,362.050 | 5,278.611 | 9,313,337,344 / 9.31 | D |
+| — of which the v4 `run_atomic_survey_financial` call alone | — | 4,685.862 | 4,605.351 | — | E |
+
+### The 9-node probe: what it can and cannot support
+
+The before probe is **partial**, so there is no measured ratio for the prefix.
+
+| comparable | before | after |
+|---|---|---|
+| Completed the prefix inside the 1,800 CPU-s cap? | **no** — ceiling reached at 1,803.87 CPU s | **yes** — 1,444.78 CPU s, 355.2 CPU s of headroom |
+| Graph store written under the probe directory | none exists | 4,363 object files |
+| Peak RSS | 8.61 GB — a **floor**, the run was cut short | 12.29 GB, whole prefix |
+
+The defensible statements are: (a) the after run completes the whole prefix in
+0.80× of the CPU the before burned **without finishing**, i.e. a **lower bound
+of ≥ 1.25×** on the CPU reduction, with the true ratio unknown and certainly
+larger; (b) per-chain absolute CPU at the moment each run ended. Share-of-process
+percentages on the before side are shares of a truncated run and are **not**
+comparable with the after's. Chains whose absolute CPU is higher in B than in A
+— `_capture` under `load_authenticated_asec_2024_native_population` (absent from
+A's ledger entirely, 80.19 s in B), `_require <- feed <- _capture <-
+_reconstruct` (17.61 s → 29.56 s) and `_series_digest` under `_nested_seals`
+(absent from A, 28.07 s in B) — must **not** be read as regressions: the before
+run never reached that work.
+
+### The 19-node harness: like-for-like at identical arguments
+
+`.measure/harness19_verify_once.py` is `.measure/probe_verify_once.py` with only
+the docstring, the ceilings (7,200 CPU / 9,000 wall / 32 GiB), one import, the
+scope and status strings and the call changed. The call is
+`run_atomic_survey_financial(RUN/"sources", snapshot_root=…, store_root=…,
+fraction=Fraction(1, 1000), seed=20260908, geography_config=geography(seed
+20260908), demographic_conditioning=True, n_estimators=2, resume="auto",
+return_values=True)` against a cold store — the same arguments as the v4 test's
+own call
+(`~/PolicyEngine/_recovered/pilot-runs/native19-v2/run/test_native_nineteen_node_financial.py:126-137`).
+
+| comparison | wall | CPU | peak RSS |
+|---|---|---|---|
+| v4 whole process (D) → after harness (C) | 5,362.05 s → 2,016.08 s (**2.66×**) | 5,278.61 s → 2,010.07 s (**2.63×**, −3,268.54 s, −61.9 %) | 9.31 GB → 13.31 GB (**1.43× higher**) |
+| v4 runner call only (E) → after harness total (C) | 4,685.86 s → 2,016.08 s (**≥ 2.32×**) | 4,605.35 s → 2,010.07 s (**≥ 2.29×**) | — |
+
+The second row is the conservative framing: C is a whole-process total including
+imports, while E excludes everything outside the runner call. The v4 process
+spent 676.2 s wall / 673.3 s CPU outside its runner — imports and collection,
+artifact export and readback, the pending report and final checks, the guard
+postcheck — none of which the harness runs at all.
+
+**Differences between C and D that are not this change**, from the harness
+docstring (`.measure/harness19_verify_once.py:12-17`, verbatim): "it ran on
+source snapshot ``2ca11c85a``, and its ``person-income-attachment.h5`` was the
+pre-restoration ``5996dcdd...`` rather than the staged ``9ebc0ef2...``. Both
+files are exactly 666,333,922 B". The v4 receipt's `native_before` and
+`native_after` both carry `5996dcdd…` at 666,333,922 B and the staged file is
+666,333,922 B; the `9ebc0ef2…` value is the lane's claim and was not re-hashed
+for this report. Load context also differs and runs against the after: D records
+no load average; C started at `[7.34, 7.54, 8.09]` and ended at
+`[7.83, 9.33, 11.38]`, i.e. it shared the machine.
+
+**The RSS rise is real and is by design**: memoised authentication keeps
+validated state resident. The like-for-like pair is D → C, 9.31 → 13.31 GB
+(1.43×), well inside that run's 32 GiB ceiling. The probe pair's 8.61 → 12.29 GB
+is an **upper bound** on the rise, not a measurement of it, because the before
+figure is a floor.
+
+### What is left, 19-node after run (file C)
+
+Process CPU 2,010.07 s. These ten chains are 864.05 s = **43.0 %** of it; the 60
+listed chains sum to 1,464.77 s of the 2,007.83 s sampled total, so ~543 s sits
+below the ledger's cut of 5.00 s.
+
+| # | CPU s | samples | share | chain (innermost → outermost) |
+|---|---|---|---|---|
+| 1 | 209.72 | 817 | 10.4 % | `zipfile:_read1 <- read <- peek <- readline` |
+| 2 | 103.04 | 360 | 5.1 % | `string_arrow.py:isin <- algorithms.py:isin <- series.py:isin <- acs_pums.py:_read_archive` |
+| 3 | 98.17 | 308 | 4.9 % | `zipfile:_read1 <- read1 <- acs_person_coverage_columns.py:lines <- _literal_csv_records` |
+| 4 | 87.86 | 338 | 4.4 % | `asec_coverage_authentication.py:_capture <- _reconstruct <- authenticate_asec_coverage <- asec_population_catalogue.py:issue_asec_source_catalogue` |
+| 5 | 86.66 | 332 | 4.3 % | same three frames `<- asec_2024_native_population.py:load_authenticated_asec_2024_native_population` |
+| 6 | 73.71 | 285 | 3.7 % | `asec_current_money_source.py:_series_digest <- _frame_signature <- asec_2024_native_population.py:_frame_identity <- survey_population_preparation.py:_nested_seals` |
+| 7 | 71.78 | 276 | 3.6 % | `zipfile:read <- _read2 <- _read1 <- read` |
+| 8 | 60.80 | 235 | 3.0 % | `survey_population_preparation.py:update_cell <- _frame_identity <- survey_atomic_geography.py:_population_stamp <- <genexpr>` |
+| 9 | 38.93 | 151 | 1.9 % | `acs_housing_universe_source.py:_persisted_sha <- acs_native_coverage_binding.py:_verify_sources <- _verify <- verify_acs_native_coverage` |
+| 10 | 33.38 | 130 | 1.7 % | `c_parser_wrapper.py:read <- readers.py:read <- _read <- read_csv` |
+
+Grouped: ACS archive streaming (rows 1 + 3 + 7) **379.67 s**; ASEC `_capture`
+(rows 4 + 5) **174.52 s**; `_series_digest` under `_nested_seals` (row 6)
+**73.71 s**; every `_population_stamp` chain **159.31 s**. Those are the next
+lane's candidates, not this one's results.
+
+### Caveats that bind every number above
+
+- **Sampler, not counters.** All three JSONs have 16 rows in `checks`, every one
+  `calls=0`, `cpu_seconds=0.0`, status
+  `"not-wrapped: runtime refuses instrumented producers (PRODUCER_CHANGED); see sampled_cpu_ledger"`.
+  Attribution is therefore statistical, from a 0.25 s stack sampler, truncated to
+  four frames per chain and the top 60 chains per ledger (cuts: C 5.00 s, B
+  2.83 s, A 2.11 s). A chain absent from a list only means it fell below that
+  cut.
+- **A second before-probe file exists**, and it is not the one quoted above: `.measure/before/probe/repeated-verification-measurement.json`,
+  written 2026-09-16 01:34:11, `"measurement": "before f7bb88525"`, source tree
+  `~/PolicyEngine/_worktrees/microcosm-verify-once-baseline`, 1,801.100 CPU s /
+  1,821.775 wall s / 8,304,001,024 B, rank-1 chain the same ACS record fence at
+  777.447 s, and `loadavg_at_start [54.72, 66.75, 68.97]`. So the before probe
+  was run twice, on two copies of the same baseline code, by two scripts
+  (`.measure/probe_repeated_verification.py` for file A;
+  `.measure/probe_verify_once.py`, the script both after runs used, for this
+  one). They agree on the finding — neither completed, the record fence
+  dominates — and differ by 0.15 % in CPU, which is what a **ceiling** measures:
+  the cap, not the work. File A is reported because it is the one the lane
+  named; this one is disclosed because a reader comparing files should not have
+  to discover it.
+- **Scope.** These are descriptive measurements. They say nothing about dataset
+  quality, calibration or release eligibility, and nothing here is a build or a
+  certification.
+
+## The pull request
+
+| | |
+|---|---|
+| PR | [PolicyEngine/microcosm#935](https://github.com/PolicyEngine/microcosm/pull/935) — **draft**, and it stays draft |
+| Title | Verify native sources once per run, not once per access and per node |
+| Base | `microcosm-us-launch-integration-20260909` (PR #893's branch) |
+| Head sha at which every measurement and every test run above was taken | `284bc6e9624d211ba9c16dcdf04df63b9e87b10c` |
+| Head sha now | this report commit, the only change on top of `284bc6e96`, touching `experiments/native-verify-once/out.md` and `experiments/native-verify-once/README.md` |
+| Diff | 27 files, +4,399 / −849 against the base branch |
+| CI | does not run on this PR by design: `.github/workflows/test.yml` triggers on `pull_request: branches: [main]`, so only #893 reaches CI. The battery above is the only gate this branch has. |
+
+## Open questions for Max
+
+**1. The before probe never finished. Buy a true ratio, or accept the bound?**
+Both before attempts hit the 1,800 CPU-s cap, so the 9-node prefix has only a
+`≥ 1.25×` lower bound; the like-for-like number is the 19-node pair (2.63× CPU).
+(a) Accept the bound and quote 2.63× as the headline. (b) Re-run the before
+probe with `ulimit -t 3600` (~35–60 min of one core) for a true 9-node ratio —
+the lane brief allowed two probe runs at `ulimit -t 1800`, so raising the cap
+needs your word.
+(c) Run the **19-node** harness on the baseline worktree instead — same machine,
+same staged inputs, same script — which costs about 1.5 h and would replace the
+v4 receipt comparison with a same-conditions one, removing the snapshot and
+`person-income-attachment.h5` differences from the story.
+
+**2. Peak RSS rose 1.43× (9.31 → 13.31 GB at 1/1000).** The design's account is
+that memoised authentication keeps validated state resident; note that no
+receipt attributes the rise to particular objects, so that account is the
+design's, not a measurement. It is well inside this run's 32 GiB ceiling.
+(a) Accept it. (b) Narrow the epoch — one per stage, or one per node group,
+instead of one spanning the runner call — trading peak residency for more full
+validations, then re-measure. (c) Measure at 1/100 first, so how it scales is
+known rather than assumed. (d) Attribute the rise before deciding anything,
+since today nothing says which objects hold the extra 4 GB.
+
+**3. Mechanism 3's residual: a run refused at run end can leave store objects
+behind.** A byte rewrite that preserves all five stat fields is caught before any
+caller receives a manifest, but after intervening nodes have written
+self-consistent store records, so an operator must clear that run's store.
+(a) Document it and leave it (today's behaviour). (b) Have the executor delete
+the run's own written objects when the run-end re-derivation refuses. (c) Write
+a refusal marker into the store so a later run cannot silently reuse those
+objects.
+
+**4. The main-only split.** The graph-shard hunks (`executor.py`,
+`manifest.py`, `codecs.py` and the two new graph test files) depend on nothing
+in this stack. The work exists locally at branch
+`graph-verify-once-main-stale-20260916-0057` (`eb7cdcab2`, worktree
+`~/PolicyEngine/_worktrees/microcosm-graph-verify-once-main`, clean) — note the
+plain name `graph-verify-once-main` now points at `d69a543e5`, which is
+`origin/main` and carries none of those commits. Nothing is pushed and no PR
+exists. (a) Push the `-stale-` branch under a clean name and open its draft PR
+against `main` now, so those hunks get real CI. (b) Hold until #893 merges and
+let the whole stack go through together. (c) Drop the split.
+
+**5. Twenty-seven build tests were not run.** They reach the graph shard through
+`from microcosm.graph import …` rather than by dotted module path, so the
+62-file selection missed them — `test_us_graph.py`,
+`test_us_survey_calibration.py`, `test_uk_graph.py` among them. (a) Run them now
+(serial hours on this machine, since the graph tests here are cold graph runs).
+(b) Run only the three named above. (c) Rely on CI once the stack reaches
+`main`, where the same files run across parallel shards.
+
+**6. `ruff format --check .` is red on 77 pre-existing files** in
+`spec_engine/`, `uk_runtime/`, `tools/` and `experiments/`, and CI never runs
+it. (a) Leave it. (b) One formatting-only PR against `main`. (c) (b), then add
+`ruff format --check` to the lint lane so it cannot drift again.
+
+**7. Where does the next lane aim?** What is left on the 19-node run is ACS
+archive streaming 379.67 s, ASEC `_capture` 174.52 s, `_population_stamp`
+159.31 s and `_series_digest` under `_nested_seals` 73.71 s. (a) Whole-roster
+receipt transport, so the ACS archive is streamed once rather than per
+authentication. (b) Per-node population retention, aimed at `_population_stamp`.
+(c) Both, in one lane. (d) Stop here: 2.63× is enough for launch and the
+remainder is not blocking.

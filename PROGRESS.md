@@ -1422,10 +1422,16 @@ Branch `native-verify-once`, worktree `~/PolicyEngine/_worktrees/microcosm-verif
 base `f7bb88525a78786f91bc3ebe2083ef4b1c85de18` (PR #893 head). Started
 2026-09-15.
 
-**State (2026-09-16, second session):** all five mechanisms landed with
-proofs and the epoch wired into both atomic capsules; draft PR #935 open. The
-open work is the CI-shaped test sweep, the before/after probe measurement, the
-report and the main-only split.
+**State (2026-09-16, third session):** all five mechanisms landed with proofs
+and the epoch wired into both atomic capsules; draft PR #935 open; the
+CI-shaped test battery is green (no test group failed; `ruff format --check .`
+is red on 77 pre-existing files that this branch does not touch, and CI does
+not run it); the before/after probe and the nineteen-node harness have run; the
+lane report `experiments/native-verify-once/out.md` is complete, with the
+measurement, the pins, the verbatim summaries and the open questions. The open
+work is the main-only split (its commits sit on
+`graph-verify-once-main-stale-20260916-0057`, unpushed) and Max's answers to the
+report's open questions.
 
 **Goal.** The 9/15 pilot v5 measurement
 (`~/PolicyEngine/_recovered/pilot-runs/native45-v5/out.md` §2) attributes ~79 %
@@ -1483,9 +1489,12 @@ without moving any digest value.
   `~/PolicyEngine/_worktrees/microcosm-verify-once-baseline` is detached at
   `f7bb88525`.
 
-**Next:** finish both probe runs, the CI-shaped test sweep on this branch, the
-19-node harness if memory allows, the report, push the split branch and open
-its draft PR, and update #935's body with the measurement table.
+**Next:** Max's rulings on the report's seven open questions; push the split
+branch under a clean name and open its draft PR against `main` if he says so.
+#935's body already carries the measurement table. Measured: nine-node prefix
+before 1,803.87 CPU s without completing (ceiling) against after 1,444.78 CPU s
+completing; nineteen-node 5,278.61 -> 2,010.07 CPU s (2.63x) against the v4 cold
+receipt, peak RSS 9.31 -> 13.31 GB.
 
 **Pins re-derived so far:**
 
