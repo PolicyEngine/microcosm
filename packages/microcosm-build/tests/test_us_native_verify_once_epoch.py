@@ -119,8 +119,30 @@ def test_the_epoch_state_is_gone_afterwards(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Mutation: every on-disk change still refuses at the borrow that follows it.
+# Mutation: every on-disk change still refuses at the borrow that follows it,
+# and again when the epoch refuses to close over it.
 # --------------------------------------------------------------------------
+
+
+def _refuses_at_the_borrow_and_at_the_close(preparation, mutate, error):
+    """The borrow after a mutation refuses, and so does leaving the epoch.
+
+    Both halves matter. The first is the guarantee the memo must not weaken:
+    the refusal arrives at the same borrow it arrives at today. The second is
+    the guarantee the memo is allowed to lean on: even a caller that swallows
+    the first refusal cannot leave the epoch with a changed source behind it.
+    """
+
+    borrowed = []
+    with pytest.raises(error) as closing:
+        with owner.verification_epoch():
+            _borrow(preparation)
+            mutate()
+            with pytest.raises(error) as borrow:
+                _borrow(preparation)
+            borrowed.append(str(borrow.value))
+    assert borrowed and borrowed[0]
+    return borrowed[0], str(closing.value)
 
 
 @pytest.mark.parametrize(
@@ -136,12 +158,14 @@ def test_a_source_appended_to_mid_epoch_refuses_at_the_next_borrow(
 ):
     arguments = fixture(tmp_path, monkeypatch)
     preparation = owner.prepare_authenticated_survey_population(**arguments)
-    with owner.verification_epoch():
-        _borrow(preparation)
-        path = arguments["source_dir"] / name
+    path = arguments["source_dir"] / name
+
+    def mutate():
         path.write_bytes(path.read_bytes() + b" ")
-        with pytest.raises(owner.SurveyPopulationPreparationError):
-            _borrow(preparation)
+
+    _refuses_at_the_borrow_and_at_the_close(
+        preparation, mutate, owner.SurveyPopulationPreparationError
+    )
 
 
 @pytest.mark.parametrize("name", ["selection-request.json", "asec/pppub25.csv"])
@@ -150,12 +174,14 @@ def test_a_source_truncated_mid_epoch_refuses_at_the_next_borrow(
 ):
     arguments = fixture(tmp_path, monkeypatch)
     preparation = owner.prepare_authenticated_survey_population(**arguments)
-    with owner.verification_epoch():
-        _borrow(preparation)
-        path = arguments["source_dir"] / name
+    path = arguments["source_dir"] / name
+
+    def mutate():
         path.write_bytes(path.read_bytes()[:-1])
-        with pytest.raises(owner.SurveyPopulationPreparationError):
-            _borrow(preparation)
+
+    _refuses_at_the_borrow_and_at_the_close(
+        preparation, mutate, owner.SurveyPopulationPreparationError
+    )
 
 
 def test_a_source_rewritten_in_place_mid_epoch_refuses_at_the_next_borrow(
@@ -165,46 +191,81 @@ def test_a_source_rewritten_in_place_mid_epoch_refuses_at_the_next_borrow(
 
     arguments = fixture(tmp_path, monkeypatch)
     preparation = owner.prepare_authenticated_survey_population(**arguments)
-    with owner.verification_epoch():
-        _borrow(preparation)
-        path = arguments["source_dir"] / "selection-request.json"
+    path = arguments["source_dir"] / "selection-request.json"
+
+    def mutate():
         before = path.stat()
         raw = bytearray(path.read_bytes())
         raw[-1] = raw[-1] ^ 0x20
         path.write_bytes(bytes(raw))
         os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
-        assert path.stat().st_size == before.st_size
-        assert path.stat().st_mtime_ns == before.st_mtime_ns
-        with pytest.raises(owner.SurveyPopulationPreparationError):
-            _borrow(preparation)
+        after = path.stat()
+        assert after.st_size == before.st_size
+        assert after.st_mtime_ns == before.st_mtime_ns
+        assert after.st_ino == before.st_ino
+
+    _refuses_at_the_borrow_and_at_the_close(
+        preparation, mutate, owner.SurveyPopulationPreparationError
+    )
 
 
 def test_a_file_added_to_a_source_directory_mid_epoch_refuses(tmp_path, monkeypatch):
     arguments = fixture(tmp_path, monkeypatch)
     preparation = owner.prepare_authenticated_survey_population(**arguments)
-    with owner.verification_epoch():
-        _borrow(preparation)
+
+    def mutate():
         (arguments["source_dir"] / "asec" / "extra.txt").write_text("invented")
-        with pytest.raises(owner.SurveyPopulationPreparationError):
-            _borrow(preparation)
+
+    _refuses_at_the_borrow_and_at_the_close(
+        preparation, mutate, owner.SurveyPopulationPreparationError
+    )
 
 
-def test_a_touched_but_unchanged_source_re_runs_the_full_validation(
-    tmp_path, monkeypatch
-):
-    """A signature miss is a re-read, not a refusal."""
+def test_a_touched_source_refuses_on_its_stat_identity_alone(tmp_path, monkeypatch):
+    """Touching a roster file is already a refusal, and stays one."""
 
     arguments = fixture(tmp_path, monkeypatch)
     preparation = owner.prepare_authenticated_survey_population(**arguments)
+
+    def mutate():
+        os.utime(arguments["source_dir"] / "selection-request.json", None)
+
+    borrow, closing = _refuses_at_the_borrow_and_at_the_close(
+        preparation, mutate, owner.SurveyPopulationPreparationError
+    )
+    assert borrow == "SOURCE_STAT_CHANGED"
+    assert closing == "SOURCE_STAT_CHANGED"
+
+
+def test_a_signature_miss_outside_the_roster_re_runs_without_refusing(
+    tmp_path, monkeypatch
+):
+    """A private snapshot copy is in the signature but not in the roster stats.
+
+    Touching one leaves the cheap tier's ``_file_stats`` comparison untouched
+    and moves the ACS catalogue's own path signature, so the borrow takes the
+    full validation again -- and passes, because the bytes are unchanged. That
+    is the shape of every memo miss: more work, never a refusal by itself.
+    """
+
+    arguments = fixture(tmp_path, monkeypatch)
+    preparation = owner.prepare_authenticated_survey_population(**arguments)
+    state = owner._ISSUED[id(preparation)][2]
+    copies = [
+        path for _role, path in owner.acs_catalogue._lookup(state.catalogues[0]).paths
+    ]
+    assert copies
     with _Counter(owner._source_files) as counter:
         with owner.verification_epoch() as record:
             _borrow(preparation)
-            os.utime(arguments["source_dir"] / "selection-request.json", None)
+            first = counter.counts["_source_files"]
             _borrow(preparation)
-            borrows = dict(counter.counts)
-    assert borrows["_source_files"] == 2
+            assert counter.counts["_source_files"] == first  # a hit
+            os.utime(copies[0], None)
+            _borrow(preparation)
+            assert counter.counts["_source_files"] == first + 1  # a miss, not a refusal
+    assert record["hits"] == 1
     assert record["misses"] == 2
-    assert record["hits"] == 0
 
 
 # --------------------------------------------------------------------------
@@ -300,12 +361,18 @@ def test_the_native_capsule_still_refuses_a_changed_source_inside_an_epoch(
 
     paths = asec_fixture(tmp_path, monkeypatch)
     capsule = native.load_authenticated_asec_2024_native_population(**paths)
-    with native_epoch():
-        capsule.validate()
-        with paths["parent_path"].open("ab") as handle:
-            handle.write(b"changed")
-        with pytest.raises(native.AsecNativePopulationError, match="SOURCE_FILE"):
+    borrowed = []
+    with pytest.raises(native.AsecNativePopulationError, match="SOURCE_FILE"):
+        with native_epoch():
             capsule.validate()
+            with paths["parent_path"].open("ab") as handle:
+                handle.write(b"changed")
+            with pytest.raises(
+                native.AsecNativePopulationError, match="SOURCE_FILE"
+            ) as borrow:
+                capsule.validate()
+            borrowed.append(str(borrow.value))
+    assert borrowed == ["SOURCE_FILE_CHANGED"]
 
 
 def native_epoch():

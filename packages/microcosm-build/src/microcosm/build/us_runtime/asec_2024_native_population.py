@@ -549,7 +549,19 @@ def _epoch_exit(failed):
             if owner is None:
                 del _MEMO[key]
                 continue
-            _validate_state(entry[2])
+            try:
+                _validate_state(entry[2])
+            except AsecNativePopulationError:
+                raise
+            except (
+                OSError,
+                ValueError,
+                TypeError,
+                KeyError,
+                AttributeError,
+                OverflowError,
+            ):
+                raise AsecNativePopulationError("NATIVE_BINDING_REFUSAL") from None
             _MEMO[key] = (entry[0], _memo_signature(owner, entry[2]), entry[2])
     finally:
         if not _EPOCH_DEPTH[0]:

@@ -1165,14 +1165,26 @@ def _memoized_validate(owner, state):
 
 
 def _finalize_epoch():
-    """Re-validate every memoised capsule in full, with the memo bypassed."""
+    """Re-validate every memoised capsule in full, with the memo bypassed.
+
+    The refusal class is the one a borrow would have raised: this is the borrow
+    the epoch deferred, so a foreign owner's error is translated exactly as
+    ``_checked`` translates it rather than escaping raw to the run.
+    """
 
     for key, entry in list(_MEMO.items()):
         owner = entry[0]()
         if owner is None:
             del _MEMO[key]
             continue
-        _validate(entry[2])
+        try:
+            _validate(entry[2])
+        except SurveyPopulationPreparationError:
+            raise
+        except Exception:
+            raise SurveyPopulationPreparationError(
+                "PREPARATION_VERIFICATION_REFUSED"
+            ) from None
         _EPOCH_RECORD["final_validations"] += 1
         _MEMO[key] = (entry[0], _memo_signature(entry[2]), entry[2])
 
@@ -1213,15 +1225,29 @@ def verification_epoch():
         raise
     finally:
         _EPOCHS.pop()
+        # The nested capsule's epoch closes first, so this owner's own final
+        # validation reaches the nested population's complete file check rather
+        # than its memo. Both refusals are collected and this owner's is
+        # preferred, because this owner's error class is the one every borrow
+        # through it raises; a refusal is never dropped, only ordered.
+        nested = None
+        try:
+            asec_native._epoch_exit(failed)
+        except BaseException as error:  # noqa: BLE001 - re-raised below
+            nested = error
+        own = None
         try:
             if not failed:
                 record["capsules"] = len(_MEMO)
                 _finalize_epoch()
+        except BaseException as error:  # noqa: BLE001 - re-raised below
+            own = error
         finally:
             if not _EPOCHS:
                 _MEMO.clear()
             _EPOCH_RECORD = outer
-            asec_native._epoch_exit(failed)
+        if not failed and (own is not None or nested is not None):
+            raise own if own is not None else nested
 
 
 def epoch_record():
