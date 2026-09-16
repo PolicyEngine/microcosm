@@ -508,3 +508,61 @@ def test_the_native_capsule_refuses_a_rewritten_source_through_its_memo(
                 # not a cheap check that never reached the memo.
                 assert counter.counts["_file_identity"] > warm
     assert borrowed == [str(closing.value)] == ["SOURCE_FILE_CHANGED"]
+
+
+# --------------------------------------------------------------------------
+# The code a refusal carries, in an epoch and out of one, is the same code.
+# --------------------------------------------------------------------------
+
+
+def _append(path):
+    path.write_bytes(path.read_bytes() + b" ")
+
+
+def _touch(path):
+    os.utime(path, None)
+
+
+@pytest.mark.parametrize(
+    ("name", "mutate", "expected"),
+    [
+        ("selection-request.json", _append, "SOURCE_CHANGED"),
+        ("acs/csv_pus.zip", _append, "PREPARATION_VERIFICATION_REFUSED"),
+        ("asec/pppub25.csv", _append, "PREPARATION_VERIFICATION_REFUSED"),
+        ("selection-request.json", _touch, "SOURCE_STAT_CHANGED"),
+    ],
+)
+def test_an_in_epoch_refusal_carries_the_code_it_carries_today(
+    tmp_path, monkeypatch, name, mutate, expected
+):
+    """The design note's claim, pinned: the same code, at the same borrow.
+
+    The three mutations refuse from three different places -- the roster
+    re-hash (SOURCE_CHANGED), a foreign catalogue's own source check
+    (PREPARATION_VERIFICATION_REFUSED) and the roster stat comparison
+    (SOURCE_STAT_CHANGED) -- and each is asserted to reach the borrow inside an
+    epoch exactly as it reaches a borrow with no memo at all. Nothing pinned
+    this before, so the cheap tier could refuse first with a different code and
+    no test would see it.
+    """
+
+    plain_root = tmp_path / "unmemoised"
+    plain_root.mkdir()
+    plain = owner.prepare_authenticated_survey_population(
+        **fixture(plain_root, monkeypatch)
+    )
+    _borrow(plain)
+    mutate(owner._ISSUED[id(plain)][2].root / name)
+    with pytest.raises(owner.SurveyPopulationPreparationError) as today:
+        _borrow(plain)
+
+    memoised_root = tmp_path / "memoised"
+    memoised_root.mkdir()
+    arguments = fixture(memoised_root, monkeypatch)
+    preparation = owner.prepare_authenticated_survey_population(**arguments)
+    borrow, closing = _refuses_at_the_borrow_and_at_the_close(
+        preparation,
+        lambda: mutate(arguments["source_dir"] / name),
+        owner.SurveyPopulationPreparationError,
+    )
+    assert borrow == closing == str(today.value) == expected

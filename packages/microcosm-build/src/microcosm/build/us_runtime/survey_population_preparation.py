@@ -1137,14 +1137,23 @@ def _memo_signature(state):
 
 
 def _cheap_checks(state):
-    """The tier every borrow pays whether or not the expensive tier is skipped."""
+    """The tier every borrow pays whether or not the expensive tier is skipped.
+
+    The source roster's stat identities are read on every borrow, but they are
+    read into the *signature* and are deliberately not compared here. A moved
+    stat field is a memo miss, and the complete validation the miss runs raises
+    the refusal it raises today, with the same code, at the same borrow --
+    which is exactly what this design promises. Comparing them here as well
+    would refuse first and put SOURCE_STAT_CHANGED in front of the code an
+    unmemoised borrow surfaces, so an appended archive would read as a moved
+    timestamp rather than as the ACS catalogue refusing its own bytes.
+    """
 
     _require(
         _live() == _LIVE and _authority() == state.authority, "FINAL_AUTHORITY_CHANGED"
     )
     _require(_attached(state) == state.attached, "ATTACHED_EVIDENCE_CHANGED")
     _require(_encode(_producer()) == state.producer, "PRODUCER_CHANGED")
-    _require(_file_stats(state.root) == state.file_stats, "SOURCE_STAT_CHANGED")
 
 
 def _memoized_validate(owner, state):
@@ -1154,7 +1163,17 @@ def _memoized_validate(owner, state):
         _validate(state)
         return
     _cheap_checks(state)
-    signature = _memo_signature(state)
+    try:
+        signature = _memo_signature(state)
+    except BaseException:
+        # A signature that cannot even be taken -- a roster entry removed, or
+        # no longer a regular file -- is still a miss rather than a refusal of
+        # its own: the complete validation runs first, so the borrow raises
+        # today's code. `_validate` ends with the same `_file_stats` call and
+        # so cannot pass where this failed; re-raising is the fail-closed
+        # remainder, never the refusal a caller sees in practice.
+        _validate(state)
+        raise
     entry = _MEMO.get(id(owner))
     if entry is not None and entry[0]() is owner and entry[1] == signature:
         _EPOCH_RECORD["hits"] += 1

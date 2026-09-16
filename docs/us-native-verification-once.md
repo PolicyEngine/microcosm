@@ -44,19 +44,33 @@ firing inside a validation, keeps passing unchanged.
 Inside an epoch each capsule validation is split into two tiers:
 
 * **Tier A — every access, never memoised.** The issuance binding proof, the
-  producer encoding (`_encode(_producer())` / `_encode(_implementation())`),
-  and a *signature*: the stat identity `(st_dev, st_ino, st_size, st_mtime_ns,
-  st_ctime_ns)` of every file the memoised tier reads, plus the structural
-  witness of every live object the memoised tier digests (per table: the
-  column axis, dtypes, row count, and for each column and index the buffer
-  address, shape, strides and writeable flag).
+  live final authority and the attached owner payloads, the producer encoding
+  (`_encode(_producer())` / `_encode(_implementation())`), and a *signature*:
+  the stat identity `(st_dev, st_ino, st_size, st_mtime_ns, st_ctime_ns)` of
+  every file the memoised tier reads, plus the structural witness of every live
+  object the memoised tier digests (per table: the column axis, dtypes, row
+  count, and for each column and index the buffer address, shape, strides and
+  writeable flag). The signature is *input*, never a verdict: no Tier A check
+  refuses because a stat identity or a witness moved.
 * **Tier B — memoised on Tier A's signature.** Everything else: the source
   catalogues, ACS native coverage, the nested ASEC native validation, the
-  whole-roster `_source_files` re-hash and the pure final seals.
+  whole-roster `_source_files` re-hash, the roster stat comparison itself, and
+  the pure final seals other than the two Tier A repeats — the nested owner
+  seals, the plan document digest and the three frame identities.
 
 A signature mismatch is **not** a refusal. It is a memo miss: the complete
 unmemoised validation runs, and whatever refusal it would have raised today it
-raises now, with the same code, at the same access.
+raises now, with the same code, at the same access. This is why the roster's
+stat identities are read into the signature rather than compared in Tier A: a
+cheap comparison that refused first would answer an appended ACS archive with
+`SOURCE_STAT_CHANGED` where an unmemoised borrow answers it with the ACS
+catalogue's own refusal.
+`test_an_in_epoch_refusal_carries_the_code_it_carries_today` pins that by
+refusing the same mutation twice, once inside an epoch and once with no memo at
+all: an appended `selection-request.json` raises `SOURCE_CHANGED`, an appended
+`acs/csv_pus.zip` and an appended `asec/pppub25.csv` raise
+`PREPARATION_VERIFICATION_REFUSED` (a foreign owner's own refusal, translated
+by `_checked`), and a touched roster file raises `SOURCE_STAT_CHANGED`.
 
 On leaving an epoch — and on leaving every nested epoch, so a run that ends
 early through an inner scope is still covered — every capsule the epoch
@@ -90,12 +104,15 @@ SHA-256 — plus three passes over the seven ASEC files, plus the whole roster.
 It runs once per executed node through the population observer, plus once or
 more inside every kernel that borrows the preparation.
 
-**Change.** `_validate` becomes Tier A + Tier B as above. Tier A keeps
-`_encode(_producer())` and `_file_stats(state.root)` on every access, and adds
-the paths that `_file_stats` does not cover but the I/O arm reads: the ACS
-catalogue's `source_dir` entries, its two private snapshot copies and its
-projection path, the native binding's four snapshot dictionaries, and the
-`source_files` rosters of both nested ASEC capsules. Tier B is the rest.
+**Change.** `_validate` becomes Tier A + Tier B as above. Tier A keeps the live
+authority, the attached owner payloads and `_encode(_producer())` as refusals on
+every access, and reads `_file_stats(state.root)` into the signature on every
+access, adding the paths that `_file_stats` does not cover but the I/O arm
+reads: the ACS catalogue's `source_dir` entries, its two private snapshot copies
+and its projection path, the native binding's four snapshot dictionaries, and
+the `source_files` rosters of both nested ASEC capsules. Tier B is the rest,
+including the comparison of those roster stat identities against the ones frozen
+at issuance.
 
 **Why the guarantee survives.** Producer tampering and live-callable rebinding
 still refuse at the same access (`_producer()` calls `_live()`, and it is never
