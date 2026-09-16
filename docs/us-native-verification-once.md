@@ -199,7 +199,10 @@ twice on one path with the bytes changed in between and require different
 answers. The cache is keyed by source name and a *stat signature*: for a
 regular file, its `_stat_identity`; for a directory, the sorted recursive
 roster of relative names with each member's `_stat_identity` and the stat
-identity of every directory in the tree. The per-node check derives the
+identity of every directory in the tree, plus the resolved identity of any
+member that is a symlink — `_directory_identity` selects members with
+`is_file()` and reads them with `read_bytes()`, both of which follow the link,
+so the signature follows it too and the two sides walk the same members. The per-node check derives the
 signature (an `lstat` walk, no byte reads); on a match it reuses the cached
 key, on a mismatch it re-derives the content key in full and raises the same
 `NodeRejected` if it moved. Immediately before the manifest is built, every
@@ -211,7 +214,9 @@ object.
 **Why the guarantee survives.** The refusal still precedes `_write_node` for
 every mutation that moves any stat field — which is every ordinary mutation,
 including one that adds, removes or renames a file inside a directory source,
-since the roster is part of the signature. The narrowed case — a byte rewrite
+since the roster is part of the signature, and including a change to the bytes
+behind a member symlink, whose own five stat fields never move when its target
+is rewritten. The narrowed case — a byte rewrite
 that preserves all five stat fields — is caught at run end, before any caller
 receives a manifest, but after intervening nodes have written store records.
 That residual is stated rather than hidden: a run refused by the run-end check

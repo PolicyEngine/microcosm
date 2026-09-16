@@ -475,3 +475,61 @@ def test_a_source_that_moves_during_its_own_read_is_not_cached(
     monkeypatch.setattr(graph_executor, "source_content_key", counted)
     identities.key("table", path)
     assert calls == ["table"]
+
+
+# --------------------------------------------------------------------------
+# A member symlink: the bytes are the target's, so the signature follows it.
+# --------------------------------------------------------------------------
+
+
+def test_a_symlinked_member_refuses_at_the_node_that_changed_its_target(
+    tmp_path: Path,
+) -> None:
+    """The link's own five stat fields do not move when its target's bytes do.
+
+    ``keys._directory_identity`` selects members with ``is_file()`` and reads
+    them with ``read_bytes()``, both of which follow the link, so a member
+    link's target is inside the source's content key. If the signature stopped
+    at the link, a target rewritten mid-run would be answered from cache at the
+    per-node check and refused only by the run-end re-derivation -- after
+    intervening nodes had written store records. It refuses at the node.
+    """
+
+    source = _source_path(tmp_path / "source")
+    target = tmp_path / "outside" / "linked.txt"
+    target.parent.mkdir()
+    target.write_text("one", encoding="utf-8")
+    (source / "linked.txt").symlink_to(target)
+    store = ContentStore(tmp_path / "store")
+    before = _stored_objects(store)
+
+    def rewrite(_path: Path) -> None:
+        target.write_text("another", encoding="utf-8")
+
+    with pytest.raises(NodeRejected, match="Node 'survey' changed source"):
+        _run(source, store, _registry(on_source=rewrite))
+    # The refusal still precedes the node's own persistence.
+    assert _stored_objects(store) == before
+
+
+def test_a_directory_signature_follows_a_member_symlink(tmp_path: Path) -> None:
+    root = _source_path(tmp_path / "source")
+    target = tmp_path / "outside.txt"
+    target.write_text("one", encoding="utf-8")
+    (root / "linked.txt").symlink_to(target)
+    before = graph_executor._source_stat_signature(root)
+    target.write_text("another", encoding="utf-8")
+    assert graph_executor._source_stat_signature(root) != before
+
+
+def test_a_broken_member_symlink_signs_as_absent_without_raising(
+    tmp_path: Path,
+) -> None:
+    """``_directory_identity`` skips it; the signature records that it is gone."""
+
+    root = _source_path(tmp_path / "source")
+    (root / "dangling.txt").symlink_to(tmp_path / "never-written.txt")
+    signature = graph_executor._source_stat_signature(root)
+    assert any(member[-1][0] == "absent" for member in signature[2] if len(member) == 4)
+    (tmp_path / "never-written.txt").write_text("now here", encoding="utf-8")
+    assert graph_executor._source_stat_signature(root) != signature

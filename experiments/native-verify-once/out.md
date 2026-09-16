@@ -159,10 +159,12 @@ file of the tree.
 
 **Guarantee, in two sentences.** A cached key is reused only while the path's
 stat signature — for a directory, its own identity plus the relative name, type
-and identity of every entry `_directory_identity` would walk — is identical to
-the signature taken both immediately before and immediately after the read that
-produced the key, so every mutation that moves any stat field still refuses at
-the same node, before that node's `_write_node`. Every source is then re-derived
+and identity of every entry `_directory_identity` would walk, and the resolved
+identity of every entry that is a symlink, because `is_file()` and
+`read_bytes()` both follow one — is identical to the signature taken both
+immediately before and immediately after the read that produced the key, so
+every mutation that moves any stat field still refuses at the same node, before
+that node's `_write_node`. Every source is then re-derived
 in full, cache bypassed, before the manifest is built, which also catches a
 change made during a node that declares no source — something the per-node check
 has never seen.
@@ -173,7 +175,11 @@ before this branch. `test_graph_executor_source_identity` now pins it:
 store gained no object), `test_a_file_added_to_a_directory_source_refuses`,
 `test_a_file_removed_from_a_directory_source_refuses`,
 `test_a_rewritten_source_still_refuses_when_only_its_bytes_moved`,
-`test_a_source_changed_during_a_source_free_node_refuses_at_run_end`.
+`test_a_source_changed_during_a_source_free_node_refuses_at_run_end`,
+`test_a_symlinked_member_refuses_at_the_node_that_changed_its_target` (with
+`test_a_directory_signature_follows_a_member_symlink` and
+`test_a_broken_member_symlink_signs_as_absent_without_raising` on the signature
+itself).
 
 **Before/after CPU.** `test_each_source_is_read_twice_per_run_not_once_per_node`
 and `test_an_unchanged_source_is_never_re_read_by_a_node`: two full derivations
