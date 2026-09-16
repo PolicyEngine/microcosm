@@ -449,6 +449,69 @@ def _update_array(digest: hashlib._Hash, values: object) -> None:
         digest.update(np.ascontiguousarray(array).tobytes())
 
 
+def _framed(payloads: np.ndarray) -> bytes:
+    """Frame equal-width payload rows exactly as ``_update_scalar`` frames one."""
+
+    rows, width = payloads.shape
+    prefix = np.frombuffer(
+        np.full(rows, width, dtype="<u8").tobytes(), dtype=np.uint8
+    ).reshape(rows, 8)
+    return np.concatenate([prefix, payloads], axis=1).tobytes()
+
+
+def _object_stream(series: pd.Series) -> bytes | None:
+    """The bytes ``_update_array`` writes for this column's object projection.
+
+    ``to_numpy(dtype=object)`` boxes a plain numpy column into one Python object
+    per value, and ``_update_scalar`` then frames each box.  For the three kinds
+    that dominate a survey frame the boxed value is always the same exact type,
+    so the whole framed stream is a pure function of the column's bytes and can
+    be built at C speed.  Byte-for-byte identical output is the contract; any
+    column this cannot reproduce exactly returns None and takes the loop.
+    """
+
+    dtype = series.dtype
+    if not isinstance(dtype, np.dtype) or dtype.kind not in "fiub":
+        return None
+    values = np.ascontiguousarray(series.to_numpy(copy=False))
+    if values.ndim != 1 or values.dtype != dtype:
+        return None
+    rows = values.shape[0]
+    if rows == 0:
+        return b""
+    if dtype.kind == "b":
+        # bool -> b"b1" / b"b0"; np.bool_ boxes to bool, checked before int.
+        payloads = np.empty((rows, 2), dtype=np.uint8)
+        payloads[:, 0] = ord("b")
+        payloads[:, 1] = np.where(values, ord("1"), ord("0"))
+        return _framed(payloads)
+    if dtype.kind == "f":
+        # Every float width boxes to an exact Python float, which packs to the
+        # same eight native-order IEEE-754 bytes as the float64 cast, NaN
+        # payload, signed zero and infinities included.
+        wide = np.ascontiguousarray(values, dtype="<f8")
+        payloads = np.empty((rows, 9), dtype=np.uint8)
+        payloads[:, 0] = ord("f")
+        payloads[:, 1:] = np.frombuffer(wide.tobytes(), dtype=np.uint8).reshape(rows, 8)
+        return _framed(payloads)
+    # Signed and unsigned integers box to Python ints, whose decimal rendering
+    # numpy reproduces exactly; payload width therefore varies per value.
+    text = values.astype("S")
+    width = text.dtype.itemsize
+    raw = np.frombuffer(text.tobytes(), dtype=np.uint8).reshape(rows, width)
+    filled = raw != 0  # 'S' pads the short renderings on the right with NUL
+    lengths = filled.sum(axis=1).astype("<u8")
+    block = np.empty((rows, 9 + width), dtype=np.uint8)
+    block[:, :8] = np.frombuffer((lengths + 1).tobytes(), dtype=np.uint8).reshape(
+        rows, 8
+    )
+    block[:, 8] = ord("i")
+    block[:, 9:] = raw
+    keep = np.ones((rows, 9 + width), dtype=bool)
+    keep[:, 9:] = filled
+    return block[keep].tobytes()
+
+
 def _update_series(digest: hashlib._Hash, series: pd.Series) -> None:
     digest.update(str(series.dtype).encode("utf-8"))
     digest.update(b"\0")
@@ -459,7 +522,16 @@ def _update_series(digest: hashlib._Hash, series: pd.Series) -> None:
         _update_array(digest, data)
         _update_array(digest, mask)
     else:
-        _update_array(digest, series.to_numpy(dtype=object, copy=False))
+        stream = _object_stream(series)
+        if stream is None:
+            _update_array(digest, series.to_numpy(dtype=object, copy=False))
+        else:
+            # The header the object projection would have written: its dtype is
+            # "object" and its shape is the column's own one-dimensional shape.
+            digest.update(b"object\0")
+            digest.update(f"({len(series)},)".encode("ascii"))
+            digest.update(b"\0")
+            digest.update(stream)
     _update_array(digest, series.index.to_numpy(copy=False))
 
 
