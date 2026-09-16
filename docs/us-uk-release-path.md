@@ -304,6 +304,36 @@ and [default promotion](https://github.com/PolicyEngine/microcosm/issues/823)
 remain separate consumer-release requirements. Existing open issues are leads
 for candidate-specific verification, not proof every historical defect remains.
 
+## 15 September decisions
+
+- The native property and tax graph ships without the child-property
+  completion. Persons under 15 carry zero interest and dividend income, as the
+  incumbent default does: in Build P, 0 of 37,248 persons under 15 have
+  taxable interest or dividends, against 918 of 8,669 persons aged 15 to 17
+  with taxable interest. The completion's transfer from 15-to-17-year-old
+  donors is an unmeasured assumption that claims no source observation. It
+  returns only as a count-calibrated policy anchored on an external tabulation
+  of children's unearned income, such as IRS SOI's Form 8615 statistics.
+  Turning it on runs the ten completion nodes; the 35 base nodes replay from
+  the store. A pilot may declare a candidate-scope policy to exercise the
+  nodes; a release does not.
+- Native runs keep the 21,600-second CPU cap. A cap hit closes the run with
+  its complete CPU-by-code-chain ledger and authorizes no larger rerun. The
+  cost is removed at its source before any native run repeats: sources are
+  authenticated once per run with memoised validation, source keys are derived
+  once per run and re-derived at run end, the ACS record scan runs at C speed,
+  and column digests hash buffers rather than values. Measured on the
+  nineteen-node pilot, node execution is 1,143 of 5,362 seconds; the rest is
+  repeated admission and verification of 3.48 GiB of sources.
+- Main must demonstrably build the certified default from raw sources and pass
+  its preflight and certification gates. The last from-scratch build is Build P
+  (28 July 2026, policyengine-us 1.764.6); every later default is a
+  supplied-parent enrichment of that file. The from-scratch build and
+  certification run on this integration tree before #893 merges and on main as
+  a standing check afterwards, and a pull request of this size carries that
+  receipt. The complete native dataset is not the merge gate; it earns default
+  status separately by beating the incumbent on held-out cells.
+
 ## Team meeting decisions
 
 This document is the shared US/UK release-path reference. The country review
