@@ -282,6 +282,7 @@ _ROOT_PERSON_BOOL = {
     "is_benunit_head",
     "is_parent",
     "is_uc_claimant",
+    "would_claim_carers_allowance",
 }
 _ROOT_PERSON_INT = {"age"}
 _ROOT_PERSON_FLOAT: set[str] = set()

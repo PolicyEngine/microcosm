@@ -784,7 +784,7 @@
     ]
    },
    "expectation": "column_missing_in_reference",
-   "magnitude_evidence": "The frs_take_up stage draws would_claim_uc_childcare, the Universal Credit childcare-element take-up flag, at one contract rate per family type (single 0.441, couple 0.2682, fitted on the Q50f candidate so the expected paid-UC count equals DWP's calendar-2025 households receiving the element). The pinned incumbent has no such column: it pays the element to every eligible unit. The column is present in the candidate and absent from the reference, coverage the spine adds rather than a divergence in a shared column; it becomes an engine input at the policyengine-uk release that reads it (#882).",
+   "magnitude_evidence": "The frs_take_up stage draws would_claim_uc_childcare, the Universal Credit childcare-element take-up flag, at one contract rate per family type (single 0.441, couple 0.2682, fitted on the Q50f candidate so the expected paid-UC count equals DWP's calendar-2025 households receiving the element). The pinned incumbent has no such column: it pays the element to every eligible unit. The column is present in the candidate and absent from the reference, coverage the spine adds rather than a divergence in a shared column; it is an engine input from policyengine-uk 2.98.0 (PolicyEngine/policyengine-uk#1857), the floor this branch sets (#882).",
    "evidence": "experiments/882-uc-repairs-receipts.md#r3-childcare-take-up-fit-toolsfit_uk_uc_childcare_takeuppy",
    "adjudicator": "juaristi22",
    "adjudicated_on": "2026-09-16",
@@ -792,6 +792,56 @@
     "structural": {
      "expected_columns": [
       "would_claim_uc_childcare"
+     ]
+    }
+   }
+  },
+  {
+   "id": "care-hours-net-new-column",
+   "class": "net_new_column",
+   "scope": {
+    "surface": "nonzero_shares",
+    "columns": [
+     "care_hours"
+    ],
+    "entities": [
+     "person"
+    ]
+   },
+   "expectation": "column_missing_in_reference",
+   "magnitude_evidence": "The frs_spine stage fills care_hours, the engine's weekly care-hours input, from the FRS adult HOURTOT band code at the band's lower edge (codes 5, 6, 7 and 10 reach the 35-hour Carer's Allowance line, which is_carer_for_benefits tests from policyengine-uk 2.98.0). The pinned incumbent never populates it, so the column is present in the candidate and absent from the reference: coverage the spine adds rather than a divergence in a shared column (#882).",
+   "evidence": "experiments/882-uc-repairs-receipts.md#r0-tape-receipts-frs-2024-25-gross4-design-weights",
+   "adjudicator": "juaristi22",
+   "adjudicated_on": "2026-09-16",
+   "quantitative": {
+    "structural": {
+     "expected_columns": [
+      "care_hours"
+     ]
+    }
+   }
+  },
+  {
+   "id": "would-claim-carers-allowance-net-new-column",
+   "class": "net_new_column",
+   "scope": {
+    "surface": "nonzero_shares",
+    "columns": [
+     "would_claim_carers_allowance"
+    ],
+    "entities": [
+     "person"
+    ]
+   },
+   "expectation": "column_missing_in_reference",
+   "magnitude_evidence": "The frs_spine stage sets would_claim_carers_allowance from positive reported Carer's Allowance, so the engine (policyengine-uk 2.98.0) keeps the allowance on reported claimants while care_hours qualifies carers for the Universal Credit carer element. The pinned incumbent has no such column; the engine's default is true, so the incumbent's calculator path is the one the candidate departs from only where receipt is absent (#882).",
+   "evidence": "experiments/882-uc-repairs-receipts.md#r0-tape-receipts-frs-2024-25-gross4-design-weights",
+   "adjudicator": "juaristi22",
+   "adjudicated_on": "2026-09-16",
+   "quantitative": {
+    "structural": {
+     "expected_columns": [
+      "would_claim_carers_allowance"
      ]
     }
    }

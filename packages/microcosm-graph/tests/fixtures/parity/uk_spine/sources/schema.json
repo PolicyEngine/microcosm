@@ -33,6 +33,7 @@
       "age": "int64",
       "attendance_allowance_reported": "float64",
       "bsp_reported": "float64",
+      "care_hours": "float64",
       "carers_allowance_reported": "float64",
       "child_benefit_reported": "float64",
       "child_tax_credit_reported": "float64",
@@ -92,7 +93,8 @@
       "tax_free_savings_income": "float64",
       "universal_credit_reported": "float64",
       "winter_fuel_allowance_reported": "float64",
-      "working_tax_credit_reported": "float64"
+      "working_tax_credit_reported": "float64",
+      "would_claim_carers_allowance": "bool"
     }
   },
   "schema": {
