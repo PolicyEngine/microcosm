@@ -866,3 +866,113 @@ def test_materialized_frame_two_pass_recheck_and_toctou(mutation, monkeypatch):
     else:
         owner.verify_materialized_survey_population(preparation, frame)
     assert calls == ["checked", "identity", "validate", "identity"]
+
+
+# The per-column encoders below assemble, per column, the exact byte string the
+# cell-at-a-time walk fed the digest. `_legacy_cells` is that walk, written out
+# here rather than imported, so the comparison is against the predecessor and
+# not against the shipped helper's own idea of itself.
+
+
+def _legacy_cells(values):
+    out = bytearray()
+    for value in values:
+        out += owner._encode(owner._cell(value))
+        out += b"\n"
+    return bytes(out)
+
+
+def _float_column(bits):
+    return pd.Series(np.asarray(bits, dtype=np.uint64).view(np.float64))
+
+
+def test_every_double_exponent_and_mantissa_boundary_spells_identically():
+    """Every biased exponent against five mantissas and both signs."""
+    patterns = [
+        (sign << 63) | (exponent << 52) | mantissa
+        for exponent in range(2048)
+        for mantissa in (0, 1, 0x8000000000000, 0x123456789ABCD, 0xFFFFFFFFFFFFF)
+        for sign in (0, 1)
+    ]
+    series = _float_column(patterns)
+    finite = series[np.isfinite(series.to_numpy())]
+    assert len(finite) == 20470
+    assert owner._cells_blob(finite) == _legacy_cells(finite)
+
+
+@pytest.mark.parametrize("trial", range(6))
+def test_random_double_bit_patterns_spell_identically(trial):
+    generator = np.random.default_rng(20260917 + trial)
+    raw = generator.integers(0, 2**64, size=250_000, dtype=np.uint64)
+    series = _float_column(raw)
+    finite = series[np.isfinite(series.to_numpy())]
+    assert len(finite) > 200_000
+    assert owner._cells_blob(finite) == _legacy_cells(finite)
+
+
+def test_non_finite_doubles_refuse_with_the_walk_s_own_code():
+    for value in (np.inf, -np.inf):
+        series = pd.Series(np.array([1.0, value, 2.0], dtype=np.float64))
+        assert _outcome(lambda s=series: owner._cells_blob(s)) == _outcome(
+            lambda s=series: _legacy_cells(s)
+        )
+
+
+_SEAL_COLUMNS = {
+    "float64": pd.Series(
+        np.array(
+            [0.0, -0.0, 1.0, -1.25, np.nan, 5e-324, 1e308, float(2**53)],
+            dtype=np.float64,
+        )
+    ),
+    "int64": pd.Series(np.array([-(2**63), -1, 0, 1, 2**63 - 1], dtype=np.int64)),
+    "int32": pd.Series(np.array([-(2**31), 0, 2**31 - 1], dtype=np.int32)),
+    "uint64": pd.Series(np.array([0, 1, 2**64 - 1], dtype=np.uint64)),
+    "Int64": pd.Series(pd.array([-(2**63), None, 0, 2**63 - 1], dtype="Int64")),
+    "UInt64": pd.Series(pd.array([0, None, 2**64 - 1], dtype="UInt64")),
+    "bool": pd.Series(np.array([True, False, True])),
+    "boolean": pd.Series(pd.array([True, None, False], dtype="boolean")),
+    "string": pd.Series(
+        pd.array(
+            ["", 'quote" slash\\', "\x00\x1f\x7f", "é中🧪", None, "x" * 4096],
+            dtype="string",
+        )
+    ),
+    "string-slow-path": pd.Series(pd.array(["x" * 4097, "y"], dtype="string")),
+    "object": pd.Series([1, True, 1.0, "1", None], dtype=object),
+    "category": pd.Series(pd.Categorical(["a", "b", "a", None])),
+}
+
+
+@pytest.mark.parametrize("name", sorted(_SEAL_COLUMNS))
+def test_every_column_kind_spells_identically(name):
+    series = _SEAL_COLUMNS[name]
+    assert owner._cells_blob(series) == _legacy_cells(series)
+    assert owner._cells_blob(series.iloc[:0]) == b""
+    assert owner._cells_blob(series.iloc[::2]) == _legacy_cells(series.iloc[::2])
+    assert owner._cells_blob(series.iloc[::-1]) == _legacy_cells(series.iloc[::-1])
+
+
+def test_object_and_category_keep_the_walk_because_equal_values_differ_in_bytes():
+    """1, True and 1.0 are equal and hash alike; their cells are three strings."""
+    series = _SEAL_COLUMNS["object"]
+    assert len(set(series.iloc[:3].tolist())) == 1
+    assert owner._frame_cell_encode(1) == b"1"
+    assert owner._frame_cell_encode(True) == b"true"
+    assert owner._frame_cell_encode(1.0) == b'["float","0x1.0000000000000p+0"]'
+    assert owner._cells_blob(series) == _legacy_cells(series)
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        pd.RangeIndex(5),
+        pd.Index([-(2**63), 0, 2**63 - 1], dtype="int64"),
+        pd.Index([0, 1, 2**64 - 1], dtype="uint64"),
+        pd.Index([0.0, -0.0, 1.5], dtype="float64"),
+        pd.Index(["a", "b"], dtype="object"),
+        pd.Index(pd.array(["a", None], dtype="string")),
+    ],
+)
+def test_every_axis_kind_spells_identically(index):
+    assert owner._index_blob(index) == _legacy_cells(index)
