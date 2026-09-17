@@ -257,8 +257,9 @@ entities and a few hundred columns, tens of kilobytes per node against about
 §1 still refuses the same defect with the same code; §5's battery is the proof
 obligation and it is discharged mutation by mutation, in both directions.
 
-Two things change in character rather than in coverage, and this note states
-them rather than leaving them to be found:
+Four things change in character rather than in coverage, and this note states
+them rather than leaving them to be found. Three were established by an
+adversarial pass over the finished seal, not by writing it.
 
 1. **Byte equality becomes sha256 equality.** Today `same_replayed_population`
    compares the bytes; the seal compares a 256-bit digest of those bytes. This
@@ -266,7 +267,13 @@ them rather than leaving them to be found:
    `_population_stamp`, `_frame_identity`, `preparation_sha256`, every node key
    and every store address are sha256 digests of content — so it introduces no
    assumption the build does not already make. It is not nothing, and it is
-   written here so the owner can see it.
+   written here so the owner can see it. Every predicate that is **not** a byte
+   comparison keeps the object it applies to and the identical `is`/`==`: the
+   dtype, its class, the index class, the axis name, the `WeightKind`, the
+   flags. That is why `np.longlong` against `np.int64` — equal dtypes, equal
+   `str()`, equal `dtype.str`, equal bytes, different dtype class — still
+   refuses `SERIES_DTYPE_OR_LENGTH`, which a token built from spellings would
+   have missed.
 2. **Unary assertions fire earlier.** A `MultiIndex`, an unencodable object
    cell, a `Float64` column or a non-`str` owner value is refused when the
    population is observed rather than when it is compared, with the same code.
@@ -274,9 +281,29 @@ them rather than leaving them to be found:
    defects the refusal moves from after `run_graph` returns to inside the
    observer callback, which `run_graph` documents as refusing the run
    (`executor.py:2453-2454`).
+3. **A one-sided defect now fires before a two-sided difference.** When a
+   population carries both — an unsupported dtype *and* a changed version, say
+   — today's comparison reports whichever its own order reaches first, and the
+   seal reports the one-sided one, because the seal is built before anything is
+   compared. The same set of codes; a different precedence between them. No
+   pair in the battery carries two defects at once, and none is manufactured.
+4. **On an object-dtype axis, a difference reports `AXIS` rather than
+   `OBJECT_VALUE`.** `_axis` refuses `AXIS` when `Index.identical` fails, and
+   `identical` runs `array_equivalent` over the index's own values, which for
+   an object axis is an element-wise `!=` over arbitrary Python objects: it
+   holds `True` equal to `1` and `-0.0` equal to `0.0`, which the store's
+   scalar codec spells apart. No digest reproduces an arbitrary `!=`, so the
+   axis folds the codec's bytes, which is never weaker than `equals` and is
+   stricter on exactly those pairs — they refuse under `AXIS` instead of under
+   the `OBJECT_VALUE` they reach today. Every non-object axis kind is exact,
+   including the three `array_equivalent` is byte-tolerant for: `float`,
+   `complex` and `bool` all collapse NaN payloads, NaN sign, signed zeros and
+   bool bytes outside `{0, 1}` before folding, so a byte-only difference still
+   reaches `NATIVE_BITS`.
 
-Neither is a narrowing of what a run proves about the data, so this note does
-not stop and ask. The report §10's *stated mechanism* was wrong and this note
+None of the four is a narrowing of what a run proves about the data — every
+defect is still refused, and item 4 is a refusal moving from one code to
+another — so this note does not stop and ask. The report §10's *stated mechanism* was wrong and this note
 says so in §0 and replaces it; the *decision* — compare content seals, not
 objects — is implemented as chosen.
 
