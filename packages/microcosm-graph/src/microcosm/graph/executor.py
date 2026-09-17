@@ -11,7 +11,7 @@ import struct
 import time
 from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
-from dataclasses import fields, replace
+from dataclasses import dataclass, fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -2455,6 +2455,86 @@ def _evict_run_writes(store: ContentStore, written: Iterable[str]) -> list[str]:
     return stranded
 
 
+@dataclass
+class _RunSources:
+    """What a failing run needs in order to decide whether its writes stand.
+
+    ``_execute_graph`` binds the run-start paths, keys and identity cache here
+    as soon as they exist, and marks the record ``settled`` once its own
+    run-end pass has decided -- either way. ``run_graph`` reads it only when
+    the run is leaving by exception.
+    """
+
+    paths: Mapping[str, Path] | None = None
+    keys: Mapping[str, str] | None = None
+    identities: _SourceIdentities | None = None
+    settled: bool = False
+
+
+def _settle_failed_run(
+    store: ContentStore,
+    written: Iterable[str],
+    run_sources: _RunSources,
+    error: BaseException,
+) -> None:
+    """Decide, for a run leaving by exception, whether what it wrote may stay.
+
+    The run-end pass is the only check that sees a rewrite leaving every stat
+    field identical, and a run that raises never reaches it. Without this, a
+    node that persisted under the pre-rewrite identity would survive a later
+    node's failure, a store error or an interrupt, and the next
+    ``resume="auto"`` run would hit its record.
+
+    So the same cache-bypassing re-derivation runs here. Sources that still
+    match leave the store alone, which is what keeps an interrupted or failed
+    run resumable. A source that moved, a re-derivation that cannot finish --
+    a member removed mid-walk, a second interrupt -- or a failure before the
+    run had any source key to compare against evicts everything the run
+    wrote. The original error is never replaced: what happened here is added
+    to it as a note.
+    """
+
+    written = set(written)
+    if run_sources.settled or not written:
+        return
+    moved: list[str] = []
+    unverified = ""
+    if (
+        run_sources.paths is None
+        or run_sources.keys is None
+        or run_sources.identities is None
+    ):
+        unverified = "the run failed before its source identities were derived"
+    else:
+        try:
+            for name in sorted(run_sources.paths):
+                identity = run_sources.identities.derive(name, run_sources.paths[name])
+                if identity != run_sources.keys[name]:
+                    moved.append(name)
+        except BaseException as derivation_error:
+            unverified = (
+                "its sources could not be re-derived "
+                f"({type(derivation_error).__name__}: {derivation_error})"
+            )
+    if not moved and not unverified:
+        return
+    stranded = _evict_run_writes(store, written)
+    reason = (
+        "source " + ", ".join(repr(name) for name in moved) + " changed while it ran"
+        if moved
+        else unverified
+    )
+    note = f"Everything this run wrote was evicted, because {reason}."
+    if stranded:
+        note = (
+            f"Everything this run wrote was evicted, because {reason}, except "
+            + ", ".join(stranded)
+            + ", which could not be evicted and may hold work derived from a"
+            " changed source."
+        )
+    error.add_note(note)
+
+
 def run_graph(
     compiled: CompiledGraph,
     *,
@@ -2486,21 +2566,35 @@ def run_graph(
     The run executes inside a store write ledger. A run that refuses at the
     run-end source re-derivation has already persisted whatever the per-node
     check could not discriminate, and the ledger is what lets it take those
-    objects back out before the refusal reaches this caller.
+    objects back out before the refusal reaches this caller. A run that leaves
+    by any other exception never reaches that pass, so the same re-derivation
+    runs on its way out (:func:`_settle_failed_run`): unchanged sources keep
+    the run's work for a later resume, anything else evicts it.
+
+    What no in-process check can cover is a process that stops without
+    unwinding -- SIGKILL, a power loss -- after a rewrite that left every stat
+    field identical and before either pass ran. The objects such a run
+    persisted stay in the store under the pre-rewrite identity.
     """
 
+    run_sources = _RunSources()
     with store.recording_writes() as written:
-        return _execute_graph(
-            compiled,
-            sources=sources,
-            store=store,
-            kernels=kernels,
-            resume=resume,
-            decisions=decisions,
-            written=written,
-            _population_observer=_population_observer,
-            _verification_epoch=_verification_epoch,
-        )
+        try:
+            return _execute_graph(
+                compiled,
+                sources=sources,
+                store=store,
+                kernels=kernels,
+                resume=resume,
+                decisions=decisions,
+                written=written,
+                run_sources=run_sources,
+                _population_observer=_population_observer,
+                _verification_epoch=_verification_epoch,
+            )
+        except BaseException as error:
+            _settle_failed_run(store, written, run_sources, error)
+            raise
 
 
 def _execute_graph(
@@ -2512,12 +2606,15 @@ def _execute_graph(
     resume: ResumePolicy,
     decisions: tuple[Decision, ...],
     written: set[str],
+    run_sources: _RunSources,
     _population_observer: Callable[[str, Population], None] | None,
     _verification_epoch: Mapping[str, object] | None,
 ) -> RunManifest:
     """One run, with ``written`` collecting every key it publishes.
 
     ``run_graph`` owns that ledger's lifetime; this is where it is spent.
+    ``run_sources`` is how a run that raises tells ``run_graph`` what it
+    started from, and whether its own run-end pass already decided.
     """
 
     if resume not in ("auto", "require", "forbid"):
@@ -2541,6 +2638,9 @@ def _execute_graph(
     source_paths, source_keys = _source_paths_and_keys(
         compiled, sources, store, identities=source_identities
     )
+    run_sources.paths = source_paths
+    run_sources.keys = source_keys
+    run_sources.identities = source_identities
     keys, implementations = _all_node_keys(compiled, kernels, source_keys)
     contracts = {
         node_id: typed_contracts(compiled, compiled.graph.node(node_id), keys, kernels)
@@ -2717,7 +2817,10 @@ def _execute_graph(
                 # rewrite that leaves every field identical: that is a cache
                 # hit, this node persists under the pre-rewrite identity, and
                 # the run-end re-derivation below is what catches it -- and
-                # evicts everything the run persisted.
+                # evicts everything the run persisted. A run that raises
+                # before reaching that pass gets the same re-derivation from
+                # run_graph on its way out. Only a process that stops without
+                # unwinding leaves such a node's objects behind.
                 current = source_identities.key(name, source_paths[name])
                 if current != source_keys[name]:
                     raise NodeRejected(
@@ -2903,6 +3006,11 @@ def _execute_graph(
     # resume="auto" run can reuse it. The eviction is idempotent and never
     # replaces the refusal: an object that will not go is named in it.
     #
+    # This pass covers a run that gets this far. One that raises earlier is
+    # settled by run_graph with the same re-derivation, and one whose process
+    # stops without unwinding is covered by neither: that residual is stated
+    # on run_graph.
+    #
     # It is written inline rather than through _source_paths_and_keys because
     # that helper answers from the per-run cache, which this pass exists to
     # bypass, and re-resolves every path and re-checks codec availability,
@@ -2924,6 +3032,9 @@ def _execute_graph(
         final_identities[name] = identity
         if identity != source_keys[name]:
             moved.append(name)
+    # Decided here, either way: run_graph must not re-derive a second time for
+    # the refusal below, nor for anything raised while the manifest is built.
+    run_sources.settled = True
     if moved:
         stranded = _evict_run_writes(store, written)
         refusal = (
