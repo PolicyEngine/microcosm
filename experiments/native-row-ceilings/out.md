@@ -342,3 +342,166 @@ What moves and is not a committed pin: each US stage's `implementation_hash` is
 over its whole module roster, so editing any inventoried module moves it and with
 it every node key and store address. #935 recorded that this holds for any change
 to these files including a comment.
+
+## 8. Gates, verbatim
+
+All at `f40294e91`'s tree, with the tree untouched for the duration of the
+pytest run. Every command's own last line, quoted rather than summarised.
+
+**The touched test files, as CI runs them — explicit flat file list, no `-k`:**
+
+```
+$ .venv/bin/python -m pytest \
+    packages/microcosm-build/tests/test_us_native_row_ceilings.py \
+    packages/microcosm-build/tests/test_us_acs_pums.py \
+    packages/microcosm-build/tests/test_us_acs_person_coverage_columns.py \
+    packages/microcosm-build/tests/test_us_survey_observed_age.py \
+    packages/microcosm-build/tests/test_us_current_survey_geography.py \
+    packages/microcosm-build/tests/test_us_asec_demographic_source.py \
+    packages/microcosm-build/tests/test_us_survey_origin_budget.py -rf
+
+399 passed in 481.27s (0:08:01)
+```
+
+**The CI group gates:**
+
+```
+$ .venv/bin/python tools/ci_test_groups.py --verify
+verification=ok
+exit=0
+
+$ python3 -I -B -S packages/microcosm-build/tests/test_ci_test_groups.py
+Ran 15 tests in 0.396s
+
+OK
+
+$ .venv/bin/python tools/spec_engine_coverage.py --check
+spec-engine coverage: 42156/42156 configuration fields; 41/41 inventory checks
+exit=0
+```
+
+`test_us_native_row_ceilings.py` lands in `rest` shard 3/6 (fast), `us-not`
+shard 1/1 (engine) and `wheels`, and never under `[defaulted]`. The other six
+touched files keep their existing groups: `us-am` for the four `a`–`m` files,
+`us-qs` for the two `s` files.
+
+**Lint and format, over every `.py` this branch touches:**
+
+```
+$ git diff --name-only origin/native-scale-transport...HEAD | grep '\.py$' \
+    | xargs .venv/bin/python -m ruff check
+All checks passed!
+exit=0
+
+$ git diff --name-only origin/native-scale-transport...HEAD | grep '\.py$' \
+    | xargs .venv/bin/python -m ruff format --check
+21 files already formatted
+exit=0
+```
+
+**The pin generators, re-run at this head:**
+
+```
+$ .venv/bin/python experiments/native-row-ceilings/repin.py .../repin.json
+inventory contracts checked: 124; moved: 0
+acs_native_coverage_binding._ACCEPTED:
+  acs_pums.py: unchanged
+  acs_inputs.py: unchanged
+  acs_housing_universe_source.py: unchanged
+  acs_person_coverage_authentication.py: unchanged
+stage manifests built: 10
+
+$ .venv/bin/python experiments/native-row-ceilings/regenerate_inventory_contract.py
+no contract moved
+
+$ .venv/bin/python experiments/native-row-ceilings/regenerate_accepted_pin.py
+no pin moved
+```
+
+**One earlier run reported failures, and it was not a valid measurement.** A
+full-file run of `test_us_survey_origin_budget.py` reported `8 failed, 44
+passed` while this session was editing the working tree underneath it. The same
+tests pass at a fixed commit — the subset run returned `8 passed, 44 deselected
+in 196.03s`, and the run above is green over the whole file. It is recorded here
+because it was run and reported, not because it measured anything.
+
+**Against the base branch, for the inherited pin.** Seven of those tests were run
+against a worktree at `a64f7b733` with `PYTHONPATH` pointing at its own packages:
+
+```
+7 failed, 44 deselected in 59.22s
+E   ValueError: Unclassified US dependency/resource contract:
+    microcosm.build/us_runtime/survey_population_preparation.py.
+```
+
+All seven pass on this branch. That is the evidence in §7 that the break is the
+base's and not this lane's.
+
+## 9. For Max
+
+**1. The inherited re-pin — keep it here, or move it to #945?**
+`b6081efcb` on `native-scale-transport` added `path.read_bytes()` to
+`_spill_roster` without regenerating the pin, and `implementation_manifest()`
+raises for the stage the nineteen-node path runs. Seven tests fail on a base
+worktree with that exact error; all seven pass here.
+
+- **(a) Keep it in this PR.** One generated line; it makes the base functional
+  and lets this lane build its own stage manifests. Costs: this PR touches a
+  file that lane owns.
+- **(b) Move it to #945 and rebase this branch.** Cleaner ownership. Costs: this
+  branch cannot build a stage manifest until #945 carries the fix, so its pin
+  evidence is unverifiable in the meantime.
+- **(c) Keep it here *and* tell #945's owner**, so the fix is not silently
+  inherited and re-derived twice.
+
+I shipped (a) and would pick (c). I did not pick (b) because required step 4 of
+this lane's brief is to re-derive every pin through its generator, and the
+generator raises on an unfixed base.
+
+**2. The twelve byte transports that still bind — one lane or several?**
+Six of them bind at **1/10**, and `acs_person_coverage_authentication.MAX_BODY_BYTES`
+binds at **0.38% of source**. They are all the same shape and the argument for
+them already exists, written by the transport lane.
+
+- **(a) One follow-up lane, one argument**, carrying the segmented transport into
+  all of them — the same reasoning that produced this lane.
+- **(b) One lane per module, in binding order**: the ACS body budget (0.38%), the
+  preparation consumer (6.10%), the origin budget (5.53%), the roles artifact,
+  the calibration pair, the age artifact.
+- **(c) Only the ones on the nineteen-node path now**, leaving the calibration and
+  age-artifact ones to whoever meets them.
+
+My reading is (a), for the reason you already gave on this family. But the ACS
+body budget is different in kind from the rest — it refuses at 1/265, so it
+gates *any* run above the 1/1000 pilot, and it may deserve to go first whatever
+the shape of the rest.
+
+**3. Seven moved, not the four the brief named. Keep them together?**
+The brief named four; `MAX_GROUPS` it asked me to establish, and establishing it
+showed it binds. The census then found two more that the rule decides with no
+judgment left — `current_survey_geography.MAX_HOUSEHOLDS`, which bound hardest of
+all seven at 33% of source, and `asec_demographic_source._MAX_PERSONS`.
+
+- **(a) Keep all seven in this PR.** One rule applied wherever it decides.
+- **(b) Split the two the brief did not name into their own PR.**
+
+I shipped (a): splitting them is the "one build at a time" you ruled out, and
+both were moved on the same read-the-code test as the rest, recorded in §4.
+
+**4. The multiple — and one place a tighter rule exists.**
+I used four times the measured full-source count, rounded up to the next whole
+million, because that is the transport lane's own headroom (3.9×) and it keeps
+one law over both families.
+
+- **(a) Keep 4×.**
+- **(b) A larger multiple** — 10× would be about three decades of ACS growth
+  rather than one, at no runtime cost, since these are ceilings and not
+  allocations.
+- **(c) Where a containing bound already exists, use it instead.**
+  `MAX_SELECTED_ROWS` bounds requested person keys and `MAX_ROWS` bounds the
+  archive those keys are drawn from, so `MAX_SELECTED_ROWS = MAX_ROWS` would be
+  tighter than 14,000,000 *and* provable by containment rather than chosen. It
+  would make the rule two rules, which is why I did not.
+
+I shipped (a). (c) is the only one I think is genuinely arguable, and only for
+that one pair.
