@@ -550,3 +550,101 @@ def test_actual_model_closure_is_required_before_engine_evaluation(monkeypatch):
     )
     with pytest.raises(ValueError, match="MISSING_MODEL_INPUT"):
         stage.FiscalMeasurementKernel(model_outputs=("dividend_income",)).run(missing)
+
+
+@pytest.mark.requires_us
+def test_model_evaluation_declares_the_release_spm_selection(monkeypatch):
+    from microcosm.build.us_runtime import reform_validation
+
+    assert stage.SPM_SELECTION == reform_validation.US_RELEASE_SPM_SELECTION
+    assert stage._model_contract(())["evaluation"] == "none"
+    assert "spm" not in stage._model_contract(())
+    assert stage._model_contract(("dividend_income",))["spm"] == {
+        "geography_kind": "county"
+    }
+
+    arguments = declaration(
+        value_variable="dividend_income", model_outputs=("dividend_income",)
+    )
+    arguments["input_columns"]["person"] = (
+        "qualified_dividend_income",
+        "non_qualified_dividend_income",
+    )
+    arguments["input_columns"].pop("tax_unit")
+    value = frame()
+    value.table("person")["qualified_dividend_income"] = [4.0, 1.0, 3.0, 2.0]
+    value.table("person")["non_qualified_dividend_income"] = [40.0, 10.0, 30.0, 20.0]
+    selections = []
+    engine = stage.policyengine_us.PolicyEngineUSEngine
+    original = engine.__init__
+
+    def recording(self, *args, **kwargs):
+        selections.append(kwargs.get("spm"))
+        original(self, *args, **kwargs)
+
+    monkeypatch.setattr(engine, "__init__", recording)
+    stage.FiscalMeasurementKernel(model_outputs=("dividend_income",)).run(
+        context(arguments, value)
+    )
+    assert selections == [{"geography_kind": "county"}]
+
+    # A declaration compiled under another selection is refused, not evaluated.
+    tampered = context(arguments, value)
+    contract = json.loads(tampered.params["model_contract"])
+    contract["spm"] = {"geography_kind": "national"}
+    monkeypatch.setattr(stage, "fiscal_measurement_node", lambda *a, **k: tampered.node)
+    params = {**tampered.params, "model_contract": stage._json(contract)}
+    with pytest.raises(ValueError, match="MODEL_SPM_SELECTION"):
+        stage.FiscalMeasurementKernel(model_outputs=("dividend_income",)).run(
+            replace(tampered, params=params)
+        )
+
+
+@pytest.mark.requires_us
+def test_an_spm_measurement_root_declares_what_the_provider_reads():
+    """The static closure is blind to the calculator's reads; the kernel is not."""
+
+    index = stage.policyengine_us.PolicyEngineUSVariableMetadataIndex()
+    blind = index.variable_dependency_closure("spm_unit_spm_threshold")
+    assert blind.input_leaves == ()
+
+    (contract,) = stage._model_contract(("spm_unit_spm_threshold",))["roots"]
+    assert contract["leaves"] == {
+        "age": "person",
+        "county_fips": "household",
+        "spm_unit_tenure_type": "spm_unit",
+    }
+    (reached,) = stage._model_contract(("in_poverty",))["roots"]
+    assert {"age", "county_fips", "spm_unit_tenure_type"} <= set(reached["leaves"])
+    (untouched,) = stage._model_contract(("dividend_income",))["roots"]
+    assert "county_fips" not in untouched["leaves"]
+
+    arguments = declaration(
+        value_variable="spm_unit_spm_threshold",
+        entity="spm_unit",
+        model_outputs=("spm_unit_spm_threshold",),
+    )
+    arguments["input_columns"]["person"] = ("age",)
+    arguments["input_columns"]["spm_unit"] = ("spm_unit_tenure_type",)
+    with pytest.raises(ValueError, match="UNDECLARED_MODEL_LEAF:county_fips"):
+        stage.fiscal_measurement_node(**arguments)
+
+
+@pytest.mark.requires_us
+def test_the_spm_measurement_roster_matches_the_installed_engine():
+    """An engine upgrade that adds a measurement consumer must move this roster."""
+
+    import policyengine_us
+    from spm_calculator.policyengine_adapter import build_policyengine_variables
+
+    generated = {variable.__name__ for variable in build_policyengine_variables()}
+    role_inputs = {"is_household_spouse", "is_spm_independent_minor_role"}
+    assert role_inputs <= generated
+    variables = Path(policyengine_us.__file__).parent / "variables"
+    by_function_call = {
+        path.stem
+        for path in variables.rglob("*.py")
+        if "policyengine_amount" in path.read_text(encoding="utf-8")
+    }
+    assert by_function_call == {"spm_unit_capped_housing_subsidy"}
+    assert stage._SPM_MEASUREMENT_NODES == (generated - role_inputs) | by_function_call

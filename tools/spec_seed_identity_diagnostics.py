@@ -54,6 +54,10 @@ DISTRIBUTIONS = (
     "quantile-forest",
     "referencing",
     "scikit-learn",
+    # policyengine-us 2.x installs the SPM measurement variables from this
+    # distribution when its system loads, so the engine under diagnosis is the
+    # pair, not policyengine-us alone.
+    "spm-calculator",
     "torch",
 )
 # Filled from the reviewed source-only roster; no import is used to construct it.
