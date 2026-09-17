@@ -770,3 +770,63 @@ def test_household_axis_composition_refuses_misaligned_weights() -> None:
 
     with pytest.raises(ValueError, match="one DESIGN weight per loaded"):
         acs_pums._household_axis_composition(household, weights)
+
+
+def _serialnos(count: int) -> tuple[str, ...]:
+    return tuple(f"2024HU{index:07d}" for index in range(1, count + 1))
+
+
+def test_exact_household_ceiling_refuses_at_its_own_number(monkeypatch) -> None:
+    """The refusal is `<= MAX_EXACT_HOUSEHOLDS`, whatever that number is.
+
+    Driven at a patched-down ceiling so the boundary is exercised without
+    building a full-source key tuple; `test_us_native_row_ceilings.py` carries
+    the separate assertion that the shipped number admits the 1,531,614
+    households a full-source ACS selection supplies.
+    """
+    monkeypatch.setattr(acs_pums, "MAX_EXACT_HOUSEHOLDS", 3)
+    accepted = _serialnos(3)
+    assert AcsPumsSource.snapshot_serialnos(accepted) == accepted
+    with pytest.raises(ValueError, match="bounded unique raw native keys"):
+        AcsPumsSource.snapshot_serialnos(_serialnos(4))
+    with pytest.raises(ValueError, match="bounded unique raw native keys"):
+        AcsPumsSource.snapshot_serialnos(())
+
+
+def test_exact_person_row_ceiling_counts_np_not_person_records(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """NP is a declared count, so the ceiling is driven at full-source scale free.
+
+    The check sums NP over the selected households before the person archive is
+    opened, so a two-row household table declaring 3,422,888 people -- the whole
+    2024 ACS person file -- exercises the shipped ceiling without materialising
+    a single person row.
+    """
+    household_zip = tmp_path / "h.zip"
+    person_zip = tmp_path / "p.zip"
+    serialnos = ("2024HU0000001", "2024HU0000002")
+    _write_csv_zip(
+        household_zip,
+        {
+            "psam_hus.csv": [
+                _household(serialnos[0], NP=3_422_887),
+                _household(serialnos[1], NP=1),
+            ]
+        },
+    )
+    _write_csv_zip(person_zip, {"psam_pus.csv": [_person(serialnos[0], 1, 20)]})
+    source = AcsPumsSource(household_zip, person_zip)
+
+    # The shipped ceiling admits the whole 2024 ACS person file: the load runs
+    # past this check and refuses later, on the person archive it then opens.
+    assert acs_pums.MAX_EXACT_PERSON_ROWS > 3_422_888
+    with pytest.raises(ValueError, match="NP/person row-count mismatch"):
+        load_acs_pums_tables(source, serialnos=serialnos)
+
+    # Patched below that roster, the same expression refuses it.
+    monkeypatch.setattr(acs_pums, "MAX_EXACT_PERSON_ROWS", 3_422_887)
+    with pytest.raises(
+        ValueError, match="selected complete roster exceeds native person budget"
+    ):
+        load_acs_pums_tables(source, serialnos=serialnos)

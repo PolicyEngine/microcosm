@@ -118,3 +118,30 @@ def test_known_negative_zero_and_rule_document_are_preserved():
     assert document["top_code_replacement"] is False
     document["relation"] = "changed"
     assert rule.rule_document()["relation"] == "numeric_identity"
+
+
+def test_row_ceiling_admits_a_full_source_channel():
+    """A full-source ACS channel really is normalized, not only asserted.
+
+    `_normalized_source_copy` normalizes the ACS and ASEC native frames
+    separately, so the ceiling is met one channel at a time and the larger
+    channel is ACS: 3,422,888 persons at full source. That is one int64 column,
+    about 27 MiB, so the acceptance is driven for real rather than inferred.
+    """
+    rows = 3_422_888
+    assert rule.MAX_ROWS >= rows
+    raw = pd.Series(np.arange(rows, dtype="int64") % 101, name="A_AGE")
+    result = rule.normalize_observed_age(raw)
+    assert len(result) == rows
+    assert result.dtype == np.dtype("float64")
+    assert result.iloc[0] == 0.0 and result.iloc[100] == 100.0
+    assert result.name == "age"
+
+
+def test_row_ceiling_refuses_one_row_past_its_own_number(monkeypatch):
+    """The refusal is `<= MAX_ROWS`, whatever that number is."""
+    monkeypatch.setattr(rule, "MAX_ROWS", 3)
+    at_ceiling = pd.Series([1, 2, 3], dtype="int64")
+    assert rule.normalize_observed_age(at_ceiling).tolist() == [1.0, 2.0, 3.0]
+    with pytest.raises(ValueError, match="ROW_BOUND"):
+        rule.normalize_observed_age(pd.Series([1, 2, 3, 4], dtype="int64"))

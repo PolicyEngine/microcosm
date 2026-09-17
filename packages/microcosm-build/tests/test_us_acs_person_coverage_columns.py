@@ -494,3 +494,23 @@ def test_stream_opens_member_once_and_stops_at_refusal_without_full_validation(
         )
     assert opened == ["psam_pusa.csv"]
     assert sum(consumed) < 32_768
+
+
+def test_selected_row_ceiling_refuses_at_its_own_number(tmp_path, monkeypatch):
+    """The refusal is `<= MAX_SELECTED_ROWS`, whatever that number is.
+
+    At exactly the ceiling the read proceeds and fails later, on the absent
+    archive it then opens. `test_us_native_row_ceilings.py` carries the separate
+    assertion that the shipped number admits the 3,422,888 persons a full-source
+    ACS selection requests.
+    """
+    source = acs_pums.AcsPumsSource(
+        tmp_path / "absent-h.zip", tmp_path / "absent-p.zip"
+    )
+    monkeypatch.setattr(module, "MAX_SELECTED_ROWS", 2)
+    at_ceiling = _keys([_row(), _row(order="2")])
+    with pytest.raises(FileNotFoundError):
+        module.read_acs_person_coverage_columns(source, person_keys=at_ceiling)
+    over = _keys([_row(), _row(order="2"), _row(order="3")])
+    with pytest.raises(ValueError, match="selected person count is outside the bound"):
+        module.read_acs_person_coverage_columns(source, person_keys=over)
