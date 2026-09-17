@@ -1157,13 +1157,16 @@ def _memoized_validate(owner, state):
     _cheap_checks(state)
     try:
         signature = _memo_signature(state)
-    except BaseException:
+    except Exception:
         # A signature that cannot even be taken -- a roster entry removed, or
         # no longer a regular file -- is still a miss rather than a refusal of
         # its own: the complete validation runs first, so the borrow raises
         # today's code. `_validate` ends with the same `_file_stats` call and
         # so cannot pass where this failed; re-raising is the fail-closed
-        # remainder, never the refusal a caller sees in practice.
+        # remainder, never the refusal a caller sees in practice. Only an
+        # error is handled here: an interrupt or a process exit landing in the
+        # signature is not a miss and must not buy a complete re-validation
+        # before it propagates.
         _validate(state)
         raise
     entry = _MEMO.get(id(owner))
@@ -1175,12 +1178,41 @@ def _memoized_validate(owner, state):
     _EPOCH_RECORD["misses"] += 1
 
 
+def _signature_or_none(state):
+    """This state's signature, or ``None`` when one cannot be taken.
+
+    ``None`` never equals a signature, so a close that cannot take one records
+    no memo answer and the borrow that follows runs the complete validation --
+    which is what refuses, with today's code, for whatever made the signature
+    unavailable.
+    """
+
+    try:
+        return _memo_signature(state)
+    except Exception:  # noqa: BLE001 - an absent signature is a miss, not a verdict
+        return None
+
+
 def _finalize_epoch():
     """Re-validate every memoised capsule in full, with the memo bypassed.
 
     The refusal class is the one a borrow would have raised: this is the borrow
     the epoch deferred, so a foreign owner's error is translated exactly as
     ``_checked`` translates it rather than escaping raw to the run.
+
+    An inner nested close keeps its memo -- ``_MEMO`` is cleared only when the
+    outermost epoch leaves -- so the signature recorded here is what the outer
+    epoch's next borrows are answered against, and it must not absorb anything
+    that moved while this close was validating. ``_validate`` compares the
+    roster stats and then runs a whole trailing ``_pure_final``; a stat that
+    moves in that window would become the new normal and be answered as a hit
+    until the outer close. The signature is therefore taken before validating
+    and again after, and when the two differ no memo answer is recorded at all,
+    so the next borrow is a miss and pays the complete validation -- which
+    raises the code it raises today, ``SOURCE_STAT_CHANGED`` for a touched
+    roster file. The entry itself stays: the outermost close re-validates every
+    capsule the memo still holds, and dropping it here would drop that pass for
+    a capsule nothing borrows again.
     """
 
     for key, entry in list(_MEMO.items()):
@@ -1188,6 +1220,7 @@ def _finalize_epoch():
         if owner is None:
             del _MEMO[key]
             continue
+        before = _signature_or_none(entry[2])
         try:
             _validate(entry[2])
         except SurveyPopulationPreparationError:
@@ -1197,7 +1230,9 @@ def _finalize_epoch():
                 "PREPARATION_VERIFICATION_REFUSED"
             ) from None
         _EPOCH_RECORD["final_validations"] += 1
-        _MEMO[key] = (entry[0], _memo_signature(entry[2]), entry[2])
+        after = _signature_or_none(entry[2])
+        moved = before is None or after is None or after != before
+        _MEMO[key] = (entry[0], None if moved else after, entry[2])
 
 
 @contextmanager
@@ -1240,8 +1275,10 @@ def verification_epoch():
         # depth reaches zero and its memo is cleared, so this owner's own final
         # validation reaches the nested population's complete file check; at an
         # inner nested close the depth stays above zero and `_epoch_exit`
-        # refreshes the nested memo's signature instead, so this owner's
-        # validation is a memo hit there. Nothing is skipped in net either way,
+        # refreshes the nested memo's signature instead -- or records none at
+        # all, if that signature moved while it was validating -- so this
+        # owner's validation is a memo hit there, or a miss that re-runs the
+        # nested capsule's complete check. Nothing is skipped in net either way,
         # because the nested capsule's own exit has just re-validated it in
         # full. Both refusals are collected and this owner's is preferred,
         # because this owner's error class is the one every borrow through it

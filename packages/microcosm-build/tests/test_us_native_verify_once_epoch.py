@@ -60,6 +60,45 @@ class _Counter:
         return False
 
 
+class _AtReturnOf:
+    """Run an action as one chosen call returns, changing nothing a seal sees.
+
+    Rebinding a runtime callable refuses with PRODUCER_CHANGED -- see
+    ``_Counter`` -- so reaching the inside of an epoch close means observing it
+    rather than wrapping it. The action fires at most once, on the first return
+    of ``function`` to a frame running ``caller``, and only while armed.
+    """
+
+    def __init__(self, function, caller, action):
+        self._code = function.__code__
+        self._caller = caller.__code__
+        self._action = action
+        self.armed = False
+        self.fired = 0
+        self._previous = None
+
+    def _trace(self, frame, event, arg):
+        if (
+            self.armed
+            and event == "return"
+            and frame.f_code is self._code
+            and frame.f_back is not None
+            and frame.f_back.f_code is self._caller
+        ):
+            self.armed = False
+            self.fired += 1
+            self._action()
+
+    def __enter__(self):
+        self._previous = sys.getprofile()
+        sys.setprofile(self._trace)
+        return self
+
+    def __exit__(self, *exception):
+        sys.setprofile(self._previous)
+        return False
+
+
 def _borrow(preparation):
     return preparation.checked_view()
 
@@ -328,6 +367,91 @@ def test_nested_epochs_finalize_at_every_level(tmp_path, monkeypatch):
     assert outer_close["_source_files"] == 3  # plus outer's finalize
     assert outer["final_validations"] == 1
     assert owner._MEMO == {}
+
+
+# --------------------------------------------------------------------------
+# An inner close's own window: what moves while it validates is never the
+# new normal.
+# --------------------------------------------------------------------------
+
+
+def test_a_roster_stat_moved_inside_an_inner_close_refuses_at_the_next_borrow(
+    tmp_path, monkeypatch
+):
+    """The one window where a close could absorb a move instead of refusing it.
+
+    An inner nested close re-validates and then records a signature, and the
+    memo it records survives into the outer epoch -- ``_MEMO`` is cleared only
+    at the outermost close. ``_validate`` compares the roster stats and then
+    runs a whole trailing ``_pure_final``, so a roster file touched in that
+    window is past the comparison but before the recording. A signature taken
+    after validating would absorb the move and every outer borrow up to the
+    outermost close would be a hit: the refusal this capsule owes at the borrow
+    would arrive at the end of the run instead, after intervening nodes had
+    written store records. The signature is taken before validating and
+    compared with one taken after, so the move leaves no memo answer and the
+    next borrow pays the complete validation, which refuses.
+    """
+
+    arguments = fixture(tmp_path, monkeypatch)
+    preparation = owner.prepare_authenticated_survey_population(**arguments)
+    target = arguments["source_dir"] / "selection-request.json"
+    hook = _AtReturnOf(owner._validate, owner._finalize_epoch, lambda: _touch(target))
+    borrowed = []
+    with hook:
+        with pytest.raises(owner.SurveyPopulationPreparationError) as closing:
+            with owner.verification_epoch() as outer:
+                _borrow(preparation)
+                with owner.verification_epoch() as inner:
+                    _borrow(preparation)
+                    hook.armed = True
+                # The inner close validated, and the roster moved as it did.
+                assert hook.fired == 1
+                with pytest.raises(owner.SurveyPopulationPreparationError) as borrow:
+                    _borrow(preparation)
+                borrowed.append(str(borrow.value))
+    assert borrowed == ["SOURCE_STAT_CHANGED"]
+    assert str(closing.value) == "SOURCE_STAT_CHANGED"
+    assert inner["hits"] == 1 and inner["final_validations"] == 1
+    # The borrow after the inner close was not answered from the memo.
+    assert outer["hits"] == 0
+
+
+def test_a_native_source_moved_inside_an_inner_close_refuses_at_the_next_borrow(
+    tmp_path, monkeypatch
+):
+    """The same window in the nested capsule's own close, which has the same shape.
+
+    ``_epoch_exit`` re-reads every source file and then runs seal checks that
+    perform no I/O, and at an inner close its memo survives to answer the outer
+    epoch's borrows. A source appended to as that validation returns is
+    therefore the same hazard, and it is closed the same way.
+    """
+
+    from test_us_asec_2024_native_population import _fixture as asec_fixture
+
+    paths = asec_fixture(tmp_path, monkeypatch)
+    capsule = native.load_authenticated_asec_2024_native_population(**paths)
+    target = paths["parent_path"]
+
+    def append():
+        with target.open("ab") as handle:
+            handle.write(b"changed")
+
+    hook = _AtReturnOf(native._validate_state, native._epoch_exit, append)
+    borrowed = []
+    with hook:
+        with pytest.raises(native.AsecNativePopulationError) as closing:
+            with native_epoch():
+                capsule.validate()
+                with native_epoch():
+                    capsule.validate()
+                    hook.armed = True
+                assert hook.fired == 1
+                with pytest.raises(native.AsecNativePopulationError) as borrow:
+                    capsule.validate()
+                borrowed.append(str(borrow.value))
+    assert borrowed == [str(closing.value)] == ["SOURCE_FILE_CHANGED"]
 
 
 # --------------------------------------------------------------------------

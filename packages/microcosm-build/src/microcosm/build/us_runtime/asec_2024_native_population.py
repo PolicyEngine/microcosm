@@ -538,8 +538,32 @@ def _epoch_enter():
     _EPOCH_DEPTH[0] += 1
 
 
+def _signature_or_none(value, state):
+    """This capsule's signature, or ``None`` when one cannot be taken.
+
+    ``None`` never equals a signature, so a close that cannot take one records
+    no memo answer and the borrow that follows re-runs ``_validate_state``,
+    which refuses with the code it raises today.
+    """
+    try:
+        return _memo_signature(value, state)
+    except Exception:  # noqa: BLE001 - an absent signature is a miss, not a verdict
+        return None
+
+
 def _epoch_exit(failed):
-    """Re-validate every memoised capsule in full, with the memo bypassed."""
+    """Re-validate every memoised capsule in full, with the memo bypassed.
+
+    An inner nested close keeps its memo -- ``_MEMO`` is cleared only at depth
+    zero -- so the signature recorded here answers the outer epoch's next
+    borrows and must not absorb a source that moved while this close was
+    validating. ``_validate_state`` re-reads every source file and then runs
+    seal checks that perform no I/O; a file that moves in that window would
+    become the new normal. The signature is taken before validating and again
+    after, and when the two differ no memo answer is kept, so the next borrow
+    is a miss and pays the complete validation. The entry stays, because the
+    outermost close re-validates whatever the memo still holds.
+    """
     _EPOCH_DEPTH[0] -= 1
     try:
         if failed:
@@ -549,6 +573,7 @@ def _epoch_exit(failed):
             if owner is None:
                 del _MEMO[key]
                 continue
+            before = _signature_or_none(owner, entry[2])
             try:
                 _validate_state(entry[2])
             except AsecNativePopulationError:
@@ -562,7 +587,9 @@ def _epoch_exit(failed):
                 OverflowError,
             ):
                 raise AsecNativePopulationError("NATIVE_BINDING_REFUSAL") from None
-            _MEMO[key] = (entry[0], _memo_signature(owner, entry[2]), entry[2])
+            after = _signature_or_none(owner, entry[2])
+            moved = before is None or after is None or after != before
+            _MEMO[key] = (entry[0], None if moved else after, entry[2])
     finally:
         if not _EPOCH_DEPTH[0]:
             _MEMO.clear()
