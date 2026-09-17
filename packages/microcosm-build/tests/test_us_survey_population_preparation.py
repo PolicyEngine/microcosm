@@ -789,6 +789,28 @@ def test_roster_spill_refuses_a_symlinked_segment(tmp_path):
         owner._roster_payload(document, spill=tmp_path, name="preparation")
 
 
+def test_roster_spill_refuses_a_redirected_location(tmp_path):
+    document = {"rows": [[i, "acs", i * 7] for i in range(200)]}
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (tmp_path / "preparation").symlink_to(elsewhere, target_is_directory=True)
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match="ROSTER_SPILL_LOCATION"
+    ):
+        owner._roster_payload(document, spill=tmp_path, name="preparation")
+    # A redirected header is refused on the same code, after the segments.
+    other = tmp_path / "second"
+    other.mkdir()
+    owner._roster_payload(document, spill=other, name="preparation")
+    header = other / "preparation/header.json"
+    header.unlink()
+    header.symlink_to(tmp_path / "target.json")
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match="ROSTER_SPILL_LOCATION"
+    ):
+        owner._roster_payload(document, spill=other, name="preparation")
+
+
 def test_candidate_bound_admits_a_full_source_receipt(tmp_path, monkeypatch):
     arguments = fixture(tmp_path, monkeypatch)
     with pytest.raises(owner.SurveyPopulationPreparationError, match="CANDIDATE_LIMIT"):

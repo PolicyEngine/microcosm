@@ -168,6 +168,15 @@ def _roster_segments(value, *, segment=MAX_SEGMENT_BYTES, maximum=MAX_ROSTER_BYT
     return segments, tuple(table), digest.hexdigest(), total
 
 
+def _absent(path):
+    """True only when nothing at all sits at ``path``, symlinks included."""
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return True
+    return False
+
+
 def _spill_roster(root, name, segments, table, digest, total):
     """Write the segments beside a header naming them, as the store's own shape.
 
@@ -181,13 +190,26 @@ def _spill_roster(root, name, segments, table, digest, total):
     _require(type(name) is str and name.isidentifier(), "ROSTER_NAME")
     directory = root / name
     directory.mkdir(parents=True, exist_ok=True)
+    # The inventory's resource contract covers reads, not writes, so nothing
+    # else in this repository would notice a redirected spill. Every component
+    # of the path this module writes through is checked here: ``root`` is
+    # already a validated snapshot root, ``name`` is an identifier, and each
+    # segment's own name is the sha256 of its bytes.
+    _require(
+        not stat.S_ISLNK(directory.lstat().st_mode) and directory.is_dir(),
+        "ROSTER_SPILL_LOCATION",
+    )
     for raw, (sha, size) in zip(segments, table, strict=True):
         path = directory / (sha + ".segment")
-        if not path.exists():
+        # lstat, not exists(): a broken symlink does not exist and would be
+        # written straight through.
+        if _absent(path):
             path.write_bytes(raw)
         stats = path.lstat()
         _require(
-            not stat.S_ISLNK(stats.st_mode) and stats.st_size == size,
+            not stat.S_ISLNK(stats.st_mode)
+            and stat.S_ISREG(stats.st_mode)
+            and stats.st_size == size,
             "ROSTER_SEGMENT_CHANGED",
         )
     header = {
@@ -197,7 +219,14 @@ def _spill_roster(root, name, segments, table, digest, total):
         "size": total,
         "segments": [[sha, size] for sha, size in table],
     }
-    (directory / "header.json").write_bytes(_encode(header))
+    path = directory / "header.json"
+    if not _absent(path):
+        stats = path.lstat()
+        _require(
+            not stat.S_ISLNK(stats.st_mode) and stat.S_ISREG(stats.st_mode),
+            "ROSTER_SPILL_LOCATION",
+        )
+    path.write_bytes(_encode(header))
     return header
 
 
