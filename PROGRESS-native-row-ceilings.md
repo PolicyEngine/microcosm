@@ -42,40 +42,47 @@ the reconciliation.
 
 ## Done
 
-- Census of every `MAX_*` bound in `us_runtime/` reachable from the two graph
-  entry points: 146 bounds across five module families, each with its
-  enforcement site, refusal code, what it protects, and its counts at 1/10 and
-  full source. **14 bind at full source; 5 of those bind at 1/10 too.**
+- **Census**: 146 bounds across five module families, reachable from the 19-node
+  financial graph and the 45-node pilot graph, each with its enforcement site,
+  refusal code and exception type, what it protects, its counts at 1/10 and at
+  full source, and whether it binds. 41 of those verdicts then went through an
+  adversarial pass; no headline binding call was overturned.
+  **14 bind at full source, 6 of them at 1/10.**
 - `survey_origin_budget.MAX_GROUPS` **established**: `allocation_instructions`
   requires one instruction per selected household, so a full-source budget has
-  1,587,376 groups and the 1,000,000 bound binds.
-- Five constants lifted under the rule (commit `14defbfc0`).
-- Pins re-derived through their generators (`2ebd246f1`): one moved,
-  `acs_native_coverage_binding._ACCEPTED["acs_pums.py"]`.
-- **An inherited break re-pinned** (`55ca820c7`): base-branch commit `b6081efcb`
-  added `path.read_bytes()` to `_spill_roster` without regenerating
+  1,587,376 groups against a 1,000,000 bound.
+- **Seven ceilings lifted** under the rule, each with a boundary test.
+- Pins re-derived through their generators: one moved
+  (`acs_native_coverage_binding._ACCEPTED["acs_pums.py"]`). 124 inventory
+  contracts checked, 10 stage manifests built.
+- **An inherited break re-pinned**: base-branch `b6081efcb` added
+  `path.read_bytes()` to `_spill_roster` without regenerating
   `survey_population_preparation.py`'s `resource_accesses_sha256`, so
-  `implementation_manifest()` raised for every stage containing it — including
-  the one the nineteen-node path runs. Not this branch's file; re-pinned here so
-  the base is functional and this lane's own manifests can be built.
-- Tests: the rule as an executable table, plus a boundary test per moved bound.
+  `implementation_manifest()` raised for every stage containing it. Proven
+  pre-existing by recomputing the contract from `origin/native-scale-transport`,
+  `a64f7b733` and `b6081efcb`'s own blobs, and by running the affected tests
+  against a base worktree: 7 fail there with that exact error and all pass here.
+- `docs/us-native-row-ceilings.md`, and the rule as an executable table.
 
-## The loudest finding
+## The three findings the report leads with
 
-`survey_origin_budget.MAX_PAYLOAD_BYTES` (64 MiB) admits **87,838 households,
-5.53% of source** — below 1/10, and below the 96,860-household ceiling the
-transport lane lifted. Measured through the module's own encoder at full-source
-id widths: 764 B per group, 1.13 GiB at full source, 18.07× the cap. It is a
-byte transport, so this lane lifts `MAX_GROUPS` and leaves it: at full source the
-refusal moves from `GROUP_COUNT_BOUND` to `TRANSPORT_LIMIT`. Necessary, not
-sufficient, and the report says so.
+1. **`acs_person_coverage_authentication.MAX_BODY_BYTES` admits 12,911 selected
+   ACS persons — 0.38% of source.** Measured over 200,000 real records of the
+   pilot's captured public archive. The tightest ceiling on the path, 265× under
+   at full source, and below 1/100.
+2. **The preparation-receipt ceiling the transport lane lifted is still enforced
+   one module downstream** at `PREPARATION_MAX_BYTES` = 64 MiB, which admits
+   96,839 households — to within rounding the exact 96,860 that lane reported as
+   lifted.
+3. **`survey_origin_budget.MAX_PAYLOAD_BYTES` admits 87,838 households, 5.53%**,
+   and cannot be raised at all in that module: `graph._bounded_json` refuses any
+   limit above 64 MiB before encoding a byte.
+
+All three are byte transports and take the transport lane's argument, not this
+one. All three are pinned in tests.
 
 ## Next
 
-1. Finish the adversarial verification of the 14 binding verdicts.
-2. Decide, on that evidence, whether the two pure row-count bounds the transport
-   lane's census missed (`asec_demographic_source._MAX_PERSONS`,
-   `current_child_property_income_source.MAX_ROWS`, both 600,000) move here.
-3. `docs/us-native-row-ceilings.md`.
-4. Tests as CI runs them; `ci_test_groups --verify`; `spec_engine_coverage --check`.
-5. Draft PR against `native-scale-transport`.
+- Final clean test run, then the draft PR against `native-scale-transport`.
+- Open for Max: whether the inherited re-pin stays here or moves to #945; and
+  whether the byte transports above are one follow-up lane or several.
