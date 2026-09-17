@@ -568,6 +568,7 @@ class UKCGTAllocationReport:
     fallback_released_mass: float
     fallback_share_by_band: Mapping[int, float]
     conditioning: Mapping[str, object]
+    rounding_carry_out: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -579,6 +580,9 @@ class UKCGTAllocationReport:
                 str(key): value for key, value in self.fallback_share_by_band.items()
             },
             "conditioning": dict(self.conditioning),
+            "rounding_carry_out": {
+                key: dict(value) for key, value in self.rounding_carry_out.items()
+            },
         }
 
 
@@ -1262,7 +1266,19 @@ def impute_uk_capital_gains_with_report(
     members: dict[tuple[int, int], list[np.ndarray]] = {}
 
     # Pass 1: every (income, age, region) cell walks its raked targets.
+    # Each walk rounds to whole persons, so a cell's bands land up to one
+    # person's weight off their allotments. The signed rounding error is
+    # carried into the next cell's boundaries for the same gain band (error
+    # diffusion), so each gain band's walked total within the income band
+    # tracks its raked total within one weight instead of accumulating the
+    # truncation of dozens of cell walks, which only ever compounds upward
+    # once the pooled walk below fills shortfalls and cannot unassign an
+    # overshoot. Only rounding
+    # is carried: a cell short of support scales its boundaries down and
+    # that structural shortfall goes to the pooled walk as before.
+    rounding_carry_out = np.zeros((len(gains), len(incomes)))
     for ii, income_lower in enumerate(incomes):
+        carry = np.zeros(len(gains))
         for a in range(len(UK_CGT_AGE_GROUP_LOWER_BOUNDS)):
             for r in range(len(UK_CGT_REGION_GROUP_LABELS)):
                 in_cell = (
@@ -1272,8 +1288,16 @@ def impute_uk_capital_gains_with_report(
                     & (region_group == r)
                 )
                 cell_targets = targets[:, ii, a, r]
-                total_target = float(cell_targets.sum())
-                if not in_cell.any() or total_target <= 0.0:
+                if not in_cell.any() or float(cell_targets.sum()) <= 0.0:
+                    continue
+                adjusted = cell_targets - carry
+                walk_mass = np.maximum(adjusted, 0.0)
+                # An overshoot larger than this cell's allotment for a band
+                # walks nothing here and is deferred to the next cell.
+                deferred = np.minimum(adjusted, 0.0)
+                total_target = float(walk_mass.sum())
+                if total_target <= 0.0:
+                    carry = -deferred
                     continue
                 ranked = _ranked(
                     np.flatnonzero(in_cell), person_id=person_id, existing=existing
@@ -1283,8 +1307,9 @@ def impute_uk_capital_gains_with_report(
                 # allocate what exists in the raked proportions; the
                 # shortfall goes to the income band's pooled walk.
                 scale = min(1.0, float(weights.sum()) / total_target)
+                boundary_mass = walk_mass * scale
                 boundaries = [
-                    (gain_lower, float(cell_targets[gi]) * scale)
+                    (gain_lower, float(boundary_mass[gi]))
                     for gi, gain_lower in reversed(list(enumerate(gains)))
                 ]
                 cell_members: dict[int, list[np.ndarray]] = {}
@@ -1298,8 +1323,12 @@ def impute_uk_capital_gains_with_report(
                 for gain_lower, chunks in cell_members.items():
                     members.setdefault((gain_lower, income_lower), []).extend(chunks)
                 assigned[ranked[cell_assigned]] = True
-                for gi, gain_lower in enumerate(gains):
-                    achieved_pass1[gi, ii, a, r] = achieved.get(gain_lower, 0.0)
+                achieved_cell = np.asarray(
+                    [achieved.get(gain_lower, 0.0) for gain_lower in gains]
+                )
+                achieved_pass1[:, ii, a, r] = achieved_cell
+                carry = (achieved_cell - boundary_mass) - deferred
+        rounding_carry_out[:, ii] = carry
 
     # Pass 2: the joint's shortfall is walked over each income band's
     # pooled unassigned gainers, largest first. Every cell walk rounds to
@@ -1417,6 +1446,13 @@ def impute_uk_capital_gains_with_report(
         rake=rake_report,
         fallback_released_mass=float(achieved_fallback.sum()),
         fallback_share_by_band=fallback_share,
+        rounding_carry_out={
+            str(income_lower): {
+                str(gain_lower): float(rounding_carry_out[gi, ii])
+                for gi, gain_lower in enumerate(gains)
+            }
+            for ii, income_lower in enumerate(incomes)
+        },
         conditioning={
             "resource": conditioning.resource,
             "resource_sha256": conditioning.resource_sha256,
@@ -1854,7 +1890,12 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "band whose cumulative boundary first covers (1 - offset) of "
                 "their weight, so a band boundary smaller than a person's weight "
                 "still receives that person on the share of walks it implies "
-                "and the rounding is unbiased across the conditioning cells"
+                "and the rounding is unbiased across the conditioning cells; "
+                "each cell walk's signed rounding error is carried into the next "
+                "cell's boundaries for the same gain band (error diffusion), so "
+                "each gain band's walked total within an income band stays "
+                "within one person's weight of its raked total instead of "
+                "accumulating the overshoot of many cell walks"
             ),
             "cell_order": (
                 "income band ascending, age group ascending, region group "

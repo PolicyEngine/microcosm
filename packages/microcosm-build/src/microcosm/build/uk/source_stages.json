@@ -3181,7 +3181,7 @@
      "shortfall_policy": "proportional scale-down inside a cell that holds less gainer mass than its raked target; the income band's net shortfall after every cell walk, apportioned to gain bands in proportion to their positive shortfalls, is walked over the income band's pooled unassigned gainers, scaled down proportionally when the pool is short, so cell-walk rounding overshoot is netted rather than compounded",
      "minimum_allocation_people": 1,
      "weights": "household_weight mapped to persons; no person splits across bands",
-     "rounding": "systematic with one seeded offset per walk: a person joins the band whose cumulative boundary first covers (1 - offset) of their weight, so a band boundary smaller than a person's weight still receives that person on the share of walks it implies and the rounding is unbiased across the conditioning cells",
+     "rounding": "systematic with one seeded offset per walk: a person joins the band whose cumulative boundary first covers (1 - offset) of their weight, so a band boundary smaller than a person's weight still receives that person on the share of walks it implies and the rounding is unbiased across the conditioning cells; each cell walk's signed rounding error is carried into the next cell's boundaries for the same gain band (error diffusion), so each gain band's walked total within an income band stays within one person's weight of its raked total instead of accumulating the overshoot of many cell walks",
      "cell_order": "income band ascending, age group ascending, region group ascending, gain bands highest first inside a cell; then the pooled walk per income band"
     },
     {

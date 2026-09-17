@@ -878,6 +878,50 @@ class TestConditionedAllocation:
         drawn = result.table("person")["capital_gains"].to_numpy()
         assert drawn.max() >= 5_000_000.0
 
+    def test_rounding_errors_are_carried_across_cells_not_accumulated(self) -> None:
+        # Heavy rows spread thinly over many cells: every cell's allotment
+        # for most bands is below one person's weight, so each walk rounds
+        # by up to a whole person. Without the carry the overshoots of
+        # dozens of walks compound (the pooled walk can only add), and the
+        # income band lands thousands of people over its raked total; with
+        # it the walked total stays within one weight per band.
+        rows = 7 * 12 * 6 * 3
+        rng = np.random.default_rng(17)
+        index = np.arange(rows)
+        ages = np.asarray([20, 30, 40, 50, 60, 70, 80])[index % 7]
+        regions = np.asarray(sorted(UK_CGT_REGION_GROUPS))[(index // 7) % 12]
+        incomes = np.asarray(
+            [20_000.0, 55_000.0, 75_000.0, 120_000.0, 180_000.0, 300_000.0]
+        )[(index // 84) % 6]
+        frame = _frame(
+            rows,
+            gains=rng.lognormal(10, 1, rows),
+            incomes=incomes,
+            ages=ages,
+            regions=regions,
+            weights=np.full(rows, 4_000.0),
+        )
+        result, report = impute_uk_capital_gains_with_report(
+            frame,
+            _real_distribution(),
+            PARAMETERS,
+            conditioning=load_hmrc_cgt_conditioning_facts(),
+        )
+        joint_rows = pd.DataFrame(report.joint_rows)
+        achieved = joint_rows["achieved_pass1"] + joint_rows["achieved_fallback"]
+        # Every income band has more support (84 rows x 4,000) than target,
+        # so each (gain band, income band) walked total must sit within one
+        # weight of its raked total: the carry bounds the error per band,
+        # where dozens of independent cell roundings would not.
+        assert (abs(achieved - joint_rows["target_people"]) <= 4_000.0 + 1e-6).all()
+        carry = report.rounding_carry_out
+        assert set(carry) == {str(b) for b in HMRC_CGT_INCOME_BAND_LOWER_BOUNDS}
+        for income_lower, by_band in carry.items():
+            for gain_lower, value in by_band.items():
+                assert abs(value) <= 4_000.0 + 1e-6, (income_lower, gain_lower, value)
+        drawn = result.table("person")["capital_gains"].to_numpy()
+        assert (drawn > PARAMETERS.annual_exempt_amount).sum() > 0
+
     def test_unknown_region_and_missing_age_refuse(self) -> None:
         frame = _frame(
             4,
@@ -930,4 +974,5 @@ class TestConditionedAllocation:
             "fallback_released_mass",
             "fallback_share_by_band",
             "conditioning",
+            "rounding_carry_out",
         }
