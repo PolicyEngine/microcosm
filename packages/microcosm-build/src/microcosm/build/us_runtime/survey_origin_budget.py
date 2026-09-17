@@ -52,7 +52,13 @@ SUCCESSOR_PROTOCOL = "microcosm.us.sampling-origin-weight-only-successor.v1"
 BUDGET_TYPE = ArtifactType("microcosm.us.sampling_origin_budget", 1)
 SUCCESSOR_TYPE = ArtifactType("microcosm.us.sampling_origin_weight_only_successor", 1)
 MAX_PAYLOAD_BYTES = 64 * 1024**2
-MAX_GROUPS = 1_000_000
+# One group per allocation instruction, and allocation_instructions requires
+# one instruction per selected household, so a full-source budget has the
+# 1,587,376 households the catalogues supply. Four times that, rounded up to
+# the next whole million. MAX_PAYLOAD_BYTES above is a byte transport, not a
+# row count, and is deliberately left alone: it takes the segmented transport
+# argument, not this one. See docs/us-native-row-ceilings.md.
+MAX_GROUPS = 7_000_000
 MAX_SCALAR_CHARS = 4096
 PRESCRIPTION = (
     "development-provisional-8b-4a-v1",

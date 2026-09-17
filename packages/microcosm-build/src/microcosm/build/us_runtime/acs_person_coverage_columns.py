@@ -30,8 +30,14 @@ DICTIONARY_URL = (
 DICTIONARY_SHA256 = "929c2752995b0af1c16d5c64de8cdc43b4aa7d388ee2d45b4b4df90fecce1dff"
 KEYS = ("SERIALNO", "SPORDER")
 READ_COLUMNS = (*KEYS, "AGEP", "MIL", "ESR")
+# MAX_ROWS bounds the source file's own person records and stays where it
+# is: the 2024 ACS person file holds 3,422,888, and the bound is the
+# structural assertion that a genuine file is near that size. Only the
+# requested-roster ceiling moves, to four times the 3,422,888 persons a
+# full-source selection requests, rounded up to the next whole million.
+# See docs/us-native-row-ceilings.md.
 MAX_ROWS = 6_000_000
-MAX_SELECTED_ROWS = 1_000_000
+MAX_SELECTED_ROWS = 14_000_000
 MAX_CSV_RECORD_CHARS = 100_000
 _NON_CSV_CONTROLS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 
