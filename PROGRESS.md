@@ -13,27 +13,64 @@ afterwards — check git/GitHub for current truth.
 
 ## State
 
-Design established and proved by running code at this head. The transport
-report's proposed mechanism for option (b) does not hold; the seal has to be
-purpose-built. Nothing implemented yet.
+Implemented and green on the replay battery (107 tests). Base financial,
+property and property-tax graph tests green. Completion host and person-status
+tests re-running after the retention flag. Neither measurement run has started:
+both are armed and gated.
 
 ## Done
 
-- Verified worktree/branch/head; synced `uv sync --all-packages --locked --extra us` (exit 0, pandas 3.0.3).
-- Read `docs/us-native-scale-transport.md` (481 lines) and
-  `experiments/native-scale-transport/out.md` (839 lines) in full.
-- Read at this head: `survey_population_replay.py` (208 lines, whole file),
-  `survey_atomic_geography._population_stamp` / `_copy_population`,
-  `survey_population_preparation._frame_identity` / `_cell` /
-  `_frame_cell_encode`, `graph_context.encode_us_frame_context`,
-  `population._storage_parts`, `executor._observer_snapshot` and the observer
-  call site.
+- Verified worktree/branch/head; synced `uv sync --all-packages --locked --extra us`.
+- Read both authorities in full and the code at this head.
+- `docs/us-native-retention-seal.md` — the four required answers.
+- `survey_population_replay.py` — the purpose-built seal, beside the
+  comparison it replaces.
+- `test_us_survey_population_replay.py` — every mutation now runs through BOTH
+  the object comparison and the seal, and must reach the same verdict with the
+  same code; plus the discriminations the first battery missed.
+- `executor.py` — `run_graph(_population_observer_detach=False)`, its own
+  commit, four tests, no US import.
+- `graph_atomic_survey_financial.py` — declared-consumer retention, both
+  comparisons sealed, `_node_population_stamp` on both arms.
+- Repaired a **stale implementation contract inherited from the transport
+  branch** and added the guard that would have caught it.
+- Armed both runs with their gates and their source trees.
 
 ## Next
 
-1. `docs/us-native-retention-seal.md` — the four required answers.
-2. Discrimination battery (pre-change), then implement.
-3. 1/1000 cold + required replay; then the 1/15 run.
+1. Re-run the completion-host and person-status tests on the final head.
+2. The 1/1000 cold run + required replay (gate: >40 GB available).
+3. The 1/15 run behind it (gate: >45 GB available).
+4. Draft PR against `native-scale-transport`.
+
+## Inherited defect, repaired here (for the report and for Max)
+
+`survey_population_preparation._spill_roster` gained a `Path.read_bytes` on
+`native-scale-transport` at **`b6081efcb`** ("Hash a spill segment that was
+already there"). That added a `resource_accesses` entry, leaving
+`graph_implementation_inventory.json`'s declared `resource_accesses_sha256`
+stale, so `implementation_manifest("authenticated_survey_population_v1")`
+**refused** — and `SurveyPopulationCreateKernel.implementation_hash` calls it.
+**No 19-node graph run was possible at `a64f7b733`.** Bisected across
+`5ff889814` → `5307249b3` (both clean) → `baaf4270c` onward (all refusing).
+The transport report's §4 "No committed pin moves" was recomputed before
+`b6081efcb` and is stale at its own tip. Repaired in `43fb39270`, guarded by
+`test_us_implementation_inventory_contracts.py` (135 assertions; reverting the
+re-pin turns both arms red, verified).
+
+## What moves, measured exactly
+
+`experiments/native-retention-seal/implementation-identity-receipt.json`:
+
+| comparison | roster module digests that move |
+|---|---|
+| `a64f7b733` → US-only commits | **none** |
+| `a64f7b733` → head with the executor commit | `microcosm.graph/executor.py`, in **all ten** stages |
+
+`survey_population_replay.py`, `graph_atomic_survey_financial.py` and
+`survey_atomic_geography.py` are in no stage roster; `executor.py` is in every
+one. The re-pin above moves `inventory_sha256`, which is also in every stage
+manifest.
 
 ## Findings, proved by running code at this head
 
