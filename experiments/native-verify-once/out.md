@@ -462,7 +462,24 @@ in the build shard, which the graph-shard PR does not carry — and now has
 `packages/microcosm-graph/tests/test_graph_verification_epoch.py`, which
 asserts the same three identities both against a bare manifest and against a
 separate cold run with no record, plus the live-view property the field exists
-for and each of the three `__post_init__` refusals.
+for and each of the three `__post_init__` refusals. The JSON identity against
+the separate cold run is asserted modulo the five fields a run may move — the
+manifest's `started_at`, `finished_at` and `host`, and the two every node
+receipt already names in `NodeReceipt.RUN_LEVEL_FIELDS`, `hit` and `wall_time`.
+None of the five reaches the key, by two different routes: `key` hashes
+`content_addressed`, which is `nodes` and `tier` alone, so the timestamps and
+the host are outside it entirely, and each receipt enters it through
+`NodeReceipt._content_payload`, which drops `RUN_LEVEL_FIELDS`. Two cold runs
+differ in exactly those five and in nothing else — which is now asserted rather
+than assumed, because the test compares everything else — and against the bare
+manifest the document is compared whole. The removal is written by those names
+and by that class attribute, so a field that stopped being serialized raises
+rather than widening what the comparison hides. Written into `to_json`, the
+record fails the two-run test on that assertion alone: run against a copy of
+`manifest.py` with `verification_epoch` added to the serialized payload, in this
+worktree, it reports
+`Differing items: {'verification_epoch': {'hits': 9, 'protocol': 'toy/verification-epoch/1'}} != {'verification_epoch': {}}`
+at that line.
 
 **Proven by recomputation over the whole inventory.** Every contract in
 `graph_implementation_inventory.json` was recomputed through
