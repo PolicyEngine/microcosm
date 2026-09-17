@@ -20,6 +20,7 @@ Synthetic toy graph only: no data file, no country package, no engine.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
@@ -46,7 +47,7 @@ from microcosm.graph.kernel import (
     KernelRegistry,
     KernelResult,
 )
-from microcosm.graph.manifest import RunManifest
+from microcosm.graph.manifest import NodeReceipt, RunManifest
 from microcosm.graph.store import ContentStore
 
 SOURCE = SourceRef("survey", "csv-tables")
@@ -166,6 +167,32 @@ def _keys(manifest: RunManifest) -> dict[str, str]:
     return {node_id: manifest.nodes[node_id].key for node_id in sorted(manifest.nodes)}
 
 
+def _json_without_run_local_fields(manifest: RunManifest) -> dict[str, object]:
+    """This manifest's JSON document, less exactly the fields a run may move.
+
+    ``to_json`` is not identical between two runs of one computation and is not
+    meant to be: it carries three run-level manifest fields -- ``started_at``,
+    ``finished_at`` and ``host`` -- and, inside every node receipt, the two the
+    receipt itself names as run-level, ``NodeReceipt.RUN_LEVEL_FIELDS``. Those
+    five are the fields the manifest's own docstring calls the ones a run may
+    change without changing what was computed, which is why the manifest key
+    already hashes each receipt without them. Removing exactly those, by their
+    own names and by that class attribute rather than by a list written here,
+    is what lets the rest of the document be compared between two runs; a
+    ``del`` of a field that stopped being serialized would raise rather than
+    quietly widen what this hides. Nothing is removed from ``decisions``,
+    ``content_addressed`` or any other field.
+    """
+
+    payload = json.loads(manifest.to_json())
+    for name in ("started_at", "finished_at", "host"):
+        del payload[name]
+    for receipt in payload["nodes"].values():
+        for name in sorted(NodeReceipt.RUN_LEVEL_FIELDS):
+            del receipt[name]
+    return payload
+
+
 # --------------------------------------------------------------------------
 # What the record must not move.
 # --------------------------------------------------------------------------
@@ -210,6 +237,13 @@ def test_two_runs_agree_on_every_node_key_with_and_without_a_record(
     assert _keys(with_record) == _keys(without)
     assert with_record.key == without.key
     assert dict(with_record.content_addressed) == dict(without.content_addressed)
+    # The serialized document too, and not only the key and the body it
+    # hashes: every field of it except the five a run is allowed to move.
+    # ``verification_epoch`` is not among them -- it is not serialized at all,
+    # which the bare-manifest test above pins directly.
+    assert _json_without_run_local_fields(
+        with_record
+    ) == _json_without_run_local_fields(without)
     # Both ran cold, so the equality above is between two computations rather
     # than between a run and a cache hit replaying the first one's receipts.
     assert [node.hit for node in with_record.nodes.values()] == [False, False]
