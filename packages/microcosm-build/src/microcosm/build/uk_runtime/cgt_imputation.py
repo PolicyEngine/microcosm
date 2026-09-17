@@ -59,12 +59,17 @@ Three documented approximations, in order of consequence:
    and nothing is rescaled.
 6. **Age and region margins are raked, not observed jointly.** No table
    publishes gains by age or region crossed with income, so the allocation
-   targets are raked (iterative proportional fitting) from the joint, the
-   Table 6 age counts and the Table 5 region counts on the individuals
-   basis, seeded by the frame's own weighted (age, region | income band)
-   shares among gainers. The rake works at a coarser grain than the
-   publications (six age groups, four region groups); the summary reports
-   achieved against published at the full Table 6 and Table 5 grain.
+   targets are raked from the joint, the Table 6 age counts, the Table 5
+   region counts on the individuals basis and the Table 6 gains by age,
+   seeded by the frame's own weighted (age, region | income band) shares
+   among gainers. The count margins are met by proportional scaling; the
+   gains margin is one linear constraint per age group (raked people times
+   Table 3 cell means) met by an exponential tilt of the group's cells that
+   holds its count, so an age group carries its published gains as well as
+   its taxpayers instead of inheriting the frame's band mix. The rake works
+   at a coarser grain than the publications (seven age groups, four region
+   groups); the summary reports achieved against published at the full
+   Table 6 and Table 5 grain.
 
 Only persons with positive existing gains are gainers. The certified
 candidate also carries net losses (negative amounts) and zeros; both pass
@@ -82,7 +87,6 @@ from types import MappingProxyType
 import numpy as np
 import pandas as pd
 
-from microcosm.build.raking import MarginSpec, iterative_proportional_fit
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_BUILD_PERIOD,
@@ -117,7 +121,8 @@ __all__ = [
     "UK_CGT_AGE_GROUP_LOWER_BOUNDS",
     "UK_CGT_CONDITIONING_DIMENSIONS",
     "UK_CGT_FALLBACK_POLICY",
-    "UK_CGT_IPF_ITERATIONS",
+    "UK_CGT_RAKE_ROUNDS",
+    "UK_CGT_RAKE_TOLERANCE",
     "UK_CGT_REGION_GROUP_LABELS",
     "UK_CGT_REGION_GROUPS",
     "UKCGTAllocationReport",
@@ -189,10 +194,13 @@ _MEAN_POSITION_TOLERANCE = 1e-9
 
 #: Age groups the allocation conditions on (lower bounds, ascending). Every
 #: gainer below the second bound falls in the first group; carriers are
-#: adults, so the group is 16-34 in practice. Coarser than Table 6's nine
-#: bands because a few hundred effective carriers cannot populate
-#: 9 x 12 x 6 cells; the summary still reports at the published grain.
-UK_CGT_AGE_GROUP_LOWER_BOUNDS: tuple[int, ...] = (16, 35, 45, 55, 65, 75)
+#: adults, so the group is 16-24 in practice. Table 6's 16-24 and 25-34
+#: bands are separate groups because pooled they left the 16-24 rows at
+#: the bottom of every cell walk (two liable rows against 4,000 published
+#: taxpayers); the bands from 35 pair up because a few hundred effective
+#: carriers cannot populate 9 x 12 x 6 cells. The summary still reports at
+#: the published grain.
+UK_CGT_AGE_GROUP_LOWER_BOUNDS: tuple[int, ...] = (16, 25, 35, 45, 55, 65, 75)
 
 #: Region groups the allocation conditions on: spine ``region`` enum name
 #: -> group label. London and the South East plus East of England hold
@@ -222,9 +230,18 @@ UK_CGT_REGION_GROUP_LABELS: tuple[str, ...] = tuple(
     dict.fromkeys(UK_CGT_REGION_GROUPS.values())
 )
 
-#: Iterations of the proportional fit that rakes the allocation targets to
-#: the published margins; feasible margins converge geometrically.
-UK_CGT_IPF_ITERATIONS = 200
+#: Rounds of the generalised rake (the three count margins by proportional
+#: scaling, then the gains tilt per age group) and the relative tolerance
+#: every attainable margin must meet for it to stop early; feasible margins
+#: converge geometrically.
+UK_CGT_RAKE_ROUNDS = 500
+UK_CGT_RAKE_TOLERANCE = 1e-9
+
+#: The tilt exponent is bounded (cell means are scaled onto [0, 1] by the
+#: largest cell mean); a group whose target mean gain lies outside its
+#: seeded cells' means saturates at the bound and is reported unattainable.
+_TILT_LAMBDA_BOUND = 700.0
+_TILT_BISECTION_ITERATIONS = 80
 
 #: How a (gain band, income band) shortfall left by the conditioned cells is
 #: met: the income band's still-unassigned gainers are pooled across age and
@@ -693,12 +710,30 @@ def _joint_plans(
     return joint, tuple(band_rows)
 
 
-def _fold_age_margin(conditioning: HMRCCGTConditioningFacts) -> np.ndarray:
+def _fold_age(conditioning: HMRCCGTConditioningFacts, measure: str) -> np.ndarray:
+    """Fold one Table 6 measure onto the age groups.
+
+    Bands below the first group bound (the 0-15 band) are left out: carriers
+    are adults, so the frame cannot hold them, and the normalisation onto
+    the joint's total spreads their mass across the groups instead of
+    folding a thousand children into the 16-24 group.
+    """
+
     margin = np.zeros(len(UK_CGT_AGE_GROUP_LOWER_BOUNDS))
     for band in conditioning.age_bands:
+        if band.lower_bound < UK_CGT_AGE_GROUP_LOWER_BOUNDS[0]:
+            continue
         group = int(np.digitize(band.lower_bound, UK_CGT_AGE_GROUP_LOWER_BOUNDS[1:]))
-        margin[group] += band.taxpayers
+        margin[group] += float(getattr(band, measure))
     return margin
+
+
+def _fold_age_margin(conditioning: HMRCCGTConditioningFacts) -> np.ndarray:
+    return _fold_age(conditioning, "taxpayers")
+
+
+def _fold_age_gains_margin(conditioning: HMRCCGTConditioningFacts) -> np.ndarray:
+    return _fold_age(conditioning, "gains")
 
 
 def _fold_region_margin(conditioning: HMRCCGTConditioningFacts) -> np.ndarray:
@@ -708,6 +743,179 @@ def _fold_region_margin(conditioning: HMRCCGTConditioningFacts) -> np.ndarray:
         group = UK_CGT_REGION_GROUP_LABELS.index(UK_CGT_REGION_GROUPS[row.region])
         margin[group] += row.taxpayers * share
     return margin
+
+
+def _tilt_group(
+    group: np.ndarray, scaled_means: np.ndarray, target_mean: float
+) -> tuple[np.ndarray, float, bool]:
+    """Tilt one age group's cells onto a target mean gain, holding its count.
+
+    ``group`` is the group's mass over (gain band, income band, region
+    group) and ``scaled_means`` the Table 3 cell means over (gain band,
+    income band) scaled onto [0, 1]; ``target_mean`` is on the same scale.
+    Each cell is multiplied by ``exp(lambda * scaled mean)`` with ``lambda``
+    solved by bisection, the exponential-family step of generalised raking:
+    the group's people-weighted mean gain is increasing in ``lambda`` and
+    runs from the smallest to the largest seeded cell mean, so a target
+    inside that range has exactly one solution, and one outside it takes
+    the bound and is reported unattainable.
+    """
+
+    count = float(group.sum())
+    means = np.broadcast_to(scaled_means[:, :, None], group.shape)
+    positive = group > 0.0
+    low = float(means[positive].min())
+    high = float(means[positive].max())
+
+    def tilted(lam: float) -> np.ndarray:
+        # Anchor the exponent at the extreme the tilt favours so it never
+        # exceeds zero: no overflow at the bound in either direction.
+        anchor = high if lam >= 0.0 else low
+        return group * np.exp(lam * (means - anchor))
+
+    def tilted_mean(lam: float) -> float:
+        weights = tilted(lam)
+        return float((weights * means).sum() / weights.sum())
+
+    if not low < target_mean < high:
+        lam = -_TILT_LAMBDA_BOUND if target_mean <= low else _TILT_LAMBDA_BOUND
+        attainable = False
+    else:
+        lower_bound, upper_bound = -_TILT_LAMBDA_BOUND, _TILT_LAMBDA_BOUND
+        for _ in range(_TILT_BISECTION_ITERATIONS):
+            mid = 0.5 * (lower_bound + upper_bound)
+            if tilted_mean(mid) < target_mean:
+                lower_bound = mid
+            else:
+                upper_bound = mid
+        lam = 0.5 * (lower_bound + upper_bound)
+        attainable = True
+    weights = tilted(lam)
+    return weights * (count / float(weights.sum())), lam, attainable
+
+
+def _scaling_factor(current: np.ndarray, target: np.ndarray) -> np.ndarray:
+    """Proportional-fit factor: target over current where the current is
+    positive, one where nothing can be scaled (a zero-seed category)."""
+
+    factor = np.ones_like(current, dtype=float)
+    mask = current > 0.0
+    factor[mask] = target[mask] / current[mask]
+    return factor
+
+
+def _rake_error(
+    targets: np.ndarray,
+    *,
+    seed: np.ndarray,
+    joint_mass: np.ndarray,
+    age_margin: np.ndarray,
+    region_margin: np.ndarray,
+    gains_margin: np.ndarray,
+    cell_means: np.ndarray,
+    attainable: np.ndarray,
+) -> float:
+    """Largest relative error over the seeded, attainable margin categories."""
+
+    errors: list[float] = []
+
+    def add(achieved: np.ndarray, wanted: np.ndarray, seeded: np.ndarray) -> None:
+        for have, want, ok in zip(
+            achieved.ravel(), wanted.ravel(), seeded.ravel(), strict=True
+        ):
+            if want > 0.0 and ok:
+                errors.append(abs(float(have) - float(want)) / float(want))
+
+    seeded_age = seed.sum(axis=(0, 1, 3)) > 0.0
+    add(targets.sum(axis=(2, 3)), joint_mass, seed.sum(axis=(2, 3)) > 0.0)
+    add(targets.sum(axis=(0, 1, 3)), age_margin, seeded_age)
+    add(targets.sum(axis=(0, 1, 2)), region_margin, seed.sum(axis=(0, 1, 2)) > 0.0)
+    add(
+        (targets * cell_means[:, :, None, None]).sum(axis=(0, 1, 3)),
+        gains_margin,
+        seeded_age & attainable,
+    )
+    return max(errors) if errors else 0.0
+
+
+def _rake_with_gains_tilt(
+    seed: np.ndarray,
+    *,
+    joint_mass: np.ndarray,
+    age_margin: np.ndarray,
+    region_margin: np.ndarray,
+    gains_margin: np.ndarray,
+    cell_means: np.ndarray,
+    rounds: int,
+    tolerance: float,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Rake the four-way seed to three count margins and one gains margin.
+
+    Each round scales the age groups and the region groups onto their
+    counts, tilts every age group onto its gains (:func:`_tilt_group`), and
+    scales the (gain band, income band) joint last. The generic mean-raking helper
+    scales columns independently and cannot hold a people-weighted gains
+    constraint, which is why the fit lives here. Rounds stop early once
+    every seeded, attainable margin holds to ``tolerance``.
+    """
+
+    targets = np.asarray(seed, dtype=float).copy()
+    n_age = targets.shape[2]
+    scale = float(cell_means.max()) if float(cell_means.max()) > 0.0 else 1.0
+    scaled_means = cell_means / scale
+    target_means = np.zeros(n_age)
+    for a in range(n_age):
+        if age_margin[a] > 0.0:
+            target_means[a] = gains_margin[a] / age_margin[a] / scale
+    # The tilt is applied incrementally to the current targets, so each
+    # round's lambda shrinks toward zero as the fit converges; the reported
+    # lambda is the cumulative exponent the group ended up with.
+    lambdas = np.zeros(n_age)
+    attainable = np.ones(n_age, dtype=bool)
+    seeded_group = seed.sum(axis=(0, 1, 3)) > 0.0
+    rounds_used = 0
+    error = float("inf")
+    for round_index in range(1, rounds + 1):
+        rounds_used = round_index
+        targets *= _scaling_factor(targets.sum(axis=(0, 1, 3)), age_margin)[
+            None, None, :, None
+        ]
+        targets *= _scaling_factor(targets.sum(axis=(0, 1, 2)), region_margin)[
+            None, None, None, :
+        ]
+        for a in range(n_age):
+            if not seeded_group[a] or age_margin[a] <= 0.0 or gains_margin[a] <= 0.0:
+                continue
+            targets[:, :, a, :], lam, attainable[a] = _tilt_group(
+                targets[:, :, a, :], scaled_means, float(target_means[a])
+            )
+            lambdas[a] += lam
+        # The joint goes last: on a feasible system the order is immaterial
+        # at convergence, and on a frame that cannot support every age or
+        # region group (so the margins conflict) the Table 3 joint, which the
+        # cell walks and the pooled fallback are built on, is the one that
+        # holds exactly.
+        targets *= _scaling_factor(targets.sum(axis=(2, 3)), joint_mass)[
+            :, :, None, None
+        ]
+        error = _rake_error(
+            targets,
+            seed=seed,
+            joint_mass=joint_mass,
+            age_margin=age_margin,
+            region_margin=region_margin,
+            gains_margin=gains_margin,
+            cell_means=cell_means,
+            attainable=attainable,
+        )
+        if error < tolerance:
+            break
+    return targets, {
+        "rounds_used": rounds_used,
+        "max_error": error,
+        "lambdas": lambdas,
+        "attainable": attainable,
+    }
 
 
 def _rake_allocation_targets(
@@ -772,53 +980,36 @@ def _rake_allocation_targets(
         else region_margin_raw
     )
 
-    gi_index, ii_index, a_index, r_index = np.meshgrid(
-        np.arange(n_gain),
-        np.arange(n_income),
-        np.arange(n_age),
-        np.arange(n_region),
-        indexing="ij",
+    cell_means = np.zeros((n_gain, n_income))
+    for gi, gain_lower in enumerate(gains):
+        for ii, income_lower in enumerate(incomes):
+            cell_means[gi, ii] = joint[(gain_lower, income_lower)].mean
+    gains_margin_raw = _fold_age_gains_margin(conditioning)
+    joint_gains = float((joint_mass * cell_means).sum())
+    gains_margin = (
+        gains_margin_raw * (joint_gains / gains_margin_raw.sum())
+        if gains_margin_raw.sum() > 0
+        else gains_margin_raw
     )
-    cells = pd.DataFrame(
-        {
-            "gi": (gi_index * n_income + ii_index).ravel(),
-            "a": a_index.ravel(),
-            "r": r_index.ravel(),
-            "n": seed.ravel(),
-        }
+
+    targets, fit = _rake_with_gains_tilt(
+        seed,
+        joint_mass=joint_mass,
+        age_margin=age_margin,
+        region_margin=region_margin,
+        gains_margin=gains_margin,
+        cell_means=cell_means,
+        rounds=UK_CGT_RAKE_ROUNDS,
+        tolerance=UK_CGT_RAKE_TOLERANCE,
     )
-    rows_per_gi = n_age * n_region
-    rows_per_age = n_gain * n_income * n_region
-    rows_per_region = n_gain * n_income * n_age
-    margins = [
-        MarginSpec(
-            "gi",
-            {
-                int(key): {"n": float(joint_mass.ravel()[key]) / rows_per_gi}
-                for key in range(n_gain * n_income)
-            },
-        ),
-        MarginSpec(
-            "a", {a: {"n": float(age_margin[a]) / rows_per_age} for a in range(n_age)}
-        ),
-        MarginSpec(
-            "r",
-            {
-                r: {"n": float(region_margin[r]) / rows_per_region}
-                for r in range(n_region)
-            },
-        ),
-    ]
-    raked = iterative_proportional_fit(
-        cells, columns=("n",), margins=margins, iterations=UK_CGT_IPF_ITERATIONS
-    )
-    targets = (
-        raked["n"].to_numpy(dtype=float).reshape(n_gain, n_income, n_age, n_region)
-    )
+    lambdas = np.asarray(fit["lambdas"], dtype=float)
+    attainable = np.asarray(fit["attainable"], dtype=bool)
 
     # A margin category the frame cannot support at all (no gainer in any
     # of its cells) is unattainable however the fit iterates; its mass is
     # reported apart from the fit error over the categories that have seed.
+    # A gains margin whose target mean lies outside its seeded cells' means
+    # is reported the same way.
     def margin_errors(
         achieved: np.ndarray, target: np.ndarray, seeded: np.ndarray
     ) -> tuple[list[float], float]:
@@ -847,23 +1038,55 @@ def _rake_allocation_targets(
     region_errors, region_unattainable = margin_errors(
         targets.sum(axis=(0, 1, 2)), region_margin, seeded_region
     )
+    raked_people = targets.sum(axis=(0, 1, 3))
+    raked_gains = (targets * cell_means[:, :, None, None]).sum(axis=(0, 1, 3))
+    gains_errors, gains_unattainable = margin_errors(
+        raked_gains, gains_margin, seeded_age & attainable
+    )
     errors = [*joint_errors, *age_errors, *region_errors]
-    zero_seed = raked.attrs.get("raking_zero_current_cells", ())
+    zero_seed_cells = int(
+        (~seeded_joint & (joint_mass > 0)).sum()
+        + (~seeded_age & (age_margin > 0)).sum()
+        + (~seeded_region & (region_margin > 0)).sum()
+    )
     report: dict[str, object] = {
-        "ipf_iterations": UK_CGT_IPF_ITERATIONS,
+        "rake_rounds": UK_CGT_RAKE_ROUNDS,
+        "rake_rounds_used": int(fit["rounds_used"]),
+        "rake_tolerance": UK_CGT_RAKE_TOLERANCE,
         "ipf_max_abs_margin_error": max(errors) if errors else 0.0,
+        "gains_margin_max_abs_error": max(gains_errors) if gains_errors else 0.0,
         "ipf_unattainable_margin_mass": {
             "joint": joint_unattainable,
             "age": age_unattainable,
             "region": region_unattainable,
+            "gains": gains_unattainable,
         },
-        "ipf_zero_seed_cells": len(zero_seed),
+        "ipf_zero_seed_cells": zero_seed_cells,
         "joint_total_people": total,
+        "joint_total_gains_at_cell_means": joint_gains,
         "age_margin": {
             str(UK_CGT_AGE_GROUP_LOWER_BOUNDS[a]): {
                 "published": float(age_margin_raw[a]),
                 "normalised": float(age_margin[a]),
-                "raked": float(targets.sum(axis=(0, 1, 3))[a]),
+                "raked": float(raked_people[a]),
+            }
+            for a in range(n_age)
+        },
+        "gains_margin": {
+            str(UK_CGT_AGE_GROUP_LOWER_BOUNDS[a]): {
+                "published": float(gains_margin_raw[a]),
+                "normalised": float(gains_margin[a]),
+                "raked": float(raked_gains[a]),
+                "target_mean": (
+                    float(gains_margin[a] / age_margin[a]) if age_margin[a] > 0 else 0.0
+                ),
+                "raked_mean": (
+                    float(raked_gains[a] / raked_people[a])
+                    if raked_people[a] > 0
+                    else 0.0
+                ),
+                "tilt_lambda": float(lambdas[a]),
+                "attainable": bool(attainable[a]),
             }
             for a in range(n_age)
         },
@@ -1543,7 +1766,17 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             ),
             "age_margin": (
                 "Table 6 2024-25 individual taxpayers by age band, folded to the "
-                "age groups"
+                "age groups; the 0-15 band, which adult carriers cannot hold, is "
+                "spread across the groups by the normalisation rather than folded "
+                "into the youngest group"
+            ),
+            "gains_margin": (
+                "Table 6 2024-25 individual gains by age band, folded to the age "
+                "groups the same way, as one linear constraint per group, the "
+                "raked people in the group's cells times their Table 3 cell means "
+                "summing to the group's gains, so each age group carries its "
+                "published gains as well as its count instead of the frame's band "
+                "mix (the amounts-consistent tilt; microcosm#725)"
             ),
             "region_margin": (
                 "Table 5 2024-25 taxpayers by country and region (all taxpayers) "
@@ -1551,7 +1784,8 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "folded to the region groups"
             ),
             "margin_normalization": (
-                "every margin is rescaled onto the joint's total taxpayer mass "
+                "every count margin is rescaled onto the joint's total taxpayer "
+                "mass and the gains margin onto the joint's gains at cell means "
                 "before raking, so rounding cannot make the margins mutually "
                 "infeasible"
             ),
@@ -1561,8 +1795,25 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             ),
             "age_group_lower_bounds": list(UK_CGT_AGE_GROUP_LOWER_BOUNDS),
             "region_groups": dict(UK_CGT_REGION_GROUPS),
-            "ipf_iterations": UK_CGT_IPF_ITERATIONS,
-            "ipf_helper": "microcosm.build.raking.iterative_proportional_fit",
+            "gains_tilt": (
+                "exponential tilt per age group; the group's cells are multiplied "
+                "by exp(lambda x cell mean / largest cell mean) with lambda solved "
+                "by bisection so the group's people-weighted mean gain meets its "
+                "target while the group's count is held, alternated with the "
+                "three count margins until every margin holds to the tolerance"
+            ),
+            "solver": (
+                "microcosm.build.uk_runtime.cgt_imputation._rake_with_gains_tilt "
+                "(proportional scaling of the count margins and the gains tilt on "
+                "the four-way array; the generic mean-raking helper scales columns "
+                "independently and cannot hold a people-weighted gains constraint)"
+            ),
+            "rake_rounds": UK_CGT_RAKE_ROUNDS,
+            "rake_tolerance": UK_CGT_RAKE_TOLERANCE,
+            "unattainable_policy": (
+                "a group whose target mean gain lies outside the means of its "
+                "seeded cells takes the nearest attainable tilt and is reported"
+            ),
             "zero_seed_policy": (
                 "a cell with no frame support keeps a zero target and is "
                 "reported; its joint mass is met from the income band's pooled "

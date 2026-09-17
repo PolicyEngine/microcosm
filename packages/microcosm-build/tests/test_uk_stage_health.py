@@ -360,7 +360,11 @@ def test_cgt_summary_allocation_receipt_must_be_finite_and_non_negative() -> Non
             "published_taxpayer_mass": 1.0,
             "remainder_mass": 0.0,
             "allocation": {
-                "rake": {"ipf_max_abs_margin_error": error, "ipf_zero_seed_cells": 0},
+                "rake": {
+                    "ipf_max_abs_margin_error": error,
+                    "gains_margin_max_abs_error": error,
+                    "ipf_zero_seed_cells": 0,
+                },
                 "fallback_released_mass": released,
             },
         }

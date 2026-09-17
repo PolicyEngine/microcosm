@@ -19,6 +19,7 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     _pareto_quantile,
     _pareto_stratum_means,
     _rake_allocation_targets,
+    _tilt_group,
     _truncated_exponential_quantile,
     impute_uk_capital_gains,
     impute_uk_capital_gains_with_report,
@@ -690,13 +691,48 @@ class TestConditionedAllocation:
             region_group=region_group,
         )
         assert report["ipf_max_abs_margin_error"] < 1e-6
+        assert report["gains_margin_max_abs_error"] < 1e-6
         assert report["ipf_zero_seed_cells"] == 0
+        assert report["rake_rounds_used"] < report["rake_rounds"]
         assert targets.sum() == pytest.approx(report["joint_total_people"])
         raked_by_age = targets.sum(axis=(0, 1, 3))
         for index, lower in enumerate(UK_CGT_AGE_GROUP_LOWER_BOUNDS):
             assert raked_by_age[index] == pytest.approx(
                 report["age_margin"][str(lower)]["normalised"], rel=1e-6
             )
+            gains = report["gains_margin"][str(lower)]
+            assert gains["attainable"] is True
+            assert gains["raked"] == pytest.approx(gains["normalised"], rel=1e-6)
+            assert gains["raked_mean"] == pytest.approx(gains["target_mean"], rel=1e-6)
+        # The tilt is what carries the gains margin: 65+ hold 38 % of the
+        # taxpayers but 32 % of the gains, so the older groups tilt down the
+        # bands and the 45-64 groups, which hold over half the gains on a
+        # third of the taxpayers, tilt up.
+        assert report["gains_margin"]["75"]["tilt_lambda"] < 0.0
+        assert report["gains_margin"]["55"]["tilt_lambda"] > 0.0
+        # The 16-24 group's published mean (about GBP 80k) sits well below
+        # the table's, so on a seed that spreads every group over the whole
+        # band profile it tilts down too.
+        assert report["gains_margin"]["16"]["tilt_lambda"] < 0.0
+
+    def test_tilt_group_solves_an_attainable_mean_and_bounds_the_rest(self) -> None:
+        group = np.full((3, 1, 2), 10.0)
+        scaled_means = np.asarray([[0.1], [0.5], [1.0]])
+        tilted, lam, attainable = _tilt_group(group, scaled_means, 0.8)
+        assert attainable is True
+        assert tilted.sum() == pytest.approx(group.sum())
+        achieved = float((tilted * scaled_means[:, :, None]).sum() / tilted.sum())
+        assert achieved == pytest.approx(0.8, abs=1e-9)
+        assert lam > 0.0
+        # A target outside the seeded cell means saturates at the bound and
+        # keeps the count; the caller reports it rather than raising.
+        tilted, lam, attainable = _tilt_group(group, scaled_means, 1.5)
+        assert attainable is False
+        assert tilted.sum() == pytest.approx(group.sum())
+        assert tilted[2].sum() > 0.99 * tilted.sum()
+        tilted, lam, attainable = _tilt_group(group, scaled_means, 0.05)
+        assert attainable is False
+        assert tilted[0].sum() > 0.99 * tilted.sum()
 
     def test_rake_reports_an_income_band_without_gainers(self) -> None:
         conditioning = load_hmrc_cgt_conditioning_facts()
@@ -721,13 +757,13 @@ class TestConditionedAllocation:
         assert targets[:, 1:, :, :].sum() == 0.0
 
     def test_age_conditioning_moves_taxpayer_mass_toward_table_6(self) -> None:
-        # Six ages x twelve regions x six income bands, every combination
+        # Seven ages x twelve regions x six income bands, every combination
         # present with the same prior, so the margins are attainable and any
         # age shape in the result comes from the rake, not from the priors.
         # 24 persons per (age, region, income) combination at weight 500:
         # every cell holds more support than its raked target, and one
-        # person is small next to the smallest age group (32,000).
-        rows = 6 * 12 * 6 * 24
+        # person is small next to every age group but 16-24 (4,000).
+        rows = 7 * 12 * 6 * 24
         rng = np.random.default_rng(11)
         gains = rng.lognormal(10, 1, rows)
         incomes = np.asarray(
@@ -736,12 +772,12 @@ class TestConditionedAllocation:
             [20_000.0, 55_000.0, 75_000.0, 120_000.0, 180_000.0, 300_000.0]
         )
         index = np.arange(rows)
-        ages = np.asarray([20, 40, 50, 60, 70, 80])[index % 6]
-        regions = np.asarray(sorted(UK_CGT_REGION_GROUPS))[(index // 6) % 12]
+        ages = np.asarray([20, 30, 40, 50, 60, 70, 80])[index % 7]
+        regions = np.asarray(sorted(UK_CGT_REGION_GROUPS))[(index // 7) % 12]
         frame = _frame(
             rows,
             gains=gains,
-            incomes=incomes[(index // 72) % 6],
+            incomes=incomes[(index // 84) % 6],
             ages=ages,
             regions=regions,
             # Enough support in every cell that no cell scales down and
@@ -755,6 +791,7 @@ class TestConditionedAllocation:
         )
 
         assert report.rake["ipf_max_abs_margin_error"] < 1e-3
+        assert report.rake["gains_margin_max_abs_error"] < 1e-3
         assert report.rake["ipf_zero_seed_cells"] == 0
         drawn = result.table("person")["capital_gains"].to_numpy()
         liable = drawn > PARAMETERS.annual_exempt_amount
@@ -768,9 +805,9 @@ class TestConditionedAllocation:
         published = {
             band.lower_bound: band.taxpayers for band in conditioning.age_bands
         }
-        # Uniform support would give each group a sixth; Table 6 gives
-        # 16-34 under 6 % of taxpayers and 55-64 over a quarter.
-        assert share[16] / total < 0.10
+        # Uniform support would give each group a seventh; Table 6 gives
+        # 16-24 under 1 % of taxpayers and 55-64 over a quarter.
+        assert share[16] / total < 0.03
         assert share[55] / total > 0.20
         older = (share[65] + share[75]) / total
         published_older = (
@@ -783,20 +820,38 @@ class TestConditionedAllocation:
         tail = drawn >= 500_000.0
         assert tail.sum() >= 30
         assert float((tail & (ages >= 65)).sum() / tail.sum()) > 0.2
+        # The gains tilt: 65+ hold 32 % of published gains against 38 % of
+        # taxpayers, and 45-64 hold 56 % of gains on 44 % of taxpayers. The
+        # realised shares carry systematic-rounding and stratified-draw
+        # noise, so read them against wide bands around the published ones.
+        gains_by_age = {
+            lower: float((drawn * liable)[ages_group == index].sum() * weight)
+            for index, lower in enumerate(UK_CGT_AGE_GROUP_LOWER_BOUNDS)
+            for ages_group in [np.digitize(ages, UK_CGT_AGE_GROUP_LOWER_BOUNDS[1:])]
+        }
+        gains_total = sum(gains_by_age.values())
+        older_gains = (gains_by_age[65] + gains_by_age[75]) / gains_total
+        assert 0.20 < older_gains < 0.45
+        middle_gains = (gains_by_age[45] + gains_by_age[55]) / gains_total
+        assert 0.40 < middle_gains < 0.70
 
     def test_fallback_meets_the_joint_where_a_cell_has_no_support(self) -> None:
         rows = 3_000
         rng = np.random.default_rng(13)
         gains = rng.lognormal(10, 1, rows)
-        # Everyone is a 45-year-old Londoner: five age groups and three
-        # region groups have no support, so pass 1 can only fill one cell
-        # per income band and the pooled walk must carry the rest. Weights
-        # of 100 keep one person smaller than the top band's low-income
-        # target (a suppressed cell of roughly 130 people).
+        # Two thousand 45-year-old and a thousand 70-year-old Londoners: five
+        # age groups and three region groups have no support, so the margins
+        # conflict and the joint (applied last) splits each band between the
+        # two supported cells by their age margins, 98,000 against 125,000.
+        # The 65-74 cell then wants more than its 100,000 of support, scales
+        # down, and the pooled walk over the unassigned 45-54 rows must carry
+        # the shortfall. Weights of 100 keep one person smaller than the top
+        # band's low-income target (a suppressed cell of roughly 130 people).
         frame = _frame(
             rows,
             gains=gains,
             incomes=np.full(rows, 20_000.0),
+            ages=np.where(np.arange(rows) < 2_000, 45, 70),
             weights=np.full(rows, 100.0),
         )
 

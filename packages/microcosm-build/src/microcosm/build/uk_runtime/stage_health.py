@@ -544,7 +544,11 @@ def _cgt_imputation_summary_gate(
         rake = allocation.get("rake")
         if not isinstance(rake, Mapping):
             raise ValueError(f"{stage}.allocation.rake must be a mapping.")
-        for key in ("ipf_max_abs_margin_error", "ipf_zero_seed_cells"):
+        for key in (
+            "ipf_max_abs_margin_error",
+            "gains_margin_max_abs_error",
+            "ipf_zero_seed_cells",
+        ):
             value = _finite_number(
                 rake.get(key), label=f"{stage}.allocation.rake.{key}"
             )
@@ -557,6 +561,7 @@ def _cgt_imputation_summary_gate(
         if released < 0.0:
             failures.append(f"{stage}: allocation.fallback_released_mass is negative.")
         details["ipf_max_abs_margin_error"] = rake.get("ipf_max_abs_margin_error")
+        details["gains_margin_max_abs_error"] = rake.get("gains_margin_max_abs_error")
         details["fallback_released_mass"] = released
     return (
         _fail(stage, check, failures, details)

@@ -4568,12 +4568,11 @@
       "fallback_policy": {
        "type": "string"
       },
-      "ipf_helper": {
+      "gains_margin": {
        "type": "string"
       },
-      "ipf_iterations": {
-       "type": "integer",
-       "minimum": 1
+      "gains_tilt": {
+       "type": "string"
       },
       "joint_margin": {
        "type": "string"
@@ -4583,6 +4582,14 @@
       },
       "margin_normalization": {
        "type": "string"
+      },
+      "rake_rounds": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "rake_tolerance": {
+       "type": "number",
+       "exclusiveMinimum": 0
       },
       "region_groups": {
        "type": "object",
@@ -4602,6 +4609,12 @@
       "seed_joint": {
        "type": "string"
       },
+      "solver": {
+       "type": "string"
+      },
+      "unattainable_policy": {
+       "type": "string"
+      },
       "zero_seed_policy": {
        "type": "string"
       }
@@ -4612,16 +4625,20 @@
       "band_aggregation",
       "conditioning_dimensions",
       "fallback_policy",
-      "ipf_helper",
-      "ipf_iterations",
+      "gains_margin",
+      "gains_tilt",
       "joint_margin",
       "kind",
       "margin_normalization",
+      "rake_rounds",
+      "rake_tolerance",
       "region_groups",
       "region_margin",
       "reporting_grain",
       "resource",
       "seed_joint",
+      "solver",
+      "unattainable_policy",
       "zero_seed_policy"
      ]
     },
