@@ -1041,22 +1041,30 @@ the run's own written objects when the run-end re-derivation refuses. (c) Write
 a refusal marker into the store so a later run cannot silently reuse those
 objects.
 
-**4. The main-only split — answered 2026-09-16, option (a).** The graph-shard
-hunks (`executor.py`, `manifest.py`, `codecs.py` and the two new graph test
-files) depend on nothing in this stack, and they are now
+**4. The main-only split — answered 2026-09-16, option (a); nothing is left
+open.** The graph-shard hunks (`executor.py`, `manifest.py`, `codecs.py` and the
+two new graph test files) depend on nothing in this stack, and they are
 [#938](https://github.com/PolicyEngine/microcosm/pull/938): draft, base `main`,
-head `8ea48447cf3245a8ac4acc0242cc9178d50acb13`, 6 files, +988 / −8,
-`MERGEABLE` (checked with `gh pr view 938` while writing this). At the time it
-was opened its five graph files differed from this branch's only by the
-documented `import struct` and `type(value) is float` removals, which belong to
-#893.
+head `1884d7f2a3af96799457dd42021cd111220e1ffc`, 6 files, +1,124 / −8,
+`MERGEABLE` (`gh pr view 938`, 2026-09-17 07:03 UTC). It was opened on
+2026-09-16 at head `8ea48447c` with 6 files, +988 / −8; both figures are given
+because the earlier one is what this report carried while the mirror was still
+outstanding.
 
-**What is left of it.** Four graph-shard changes made on this branch after the
-verification findings are **not** in #938 yet, and mirroring them is the open
-item: the member-symlink follow in `_source_stat_signature`, the native-order
-float cast in `_object_stream` (the endianness item #938's own author flagged),
-`RunManifest.verification_epoch`, and the `_verification_epoch` parameter on
-`run_graph`. The commits that carry them are listed in the lane's journal.
+**The mirror landed 2026-09-17.** The four graph-shard changes this branch made
+after the verification findings are in #938, as four commits dated 06:45–06:46
+UTC that day: `RunManifest.verification_epoch` with the `_verification_epoch`
+parameter on `run_graph` (`6206b4a75`), the member-symlink follow in
+`_source_stat_signature` (`d87196ce9`), the native-order float cast in
+`_object_stream` — the endianness item #938's own author flagged —
+(`284252e56`), and the docstring correction naming what the stat-preserving
+rewrite test actually exercises (`1884d7f2a`). Diffed against this branch at
+07:00 UTC on 2026-09-17: `manifest.py`, `codecs.py` and
+`test_graph_executor_source_identity.py` are identical, and `executor.py` and
+`test_graph_executor_series_stream.py` differ only by the documented `import
+struct` and exact-`float` short-circuit hunks, which belong to #893's base and
+not to this lane. So the split carries the whole graph shard as this branch has
+it, and the open item this section previously handed to Max is closed.
 
 **5. Thirty-five build tests reach the graph shard but were never run here.**
 They import it as `from microcosm.graph import …` rather than by dotted module

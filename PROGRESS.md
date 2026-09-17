@@ -1533,12 +1533,38 @@ files), `1811 passed, 1 skipped, 38 warnings in 11200.54s (3:06:40)` (the 46
 build test files that reach a changed module), plus `ruff check` clean,
 `17 files already formatted`, `uv lock --check`, both `ci_test_groups` checks.
 
+**Done (2026-09-17, second fix pass) — the two residuals:** a re-verification of
+the ten commits above left two low findings, and two commits answer them. (1)
+Only the nine-node runner had a test that read `RunManifest.verification_epoch`
+back off a real run, so
+`test_nineteen_node_financial_cold_and_required_replay` now reads it off both
+manifests the financial runner returns — its own epoch's and the nested
+population epoch's — for the cold run and the required replay, asserting the
+protocol label, `final_validations == capsules >= 1`, and that `to_json` still
+cannot see it; and the committed probe
+(`experiments/native-verify-once/probe_verify_once.py`) now copies the record
+into its output as `verification_epoch`, so the next measured run is the first
+that will carry counts. Nothing was re-measured, and the three measurement files
+the report quotes predate that line, which the report, the README and the design
+note all state. (2) This journal's "Next" and the report's open question 4
+restated #938 at its current head and size, with the mirror recorded as landed.
+No `packages/*/src` file changed in either commit.
+
+Re-run, both rc 0: `7 passed in 119.98s (0:01:59)`
+(`test_us_graph_atomic_survey_financial.py`) and
+`24 passed in 157.61s (0:02:37)` (`test_us_native_verify_once_epoch.py`), plus
+`ruff check` and `ruff format --check` clean on the two changed Python files.
+
 **Next:** Max's rulings on the report's remaining open questions. Open question
-4 is answered: the split is draft PR
-[#938](https://github.com/PolicyEngine/microcosm/pull/938) (base `main`, head
-`8ea48447c`, 6 files +988/−8, MERGEABLE, still draft), opened 2026-09-16. The
-graph-shard commits made after the verification findings are not mirrored into
-it yet.
+4 is answered and needs nothing further: the split is draft PR
+[#938](https://github.com/PolicyEngine/microcosm/pull/938), opened 2026-09-16
+and now at head `1884d7f2a` (base `main`, 6 files +1,124/−8, MERGEABLE, still
+draft; `gh pr view 938`, 2026-09-17 07:03 UTC). The graph-shard commits made
+after the verification findings were mirrored into it on 2026-09-17 at
+06:45–06:46 UTC — the verification epoch on the manifest, the member-symlink
+follow, the native-order float cast and the docstring fix. Diffed the same
+morning, its five graph files differ from this branch's only by the documented
+`import struct` and exact-`float` hunks that belong to #893's base.
 #935's body already carries the measurement table. Measured: nine-node prefix
 before 1,803.87 CPU s without completing (ceiling) against after 1,444.78 CPU s
 completing; nineteen-node 5,278.61 -> 2,010.07 CPU s (2.63x) against the v4 cold
