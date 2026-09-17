@@ -588,6 +588,31 @@ try:
     # A required replay of the same graph against the store the cold run wrote.
     # Everything compared here is content-addressed or a receipt, so any
     # difference is a real difference and not a timestamp.
+    from collections.abc import Mapping
+
+    def _plain(value):
+        """Normalise mappings before comparing.
+
+        A receipt reconstructed from a cache record is a ``MappingProxyType``
+        while a freshly built one is a ``dict``, and ``json.dumps(default=str)``
+        renders a proxy as ``mappingproxy({...})`` carrying Python's insertion
+        order. Comparing those strings reports differences that the
+        repository's own ``canonical_json`` does not have, which is exactly what
+        the first version of this harness did -- so the report's replay verdict
+        rests on ``manifest.key`` and on the store's bytes, not on this
+        projection.
+        """
+        if isinstance(value, Mapping):
+            return {
+                str(k): _plain(v)
+                for k, v in sorted(value.items(), key=lambda kv: str(kv[0]))
+            }
+        if isinstance(value, (list, tuple)):
+            return [_plain(v) for v in value]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        return str(value)
+
     def _projection(manifest):
         return {
             "key": manifest.key,
@@ -605,15 +630,11 @@ try:
                         )
                     },
                     "opaque_artifacts": dict(sorted(receipt.opaque_artifacts.items())),
-                    "receipt": json.loads(
-                        json.dumps(receipt.receipt, sort_keys=True, default=str)
-                    ),
+                    "receipt": _plain(receipt.receipt),
                 }
                 for node_id, receipt in manifest.receipts.items()
             },
-            "content_addressed": json.loads(
-                json.dumps(manifest.content_addressed, sort_keys=True, default=str)
-            ),
+            "content_addressed": _plain(manifest.content_addressed),
         }
 
     def _store_tree(root):
