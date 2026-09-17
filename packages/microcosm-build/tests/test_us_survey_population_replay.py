@@ -9,14 +9,87 @@ import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime.survey_population_replay import (
+    replayed_frame_seal,
+    replayed_population_seal,
     same_replayed_frame,
+    same_replayed_frame_seals,
     same_replayed_population,
+    same_replayed_population_seals,
+    seal_identity,
 )
 from microcosm.frame import EntitySchema, Frame, MassChangeRecord, WeightKind, Weights
 from microcosm.graph.population import MassRecord, Population
 from microcosm.graph.store import ContentStore
 
 _ERROR = "^SURVEY_POPULATION_REPLAY_"
+
+
+def _verdict(call, *arguments):
+    """The refusal code, or ``None`` for acceptance."""
+    try:
+        call(*arguments)
+    except ValueError as error:
+        return str(error)
+    return None
+
+
+def _sealed_verdict(seal, compare, expected, actual):
+    """The seal path's verdict: a refusal from either constructor counts.
+
+    Every predicate ``same_replayed_*`` makes about one operand alone is
+    asserted when that operand's seal is built, so the battery below must
+    treat a construction refusal and a comparison refusal as the same event.
+    """
+    try:
+        expected_seal, actual_seal = seal(expected), seal(actual)
+    except ValueError as error:
+        return str(error)
+    return _verdict(compare, expected_seal, actual_seal)
+
+
+def _agree_frames(expected, actual):
+    """Both paths must reach the same verdict, with the same refusal code.
+
+    This is the discrimination battery of ``docs/us-native-retention-seal.md``
+    section 5: every mutation below is driven through the object comparison
+    that exists today and through the content seal that replaces it, and a
+    mutation the seal misses fails here rather than being quietly dropped.
+    """
+    direct = _verdict(same_replayed_frame, expected, actual)
+    sealed = _sealed_verdict(
+        replayed_frame_seal, same_replayed_frame_seals, expected, actual
+    )
+    assert direct == sealed, f"object path {direct!r}, seal path {sealed!r}"
+    return direct
+
+
+def _agree_populations(expected, actual):
+    direct = _verdict(same_replayed_population, expected, actual)
+    sealed = _sealed_verdict(
+        replayed_population_seal, same_replayed_population_seals, expected, actual
+    )
+    assert direct == sealed, f"object path {direct!r}, seal path {sealed!r}"
+    return direct
+
+
+def _refuses_frames(expected, actual):
+    code = _agree_frames(expected, actual)
+    assert code is not None and code.startswith("SURVEY_POPULATION_REPLAY_"), code
+    return code
+
+
+def _refuses_populations(expected, actual):
+    code = _agree_populations(expected, actual)
+    assert code is not None and code.startswith("SURVEY_POPULATION_REPLAY_"), code
+    return code
+
+
+def _accepts_frames(expected, actual):
+    assert _agree_frames(expected, actual) is None
+
+
+def _accepts_populations(expected, actual):
+    assert _agree_populations(expected, actual) is None
 
 
 def _frame():
@@ -122,13 +195,10 @@ def test_actual_store_roundtrip_accepts_canonical_nulls_and_typed_objects(tmp_pa
         actual.person["object_value"].iloc[0]
         is not expected.person["object_value"].iloc[0]
     )
-    assert same_replayed_frame(expected, actual) is None
+    _accepts_frames(expected, actual)
     original_population = _population(expected)
-    assert (
-        same_replayed_population(
-            original_population, replace(original_population, frame=actual)
-        )
-        is None
+    _accepts_populations(
+        original_population, replace(original_population, frame=actual)
     )
     # Acceptance is read-only and must not canonicalize the original in place.
     assert expected.person["nullable_integer"].array._data.tobytes() == before_integer
@@ -136,7 +206,7 @@ def test_actual_store_roundtrip_accepts_canonical_nulls_and_typed_objects(tmp_pa
 
 
 def test_unchanged_noncanonical_hidden_storage_is_accepted():
-    assert same_replayed_frame(_frame(), _frame()) is None
+    _accepts_frames(_frame(), _frame())
 
 
 @pytest.mark.parametrize("column", ["nullable_integer", "nullable_boolean"])
@@ -152,8 +222,7 @@ def test_hidden_storage_exception_is_directional_and_whole_column(column, change
     else:
         expected.person[column].array._data[1:] = [False, True]
         actual.person[column].array._data[1:] = [True, False]
-    with pytest.raises(ValueError, match=_ERROR):
-        same_replayed_frame(expected, actual)
+    _refuses_frames(expected, actual)
 
 
 @pytest.mark.parametrize("change", ["value", "mask", "dtype", "membership", "text"])
@@ -180,8 +249,7 @@ def test_observed_values_masks_and_dtypes_are_exact(change):
             "text",
             pd.array(["changed", "invented\x00label", pd.NA], dtype="string"),
         )
-    with pytest.raises(ValueError, match=_ERROR):
-        same_replayed_frame(expected, actual)
+    _refuses_frames(expected, actual)
 
 
 @pytest.mark.parametrize(
@@ -222,8 +290,7 @@ def test_axes_schema_and_strata_are_exact(change):
     else:
         arguments["schema"] = EntitySchema(group_entities=("tax_unit", "household"))
     actual = _rebuild(expected, **arguments)
-    with pytest.raises(ValueError, match=_ERROR):
-        same_replayed_frame(expected, actual)
+    _refuses_frames(expected, actual)
 
 
 @pytest.mark.parametrize(
@@ -276,8 +343,7 @@ def test_frame_context_and_exact_weight_contract_are_preserved(change):
         else:
             kind = WeightKind.CALIBRATED
         actual = _rebuild(expected, weights={"household": Weights(values, kind)})
-    with pytest.raises(ValueError, match=_ERROR):
-        same_replayed_frame(expected, actual)
+    _refuses_frames(expected, actual)
 
 
 @pytest.mark.parametrize(
@@ -295,8 +361,7 @@ def test_native_signed_zero_and_nan_payload_bits_cannot_change(dtype, bits, slot
     changed = values.copy()
     changed[slot] = 0 if slot == 0 else int(changed[slot]) + 1
     actual = _with_column(expected, "native_float", changed.view(dtype))
-    with pytest.raises(ValueError, match=_ERROR):
-        same_replayed_frame(expected, actual)
+    _refuses_frames(expected, actual)
 
 
 @pytest.mark.parametrize(
@@ -320,7 +385,7 @@ def test_object_scalar_equivalence_uses_actual_store_types(before, after):
         "object_value",
         pd.Series([after, None, None], index=expected.person.index, dtype=object),
     )
-    assert same_replayed_frame(expected, actual) is None
+    _accepts_frames(expected, actual)
 
 
 @pytest.mark.parametrize(
@@ -339,8 +404,7 @@ def test_object_scalar_types_null_sentinels_and_float_bits_cannot_change(before,
         "object_value",
         pd.Series([after, None, None], index=frame.person.index, dtype=object),
     )
-    with pytest.raises(ValueError, match=_ERROR):
-        same_replayed_frame(expected, actual)
+    _refuses_frames(expected, actual)
 
 
 def test_object_nan_payload_bits_cannot_change():
@@ -358,8 +422,7 @@ def test_object_nan_payload_bits_cannot_change():
         "object_value",
         pd.Series([payloads[1], None, None], index=frame.person.index, dtype=object),
     )
-    with pytest.raises(ValueError, match=_ERROR):
-        same_replayed_frame(expected, actual)
+    _refuses_frames(expected, actual)
 
 
 @pytest.mark.parametrize("kind", ["object", "category", "nullable_float"])
@@ -376,8 +439,7 @@ def test_equal_unsupported_store_values_still_refuse(kind, tmp_path):
     unsupported = _with_column(frame, "object_value", values)
     with pytest.raises(TypeError):
         ContentStore(tmp_path / "unsupported-store").put_frame("b" * 64, unsupported)
-    with pytest.raises(ValueError, match=_ERROR):
-        same_replayed_frame(unsupported, unsupported)
+    _refuses_frames(unsupported, unsupported)
 
 
 @pytest.mark.parametrize("axis", ["index", "columns"])
@@ -390,8 +452,7 @@ def test_axis_names_preserve_store_scalar_types(axis, before, after):
     assert getattr(expected.table("household"), axis).identical(
         getattr(actual.table("household"), axis)
     )
-    with pytest.raises(ValueError, match=_ERROR):
-        same_replayed_frame(expected, actual)
+    _refuses_frames(expected, actual)
 
 
 def test_multiindex_outside_reviewed_store_profile_refuses():
@@ -399,8 +460,7 @@ def test_multiindex_outside_reviewed_store_profile_refuses():
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     tables["household"].index = pd.MultiIndex.from_tuples([("a", 0), ("b", 1)])
     unsupported = _rebuild(frame, tables=tables)
-    with pytest.raises(ValueError, match=_ERROR):
-        same_replayed_frame(unsupported, unsupported)
+    _refuses_frames(unsupported, unsupported)
 
 
 @pytest.mark.parametrize(
@@ -450,5 +510,308 @@ def test_population_provenance_and_original_design_bytes_are_exact(change):
         actual = replace(
             expected, frame=frame, weight_kind={"household": WeightKind.CALIBRATED}
         )
-    with pytest.raises(ValueError, match=_ERROR):
-        same_replayed_population(expected, actual)
+    _refuses_populations(expected, actual)
+
+
+# --- Discriminations the battery above did not reach ---
+#
+# Every test below drives one property through ``_refuses_*``/``_accepts_*``,
+# so each one proves the object comparison and the content seal agree on it.
+# The three marked "seal gap" are discriminations that
+# ``survey_population_preparation._frame_identity`` does NOT make, which is why
+# the seal is purpose-built rather than reusing it
+# (``docs/us-native-retention-seal.md`` section 0).
+
+
+def test_table_flags_are_part_of_the_comparison():  # seal gap
+    expected, actual = _frame(), _frame()
+    actual.person.flags.allows_duplicate_labels = False
+    assert (
+        _refuses_frames(expected, actual)
+        == "SURVEY_POPULATION_REPLAY_TABLE_TYPE_OR_FLAGS"
+    )
+
+
+def test_every_documented_flag_is_folded_not_only_the_named_one():
+    """The seal reads ``type(flags)._keys`` so a new pandas flag is covered."""
+    keys = type(_frame().person.flags)._keys
+    assert type(keys) is set and keys and all(type(key) is str for key in keys)
+    sealed = replayed_frame_seal(_frame())
+    person = next(entity for entity in sealed[6] if entity[0] == "person")
+    assert tuple(key for key, _ in person[1]) == tuple(sorted(keys))
+
+
+def test_the_exact_index_class_is_part_of_the_comparison():
+    """A ``RangeIndex`` and an ``Index`` of the same values are not identical."""
+    expected, actual = _frame(), _frame()
+    table = actual.table("household")
+    assert type(table.index) is pd.RangeIndex
+    table.index = pd.Index(list(table.index), dtype=table.index.dtype)
+    assert type(table.index) is pd.Index
+    assert table.index.equals(expected.table("household").index)
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_AXIS"
+
+
+def test_the_columns_axis_dtype_is_part_of_the_comparison():
+    expected, actual = _frame(), _frame()
+    table = actual.table("household")
+    table.columns = pd.Index(list(table.columns), dtype=object)
+    assert table.columns.dtype != expected.table("household").columns.dtype
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_AXIS"
+
+
+def test_an_axis_byte_difference_equals_does_not_see_keeps_the_series_code():
+    """``identical`` accepts ``-0.0`` for ``0.0``; the byte walk still refuses."""
+    expected, actual = _frame(), _frame()
+    for frame, first in ((expected, -0.0), (actual, 0.0)):
+        table = frame.table("household")
+        table.index = pd.Index([first, 1.0], dtype="float64")
+    assert expected.table("household").index.identical(actual.table("household").index)
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+
+
+def test_an_axis_nan_payload_difference_keeps_the_series_code():
+    payloads = np.array([0x7FF8000000000011, 0x7FF8000000000012], dtype=np.uint64).view(
+        np.float64
+    )
+    expected, actual = _frame(), _frame()
+    for frame, value in ((expected, payloads[0]), (actual, payloads[1])):
+        frame.table("household").index = pd.Index([value, 1.0], dtype="float64")
+    assert expected.table("household").index.identical(actual.table("household").index)
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+
+
+def test_index_comparables_beyond_the_name_are_part_of_the_comparison():
+    """``DatetimeIndex._comparables`` carries ``freq``; the bytes do not."""
+    stamps = ["2020-01-01", "2020-01-02"]
+    with_freq = pd.DatetimeIndex(stamps, freq="D")
+    without = pd.DatetimeIndex(stamps)
+    assert type(with_freq)._comparables == ["name", "freq"]
+    assert with_freq.to_numpy().tobytes() == without.to_numpy().tobytes()
+    assert not with_freq.identical(without)
+    expected, actual = _frame(), _frame()
+    expected.table("household").index = with_freq
+    actual.table("household").index = without
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_AXIS"
+
+
+def test_native_nan_payload_bits_are_part_of_the_comparison():  # seal gap
+    payloads = (0x7FF8000000000011, 0x7FF8000000000012)
+    frames = [
+        _with_column(
+            _frame(),
+            "native_float",
+            np.array(
+                [bits, 0x3FF4000000000000, 0x8000000000000000], dtype=np.uint64
+            ).view(np.float64),
+        )
+        for bits in payloads
+    ]
+    assert _refuses_frames(*frames) == "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+
+
+def test_quiet_and_signalling_nan_are_distinguished():  # seal gap
+    frames = [
+        _with_column(
+            _frame(),
+            "native_float",
+            np.array(
+                [bits, 0x3FF4000000000000, 0x8000000000000000], dtype=np.uint64
+            ).view(np.float64),
+        )
+        for bits in (0x7FF8000000000000, 0x7FF0000000000001)
+    ]
+    assert _refuses_frames(*frames) == "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+
+
+def test_a_native_dtype_change_at_equal_values_still_refuses():
+    expected = _with_column(_frame(), "native_int", np.array([1, 2, 3], dtype=np.int64))
+    actual = _with_column(expected, "native_int", np.array([1, 2, 3], dtype=np.int32))
+    assert (
+        _refuses_frames(expected, actual)
+        == "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
+    )
+
+
+@pytest.mark.parametrize("storage", ["python", "pyarrow"])
+def test_string_storage_and_null_policy_are_part_of_the_comparison(storage):
+    other = "pyarrow" if storage == "python" else "python"
+    values = ["a", "b", None]
+    expected = _with_column(
+        _frame(), "text", pd.array(values, dtype=pd.StringDtype(storage))
+    )
+    actual = _with_column(
+        _frame(), "text", pd.array(values, dtype=pd.StringDtype(other))
+    )
+    assert (
+        _refuses_frames(expected, actual)
+        == "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
+    )
+
+
+def test_a_declared_link_table_refuses_on_both_paths():
+    from microcosm.frame import LinkSpec
+
+    frame = _frame()
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["relations"] = pd.DataFrame(
+        {"person_id": [1, 2, 3], "household_id": [10, 10, 20]}
+    )
+    linked = _rebuild(
+        frame,
+        tables=tables,
+        schema=EntitySchema(
+            group_entities=("household", "tax_unit"),
+            links=(LinkSpec("relations", "person", "household"),),
+        ),
+    )
+    assert linked.links == ("relations",)
+    assert _refuses_frames(linked, linked) == "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
+
+
+def test_strata_index_name_is_part_of_the_comparison():
+    expected, actual = _frame(), _frame()
+    strata = actual.strata.copy()
+    strata.index = strata.index.rename("other_strata_axis")
+    assert _refuses_frames(expected, _rebuild(actual, strata=strata)) == (
+        "SURVEY_POPULATION_REPLAY_AXIS"
+    )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("owners", {("person", "person_id"): 7}),
+        ("weight_kind", {"household": "importance"}),
+        ("mass_ledger", [MassRecord("a", "reweight", "declared", 1.0, 1.0, (), ())]),
+        ("mass_ledger", ({"node_id": "allocation"},)),
+        ("version", 7),
+    ],
+)
+def test_one_sided_population_type_assertions_refuse_on_both_paths(field, value):
+    """These fire when the seal is built rather than when it is compared.
+
+    ``Population`` validates its own construction, so each defect is written
+    past that validation the way ``test_graph_executor`` writes its own
+    (``object.__setattr__`` on the frozen record), which is the only way a
+    caller could actually present one.
+    """
+    expected = _population(_frame())
+    actual = _population(_frame())
+    object.__setattr__(actual, field, value)
+    assert (
+        _refuses_populations(expected, actual)
+        == "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT"
+    )
+
+
+@pytest.mark.parametrize("field", ["weight_kind", "design_weights"])
+def test_mapping_order_is_part_of_the_comparison(field):
+    frame = _rebuild(
+        _frame(),
+        weights={
+            "household": Weights(np.array([1.5, 2.5]), WeightKind.IMPORTANCE),
+            "tax_unit": Weights(np.array([3.5, 4.5]), WeightKind.IMPORTANCE),
+        },
+    )
+    expected = Population.from_frame(
+        frame,
+        "allocated",
+        design_weights={
+            "household": np.array([5.0, 7.0]),
+            "tax_unit": np.array([9.0, 11.0]),
+        },
+    )
+    reversed_mapping = dict(reversed(list(getattr(expected, field).items())))
+    actual = replace(expected, **{field: reversed_mapping})
+    assert tuple(getattr(actual, field)) != tuple(getattr(expected, field))
+    assert (
+        _refuses_populations(expected, actual)
+        == "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT"
+    )
+
+
+def test_owner_mapping_order_alone_is_accepted_by_both_paths():
+    """``owners`` is compared sorted, so its insertion order must not matter."""
+    expected = _population(_frame())
+    actual = replace(expected, owners=dict(reversed(list(expected.owners.items()))))
+    assert tuple(actual.owners) != tuple(expected.owners)
+    _accepts_populations(expected, actual)
+
+
+_DTYPE_CENSUS = (
+    "int8",
+    "int64",
+    "uint64",
+    "float32",
+    "float64",
+    "bool",
+    "object",
+    "<U5",
+    "datetime64[ns]",
+    "Int8",
+    "Int64",
+    "UInt64",
+    "boolean",
+)
+
+
+def test_the_dtype_token_is_faithful_to_the_predicate_it_replaces():
+    """Token equality must be exactly ``type(a) is type(b) and a == b``.
+
+    ``str(dtype)`` alone is not enough: ``StringDtype("python")`` and
+    ``StringDtype("pyarrow")`` both spell ``string``.
+    """
+    dtypes = [pd.Series([], dtype=name).dtype for name in _DTYPE_CENSUS]
+    dtypes += [pd.StringDtype("python"), pd.StringDtype("pyarrow")]
+    dtypes += [pd.StringDtype("python", na_value=np.nan)]
+    for left in dtypes:
+        for right in dtypes:
+            predicate = type(left) is type(right) and left == right
+            token = (type(left), left) == (type(right), right)
+            assert predicate == token, (left, right, predicate, token)
+
+
+def test_the_seal_is_proportional_to_columns_and_not_to_rows():
+    """The whole point: sealing nineteen nodes must not cost nineteen frames."""
+    import pickle
+
+    def sized(rows):
+        index = pd.RangeIndex(rows)
+        person = pd.DataFrame(
+            {
+                "person_id": np.arange(rows, dtype=np.int64),
+                "person_household_id": np.zeros(rows, dtype=np.int64),
+                "person_tax_unit_id": np.zeros(rows, dtype=np.int64),
+                "native_float": np.arange(rows, dtype=np.float64),
+            },
+            index=index,
+        )
+        return Frame(
+            {
+                "person": person,
+                "household": pd.DataFrame({"household_id": [0]}),
+                "tax_unit": pd.DataFrame({"tax_unit_id": [0]}),
+            },
+            EntitySchema(group_entities=("household", "tax_unit")),
+            {"household": Weights(np.array([1.0]), WeightKind.IMPORTANCE)},
+            pd.Series(["urban"] * rows, index=index, dtype=object),
+        )
+
+    sizes = [
+        len(pickle.dumps(replayed_frame_seal(sized(n)))) for n in (8, 8_000, 800_000)
+    ]
+    # A 100,000-fold growth in rows may move the record only by the width of
+    # the row counts and shapes it records, which is tens of bytes.
+    assert max(sizes) - min(sizes) < 128, sizes
+
+
+def test_seal_identity_moves_with_the_seal_and_is_stable_without_it():
+    expected = _population(_frame())
+    assert seal_identity(replayed_population_seal(expected)) == seal_identity(
+        replayed_population_seal(_population(_frame()))
+    )
+    actual = replace(expected, version="another_version")
+    assert seal_identity(replayed_population_seal(expected)) != seal_identity(
+        replayed_population_seal(actual)
+    )

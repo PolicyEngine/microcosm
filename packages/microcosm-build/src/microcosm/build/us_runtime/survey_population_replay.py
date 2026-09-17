@@ -367,6 +367,39 @@ def _same_series_seal(expected, actual):
     _same_array_seal(expected[2], actual[2], "NATIVE_BITS")
 
 
+def _equals_class_seal(series):
+    """A digest whose equality matches ``Index.equals``, not raw bytes.
+
+    ``_axis`` refuses ``AXIS`` when ``identical`` fails and only then falls
+    through to the byte-exact ``_series`` codes, so an axis needs both a
+    value-equality fold and a byte fold to keep each refusal on its own code.
+    ``array_equivalent`` treats two NaNs as equal and ``-0.0`` as ``0.0``, so
+    the float fold collapses both before hashing; every other admitted dtype's
+    byte fold already is its value fold, because byte equality implies
+    ``equals`` for all of them.
+    """
+    dtype = series.dtype
+    if (
+        not isinstance(dtype, pd.api.extensions.ExtensionDtype)
+        and dtype.kind == "f"
+        and not dtype.hasobject
+    ):
+        values = np.array(series.to_numpy(copy=False), dtype=dtype)
+        values[np.isnan(values)] = np.nan  # one spelling for every payload
+        values += 0.0  # -0.0 + 0.0 is +0.0
+        return (
+            "float",
+            dtype,
+            _seal_digest_bytes(np.ascontiguousarray(values).tobytes()),
+        )
+    seal = _series_seal(series)
+    if seal[0] == "masked":
+        return ("masked", seal[1], seal[3], seal[4])
+    if seal[0] == "string":
+        return ("string", seal[1], seal[4], seal[5])
+    return seal
+
+
 def _axis_seal(index):
     """Seal one axis: ``_axis``'s class, ``identical`` parts, name and values."""
     _require(not isinstance(index, pd.MultiIndex), "AXIS")
@@ -376,12 +409,16 @@ def _axis_seal(index):
     # ``DatetimeIndex``, so folding it generically closes a gap that folding
     # only (class, dtype, name, values) would leave open.
     comparables = tuple(type(index)._comparables)
+    values = pd.Series(index.array, copy=False)
     return (
         type(index),
         comparables,
         tuple(getattr(index, name, None) for name in comparables),
+        type(index.dtype),
+        index.dtype,
+        _equals_class_seal(values),
         _name_seal(index.name),
-        _series_seal(pd.Series(index.array, copy=False)),
+        _series_seal(values),
     )
 
 
@@ -389,11 +426,14 @@ def _same_axis_seal(expected, actual):
     _require(
         expected[0] is actual[0]
         and expected[1] == actual[1]
-        and expected[2] == actual[2],
+        and expected[2] == actual[2]
+        and expected[3] is actual[3]
+        and expected[4] == actual[4]
+        and expected[5] == actual[5],
         "AXIS",
     )
-    _require(expected[3] == actual[3], "AXIS_NAME")
-    _same_series_seal(expected[4], actual[4])
+    _require(expected[6] == actual[6], "AXIS_NAME")
+    _same_series_seal(expected[7], actual[7])
 
 
 def _flags_seal(table):
