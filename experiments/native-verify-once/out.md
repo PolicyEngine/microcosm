@@ -83,14 +83,22 @@ memoised at all.
 (2), `test_a_source_rewritten_in_place_mid_epoch_refuses_at_the_next_borrow`,
 `test_a_file_added_to_a_source_directory_mid_epoch_refuses`,
 `test_a_touched_source_refuses_on_its_stat_identity_alone`,
-`test_a_change_a_signature_cannot_see_refuses_when_the_epoch_closes` and, added
-for the 2026-09-17 re-verification,
-`test_a_roster_stat_moved_inside_an_inner_close_refuses_at_the_next_borrow`.
+`test_a_change_a_signature_cannot_see_refuses_when_the_epoch_closes`, added for
+the 2026-09-17 re-verification
+`test_a_roster_stat_moved_inside_an_inner_close_refuses_at_the_next_borrow`,
+and added for the one after it
+`test_a_roster_file_removed_inside_the_outermost_close_refuses_at_the_close`.
 Each asserts the refusal **twice** — at the borrow that follows the mutation,
-and again when the epoch declines to close over it — except
-`test_a_change_a_signature_cannot_see_refuses_when_the_epoch_closes`, which
-asserts it once by design: that mutation is the one a signature cannot see, so
-the borrow after it is a memo hit and the close is the only refusal.
+and again when the epoch declines to close over it — except the two that assert
+it once by design.
+`test_a_change_a_signature_cannot_see_refuses_when_the_epoch_closes` mutates
+what a signature cannot see, so the borrow after it is a memo hit and the close
+is the only refusal.
+`test_a_roster_file_removed_inside_the_outermost_close_refuses_at_the_close`
+mutates inside the outermost close itself, where by construction no borrow
+follows; it asserts instead that the close raises what a later unmemoised
+borrow raises for the same removal, which is the identity the other tests get
+from asserting both.
 
 **The memo-miss branch itself, and the code it raises.** Every mutation above
 targets a roster file or a roster directory, so before the 2026-09-16
@@ -257,8 +265,12 @@ exit has just re-validated it in full.
 `test_a_native_source_moved_inside_an_inner_close_refuses_at_the_next_borrow`,
 added for the 2026-09-17 re-verification, which appends to a source from a
 profile hook as the inner close's own `_validate_state` returns and asserts
-`SOURCE_FILE_CHANGED` at the next borrow and again at the outer close; and,
-added for the 2026-09-16 verification findings,
+`SOURCE_FILE_CHANGED` at the next borrow and again at the outer close;
+`test_a_native_source_removed_inside_the_outermost_close_refuses_at_the_close`,
+added for the re-verification after that, which removes a source from the same
+kind of hook at the **outermost** close — where no borrow follows, so it
+asserts instead that the close raises what a later unmemoised borrow raises,
+`NATIVE_BINDING_REFUSAL`; and, added for the 2026-09-16 verification findings,
 `test_the_native_capsule_refuses_a_rewritten_source_through_its_memo`: this
 capsule's cheap tier compares no file stat at all, so a byte rewritten in place
 with the length, the inode and the modification time preserved can only be
