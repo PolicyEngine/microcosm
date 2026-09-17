@@ -23,7 +23,9 @@ sys.path[:0] = [
     )
 ]
 
-from microcosm.build.us_runtime import survey_population_preparation as owner  # noqa: E402
+from microcosm.build.us_runtime import (  # noqa: E402
+    survey_population_preparation as owner,
+)
 
 SOURCE_HOUSEHOLDS = 1_587_376  # selection.supplied_households, from the artifact
 FRACTIONS = ((1, 1000), (1, 100), (1, 10), (1, 1))

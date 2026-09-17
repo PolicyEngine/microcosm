@@ -233,7 +233,6 @@ from microcosm.build.us_runtime import (  # noqa: E402
     asec_coverage_authentication,
     asec_current_money_source,
     graph_atomic_survey_financial,
-    graph_atomic_survey_population,
     survey_atomic_geography,
     survey_population_preparation,
 )
