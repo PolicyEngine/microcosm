@@ -1,8 +1,11 @@
 # Build lane: verify native sources once per run
 
 Branch `native-verify-once`, worktree `~/PolicyEngine/_worktrees/microcosm-verify-once`,
-base `f7bb88525a78786f91bc3ebe2083ef4b1c85de18` (PR #893 head — `git rev-parse HEAD`
-and `git log -1` checked before any edit). 2026-09-15/16.
+base `microcosm-us-launch-integration-20260909` (PR #893's branch). The lane was
+written against that branch at `f7bb88525a78786f91bc3ebe2083ef4b1c85de18` and
+rebased onto its tip `363a9033b4e3c05c8758ef7411d69b7cd72a475e` on 2026-09-16,
+so every measurement below was taken against `f7bb88525` while the diff at the
+end of this report is against `363a9033b`. 2026-09-15/16.
 
 **Where this report is.** The repository's root `out.md` is a tracked file
 holding the Amendment 19 lane's committed report, and root `PROGRESS.md` is
@@ -29,8 +32,11 @@ and CI's `lint` job runs `uv run --no-sync ruff check .` only
 lane brief asked for `ruff format --check`.
 
 Every number below is traceable to a file path, and every number was measured
-at branch head `284bc6e9624d211ba9c16dcdf04df63b9e87b10c`, which this report
-commit sits directly on top of. Draft PR:
+at branch head `284bc6e9624d211ba9c16dcdf04df63b9e87b10c`, which the report
+commit sat directly on top of. The nine commits that resolve the 2026-09-16
+verification findings, and the rebase that carries them, come after that head;
+what they re-ran is the section "After the verification findings" at the end of
+the test summaries, and nothing above it was re-measured. Draft PR:
 [#935](https://github.com/PolicyEngine/microcosm/pull/935).
 
 ## The problem
@@ -58,12 +64,14 @@ a run paid one of these per executed node on top of every kernel borrow.
 
 **Guarantee, in two sentences.** Inside a `verification_epoch()` every borrow
 still pays, in full and unmemoised, the live authority, the attached owner
-payloads, `_encode(_producer())` and `_file_stats` over the whole source roster,
-so every producer change and every on-disk change that moves any of five stat
-fields still refuses at the same borrow it refuses at today. What a signature
-cannot see — an in-place write into a live buffer, or a value written into a
-frozen plan row — is closed by an unconditional full re-validation when the
-epoch closes, before the run returns anything; outside an epoch nothing is
+payloads and `_encode(_producer())` as refusals, and reads `_file_stats` over
+the whole source roster — into the *signature*, not as a comparison — so every
+producer change refuses in the cheap tier and every on-disk change that moves
+any of five stat fields is a memo miss whose complete validation refuses at the
+same borrow, with the same code, as an unmemoised borrow does today. What a
+signature cannot see — an in-place write into a live buffer, or a value written
+into a frozen plan row — is closed by an unconditional full re-validation when
+the epoch closes, before the run returns anything; outside an epoch nothing is
 memoised at all.
 
 **Mutation tests.**
@@ -77,6 +85,30 @@ Each asserts the refusal **twice** — at the borrow that follows the mutation,
 and again when the epoch declines to close over it — except the last, which
 asserts it once by design: that mutation is the one a signature cannot see, so
 the borrow after it is a memo hit and the close is the only refusal.
+
+**The memo-miss branch itself, and the code it raises.** Every mutation above
+targets a roster file or a roster directory, so before the 2026-09-16
+verification findings each of them refused in the cheap tier, which compared
+`_file_stats` ahead of the memo lookup: the branch the design leans on hardest
+— a signature miss running the complete validation — was never reached for this
+capsule, and the code it raised inside an epoch (`SOURCE_STAT_CHANGED`)
+differed from the code the same mutation raises with no memo at all. Two
+changes close that. The roster stat identities moved out of the cheap tier into
+the signature, so the miss runs `_validate` and `_validate` decides the code;
+and `test_an_in_epoch_refusal_carries_the_code_it_carries_today` refuses four
+mutations twice each, once inside an epoch and once on a fresh unmemoised
+fixture, asserting the two codes are equal: `SOURCE_CHANGED` for an appended
+`selection-request.json`, `PREPARATION_VERIFICATION_REFUSED` for an appended
+`acs/csv_pus.zip` and for an appended `asec/pppub25.csv` (the ACS and ASEC
+catalogues' own refusals, translated by `_checked`), and `SOURCE_STAT_CHANGED`
+for a touched roster file. Separately,
+`test_a_changed_snapshot_copy_refuses_through_the_memoised_tier` picks the one
+kind of path the cheap tier cannot see at all — an ACS catalogue private
+snapshot copy, inside the memo signature and outside `_file_stats` — and
+rewrites one byte in place, restoring the mode and the modification time and
+asserting `_file_stats(state.root)` is identical across the mutation, so only
+the memo can be what refuses; it refuses with `PREPARATION_VERIFICATION_REFUSED`
+at the borrow, again at the close, and identically to the unmemoised borrow.
 
 **Before/after CPU.** Unit level, from
 `test_an_epoch_validates_once_and_reuses_it`: six borrows of one preparation
@@ -135,9 +167,16 @@ memo is live with a refreshed signature and the owner's validation is a memo
 hit, with nothing skipped in net because the capsule's own exit has just
 re-validated it in full.
 
-**Mutation test.**
+**Mutation tests.**
 `test_the_native_capsule_still_refuses_a_changed_source_inside_an_epoch`
-(`SOURCE_FILE_CHANGED` at the borrow, and again at the close). The existing
+(`SOURCE_FILE_CHANGED` at the borrow, and again at the close) and, added for
+the verification findings,
+`test_the_native_capsule_refuses_a_rewritten_source_through_its_memo`: this
+capsule's cheap tier compares no file stat at all, so a byte rewritten in place
+with the length, the inode and the modification time preserved can only be
+caught by the memo, and the test counts `_file_identity` calls to prove the
+refusing borrow ran the complete `_validate_state` rather than a cheap check —
+`SOURCE_FILE_CHANGED` at the borrow and again at the close. The existing
 `test_changed_original_source_refuses_existing_borrow` is unchanged and still
 passes: it runs outside an epoch.
 
@@ -367,10 +406,26 @@ removes, so the four copies stay and this lane does not widen its pin surface
 for a style fix. A lane that consolidates them should do it as its own change,
 with those four pins re-derived and stated.
 
-The same argument applies with more force to `_stat_identity`, which exists in
-both `survey_population_preparation.py:268` and `executor.py:2100`: those are
-different packages, so a cross-package import would move `imports` as well and
-would require a new entry in `import_classifications`.
+The same argument applies to `_stat_identity`, which exists in both
+`survey_population_preparation.py:268` and `executor.py:2100`, but it lands on
+a different field. Those are different packages, so
+`from microcosm.graph.executor import _stat_identity` moves that module's
+pinned `imports` list rather than its `unbound_uses_sha256`: run through the
+module's own generator, `imports` gains `microcosm.graph.executor` and
+`unbound_uses_sha256` does **not** move, because every stage that carries this
+file declares the graph package as a dependency and `_covered_imports` binds
+everything beneath it. No new `import_classifications` entry would be needed —
+`microcosm.graph.executor` is already classified there, since other modules
+already import it — but the contract pin for `survey_population_preparation.py`
+would move all the same, and it is the same file and the same review surface as
+the four above.
+
+All five measurements in the two paragraphs above were re-derived on
+2026-09-16 through `graph_implementation._dependency_contract` against the
+module's own `_covered_imports`, by adding the import and one use to a copy of
+each module's bytes in memory and comparing the contract with the pinned one:
+`unbound_uses_sha256` moves for all four `_path_stat` modules and `imports`
+does not; for `survey_population_preparation.py` it is the other way round.
 
 ## Pins re-derived
 
@@ -420,8 +475,8 @@ landed, at that day's branch head and on whatever machine state existed then;
 none of them is a verdict about the branch as it now stands, and the test
 counts in several of them have since moved, because the verification findings
 added tests. What stands for the branch now is the CI-shaped battery below and
-the post-findings section at the end of it. They are kept because they are the
-record of what each mechanism cost as it landed.
+the section "After the verification findings" that follows it. They are kept
+because they are the record of what each mechanism cost as it landed.
 
 ```
 $ .venv/bin/python -I -B -m pytest packages/microcosm-graph/tests -p no:randomly
@@ -773,9 +828,9 @@ lane's candidates, not this one's results.
 | PR | [PolicyEngine/microcosm#935](https://github.com/PolicyEngine/microcosm/pull/935) — **draft**, and it stays draft |
 | Title | Verify native sources once per run, not once per access and per node |
 | Base | `microcosm-us-launch-integration-20260909` (PR #893's branch) |
-| Head sha at which every measurement and every test run above was taken | `284bc6e9624d211ba9c16dcdf04df63b9e87b10c` |
-| Head sha now | this report commit, the only change on top of `284bc6e96`, touching `experiments/native-verify-once/out.md` and `experiments/native-verify-once/README.md` |
-| Diff | 27 files, +4,399 / −849 against the base branch |
+| Head sha at which every measurement and the CI-shaped battery were taken | `284bc6e9624d211ba9c16dcdf04df63b9e87b10c`, before the 2026-09-16 rebase rewrote it; the same tree, as a commit, is `41703d5d6`'s parent |
+| Head sha now | the commits that resolve the 2026-09-16 verification findings, on top of the report commit `41703d5d6`, itself on the rebased base tip. The exact head is what `git rev-parse native-verify-once` returns; this table does not quote a sha it cannot have written. |
+| Diff | 26 files, +5,422 / −819 against the base branch. Two-dot and three-dot agree, because the branch was rebased onto the base tip `363a9033b` on 2026-09-16 and there is no base drift left to inflate it. The earlier figure in this table, 27 files / +4,399 / −849, was a two-dot diff taken while the branch was one commit behind, so its −30 in `docs/us-uk-release-path.md` was the base's own commit rather than a lane change; it is superseded, not corrected in place, because the tree also moved. |
 | CI | does not run on this PR by design: `.github/workflows/test.yml` triggers on `pull_request: branches: [main]`, so only #893 reaches CI. The battery above is the only gate this branch has. |
 
 ## Open questions for Max
