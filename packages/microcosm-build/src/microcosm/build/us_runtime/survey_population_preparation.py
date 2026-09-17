@@ -638,6 +638,195 @@ def _frame_cell_encode(value, maximum=MAX_PAYLOAD_BYTES):
     return encoded
 
 
+_HEX_DIGITS = np.frombuffer(b"0123456789abcdef", dtype=np.uint8)
+# ``["float","`` -0x1. <13 mantissa nibbles> p +<=4 exponent digits> "]\n
+_FLOAT_WIDTH = 37
+_FLOAT_HEAD = np.frombuffer(b'["float","', dtype=np.uint8)
+_FLOAT_LEAD = np.stack(
+    (
+        np.frombuffer(b"0x1.", dtype=np.uint8),
+        np.frombuffer(b"0x0.", dtype=np.uint8),
+    )
+)
+_FLOAT_TAIL = np.frombuffer(b'"]\n', dtype=np.uint8)
+_FLOAT_NULL = np.frombuffer(b"null\n", dtype=np.uint8)
+_FLOAT_EXPONENT_DIGITS = 4
+_MANTISSA_SHIFTS = np.arange(48, -1, -4, dtype=np.uint64)
+_BOOL_CELLS = np.array([b"false\n", b"true\n", b"null\n"], dtype=object)
+_INTEGER_DTYPES = frozenset(
+    ("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64")
+)
+_NULLABLE_INTEGER_DTYPES = frozenset(
+    ("Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64")
+)
+
+
+def _float_cells(values):
+    """``_frame_cell_encode`` + a newline for one float64 column, per column.
+
+    The record is laid out at fixed offsets with a per-position keep mask, so
+    the variable-length spellings ``float.hex()`` produces are cut out of one
+    padded matrix rather than assembled a cell at a time:
+
+        0..9   ``["float","``        always
+        10     ``-``                 iff the sign bit is set
+        11..14 ``0x1.`` / ``0x0.``   normal / subnormal-or-zero
+        15..27 13 mantissa nibbles   all 13, or only column 15 (``0``) for zero
+        28     ``p``                 always
+        29     ``+`` / ``-``         sign of the unbiased exponent
+        30..33 4 exponent digits     only the last significant ones
+        34..36 ``"]`` and newline    always
+
+    A NaN cell spells ``null`` instead, which is what ``_cell`` makes of it.
+    ``_cell`` refuses a non-finite cell, so an infinity refuses here too, with
+    the same code; it is raised for the column rather than at the first
+    offending cell, and the digest is discarded either way.
+    """
+    _require(not np.isinf(values).any(), "FRAME_NONFINITE")
+    count = values.shape[0]
+    if count == 0:
+        return b""
+    bits = values.view(np.uint64)
+    missing = np.isnan(values)
+    sign = (bits >> np.uint64(63)).astype(bool)
+    biased = ((bits >> np.uint64(52)) & np.uint64(0x7FF)).astype(np.int64)
+    mantissa = bits & np.uint64(0xFFFFFFFFFFFFF)
+    subnormal = biased == 0
+    zero = subnormal & (mantissa == 0)
+    exponent = np.where(subnormal, np.int64(-1022), biased - 1023)
+    exponent = np.where(zero, np.int64(0), exponent)
+
+    cells = np.zeros((count, _FLOAT_WIDTH), dtype=np.uint8)
+    keep = np.zeros((count, _FLOAT_WIDTH), dtype=bool)
+    cells[:, 0:10] = _FLOAT_HEAD
+    cells[:, 10] = np.uint8(0x2D)
+    keep[:, 10] = sign
+    cells[:, 11:15] = _FLOAT_LEAD[subnormal.astype(np.intp)]
+    cells[:, 15:28] = _HEX_DIGITS[
+        ((mantissa[:, None] >> _MANTISSA_SHIFTS[None, :]) & np.uint64(0xF)).astype(
+            np.uint8
+        )
+    ]
+    cells[zero, 15] = np.uint8(0x30)
+    cells[:, 28] = np.uint8(0x70)
+    cells[:, 29] = np.where(exponent < 0, np.uint8(0x2D), np.uint8(0x2B))
+    magnitude = np.abs(exponent)
+    for position in range(_FLOAT_EXPONENT_DIGITS):
+        power = 10 ** (_FLOAT_EXPONENT_DIGITS - 1 - position)
+        cells[:, 30 + position] = np.uint8(0x30) + (
+            magnitude // power % 10
+        ).astype(np.uint8)
+    cells[:, 34:37] = _FLOAT_TAIL
+
+    keep[:, 0:10] = True
+    keep[:, 11:28] = True
+    keep[zero, 16:28] = False
+    keep[:, 28:30] = True
+    significant = np.where(
+        magnitude >= 1000,
+        4,
+        np.where(magnitude >= 100, 3, np.where(magnitude >= 10, 2, 1)),
+    )
+    keep[:, 30:34] = (
+        np.arange(_FLOAT_EXPONENT_DIGITS)[None, :]
+        >= (_FLOAT_EXPONENT_DIGITS - significant)[:, None]
+    )
+    keep[:, 34:37] = True
+    if missing.any():
+        cells[missing, 0:5] = _FLOAT_NULL
+        keep[missing, :] = False
+        keep[missing, 0:5] = True
+    return cells[keep].tobytes()
+
+
+def _integer_cells(values):
+    """One integer column's cells. ``str`` on a Python int is ``int.__repr__``.
+
+    Every value an integer dtype can hold lies inside the fast path's
+    ``-2**63 <= value < 2**64`` window and spells at most twenty ASCII bytes,
+    so neither ``_encode`` nor ``PAYLOAD_LIMIT`` is reachable from here.
+    """
+    if values.shape[0] == 0:
+        return b""
+    return ("\n".join(map(str, values.tolist())) + "\n").encode("ascii")
+
+
+def _nullable_integer_cells(series):
+    """One nullable-integer column's cells; ``pd.NA`` is ``_cell``'s ``None``.
+
+    The unsigned widths keep an unsigned carrier: ``UInt64`` holds values above
+    ``2**63 - 1`` that no signed carrier can spell, and the fast path admits
+    every integer below ``2**64``.
+    """
+    if len(series) == 0:
+        return b""
+    carrier = "uint64" if str(series.dtype).startswith("U") else "int64"
+    present = series.to_numpy(dtype=carrier, na_value=0)
+    spelled = list(map(str, present.tolist()))
+    for position in np.flatnonzero(np.asarray(series.isna())).tolist():
+        spelled[position] = "null"
+    return ("\n".join(spelled) + "\n").encode("ascii")
+
+
+def _boolean_cells(series):
+    """One boolean column's cells: three spellings, selected by index."""
+    if len(series) == 0:
+        return b""
+    missing = np.asarray(series.isna())
+    present = series.to_numpy(dtype=bool, na_value=False)
+    codes = np.where(missing, np.intp(2), present.astype(np.intp))
+    return b"".join(_BOOL_CELLS[codes].tolist())
+
+
+def _string_cells(series):
+    """One string column's cells, encoding each distinct value once.
+
+    ``StringDtype`` compares and hashes exactly, so grouping equal values
+    cannot merge two whose encodings differ. ``object`` and ``category``
+    deliberately do not qualify: ``1``, ``True`` and ``1.0`` are equal and hash
+    alike there while ``_frame_cell_encode`` spells them three different ways,
+    so those dtypes keep the cell-at-a-time walk.
+    """
+    if len(series) == 0:
+        return b""
+    codes, uniques = pd.factorize(series, use_na_sentinel=False)
+    encoded = np.empty(len(uniques), dtype=object)
+    for position, value in enumerate(uniques):
+        encoded[position] = _frame_cell_encode(value) + b"\n"
+    return b"".join(encoded[codes].tolist())
+
+
+def _cells_blob(series):
+    """The exact bytes a cell-at-a-time walk over ``series`` would digest.
+
+    Every branch below is proved equal to that walk, byte for byte, in
+    ``test_us_survey_population_frame_seal.py``; a dtype with no proved branch
+    takes the walk itself rather than a guess.
+    """
+    name = str(series.dtype)
+    if name == "float64":
+        return _float_cells(series.to_numpy(dtype=np.float64, copy=False))
+    if name in _INTEGER_DTYPES:
+        return _integer_cells(series.to_numpy(copy=False))
+    if name in _NULLABLE_INTEGER_DTYPES:
+        return _nullable_integer_cells(series)
+    if name in ("bool", "boolean"):
+        return _boolean_cells(series)
+    if name == "string":
+        return _string_cells(series)
+    return b"".join(_frame_cell_encode(value) + b"\n" for value in series)
+
+
+def _index_blob(index):
+    """The same, for an axis, which the walk reads exactly as it reads a column."""
+    name = str(index.dtype)
+    if name in _INTEGER_DTYPES:
+        return _integer_cells(index.to_numpy(copy=False))
+    if name == "float64":
+        return _float_cells(index.to_numpy(dtype=np.float64, copy=False))
+    return b"".join(_frame_cell_encode(value) + b"\n" for value in index)
+
+
 def _frame_identity(frame):
     _require(
         isinstance(frame, Frame) and frame.schema == US_SCHEMA and not frame.links,
@@ -647,10 +836,6 @@ def _frame_identity(frame):
 
     def update(value):
         digest.update(_encode(value))
-        digest.update(b"\n")
-
-    def update_cell(value):
-        digest.update(_frame_cell_encode(value))
         digest.update(b"\n")
 
     update([list(frame.entities), list(frame.weighted_entities)])
@@ -672,8 +857,7 @@ def _frame_identity(frame):
                 list(table.index.names),
             ]
         )
-        for value in table.index:
-            update_cell(value)
+        digest.update(_index_blob(table.index))
         for column in table:
             series = table[column]
             dtype = series.dtype
@@ -685,8 +869,7 @@ def _frame_identity(frame):
                     str(getattr(dtype, "na_value", "")),
                 ]
             )
-            for value in series:
-                update_cell(value)
+            digest.update(_cells_blob(series))
     update(
         [
             str(frame.strata.dtype),
@@ -697,10 +880,8 @@ def _frame_identity(frame):
             frame.strata.name,
         ]
     )
-    for value in frame.strata.index:
-        update_cell(value)
-    for value in frame.strata:
-        update_cell(value)
+    digest.update(_index_blob(frame.strata.index))
+    digest.update(_cells_blob(frame.strata))
     for entity in frame.weighted_entities:
         weights = frame.weights_for(entity)
         update(
