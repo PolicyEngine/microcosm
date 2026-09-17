@@ -237,9 +237,50 @@ each was read rather than assumed:
 - **No per-row payload sits behind the binding site.** `:1016` takes two numpy
   arrays.
 
-### 5b. The loudest one
+### 5b. Three the owner should see
 
-It is in a module this lane did touch, so it gets said plainly:
+The census found **six** bounds that a **1/10** build meets, all of them byte
+transports. That contradicts the transport lane's §5 conclusion that "a 1/10
+build meets no ceiling this lane did not lift", and two of them matter enough to
+be measured rather than listed.
+
+**The ACS coverage authentication body budget is the tightest ceiling on the
+whole path, and it is not close.**
+`acs_person_coverage_authentication` charges every *selected* row
+`6 * len(raw) + 1024` bytes against `MAX_BODY_BYTES` (64 MiB) before the reader
+allocates its DataFrame, refusing `SELECTED_BODY_BUDGET`. The only variable is
+the record's own length, so the admitted count is measurable: over 200,000 real
+records of the pilot's captured public ACS PUMS archive, a person record
+averages 695.57 bytes, so the charge is 5,197 bytes and the budget admits
+**12,911 selected persons — 0.38% of source**, 265× under at full source. The
+household role admits 14,720, 0.96%.
+
+That is below 1/100. It is a byte transport, so it is the transport argument's,
+and it is why lifting `acs_person_coverage_columns.MAX_SELECTED_ROWS` in §3 is
+**necessary and not sufficient**: this refuses 265× earlier on the same path.
+
+**The preparation-receipt ceiling the transport lane lifted is still enforced one
+module downstream.** That lane raised `survey_population_preparation`'s total to
+`MAX_ROSTER_BYTES` = 64 × 64 MiB and reported the receipt ceiling moved from
+96,860 households to 6,206,000. `_roster_payload` still returns one joined
+payload — it must, because `KernelResult.artifacts` is a mapping of `bytes` —
+and `graph_survey_population._checked_preparation` checks those same bytes
+against `PREPARATION_MAX_BYTES`, **still 64 MiB**, refusing `PREPARATION_BYTES`
+(`:305`, `:309`, and again in the allocation kernel at `:577`/`:582`), reached
+from six call sites including `graph_atomic_survey_population:172`.
+
+From the transport lane's own committed `ceiling-receipt.json`: a 1/10 roster
+measured 109,804,304 bytes and was recorded `accepted` by the producer — 1.64×
+this cap — and a full-source roster measured 1,099,892,722 bytes, of which this
+cap admits **96,839 households**. That is, to within rounding, exactly the 96,860
+the transport lane reported as the ceiling it had lifted.
+
+Both are pinned in `test_us_native_row_ceilings.py`, so the next reader meets
+them in a test rather than in a build.
+
+### 5c. The loudest one in a module this lane touched
+
+It gets said plainly:
 
 > **`survey_origin_budget.MAX_PAYLOAD_BYTES` (64 MiB) admits 87,838 households —
 > 5.53% of source.** That is below one tenth, and below the 96,860-household
@@ -274,13 +315,21 @@ this module.
 
 ## 6. The census
 
-`experiments/native-row-ceilings/` carries the receipts. Every `MAX_*` row,
+`experiments/native-row-ceilings/census.json` is the census. Every `MAX_*` row,
 household, person, group or byte bound in
 `packages/microcosm-build/src/microcosm/build/us_runtime/` reachable from the
-19-node financial graph and the 45-node pilot graph was read at this head — 146
-bounds across five module families — with its enforcement site, refusal code,
-what it protects, and its counts at 1/10 and at full source. The lane report
-holds the table.
+19-node financial graph and the 45-node pilot graph was read at this head — **146
+bounds across five module families** — each with its enforcement site, its
+refusal code and exception type, what it protects, the count it meets at 1/10
+and at full source, and whether it binds. Every verdict that claimed a
+full-source build meets the bound, or that the bound guards an encoding width or
+an upstream file's real size, then went through an adversarial pass that read the
+code again and tried to refute it — **41 verdicts**, and no headline verdict was
+overturned.
+
+The result: **14 bounds bind at full source, 6 of them at 1/10.** Seven of the
+fourteen are the row counts §3 moved. The other seven are byte transports and
+byte-derived row pre-checks; §5a and §5b say which and why.
 
 ## 7. Pins
 
