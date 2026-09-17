@@ -1,0 +1,48 @@
+{
+ "scope": "Encoder-measured size law for the origin-budget payload. Builds one faithful record through the module's own _reference and _json. Not a build, not a certification, not release eligible.",
+ "release_eligible": false,
+ "max_payload_bytes": 67108864,
+ "max_groups": 1000000,
+ "full_source_households": 1587376,
+ "measurements": [
+  {
+   "household_id_magnitude": 1000,
+   "record_bytes": 719,
+   "header_ids_and_groups_bytes": 20,
+   "per_group_bytes": 740,
+   "households_at_64MiB": 90687,
+   "full_source_payload_bytes": 1174658240
+  },
+  {
+   "household_id_magnitude": 1000000,
+   "record_bytes": 731,
+   "header_ids_and_groups_bytes": 32,
+   "per_group_bytes": 764,
+   "households_at_64MiB": 87838,
+   "full_source_payload_bytes": 1212755264
+  },
+  {
+   "household_id_magnitude": 1587376,
+   "record_bytes": 731,
+   "header_ids_and_groups_bytes": 32,
+   "per_group_bytes": 764,
+   "households_at_64MiB": 87838,
+   "full_source_payload_bytes": 1212755264
+  },
+  {
+   "household_id_magnitude": 3174752,
+   "record_bytes": 731,
+   "header_ids_and_groups_bytes": 32,
+   "per_group_bytes": 764,
+   "households_at_64MiB": 87838,
+   "full_source_payload_bytes": 1212755264
+  }
+ ],
+ "binding": {
+  "per_group_bytes_at_full_source_ids": 764,
+  "households_the_64MiB_cap_admits": 87838,
+  "fraction_of_source_that_admits": 0.05533534587898519,
+  "full_source_payload_bytes": 1212755264,
+  "full_source_payload_over_cap": 18.07146167755127
+ }
+}
