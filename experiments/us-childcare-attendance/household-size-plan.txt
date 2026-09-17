@@ -1,0 +1,34 @@
+Household-size comparison specified before new results, 2026-09-16.
+
+Hypothesis: the shared-rank mixture cannot change conditional marginal means.
+The 3+ household mean bias is therefore a donor-conditioning problem, not a rho
+tuning problem. Compare the current age/region/work/income matcher with exactly
+one revision: add the count of all resident children ages 0-12, capped at 3
+(1, 2, 3+). Count children before selecting complete calendars so missing
+attendance never changes the predictor. Derive the same count from physical
+target household membership, not from repeated source-person clone IDs.
+
+Candidate fallback: age/count/region/work/income, age/count/work/income,
+age/count/work, age/count, age. Report every fallback, including loss of count.
+Use the same child/household survey weights and binary sibling-mixture fit;
+no tuning of rho to the intensity screens and no favorable simulation seed.
+
+Reserve households with SHA256('20260916:reserved:<household-id>') first eight
+bytes interpreted big endian modulo 5 equal to zero. Exclude these households
+from all development donor pools and dependence fits. Five-fold development
+uses existing seed 271828 within the remaining households. Freeze the candidate
+before scoring the reserved partition once; train on all remaining households.
+Compare both arms on the identical partitions and existing 15 screens. Do not
+iterate on reserved outcomes. Require improvement in the larger-family mean
+bias without presenting a failed screen as a qualified model.
+
+The source has already informed earlier development, including aggregate
+results covering these households. This is a prospective internal comparison,
+not untouched external evidence. Independent source validation and release
+certification remain outstanding even if all provisional screens pass.
+
+If adopted as a draft candidate, derive the predictor in both source/target,
+use it consistently in bridge, dependence fit, transfer and diagnostics, then
+rebuild from the original parent. Re-run population outcomes and noncalendar
+sensitivity on the new candidate; old benefit results must be labeled historical.
+Publish only aggregate diagnostics, never raw source records or household IDs.

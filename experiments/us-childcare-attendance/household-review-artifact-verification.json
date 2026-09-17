@@ -1,0 +1,44 @@
+{
+  "date": "2026-09-16",
+  "people": 166321,
+  "under13_children": 31889,
+  "households": 57240,
+  "native_sha256": "fc84fa083061bb28732b03ae6b06168505fe28be58f72954f52bf99b95eed1e8",
+  "checkpoint_sha256": "d69901b04c049142bc4ceabcd4ac547c324b43c18799a86cd39a9eac2e66f256",
+  "previous_native_sha256": "937c0c0c9798f0cf9e015fc4d5bed204342480bf93a415d94d3080d66f20cb6f",
+  "source_stage_report_sha256": "cb26f9ddc19d2924ac303c15b66a94f5d393c435ab55922309d2f24fa16fc3d2",
+  "attendance_recipe": {
+    "contract_sha256": "ae648c6cb0e2838fdf142975e9c536eb0683d9630fd1738096d524222ffb01dc",
+    "runtime_versions": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "policyengine-us": "1.819.0"
+    },
+    "code_sha256": {
+      "childcare_attendance.py": "da00ef1fb45232a731bd4a3b33d93cd0aeac0682b28d50e4d53cb79db12ce96e",
+      "childcare_population.py": "19fef5e4cc1838734783c2eb911f556596256cf093fb1063a403a6eadf49d04e",
+      "nsece_childcare.py": "affc8ac5a3ce853e2ef8b062c51a1801a15573cbcbf6eacc2c093334a1d12c11",
+      "nsece_childcare_bridge.py": "70a7edea8b28c6da21ff4fa9bb220766a3e6cd714926684af29bdba1a8421b0a",
+      "nsece_childcare_dependence.py": "1c5123a77f84460ba517d2b4c6c3e04ae658bf36e9cf54ed69ddbcacc85efc09",
+      "childcare_attendance_stage.py": "42e777b0edfc813d79204bc2932fe429d6a48cd2866397560a7386cbee54dadb",
+      "childcare_attendance_receipt.py": "0950fce7f372ca4b240cd055c931f5f8fe070223fd68504a3ea9cfbc4e16c645"
+    }
+  },
+  "content_binding_sha256": "80282b5b68b744768d49a455adc2ffc5b931f70507069eea4b45223c7fce2f46",
+  "verified_native_loaders": [
+    "microcosm.build.us_runtime.h5_io.load_legacy_calibrated_us_h5",
+    "microcosm.build.us_runtime.l0_refit_export.load_us_frame"
+  ],
+  "all_attendance_values_and_person_ids_equal_previous_candidate": true,
+  "household_weights_equal_previous_candidate": true,
+  "original_columns_and_period_verified_by_source_stage_export": true,
+  "build_wheel_sha256": "7c10e316c709be5a5ed0db5a82faf2646f189ee337c7ed0d23d60b1a1e777c24",
+  "verification_code_sha256": "6dda5a07a99d4693719d344cb33729d3431d08909f6ee9930c665fc0ac236f12",
+  "interpretation": "The household-size challenger is diagnostic-only. The default dependence fitter accepts explicit matching columns for assessment but retains its original production defaults. Rebuilt from the unchanged original parent because recipe code hashes changed; every attendance value equals the previous candidate, so its benefit comparison and transport-sensitivity estimates remain applicable. Neither the old nor current candidate is certified.",
+  "default_sibling_fit_matches_previous_execution": true,
+  "changed_recipe_files": [
+    "nsece_childcare_dependence.py"
+  ],
+  "sensitivity_model_and_evaluator_code_unchanged": true,
+  "production_ready": false
+}

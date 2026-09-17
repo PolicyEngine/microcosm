@@ -47,6 +47,18 @@
   "child_support_received": {
    "status": "required"
   },
+  "childcare_attending_days_per_month": {
+   "note": "Person-level NSECE attendance source extension (#915): requires persisted signal; missing inputs must not silently become engine defaults. The modeled age domain and outside-domain baseline policy are recorded in source coverage.",
+   "status": "required"
+  },
+  "childcare_days_per_week": {
+   "note": "Person-level NSECE attendance source extension (#915): requires persisted signal; missing inputs must not silently become engine defaults. The modeled age domain and outside-domain baseline policy are recorded in source coverage.",
+   "status": "required"
+  },
+  "childcare_hours_per_day": {
+   "note": "Person-level NSECE attendance source extension (#915): requires persisted signal; missing inputs must not silently become engine defaults. The modeled age domain and outside-domain baseline policy are recorded in source coverage.",
+   "status": "required"
+  },
   "congressional_district_geoid": {
    "status": "required"
   },
@@ -534,11 +546,11 @@
   }
  },
  "counts": {
-  "required": 163,
+  "required": 166,
   "reviewed_exclusion": 7,
-  "total": 170
+  "total": 173
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, and the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, the three NSECE child attendance inputs (#915), and the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (microcosm.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/microcosm#368",
  "reference": {

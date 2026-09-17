@@ -17,6 +17,7 @@ from microcosm.build.spec_engine.field_usage import (
     Generation0Effect,
     UsageMode,
     build_field_usage_ledger,
+    configuration_sources,
     default_usage_claims,
 )
 from microcosm.build.spec_engine.legacy_adapter import (
@@ -92,22 +93,22 @@ def _mutated_bundle(
 
 
 def test_exact_complete_ledger_has_one_primary_mode_per_pointer(field_ledger) -> None:
-    assert len(field_ledger.fields) == EXPECTED_CONFIGURATION_FIELD_COUNT == 42_156
+    assert len(field_ledger.fields) == EXPECTED_CONFIGURATION_FIELD_COUNT == 42_159
     assert field_ledger.source_counts == {
-        "authored": 32_384,
+        "authored": 32_387,
         "resolved_bindings": 9_772,
     }
     assert field_ledger.mode_counts == {
         "legacy_behavior": 13_988,
         "compiler_semantic": 27_717,
-        "front_end_validation": 348,
+        "front_end_validation": 351,
         "identity_only": 103,
     }
     assert field_ledger.generation0_effect_counts == {
         "legacy_behavior": 38_476,
-        "no_generation0_effect": 3_680,
+        "no_generation0_effect": 3_683,
     }
-    assert len({field.pointer for field in field_ledger.fields}) == 42_156
+    assert len({field.pointer for field in field_ledger.fields}) == 42_159
 
 
 def test_eligibility_concepts_are_validation_not_generation0_behavior(
@@ -162,15 +163,11 @@ def test_spine_assembly_mass_share_fields_name_exact_adapter_sinks(
 ) -> None:
     for channel in ("acs", "asec"):
         field = field_ledger.field(
-            "/authored/spec~1spine.yaml/assembly/household_mass_shares/"
-            f"{channel}"
+            f"/authored/spec~1spine.yaml/assembly/household_mass_shares/{channel}"
         )
         assert field.mode is UsageMode.LEGACY_BEHAVIOR
         assert field.generation0_effect is Generation0Effect.LEGACY_BEHAVIOR
-        assert (
-            f"/spine_assembly/household_mass_shares/{channel}"
-            in field.sink_pointers
-        )
+        assert f"/spine_assembly/household_mass_shares/{channel}" in field.sink_pointers
 
 
 def test_copied_surfaces_cannot_rescue_a_missing_calibration_sink(
@@ -358,14 +355,10 @@ def test_mass_share_mutation_changes_the_named_adapter_surface(
     ledger = build_field_usage_ledger(mutated, legacy_payload=mutated_legacy)
     for channel in ("acs", "asec"):
         field = ledger.field(
-            "/authored/spec~1spine.yaml/assembly/household_mass_shares/"
-            f"{channel}"
+            f"/authored/spec~1spine.yaml/assembly/household_mass_shares/{channel}"
         )
         assert field.claim_id == "spine_assembly_household_mass_shares"
-        assert (
-            f"/spine_assembly/household_mass_shares/{channel}"
-            in field.sink_pointers
-        )
+        assert f"/spine_assembly/household_mass_shares/{channel}" in field.sink_pointers
 
 
 def test_geography_declaration_mutation_changes_checkpoint_identity(
@@ -441,3 +434,26 @@ def test_geography_source_pin_mutation_changes_checkpoint_identity(
     ).field("/authored/spec~1sources.yaml/sources/7/sha256")
     assert field.claim_id == "source_geography_identity"
     assert field.mode is UsageMode.LEGACY_BEHAVIOR
+
+
+def test_nsece_source_descriptor_has_explicit_manifest_validation_claim(
+    resolved_us, field_ledger
+):
+    manifest = configuration_sources(resolved_us)["authored"]["country_package.json"]
+    index, descriptor = next(
+        (index, descriptor)
+        for index, descriptor in enumerate(manifest["resources"])
+        if descriptor["path"] == "childcare_attendance_source.json"
+    )
+    assert descriptor == {
+        "path": "childcare_attendance_source.json",
+        "kind": "legacy_json",
+        "schema_id": "legacy_json",
+    }
+    for name in descriptor:
+        field = field_ledger.field(
+            f"/authored/country_package.json/resources/{index}/{name}"
+        )
+        assert field.claim_id == "country_manifest"
+        assert field.mode is UsageMode.FRONT_END_VALIDATION
+        assert field.generation0_effect is Generation0Effect.NO_GENERATION0_EFFECT

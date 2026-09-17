@@ -63,6 +63,13 @@ This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
 final candidate diagnostics under `runs/<run_id>/` without updating production
 `latest.json`.
 
+The three childcare-attendance inputs are required export inputs. A US fiscal
+build also needs the licensed NSECE files
+(`--childcare-attendance-household-tsv`, `--childcare-attendance-calendar-tsv`
+and `--childcare-attendance-inherit-outside-domain-baseline`); without them the
+build is refused before calibration. See
+[docs/us-childcare-attendance.md](docs/us-childcare-attendance.md).
+
 See [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md) for the measured memory,
 disk, and CPU footprint of developing and building locally (and what to budget
 on a build machine — RAM is the binding constraint).
@@ -131,7 +138,9 @@ publish CLI posts a release alert to Slack — `#populace-us` or `#populace-uk`,
 chosen from the repo id.
 
 US exact-k ladder candidates use a tag-only lane. Run
-`tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`
+`tools/build_us_exact_k_ladder_release.py` with the
+[`childcare_attendance` source configuration](docs/us-childcare-attendance.md#build-and-reproduction)
+unless the pool already carries bound attendance inputs, then execute the `publish_command`
 recorded in `package_result.json`. That command includes `--create-tag`,
 `--no-latest`, and `--tag-only`: it uploads the immutable release and creates its
 tag without committing candidate artifacts or release copies to the production
