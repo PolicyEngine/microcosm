@@ -117,7 +117,8 @@ three measurement-round repairs below, 7.6 min). Both pass every spine gate. Tab
 committed measure-exclusion register (see the defect below), release ids `725-control` / `725-candidate`
 (non-release). Both solves completed and wrote `calibration_diagnostics.json`; both terminal batteries
 blocked at `uk_target_fit`, so neither staged an artifact, as intended for a measurement. Comparison:
-`docs/evidence/uk-cgt-725/calibration-comparison.json`, `target-comparison.csv`.
+`docs/evidence/uk-cgt-725/calibration-comparison-round1.json`, `target-comparison-round1.csv` (renamed
+when the split-plus-tilt round below took the plain names).
 
 - **Surface.** Control 560 targets (3 CGT); candidate 634 (77 CGT: the three totals, 24 size-band rows,
   24 age-band rows, 24 region-tier rows, 2 residential rows). None skipped on either side.
@@ -140,11 +141,18 @@ blocked at `uk_target_fit`, so neither staged an artifact, as intended for a mea
   tracked repair, or implement the tilt in this PR.
 - **Liability rises to +11.4 %** (£25.07bn of £22.50bn; control +0.6 %). The control's liability sat inside
   the fence only because its gains were 9.5 % short; with gains on target the engine's 2024 liability
-  overshoots, and the age-band tax rows carry the same +7 to +15 % for ages 35–74. The engine taxes every
-  gain at the general schedule: it has no input for the residential split the new column carries
-  (residential 18/24 % against 10/20 % before 30 October 2024), and the asset-type column is likewise
-  unconsumed. The policyengine-uk issue for the two input variables (held for María's go) is the repair;
-  until then liability should be read as an upper bound on this branch.
+  overshoots, and the age-band tax rows carry the same +7 to +15 % for ages 35–74. *Corrected in session 3
+  (the first draft of this bullet blamed the missing residential schedule, which runs the other way):* the
+  engine charges every gain at `gov.hmrc.cgt.basic_rate` / `higher_rate`, which for 2024-25 are the
+  day-weighted blends of the rates before and after 30 October 2024 (13.46 % / 21.73 %). HMRC's 2024-25
+  commentary reports 61,000 taxpayers claiming Business Asset Disposal Relief on £18.5bn of gains at 10 %,
+  £1.8bn of tax; charging those gains at the blended 21.73 % overstates liability by about £2bn of the
+  £2.6bn gap, and HMRC also reports disposals brought forward ahead of the Budget, which a calendar blend
+  cannot see. Residential property (18/24 % all year, £12.9bn of gains) and carried interest (28 %, £5.4bn)
+  are under-taxed by the blend, by roughly £0.3bn each, so a residential input alone would widen the gap.
+  The engine repair is PolicyEngine/policyengine-uk#1858 (BADR, residential and carried-interest inputs with
+  their own schedules); BADR-qualifying gains also need imputing on the spine before that input has data
+  (HMRC Table 4; a microcosm follow-up). Until then liability on this branch reads as an upper bound.
 - **Nothing outside CGT moved.** 540 non-CGT targets within 10 % on both sides; no non-CGT target crosses
   the 10 % or 25 % fence in either direction. The one non-CGT breach, the SPI self-employment
   £20,000–30,000 band, sits at +26.0 % on the control and +25.3 % on the candidate: a main-side condition.
@@ -157,26 +165,123 @@ branch renames the entries to `dwp.uc.households_carer_element` and siblings (co
 reasons, adjudication and window unchanged; the control run used a corrected copy of the register through
 `--measure-exclusions` so the two solves excluded the same targets.
 
-## Part D — verdict
+## Part D — split plus tilt (session 3, María's ruling on the 16–24 rows)
 
-The CGT distribution improved on every axis the plan set out to measure, on the design weights and after
-calibration:
+Two changes to the rake, each measured on its own spine build (`candidate-tilt`, `candidate-tilt2` in the
+acceptance directory) against the unchanged control: tables `docs/evidence/uk-cgt-725/*-tilt.csv` and
+`*-carry.csv`, receipts `receipt-tilt.json` and `receipt-carry.json`, calibration comparisons
+`calibration-comparison-tilt.json` / `target-comparison-tilt.csv` and the plain-named files for the final head.
 
-- Age: 65+ hold 38.0 % of liable taxpayers on the candidate spine (23.1 % on main; Table 6 38.5 %); every
-  adult age band's count is on Table 6 before calibration and within 0.4 % after it.
-- Geography: the twelve region-tier rows are within 1 % after calibration; before it, seven of twelve areas
-  are within 10 % of Table 5 on the individuals basis.
-- Size of gain: every published band's count and gains are within 1 % after calibration and within one row's
-  weight before it; the £5m+ band holds 3,700 people and £46.5bn before calibration against 3,000 and £48.5bn.
-- The national gains total, 9.5 % short on main against three aggregates, sits at −0.4 % with 74 finer rows
-  bound and no non-CGT target moving across a fence.
-- Residential property: 202,689 taxpayers and £12.45bn before calibration, 0.0 % after, on 325 rows.
+**Why the 16–24 rows failed.** The candidate frame holds 271 gainer rows aged 16–24, 265 of them in the
+lowest taxable-income band, weighing about 640 people each, with no donor carriers among them. Pooled with
+the 2,015 rows aged 25–34, whose incomes and priors are larger, they ranked at the bottom of every cell walk:
+two rows ended liable, 1,469 people against 4,000 published, with gains below £24,000. Table 3's lowest
+income column has a mean gain of about £84,000 against the published 16–24 mean of £80,000, so the count
+margin alone carries most of the 16–24 gains once the group stands on its own.
 
-What did not improve and why: gains by age above the count margins (65+ hold 20.2 % of gains on the design
-weights against 31.8 % published; after calibration the age-gains rows fit within 2 % for 35+ because they
-are bound, but the 16–24 band cannot be reached); the liability total, now visible as +11.4 % because the
-engine cannot apply the residential schedule; and the asset-type composition, which is diagnostic only.
+**Split plus tilt (commit b88190e8).** The rake now runs at seven age groups (16, 25, 35, 45, 55, 65, 75)
+and holds Table 6 gains by age as one linear constraint per group: an exponential tilt of the group's cells,
+lambda solved by bisection, that keeps the group's count, alternated with the three count margins with the
+joint applied last. The 0–15 band is spread across the groups by the normalisation rather than folded into
+the youngest. On the full spine the rake meets every count and gains margin to 3e-10 in nine rounds; the
+cumulative tilts run from −6.0 (25–34, target mean £92k against the frame's mix) to +0.57 (75+).
 
-Three measurement-round repairs (fallback netting, systematic rounding, stratified draws) are on the branch;
-each was found by a receipt this note quotes, and the unit tests could not have found them because they
-depend on the frame's weight granularity.
+- *Design weights.* 16–24 reach 4,591 liable people and £0.30bn (published 4,000 / £0.32bn), so the rows
+  are attainable. But the walked total rose to 562,087 (+2.0 %) and the £5m+ band to 4,950 people against
+  2,660 raked: with 168 cells per income band most allotments sit below one carrier's weight, every cell
+  walk rounds by up to a whole person, and the pooled walk can only add, so the truncation of 168
+  independent roundings compounded upward, worst where the heaviest donor rows sit (income band £125,140:
+  +5,200 on 34,000). Gains by age at design weights swung the other way from round 1 (75–84 £21.9bn against
+  £11.7bn; 65–74 £18.8bn against £24.3bn): the top two bands hold about 8,000 people on rows weighing
+  400–900, so which age cells receive those rows is a lottery of a dozen draws however exact the targets.
+- *Calibration.* All 77 CGT rows inside the 25 % fence for the first time, 71 within 10 %: the 16–24 rows
+  fit (gains −1.8 %, tax +0.8 %, count +0.2 %), every age-band gains row within 3 % except 25–34 (−10.1 %),
+  gains total −0.3 %, taxpayers −0.2 %, every size-band, region and residential row within 1.2 %; the
+  liability rows carry the BADR bias described in Part C (total +11.6 %; 35–74 +7 to +15 %). Loss 0.0104
+  (control 0.0112), ESS 10,771 (10,542), 538 non-CGT rows within 10 % (540); two non-CGT rows crossed 10 %
+  for the worse (SPI self-employment £50–70k +9.7 → +12.6 %; OBR ESA −9.8 → −10.0 %) and the one non-CGT
+  25 % breach on main (self-employment £20–30k, +26.0 %) came inside the fence at +24.7 %. The terminal
+  battery passed and staged an artifact.
+
+**Carry the rounding (commit 93c5b185).** Pass 1 now carries each cell walk's signed rounding error, per
+gain band, into the next cell's boundaries (error diffusion), so each gain band's walked total within an
+income band stays within one person's weight of its raked total; only rounding is carried, a cell short of
+support still scales down and releases its structural shortfall to the pooled walk, and the receipt records
+the carry left at the end of every income band.
+
+- *Design weights.* Liable taxpayers 557,420 (+1.2 %; the largest carry left at the end of an income band
+  is 1,930 people, a donor row's weight, in a band whose remaining allotments could not absorb it), liable
+  gains £114.1bn (published £119.3bn), pass 1 places 555,560 and the pooled walk 1,860. Size bands: every
+  band's count within 3 % of Table 2.1a except £250k (+3 %), £1m (12,546 against 9,000), £2m (+27 %) and
+  £5m+ (3,220 against 3,000; £41.1bn against £48.5bn because the overshoot sits in the lower-income £5m+
+  cells whose means are smaller). Age counts within 2,600 of Table 6 for every adult band (16–24 5,159
+  against 4,000); age gains still lumpy at design weights (35–44 £18.3bn against £11.8bn; 65–74 £16.1bn
+  against £24.3bn; 65+ hold 27.7 % of gains against 31.8 %, control 29.0 %). Residential 202,673 taxpayers
+  against 202,630 on 324 rows, £12.93bn against £12.24bn (inside the gate's three-sigma envelope).
+- *Calibration.* Again all 77 CGT rows inside the fence, 71 within 10 %: 16–24 gains −3.9 %, tax +0.8 %,
+  count −0.1 %; taxpayers −0.1 %; nothing outside CGT moved (540 non-CGT rows within 10 % on both sides, no
+  fence crossed either way). But the gains total slipped to −2.9 % and a few rows sit around ±10 %: the £5m+
+  band +11.1 % on taxpayers and −7.2 % on gains, 65–74 gains −12.2 %, South East gains −13.0 %, 25–34 gains
+  −9.3 %; liability +8.7 %. The terminal battery blocked at `uk_target_fit` on the main-side SPI
+  self-employment £20–30k row (+25.5 %; +24.7 % on the tilt-only run, +26.0 % on the control), not on a CGT
+  row. The £5m+ receipt explains the gains slip: the (£200k+, £5m+) cell, the largest in the table, lands
+  2,060 people against 1,968 raked, yet the band carries £41.1bn against £48.1bn planned, because the
+  stratified draw gave equal quantile strata to unequally weighted rows — the 100-weight donors hold the top
+  strata and the 400–900-weight clone rows the bottom ones, so the plan's *weighted* mean drifts below the
+  published mean however exactly the unweighted strata average to it.
+
+**Weight-proportional strata (commit 9bd4d8ce).** Each plan's strata now partition
+(0, 1) in proportion to household weight along the prior-gain order; the open band takes each stratum's
+conditional mean, so its weighted mean is the published mean exactly, and a bounded band takes the quantile
+inside its stratum. Rank order is unchanged.
+
+- *Design weights* (`candidate-tilt3`; the walks are byte-identical to the carry rung, only the amounts
+  move). Every plan's weighted mean now sits on its published mean, so the band gains follow the band counts:
+  the £5m+ band's 3,220 people carry £57.3bn (published 3,000 / £48.5bn), the £1m band's 12,546 carry
+  £16.2bn (9,000 / £12.8bn), and liable gains total £134.3bn against £119.3bn, which is the count overshoot
+  of the top three bands made visible rather than hidden by light rows holding the top strata. Bands from
+  £0 to £500k sit within 1 % on gains as well as counts. 65+ hold 32.4 % of gains (published 31.8 %; control
+  29.0 %), while within the older groups the lottery of which cells received the heavy top-band rows still
+  shows (75–84 £24.7bn against £11.7bn; 65–74 £16.6bn against £24.3bn; 35–44 £21.9bn against £11.8bn).
+  Residential 202,679 taxpayers against 202,630 on 325 rows, £12.71bn against £12.24bn.
+- *Calibration* (`calibration-comparison.json`, `target-comparison.csv`; the PR head). All 77 CGT rows
+  inside the fence, 74 within 10 %, 69 within 5 %, 63 within 1 %. The 16–24 rows fit: gains −4.5 %, tax
+  +0.1 %, count −0.05 %. Gains total −1.5 % (control −9.5 %), taxpayers −0.2 %. The £5m+ band now fits both
+  ways, count +0.9 % and gains −3.8 %, where the carry rung had to trade +11 % against −7 %; every size-band
+  row is within 4 %, every region row within 6.3 % (South East gains), every age-count row within 0.3 %, the
+  age-gains rows within 9 % (35–44 −9.0 %, 25–34 −8.4 %; 65–74 −0.2 %, 75–84 −0.9 %), both residential rows
+  within 0.4 %. Liability +10.3 % and the age tax rows +7 to +15 % for 45–74 carry the BADR bias (Part C).
+  Nothing outside CGT moved: 540 non-CGT rows within 10 % on both sides, no row crossed a fence either way,
+  loss 0.0103 against 0.0112, ESS 10,530 against 10,542. The terminal battery blocked at `uk_target_fit` on
+  the same main-side row as the control (SPI self-employment £20–30k, +25.5 % against +26.0 %), not on a CGT
+  row.
+
+
+## Part E — verdict
+
+Against the control on main, on the PR head (9bd4d8ce):
+
+- Age: 65+ hold 38.6 % of liable taxpayers on the design weights (23.1 % on main; Table 6 38.5 %) and 32.4 %
+  of gains (29.0 % on main; 31.8 % published), because the rake now holds Table 6 gains by age as well as
+  its counts; after calibration every age-count row is within 0.3 % and every age-gains row within 9 %.
+- The 16–24 rows, which breached the fence at −70.6 % and −79.6 % on the count-only rake, fit at −4.5 % and
+  +0.1 % once 16–24 is its own rake group.
+- Size of gain: every band's count within 3 % of Table 2.1a on the design weights below £1m, every band's
+  count and gains within 4 % after calibration; the £5m+ band holds 3,220 people and, with weight-proportional
+  strata, the published mean, so count and gains fit together.
+- Geography: every region row within 6.3 % after calibration (12 areas, 24 rows); residential property
+  202,679 taxpayers and £12.71bn on the design weights, both rows within 0.4 % after.
+- The national gains total, 9.5 % short on main against three aggregates, sits at −1.5 % with 74 finer rows
+  bound; nothing outside CGT moved in either direction.
+
+What did not improve and why: the liability total (+10.3 %) and the age tax rows for 45–74, which carry the
+engine's blended-rate treatment of BADR gains (PolicyEngine/policyengine-uk#1858 is the engine repair and a
+BADR imputation on the spine the data one); the 25–34 and 35–44 gains rows around −9 %, and the lumpy age
+profile of the top bands on the design weights, which come from about 8,000 people in the top two bands being
+carried by rows weighing 400–900 each so that a dozen draws decide which age cells hold them (a follow-up
+worth measuring: lighter top-band rows, either more donors per band or a pooled top-band walk); and the
+asset-type composition, which is diagnostic only.
+
+Six repairs came out of the measurement rounds (fallback netting, systematic rounding, stratified draws,
+split plus tilt, rounding carry, weight-proportional strata); each was found by a receipt this note quotes,
+and the unit tests could not have found them because they depend on the frame's weight granularity.
