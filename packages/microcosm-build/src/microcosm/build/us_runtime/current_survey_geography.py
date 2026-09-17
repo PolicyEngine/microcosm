@@ -26,7 +26,14 @@ COLUMNS = (
     "survey_observed_state",
     "survey_observed_puma",
 )
-MAX_HOUSEHOLDS = 64 * 1024**2 // 128
+# The selected/stacked household roster, which a full-source build supplies at
+# 1,587,376. Four times that, rounded up to the next whole million. The old
+# 64 * 1024**2 // 128 borrowed a byte budget this module does not have: its
+# only bytes are the 64 KiB summary receipt below, because _projection_digest
+# streams one bounded row encoding at a time into a hash and materialises no
+# per-household payload. So there is no byte transport behind this bound and
+# it is an explicit row ceiling. See docs/us-native-row-ceilings.md.
+MAX_HOUSEHOLDS = 7_000_000
 MAX_RECEIPT_BYTES = 64 * 1024
 
 
