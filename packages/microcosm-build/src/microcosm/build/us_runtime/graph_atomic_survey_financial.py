@@ -1701,19 +1701,22 @@ def run_atomic_survey_financial(
 
         def observe(node_id, population):
             require(node_id not in observed_seals, "ATOMIC_OBSERVER_DUPLICATE")
-            # The executor hands the live admitted population below; sealing is
-            # read-only, so it needs no copy of its own.
+            # Seal exactly the object this run goes on to hold. For a declared
+            # consumer that is the detached snapshot, which is what the
+            # comparison ran against before this change; for every other node
+            # there is no snapshot to take, and the live population seals to
+            # the same record because the detachment preserves content --
+            # pinned by test_an_observer_snapshot_preserves_the_replay_seal.
+            # The executor hands the live population (detach=False below) and
+            # sealing is read-only, so this allocates one copy per declared
+            # consumer and none at all for the rest.
+            if node_id in declared_consumers:
+                population = _observer_snapshot(population)
+                observed[node_id] = population
+                observed_stamps[node_id] = reconstruction._population_stamp(population)
             seal = replayed_population_seal(population)
             observed_seals[node_id] = seal
             observed_seal_ids[node_id] = seal_identity(seal)
-            if node_id in declared_consumers:
-                retained = _observer_snapshot(population)
-                require(
-                    replayed_population_seal(retained) == seal,
-                    "ATOMIC_OBSERVER_SNAPSHOT_SEAL",
-                )
-                observed[node_id] = retained
-                observed_stamps[node_id] = reconstruction._population_stamp(retained)
 
         manifest = run_graph(
             compiled,

@@ -1113,3 +1113,22 @@ def test_a_series_subclass_column_refuses_though_the_values_match():
         _refuses_frames(substituted, substituted)
         == "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
     )
+
+
+def test_an_observer_snapshot_preserves_the_replay_seal():
+    """The base financial runner seals what it keeps, and drops what it does not.
+
+    A declared consumer is sealed after ``_observer_snapshot`` detaches it and
+    every other node is sealed live, so the two must produce the same record --
+    otherwise a dropped node's seal would describe a population the comparison
+    would never have seen.
+    """
+    from microcosm.graph.executor import _observer_snapshot
+
+    live = _population(_frame())
+    detached = _observer_snapshot(live)
+    assert detached is not live
+    assert detached.frame.table("person") is not live.frame.table("person")
+    assert replayed_population_seal(detached) == replayed_population_seal(live)
+    _accepts_populations(live, detached)
+    _accepts_populations(detached, live)
