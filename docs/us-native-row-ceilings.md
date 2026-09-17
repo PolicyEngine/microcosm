@@ -189,9 +189,16 @@ meets; it does not, and this note corrects that.**
 
 ## 5. What still binds, and whose argument it is
 
-The census in §6 found fourteen bounds a full-source build meets. Seven are the
-row counts §3 moved. The rest belong to the transport lane's argument — a
+**Nineteen bounds bind at full source at the base branch's values.** §3 moved
+seven of them. The other twelve belong to the transport lane's argument — a
 segmented stream under one explicit total — not to this one.
+
+(The census in §6 reports fourteen rather than nineteen because its agents read a
+moving tree: five of the seven were lifted while it ran, and they correctly
+report the post-lift values at which those five no longer bind. Each of those
+rows records both numbers. The two the census still shows as binding —
+`current_survey_geography.MAX_HOUSEHOLDS` and
+`asec_demographic_source._MAX_PERSONS` — were moved afterwards, on its evidence.)
 
 ### 5a. The test the rule applies
 
@@ -324,12 +331,15 @@ refusal code and exception type, what it protects, the count it meets at 1/10
 and at full source, and whether it binds. Every verdict that claimed a
 full-source build meets the bound, or that the bound guards an encoding width or
 an upstream file's real size, then went through an adversarial pass that read the
-code again and tried to refute it — **41 verdicts**, and no headline verdict was
-overturned.
+code again and tried to refute it — **42 verdicts**, and no headline binding call
+was overturned.
 
-The result: **14 bounds bind at full source, 6 of them at 1/10.** Seven of the
-fourteen are the row counts §3 moved. The other seven are byte transports and
-byte-derived row pre-checks; §5a and §5b say which and why.
+The result, read as the agents read it: **14 bounds bind at full source, 6 of
+them at 1/10.** Five of the seven §3 moved are absent from that fourteen because
+they were lifted mid-census and the agents correctly reported the post-lift
+values; each of those rows carries both numbers. **At the base branch's values
+the figure is nineteen**, of which §3 moved seven, leaving twelve for the
+transport argument. §5a and §5b say which and why.
 
 ## 7. Pins
 

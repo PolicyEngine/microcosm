@@ -108,10 +108,20 @@ verdicts**. Many refined a classification or completed an enforcement list.
 | | |
 |---|---:|
 | bounds censused | 146 |
-| bind at full source | **14** |
+| bind at full source, **at the base branch's values** | **19** |
+| bind at full source, as `census.json` reports them | 14 |
 | bind at 1/10 | **6** |
 | verdicts adversarially verified | 42 |
 | headline binding calls overturned | 0 |
+
+**Why the two figures differ, stated rather than reconciled quietly.** The census
+agents read a moving tree: five of the seven constants §4 moved were lifted while
+the census ran, and the agents correctly reported the *post-lift* values at which
+those five no longer bind — each of those rows records both numbers and the
+commit that changed it. The two that `census.json` still shows as binding,
+`current_survey_geography.MAX_HOUSEHOLDS` and `asec_demographic_source._MAX_PERSONS`,
+were moved afterwards on its evidence. So: nineteen bind at base, seven moved
+here, twelve remain for the transport argument.
 
 **Six bounds bind at 1/10.** That contradicts the transport lane's §5 conclusion
 that "a 1/10 build meets no ceiling this lane did not lift". All six are byte
