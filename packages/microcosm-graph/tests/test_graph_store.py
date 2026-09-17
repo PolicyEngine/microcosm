@@ -294,3 +294,113 @@ def test_json_receipt_and_opaque_bytes_are_content_validated(tmp_path: Path) -> 
         "ok": True,
     }
     assert store.load_bytes(_key("e")) == b"model bytes"
+
+
+# --------------------------------------------------------------------------
+# The write ledger, and taking one caller's own writes back out.
+# --------------------------------------------------------------------------
+
+
+def test_the_ledger_holds_what_was_published_not_what_was_already_there(
+    tmp_path: Path,
+) -> None:
+    store = ContentStore(tmp_path / "store")
+    existing = _key("1")
+    store.put_bytes(existing, b"from an earlier run")
+
+    with store.recording_writes() as written:
+        store.put_bytes(existing, b"from an earlier run")  # satisfied, not published
+        store.put_bytes(_key("2"), b"this run's")
+        store.put_json(_key("3"), {"this": "run"})
+
+    assert written == {_key("2"), _key("3")}
+
+
+def test_a_write_only_replacement_is_this_caller_s_to_take_back(
+    tmp_path: Path,
+) -> None:
+    """``verify_existing=False`` puts this caller's object where the old one was."""
+
+    store = ContentStore(tmp_path / "store")
+    key = _key("4")
+    store.put_bytes(key, b"incumbent")
+
+    with store.recording_writes() as written:
+        store.put_bytes(key, b"replacement", verify_existing=False)
+
+    assert written == {key}
+
+
+def test_ledgers_nest_and_each_closes_without_disturbing_the_other(
+    tmp_path: Path,
+) -> None:
+    store = ContentStore(tmp_path / "store")
+
+    with store.recording_writes() as outer:
+        store.put_bytes(_key("5"), b"outer")
+        with store.recording_writes() as inner:
+            store.put_bytes(_key("6"), b"inner")
+        assert inner == {_key("6")}
+        store.put_bytes(_key("7"), b"outer again")
+
+    assert outer == {_key("5"), _key("6"), _key("7")}
+    assert store._write_ledgers == []
+
+
+def test_two_empty_ledgers_close_without_stranding_each_other(tmp_path: Path) -> None:
+    """Equal sets are not the same ledger; closing takes the one that opened."""
+
+    store = ContentStore(tmp_path / "store")
+    with store.recording_writes():
+        with store.recording_writes():
+            pass
+        store.put_bytes(_key("8"), b"after the inner close")
+    assert store._write_ledgers == []
+
+
+def test_a_ledger_closes_when_the_block_under_it_raises(tmp_path: Path) -> None:
+    store = ContentStore(tmp_path / "store")
+    with pytest.raises(RuntimeError, match="refused"):
+        with store.recording_writes():
+            store.put_bytes(_key("9"), b"written before the refusal")
+            raise RuntimeError("refused")
+    assert store._write_ledgers == []
+
+
+def test_eviction_makes_a_key_a_miss_again_and_repeats_harmlessly(
+    tmp_path: Path,
+) -> None:
+    store = ContentStore(tmp_path / "store")
+    key = _key("a")
+    store.put_bytes(key, b"evict me")
+    assert store.has(key)
+
+    assert store.evict(key) is True
+    assert store.has(key) is False
+    assert store.evict(key) is False  # idempotent
+    with pytest.raises(StoreMiss):
+        store.load_bytes(key)
+
+    store.put_bytes(key, b"written again")
+    assert store.load_bytes(key) == b"written again"
+
+
+def test_eviction_leaves_no_partial_object_and_no_tmp_litter(tmp_path: Path) -> None:
+    store = ContentStore(tmp_path / "store")
+    key = _key("b")
+    store.put_frame(key, _frame())
+
+    assert store.evict(key) is True
+    assert not store.object_path(key).exists()
+    assert list(store.tmp.iterdir()) == []
+
+
+def test_eviction_of_a_key_never_written_is_not_an_error(tmp_path: Path) -> None:
+    store = ContentStore(tmp_path / "store")
+    assert store.evict(_key("c")) is False
+
+
+def test_eviction_rejects_a_malformed_key(tmp_path: Path) -> None:
+    store = ContentStore(tmp_path / "store")
+    with pytest.raises(ValueError, match="key"):
+        store.evict("not-a-key")

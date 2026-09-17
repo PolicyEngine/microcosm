@@ -1,1 +1,1 @@
-verify-once: Verify native sources once per run instead of once per accessor use and once per executed node.
+verify-once: Verify native sources once per run instead of once per accessor use and once per executed node. A run that the run-end re-derivation refuses now evicts every store object it published, so nothing it wrote survives under the source identity it started with.
