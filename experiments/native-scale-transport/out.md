@@ -154,6 +154,62 @@ four-figure accounting of it; the load-independent total, **−119.20 CPU-s on t
 runner call**, is the number to quote, and it is measured between the call's own
 start and return so the replay cannot reach it.
 
+### 2b. The required replay: the same exported bytes
+
+A "required replay" in this tree is `resume="require"`: `_preflight_require`
+(`executor.py:2363`) loads a cache record for every node in `compiled.order` and
+raises `StoreMiss` before anything executes if one is absent. The after-run
+therefore ran the same graph a second time, in the same process, against the
+store its own cold run had just written. Status
+**`COMPLETED_NINETEEN_NODE_AND_REQUIRED_REPLAY`**.
+
+| | |
+|---|---|
+| cold run | 1,907.58 CPU-s / 1,975.99 s wall |
+| required replay | **1,664.45 CPU-s / 1,699.62 s wall** |
+| whole process | 3,574.86 CPU-s / 3,680.73 s wall / 12.42 GB peak (ceilings 9,000 / 12,000 / 48 GiB) |
+| store objects written by the cold run | 5,869 |
+| **every node was a store hit on the replay** | **True** |
+| **manifest key identical** | **True** — `bd511d92e7252504f9407b375917e0268327808c3d7257c0d86edc8692a46807` |
+| node roster identical | True |
+| **store bytes identical** | **True** — all 5,869 objects; 0 paths added, 0 changed |
+
+**What the manifest key being identical proves.** `RunManifest.key` is
+`sha256_domain("manifest", canonical_json(self.content_addressed))`
+(`manifest.py:646-647`), and `content_addressed` is
+`{"nodes": {node_id: receipt._content_payload()}, "tier": …}` (`:565-577`), where
+`_content_payload` drops only `RUN_LEVEL_FIELDS` — `hit` and `wall_time`
+(`:404`). So an identical key means `canonical_json(content_addressed)` is
+**byte-identical** between the cold run and the replay: every node key, every
+artifact identity, every implementation hash, every seed and every receipt field
+the identity covers. Together with 5,869 store objects identical byte for byte
+and none added or changed, that is the requirement — a required replay reproduces
+the same exported bytes — met at this head.
+
+**A flaw in my own instrumentation, reported rather than quietly fixed.** The
+harness also compared its own projection of the two manifests, and that
+comparison said `content_addressed_identical: False` with ten nodes differing.
+It was wrong, and the reason is worth recording because it is the kind of thing
+that becomes a false finding if nobody chases it. A receipt reconstructed from a
+cache record is a `MappingProxyType` while a freshly built one is a `dict`, and
+the projection rendered both through `json.dumps(..., default=str)`, which turns
+a proxy into the string `mappingproxy({…})` carrying Python's insertion order.
+The first differing byte is at offset 348,983 of two files of exactly the same
+size, and it is the point where one rendering lists `'entity'` first and the
+other `'capabilities'` first. The repository's own canonicalisation disagrees
+with my rendering, and the repository is right: the key is identical, so
+`canonical_json` of that same structure is identical. The harness committed at
+`experiments/native-scale-transport/harness19_after_with_required_replay.py` now
+normalises mappings before comparing, with a docstring saying why; the report's
+verdict above rests on `manifest.key` and on the store's bytes, which were never
+in doubt.
+
+**One number worth keeping.** The replay costs 1,664.45 CPU-s against the cold
+run's 1,907.58 — **87%** — while executing no kernel at all, because every node
+hits the store and the runner still re-authenticates every source from scratch.
+That is the same story section 1 tells from the other side: 83.7% of the runner
+call is outside both node loops, and it is the source path, not the graph.
+
 ## 3. The design, in one page
 
 `docs/us-native-scale-transport.md` (421 lines) is the authority. Its shape:
@@ -448,7 +504,7 @@ each established from the code rather than proposed:
    no observations and no completion boundary (`:502-503`), which is the existing
    shape of "nothing retained, nothing to re-stamp".
 
-## 8. Still in flight at the time of writing
+## 8. Still outstanding: the 1/10 graph run
 
 Two measurements were running when this report was written, and the report says
 so rather than leaving a gap that reads like a result.
@@ -548,11 +604,6 @@ any of the five modules on this path was run as well — 41 files found by
 $ uv run python -m pytest $(cat dependent-tests.txt)
 190 failed, 1440 passed, 2 warnings, 123 errors in 1108.09s (0:18:28)
 ```
-
-**That number is an artefact of the invocation, not a result about this branch,
-and section 9a is the whole of why** — including what I could and could not
-establish about it, and what I stopped in order to protect a required
-measurement.
 
 `packages/microcosm-graph/tests` is in the battery even though this branch has
 zero hunks there, because CI runs it and because the seal and the transport are
