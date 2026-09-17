@@ -608,9 +608,9 @@ a crawl — the after-run's replay advanced 38 CPU-s in eight minutes of wall cl
 I stopped the control by its exact pid so the required measurement could finish,
 rather than keep two heavy readers competing for a page cache that had none left.
 
-```
-CONTROL_PLACEHOLDER
-```
+not run to completion: stopped by exact pid at 29 of ~1,630 tests, with the
+machine at 0.41 GB free pages and 2,996 MB of 4,096 MB swap in use
+
 
 **The cheap form of the same control**, which does not need 41 files: run the
 preparation file alone, then run it in one process behind a single other file that
