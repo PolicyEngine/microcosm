@@ -173,15 +173,16 @@ def _json_without_run_local_fields(manifest: RunManifest) -> dict[str, object]:
     ``to_json`` is not identical between two runs of one computation and is not
     meant to be: it carries three run-level manifest fields -- ``started_at``,
     ``finished_at`` and ``host`` -- and, inside every node receipt, the two the
-    receipt itself names as run-level, ``NodeReceipt.RUN_LEVEL_FIELDS``. Those
-    five are the fields the manifest's own docstring calls the ones a run may
-    change without changing what was computed, which is why the manifest key
-    already hashes each receipt without them. Removing exactly those, by their
-    own names and by that class attribute rather than by a list written here,
-    is what lets the rest of the document be compared between two runs; a
-    ``del`` of a field that stopped being serialized would raise rather than
-    quietly widen what this hides. Nothing is removed from ``decisions``,
-    ``content_addressed`` or any other field.
+    receipt itself names as run-level, ``NodeReceipt.RUN_LEVEL_FIELDS``. None of
+    the five reaches the manifest key, by two different routes: ``key`` hashes
+    ``content_addressed``, which is ``nodes`` and ``tier`` alone, so the two
+    timestamps and the host are outside it entirely, and each receipt enters it
+    through ``NodeReceipt._content_payload``, which drops ``RUN_LEVEL_FIELDS``.
+    Removing exactly those, by their own names and by that class attribute
+    rather than by a list written here, is what lets the rest of the document
+    be compared between two runs; a ``del`` of a field that stopped being
+    serialized would raise rather than quietly widen what this hides. Nothing
+    is removed from ``decisions``, ``content_addressed`` or any other field.
     """
 
     payload = json.loads(manifest.to_json())
