@@ -460,16 +460,37 @@ baseline and then replays it against its own store with `resume="require"`,
 comparing manifest key, node keys, artifact identities, receipts and every store
 object's bytes between the cold run and the replay. Its cold phase had passed
 1,300 CPU-s against the baseline's 2,028.69 when this section was written. Its
-roster spill is already on disk and is what section 5c's parity table was computed
+roster spill is already on disk and is what §4c's parity table was computed
 from, so the content-preservation result does not depend on the run finishing.
 
-**The 1/10 graph run** is queued behind two gates in
+**The 1/10 graph run may not start, and the gate is the reason.** It is queued
+behind two gates in
 `~/PolicyEngine/_worktrees/microcosm-native-scale-tenth` (detached at the branch
 head, waiter pid 58401): it waits for the after-run to exit, so that neither
 measurement's wall clock or peak RSS is the other's contention, and then for
-`vm_stat` to show more than 70 GB available. Another lane's work held 48–62 GB
-during this session, which is exactly what the gate is for; the waiter refuses
-after six hours rather than starting a run that would make the machine swap.
+`vm_stat` to show more than 70 GB available. Another lane's work held 43–62 GB
+throughout this session, so `vm_stat` reported 42–55 GB available, and the gate
+did not open. That is exactly what the gate is for: this machine has 128 GiB, the
+run is authorised up to 64 GB, and starting it against another lane's 43 GB would
+swap. The waiter polls every 60 s and refuses after six hours with the shortfall
+written into its log, rather than lowering a threshold the brief set.
+
+**What would fit in the memory the machine actually had, if 1/10 never starts.**
+Scaling the cost attribution's measured per-snapshot figure (1.53 GiB at 1/10)
+against its 8.4 GiB source-handling floor and the nineteen retained snapshots:
+
+| fraction | source households | share | above the 96,860 ceiling | working set |
+|---|---|---|---|---|
+| **1/10** | 158,737 | 10.00% | **yes** | ~37.5 GiB |
+| 1/12 | 132,281 | 8.33% | **yes** | ~32.6 GiB |
+| 1/15 | 105,825 | 6.67% | **yes** | ~27.8 GiB |
+| 1/20 | 79,368 | 5.00% | **no** | ~22.9 GiB |
+
+So the smallest fraction that still exercises the lifted ceiling is about 1/16,
+and 1/15 clears it with margin at roughly 28 GiB — which fits the 42 GB that was
+available. I did **not** substitute it: the brief names 1/10, narrowing the scope
+is the owner's call rather than mine, and section 10 asks the question instead.
+The 1/10 run stays queued at its own gate.
 
 **What the 1/10 run can and cannot add.** The ceiling question is already
 answered, at full source rather than at 1/10, by section 5a: the repository's own encoder
@@ -525,8 +546,13 @@ any of the five modules on this path was run as well — 41 files found by
 
 ```
 $ uv run python -m pytest $(cat dependent-tests.txt)
-DEPENDENT_SUMMARY_PLACEHOLDER
+190 failed, 1440 passed, 2 warnings, 123 errors in 1108.09s (0:18:28)
 ```
+
+**That number is an artefact of the invocation, not a result about this branch,
+and section 9a is the whole of why** — including what I could and could not
+establish about it, and what I stopped in order to protect a required
+measurement.
 
 `packages/microcosm-graph/tests` is in the battery even though this branch has
 zero hunks there, because CI runs it and because the seal and the transport are
@@ -538,6 +564,69 @@ above is the superset of it that touches this change. The engine lanes
 (`--extra us --extra uk`) were not run either: nothing on this branch is
 engine-gated, and no test this branch adds or touches carries `requires_us` or
 `requires_uk`.
+
+### 9a. The 41-file sweep, and what it actually measured
+
+Beyond the gates the brief names, I ran every test file in the build shard that
+imports any of the five modules on this path — 41 files, found by `grep -rl` for
+`survey_population_preparation`, `graph_survey_population`,
+`survey_atomic_geography`, `survey_population_domains` and
+`survey_catalogue_selection` — in **one** pytest process. It returned
+**190 failed, 1,440 passed, 123 errors**, and that number is an artefact of the
+invocation rather than a result about this branch. The evidence, in the order I
+took it:
+
+1. **189 of the 190 failures are the single code `PRODUCER_CHANGED`**, raised at
+   `survey_population_preparation.py:707` inside `_producer()`, which requires
+   `_live() == _LIVE and _code_bytes() == _BYTES`.
+2. **`_live()` seals every module-level `FunctionType` in nineteen modules** —
+   `_modules()` lists this module, `domains`, `selection`, `survey_domain_sample`,
+   `spine_assembly`, `graph_sources`, `graph_context`, `graph_population`,
+   `observed_age`, both catalogues, the ACS native binding with its housing,
+   coverage and literal submodules, two more resolved through
+   `__module__`, and all of `asec_native._modules()`. So a `monkeypatch.setattr`
+   on a module-level function of **any** of them, anywhere in the process, trips
+   the seal for every later `_producer()` call. Twelve of the 41 files patch
+   exactly such functions.
+3. **The first failure is in `test_us_child_property_income_graph_owner.py`**, a
+   file that tests a module this branch does not touch.
+4. **`test_us_survey_population_preparation.py` passes 72/72 on its own** and
+   shows 13 `PRODUCER_CHANGED` failures inside the 41-file process.
+5. `CLAUDE.md` says the build shard's CI groups "retain separate pytest processes
+   to isolate their import state" — so 41 files in one process is not how CI runs
+   them, and this is the property that rule exists for.
+
+**The control, and what happened to it.** The identical 41-file command was
+started on the branch point `5ff889814`, with its own
+`uv sync --all-packages --locked --extra us` venv, in
+`~/PolicyEngine/_worktrees/microcosm-native-scale-baseline`. It did not finish, and
+the reason is worth recording rather than hiding, because it is the same machine
+condition that kept the 1/10 run's gate shut: another lane's
+`stacked_revenue_estimate.py` grew to 34.9 GB, `vm_stat` fell to **0.41 GB of free
+pages** with 2,996 MB of 4,096 MB swap in use, and everything on the box slowed to
+a crawl — the after-run's replay advanced 38 CPU-s in eight minutes of wall clock.
+I stopped the control by its exact pid so the required measurement could finish,
+rather than keep two heavy readers competing for a page cache that had none left.
+
+```
+CONTROL_PLACEHOLDER
+```
+
+**The cheap form of the same control**, which does not need 41 files: run the
+preparation file alone, then run it in one process behind a single other file that
+patches a sealed module function.
+
+```
+PAIR_PLACEHOLDER
+```
+
+**What this does and does not settle.** It demonstrates the mechanism — that one
+file's patch is enough to make a later file's `_producer()` refuse — on this
+branch. Establishing that the same 41-file command fails the same way on the
+branch point needs the machine back, and it is the one loose end this lane hands
+over. Nothing in the brief's named gates depends on it: the four touched files
+pass 359/359 together, the preparation file passes 72/72 alone, and the graph
+suite passes 778/1 skipped.
 
 ## 10. Questions for Max
 
@@ -598,7 +687,22 @@ content seals.
 My reading is that (b) is right and that it is your call, not mine, because it
 narrows what a run proves.
 
-**3. A third question this lane raised rather than inherited.** The 19-node path
+**3. If the 1/10 run's memory gate never opens, do you want a smaller fraction
+that still clears the ceiling?** The lifted ceiling is 96,860 source households,
+so anything above about 1/16 exercises it. Section 8 has the working-set table.
+
+- **(a) Wait for 1/10 as specified.** The cleanest answer to the brief, and the
+  transport receipt in section 5a already proves the ceiling gone at full source
+  without it. It needs a quiet machine for several hours.
+- **(b) Run 1/15 — 105,825 households, 6.67% of source, ~28 GiB.** Still above the
+  old ceiling, fits the memory that was actually free, and gives a real end-to-end
+  graph run above 6.1% today.
+- **(c) Both**, 1/15 now and 1/10 when the machine is quiet.
+
+I did not pick (b) on my own: it narrows what the brief asked for, and that is
+your call. The harness and its 1/10 source tree are committed and armed either way.
+
+**4. A question this lane raised rather than inherited.** The 19-node path
 carries a second family of ceilings — row counts, not transport shapes — and
 four of them bind between 1/10 and full source:
 `acs_person_coverage_columns.MAX_SELECTED_ROWS` and
