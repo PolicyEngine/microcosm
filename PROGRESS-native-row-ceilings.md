@@ -81,8 +81,15 @@ the reconciliation.
 All three are byte transports and take the transport lane's argument, not this
 one. All three are pinned in tests.
 
-## Next
+## State
 
-- Final clean test run, then the draft PR against `native-scale-transport`.
+Complete. **[PR #949](https://github.com/PolicyEngine/microcosm/pull/949)**,
+draft against `native-scale-transport`, MERGEABLE. CI does not run on it by
+design (`test.yml` triggers on `pull_request: branches: [main]`); the local
+gates in the report's section 8 are the only ones it has, and all are green:
+399 passed over the seven touched test files, `verification=ok`, spec-engine
+42156/42156 and 41/41, ruff clean, all three pin generators idempotent.
+
+## Next
 - Open for Max: whether the inherited re-pin stays here or moves to #945; and
   whether the byte transports above are one follow-up lane or several.

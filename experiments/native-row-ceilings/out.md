@@ -505,3 +505,61 @@ one law over both families.
 
 I shipped (a). (c) is the only one I think is genuinely arguable, and only for
 that one pair.
+
+## 10. The pull request
+
+| | |
+|---|---|
+| PR | **[PolicyEngine/microcosm#949](https://github.com/PolicyEngine/microcosm/pull/949)** — draft, and it stays draft |
+| Title | Lift the seven row-count ceilings a full-source native build meets, under one rule |
+| Base | `native-scale-transport` (PR #945's branch), at `a64f7b733` |
+| Head | what `git rev-parse native-row-ceilings` returns; this table does not quote a sha it cannot have written |
+| Mergeable | `MERGEABLE`, verified at the head this report was written against |
+| `packages/microcosm-graph` hunks | **zero** |
+| CI | **does not run on this PR by design.** `.github/workflows/test.yml` triggers on `pull_request: branches: [main]`, so only a PR targeting `main` reaches it, and `gh pr checks 949` reports none. §8 is the only gate this branch has, and it was run locally. |
+
+Files, against the base:
+
+| file | what |
+|---|---|
+| `.../us_runtime/acs_pums.py` | the two exact-selection ceilings |
+| `.../us_runtime/acs_person_coverage_columns.py` | the requested-roster ceiling; `MAX_ROWS` deliberately unchanged, with the reason in a comment |
+| `.../us_runtime/survey_observed_age.py` | the per-channel row ceiling |
+| `.../us_runtime/survey_origin_budget.py` | `MAX_GROUPS`; `MAX_PAYLOAD_BYTES` deliberately unchanged, with the reason in a comment |
+| `.../us_runtime/current_survey_geography.py` | the household ceiling, and why its byte-derived form never described anything here |
+| `.../us_runtime/asec_demographic_source.py` | the person ceiling over its two rosters |
+| `.../us_runtime/acs_native_coverage_binding.py` | the one moved pin, generated |
+| `.../us_runtime/graph_implementation_inventory.json` | the **inherited** re-pin, generated |
+| `packages/microcosm-build/tests/test_us_native_row_ceilings.py` | the rule as an executable table, the bounds that must not move, and the three consumer ceilings pinned |
+| six existing `test_us_*.py` | one boundary test per moved bound |
+| `docs/us-native-row-ceilings.md` | the design authority |
+| `experiments/native-row-ceilings/` | five measurement tools, three pin tools, and their receipts |
+| `changelog.d/native-row-ceilings.changed.md` | the towncrier fragment |
+| `pyproject.toml` | four per-file `E402` ignores, for tools that must set `sys.path` before importing what they measure |
+| `PROGRESS-native-row-ceilings.md` | the lane journal |
+
+## 11. What a reader should not take from this report
+
+- **Nothing here is a build, a certification or a release artifact.** Every
+  receipt carries `"release_eligible": false` and a scope line. No gated data was
+  read: the inputs are one recovered development artifact and one captured
+  **public** ACS PUMS archive, both read by path, neither written, moved or
+  linked.
+- **The census agents read a moving tree.** Five constants were lifted while the
+  census ran; those rows record both values and the commit that changed them, and
+  §3 reconciles the two totals rather than quoting one.
+- **`census.json`'s per-row prose is the agents', checked but not rewritten.**
+  Every verdict that claimed a bound binds at full source, or guards an encoding
+  width or an upstream file's size, was adversarially re-read — 42 of them — and
+  several classifications were corrected in that pass. The rows themselves were
+  not edited afterwards, so a row may still carry a superseded classification
+  beside its verified `binds_at_full_source`. The verified field is the one this
+  report relies on, and every number this report or the design note states was
+  re-read at this head before being written down.
+- **The roles projection figure is on an invented table.** It is faithfully
+  shaped — the module's own declared columns and dtypes, its own encoder — and the
+  per-row cost is a difference between two row counts so the schema preamble
+  cancels. The 320.08 bytes is not a measurement of a real roles artifact.
+- **The 12,911 and 87,838 figures are of a bound, not of a run.** They say what
+  the ceiling admits, computed from a measured per-row cost. No build was run at
+  any fraction in this lane.
