@@ -455,6 +455,77 @@ def test_a_native_source_moved_inside_an_inner_close_refuses_at_the_next_borrow(
 
 
 # --------------------------------------------------------------------------
+# The two branches of the memo that nothing reached.
+# --------------------------------------------------------------------------
+
+
+def test_a_roster_file_removed_mid_epoch_refuses_with_the_code_it_carries_today(
+    tmp_path, monkeypatch
+):
+    """No signature can be taken at all, so the complete validation decides.
+
+    ``_memoized_validate`` catches that and runs ``_validate`` before
+    re-raising, which is the branch nothing exercised: what a caller sees is
+    the refusal an unmemoised borrow raises for the same removal, not the
+    ``FileNotFoundError`` the signature raised.
+    """
+
+    plain_root = tmp_path / "unmemoised"
+    plain_root.mkdir()
+    plain = owner.prepare_authenticated_survey_population(
+        **fixture(plain_root, monkeypatch)
+    )
+    _borrow(plain)
+    (owner._ISSUED[id(plain)][2].root / "selection-request.json").unlink()
+    with pytest.raises(owner.SurveyPopulationPreparationError) as today:
+        _borrow(plain)
+
+    memoised_root = tmp_path / "memoised"
+    memoised_root.mkdir()
+    arguments = fixture(memoised_root, monkeypatch)
+    preparation = owner.prepare_authenticated_survey_population(**arguments)
+    state = owner._ISSUED[id(preparation)][2]
+
+    def mutate():
+        (arguments["source_dir"] / "selection-request.json").unlink()
+        # The branch under test: the signature itself is unavailable now.
+        with pytest.raises(FileNotFoundError):
+            owner._memo_signature(state)
+
+    borrow, closing = _refuses_at_the_borrow_and_at_the_close(
+        preparation, mutate, owner.SurveyPopulationPreparationError
+    )
+    assert borrow == closing == str(today.value)
+
+
+def test_two_refusals_at_one_close_raise_this_owner_s_and_chain_the_nested_one(
+    tmp_path, monkeypatch
+):
+    """The nested capsule's close refuses, and so does this owner's.
+
+    The nested ASEC capsule's own ``_epoch_exit`` runs first and refuses on its
+    moved source; this owner's ``_finalize_epoch`` then refuses too, because
+    its complete validation reaches the same capsule. The branch under test
+    prefers this owner's error class -- the one every borrow through it raises
+    -- and attaches the nested one as its cause rather than dropping it. No
+    borrow follows the mutation, so the two closes are the whole of what runs.
+    """
+
+    arguments = fixture(tmp_path, monkeypatch)
+    preparation = owner.prepare_authenticated_survey_population(**arguments)
+    path = arguments["source_dir"] / "asec" / "pppub25.csv"
+    with pytest.raises(owner.SurveyPopulationPreparationError) as closing:
+        with owner.verification_epoch():
+            _borrow(preparation)
+            path.write_bytes(path.read_bytes() + b" ")
+    assert str(closing.value) == "PREPARATION_VERIFICATION_REFUSED"
+    cause = closing.value.__cause__
+    assert isinstance(cause, native.AsecNativePopulationError)
+    # The nested capsule's own code, kept intact under this owner's.
+    assert str(cause) == "SOURCE_FILE_BOUNDS"
+
+
+# --------------------------------------------------------------------------
 # The ASEC native capsule on its own.
 # --------------------------------------------------------------------------
 
