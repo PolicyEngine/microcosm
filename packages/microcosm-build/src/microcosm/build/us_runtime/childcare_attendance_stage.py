@@ -1,7 +1,8 @@
 """Build-stage orchestration for the licensed NSECE attendance source extension.
 
 The existing generation-0 source manifest is byte-frozen. This extension has a
-separate packaged SourceStageSpec and runs after relationship/hours producers.
+separate packaged SourceStageSpec and runs after the childcare-expense and hours
+producers (the harmonizer reads raw parent pointers and last-week hours).
 It is also callable on an exact native parent for candidate qualification.
 """
 
@@ -24,7 +25,9 @@ from microcosm.build.us_runtime.childcare_attendance import (
 from microcosm.build.us_runtime.childcare_attendance_receipt import (
     ATTENDANCE_H5_KEY,
     assert_bound_childcare_attendance,
+    attendance_receipt_payload,
     bind_childcare_attendance,
+    write_native_childcare_receipt,
 )
 from microcosm.build.us_runtime.childcare_population import (
     harmonize_asec_childcare_predictors,
@@ -139,6 +142,22 @@ def with_us_childcare_attendance_inputs(
     if existing and people.loc[people.age.between(0, 12), existing].notna().any().any():
         raise ValueError(
             "Pre-existing child attendance lacks a production receipt; rebuild from the original parent."
+        )
+    outside = people.loc[~people.age.between(0, 12)]
+    if (
+        not inherit_outside_domain_baseline
+        and len(outside)
+        and (
+            len(existing) < len(US_CHILDCARE_ATTENDANCE_COLUMNS)
+            or outside[existing].isna().any().any()
+        )
+    ):
+        # Fail before the bridge and donor draw: only ages 0-12 are modeled.
+        raise ValueError(
+            "Persons outside ages 0-12 have no observed attendance and the "
+            "require_observed policy cannot export them; pass "
+            "inherit_outside_domain_baseline=True "
+            "(--childcare-attendance-inherit-outside-domain-baseline)."
         )
     dependence = fit_nsece_sibling_dependence(source.children)
     source = bridge_nsece_noncalendar_attendance(source, seed=seed)
@@ -276,14 +295,12 @@ def _write_childcare_candidate_person_table(
     The caller owns the temporary copy and verifies the native dataset reload.
     Keep nullable booleans and their masks intact if the person table has them.
     """
+    payload = json.dumps(attendance_receipt_payload(receipt), allow_nan=False)
     with pd.HDFStore(path, mode="a") as store:
         put_frame_table(
             store, "person", people, preferred_format="table", data_columns=True
         )
-        store.put(
-            ATTENDANCE_H5_KEY,
-            pd.Series([json.dumps(receipt, default=dict, allow_nan=False)]),
-        )
+        store.put(ATTENDANCE_H5_KEY, pd.Series([payload]))
 
 
 def persist_native_childcare_receipt(path: str | Path, frame: Frame) -> dict:
@@ -296,8 +313,8 @@ def persist_native_childcare_receipt(path: str | Path, frame: Frame) -> dict:
 
     assert_childcare_attendance_exportable(frame)
     summary = assert_bound_childcare_attendance(frame)
-    dataset = USSingleYearDataset(file_path=str(path))
-    _write_childcare_candidate_person_table(Path(path), dataset.person, frame.metadata)
+    # The engine already wrote every entity table; only the receipt key is added.
+    write_native_childcare_receipt(path, frame.metadata)
     # Use the written values, not the pre-export arrays, for the binding check.
     dataset = USSingleYearDataset(file_path=str(path))
     tables = {e: getattr(dataset, e).copy() for e in frame.entities}

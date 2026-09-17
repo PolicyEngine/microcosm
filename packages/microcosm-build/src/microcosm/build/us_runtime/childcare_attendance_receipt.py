@@ -158,12 +158,17 @@ def assert_bound_childcare_attendance(frame, *, require_stage=True):
     execution = binding["execution"]
     if binding["execution_sha256"] != _digest(execution):
         raise ValueError("Attendance execution hash mismatch.")
-    if execution["recipe"] != attendance_recipe_identity():
-        raise ValueError("Attendance recipe changed; rebuild from the original parent.")
     if execution["context"] != _context(frame):
         raise ValueError("Attendance metadata disagrees with its bound execution.")
     context = execution["context"]
     if require_stage:
+        # Code/runtime identity gates binding and release export. Read-only
+        # ingress checks content only, so a released H5 stays loadable after a
+        # dependency bump or an edit to the recipe modules.
+        if execution["recipe"] != attendance_recipe_identity():
+            raise ValueError(
+                "Attendance recipe changed; rebuild from the original parent."
+            )
         stage = context.get("childcare_attendance_stage", {})
         source = context.get("nsece_childcare_attendance", {})
         expected = [x["sha256"] for x in childcare_attendance_contract()["artifacts"]]
@@ -198,11 +203,24 @@ def assert_bound_childcare_attendance(frame, *, require_stage=True):
     }
 
 
+def attendance_receipt_payload(metadata):
+    """Only the attendance context and binding; never unrelated frame metadata."""
+    keys = (*ATTENDANCE_CONTEXT_KEYS, ATTENDANCE_RECEIPT_KEY)
+    return _plain({key: metadata[key] for key in keys if key in metadata})
+
+
+def write_native_childcare_receipt(path, metadata):
+    """Append the receipt key to a written native H5; entity tables are untouched."""
+    payload = json.dumps(attendance_receipt_payload(metadata), allow_nan=False)
+    with pd.HDFStore(path, mode="a") as store:
+        store.put(ATTENDANCE_H5_KEY, pd.Series([payload]))
+
+
 def restore_native_childcare_receipt(path, frame):
     """Load the receipt through either native ingress, preserving its validation."""
     with pd.HDFStore(path, mode="r") as store:
         metadata = (
-            json.loads(store[ATTENDANCE_H5_KEY].iloc[0])
+            attendance_receipt_payload(json.loads(store[ATTENDANCE_H5_KEY].iloc[0]))
             if ATTENDANCE_H5_KEY in store
             else {}
         )

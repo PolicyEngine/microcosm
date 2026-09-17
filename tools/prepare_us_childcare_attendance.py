@@ -153,7 +153,9 @@ def main() -> None:
         source, seed=args.seed, match_columns=tuple(args.match_columns)
     )
     sibling_fit = (
-        fit_nsece_sibling_dependence(source.children)
+        fit_nsece_sibling_dependence(
+            source.children, match_columns=tuple(args.match_columns)
+        )
         if args.model_sibling_dependence
         else {"rho": 0.0}
     )

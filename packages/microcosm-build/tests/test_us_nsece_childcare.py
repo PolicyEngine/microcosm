@@ -751,6 +751,36 @@ def test_bridge_retains_all_equally_near_donors():
     assert bridged.irregular_hours_per_week.eq(2).all()
 
 
+def test_bridge_widens_a_thin_cell_instead_of_keeping_distant_donors():
+    from microcosm.build.us_runtime.nsece_childcare_bridge import (
+        bridge_nsece_noncalendar_attendance,
+    )
+
+    hh, cal = _raw(12)
+    # The target's exact cell holds one donor with 1 regular hour on 1 day;
+    # ten donors in another region match its 40 regular hours over 5 days.
+    _care(cal, row=0, hours=1)
+    for row in range(1, 11):
+        hh.loc[row, "HH4_REGION"] = 2
+        for day in range(5):
+            _care(cal, row=row, day=day, hours=8)
+    hh.loc[11, "HH4_METH_QUEXVERSION"] = 2
+    hh.loc[11, "HH4_MISSING_STATUS_CC_1"] = 0
+    for kind in range(1, 10):
+        hh.loc[11, f"HHC4_NPC_HRSWEEK_TOC{kind}_1"] = 0
+    hh.loc[11, "HHC4_NPC_HRSWEEK_TOC4_1"] = 40
+    result = bridge_nsece_noncalendar_attendance(
+        derive_nsece_childcare(hh, cal), seed=915
+    )
+    child = result.children.iloc[11]
+    assert child.schedule_bridge_match == "age,parent_work_status,income_band"
+    assert child[DAYS] == 5
+    assert child[HOURS] == 8
+    assert result.source_receipt["noncalendar_bridge"]["matching_levels"] == {
+        "age,parent_work_status,income_band": 1
+    }
+
+
 def _replace(frame, *, people=None, metadata=None):
     tables = {e: frame.table(e).copy() for e in frame.entities}
     if people is not None:
@@ -919,6 +949,33 @@ def test_production_stage_refuses_unbound_existing_values(monkeypatch):
         )
 
 
+def test_default_outside_domain_policy_fails_early_and_names_the_flag(monkeypatch):
+    monkeypatch.setattr(stage, "load_nsece_childcare", lambda *args: _source())
+    with pytest.raises(ValueError, match="inherit-outside-domain-baseline"):
+        stage.with_us_childcare_attendance_inputs(
+            _asec_frame(),
+            household_tsv="fake",
+            calendar_tsv="fake",
+            asec_source_cache=None,
+            seed=915,
+        )
+
+
+@pytest.mark.parametrize(
+    "column,value",
+    [
+        ("HH4_REGION", -1),
+        ("HH4_PARWORK_STATUS", -8),
+        ("HH4_ECON_INCOME_ANNUAL", -9),
+    ],
+)
+def test_reserve_codes_never_become_matching_cells(column, value):
+    hh, cal = _raw()
+    hh[column] = value
+    with pytest.raises(ValueError, match="reserve code"):
+        derive_nsece_childcare(hh, cal)
+
+
 def test_final_gate_cannot_accept_unbound_nondegenerate_columns():
     candidate = _replace(_candidate(), metadata={})
     manifest = ReleaseInputCoverageManifest(
@@ -954,7 +1011,9 @@ def test_changed_recipe_invalidates_receipt(monkeypatch):
         receipts, "attendance_recipe_identity", lambda: {"different": True}
     )
     with pytest.raises(ValueError, match="recipe changed"):
-        assert_bound_childcare_attendance(candidate, require_stage=False)
+        assert_bound_childcare_attendance(candidate)
+    # Read-only ingress checks content only, so released files stay loadable.
+    assert_bound_childcare_attendance(candidate, require_stage=False)
 
 
 def test_public_metadata_omits_person_hash_inventory():

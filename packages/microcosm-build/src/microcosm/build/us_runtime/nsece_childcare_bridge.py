@@ -29,7 +29,8 @@ def bridge_nsece_noncalendar_attendance(
 ) -> NSECEChildcareSource:
     """Use nearest regular-hour donors, retaining all ties at the cutoff.
 
-    All matching levels require the same regular-care participation status.
+    All matching levels require the same regular-care participation status. A
+    cell with fewer donors than the cutoff widens to the next matching level.
     Hours cannot exceed 24 per attended day or 168 per week. The parent source
     remains unchanged. Synthetic validation must mask whole households before
     this function is called; it never learns from completed bridge records.
@@ -52,21 +53,29 @@ def bridge_nsece_noncalendar_attendance(
         & children.regular_hours_per_week.notna()
     ]
     unsupported = 0
+    matching_levels: dict[str, int] = {}
     month, days_column, hours_column = US_CHILDCARE_ATTENDANCE_COLUMNS
     for index, child in target.iterrows():
-        candidates = pool.iloc[:0]
-        for level in (NSECE_CHILDCARE_MATCH_COLUMNS, *NSECE_CHILDCARE_FALLBACK_COLUMNS):
+        candidates, level = pool.iloc[:0], ()
+        for columns in (
+            NSECE_CHILDCARE_MATCH_COLUMNS,
+            *NSECE_CHILDCARE_FALLBACK_COLUMNS,
+        ):
             mask = pool.has_regular_care.eq(child.regular_hours_per_week > 0)
-            for column in level:
+            for column in columns:
                 mask &= pool[column].eq(child[column])
-            candidates = pool.loc[
+            cell = pool.loc[
                 mask
                 & (
                     (pool.irregular_hours_per_week + child.regular_hours_per_week)
                     <= 168
                 )
             ]
-            if not candidates.empty:
+            # A thin cell keeps every donor however distant in regular hours;
+            # widen until the nearest-donor cutoff can bind.
+            if len(cell) > len(candidates):
+                candidates, level = cell, columns
+            if len(candidates) >= nearest_donors:
                 break
         if candidates.empty:
             unsupported += 1
@@ -105,7 +114,9 @@ def bridge_nsece_noncalendar_attendance(
         children.loc[index, "irregular_hours_per_week"] = donor.irregular_hours_per_week
         children.loc[index, "attendance_status"] = "summary_bridge"
         children.loc[index, "schedule_bridge_donor"] = donor.donor_id
-        children.loc[index, "schedule_bridge_match"] = ",".join(level)
+        matched = ",".join(level)
+        children.loc[index, "schedule_bridge_match"] = matched
+        matching_levels[matched] = matching_levels.get(matched, 0) + 1
     completed = children.attendance_status.eq("summary_bridge")
     return NSECEChildcareSource(
         children,
@@ -116,6 +127,7 @@ def bridge_nsece_noncalendar_attendance(
                 "seed": seed,
                 "completed_children": int(completed.sum()),
                 "unsupported_children": unsupported,
+                "matching_levels": dict(sorted(matching_levels.items())),
                 "observed": "regular weekly hours from May/fall questionnaire",
                 "imputed": "attended days and irregular care jointly from nearest regular-hour calendar donors",
                 "assumption": "conditional calendar pattern and irregular care transfer across questionnaire instruments",

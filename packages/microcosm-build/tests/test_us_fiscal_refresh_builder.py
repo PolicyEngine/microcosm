@@ -4912,6 +4912,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+    # The fake frame carries no NSECE attendance stage; the fail-fast refusal
+    # has its own test below.
+    monkeypatch.setattr(
+        builder, "_require_bound_childcare_attendance", lambda frame: None
+    )
 
     monkeypatch.setattr(
         builder,
@@ -12311,6 +12316,16 @@ def test_attendance_source_cli_requires_paired_inputs(options):
         builder._parse_args(
             ["--ledger-facts", "facts.jsonl", "--out", "release", *options]
         )
+
+
+def test_build_without_attendance_source_is_refused_before_calibration():
+    # No attendance columns and no receipt: what every base without the stage has.
+    frame = SimpleNamespace(
+        table=lambda entity: pd.DataFrame({"person_id": [1], "age": [4]}),
+        metadata={},
+    )
+    with pytest.raises(RuntimeError, match="--childcare-attendance-household-tsv"):
+        _load_builder_module()._require_bound_childcare_attendance(frame)
 
 
 def test_attendance_integrity_is_unconditional_at_final_native_write():

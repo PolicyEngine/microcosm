@@ -63,6 +63,13 @@ This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
 final candidate diagnostics under `runs/<run_id>/` without updating production
 `latest.json`.
 
+The three childcare-attendance inputs are required export inputs. A US fiscal
+build also needs the licensed NSECE files
+(`--childcare-attendance-household-tsv`, `--childcare-attendance-calendar-tsv`
+and `--childcare-attendance-inherit-outside-domain-baseline`); without them the
+build is refused before calibration. See
+[docs/us-childcare-attendance.md](docs/us-childcare-attendance.md).
+
 See [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md) for the measured memory,
 disk, and CPU footprint of developing and building locally (and what to budget
 on a build machine — RAM is the binding constraint).

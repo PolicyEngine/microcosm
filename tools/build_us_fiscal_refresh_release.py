@@ -2652,7 +2652,31 @@ def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
         {"household": Weights(weights, WeightKind.CALIBRATED)},
     )
     refuse_denied_frame(frame, consumer=consumer)
-    return frame
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        restore_native_childcare_receipt,
+    )
+
+    return restore_native_childcare_receipt(path, frame)
+
+
+def _require_bound_childcare_attendance(frame: Frame) -> None:
+    """Refuse before calibration a build that cannot export required attendance."""
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        assert_bound_childcare_attendance,
+    )
+    from microcosm.build.us_runtime.nsece_childcare import (
+        assert_childcare_attendance_exportable,
+    )
+
+    try:
+        assert_childcare_attendance_exportable(frame)
+        assert_bound_childcare_attendance(frame)
+    except ValueError as error:
+        raise RuntimeError(
+            "Release gates failed: Childcare-attendance inputs failed: "
+            f"{error} Supply --childcare-attendance-household-tsv and "
+            "--childcare-attendance-calendar-tsv."
+        ) from error
 
 
 def _resolve_selection_source(args):
@@ -3353,6 +3377,7 @@ def _with_aca_marketplace_source_outputs(
         frame.schema,
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
+        metadata=frame.metadata,
     )
 
 
@@ -9346,19 +9371,6 @@ def _main(argv: Sequence[str] | None = None) -> None:
             time_period=PERIOD,
             allow_existing_without_source=True,
         )
-    if args.childcare_attendance_household_tsv is not None:
-        from microcosm.build.us_runtime.childcare_attendance_stage import (
-            with_us_childcare_attendance_inputs,
-        )
-
-        base_frame = with_us_childcare_attendance_inputs(
-            base_frame,
-            household_tsv=args.childcare_attendance_household_tsv,
-            calendar_tsv=args.childcare_attendance_calendar_tsv,
-            asec_source_cache=args.childcare_attendance_asec_cache,
-            seed=args.seed,
-            inherit_outside_domain_baseline=args.childcare_attendance_inherit_outside_domain_baseline,
-        )
     childcare_gate = us_childcare_signal_gate(base_frame)
     if not childcare_gate.passed:
         if telemetry is not None:
@@ -9562,6 +9574,25 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 for failure in hours_worked_gate.failures
             )
         )
+    # The attendance harmonizer reads hours_worked_last_week, so it follows the
+    # childcare-expense and hours producers.
+    if args.childcare_attendance_household_tsv is not None:
+        from microcosm.build.us_runtime.childcare_attendance_stage import (
+            with_us_childcare_attendance_inputs,
+        )
+
+        base_frame = with_us_childcare_attendance_inputs(
+            base_frame,
+            household_tsv=args.childcare_attendance_household_tsv,
+            calendar_tsv=args.childcare_attendance_calendar_tsv,
+            asec_source_cache=args.childcare_attendance_asec_cache,
+            seed=args.seed,
+            inherit_outside_domain_baseline=args.childcare_attendance_inherit_outside_domain_baseline,
+        )
+    else:
+        # Attendance is a required, non-waivable export input: without the
+        # source stage this run can only end red after calibration.
+        _require_bound_childcare_attendance(base_frame)
     if telemetry is not None:
         telemetry.stage(
             "snap_take_up_inputs",
@@ -11365,8 +11396,14 @@ def _main(argv: Sequence[str] | None = None) -> None:
         )
         input_coverage_gate = None
     if input_coverage_gate is not None:
-        input_coverage_failed = (
-            not input_coverage_gate.passed and not args.allow_input_coverage_gaps
+        # Attendance integrity is not waivable: keep its failure in the batched
+        # report so the run retains its weight evidence instead of dying at
+        # the final native write below.
+        attendance_unbound = (
+            input_coverage_gate.details.get("childcare_attendance") is None
+        )
+        input_coverage_failed = not input_coverage_gate.passed and (
+            attendance_unbound or not args.allow_input_coverage_gaps
         )
         if input_coverage_failed:
             terminal_gate_failures.extend(

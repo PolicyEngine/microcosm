@@ -361,12 +361,14 @@ def _round_trip_childcare_candidate(
     source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     path = tmp_path / "childcare-candidate.h5"
-    _write_childcare_candidate_person_table(path, source, {"test_receipt": "preserved"})
+    receipt = {"childcare_attendance_stage": {"test_receipt": "preserved"}}
+    # Unrelated frame metadata must never reach the persisted receipt.
+    _write_childcare_candidate_person_table(
+        path, source, {**receipt, "unrelated_metadata": "dropped"}
+    )
     with pd.HDFStore(path, mode="r") as store:
         loaded = read_frame_table(store, "person")
-        assert json.loads(store["_childcare_attendance_receipt"].iloc[0]) == {
-            "test_receipt": "preserved"
-        }
+        assert json.loads(store["_childcare_attendance_receipt"].iloc[0]) == receipt
     return _semantic_observation(source, before, loaded)
 
 

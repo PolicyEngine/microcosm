@@ -102,6 +102,14 @@ build recorded staging telemetry that never reached its repo
 publishes without the flag. Never publish or promote artifacts as a side
 effect of another task.
 
+US fiscal builds require the NSECE childcare-attendance stage
+(`--childcare-attendance-household-tsv`, `--childcare-attendance-calendar-tsv`,
+`--childcare-attendance-inherit-outside-domain-baseline`): attendance is a
+required, non-waivable export input bound by a per-person receipt, a build
+without it is refused before calibration, and
+`tools/build_us_exact_k_ladder_release.py` cannot yet pass these flags. See
+[the attendance runbook](docs/us-childcare-attendance.md).
+
 The US native-SPM-role source-enrichment lane is a separate release type:
 `tools/build_us_spm_role_enrichment.py` creates a local candidate from the exact
 reviewed BuildP parent, preserving original variables and inherited schema-5

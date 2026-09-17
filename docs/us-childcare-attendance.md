@@ -51,7 +51,7 @@ source pins, income bands, and price-year conventions.
 | `HH4_TYPEOFCARE_AGG_X_Y` | Child/provider care type |
 | `HH4_RPARENT` | Whether respondent care is parental care |
 | `HH4_REGION` | Census region |
-| `HH4_PARWORK_STATUS` | Work status of parents of any under-13 household child |
+| `HH4_PARWORK_STATUS` | Work status of parents of any under-13 household child; codes -1, 0, 1, 2 |
 | `HH4_METH_QUEXVERSION` | Main, summer/typical-May, or new-school-year instrument |
 | `HH4_ECON_INCOME_ANNUAL` | Published household pretax income for 2023 |
 | `HHC4_NPC_HRSWEEK_TOC1..5_X` | Regular-care weekly hours for the noncalendar bridge |
@@ -84,7 +84,21 @@ bridge preserves their published regular weekly hours and borrows days and
 irregular hours jointly from ten nearest complete-calendar donors (including all distance ties), using
 log regular hours, matching covariates, and survey weights. Regular-care
 participation must agree. Zero regular hours does not establish zero irregular
-care. Bridged rows are labeled `summary_bridge`, never `complete`.
+care. Bridged rows are labeled `summary_bridge`, never `complete`. A cell with
+fewer than ten donors widens to the next matching level, so a thin cell cannot
+keep donors however distant their regular hours; the receipt counts children by
+matching level.
+
+The loader accepts only regions 1-4, parent-work codes -1, 0, 1 and 2, and
+non-negative income; any other value, including a negative reserve code, fails
+instead of becoming a matching cell. The pinned files hold no other values.
+`HH4_PARWORK_STATUS` (User's Guide HH-483) records whether all, some or no
+parents of any under-13 household child attended work in the week before the
+interview, and its -1 is "No parents". The ASEC side uses the same last-week
+concept and the same -1 ("no resident parent of an under-13 child"), so an
+employed parent who was absent that week counts as not working in both sources.
+`HH4_ECON_INCOME_ANNUAL` (HH-175) is imputed where unreported, top coded, and
+has a minimum of 0, so the lowest income band holds reported or imputed zeros.
 
 Default matching uses age, Census region, parent work, and household income band.
 The declared sparse-cell hierarchy drops region, then income, then parent work;
@@ -183,8 +197,11 @@ Code hashes and environment versions accompany the aggregate preparation report.
 The receipt binds the source hashes, contract, recipe code, runtime versions,
 seed, matching/bridge settings, fitted dependence, and outside-domain policy to
 each person's ID, household link, age, and three attendance values. Both native
-US loaders restore and check it. A missing, stale, or altered receipt fails;
-changing seed or settings requires rebuilding from the original parent. An
+US loaders and the fiscal builder's `--base-h5` loader restore and check it. A
+missing or altered receipt fails at load. Recipe code and runtime versions are
+compared when a stage binds and when the fiscal build exports, not at read-only
+load, so a released file stays readable as a reference after a dependency bump.
+Changing seed or settings requires rebuilding from the original parent. An
 identical rerun verifies and reuses the existing values. A production-stage
 input with existing under-13 attendance and no production receipt is rejected,
 including all-zero columns; use the original unmodified parent. The lower-level
@@ -196,7 +213,9 @@ execution. The final fiscal export checks every row for completeness, bounds,
 integral monthly days, coherent zero schedules, and its source binding before
 writing. Generic coverage overrides cannot waive this check. The written native
 file receives the receipt and is reloaded and checked before source evidence is
-reported. Private per-person hashes stay in local checkpoints/H5; public reports
+reported. The receipt key holds only the attendance context and binding, never
+other frame metadata, and adding it does not rewrite any entity table. The L0
+refit export carries the receipt forward. Private per-person hashes stay in local checkpoints/H5; public reports
 contain only aggregate receipt summaries. The private inventory is a sequence
 of ID/hash pairs: population-sized dictionaries cause quadratic traversal in
 the Frame metadata container, which is intended for small mappings. These hashes detect accidental stale
@@ -211,7 +230,9 @@ continues to describe the earlier pool simulation; attendance is supplied by thi
 subsequent fiscal-build stage and enforced by the final release input contract.
 Existing release input
 gates still apply; a build without required attendance inputs cannot substitute
-an engine default for a persisted input.
+an engine default for a persisted input. A fiscal build given neither the TSV
+flags nor bound attendance is refused before calibration, and the
+exact-k ladder wrapper cannot yet pass these flags.
 
 Unknown values outside ages 0–12 stay null in the source model. The explicit
 outside-domain export policy fills only these missing cells with the pinned

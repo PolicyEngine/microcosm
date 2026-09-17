@@ -45,6 +45,11 @@ NSECE_ECE_TYPES = frozenset({1, 2, 3, 4, 5, 7})
 # codes are deliberately unresolved, even if part of the interval involved ECE.
 NSECE_NON_ECE_CALENDAR_CODES = frozenset({0, 50, 53, 56, 57, 60, 65})
 NSECE_UNPAID_GAP_CODES = frozenset({54, 61, 62, 69})
+# HH-63, HH-483: the only substantive match-cell codes. Work status counts parents
+# of any under-13 household child who attended work last week; -1 is "No parents",
+# the same concept as the ASEC-side -1. HH-175: imputed income has a minimum of 0.
+NSECE_REGION_CODES = frozenset({1, 2, 3, 4})
+NSECE_PARENT_WORK_STATUS_CODES = frozenset({-1, 0, 1, 2})
 
 
 @dataclass(frozen=True)
@@ -217,6 +222,18 @@ def derive_nsece_childcare(
         weight = pd.to_numeric(rows[f"HHC4_METH_WEIGHT_{child}"], errors="raise")
         if not np.isfinite(weight).all() or (weight <= 0).any():
             raise ValueError("Existing NSECE children require positive child weights.")
+        # Reserve codes (negative income, unlisted region/work status) must never
+        # become substantive matching cells.
+        income = pd.to_numeric(rows.HH4_ECON_INCOME_ANNUAL, errors="raise")
+        if (
+            not rows.HH4_REGION.isin(NSECE_REGION_CODES).all()
+            or not rows.HH4_PARWORK_STATUS.isin(NSECE_PARENT_WORK_STATUS_CODES).all()
+            or not np.isfinite(income).all()
+            or (income < 0).any()
+        ):
+            raise ValueError(
+                "NSECE region, parent work status or income holds an unlisted or reserve code."
+            )
         part = pd.DataFrame(
             {
                 "donor_id": [f"nsece2024:{case}:{child}" for case in rows.index],

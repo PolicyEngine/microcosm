@@ -622,6 +622,15 @@ def export_us_l0_refit_h5(
     destination = Path(output_h5)
     destination.parent.mkdir(parents=True, exist_ok=True)
     PolicyEngineUSEngine().write_dataset(export_frame, destination, period=period)
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        ATTENDANCE_RECEIPT_KEY,
+        write_native_childcare_receipt,
+    )
+
+    if ATTENDANCE_RECEIPT_KEY in export_frame.metadata:
+        # The selection keeps each retained person's bound attendance; without
+        # the receipt key the native loaders refuse this export.
+        write_native_childcare_receipt(destination, export_frame.metadata)
     copied_attrs = copy_microcosm_root_attrs(root_attrs_source, destination)
     summary = {
         "schema_version": 1,
