@@ -432,9 +432,16 @@ argument, and this lane does not touch them.
 
 1. **Columnar format for the receipt bodies.** This design uses the store's own
    existing shape — a `header.json` payload table plus content-addressed bodies,
-   as `put_frame` already writes `.npy` files — and adds no dependency. A true
-   Arrow/parquet body would need `pyarrow` in the workspace and would change the
-   canonical byte stream, and therefore `preparation_sha256` and every node key.
+   as `put_frame` already writes `.npy` files — and keeps the bodies as canonical
+   JSON segments, so nothing derived from the byte stream moves. A true
+   Arrow/parquet body needs **no new dependency**: `pyarrow>=15` is already
+   declared by `microcosm-build` (`pyproject.toml:20`, "Parquet is the artifact
+   format for the us_trade margin and entry tables"), pinned at 25.0.0 in
+   `uv.lock`, and already named in this very stage's `STAGE_DEPENDENCIES`
+   (`graph_survey_population.py:77`), so its version already enters the stage's
+   implementation hash. What a columnar body would cost is the byte stream: it
+   changes, and therefore `preparation_sha256` and every node key and store
+   address move, once and deliberately.
 2. **Whether the retention policy is a run option or the only behaviour.** §3d
    shows that nineteen detached populations must exist between the observation
    and the replay comparison unless the object comparison is replaced by a
