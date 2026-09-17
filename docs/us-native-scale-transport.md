@@ -131,6 +131,24 @@ which is the same header-plus-bodies shape `ContentStore.put_frame` already
 uses, and which gives the receipt a re-verifiable on-disk form independent of
 the graph store.
 
+**The write surface, disclosed rather than left to be found.** This module
+previously wrote nothing but `snapshots.mkdir`. The spill adds
+`Path.write_bytes` for each segment and for `header.json`, and
+`graph_implementation`'s `_RESOURCE_CALLS` (`:126-150`) covers *reads* —
+`open`, `read_bytes`, `read_text`, `read_csv`, `load`, `files`, `joinpath`,
+`import_module`, `exec`, `eval` and their neighbours — so a write is invisible
+to `resource_accesses_sha256` by construction and no committed pin would notice
+a redirected spill. Every component of the path is therefore checked here
+instead: `root` is the snapshot root `_root()` already validated as symlink-free
+and disjoint from the source root (`SNAPSHOT_LOCATION`), `name` must be a Python
+identifier (`ROSTER_NAME`), each segment's own filename is the sha256 of its
+bytes, the spill directory must not be a symlink (`ROSTER_SPILL_LOCATION`), and
+an existing segment or header must be a regular file of the recorded size
+(`ROSTER_SEGMENT_CHANGED`, `ROSTER_SPILL_LOCATION`). Presence is decided by
+`lstat` and not by `Path.exists()`, because a broken symlink does not exist and
+would be written straight through — a hole the first draft of this code had and
+its own test caught.
+
 `read_all()` reassembles, re-hashes each segment against its recorded digest
 and the whole against `digest`, and refuses `ROSTER_LIMIT` above
 `MAX_MATERIALIZED_BYTES`. The two consumers that need whole bytes — the
@@ -367,7 +385,12 @@ established above:
    still refuses the run with the observer's exception type (`:4172-4179`);
    `ATOMIC_OBSERVER_ROSTER` and `COMPLETION_OBSERVER_ROSTER` still refuse any
    gap or reorder.
-4. **A statement about `_pure_run`.** `state.node_populations` is re-stamped on
+4. **A precedent in the same package.** `graph_survey_puf55` already declines to
+   retain everything: its issued run entry "retains the final output, not all 245
+   executor-observed snapshots" (`graph_survey_puf55.py:638-639`). The financial
+   runner's `node_populations=observed` is the outlier among the six observers in
+   this runtime, and the shape it would move to already exists a few files away.
+5. **A statement about `_pure_run`.** `state.node_populations` is re-stamped on
    every `checked_view()`, so a retention mode that drops populations must say
    what `FINANCIAL_NODE_POPULATION_CHANGED` means afterwards. Today
    `_node_population_seals` already returns `()` when there are no observations
@@ -388,4 +411,11 @@ neighbours.
 2. **Whether the retention policy is a run option or the only behaviour.** §3d
    shows that nineteen detached populations must exist between the observation
    and the replay comparison unless the object comparison is replaced by a
-   content seal. That is a verification-contract decision.
+   content seal. That is a verification-contract decision, and §4's item 4 shows
+   the runtime has already made it once, the other way, in `graph_survey_puf55`.
+3. **Whether the roster spill should be readable by anything but this module.**
+   It is written, verified, and then only reassembled in the same call today. A
+   consumer that wanted to stream it — a future `put_bytes` that takes an
+   iterator, or an auditor re-deriving `preparation_sha256` without loading
+   1 GiB — would read `header.json` and the segments it names, which is why the
+   header exists at all.
