@@ -582,3 +582,26 @@ def test_restoration_receipt_names_its_structurally_zero_counters(
         assert entry["unreferenced_source_rows"] == 0
         assert entry["incumbent_conflicts"] == 0
         assert entry["native_key_or_age_conflicts"] == 0
+
+
+def test_person_ceiling_refuses_at_its_own_number(monkeypatch):
+    """The refusal is `<= _MAX_PERSONS`, whatever that number is.
+
+    Driven at `acs_household_reference_states`, the site whose roster scales:
+    it counts retained ACS persons, which a full-source build grows to
+    3,422,888. The old 600,000 sat 5.7x below the genuine ACS person file, so
+    it never asserted that file's size. `test_us_native_row_ceilings.py` carries
+    the separate assertion that the shipped number admits it.
+    """
+    household_id = np.array([1, 1, 2], dtype="int64")
+    relshipp = np.array([20, 25, 37], dtype="int64")
+    monkeypatch.setattr(demographic, "_MAX_PERSONS", 3)
+    states, _summary = demographic.acs_household_reference_states(
+        household_id=household_id, relshipp=relshipp
+    )
+    assert len(states) == 3
+    monkeypatch.setattr(demographic, "_MAX_PERSONS", 2)
+    with pytest.raises(ValueError, match="ACS_ROWS"):
+        demographic.acs_household_reference_states(
+            household_id=household_id, relshipp=relshipp
+        )

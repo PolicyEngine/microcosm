@@ -109,6 +109,8 @@ persons. A bound met per channel is met by 3,422,888, not by 3,565,013.
 | `acs_person_coverage_columns.MAX_SELECTED_ROWS` | 1,000,000 | **14,000,000** | requested ACS person keys | 3,422,888 | 4.09 |
 | `survey_observed_age.MAX_ROWS` | 2,000,000 | **14,000,000** | one channel's person rows | 3,422,888 | 4.09 |
 | `survey_origin_budget.MAX_GROUPS` | 1,000,000 | **7,000,000** | allocation instructions = selected households | 1,587,376 | 4.41 |
+| `current_survey_geography.MAX_HOUSEHOLDS` | 524,288 | **7,000,000** | selected households | 1,587,376 | 4.41 |
+| `asec_demographic_source._MAX_PERSONS` | 600,000 | **14,000,000** | retained ACS persons (the larger of its two rosters) | 3,422,888 | 4.09 |
 
 Each refusal keeps its code, its exception type and its expression; only the
 number moves.
@@ -120,6 +122,8 @@ number moves.
 | `MAX_SELECTED_ROWS` | `"ACS coverage selected person count is outside the bound"` | `ValueError` |
 | `survey_observed_age.MAX_ROWS` | `"SURVEY_OBSERVED_AGE_ROW_BOUND"` | `ValueError` |
 | `MAX_GROUPS` | `"GROUP_COUNT_BOUND"` | `SurveyOriginBudgetError` |
+| `current_survey_geography.MAX_HOUSEHOLDS` | `"CURRENT_SURVEY_GEOGRAPHY_HOUSEHOLD_COUNT"`, `…_PROJECTION_STORAGE` | `ValueError` |
+| `asec_demographic_source._MAX_PERSONS` | `"ACS_ROWS"`, `"MEMBERSHIP_ROWS"`, `"CLASSIFY_ROWS"`, `"DEMOGRAPHIC_ROWS"` | `ValueError` |
 
 ### 3a. `survey_origin_budget.MAX_GROUPS`, which the transport lane left open
 
@@ -185,7 +189,7 @@ meets; it does not, and this note corrects that.**
 
 ## 5. What still binds, and whose argument it is
 
-The census in §6 found fourteen bounds a full-source build meets. Six are the
+The census in §6 found fourteen bounds a full-source build meets. Seven are the
 row counts §3 moved. The rest belong to the transport lane's argument — a
 segmented stream under one explicit total — not to this one.
 
@@ -211,14 +215,27 @@ The middle row is the clearest case for why the test matters: at roughly 200
 bytes of JSON per person, that 64 MiB cap admits a few hundred thousand persons,
 so raising the 2,097,152 row bound would move nothing at all.
 
-One further bound binds and is deliberately **not** decided here.
+A fourth bound needed the same test plus one more question, and passed both.
 `asec_demographic_source._MAX_PERSONS` (600,000) is enforced at five sites that
-count two different quantities — a fixed ASEC three-cohort roster of 432,523
-rows, and the retained ACS person roster, which a full-source build grows past
-three million — and its `_encode` builds a `struct`-packed binary payload rather
-than a streamed digest. One constant serving two quantities, in front of a
-binary encoding, is not a case the rule settles by itself. The lane report puts
-it to the owner rather than guessing.
+count **two different quantities**: a fixed ASEC three-cohort roster of 432,523
+rows, and the retained ACS person roster, which a full-source build grows to
+3,422,888. One constant over two rosters takes the larger, so the rule produces
+14,000,000 from the ACS arm. Three things had to hold before it could move, and
+each was read rather than assumed:
+
+- **It is not a fixed-width encoding.** `rows` lives as a JSON integer in the
+  header; the module's only `struct.pack` is `"<I"` over the *header length*,
+  which `_HEADER_MAX` bounds separately. The body budget is derived and checked
+  against the actual bytes (`len(self._body) == rows * len(COLUMNS) * 8`), never
+  capped, so nothing sizes an allocation or an offset from `_MAX_PERSONS`.
+- **It is not an assertion about the ACS file's size** — it could not be. At
+  600,000 it sat **5.7× below** the genuine 3,422,888-row ACS person file, and a
+  bound that would refuse the real file cannot be a structural claim about it.
+  That claim is made exactly elsewhere, by `ACS_SOURCE_ROW_SHAPE` and
+  `ACS_CAPTURE_CHANGED`; the ASEC arm's rows are asserted exactly by
+  `DEMOGRAPHIC_COHORT_ROWS`. Neither check weakens when the shared ceiling moves.
+- **No per-row payload sits behind the binding site.** `:1016` takes two numpy
+  arrays.
 
 ### 5b. The loudest one
 

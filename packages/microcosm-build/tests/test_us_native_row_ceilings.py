@@ -28,6 +28,7 @@ from microcosm.build.us_runtime import (
     acs_person_coverage_columns,
     acs_pums,
     asec_current_money,
+    asec_demographic_source,
     current_survey_geography,
     graph_survey_population,
     survey_observed_age,
@@ -54,6 +55,7 @@ MOVED = (
     (survey_observed_age, "MAX_ROWS", ACS_PERSONS, 14_000_000),
     (survey_origin_budget, "MAX_GROUPS", STACKED_HOUSEHOLDS, 7_000_000),
     (current_survey_geography, "MAX_HOUSEHOLDS", STACKED_HOUSEHOLDS, 7_000_000),
+    (asec_demographic_source, "_MAX_PERSONS", ACS_PERSONS, 14_000_000),
 )
 
 

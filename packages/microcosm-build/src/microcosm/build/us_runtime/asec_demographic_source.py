@@ -64,7 +64,15 @@ MAGIC = b"MCASDEMO\x01"
 FILENAME = "asec_demographic_source.bin"
 ARTIFACT_KIND = "microcosm.asec_demographic_source.v1"
 _HEADER_MAX = 262_144
-_MAX_PERSONS = 600_000
+# One constant over two rosters, so it takes the larger: the ASEC three-cohort
+# person rows at :652/:795/:1104/:1145, which no selection fraction grows, and
+# the retained ACS persons at :1016, which a full-source build grows to
+# 3,422,888. Four times that, rounded up to the next whole million. The old
+# 600,000 sat 5.7x *below* the genuine ACS person file, so it was never a claim
+# about that file's size -- ACS_SOURCE_ROW_SHAPE and ACS_CAPTURE_CHANGED assert
+# that exactly, and DEMOGRAPHIC_COHORT_ROWS asserts the ASEC arm's rows exactly,
+# so neither check weakens here. See docs/us-native-row-ceilings.md.
+_MAX_PERSONS = 14_000_000
 _TOKEN = object()
 _COMPOSE_TOKEN = object()
 
