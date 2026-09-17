@@ -133,6 +133,7 @@
           "shortfall_policy": "proportional scale-down inside a cell that holds less gainer mass than its raked target; the income band's net shortfall after every cell walk, apportioned to gain bands in proportion to their positive shortfalls, is walked over the income band's pooled unassigned gainers, scaled down proportionally when the pool is short, so cell-walk rounding overshoot is netted rather than compounded",
           "minimum_allocation_people": 1,
           "weights": "household_weight mapped to persons; no person splits across bands",
+          "rounding": "systematic with one seeded offset per walk: a person joins the band whose cumulative boundary first covers (1 - offset) of their weight, so a band boundary smaller than a person's weight still receives that person on the share of walks it implies and the rounding is unbiased across the conditioning cells",
           "cell_order": "income band ascending, age group ascending, region group ascending, gain bands highest first inside a cell; then the pooled walk per income band"
         },
         {
@@ -143,7 +144,7 @@
           "mean_repair_reason": "Published counts round to the nearest thousand and amounts to the nearest million; two cells of the 2024-25 table (gains of GBP 1m to 2m at taxable incomes of GBP 37,700 to 49,999 and GBP 100,000 to 125,139) imply a mean below their own band, and repaired means clamp just inside the violated boundary.",
           "bottom_band_floor": "annual exempt amount plus one pound, since every allocated person is a taxpayer with a liability",
           "seed_base": 552,
-          "seed_mixing": "seed combined with the build period; draws consumed in cell order, then in pooled-fallback order",
+          "seed_mixing": "seed combined with the build period; each walk draws its rounding offset then its quantiles, consumed in cell order, then in pooled-fallback order",
           "deterministic": true,
           "cell_means": "Table 3 2024-25 published cell means, with suppressed-count cells at the band-total mean, repaired into the band"
         },

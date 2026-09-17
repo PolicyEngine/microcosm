@@ -26,7 +26,40 @@ adds an asset-type stage. This note measures what changed.
 
 ## Part A — 10 % rung (sample seed 42)
 
-(pending)
+Both twins built with `--sample-fraction 0.1 --sample-seed 42` (control 10.7 min, candidate 10.6 min; the
+sampled rung refuses a checkpoint directory by design). Tables: `docs/evidence/uk-cgt-725/*-f010.csv`,
+receipt `receipt-f010.json`. Weights are ten times the full-scale weights on this rung, so every count below
+is coarse to about one row's weight (the heaviest liable row carries 11,036 people).
+
+- **Two repairs came out of this rung** (commit fc72f873). First candidate build: liable taxpayers 625,637
+  against 551,000 published, because the pooled fallback walked each (gain band, income band) shortfall
+  clipped at zero and so compounded the half-weight overshoot of the 144 cell walks into 75,000 extra
+  taxpayers. The fallback now fills the income band's net shortfall, apportioned to bands by their positive
+  shortfalls: liable taxpayers 551,289. Second, the residential flag realised by probability-systematic
+  sampling over 61 heavy rows left the weighted count 31,800 (16 %) off its expectation; the weighted
+  systematic walk in gain order lands it within 40 people (202,669 against 202,630) and the gains at £12.05bn
+  against £12.24bn.
+- **Age.** 65+ hold 38.2 % of liable taxpayers on the candidate (control 27.6 %; Table 6 38.5 %) and the
+  eight adult age bands sit within one or two rows' weight of Table 6 (65–74: 123k vs 125k; 75–84: 62k vs
+  68k; 35–44: 72k vs 65k). 65+ hold 26.9 % of gains (control 24.5 %; Table 6 32 %) and 19.7 % of £2m+
+  gainers (control 22.7 %): the rake constrains counts only, so the top bands inside each age cell still
+  follow the frame's income and prior-gain shares. Gains by age remain far from Table 6 on this rung
+  (45–54: £12.4bn vs £28.4bn; 55–64: £13.3bn vs £38.1bn), but so does the total: the rung carries £50.5bn
+  of the £119.3bn because the £250k+ bands are under-filled (£5m+: 500 people of 3,000) — a 3,000-person
+  band cannot be met by rows that weigh 2,500 each. The full spine settles this; if the gains-by-age
+  margin stays far off there, the amounts-consistent tilt (Table 6 gains as a rake constraint) the plan
+  listed as a conditional follow-up is warranted.
+- **Region.** Twelve-area counts are closer than the control's but still coarse at this rung (North West
+  91k vs 42k, East of England 98k vs 58k, South East 82k vs 114k, London 87k vs 107k): the rake meets the
+  region margins to 1e-15, but 50,930 of the 551,000 (9 %) pass through the pooled fallback that ignores
+  age and region, and 24 age×region cells per income band leave most cells with zero or one row here.
+- **Size bands.** Candidate bands sit within one row's weight of Table 2.1a folded (0–9,999: 145k vs 133k;
+  10k: 99k vs 123k; 25k: 108k vs 98k; 50k: 121k vs 78k; 100k: 49k vs 61k) — the same coarseness the
+  control shows on its own 2023-24 targets.
+- **Residential and asset types.** 61 rows flagged residential, count and gains as above. Non-residential
+  gains shares against Table 7: unlisted 53.5 % (target 55.3 %), other financial 26.1 % (26.7 %), listed
+  9.0 % (9.8 %), agricultural/commercial 9.6 % (3.4 %), other non-financial 1.6 % (4.8 %) — a categorical
+  draw over 180 rows; diagnostic only.
 
 ## Part B — full twin spines
 

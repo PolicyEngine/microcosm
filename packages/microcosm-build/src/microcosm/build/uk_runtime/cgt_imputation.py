@@ -876,18 +876,23 @@ def _walk_bands(
 
     ``boundaries`` lists ``(gain band lower bound, people mass)`` from the
     top band down; a person joins the band whose cumulative boundary first
-    covers the midpoint of their weight, so no person splits across bands.
-    Returns the mask of assigned positions in ``ranked`` and the mass each
-    band received.
+    covers ``(1 - offset)`` of their weight, with one seeded offset per walk,
+    so no person splits across bands and the rounding is systematic: a
+    band whose boundary is smaller than a person's weight still receives
+    that person on the share of walks its boundary implies, rather than
+    never (the midpoint rule's bias, which emptied the top bands inside
+    the conditioning cells). Returns the mask of assigned positions in
+    ``ranked`` and the mass each band received.
     """
 
     cumulative = np.cumsum(weights)
+    offset = float(rng.random())
     boundary = 0.0
     assigned = np.zeros(len(ranked), dtype=bool)
     achieved: dict[int, float] = {}
     for gain_lower, mass in boundaries:
         boundary += mass
-        in_cell = ~assigned & (cumulative - weights / 2.0 <= boundary)
+        in_cell = ~assigned & (cumulative - (1.0 - offset) * weights <= boundary)
         count = int(in_cell.sum())
         if count == 0:
             continue
@@ -1515,6 +1520,13 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             "weights": (
                 "household_weight mapped to persons; no person splits across bands"
             ),
+            "rounding": (
+                "systematic with one seeded offset per walk: a person joins the "
+                "band whose cumulative boundary first covers (1 - offset) of "
+                "their weight, so a band boundary smaller than a person's weight "
+                "still receives that person on the share of walks it implies "
+                "and the rounding is unbiased across the conditioning cells"
+            ),
             "cell_order": (
                 "income band ascending, age group ascending, region group "
                 "ascending, gain bands highest first inside a cell; then the "
@@ -1537,8 +1549,9 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             "bottom_band_floor": "annual exempt amount plus one pound",
             "seed_base": UK_CGT_IMPUTATION_SEED,
             "seed_mixing": (
-                "seed combined with the build period; draws consumed in cell "
-                "order, then in pooled-fallback order"
+                "seed combined with the build period; each walk draws its "
+                "rounding offset then its quantiles, consumed in cell order, "
+                "then in pooled-fallback order"
             ),
             "deterministic": True,
             "cell_means": (

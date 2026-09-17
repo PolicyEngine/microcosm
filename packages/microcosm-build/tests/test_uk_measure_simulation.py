@@ -593,13 +593,13 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # held out of the objective — carer and childcare as model concept gaps,
     # the any-tenure housing row as a structural bias — signed by María in
     # review of microcosm#921 with a one-month window.
-    "dwp/uc/elements/": 3,
+    "dwp.uc.households_": 3,
 }
 
 _UC_ELEMENT_REGISTER_ROWS = (
-    "dwp/uc/elements/carer",
-    "dwp/uc/elements/childcare",
-    "dwp/uc/elements/housing",
+    "dwp.uc.households_carer_element",
+    "dwp.uc.households_childcare_element",
+    "dwp.uc.households_housing_element",
 )
 
 _A16_UNREACHABLE_ROWS = (
@@ -697,15 +697,17 @@ def test_packaged_exclusions_load():
         assert "docs/uk-uc-baseline-2026-09-10.md" in entry["adjudication"], entry[
             "name"
         ]
-    housing = next(e for e in elements if e["name"] == "dwp/uc/elements/housing")
+    housing = next(
+        e for e in elements if e["name"] == "dwp.uc.households_housing_element"
+    )
     assert "112,518 of 4,037,650" in housing["reason"]
     # The four element rows that stay in the objective are not on the register.
     for riding in (
-        "dwp/uc/elements/lcwra",
-        "dwp/uc/elements/housing_social_rented",
-        "dwp/uc/elements/housing_private_rented",
-        "dwp/uc/elements/deductions",
-        "obr/universal_credit",
+        "dwp.uc.households_lcwra_element",
+        "dwp.uc.households_housing_element_social_rented",
+        "dwp.uc.households_housing_element_private_rented",
+        "dwp.uc.households_with_deduction",
+        "obr.universal_credit",
     ):
         assert riding not in names, riding
 

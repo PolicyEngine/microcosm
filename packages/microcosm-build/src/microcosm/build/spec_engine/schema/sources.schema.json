@@ -4632,6 +4632,9 @@
       "band_order": {
        "type": "string"
       },
+      "cell_order": {
+       "type": "string"
+      },
       "column_reconciliation": {
        "type": "string"
       },
@@ -4642,6 +4645,9 @@
        "type": "number"
       },
       "ordering": {
+       "type": "string"
+      },
+      "rounding": {
        "type": "string"
       },
       "shortfall_policy": {
@@ -4655,9 +4661,6 @@
       },
       "within": {
        "type": "string"
-      },
-      "cell_order": {
-       "type": "string"
       }
      },
      "required": [
@@ -4667,6 +4670,7 @@
       "kind",
       "minimum_allocation_people",
       "ordering",
+      "rounding",
       "shortfall_policy",
       "suppressed_cell_allocation",
       "weights",
