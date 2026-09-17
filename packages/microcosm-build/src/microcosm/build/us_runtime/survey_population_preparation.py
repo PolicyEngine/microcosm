@@ -212,6 +212,11 @@ def _spill_roster(root, name, segments, table, digest, total):
             and stats.st_size == size,
             "ROSTER_SEGMENT_CHANGED",
         )
+        # A segment that was already there is read back and hashed, not trusted
+        # for its size. The run's own bytes come from memory either way, so this
+        # protects the claim that the spill is a re-verifiable on-disk form --
+        # which it would not be if same-size different content passed.
+        _require(_sha(path.read_bytes()) == sha, "ROSTER_SEGMENT_CHANGED")
     header = {
         "protocol": ROSTER_PROTOCOL,
         "name": name,

@@ -140,10 +140,7 @@ def test_generated_take_up_has_closed_coherent_semantics() -> None:
 
 def test_source_backed_steps_are_thin_resolved_references() -> None:
     take_up, sources = _documents()
-    stages = {
-        stage["stage"]: stage["operations"]
-        for stage in sources["stages"]
-    }
+    stages = {stage["stage"]: stage["operations"] for stage in sources["stages"]}
     residual_fields = {
         "anchor_column",
         "calibration_review",
@@ -331,39 +328,51 @@ def test_normative_owner_mutations_name_the_legacy_fields_they_change() -> None:
 
     tanf = copy.deepcopy(take_up)
     _program(tanf, "tanf")["pipeline"][0]["rate"]["value"] = 0.218
-    assert _legacy_program(
-        _project(tanf, sources),
-        "takes_up_tanf_if_eligible",
-    )["rate"]["value"] == 0.218
-    assert _legacy_program(baseline, "takes_up_tanf_if_eligible")["rate"][
-        "value"
-    ] == 0.219
+    assert (
+        _legacy_program(
+            _project(tanf, sources),
+            "takes_up_tanf_if_eligible",
+        )["rate"]["value"]
+        == 0.218
+    )
+    assert (
+        _legacy_program(baseline, "takes_up_tanf_if_eligible")["rate"]["value"] == 0.219
+    )
 
     aca = copy.deepcopy(take_up)
     _program(aca, "aca")["pipeline"][1]["rate_review"]["value"] = 0.673
-    assert _legacy_program(
-        _project(aca, sources),
-        "takes_up_aca_if_eligible",
-    )["rate"]["value"] == 0.673
-    assert _legacy_program(baseline, "takes_up_aca_if_eligible")["rate"][
-        "value"
-    ] == 0.672
+    assert (
+        _legacy_program(
+            _project(aca, sources),
+            "takes_up_aca_if_eligible",
+        )["rate"]["value"]
+        == 0.673
+    )
+    assert (
+        _legacy_program(baseline, "takes_up_aca_if_eligible")["rate"]["value"] == 0.672
+    )
 
     engine = copy.deepcopy(take_up)
-    _program(engine, "chip")["pipeline"][0]["debt"]["rate_review"][
-        "status"
-    ] = "review_mutated"
-    assert _legacy_program(
-        _project(engine, sources),
-        "takes_up_chip_if_eligible",
-    )["rate"]["status"] == "review_mutated"
+    _program(engine, "chip")["pipeline"][0]["debt"]["rate_review"]["status"] = (
+        "review_mutated"
+    )
+    assert (
+        _legacy_program(
+            _project(engine, sources),
+            "takes_up_chip_if_eligible",
+        )["rate"]["status"]
+        == "review_mutated"
+    )
 
     ssi = copy.deepcopy(take_up)
     _program(ssi, "ssi")["pipeline"][1]["target_table"] = "mutated_target"
-    assert _legacy_program(
-        _project(ssi, sources),
-        "takes_up_ssi_if_eligible",
-    )["calibration"]["target_table"] == "mutated_target"
+    assert (
+        _legacy_program(
+            _project(ssi, sources),
+            "takes_up_ssi_if_eligible",
+        )["calibration"]["target_table"]
+        == "mutated_target"
+    )
 
 
 def test_closed_schema_rejects_the_retired_legacy_blob() -> None:

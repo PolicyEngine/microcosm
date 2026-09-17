@@ -280,9 +280,7 @@ class TestE6Receipt:
 
         clamped_person = person.copy()
         clamped_person["age"] = np.minimum(
-            pd.to_numeric(clamped_person["age"], errors="raise").to_numpy(
-                dtype=float
-            ),
+            pd.to_numeric(clamped_person["age"], errors="raise").to_numpy(dtype=float),
             float(UK_AGE_TOP_CODE),
         )
         clamped_nhs = allocate_nhs_by_age_gender(
@@ -333,9 +331,7 @@ def test_e8_carrier_recompute_uses_disaggregated_age():
 
     clamped = disaggregated.assign(
         age=np.minimum(
-            pd.to_numeric(disaggregated["age"], errors="coerce").to_numpy(
-                dtype=float
-            ),
+            pd.to_numeric(disaggregated["age"], errors="coerce").to_numpy(dtype=float),
             float(TOP),
         )
     )

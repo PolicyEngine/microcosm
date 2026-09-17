@@ -179,7 +179,9 @@ def load_efrs_parity_reference(
     }
     expected_entities = {"person", "benunit", "household"}
     invalid_entities = {
-        name: entity for name, entity in entities.items() if entity not in expected_entities
+        name: entity
+        for name, entity in entities.items()
+        if entity not in expected_entities
     }
     if invalid_entities:
         raise ValueError(

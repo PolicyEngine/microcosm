@@ -283,8 +283,8 @@ def test_post_imputation_rake_fits_all_four_need_margins() -> None:
     # Region is the last margin swept, so it fits essentially exactly; the
     # earlier margins settle within a tight band over 50 iterations.
     elec = raked["electricity_consumption"].to_numpy(dtype=float)
-    target = need["region"]["electricity_kwh"]["LONDON"] * (
-        rates["electricity_gbp_per_kwh"]
+    target = (
+        need["region"]["electricity_kwh"]["LONDON"] * (rates["electricity_gbp_per_kwh"])
     )
     assert abs(wmean(elec, region == "LONDON") - target) / target < 1e-6
     gas = raked["gas_consumption"].to_numpy(dtype=float)

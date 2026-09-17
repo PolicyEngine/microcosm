@@ -575,9 +575,7 @@ def us_workers_compensation_summary(frame: Frame) -> dict[str, object]:
         source_reconciliation_mask = source_mask.copy()
         if has_support_role_metadata(person, entity="person"):
             source_mask = (
-                support_gate_source_channel_series(
-                    person, entity="person"
-                ).to_numpy()
+                support_gate_source_channel_series(person, entity="person").to_numpy()
                 == _BASE_ASEC_SUPPORT_CHANNEL
             )
             source_reconciliation_mask = source_mask.copy()

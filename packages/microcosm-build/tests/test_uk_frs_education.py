@@ -80,9 +80,11 @@ def test_training_qyp_ema_and_benefits_in_own_right() -> None:
     result = derive_frs_education(person, raw)
 
     assert result["is_in_approved_training"].tolist() == [True, False, False]
-    assert result[
-        "age_started_or_accepted_current_education_or_training"
-    ].tolist() == [18, 1000, 1000]
+    assert result["age_started_or_accepted_current_education_or_training"].tolist() == [
+        18,
+        1000,
+        1000,
+    ]
     assert result[
         "is_before_universal_credit_qualifying_young_person_terminal_date"
     ].tolist() == [True, False, False]

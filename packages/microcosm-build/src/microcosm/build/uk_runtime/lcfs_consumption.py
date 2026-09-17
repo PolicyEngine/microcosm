@@ -429,9 +429,7 @@ def bridge_has_fuel_to_lcfs(
     from microcosm.fit import RegimeGatedQRF
 
     if nts_ice_share is None:
-        nts_ice_share = float(
-            load_lcfs_consumption_anchors()["nts_ice_share"]["value"]
-        )
+        nts_ice_share = float(load_lcfs_consumption_anchors()["nts_ice_share"]["value"])
     donor = was.copy()
     donor["has_fuel_consumption"] = (
         (_numeric(donor["num_vehicles"]) > 0)
@@ -439,7 +437,7 @@ def bridge_has_fuel_to_lcfs(
             stable_identity_uniforms(
                 donor.index.to_numpy(), seed=seed, salt="was_has_fuel"
             )
-                < nts_ice_share
+            < nts_ice_share
         )
     ).astype(float)
     # The LCFS frame carries its own names for three of the WAS bridge

@@ -760,13 +760,24 @@ def test_roster_spill_names_its_segments_and_verifies_them(tmp_path):
         owner._roster_payload(document, spill=tmp_path, name="../escape")
 
 
-def test_roster_spill_refuses_a_replaced_segment(tmp_path):
+@pytest.mark.parametrize("keep_length", [False, True])
+def test_roster_spill_refuses_a_replaced_segment(tmp_path, keep_length):
+    """A shorter replacement fails on size; a same-length one fails on content.
+
+    The run's own bytes come from memory either way, so this is about the claim
+    that the spill is a re-verifiable on-disk form, which it would not be if
+    same-size different content passed.
+    """
     document = {"rows": [[i, "acs", i * 7] for i in range(200)]}
     _payload, header = owner._roster_payload(
         document, spill=tmp_path, name="preparation"
     )
     victim = tmp_path / "preparation" / (header["segments"][0][0] + ".segment")
-    victim.write_bytes(b"shorter")
+    original = victim.read_bytes()
+    victim.write_bytes(
+        original[:-1] + bytes([original[-1] ^ 0x20]) if keep_length else b"shorter"
+    )
+    assert (len(victim.read_bytes()) == len(original)) is keep_length
     with pytest.raises(
         owner.SurveyPopulationPreparationError, match="ROSTER_SEGMENT_CHANGED"
     ):

@@ -417,20 +417,18 @@ def test_signal_gate_reconciles_physical_asec_rows_in_stacked_pool() -> None:
 
     assert result.passed, result.failures
 
-    asec_clone = (
-        person["person_support_channel"].eq("asec")
-        & person["person_support_clone_index"].eq(1)
-    )
+    asec_clone = person["person_support_channel"].eq("asec") & person[
+        "person_support_clone_index"
+    ].eq(1)
     person.loc[asec_clone.idxmax(), "miscellaneous_income"] = 1.0
     transferred_clone = us_alimony_signal_gate(  # type: ignore[arg-type]
         _PersonFrame(person)
     )
     assert transferred_clone.passed, transferred_clone.failures
 
-    asec_native = (
-        person["person_support_channel"].eq("asec")
-        & person["person_support_clone_index"].eq(0)
-    )
+    asec_native = person["person_support_channel"].eq("asec") & person[
+        "person_support_clone_index"
+    ].eq(0)
     person.loc[asec_native.idxmax(), "miscellaneous_income"] = 1.0
     mismatch = us_alimony_signal_gate(_PersonFrame(person))  # type: ignore[arg-type]
     assert not mismatch.passed

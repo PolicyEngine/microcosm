@@ -457,17 +457,13 @@ def test_driver_ladder_route_builds_with_gate(monkeypatch, toy_ladder, tmp_path)
         "bottom_by_rows",
         "bottom_by_ess",
     }
-    assert sum(row["row_share"] for row in summary["region_mix"]) == pytest.approx(
+    assert sum(row["row_share"] for row in summary["region_mix"]) == pytest.approx(1.0)
+    assert sum(row["weight_share"] for row in summary["region_mix"]) == pytest.approx(
         1.0
     )
-    assert sum(
-        row["weight_share"] for row in summary["region_mix"]
-    ) == pytest.approx(1.0)
     area_support_path = output_dir / builder.AREA_SUPPORT_FILENAME
     assert area_support_path.exists()
-    assert manifest["outputs"]["area_support_summary"]["path"] == str(
-        area_support_path
-    )
+    assert manifest["outputs"]["area_support_summary"]["path"] == str(area_support_path)
     area_support = pd.read_csv(area_support_path)
     assert area_support.columns.tolist() == [
         "area_type",
@@ -885,9 +881,7 @@ def test_driver_ladder_dry_run_refuses_legacy_preassigned_geography(
     _, ladder_path = toy_ladder
     builder = _load_builder_module()
     input_h5 = tmp_path / "preassigned.h5"
-    household = _household_frame().assign(
-        constituency_code_oa="stale-constituency"
-    )
+    household = _household_frame().assign(constituency_code_oa="stale-constituency")
     _write_seam_h5(input_h5, household=household)
     monkeypatch.setattr(
         sys,

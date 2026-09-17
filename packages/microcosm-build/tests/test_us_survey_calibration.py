@@ -251,7 +251,5 @@ def test_survey_diagnostics_recompute_closed_solver_option_values(field, changed
     document = json.loads(raw)
     assert document["options"][field] != changed
     document["options"][field] = changed
-    with pytest.raises(
-        ValueError, match="^SURVEY_DIAGNOSTICS_RECOMPUTED_VALUES$"
-    ):
+    with pytest.raises(ValueError, match="^SURVEY_DIAGNOSTICS_RECOMPUTED_VALUES$"):
         _validated_diagnostics(value, output, canonical_json(document))

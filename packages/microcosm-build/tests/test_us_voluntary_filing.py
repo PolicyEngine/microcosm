@@ -665,9 +665,7 @@ def test_assembled_clone_two_uses_explicit_index_and_checks_every_clone() -> Non
     receiver = pd.DataFrame(
         {
             predictor: np.arange(5, dtype=np.float64) + offset
-            for offset, predictor in enumerate(
-                SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS
-            )
+            for offset, predictor in enumerate(SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS)
         },
         index=tax_unit["tax_unit_id"],
     )
@@ -677,9 +675,7 @@ def test_assembled_clone_two_uses_explicit_index_and_checks_every_clone() -> Non
             assert entity == "tax_unit"
             return tax_unit
 
-    prediction_rows, fan_keys = module._source_receiver_rows(
-        TaxUnitFrame(), receiver
-    )
+    prediction_rows, fan_keys = module._source_receiver_rows(TaxUnitFrame(), receiver)
     assert prediction_rows.index.tolist() == ["10", "20"]
     assert fan_keys.tolist() == ["10", "10", "10", "20", "20"]
     # Source 10 prefers clone 0; source 20 has no native survivor and picks

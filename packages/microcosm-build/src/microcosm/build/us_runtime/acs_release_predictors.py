@@ -1497,8 +1497,8 @@ def _validate_canonical_ssi_reporter_values(
             "canonical raw join."
         )
     by_source = pd.Series(reported.to_numpy(), index=native[source_id_column])
-    pool_aligned = canonical["person_source_id"].map(by_source).to_numpy(
-        dtype=np.float64
+    pool_aligned = (
+        canonical["person_source_id"].map(by_source).to_numpy(dtype=np.float64)
     )
 
     raw_ssip = pd.to_numeric(joined["SSIP"], errors="coerce")

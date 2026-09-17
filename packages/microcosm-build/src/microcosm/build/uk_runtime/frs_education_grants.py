@@ -22,9 +22,7 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
-FRS_EDUCATION_GRANT_OUTPUT_COLUMNS = (
-    "disabled_students_allowance_eligible_expenses",
-)
+FRS_EDUCATION_GRANT_OUTPUT_COLUMNS = ("disabled_students_allowance_eligible_expenses",)
 FRS_EDUCATION_GRANT_REWRITES = ("education_grants",)
 UK_EDUCATION_GRANT_CAPACITY_PREDICTORS = (
     "childcare_grant",

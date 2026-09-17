@@ -139,8 +139,7 @@ class SpineAgreementSpec:
                 f"{duplicate_columns}."
             )
         if not isinstance(self.joint_categorical_groups, tuple) or any(
-            not isinstance(group, tuple)
-            for group in self.joint_categorical_groups
+            not isinstance(group, tuple) for group in self.joint_categorical_groups
         ):
             raise ValueError(
                 "SpineAgreementSpec.joint_categorical_groups must be an "
@@ -151,8 +150,7 @@ class SpineAgreementSpec:
             for group in self.joint_categorical_groups
             if len(group) < 2
             or any(
-                not isinstance(column, str) or not column.strip()
-                for column in group
+                not isinstance(column, str) or not column.strip() for column in group
             )
             or len(set(group)) != len(group)
             or not set(group).issubset(self.columns)
@@ -163,16 +161,10 @@ class SpineAgreementSpec:
                 f"joint categorical group(s): {invalid_groups}."
             )
         grouped_columns = [
-            column
-            for group in self.joint_categorical_groups
-            for column in group
+            column for group in self.joint_categorical_groups for column in group
         ]
         repeated_group_columns = sorted(
-            {
-                column
-                for column in grouped_columns
-                if grouped_columns.count(column) > 1
-            }
+            {column for column in grouped_columns if grouped_columns.count(column) > 1}
         )
         if repeated_group_columns:
             raise ValueError(
@@ -609,10 +601,7 @@ def spine_agreement_gate(
             category_values = np.empty(len(table), dtype=object)
             category_values[:] = list(
                 zip(
-                    *[
-                        series.to_numpy(dtype=object)
-                        for series in group_series
-                    ],
+                    *[series.to_numpy(dtype=object) for series in group_series],
                     strict=True,
                 )
             )
@@ -627,10 +616,7 @@ def spine_agreement_gate(
                 continue
             checked_joint_categorical_groups += 1
             pair_count, tested_count = _record_categorical_comparisons(
-                label=(
-                    f"{spec.entity}/{spec.family}/"
-                    f"joint[{','.join(group)}]"
-                ),
+                label=(f"{spec.entity}/{spec.family}/joint[{','.join(group)}]"),
                 values=category_values,
                 weights=weights,
                 channel_values=channel_values,
@@ -658,8 +644,7 @@ def spine_agreement_gate(
                     "max_q 2*abs(left_q-right_q)/(abs(left_q)+abs(right_q))"
                 ),
                 "categorical_distribution": (
-                    "resolved-weight category shares, including registered "
-                    "joint tuples"
+                    "resolved-weight category shares, including registered joint tuples"
                 ),
                 "categorical_distance": (
                     "0.5 * sum_category abs(left_share-right_share)"
@@ -674,9 +659,7 @@ def spine_agreement_gate(
             },
             "registered_families": len(specs),
             "checked_columns": checked_columns,
-            "checked_joint_categorical_groups": (
-                checked_joint_categorical_groups
-            ),
+            "checked_joint_categorical_groups": (checked_joint_categorical_groups),
             "checked_spine_pairs": checked_pairs,
             "tested_spine_pairs": tested_pairs,
             "untestable_comparisons": sorted(untestable_comparisons),
@@ -826,12 +809,8 @@ def _record_categorical_comparisons(
         tested_pairs += 1
         comparisons[comparison_key] = {
             "status": "tested",
-            "left_category_shares": _manifest_category_shares(
-                left_distribution
-            ),
-            "right_category_shares": _manifest_category_shares(
-                right_distribution
-            ),
+            "left_category_shares": _manifest_category_shares(left_distribution),
+            "right_category_shares": _manifest_category_shares(right_distribution),
             "categorical_total_variation_distance": distance,
         }
         if distance > DEFAULT_CATEGORICAL_TOTAL_VARIATION_TOLERANCE:

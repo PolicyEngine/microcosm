@@ -226,9 +226,7 @@ def _gate_frame() -> Frame:
         "marital_unit": "person_marital_unit_id",
     }
     tables = {
-        entity: pd.DataFrame(
-            {f"{entity}_id": person[column].to_numpy(dtype=np.int64)}
-        )
+        entity: pd.DataFrame({f"{entity}_id": person[column].to_numpy(dtype=np.int64)})
         for entity, column in entity_links.items()
     }
     tables["person"] = person
@@ -276,9 +274,7 @@ def _stacked_gate_frame() -> Frame:
     source[:18] = 17.0
     person["LKWEEKS"] = source
     unemployment_compensation = np.zeros(len(person), dtype=np.float64)
-    unemployment_compensation[
-        asec_native_rows : asec_native_rows + 12
-    ] = 100.0
+    unemployment_compensation[asec_native_rows : asec_native_rows + 12] = 100.0
     person["unemployment_compensation"] = unemployment_compensation
     return module._replace_person_table(frame, person)
 
@@ -677,9 +673,7 @@ def test_wrapper_runs_before_and_after_support_cloning(
     assert supported.table("person")[_OUTPUT].tolist() == [2.0, 4.0, 3.0, 0.0]
 
 
-def test_signal_gate_requires_exact_asec_and_nondefault_integer_both_channels() -> (
-    None
-):
+def test_signal_gate_requires_exact_asec_and_nondefault_integer_both_channels() -> None:
     frame = _gate_frame()
     assert us_weeks_unemployed_signal_gate(frame).passed
 
@@ -717,8 +711,7 @@ def test_signal_gate_derives_legacy_asec_puf_roster_and_constraint_scope() -> No
 
     person = frame.table("person").copy()
     first_puf_carrier = person.index[
-        person["person_support_channel"].eq("puf_tax_detail")
-        & person[_OUTPUT].gt(0.0)
+        person["person_support_channel"].eq("puf_tax_detail") & person[_OUTPUT].gt(0.0)
     ][0]
     person.loc[first_puf_carrier, "unemployment_compensation"] = 0.0
     gate = us_weeks_unemployed_signal_gate(module._replace_person_table(frame, person))

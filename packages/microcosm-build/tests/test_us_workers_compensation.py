@@ -544,10 +544,7 @@ def _stacked_workers_compensation_frame() -> Frame:
     return Frame(
         tables,
         expanded.schema,
-        {
-            entity: expanded.weights_for(entity)
-            for entity in expanded.weighted_entities
-        },
+        {entity: expanded.weights_for(entity) for entity in expanded.weighted_entities},
         expanded.strata,
         mass_log=expanded.mass_log,
         metadata=expanded.metadata,

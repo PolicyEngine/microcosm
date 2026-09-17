@@ -305,9 +305,7 @@ def test_replace_spi_support_preserves_quotas_and_allocates_real_mass() -> None:
         dead_spi.groupby(strata, dropna=False).size(),
         spi.groupby(strata, dropna=False).size(),
     )
-    incoming_base = dead.household[
-        ~dead.household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]
-    ]
+    incoming_base = dead.household[~dead.household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]]
     pd.testing.assert_series_equal(
         result.household.groupby(strata, dropna=False)["household_weight"].sum(),
         incoming_base.groupby(strata, dropna=False)["household_weight"].sum(),
@@ -493,9 +491,7 @@ def test_spi_prior_spreads_stratum_mass_instead_of_propagating_outliers() -> Non
     channel = support_channel_column("household")
     source_id = support_source_id_column("household")
     spi = result.household[result.household[channel] == SPI_SYNTHETIC_SUPPORT_CHANNEL]
-    incoming_base = dead.household[
-        ~dead.household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]
-    ]
+    incoming_base = dead.household[~dead.household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]]
     incoming_weights = incoming_base.set_index("household_id")["household_weight"]
     selected_source_weights = spi[source_id].map(incoming_weights).to_numpy(dtype=float)
     old_total = float(incoming_weights.sum())

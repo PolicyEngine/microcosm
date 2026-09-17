@@ -431,9 +431,7 @@ def test_engine_absent_environment_still_refuses_a_tampered_lock(
 
     monkeypatch.setattr(engine_abi, "_installed_engine_version", absent)
     registry = load_schema_registry()
-    us_root = (
-        Path(__file__).resolve().parents[1] / "src" / "microcosm" / "build" / "us"
-    )
+    us_root = Path(__file__).resolve().parents[1] / "src" / "microcosm" / "build" / "us"
     spec_dir = us_root / "spec"
     lock_path = tmp_path / engine_abi.ENGINE_ABI_LOCK_FILENAME
     parsed = json_module.loads(

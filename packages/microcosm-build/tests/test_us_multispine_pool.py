@@ -3805,9 +3805,10 @@ def test_pool_seed_stage_preserves_inputs_and_receipts_disclosed_defaults() -> N
         after_person.loc[measured_person, "takes_up_medicare_if_eligible"].tolist()
         == before_person.loc[measured_person, "takes_up_medicare_if_eligible"].tolist()
     )
-    assert after_person["takes_up_wic_if_eligible"].tolist() == before_person[
-        "takes_up_wic_if_eligible"
-    ].tolist()
+    assert (
+        after_person["takes_up_wic_if_eligible"].tolist()
+        == before_person["takes_up_wic_if_eligible"].tolist()
+    )
     assert (
         after_spm.loc[measured_spm, "takes_up_tanf_if_eligible"].tolist()
         == before_spm.loc[measured_spm, "takes_up_tanf_if_eligible"].tolist()

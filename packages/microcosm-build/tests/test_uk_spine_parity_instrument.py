@@ -825,9 +825,7 @@ class TestAcceptanceBand:
             == 2
         )
 
-    def test_diagnostic_non_contract_band_is_not_parity(
-        self, tmp_path: Path
-    ) -> None:
+    def test_diagnostic_non_contract_band_is_not_parity(self, tmp_path: Path) -> None:
         tool = _load_tool()
         candidate = _write(tmp_path / "c.json", _candidate_from_reference())
         receipt = tmp_path / "receipt.json"
@@ -850,9 +848,7 @@ class TestAcceptanceBand:
         assert report["verdict"] == "diagnostic"
         assert report["share_band"] == {"contract": 0.02, "effective": 0.9}
 
-    def test_strict_contract_band_behaviour_is_unchanged(
-        self, tmp_path: Path
-    ) -> None:
+    def test_strict_contract_band_behaviour_is_unchanged(self, tmp_path: Path) -> None:
         tool = _load_tool()
         candidate = _write(tmp_path / "c.json", _candidate_from_reference())
         receipt = tmp_path / "receipt.json"
@@ -1128,9 +1124,7 @@ class TestReviewFindings:
         assert report["nonzero_shares"]["differing"][column]["signed_id"] is None
         assert column in report["unsigned_differences"]
 
-    def test_signed_share_beyond_magnitude_is_a_defect(
-        self, tmp_path: Path
-    ) -> None:
+    def test_signed_share_beyond_magnitude_is_a_defect(self, tmp_path: Path) -> None:
         tool = _load_tool()
         column = "water_and_sewerage_charges"
         payload = _candidate_from_reference()

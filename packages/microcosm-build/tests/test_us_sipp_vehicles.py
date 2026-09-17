@@ -259,9 +259,7 @@ def _recipient_frame(n_households: int = 90) -> Frame:
         "spm_unit": pd.DataFrame(
             {"spm_unit_id": np.arange(1, n_households + 1) + 2_000}
         ),
-        "family": pd.DataFrame(
-            {"family_id": np.arange(1, n_households + 1) + 3_000}
-        ),
+        "family": pd.DataFrame({"family_id": np.arange(1, n_households + 1) + 3_000}),
         "marital_unit": pd.DataFrame(
             {"marital_unit_id": np.arange(1, n_households + 1) + 4_000}
         ),
@@ -269,11 +267,7 @@ def _recipient_frame(n_households: int = 90) -> Frame:
     return Frame(
         tables,
         US_SCHEMA,
-        {
-            "household": Weights(
-                np.full(n_households, 1_000_000.0), WeightKind.DESIGN
-            )
-        },
+        {"household": Weights(np.full(n_households, 1_000_000.0), WeightKind.DESIGN)},
     )
 
 
@@ -440,12 +434,15 @@ def test_cached_full_donor_matches_pinned_household_support() -> None:
         4.0,
         5.0,
     }
-    assert int(
-        (
-            (donor["household_vehicles_value"] > 0)
-            & (donor["household_vehicles_owned"] == 0)
-        ).sum()
-    ) == 87
+    assert (
+        int(
+            (
+                (donor["household_vehicles_value"] > 0)
+                & (donor["household_vehicles_owned"] == 0)
+            ).sum()
+        )
+        == 87
+    )
 
 
 class _ChunkedResponse(io.BytesIO):
@@ -464,7 +461,9 @@ class _ChunkedResponse(io.BytesIO):
         self.close()
 
 
-def test_fetch_streams_verifies_atomically_and_reuses_cache(tmp_path, monkeypatch) -> None:
+def test_fetch_streams_verifies_atomically_and_reuses_cache(
+    tmp_path, monkeypatch
+) -> None:
     payload = b"small synthetic pinned donor payload"
     digest = hashlib.sha256(payload).hexdigest()
     response = _ChunkedResponse(payload)
@@ -496,7 +495,9 @@ def test_fetch_streams_verifies_atomically_and_reuses_cache(tmp_path, monkeypatc
     )
 
 
-def test_fetch_failure_removes_partial_without_replacing_existing(tmp_path, monkeypatch) -> None:
+def test_fetch_failure_removes_partial_without_replacing_existing(
+    tmp_path, monkeypatch
+) -> None:
     target = tmp_path / "pu2023.csv"
     target.write_bytes(b"existing invalid cache")
     response = _ChunkedResponse(b"new but wrong payload")
@@ -571,10 +572,14 @@ def test_count_is_weighted_deterministic_classifier_and_value_chains_on_dummies(
         levels=tuple(sorted(donor["household_vehicles_owned"].unique())),
     )
     assert owned_dummy_columns
-    assert all(name.startswith("household_vehicles_owned__") for name in owned_dummy_columns)
+    assert all(
+        name.startswith("household_vehicles_owned__") for name in owned_dummy_columns
+    )
 
 
-def test_frame_application_is_household_grain_idempotent_and_preserves_net_worth() -> None:
+def test_frame_application_is_household_grain_idempotent_and_preserves_net_worth() -> (
+    None
+):
     frame = _recipient_frame()
     original_net_worth = frame.table("household")["net_worth"].copy()
     restored = with_us_sipp_vehicle_inputs(
@@ -587,9 +592,7 @@ def test_frame_application_is_household_grain_idempotent_and_preserves_net_worth
     household = restored.table("household")
     assert set(US_SIPP_VEHICLE_OUTPUT_COLUMNS) <= set(household.columns)
     pd.testing.assert_series_equal(household["net_worth"], original_net_worth)
-    assert len(household["household_vehicles_owned"]) == len(
-        frame.table("household")
-    )
+    assert len(household["household_vehicles_owned"]) == len(frame.table("household"))
     assert restored.weights_for("household") == frame.weights_for("household")
 
     passed_through = with_us_sipp_vehicle_inputs(
@@ -640,7 +643,18 @@ def test_gate_rejects_missing_constant_negative_and_fractional_surfaces() -> Non
             [0.0, 1.5, 1.0, 2.0, 1.0, 2.0, 0.0, 1.0, 2.0, 1.0]
         ),
         household_vehicles_value=np.array(
-            [0.0, 5_000.0, -1.0, 8_000.0, 4_000.0, 7_000.0, 0.0, 3_000.0, 9_000.0, 2_000.0]
+            [
+                0.0,
+                5_000.0,
+                -1.0,
+                8_000.0,
+                4_000.0,
+                7_000.0,
+                0.0,
+                3_000.0,
+                9_000.0,
+                2_000.0,
+            ]
         ),
     )
     bad_gate = us_sipp_vehicles_signal_gate(bad)

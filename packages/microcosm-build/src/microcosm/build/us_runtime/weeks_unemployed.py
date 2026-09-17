@@ -1303,9 +1303,7 @@ def us_weeks_unemployed_summary(frame: Frame) -> dict[str, object]:
         "weighted_weeks": float(np.dot(weights, np.nan_to_num(values))),
         "source_missing": source_missing,
         "source_rows": int(np.count_nonzero(source_rows)),
-        "source_reconciliation_rows": int(
-            np.count_nonzero(source_reconciliation_rows)
-        ),
+        "source_reconciliation_rows": int(np.count_nonzero(source_reconciliation_rows)),
         "source_invalid": source_invalid,
         "source_mismatch_count": source_mismatch,
         "uc_constraint_rows": int(np.count_nonzero(uc_constraint_rows)),

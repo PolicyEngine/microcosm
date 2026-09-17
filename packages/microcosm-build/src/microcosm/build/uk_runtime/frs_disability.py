@@ -250,7 +250,10 @@ def derive_frs_disability(
     )
     values["dla_m_category"] = _category(
         _amount(person, "dla_m_reported"),
-        (("LOWER", category_rates.dla_m_lower), ("HIGHER", category_rates.dla_m_higher)),
+        (
+            ("LOWER", category_rates.dla_m_lower),
+            ("HIGHER", category_rates.dla_m_higher),
+        ),
     )
     values["pip_m_category"] = _category(
         _amount(person, "pip_m_reported"),
@@ -266,7 +269,9 @@ def derive_frs_disability(
             ("ENHANCED", category_rates.pip_dl_enhanced),
         ),
     )
-    total = sum(_amount(person, column) for column in UK_DISABILITY_FLAG_REPORTED_COLUMNS)
+    total = sum(
+        _amount(person, column) for column in UK_DISABILITY_FLAG_REPORTED_COLUMNS
+    )
     dla_sc = _amount(person, "dla_sc_reported")
     aa = _amount(person, "attendance_allowance_reported")
     pip_dl = _amount(person, "pip_dl_reported")

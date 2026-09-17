@@ -151,9 +151,7 @@ def test_family_owned_output_mirrors_refuse_before_typed_compilation(
         if family["stage"] == "primary_puf_qrf"
     )
     target = next(
-        row
-        for row in primary["targets"]
-        if row["output_coverage_scope"] == "puf_clone"
+        row for row in primary["targets"] if row["output_coverage_scope"] == "puf_clone"
     )
     node = next(
         row
