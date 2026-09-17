@@ -596,6 +596,7 @@
           "benunit.uc_deduction_type_random_draw",
           "benunit.uc_latent_deduction_rate",
           "benunit.uc_reported_capital",
+          "benunit.would_claim_uc_childcare",
           "household.bus_fare_spending",
           "household.bus_subsidy_spending",
           "household.cash_isa",
@@ -625,6 +626,7 @@
           "person.admitted_patient_visits",
           "person.age_started_or_accepted_current_education_or_training",
           "person.attends_private_school_random_draw",
+          "person.care_hours",
           "person.charitable_investment_gifts",
           "person.dla_m_category",
           "person.dla_sc_category",
@@ -652,6 +654,7 @@
           "person.student_loan_balance",
           "person.student_loan_plan",
           "person.tax_free_childcare_spend_routed_share",
+          "person.would_claim_carers_allowance",
           "person.would_claim_marriage_allowance",
           "person.would_claim_scp"
         ],

@@ -22,6 +22,7 @@ from microcosm.build.uk_runtime import (
     frs_disability,
     frs_education_grants,
     frs_legacy_proxies,
+    frs_take_up,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_relationships import (
@@ -158,6 +159,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "AGE": 40,
         "SEX": 1,
         "TOTHOURS": 40,
+        # HOURTOT 5 = 35-49 hours of care a week (#882).
+        "HOURTOT": 5,
         "HRPID": 1,
         "UPERSON": 1,
         # #791 household grid: the HRP carries a blank relhrp and the parent
@@ -205,7 +208,15 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         # heartval is on the adult tape too; the three school columns are not.
         "HEARTVAL": 5.0,
     }
-    adult_2 = {**adult_1, "SERNUM": 2, "PERSON": 1, "SEX": 2, "HRPID": 1, "R02": ""}
+    adult_2 = {
+        **adult_1,
+        "SERNUM": 2,
+        "PERSON": 1,
+        "SEX": 2,
+        "HRPID": 1,
+        "R02": "",
+        "HOURTOT": "",
+    }
     child_1 = {
         "SERNUM": 1,
         "BENUNIT": 1,
@@ -601,6 +612,12 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                     operations=[
                         {"kind": "aggregate_person_to_benunit"},
                         {
+                            "kind": "aggregate_person_to_benunit",
+                            "method": "any_adult_under_state_pension_age",
+                            "consumed_only": True,
+                            "aggregates": {"uc_age_eligible": "age"},
+                        },
+                        {
                             "kind": "assign_binary_with_anchored_residual",
                             "output": "would_claim_child_benefit",
                             "seed": 0,
@@ -618,6 +635,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         {
                             "kind": "assign_binary_with_anchored_residual",
                             "output": "would_claim_uc",
+                            "population": "uc_age_eligible",
                             "seed": 0,
                         },
                         {
@@ -641,6 +659,11 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             "seed": 0,
                         },
                         {
+                            "kind": "assign_binary_from_banded_rates",
+                            "output": "would_claim_uc_childcare",
+                            "seed": 0,
+                        },
+                        {
                             "kind": "assign_clipped_normal",
                             "output": "maximum_extended_childcare_hours_usage",
                             "seed": 0,
@@ -655,6 +678,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "would_claim_extended_childcare",
                         "would_claim_universal_childcare",
                         "would_claim_targeted_childcare",
+                        "would_claim_uc_childcare",
                         "maximum_extended_childcare_hours_usage",
                     ),
                     nonnegative_outputs=("maximum_extended_childcare_hours_usage",),
@@ -975,6 +999,12 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["is_benunit_head"]
     assert adult["is_parent"]
     assert adult["hours_worked"] == pytest.approx(40 * WEEKS_IN_YEAR)
+    assert adult["care_hours"] == 35.0
+    assert bool(adult["would_claim_carers_allowance"]) == bool(
+        adult["carers_allowance_reported"] > 0
+    )
+    other = person.loc[person["person_id"] == 2001].iloc[0]
+    assert other["care_hours"] == 0.0
     assert adult["employment_income"] == pytest.approx(10 * WEEKS_IN_YEAR)
     assert adult["self_employment_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
     assert adult["private_pension_income"] == pytest.approx(15 * WEEKS_IN_YEAR)
@@ -1207,6 +1237,16 @@ def _stub_policy_readers(monkeypatch: pytest.MonkeyPatch) -> None:
         "uk_dsa_policy",
         lambda period: frs_education_grants.UKDSAPolicy(
             maximum=0.0,
+            instant=f"{period}-01-01",
+            source="test stub",
+        ),
+    )
+    monkeypatch.setattr(
+        frs_take_up,
+        "uk_take_up_population_policy",
+        lambda period: frs_take_up.UKTakeUpPopulationPolicy(
+            adult_age=18,
+            state_pension_age=66,
             instant=f"{period}-01-01",
             source="test stub",
         ),
@@ -2347,3 +2387,29 @@ def test_boundary_evidence_asks_only_the_stages_that_have_run() -> None:
         stage_names=("early_stage", "late_stage"), implementations=implementations
     )
     assert transferred == {"late_stage": {"stage": "late_stage", "ok": True}}
+
+
+def test_care_hours_map_the_hourtot_band_codes_and_refuse_unknown_codes() -> None:
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_CARE_HOURS_BY_BAND,
+        frs_care_hours,
+    )
+
+    person = pd.DataFrame(
+        {"hourtot": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "", np.nan, "x"]}
+    )
+    hours = frs_care_hours(person)
+    assert hours.tolist() == [0, 0, 5, 10, 20, 35, 50, 100, 0, 20, 35, 0, 0, 0]
+    assert hours.dtype == "float64"
+    # Only the 35-hour codes reach the Carer's Allowance line the engine tests.
+    assert [code for code, value in FRS_CARE_HOURS_BY_BAND.items() if value >= 35] == [
+        5,
+        6,
+        7,
+        10,
+    ]
+    assert frs_care_hours(pd.DataFrame({"age": [1, 2]})).tolist() == [0.0, 0.0]
+    with pytest.raises(ValueError, match="unknown band code"):
+        frs_care_hours(pd.DataFrame({"hourtot": [11]}))
+    with pytest.raises(ValueError, match="must be integral"):
+        frs_care_hours(pd.DataFrame({"hourtot": [2.5]}))

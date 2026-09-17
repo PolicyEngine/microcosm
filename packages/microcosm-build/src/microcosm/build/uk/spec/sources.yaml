@@ -206,7 +206,7 @@ stages:
   - kind: map_columns
     scope: 'raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence)'
   - kind: map_coded_amounts
-    scope: region, tenure, accommodation, council tax band, benefit-code amount mappings
+    scope: region, tenure, accommodation, council tax band, benefit-code amount mappings; adult HOURTOT care-hours band code to weekly care_hours at the band's lower edge (codes 5, 6, 7 and 10 reach the 35-hour Carer's Allowance line); would_claim_carers_allowance from positive reported Carer's Allowance
   - kind: annualize_periodic_amounts
     weeks_in_year: 52.17857142857143
   outputs:
@@ -217,6 +217,7 @@ stages:
   - gender
   - marital_status
   - hours_worked
+  - care_hours
   - is_household_head
   - is_benunit_head
   - is_parent
@@ -258,6 +259,7 @@ stages:
   - dla_m_reported
   - iidb_reported
   - carers_allowance_reported
+  - would_claim_carers_allowance
   - sda_reported
   - afcs_reported
   - ssmg_reported
@@ -321,7 +323,8 @@ stages:
   - structural_insurance_payments
   - housing_service_charges
   - external_child_payments
-  notes: Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity.
+  - care_hours
+  notes: Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge) and would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882).
 - stage: age_tail
   survey: Family Resources Survey 2024-25 and ONS mid-year population estimates
   source: Office for National Statistics mid-year population estimates for the 80+ age bands by sex, via the chronicle ledger facts the calibration register binds (target family ons_population).
@@ -716,6 +719,11 @@ stages:
       child_benefit_reported_anchor: child_benefit_reported
       pension_credit_reported_anchor: pension_credit_reported
       universal_credit_reported_anchor: universal_credit_reported
+  - kind: aggregate_person_to_benunit
+    method: any_adult_under_state_pension_age
+    consumed_only: true
+    aggregates:
+      uc_age_eligible: age
   - kind: assign_binary_with_anchored_residual
     output: would_claim_child_benefit
     draw: would_claim_child_benefit
@@ -738,6 +746,7 @@ stages:
     draw: would_claim_uc
     rate_key: universal_credit
     anchor: universal_credit_reported_anchor
+    population: uc_age_eligible
     seed: 0
   - kind: assign_binary_from_rate
     output: would_claim_tfc
@@ -759,6 +768,15 @@ stages:
     draw: would_claim_targeted_childcare
     rate_key: targeted_childcare
     seed: 0
+  - kind: assign_binary_from_banded_rates
+    output: would_claim_uc_childcare
+    draw: would_claim_uc_childcare
+    band_column: is_married
+    bands:
+    - upper_exclusive: 1
+      rate_key: uc_childcare_single
+    - rate_key: uc_childcare_couple
+    seed: 0
   - kind: assign_clipped_normal
     output: maximum_extended_childcare_hours_usage
     draw: maximum_extended_childcare_hours_usage
@@ -773,10 +791,11 @@ stages:
   - would_claim_extended_childcare
   - would_claim_universal_childcare
   - would_claim_targeted_childcare
+  - would_claim_uc_childcare
   - maximum_extended_childcare_hours_usage
   nonnegative_outputs:
   - maximum_extended_childcare_hours_usage
-  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only.
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with an adult under State Pension age (66 for everyone who can reach it in this release; the engine lockstep test pins it), so the contract rate is a share of those units, an anchor outside them stays true, and a unit with every adult at or over State Pension age is never drawn; its reported Housing Benefit is no longer zeroed by a claim it cannot make (#882, microcosm#867).
 - stage: frs_person_draws
   survey: Family Resources Survey 2024-25
   source: Sourced UK take-up contract rates and identity-keyed deterministic draws.
