@@ -9,6 +9,9 @@ import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime.survey_population_replay import (
+    _axis,
+    _axis_seal,
+    _same_axis_seal,
     replayed_frame_seal,
     replayed_population_seal,
     same_replayed_frame,
@@ -956,3 +959,157 @@ def test_non_finite_metadata_keeps_its_sign_on_both_paths():
     _accepts_frames(expected, _rebuild(_frame(), metadata={"value": float("inf")}))
     actual = _rebuild(_frame(), metadata={"value": float("-inf")})
     assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
+
+
+# --- What an adversarial pass over the seal found ---
+#
+# Every case below broke the seal's first draft and is pinned here. The first
+# is the dangerous direction -- the seal ACCEPTED a pair the comparison
+# refuses -- and the rest each refused under a code the comparison does not
+# use for that defect.
+
+
+def _with_person_axis(frame, index):
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = tables["person"].set_axis(index, axis=0)
+    strata = frame.strata.copy()
+    strata.index = index
+    return _rebuild(frame, tables=tables, strata=strata)
+
+
+def test_an_object_axis_keeps_its_null_sentinel_identity():
+    """pandas 3 re-infers ``pd.Series(index.array)`` and loses this.
+
+    ``pd.Index(["r", "s", None], dtype=object)`` and the same index holding
+    ``pd.NA`` both materialise as a ``str`` Series of ``["r", "s", nan]``, so a
+    fold taken through a Series accepts a pair ``Index.identical`` refuses. The
+    seal folds ``np.asarray(index.array)`` instead.
+    """
+    frame = _frame()
+    expected = _with_person_axis(frame, pd.Index(["r", "s", None], dtype=object))
+    actual = _with_person_axis(frame, pd.Index(["r", "s", pd.NA], dtype=object))
+    assert list(expected.person.index) != list(actual.person.index)
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_AXIS"
+
+
+@pytest.mark.parametrize("kind", ["bool", "complex", "float"])
+def test_an_axis_byte_difference_equals_tolerates_keeps_the_series_code(kind):
+    """``array_equivalent`` is tolerant for kinds ``f``, ``c`` and ``b``.
+
+    ``Index.identical`` therefore passes and the byte walk refuses, so the
+    seal's value fold has to collapse exactly what ``array_equivalent``
+    collapses or the refusal lands on ``AXIS`` instead.
+    """
+    if kind == "bool":
+        left = np.array([1, 0, 1], dtype=np.uint8).view(np.bool_)
+        right = np.array([2, 0, 1], dtype=np.uint8).view(np.bool_)
+    elif kind == "complex":
+        left = np.array([1 + 2j, complex(float("nan"), 0.0), 3 + 0j])
+        right = left.copy()
+        right.view(np.uint64)[2] = 0x7FF8000000000011
+    else:
+        left = np.array([-0.0, 1.0, 2.0])
+        right = np.array([0.0, 1.0, 2.0])
+    frame = _frame()
+    expected = _with_person_axis(frame, pd.Index(left))
+    actual = _with_person_axis(frame, pd.Index(right))
+    assert expected.person.index.identical(actual.person.index)
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+
+
+def test_an_axis_dtype_class_difference_keeps_the_series_code():
+    """``Index.identical`` compares dtypes with ``==``; the class is ``_series``'."""
+    frame = _frame()
+    expected = _with_person_axis(
+        frame, pd.Index(np.array([101, 103, 107], dtype=np.longlong), name="source_row")
+    )
+    actual = _with_person_axis(
+        frame, pd.Index(np.array([101, 103, 107], dtype=np.int64), name="source_row")
+    )
+    left, right = expected.person.index, actual.person.index
+    if type(left.dtype) is type(right.dtype):
+        pytest.skip("this platform does not carry a distinct longlong dtype class")
+    assert left.dtype == right.dtype and left.identical(right)
+    assert (
+        _refuses_frames(expected, actual)
+        == "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
+    )
+
+
+def test_a_structured_dtype_carrying_an_object_field_refuses_as_native_bits():
+    """``_array_bytes_equal`` returns False here; it does not raise its own code."""
+    frame = _with_column(_frame(), "structured", np.zeros(3, dtype=[("a", "O")]))
+    assert _refuses_frames(frame, frame) == "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+
+
+@pytest.mark.parametrize(
+    "left,right",
+    [
+        ((0, 1, 1), (0, 1, 7)),
+        ((0, 0, 1), (5, 5, 2)),
+    ],
+)
+def test_range_index_parameters_that_no_label_shows_are_accepted(left, right):
+    """``equals`` compares materialised labels, so the descriptor is invisible.
+
+    A seal derived from the store's index encoding would fold start/stop/step
+    (``store.py`` writes them for ``kind='range'``) and be stricter than the
+    predicate it replaces. The axis seal materialises the labels instead.
+    """
+    one, other = pd.RangeIndex(*left), pd.RangeIndex(*right)
+    assert list(one) == list(other) and one.identical(other)
+    assert _verdict(_same_axis_seal, _axis_seal(one), _axis_seal(other)) is None
+    assert _verdict(_axis, one, other) is None
+
+
+def test_a_comparable_whose_equality_refuses_itself_still_refuses():
+    """``identical`` applies ``==`` per comparable; a tuple compare would not."""
+
+    class _Refusing(float):
+        def __eq__(self, other):
+            return False
+
+        __hash__ = float.__hash__
+
+    name = _Refusing(1.0)
+    frame = _frame()
+    expected, actual = _frame(), _frame()
+    for target in (expected, actual):
+        target.table("household").index = pd.Index([0, 1], name=name)
+    del frame
+    assert (
+        expected.table("household").index.name is actual.table("household").index.name
+    )
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_AXIS"
+
+
+def test_a_masked_backing_that_is_falsy_but_not_zero_is_not_canonical():
+    """``np.all(rd[rm] == 0)`` is the predicate; truthiness is not it."""
+    expected, actual = _frame(), _frame()
+    for frame, fill in ((expected, "a"), (actual, "")):
+        array = frame.person["nullable_integer"].array
+        object.__setattr__(array, "_data", np.array(["x", fill, fill], dtype="<U1"))
+    assert (
+        _refuses_frames(expected, actual)
+        == "SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING"
+    )
+
+
+def test_a_series_subclass_column_refuses_though_the_values_match():
+    """pandas propagates a subclass that overrides ``_constructor``."""
+
+    class _SubSeries(pd.Series):
+        @property
+        def _constructor(self):
+            return _SubSeries
+
+    frame = _frame()
+    strata = _SubSeries(frame.strata)
+    assert type(strata.copy()) is _SubSeries
+    substituted = _rebuild(frame, strata=strata)
+    if type(substituted.strata) is pd.Series:
+        pytest.skip("the frame normalised the subclass away on this pandas")
+    assert (
+        _refuses_frames(substituted, substituted)
+        == "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
+    )

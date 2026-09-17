@@ -250,9 +250,17 @@ def _seal_digest_bytes(*parts: bytes) -> bytes:
     return digest.digest()
 
 
-def _array_seal(values):
-    """The retained half of ``_array_bytes_equal``: its type/dtype/shape + bytes."""
-    _require(type(values) is np.ndarray and not values.dtype.hasobject, "ARRAY_STORAGE")
+def _array_seal(values, reason):
+    """The retained half of ``_array_bytes_equal``: its type/dtype/shape + bytes.
+
+    ``_array_bytes_equal`` returns False rather than raising, so its caller's
+    own code is what a defect surfaces as. The seal takes that code as an
+    argument so a structured dtype carrying an object field, or a buffer that
+    is not an ``ndarray`` at all, refuses under ``NATIVE_BITS``,
+    ``WEIGHT_BYTES`` or ``DESIGN_BYTES`` exactly as it does today, instead of
+    under a code this comparison does not have.
+    """
+    _require(type(values) is np.ndarray and not values.dtype.hasobject, reason)
     return (values.dtype, values.shape, _seal_digest_bytes(values.tobytes()))
 
 
@@ -294,9 +302,11 @@ def _series_seal(series):
             and data.shape == mask.shape,
             "MASKED_STORAGE",
         )
-        # ``np.all(rd[rm] == 0)`` for this side. An unmasked column is
-        # canonical by construction, and the gather is skipped for it.
-        canonical = not mask.any() or not data[mask].any()
+        # ``bool(np.all(rd[rm] == 0))`` for this side, spelled exactly as the
+        # comparison spells it: a truthiness test instead would call an empty
+        # string canonical while ``== 0`` does not. An unmasked column is
+        # canonical by construction and skips the gather entirely.
+        canonical = not mask.any() or bool(np.all(data[mask] == 0))
         return (
             "masked",
             head,
@@ -333,7 +343,7 @@ def _series_seal(series):
         not isinstance(dtype, pd.api.extensions.ExtensionDtype),
         "UNSUPPORTED_EXTENSION_DTYPE",
     )
-    return ("native", head, _array_seal(series.to_numpy(copy=False)))
+    return ("native", head, _array_seal(series.to_numpy(copy=False), "NATIVE_BITS"))
 
 
 def _same_series_seal(expected, actual):
@@ -367,37 +377,51 @@ def _same_series_seal(expected, actual):
     _same_array_seal(expected[2], actual[2], "NATIVE_BITS")
 
 
-def _equals_class_seal(series):
-    """A digest whose equality matches ``Index.equals``, not raw bytes.
+def _axis_values_fold(index):
+    """A fold over the index's OWN values, under the ``AXIS`` code.
 
     ``_axis`` refuses ``AXIS`` when ``identical`` fails and only then falls
-    through to the byte-exact ``_series`` codes, so an axis needs both a
-    value-equality fold and a byte fold to keep each refusal on its own code.
-    ``array_equivalent`` treats two NaNs as equal and ``-0.0`` as ``0.0``, so
-    the float fold collapses both before hashing; every other admitted dtype's
-    byte fold already is its value fold, because byte equality implies
-    ``equals`` for all of them.
+    through to the byte-exact ``_series`` codes, so an axis needs a
+    value-equality fold as well as a byte fold if each refusal is to keep its
+    own code. ``Index.equals`` runs ``array_equivalent`` over the index's own
+    values -- NOT over ``pd.Series(index.array)``, which pandas 3 re-infers:
+    an object axis of ``["r", None]`` and one of ``["r", pd.NA]`` both
+    materialise as a ``str`` Series of ``["r", nan]``, so a fold taken through
+    a Series would accept a pair ``identical`` refuses. This one is taken
+    through ``np.asarray(index.array)``.
+
+    ``array_equivalent`` is tolerant of NaN payloads, NaN sign and signed zeros
+    for float and complex (``dtype.kind in "fc"``) and of bool bytes outside
+    ``{0, 1}``, so those are collapsed before hashing and the byte difference
+    reaches the series code that reports it today. For an object axis it is an
+    element-wise ``!=`` over arbitrary Python objects, which no digest
+    reproduces: the fold there is the store codec's own bytes, which is never
+    weaker than ``equals`` and is stricter on exactly the differences the codec
+    spells and ``==`` does not -- ``True`` against ``1``, ``-0.0`` against
+    ``0.0``. Those refuse under ``AXIS`` rather than under ``OBJECT_VALUE``.
+    The run refuses either way; see docs/us-native-retention-seal.md section 4.
     """
-    dtype = series.dtype
-    if (
-        not isinstance(dtype, pd.api.extensions.ExtensionDtype)
-        and dtype.kind == "f"
-        and not dtype.hasobject
-    ):
-        values = np.array(series.to_numpy(copy=False), dtype=dtype)
+    values = np.asarray(index.array)
+    if values.dtype == object:
+        payload = bytearray()
+        for value in values:
+            encoded = _object_bytes(value)
+            payload += len(encoded).to_bytes(8, "little") + encoded
+        return ("object", values.shape, _seal_digest_bytes(bytes(payload)))
+    _require(not values.dtype.hasobject, "AXIS")
+    original = values.dtype
+    if original.kind in "fc":
+        values = np.array(values, dtype=original)
         values[np.isnan(values)] = np.nan  # one spelling for every payload
-        values += 0.0  # -0.0 + 0.0 is +0.0
-        return (
-            "float",
-            dtype,
-            _seal_digest_bytes(np.ascontiguousarray(values).tobytes()),
-        )
-    seal = _series_seal(series)
-    if seal[0] == "masked":
-        return ("masked", seal[1], seal[3], seal[4])
-    if seal[0] == "string":
-        return ("string", seal[1], seal[4], seal[5])
-    return seal
+        values = values + original.type(0)  # -0.0 + 0.0 is +0.0, part by part
+    elif original.kind == "b":
+        values = np.ascontiguousarray(values).view(np.uint8) != 0
+    return (
+        "raw",
+        original,
+        values.shape,
+        _seal_digest_bytes(np.ascontiguousarray(values).tobytes()),
+    )
 
 
 def _axis_seal(index):
@@ -409,16 +433,18 @@ def _axis_seal(index):
     # ``DatetimeIndex``, so folding it generically closes a gap that folding
     # only (class, dtype, name, values) would leave open.
     comparables = tuple(type(index)._comparables)
-    values = pd.Series(index.array, copy=False)
     return (
         type(index),
         comparables,
         tuple(getattr(index, name, None) for name in comparables),
-        type(index.dtype),
         index.dtype,
-        _equals_class_seal(values),
+        _axis_values_fold(index),
         _name_seal(index.name),
-        _series_seal(values),
+        # ``_axis`` compares the materialised arrays, re-inference included, so
+        # the byte arm is taken through the same construction it uses. The
+        # dtype CLASS check lives here rather than above because ``identical``
+        # compares dtypes with ``==`` only and leaves the class to ``_series``.
+        _series_seal(pd.Series(index.array, copy=False)),
     )
 
 
@@ -426,14 +452,20 @@ def _same_axis_seal(expected, actual):
     _require(
         expected[0] is actual[0]
         and expected[1] == actual[1]
-        and expected[2] == actual[2]
-        and expected[3] is actual[3]
-        and expected[4] == actual[4]
-        and expected[5] == actual[5],
+        and len(expected[2]) == len(actual[2])
+        # ``identical`` applies ``==`` to each comparable; a tuple comparison
+        # would short-circuit on identity and accept a value whose own
+        # ``__eq__`` refuses itself.
+        and all(
+            bool(one == other)
+            for one, other in zip(expected[2], actual[2], strict=True)
+        )
+        and expected[3] == actual[3]
+        and expected[4] == actual[4],
         "AXIS",
     )
-    _require(expected[6] == actual[6], "AXIS_NAME")
-    _same_series_seal(expected[7], actual[7])
+    _require(expected[5] == actual[5], "AXIS_NAME")
+    _same_series_seal(expected[6], actual[6])
 
 
 def _flags_seal(table):
@@ -468,7 +500,7 @@ def replayed_frame_seal(frame: Frame) -> tuple:
     weights = []
     for entity in frame.weighted_entities:
         held = frame.weights_for(entity)
-        weights.append((entity, held.kind, _array_seal(held.values)))
+        weights.append((entity, held.kind, _array_seal(held.values, "WEIGHT_BYTES")))
     return (
         SEAL_PROTOCOL,
         frame.schema,
@@ -565,7 +597,7 @@ def replayed_population_seal(population: Population) -> tuple:
         ),
         tuple(population.design_weights),
         tuple(
-            (name, _array_seal(values))
+            (name, _array_seal(values, "DESIGN_BYTES"))
             for name, values in population.design_weights.items()
         ),
     )
