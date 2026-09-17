@@ -93,3 +93,42 @@ adding to it.
    lane's `smoke.py`, pid 68076, holds 52.7 GB; the waiter polls every 60 s).
 2. 1/10 run above the old ceiling.
 3. Replay proof, pins, CI-shaped battery, draft PR.
+
+### 2026-09-17, later
+
+**Landed:** the segmented transport for all four whole-roster receipts, the
+vectorised per-column frame seal, the hardening of the spill path, the ceiling
+receipt, the seal rate receipt, the row-count ceiling census, and draft PR
+[#945](https://github.com/PolicyEngine/microcosm/pull/945) against
+`native-verify-once`.
+
+**Measured:**
+
+| | |
+|---|---|
+| ceiling, full source | single `_encode` **REFUSES** `PAYLOAD_LIMIT`; the segmented transport carries 1,099,892,722 B in 17 segments, digest equal to the stream digest |
+| ceiling, 1/10 | single `_encode` **REFUSES**; transport carries 109,804,304 B in 2 segments |
+| seal, blended on the frame's own dtype census | 0.5195 → 0.0677 µs/cell, **7.68×**, bytes asserted equal per column first |
+| pins | **none move**: every inventory contract matches the tree, all ten stage manifests build |
+| graph suite | 778 passed, 1 skipped |
+| touched `us_runtime` tests | 359 passed |
+| frame identity file | 187 passed (was 160), 15.62 s |
+
+**Zero `packages/microcosm-graph` hunks**, so nothing in this PR is main-only.
+
+**Not implemented, by decision and with the mechanism recorded:** the memory half
+of the retention. `store.py` refuses a store-backed population snapshot three
+ways (masked-storage zeroing at `:456`, `MultiIndex` at `:619`, `CategoricalDtype`
+at `:486-487`), object identity is pinned at
+`graph_atomic_survey_financial.py:1897`, and `same_replayed_population` needs the
+whole object while the replay cannot exist until `run_graph` has returned. So
+nineteen detached populations must live in RAM or on disk between observation and
+comparison unless the object comparison becomes a content seal — a
+verification-contract decision, put to Max as a question.
+`docs/us-native-scale-transport.md` §4 specifies the executor mode item by item.
+
+### Next
+
+1. The 1/10 graph run (worktree `microcosm-native-scale-tenth`, launcher waits
+   for 70 GB), after the 1/1000 after-run's required replay finishes.
+2. Fold the after-run and 1/10 numbers into the report and the PR body.
