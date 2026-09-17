@@ -25,6 +25,7 @@ import pytest
 
 from microcosm.build.us_runtime import (
     acs_native_coverage_binding,
+    acs_person_coverage_authentication,
     acs_person_coverage_columns,
     acs_pums,
     asec_current_money,
@@ -33,6 +34,7 @@ from microcosm.build.us_runtime import (
     graph_survey_population,
     survey_observed_age,
     survey_origin_budget,
+    survey_population_preparation,
 )
 
 # Measured full-source counts. See the module docstring for the derivation.
@@ -162,3 +164,60 @@ def test_the_measured_counts_reconcile():
     assert ACS_HOUSEHOLDS + ASEC_HOUSEHOLDS == STACKED_HOUSEHOLDS
     assert ACS_PERSONS + ASEC_PERSONS == STACKED_PERSONS
     assert STACKED_PERSONS * 2 == COMBINED_CLONE_PERSONS
+
+
+def test_the_preparation_receipt_ceiling_is_still_enforced_by_its_consumer():
+    """Lifted in the producer, left at 64 MiB in the consumer. Pinned so it shows.
+
+    The transport lane raised `survey_population_preparation.MAX_ROSTER_BYTES` to
+    64 segments and reported the preparation-receipt ceiling moved from 96,860
+    households to 6,206,000. `_roster_payload` still returns one joined payload,
+    and `graph_survey_population._checked_preparation` checks those same bytes
+    against `PREPARATION_MAX_BYTES`, still 64 MiB, refusing `PREPARATION_BYTES`.
+
+    The transport lane's own committed ceiling receipt measured a 1/10 roster at
+    109,804,304 bytes and recorded it accepted by the producer -- 1.64x this cap
+    -- and a full-source roster at 1,099,892,722 bytes, which this cap admits
+    96,839 households of. That is the ceiling the transport lane lifted, still
+    standing one module downstream.
+
+    Not this lane's to move: it is a byte transport, and the whole receipt is one
+    `bytes` because `KernelResult.artifacts` is a mapping of `bytes`. Pinned here
+    so the next reader meets it in a test rather than in a build.
+
+    See experiments/native-row-ceilings/consumer-gap.json.
+    """
+    assert survey_population_preparation.MAX_ROSTER_BYTES == 64 * 64 * 1024**2
+    assert graph_survey_population.PREPARATION_MAX_BYTES == 64 * 1024**2
+    assert (
+        survey_population_preparation.MAX_ROSTER_BYTES
+        == 64 * graph_survey_population.PREPARATION_MAX_BYTES
+    )
+    measured_tenth_roster_bytes = 109_804_304
+    assert measured_tenth_roster_bytes > graph_survey_population.PREPARATION_MAX_BYTES
+
+
+def test_the_acs_body_budget_is_the_tightest_ceiling_on_the_path():
+    """0.38% of source, and neither this lane's argument nor the row family.
+
+    `acs_person_coverage_authentication` charges every selected row
+    `6 * len(raw) + 1024` against MAX_BODY_BYTES before the reader allocates,
+    refusing SELECTED_BODY_BUDGET. Measured over 200,000 real records of the
+    pilot's captured public ACS PUMS archive, a person record averages 695.57
+    bytes, so the charge is 5,197 bytes and 64 MiB admits 12,911 selected
+    persons -- 0.38% of the 3,422,888 a full-source build selects, and 265x
+    under at full source.
+
+    It is a byte transport, so it takes the segmented-transport argument. It is
+    also why lifting `acs_person_coverage_columns.MAX_SELECTED_ROWS` in the same
+    lane is necessary and not sufficient: this refuses 265x earlier.
+
+    See experiments/native-row-ceilings/selected-body-budget.json.
+    """
+    assert acs_person_coverage_authentication.MAX_BODY_BYTES == 64 * 1024**2
+    measured_charge_per_row = 5197
+    admitted = (
+        acs_person_coverage_authentication.MAX_BODY_BYTES // measured_charge_per_row
+    )
+    assert admitted < ACS_PERSONS // 100
+    assert acs_person_coverage_columns.MAX_SELECTED_ROWS > ACS_PERSONS

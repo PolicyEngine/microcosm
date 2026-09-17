@@ -42,6 +42,8 @@ ignore = ["E501"]
 "experiments/native-row-ceilings/repin.py" = ["E402"]
 "experiments/native-row-ceilings/regenerate_inventory_contract.py" = ["E402"]
 "experiments/native-row-ceilings/origin_budget_size.py" = ["E402"]
+"experiments/native-row-ceilings/selected_body_budget.py" = ["E402"]
+"experiments/native-row-ceilings/consumer_gap.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 # microcosm is a PEP 420 namespace package (no top-level __init__.py), so
