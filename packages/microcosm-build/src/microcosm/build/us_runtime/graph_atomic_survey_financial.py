@@ -1311,14 +1311,28 @@ def run_atomic_survey_financial(
     child_property=None,
     resume="auto",
     return_values=False,
+    _retain_every_node_population=False,
 ):
-    """Verify the base financial graph and its explicitly selected extension."""
+    """Verify the base financial graph and its explicitly selected extension.
+
+    The private retention flag names the one caller whose declared consumers
+    are every node rather than the three below: the completion host reads this
+    run's whole per-node population roster as its own expected populations
+    (``graph_survey_completion_host.py:814-816``) and hands them to
+    ``_states``, which needs the frames themselves. The recursive base call
+    below sets it; nothing else does. See docs/us-native-retention-seal.md.
+    """
     # One verification epoch for the whole run; the prefix run below opens
     # a nested one, and each closes with a full re-authentication. This run's
     # own record is carried into the manifest below; the prefix's record rides
     # its own manifest the same way.
     with survey._source_owner().verification_epoch() as verification:
         require(type(return_values) is bool, "RETURN_VALUES_FLAG")
+        require(
+            type(_retain_every_node_population) is bool
+            and not (_retain_every_node_population and child_property is not None),
+            "RETAIN_EVERY_NODE_POPULATION_FLAG",
+        )
         require(type(person_status) is bool, "PERSON_STATUS_FLAG")
         require(type(rebase_property_taxes) is bool, "PROPERTY_TAX_FLAG")
         require(
@@ -1353,6 +1367,7 @@ def run_atomic_survey_financial(
                 rebase_property_taxes=False,
                 resume=resume,
                 return_values=True,
+                _retain_every_node_population=True,
             )
             result = extension.extend(
                 base,
@@ -1670,11 +1685,15 @@ def run_atomic_survey_financial(
         # are retained -- detached with the executor's own snapshot function,
         # so the object a caller receives is exactly what it is today.
         # See docs/us-native-retention-seal.md.
-        declared_consumers = frozenset(
-            (
-                financial.ATTACH_NODE,
-                *(() if property_graph is None else (property_graph.ATTACH_NODE,)),
-                *(() if not rebase_property_taxes else (_tax_module().GATE_NODE,)),
+        declared_consumers = (
+            frozenset(compiled.order)
+            if _retain_every_node_population
+            else frozenset(
+                (
+                    financial.ATTACH_NODE,
+                    *(() if property_graph is None else (property_graph.ATTACH_NODE,)),
+                    *(() if not rebase_property_taxes else (_tax_module().GATE_NODE,)),
+                )
             )
         )
         observed, observed_stamps = {}, {}

@@ -321,12 +321,29 @@ population (`observed[final_node]` before the rebase moves `final_node`,
 `:1818`). Those three are retained as objects and stamped exactly as today.
 Every other observation is sealed on arrival and dropped.
 
-**The completion host is out of scope and does not move.**
+**The completion host is a consumer of the base run's whole roster, and this
+note says so because reading the code was not enough to find it — a test was.**
 `graph_survey_completion_host` runs its own `run_graph` with its own observer
 (`:781-794`), retains every observation, and pins their object ids in its own
-identity fence (`:543-545`, `:572`). It neither passes the new executor mode
-nor takes the new roster, so its two identity checks stay true by not changing.
-`_node_population_seals` therefore accepts both shapes.
+identity fence (`:543-545`, `:572`). Those parts do not move. But at `:814-816`
+it reads the **base** run's `state.node_populations` as its own expected
+populations for the base-graph nodes, compares them against its own
+observations, and hands them to `atomic._states`, which reads
+`population.frame.table(entity)` for every structural node
+(`graph_atomic_survey_population.py:85-96`). Seals cannot serve that.
+
+So the base run takes a private flag, `_retain_every_node_population`, whose
+only caller is `run_atomic_survey_financial`'s own recursive base call when
+`child_property is not None` (`:1339-1357`). With it set, the declared-consumer
+roster is every node and the run retains exactly what it retains today. The
+flag and `child_property` are mutually exclusive, which the runner requires.
+`_node_population_seals` accepts both shapes.
+
+This is the one place where the memory saving does not apply, and it is the
+completion path rather than the base 19-node path the measured wall belongs
+to. Removing it means giving the completion host the same seal treatment and
+finding a frame-free form for `_states`; that is a second change with its own
+argument.
 
 **The residual risk this note will not hide.** The `_comparables` fallback in
 §3(a) uses `repr()` for a comparable the store's axis-name codec will not
