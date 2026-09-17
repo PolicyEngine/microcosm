@@ -60,6 +60,12 @@ PREPARATION_TYPE = ArtifactType("microcosm.us.survey_population_preparation", 2)
 ALLOCATION_TYPE = ArtifactType("microcosm.us.survey_population_allocation", 1)
 PREPARATION_MAX_BYTES = 64 * 1024**2
 ALLOCATION_MAX_BYTES = 64 * 1024**2
+# The allocation payload carries one instruction document per selected
+# household, measured at 316.665 B each, so a single bounded accumulation
+# refuses at 13.35% of the US source (docs/us-native-scale-transport.md §1).
+# ALLOCATION_MAX_BYTES stays the per-segment ceiling, unchanged; the total is a
+# separate, explicit resource ceiling.
+ALLOCATION_ROSTER_BYTES = 64 * ALLOCATION_MAX_BYTES
 STAGE = "authenticated_survey_population_v1"
 STAGE_DEPENDENCIES = (
     "numpy",
@@ -149,8 +155,11 @@ def allocation_instructions(plan, household_origins):
     _require(type(household_origins) in (list, tuple), "HOUSEHOLD_ORIGINS")
     _require(len(household_origins) == len(plan.selected), "ORIGIN_COUNT")
     # A prospective record bound precedes the two maps and output tuple. The
-    # streaming transport encoder enforces its exact bound separately.
-    _require(len(plan.selected) <= ALLOCATION_MAX_BYTES // 128, "ALLOCATION_LIMIT")
+    # streaming transport encoder enforces its exact bound separately. The
+    # implied 128-byte row budget is below the payload's 220-byte structural
+    # overhead alone, so this never binds the payload; it bounds the two maps
+    # below, and its ceiling is the roster one.
+    _require(len(plan.selected) <= ALLOCATION_ROSTER_BYTES // 128, "ALLOCATION_LIMIT")
     selected = {}
     for row in plan.selected:
         _require(
@@ -344,7 +353,20 @@ def _instruction_document(row):
 def _allocation_payload(
     instructions, *, preparation_sha256, input_context, output_context
 ):
-    """Stream rows individually; never construct a selected-population JSON tree."""
+    """Stream rows individually; never construct a selected-population JSON tree.
+
+    The bytes are unchanged, and so is ``allocation_sha256``: the same rows in
+    the same order with the same separators and the same tail. What changed is
+    where they accumulate. A segment closes before it would pass
+    ``ALLOCATION_MAX_BYTES`` -- the ceiling the single bytearray used, with the
+    same refusal expression and the same code -- so no accumulation here is
+    larger than one whole payload used to be, and the total is bounded
+    separately by ``ALLOCATION_ROSTER_LIMIT``.
+
+    This kernel has no filesystem path and must not write to the store, so the
+    segments are held rather than spilled and joined once. Removing that last
+    copy needs a streaming artifact channel in ``microcosm-graph``.
+    """
     metadata = {
         "protocol": "microcosm.us.survey-population-allocation.v1",
         "preparation_sha256": preparation_sha256,
@@ -354,19 +376,36 @@ def _allocation_payload(
         "release_eligible": False,
     }
     tail = b"]," + _bounded_json(metadata, 4096)[1:]
+    segments = []
     output = bytearray(b'{"households":[')
+    total = len(output)
     for index, row in enumerate(instructions):
         raw = _bounded_json(_instruction_document(row), 4096)
         separator = b"," if index else b""
+        if (segments or output) and len(output) + len(separator) + len(raw) + len(
+            tail
+        ) > (ALLOCATION_MAX_BYTES):
+            segments.append(bytes(output))
+            output = bytearray()
         _require(
             len(output) + len(separator) + len(raw) + len(tail) <= ALLOCATION_MAX_BYTES,
             "ALLOCATION_LIMIT",
         )
+        _require(
+            total + len(separator) + len(raw) + len(tail) <= ALLOCATION_ROSTER_BYTES,
+            "ALLOCATION_ROSTER_LIMIT",
+        )
         output.extend(separator)
         output.extend(raw)
+        total += len(separator) + len(raw)
     _require(len(output) + len(tail) <= ALLOCATION_MAX_BYTES, "ALLOCATION_LIMIT")
     output.extend(tail)
-    return bytes(output)
+    total += len(tail)
+    segments.append(bytes(output))
+    _require(total <= ALLOCATION_ROSTER_BYTES, "ALLOCATION_ROSTER_LIMIT")
+    payload = b"".join(segments)
+    _require(len(payload) == total, "ALLOCATION_ROSTER_LIMIT")
+    return payload
 
 
 def _verify_allocation_view(frame, instructions):

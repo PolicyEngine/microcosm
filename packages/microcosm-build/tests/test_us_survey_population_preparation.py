@@ -623,7 +623,9 @@ def test_regular_reader_refuses_replacement_without_blocking(
 
 def test_transport_bound_precedes_append():
     rows = []
-    budget = [owner.MAX_PAYLOAD_BYTES - 1]
+    # The row budget bounds the Python row list, not a transport, so its
+    # ceiling is the explicit roster one; the refusal and its code are the same.
+    budget = [owner.MAX_ROSTER_BYTES - 1]
     with pytest.raises(owner.SurveyPopulationPreparationError, match="ORIGIN_LIMIT"):
         owner._bounded_append(rows, [1, "acs", 2], budget)
     assert rows == []
@@ -631,6 +633,168 @@ def test_transport_bound_precedes_append():
         owner._encode({"rows": ["invented"] * 100}, 30)
     with pytest.raises(owner.SurveyPopulationPreparationError, match="SCALAR_LIMIT"):
         owner._encode({"nested": ["x" * (owner._MAX_SCALAR_BYTES + 1)]})
+
+
+def test_row_budget_admits_a_full_source_roster_and_still_refuses_above_it():
+    # A full-source preparation roster is 1.02 GiB of rows; the ceiling admits
+    # it and refuses one byte past its own bound.
+    rows, budget = [], [1024**3]
+    owner._bounded_append(rows, [1, "acs", 2], budget)
+    assert rows == [[1, "acs", 2]] and budget[0] > 1024**3
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ORIGIN_LIMIT"):
+        owner._bounded_append(rows, [1, "acs", 2], [owner.MAX_ROSTER_BYTES])
+
+
+_ROSTER_DOCUMENTS = [
+    {},
+    {"a": 1},
+    {"protocol": "x", "rows": [[i, "acs", i * 7] for i in range(4000)]},
+    {"nested": {"deep": [[["a" * 300]]], "zero": -0.0, "big": 10**40}},
+    {"unicode": "\u00e9\u4e2d\U0001f600", "escapes": 'quote" slash\\ \x00\x1f'},
+]
+
+
+@pytest.mark.parametrize("document", _ROSTER_DOCUMENTS)
+def test_roster_transport_carries_the_single_encode_byte_stream(document):
+    payload, header = owner._roster_payload(document)
+    assert payload == owner._encode(document)
+    assert owner._sha(payload) == owner._digest(document)
+    assert header is None
+
+
+@pytest.mark.parametrize("document", _ROSTER_DOCUMENTS)
+@pytest.mark.parametrize("multiple", [1, 2, 3, 17, 4096])
+def test_roster_segments_reassemble_to_the_same_bytes_at_every_segment_size(
+    document, multiple
+):
+    """A segment holds whole tokens, so the smallest useful one is the longest.
+
+    ``_chunks`` yields one JSON token at a time and a segment never splits one,
+    so a segment smaller than the longest token refuses ``PAYLOAD_LIMIT`` --
+    which is the next test. ``_check_scalars`` bounds every string to 1 MiB
+    before this runs, so the shipped 64 MiB segment always holds any token.
+    """
+    expected = owner._encode(document)
+    longest = max(
+        (len(chunk.encode("utf-8")) for chunk in owner._chunks(document)), default=1
+    )
+    segment = longest * multiple
+    segments, table, digest, total = owner._roster_segments(document, segment=segment)
+    assert b"".join(segments) == expected
+    assert digest == owner._digest(document) and total == len(expected)
+    assert table == tuple((owner._sha(raw), len(raw)) for raw in segments)
+    assert all(0 < size <= segment for _sha256, size in table)
+    assert len(segments) >= -(-len(expected) // segment)
+
+
+@pytest.mark.parametrize("document", _ROSTER_DOCUMENTS)
+def test_a_segment_smaller_than_one_token_refuses_payload_limit(document):
+    longest = max(
+        (len(chunk.encode("utf-8")) for chunk in owner._chunks(document)), default=1
+    )
+    if longest == 1:
+        pytest.skip("this document has no token longer than one byte to split")
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="PAYLOAD_LIMIT"):
+        owner._roster_segments(document, segment=longest - 1)
+
+
+def test_roster_transport_exceeds_the_single_encode_ceiling():
+    # The document the single bounded encode refuses is the document this
+    # transport carries: same bytes, same digest, one segment per 64 KiB here.
+    document = {"rows": [[i, "acs", i * 7] for i in range(20000)]}
+    encoded = owner._encode(document)
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="PAYLOAD_LIMIT"):
+        owner._encode(document, len(encoded) - 1)
+    payload, _ = owner._roster_payload(
+        document, segment=65536, maximum=owner.MAX_ROSTER_BYTES
+    )
+    assert payload == encoded
+    segments, _table, digest, _total = owner._roster_segments(document, segment=65536)
+    assert len(segments) > 1 and digest == owner._sha(encoded)
+
+
+def test_roster_transport_keeps_every_refusal_it_touches():
+    document = {"rows": [[i, "acs", i * 7] for i in range(4000)]}
+    # PAYLOAD_LIMIT still guards each segment: one token larger than a whole
+    # segment is the only thing that can overflow one, and it still refuses.
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="PAYLOAD_LIMIT"):
+        owner._roster_payload({"k": "x" * 64}, segment=4)
+    # ROSTER_LIMIT is the new total ceiling, and it fails closed.
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ROSTER_LIMIT"):
+        owner._roster_payload(document, maximum=100)
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ROSTER_LIMIT"):
+        owner._roster_payload(document, segment=64, maximum=1000)
+    # The scalar and depth guards are the encoder's and are unmoved.
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="SCALAR_LIMIT"):
+        owner._roster_payload({"s": "x" * (owner._MAX_SCALAR_BYTES + 1)})
+    deep = value = []
+    for _ in range(80):
+        nested = []
+        value.append(nested)
+        value = nested
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="VALUE_DEPTH"):
+        owner._roster_payload(deep)
+
+
+def test_roster_spill_names_its_segments_and_verifies_them(tmp_path):
+    document = {"rows": [[i, "acs", i * 7] for i in range(4000)]}
+    payload, header = owner._roster_payload(
+        document, spill=tmp_path, name="preparation", segment=4096
+    )
+    assert payload == owner._encode(document)
+    assert header["protocol"] == owner.ROSTER_PROTOCOL
+    assert header["name"] == "preparation"
+    assert header["sha256"] == owner._digest(document) == owner._sha(payload)
+    assert header["size"] == len(payload)
+    assert sum(size for _sha256, size in header["segments"]) == len(payload)
+    directory = tmp_path / "preparation"
+    assert json.loads((directory / "header.json").read_bytes()) == header
+    rebuilt = b""
+    for sha256, size in header["segments"]:
+        raw = (directory / (sha256 + ".segment")).read_bytes()
+        assert owner._sha(raw) == sha256 and len(raw) == size
+        rebuilt += raw
+    assert rebuilt == payload
+    # A spill name is a directory component, and only an identifier is accepted.
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ROSTER_NAME"):
+        owner._roster_payload(document, spill=tmp_path, name="../escape")
+
+
+def test_roster_spill_refuses_a_replaced_segment(tmp_path):
+    document = {"rows": [[i, "acs", i * 7] for i in range(200)]}
+    _payload, header = owner._roster_payload(
+        document, spill=tmp_path, name="preparation"
+    )
+    victim = tmp_path / "preparation" / (header["segments"][0][0] + ".segment")
+    victim.write_bytes(b"shorter")
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match="ROSTER_SEGMENT_CHANGED"
+    ):
+        owner._roster_payload(document, spill=tmp_path, name="preparation")
+
+
+def test_roster_spill_refuses_a_symlinked_segment(tmp_path):
+    document = {"rows": [[i, "acs", i * 7] for i in range(200)]}
+    _payload, header = owner._roster_payload(
+        document, spill=tmp_path, name="preparation"
+    )
+    victim = tmp_path / "preparation" / (header["segments"][0][0] + ".segment")
+    target = tmp_path / "elsewhere"
+    target.write_bytes(victim.read_bytes())
+    victim.unlink()
+    victim.symlink_to(target)
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match="ROSTER_SEGMENT_CHANGED"
+    ):
+        owner._roster_payload(document, spill=tmp_path, name="preparation")
+
+
+def test_candidate_bound_admits_a_full_source_receipt(tmp_path, monkeypatch):
+    arguments = fixture(tmp_path, monkeypatch)
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="CANDIDATE_LIMIT"):
+        owner.prepare_authenticated_survey_population(
+            **arguments, candidate=b"x" * (owner.MAX_ROSTER_BYTES + 1)
+        )
 
 
 def test_semantic_identity_includes_column_and_strata_indexes(tmp_path, monkeypatch):

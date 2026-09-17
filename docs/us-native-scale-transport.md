@@ -67,11 +67,13 @@ committed artifact, or from the allocation payload's own measured 501,597 B at
 | 4 | `_plan_document` row budget | `ORIGIN_LIMIT` | 270,284 | 17.03% |
 | 5 | allocation structural pre-check `ALLOCATION_MAX_BYTES // 128` | `ALLOCATION_LIMIT` | 524,288 | 33.03% |
 
-A 1/10 build is 158,737 source households, so **#1 and #2 both bind and #3 does
-not**; a full build needs #1 through #4. #5 bounds the intermediate maps
-`allocation_instructions` builds, not the payload, and its implied 127-byte row
-budget is below the payload's 220-byte structural overhead alone, so it can
-never be the binding payload constraint.
+A 1/10 build is 158,737 source households, so **#1 and #2 both bind and #3
+does not**; a full build needs all five, because 524,288 is below the source's
+own 1,587,376. #5 bounds the intermediate maps `allocation_instructions` builds
+rather than the payload — its implied 127-byte row budget is below the payload's
+220-byte structural overhead alone, so it can never be the binding *payload*
+constraint — but it does refuse a full-source selection, so its ceiling moves
+with the others and keeps its code.
 
 **The store is not the constraint.** `ContentStore.put_bytes`
 (`store.py:984`) and `put_frame` (`:919`) carry no byte cap, and `put_frame`
@@ -174,9 +176,26 @@ in-memory half of §2b: bounded segments in a list, each guarded by
 materialised once. `allocation_sha256` (`:441`) is unchanged in derivation and
 in value.
 
-Ceiling #5, the `// 128` structural pre-check, keeps its constant: it bounds
-`allocation_instructions`' intermediate maps and 524,288 households is above
-full source at every fraction this lane runs.
+Ceiling #5, the `// 128` structural pre-check, moves to
+`ALLOCATION_ROSTER_BYTES // 128` = 33,554,432 households. It bounds
+`allocation_instructions`' intermediate maps, and its old 524,288 is **below**
+the source's 1,587,376, so a full-source selection refused there too. The code
+is unchanged.
+
+**One refusal narrows, and this design says so rather than leaving it to be
+found.** `ALLOCATION_LIMIT` fired when the *whole* payload passed 64 MiB. Under
+a segmented stream that condition no longer arises: a segment closes instead. It
+still fires, with the same code and the same expression, on the condition a
+segmented stream can still reach — **one instruction row plus the reserved tail
+larger than one whole segment**. `test_us_graph_survey_population.py` drives both
+that refusal and the new total ceiling, and asserts the payload's bytes are
+unchanged at four different segment sizes down to the smallest one that holds a
+row. The same narrowing applies to the preparation receipt's `PAYLOAD_LIMIT`:
+`_chunks` yields one JSON token at a time and a segment never splits one, so the
+refusal now means "one token larger than one segment", and because
+`_check_scalars` has already bounded every string to 1 MiB the shipped 64 MiB
+segment always holds any token. Both are tested at a segment size below the
+longest token.
 
 ### 2e. Size law after the change
 
@@ -192,6 +211,12 @@ full source:
 | `_origins` rows | 150,916 hh (9.51%) | 9,658,000 hh |
 | allocation payload | 211,924 hh (13.35%) | 13,563,000 hh |
 | `_plan_document` rows | 270,284 hh (17.03%) | 17,298,000 hh |
+| allocation map pre-check | 524,288 hh (33.03%) | 33,554,432 hh |
+
+A fourth whole-roster receipt the cost attribution did not name is in the same
+module: `_current_survey_wage_projection` builds one row per selected wage
+earner and encoded it the same way. It takes the same transport. It does not
+bind at 1/10 and does bind at full source.
 
 ## 3. Retention and the frame seal
 

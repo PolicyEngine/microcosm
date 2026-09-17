@@ -48,6 +48,15 @@ REQUEST_PROTOCOL = "microcosm.us.survey-population-request.v1"
 SOURCE_CODEC = "us-survey-population-source-v1"
 MAX_REQUEST_BYTES = 4096
 MAX_PAYLOAD_BYTES = 64 * 1024**2
+# One whole-roster receipt carries one record per source household and per
+# person, so a full-source document is 1.02 GiB (docs/us-native-scale-transport.md
+# §1) and a single bounded encode refuses at 6.1% of the source. The transport
+# below keeps every accumulation inside the value the old ceiling allowed --
+# MAX_SEGMENT_BYTES is that ceiling, unchanged -- and adds one explicit resource
+# ceiling for the total, which is not a transport shape.
+MAX_SEGMENT_BYTES = MAX_PAYLOAD_BYTES
+MAX_ROSTER_BYTES = 64 * MAX_SEGMENT_BYTES
+ROSTER_PROTOCOL = "microcosm.us.survey-population-roster-transport.v1"
 _MAX_SCALAR_BYTES = 1024**2
 _FRAME_FAST_STRING_CHARS = 4096
 _SOURCE_ROSTER = (
@@ -115,6 +124,107 @@ def _digest(value):
     for chunk in _chunks(value):
         digest.update(chunk.encode("utf-8"))
     return digest.hexdigest()
+
+
+def _roster_segments(value, *, segment=MAX_SEGMENT_BYTES, maximum=MAX_ROSTER_BYTES):
+    """Encode one whole-roster document as bounded, content-addressed segments.
+
+    ``_encode`` accumulates the complete canonical stream before it enforces
+    anything, so its bound is a ceiling on the document rather than on the
+    process's allocation. This walks the same ``_chunks`` stream, closes a
+    segment whenever the next chunk would carry it past ``segment``, and keeps
+    ``PAYLOAD_LIMIT`` on each segment at the same number the single encode used.
+    The total is bounded separately, by ``ROSTER_LIMIT``.
+
+    The running digest is over the chunks in order, so it equals
+    ``_digest(value)`` exactly -- and therefore equals ``_sha(_encode(value))``
+    for every document ``_encode`` accepts, because sha256 is a streaming hash
+    over those same bytes. The canonical byte stream is unchanged; only its
+    materialization is bounded.
+    """
+    digest = hashlib.sha256()
+    segments, table, current, total = [], [], bytearray(), 0
+
+    def close():
+        raw = bytes(current)
+        digest.update(raw)
+        table.append((_sha(raw), len(raw)))
+        segments.append(raw)
+        current.clear()
+
+    for chunk in _chunks(value):
+        encoded = chunk.encode("utf-8")
+        if current and len(current) + len(encoded) > segment:
+            close()
+        # A single chunk is one JSON token, and _check_scalars has already
+        # bounded every string, so this refuses only a token larger than one
+        # whole segment -- the same refusal, at the same number.
+        _require(len(current) + len(encoded) <= segment, "PAYLOAD_LIMIT")
+        _require(total + len(encoded) <= maximum, "ROSTER_LIMIT")
+        current.extend(encoded)
+        total += len(encoded)
+    if current or not segments:
+        close()
+    return segments, tuple(table), digest.hexdigest(), total
+
+
+def _spill_roster(root, name, segments, table, digest, total):
+    """Write the segments beside a header naming them, as the store's own shape.
+
+    ``ContentStore.put_frame`` already writes content-addressed bodies under a
+    ``meta.json`` payload table of sha256 and size per file. This is that shape
+    for a receipt: one ``<sha256>.segment`` per segment and one ``header.json``
+    naming the whole-stream digest, the size and the ordered segment table, so
+    the receipt has a re-verifiable on-disk form that does not depend on the
+    graph store.
+    """
+    _require(type(name) is str and name.isidentifier(), "ROSTER_NAME")
+    directory = root / name
+    directory.mkdir(parents=True, exist_ok=True)
+    for raw, (sha, size) in zip(segments, table, strict=True):
+        path = directory / (sha + ".segment")
+        if not path.exists():
+            path.write_bytes(raw)
+        stats = path.lstat()
+        _require(
+            not stat.S_ISLNK(stats.st_mode) and stats.st_size == size,
+            "ROSTER_SEGMENT_CHANGED",
+        )
+    header = {
+        "protocol": ROSTER_PROTOCOL,
+        "name": name,
+        "sha256": digest,
+        "size": total,
+        "segments": [[sha, size] for sha, size in table],
+    }
+    (directory / "header.json").write_bytes(_encode(header))
+    return header
+
+
+def _roster_payload(
+    value, *, spill=None, name=None, segment=MAX_SEGMENT_BYTES, maximum=MAX_ROSTER_BYTES
+):
+    """One whole-roster receipt's bytes, and the header that names its segments.
+
+    The bytes are identical to ``_encode(value)`` wherever ``_encode`` accepts
+    the document, and exist wherever it does not. They are materialized once,
+    because ``KernelResult.artifacts`` is a mapping of ``bytes`` and
+    ``ContentStore.put_bytes`` takes whole bytes; removing that copy needs a
+    streaming artifact channel in ``microcosm-graph``, which is not this
+    module's to change.
+    """
+    segments, table, digest, total = _roster_segments(
+        value, segment=segment, maximum=maximum
+    )
+    header = None
+    if spill is not None:
+        header = _spill_roster(spill, name, segments, table, digest, total)
+    for raw, (sha, size) in zip(segments, table, strict=True):
+        _require(len(raw) == size and _sha(raw) == sha, "ROSTER_SEGMENT_CHANGED")
+    payload = b"".join(segments)
+    _require(len(payload) == total <= maximum, "ROSTER_LIMIT")
+    _require(_sha(payload) == digest, "ROSTER_DIGEST")
+    return payload, header
 
 
 def _catalogue_fast_path(value):
@@ -537,6 +647,9 @@ def _live():
         SOURCE_CODEC,
         MAX_REQUEST_BYTES,
         MAX_PAYLOAD_BYTES,
+        MAX_SEGMENT_BYTES,
+        MAX_ROSTER_BYTES,
+        ROSTER_PROTOCOL,
         _MAX_SCALAR_BYTES,
         _FRAME_FAST_STRING_CHARS,
         _SOURCE_ROSTER,
@@ -713,9 +826,9 @@ def _float_cells(values):
     magnitude = np.abs(exponent)
     for position in range(_FLOAT_EXPONENT_DIGITS):
         power = 10 ** (_FLOAT_EXPONENT_DIGITS - 1 - position)
-        cells[:, 30 + position] = np.uint8(0x30) + (
-            magnitude // power % 10
-        ).astype(np.uint8)
+        cells[:, 30 + position] = np.uint8(0x30) + (magnitude // power % 10).astype(
+            np.uint8
+        )
     cells[:, 34:37] = _FLOAT_TAIL
 
     keep[:, 0:10] = True
@@ -995,8 +1108,11 @@ def _verify_normalized_copy(original: Frame, normalized: Frame):
 
 
 def _bounded_append(rows, row, budget):
+    # A bound on the Python row list, not on a transport: one record per source
+    # household or per person, so a full-source roster is 1.02 GiB. The code and
+    # the per-row encode are unchanged; the ceiling is the explicit resource one.
     size = len(_encode(row)) + 1
-    _require(budget[0] + size <= MAX_PAYLOAD_BYTES, "ORIGIN_LIMIT")
+    _require(budget[0] + size <= MAX_ROSTER_BYTES, "ORIGIN_LIMIT")
     budget[0] += size
     rows.append(row)
 
@@ -1743,7 +1859,7 @@ def prepare_authenticated_survey_population(
     try:
         _require(type(candidate) is bytes or candidate is None, "CANDIDATE_TYPE")
         _require(
-            candidate is None or len(candidate) <= MAX_PAYLOAD_BYTES, "CANDIDATE_LIMIT"
+            candidate is None or len(candidate) <= MAX_ROSTER_BYTES, "CANDIDATE_LIMIT"
         )
         root, request, request_bytes, requested_fraction, requested_seed = _request(
             source_dir
@@ -1857,7 +1973,7 @@ def prepare_authenticated_survey_population(
             },
         }
         identity = _frame_identity(frame)
-        payload = _encode(
+        payload, _ = _roster_payload(
             {
                 "protocol": PROTOCOL,
                 "request": request,
@@ -1881,7 +1997,9 @@ def prepare_authenticated_survey_population(
                 "frame_sha256": identity,
                 "context_sha256": _sha(context),
                 "release_eligible": False,
-            }
+            },
+            spill=snapshots,
+            name="preparation",
         )
         nested = _nested_seals((acs, asec), (actual_acs, actual_asec))
         acs_owned = acs_catalogue._lookup(acs)
@@ -2017,7 +2135,8 @@ def _current_survey_wage_projection(preparation, entry):
         ],
         "rows": rows,
     }
-    payload = _encode(document)
+    # One row per selected wage earner, so this is a whole-roster receipt too.
+    payload, _ = _roster_payload(document)
     # ready() may perform I/O. Recheck the actual retained entries and all pure
     # owner seals after it; this does not reread the national catalogues.
     _pure_final(state)
