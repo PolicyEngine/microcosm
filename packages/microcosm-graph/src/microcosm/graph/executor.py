@@ -2909,12 +2909,14 @@ def _execute_graph(
     # which this pass has no reason to repeat.
     #
     # Keeping it out of that helper also keeps the helper's call count where
-    # the US build shard on the branch stacked on this one expects it: a
-    # sys.setprofile hook there tracks _source_paths_and_keys by its exact
-    # code object id and times one source-key pass per call. Grep the stacked
-    # branch for "source_key" in
-    # packages/microcosm-build/tests/test_us_graph_survey_population.py.
-    # Nothing at this head references the helper outside this module.
+    # this branch's US build shard expects it:
+    # test_authenticated_cold_and_materialized_warm_clones_both_sources in
+    # packages/microcosm-build/tests/test_us_graph_survey_population.py
+    # registers a sys.setprofile hook over a table of code-object ids that
+    # includes _source_paths_and_keys.__code__, labelled "source_key", and
+    # times one source-key pass per call/return pair. Two more build tests
+    # call the helper directly. The graph-only branch this mirrors has none
+    # of them, and says so.
     final_identities = {}
     moved = []
     for name in sorted(source_paths):
