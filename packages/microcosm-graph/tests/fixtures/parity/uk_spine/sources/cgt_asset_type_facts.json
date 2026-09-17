@@ -48,12 +48,12 @@
       "proceeds": 9000000000.0
     }
   ],
-  "table8a_disposals_total": 1396.9999999999998,
-  "table8a_gains_total": 1481186020.31005,
-  "table8a_tax_total": 296237204.06201,
-  "table8a_taxpayers_total": 1269.9999999999998,
-  "table8b_all_gains": 1481186020.31005,
-  "table8b_all_taxpayers": 1269.9999999999998,
-  "table8b_individuals_gains": 1481186020.31005,
-  "table8b_individuals_taxpayers": 1269.9999999999998
+  "table8a_disposals_total": 1154.9999999999998,
+  "table8a_gains_total": 2278808543.8648224,
+  "table8a_tax_total": 455761708.7729645,
+  "table8a_taxpayers_total": 1049.9999999999998,
+  "table8b_all_gains": 2278808543.8648224,
+  "table8b_all_taxpayers": 1049.9999999999998,
+  "table8b_individuals_gains": 2278808543.8648224,
+  "table8b_individuals_taxpayers": 1049.9999999999998
 }

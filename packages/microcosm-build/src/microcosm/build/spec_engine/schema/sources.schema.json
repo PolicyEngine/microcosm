@@ -5836,6 +5836,9 @@
       "bounded_band_family": {
        "type": "string"
       },
+      "cell_means": {
+       "type": "string"
+      },
       "deterministic": {
        "type": "boolean"
       },
@@ -5851,13 +5854,16 @@
       "open_band_family": {
        "type": "string"
       },
+      "open_band_realization": {
+       "type": "string"
+      },
+      "quantile_scheme": {
+       "type": "string"
+      },
       "seed_base": {
        "type": "number"
       },
       "seed_mixing": {
-       "type": "string"
-      },
-      "cell_means": {
        "type": "string"
       }
      },
@@ -5870,6 +5876,8 @@
       "mean_repair_margin",
       "mean_repair_reason",
       "open_band_family",
+      "open_band_realization",
+      "quantile_scheme",
       "seed_base",
       "seed_mixing"
      ]

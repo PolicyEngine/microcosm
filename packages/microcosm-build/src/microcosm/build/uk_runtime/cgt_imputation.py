@@ -373,6 +373,36 @@ def _pareto_quantile(quantiles: np.ndarray, lower: float, mean: float) -> np.nda
     return lower * np.power(1.0 - quantiles, -1.0 / alpha)
 
 
+def _pareto_stratum_means(
+    lower_quantiles: np.ndarray, upper_quantiles: np.ndarray, lower: float, mean: float
+) -> np.ndarray:
+    """Conditional mean of the open-band Pareto on each quantile stratum.
+
+    ``E[X | U in [a, b)]`` for ``X = lower (1 - U)^(-1/alpha)`` integrates in
+    closed form; the strata partition (0, 1), so the stratum means average
+    back to the published mean exactly. A band that reaches only a few
+    dozen carriers therefore carries its published mean instead of the
+    typical iid draw, which for a Pareto with infinite variance sits well
+    below it (most of the mean lives in the top two percent of the
+    distribution).
+    """
+    if mean <= lower:
+        raise ValueError(
+            f"Open-band mean {mean} must exceed the band lower bound {lower}."
+        )
+    alpha = mean / (mean - lower)
+    power = 1.0 - 1.0 / alpha
+    width = upper_quantiles - lower_quantiles
+    return (
+        lower
+        * (
+            np.power(1.0 - lower_quantiles, power)
+            - np.power(1.0 - upper_quantiles, power)
+        )
+        / (power * width)
+    )
+
+
 @dataclass(frozen=True)
 class _CellPlan:
     """Allocation and draw parameters for one gain band within an income band."""
@@ -509,15 +539,6 @@ def _band_plans(
             )
         )
     return tuple(plans)
-
-
-def _draw_amounts(plan: _CellPlan, quantiles: np.ndarray) -> np.ndarray:
-    lower = plan.effective_lower_bound
-    if np.isinf(plan.gain_upper_bound):
-        return _pareto_quantile(quantiles, lower, plan.mean)
-    return _truncated_exponential_quantile(
-        quantiles, lower, float(plan.gain_upper_bound), plan.mean
-    )
 
 
 @dataclass(frozen=True)
@@ -868,9 +889,8 @@ def _walk_bands(
     ranked: np.ndarray,
     weights: np.ndarray,
     boundaries: Sequence[tuple[int, float]],
-    plans: Mapping[int, _CellPlan],
     rng: np.random.Generator,
-    new_gains: np.ndarray,
+    members: dict[int, list[np.ndarray]],
 ) -> tuple[np.ndarray, dict[int, float]]:
     """Assign ranked gainers to bands, highest first, and draw their amounts.
 
@@ -881,8 +901,11 @@ def _walk_bands(
     band whose boundary is smaller than a person's weight still receives
     that person on the share of walks its boundary implies, rather than
     never (the midpoint rule's bias, which emptied the top bands inside
-    the conditioning cells). Returns the mask of assigned positions in
-    ``ranked`` and the mass each band received.
+    the conditioning cells). The persons each band receives are appended to
+    ``members`` (keyed by band lower bound); the amounts are drawn once every
+    walk is done, so the quantiles can be stratified across a plan. Returns
+    the mask of assigned positions in ``ranked`` and the mass each band
+    received.
     """
 
     cumulative = np.cumsum(weights)
@@ -897,10 +920,45 @@ def _walk_bands(
         if count == 0:
             continue
         assigned |= in_cell
-        quantiles = rng.random(count)
-        new_gains[ranked[in_cell]] = _draw_amounts(plans[gain_lower], quantiles)
+        members.setdefault(gain_lower, []).append(ranked[in_cell])
         achieved[gain_lower] = float(weights[in_cell].sum())
     return assigned, achieved
+
+
+def _draw_plan_amounts(
+    plan: _CellPlan,
+    members: np.ndarray,
+    *,
+    person_id: np.ndarray,
+    existing: np.ndarray,
+    rng: np.random.Generator,
+    new_gains: np.ndarray,
+) -> None:
+    """Draw one plan's amounts on stratified quantiles in prior-gain order.
+
+    The ``n`` persons a (gain band, income band) plan received across every
+    cell take the quantile strata ``[k/n, (k+1)/n)`` in ascending prior-gain
+    order with one seeded jitter per plan, so the plan's realised mean sits
+    on its published mean instead of carrying the noise of ``n`` independent
+    draws; the open band takes each stratum's conditional mean.
+    """
+
+    if members.size == 0:
+        return
+    ordered = _ranked(members, person_id=person_id, existing=existing)[::-1]
+    n = ordered.size
+    strata = np.arange(n, dtype=float)
+    jitter = float(rng.random())
+    lower = plan.effective_lower_bound
+    if np.isinf(plan.gain_upper_bound):
+        amounts = _pareto_stratum_means(
+            strata / n, (strata + 1.0) / n, lower, plan.mean
+        )
+    else:
+        amounts = _truncated_exponential_quantile(
+            (strata + jitter) / n, lower, float(plan.gain_upper_bound), plan.mean
+        )
+    new_gains[ordered] = amounts
 
 
 def _ranked(
@@ -978,10 +1036,10 @@ def impute_uk_capital_gains_with_report(
     incomes = HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
     achieved_pass1 = np.zeros(targets.shape)
     achieved_fallback = np.zeros((len(gains), len(incomes)))
+    members: dict[tuple[int, int], list[np.ndarray]] = {}
 
     # Pass 1: every (income, age, region) cell walks its raked targets.
     for ii, income_lower in enumerate(incomes):
-        plans = {gain_lower: joint[(gain_lower, income_lower)] for gain_lower in gains}
         for a in range(len(UK_CGT_AGE_GROUP_LOWER_BOUNDS)):
             for r in range(len(UK_CGT_REGION_GROUP_LABELS)):
                 in_cell = (
@@ -1006,14 +1064,16 @@ def impute_uk_capital_gains_with_report(
                     (gain_lower, float(cell_targets[gi]) * scale)
                     for gi, gain_lower in reversed(list(enumerate(gains)))
                 ]
+                cell_members: dict[int, list[np.ndarray]] = {}
                 cell_assigned, achieved = _walk_bands(
                     ranked=ranked,
                     weights=weights,
                     boundaries=boundaries,
-                    plans=plans,
                     rng=rng,
-                    new_gains=new_gains,
+                    members=cell_members,
                 )
+                for gain_lower, chunks in cell_members.items():
+                    members.setdefault((gain_lower, income_lower), []).extend(chunks)
                 assigned[ranked[cell_assigned]] = True
                 for gi, gain_lower in enumerate(gains):
                     achieved_pass1[gi, ii, a, r] = achieved.get(gain_lower, 0.0)
@@ -1026,7 +1086,6 @@ def impute_uk_capital_gains_with_report(
     # their positive shortfalls, so the rounding of a hundred cell walks is
     # not compounded into extra taxpayers.
     for ii, income_lower in enumerate(incomes):
-        plans = {gain_lower: joint[(gain_lower, income_lower)] for gain_lower in gains}
         signed_shortfall = {
             gain_lower: joint[(gain_lower, income_lower)].allocation_people
             - float(achieved_pass1[gi, ii].sum())
@@ -1052,17 +1111,36 @@ def impute_uk_capital_gains_with_report(
             (gain_lower, shortfall[gain_lower] * scale)
             for gain_lower in reversed(gains)
         ]
+        pool_members: dict[int, list[np.ndarray]] = {}
         pool_assigned, achieved = _walk_bands(
             ranked=ranked,
             weights=weights,
             boundaries=boundaries,
-            plans=plans,
             rng=rng,
-            new_gains=new_gains,
+            members=pool_members,
         )
+        for gain_lower, chunks in pool_members.items():
+            members.setdefault((gain_lower, income_lower), []).extend(chunks)
         assigned[ranked[pool_assigned]] = True
         for gi, gain_lower in enumerate(gains):
             achieved_fallback[gi, ii] = achieved.get(gain_lower, 0.0)
+
+    # Amounts: one stratified draw per (gain band, income band) plan over
+    # every person it received in either pass, income bands ascending and
+    # gain bands highest first.
+    for income_lower in incomes:
+        for gain_lower in reversed(gains):
+            chunks = members.get((gain_lower, income_lower), [])
+            if not chunks:
+                continue
+            _draw_plan_amounts(
+                joint[(gain_lower, income_lower)],
+                np.concatenate(chunks),
+                person_id=person_id,
+                existing=existing,
+                rng=rng,
+                new_gains=new_gains,
+            )
 
     # Below the published taxpayer mass: sub-AEA gainers keep their
     # existing amounts, capped at the annual exempt amount.
@@ -1538,6 +1616,20 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "truncated exponential matched to the cell's published mean"
             ),
             "open_band_family": "Pareto with alpha = mean / (mean - lower bound)",
+            "quantile_scheme": (
+                "stratified: the persons a (gain band, income band) plan "
+                "receives across every cell and the pooled walk take the "
+                "quantile strata [k/n, (k+1)/n) in ascending prior-gain order "
+                "with one seeded jitter per plan, so the plan's realised mean "
+                "sits on its published mean rather than carrying n independent "
+                "draws"
+            ),
+            "open_band_realization": (
+                "each open-band person takes the conditional mean of their "
+                "quantile stratum, which averages back to the published mean "
+                "exactly; an iid draw from a Pareto with infinite variance "
+                "sits well below it on a few dozen carriers"
+            ),
             "mean_repair_margin": _MEAN_MARGIN,
             "mean_repair_reason": (
                 "Published counts round to the nearest thousand and amounts "
@@ -1550,8 +1642,9 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             "seed_base": UK_CGT_IMPUTATION_SEED,
             "seed_mixing": (
                 "seed combined with the build period; each walk draws its "
-                "rounding offset then its quantiles, consumed in cell order, "
-                "then in pooled-fallback order"
+                "rounding offset in cell order then pooled-fallback order, then "
+                "each plan draws its quantile jitter, income bands ascending and "
+                "gain bands highest first"
             ),
             "deterministic": True,
             "cell_means": (

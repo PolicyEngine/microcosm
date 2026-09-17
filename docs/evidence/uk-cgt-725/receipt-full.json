@@ -95,14 +95,14 @@
     }
   },
   "candidate_headline": {
-    "liable_taxpayers": 554939.6925042649,
-    "liable_gains": 72024353977.44182,
-    "share_65_plus_of_taxpayers": 0.3863103059652262,
-    "share_65_plus_of_gains": 0.3011362796033143,
-    "share_65_plus_of_2m_plus_gainers": 0.14084954851837717,
-    "share_65_plus_of_2m_plus_gains": 0.2328099047206581,
-    "top_2m_plus_taxpayers": 5242.000000000001,
-    "top_2m_plus_gains": 22812451255.20771
+    "liable_taxpayers": 555747.6864486746,
+    "liable_gains": 101439852293.69095,
+    "share_65_plus_of_taxpayers": 0.38292717752272465,
+    "share_65_plus_of_gains": 0.3147633357211641,
+    "share_65_plus_of_2m_plus_gainers": 0.42971759428204154,
+    "share_65_plus_of_2m_plus_gains": 0.32721365586552875,
+    "top_2m_plus_taxpayers": 9062.481848727164,
+    "top_2m_plus_gains": 45137891044.072876
   },
   "candidate_stage_evidence": {
     "hmrc_cgt_gains_spine": {
@@ -168,13 +168,13 @@
           "gain_lower_bound": 5000000
         },
         {
-          "achieved_gains": 1839742.9124228505,
+          "achieved_gains": 2264748.609020247,
           "achieved_people": 468.25,
           "age_lower_bound": 16,
           "gain_lower_bound": 0
         },
         {
-          "achieved_gains": 18372985.506618865,
+          "achieved_gains": 13689609.089143343,
           "achieved_people": 1000.3269841269841,
           "age_lower_bound": 16,
           "gain_lower_bound": 10000
@@ -228,56 +228,56 @@
           "gain_lower_bound": 5000000
         },
         {
-          "achieved_gains": 43131157.825550474,
-          "achieved_people": 8422.529845454425,
+          "achieved_gains": 46574421.54660618,
+          "achieved_people": 7646.210538523732,
           "age_lower_bound": 25,
           "gain_lower_bound": 0
         },
         {
-          "achieved_gains": 133460318.91116856,
-          "achieved_people": 6777.8167067307695,
+          "achieved_gains": 107781537.09595326,
+          "achieved_people": 7578.202720392232,
           "age_lower_bound": 25,
           "gain_lower_bound": 10000
         },
         {
-          "achieved_gains": 296486451.11946946,
-          "achieved_people": 8309.317930275743,
+          "achieved_gains": 261448596.9016412,
+          "achieved_people": 6499.001223544974,
           "age_lower_bound": 25,
           "gain_lower_bound": 25000
         },
         {
-          "achieved_gains": 273100431.76482964,
-          "achieved_people": 3742.218215720023,
+          "achieved_gains": 375236166.9797666,
+          "achieved_people": 5161.140834767642,
           "age_lower_bound": 25,
           "gain_lower_bound": 50000
         },
         {
-          "achieved_gains": 412623878.26268196,
-          "achieved_people": 2970.5833333333335,
+          "achieved_gains": 390789376.1552911,
+          "achieved_people": 3145.8333333333335,
           "age_lower_bound": 25,
           "gain_lower_bound": 100000
         },
         {
-          "achieved_gains": 91427003.40887468,
-          "achieved_people": 266.66666666666663,
+          "achieved_gains": 1132319256.4745824,
+          "achieved_people": 3155.7499999999995,
           "age_lower_bound": 25,
           "gain_lower_bound": 250000
         },
         {
-          "achieved_gains": 545773470.6488615,
-          "achieved_people": 699.9999999999999,
+          "achieved_gains": 473926847.6740708,
+          "achieved_people": 914.5,
           "age_lower_bound": 25,
           "gain_lower_bound": 500000
         },
         {
-          "achieved_gains": 0.0,
-          "achieved_people": 0.0,
+          "achieved_gains": 259362729.70751578,
+          "achieved_people": 200.0,
           "age_lower_bound": 25,
           "gain_lower_bound": 1000000
         },
         {
-          "achieved_gains": 0.0,
-          "achieved_people": 0.0,
+          "achieved_gains": 398033547.49795437,
+          "achieved_people": 166.66666666666666,
           "age_lower_bound": 25,
           "gain_lower_bound": 2000000
         },
@@ -288,296 +288,296 @@
           "gain_lower_bound": 5000000
         },
         {
-          "achieved_gains": 85513652.41413713,
-          "achieved_people": 15971.146869894967,
+          "achieved_gains": 117776090.92304553,
+          "achieved_people": 18792.632509843424,
           "age_lower_bound": 35,
           "gain_lower_bound": 0
         },
         {
-          "achieved_gains": 211769859.50961003,
-          "achieved_people": 12724.68895603298,
+          "achieved_gains": 219906601.00857443,
+          "achieved_people": 12469.968511854944,
           "age_lower_bound": 35,
           "gain_lower_bound": 10000
         },
         {
-          "achieved_gains": 551814269.1367284,
-          "achieved_people": 13992.531768280818,
+          "achieved_gains": 430733427.73221135,
+          "achieved_people": 11738.968415208585,
           "age_lower_bound": 35,
           "gain_lower_bound": 25000
         },
         {
-          "achieved_gains": 619380190.6809016,
-          "achieved_people": 8200.702215271414,
+          "achieved_gains": 663684448.8957494,
+          "achieved_people": 9657.843446864454,
           "age_lower_bound": 35,
           "gain_lower_bound": 50000
         },
         {
-          "achieved_gains": 1614733515.2343915,
-          "achieved_people": 9917.460456713587,
+          "achieved_gains": 1462726545.0879009,
+          "achieved_people": 7912.239036827856,
           "age_lower_bound": 35,
           "gain_lower_bound": 100000
         },
         {
-          "achieved_gains": 786490779.5341504,
-          "achieved_people": 2220.418287037037,
+          "achieved_gains": 848072217.6356189,
+          "achieved_people": 2242.888280212483,
           "age_lower_bound": 35,
           "gain_lower_bound": 250000
         },
         {
-          "achieved_gains": 1520534700.0669236,
-          "achieved_people": 2175.6666666666665,
+          "achieved_gains": 1534770430.2685697,
+          "achieved_people": 2679.4745649263723,
           "age_lower_bound": 35,
           "gain_lower_bound": 500000
         },
         {
-          "achieved_gains": 1954604158.0304306,
-          "achieved_people": 1593.3882802124833,
+          "achieved_gains": 2448294000.8497987,
+          "achieved_people": 1863.9166666666667,
           "age_lower_bound": 35,
           "gain_lower_bound": 1000000
         },
         {
-          "achieved_gains": 2148353920.6493845,
-          "achieved_people": 733.3333333333334,
+          "achieved_gains": 2141217449.1099226,
+          "achieved_people": 976.0016203703703,
           "age_lower_bound": 35,
           "gain_lower_bound": 2000000
         },
         {
-          "achieved_gains": 0.0,
-          "achieved_people": 0.0,
+          "achieved_gains": 11403136852.851849,
+          "achieved_people": 1505.9223300970875,
           "age_lower_bound": 35,
           "gain_lower_bound": 5000000
         },
         {
-          "achieved_gains": 97735665.70060463,
-          "achieved_people": 18532.79214084525,
+          "achieved_gains": 102298653.56548372,
+          "achieved_people": 18448.546663871566,
           "age_lower_bound": 45,
           "gain_lower_bound": 0
         },
         {
-          "achieved_gains": 379128422.05933356,
-          "achieved_people": 21050.333108909585,
+          "achieved_gains": 302392894.3430358,
+          "achieved_people": 19305.245252549932,
           "age_lower_bound": 45,
           "gain_lower_bound": 10000
         },
         {
-          "achieved_gains": 599396505.6376672,
-          "achieved_people": 17255.740497954397,
+          "achieved_gains": 664659479.0812628,
+          "achieved_people": 17902.53176961154,
           "age_lower_bound": 45,
           "gain_lower_bound": 25000
         },
         {
-          "achieved_gains": 991155269.2385559,
-          "achieved_people": 13166.336633349822,
+          "achieved_gains": 1099637273.5092292,
+          "achieved_people": 15713.79536169268,
           "age_lower_bound": 45,
           "gain_lower_bound": 50000
         },
         {
-          "achieved_gains": 1909177733.9402285,
-          "achieved_people": 12236.785493349735,
+          "achieved_gains": 1794463190.937798,
+          "achieved_people": 11703.635453285633,
           "age_lower_bound": 45,
           "gain_lower_bound": 100000
         },
         {
-          "achieved_gains": 1980656455.7710404,
-          "achieved_people": 5239.583333333334,
+          "achieved_gains": 1378958649.5320063,
+          "achieved_people": 3525.25,
           "age_lower_bound": 45,
           "gain_lower_bound": 250000
         },
         {
-          "achieved_gains": 2311195846.2705784,
-          "achieved_people": 3279.5,
+          "achieved_gains": 1766213482.7414813,
+          "achieved_people": 2717.5667067307695,
           "age_lower_bound": 45,
           "gain_lower_bound": 500000
         },
         {
-          "achieved_gains": 1072254392.090333,
-          "achieved_people": 886.3333333333333,
+          "achieved_gains": 3878383927.4573307,
+          "achieved_people": 2696.9999999999995,
           "age_lower_bound": 45,
           "gain_lower_bound": 1000000
         },
         {
-          "achieved_gains": 5030498601.183067,
-          "achieved_people": 1745.4166666666665,
+          "achieved_gains": 1780211410.7753024,
+          "achieved_people": 533.3333333333333,
           "age_lower_bound": 45,
           "gain_lower_bound": 2000000
         },
         {
-          "achieved_gains": 4976500562.928853,
-          "achieved_people": 500.0,
+          "achieved_gains": 7490821720.23747,
+          "achieved_people": 966.6666666666666,
           "age_lower_bound": 45,
           "gain_lower_bound": 5000000
         },
         {
-          "achieved_gains": 215168197.72073695,
-          "achieved_people": 38739.07188794788,
+          "achieved_gains": 175865311.08718276,
+          "achieved_people": 31482.024952860316,
           "age_lower_bound": 55,
           "gain_lower_bound": 0
         },
         {
-          "achieved_gains": 515259307.35102,
-          "achieved_people": 31738.047229206935,
+          "achieved_gains": 603224786.9891711,
+          "achieved_people": 33486.14653752885,
           "age_lower_bound": 55,
           "gain_lower_bound": 10000
         },
         {
-          "achieved_gains": 802406998.7558441,
-          "achieved_people": 23951.38022163201,
+          "achieved_gains": 859717815.9358276,
+          "achieved_people": 23880.823756612994,
           "age_lower_bound": 55,
           "gain_lower_bound": 25000
         },
         {
-          "achieved_gains": 1512643881.7153811,
-          "achieved_people": 21153.367143931817,
+          "achieved_gains": 1275394128.2420714,
+          "achieved_people": 19508.136206280196,
           "age_lower_bound": 55,
           "gain_lower_bound": 50000
         },
         {
-          "achieved_gains": 2550023917.2021194,
-          "achieved_people": 17553.718413731076,
+          "achieved_gains": 2739425119.8298273,
+          "achieved_people": 17917.991077132865,
           "age_lower_bound": 55,
           "gain_lower_bound": 100000
         },
         {
-          "achieved_gains": 953442897.2943877,
-          "achieved_people": 2615.666666666667,
+          "achieved_gains": 2562168030.524225,
+          "achieved_people": 7375.1910558310565,
           "age_lower_bound": 55,
           "gain_lower_bound": 250000
         },
         {
-          "achieved_gains": 5218254652.198348,
-          "achieved_people": 7171.073829957009,
+          "achieved_gains": 3197401840.5754137,
+          "achieved_people": 4635.083127523671,
           "age_lower_bound": 55,
           "gain_lower_bound": 500000
         },
         {
-          "achieved_gains": 2564764619.890746,
-          "achieved_people": 2033.6603174603174,
+          "achieved_gains": 5952587676.1983185,
+          "achieved_people": 4342.504523026316,
           "age_lower_bound": 55,
           "gain_lower_bound": 1000000
         },
         {
-          "achieved_gains": 5346133567.276843,
-          "achieved_people": 1524.9166666666667,
+          "achieved_gains": 1394392833.2497723,
+          "achieved_people": 533.3333333333333,
           "age_lower_bound": 55,
           "gain_lower_bound": 2000000
         },
         {
-          "achieved_gains": 0.0,
-          "achieved_people": 0.0,
+          "achieved_gains": 5760342883.759607,
+          "achieved_people": 486.25,
           "age_lower_bound": 55,
           "gain_lower_bound": 5000000
         },
         {
-          "achieved_gains": 201421722.50607532,
-          "achieved_people": 36171.47655347976,
+          "achieved_gains": 209273540.648394,
+          "achieved_people": 33822.82538806432,
           "age_lower_bound": 65,
           "gain_lower_bound": 0
         },
         {
-          "achieved_gains": 491614802.78419363,
-          "achieved_people": 28617.44026088502,
+          "achieved_gains": 461553200.05879515,
+          "achieved_people": 26537.24408256365,
           "age_lower_bound": 65,
           "gain_lower_bound": 10000
         },
         {
-          "achieved_gains": 770303085.8973402,
-          "achieved_people": 20807.562143374154,
+          "achieved_gains": 862103943.2302173,
+          "achieved_people": 23253.02755610483,
           "age_lower_bound": 65,
           "gain_lower_bound": 25000
         },
         {
-          "achieved_gains": 1243935814.2955167,
-          "achieved_people": 17360.086358454162,
+          "achieved_gains": 1248896411.462947,
+          "achieved_people": 18498.033073364673,
           "age_lower_bound": 65,
           "gain_lower_bound": 50000
         },
         {
-          "achieved_gains": 2218525108.455314,
-          "achieved_people": 13606.672638591437,
+          "achieved_gains": 2193364687.1800966,
+          "achieved_people": 14338.777875012265,
           "age_lower_bound": 65,
           "gain_lower_bound": 100000
         },
         {
-          "achieved_gains": 2490067044.6271415,
-          "achieved_people": 6690.759497055222,
+          "achieved_gains": 970124328.834424,
+          "achieved_people": 2566.5833333333335,
           "age_lower_bound": 65,
           "gain_lower_bound": 250000
         },
         {
-          "achieved_gains": 1740445734.6365495,
-          "achieved_people": 2833.3333333333335,
+          "achieved_gains": 2938989974.1919055,
+          "achieved_people": 4628.756143396687,
           "age_lower_bound": 65,
           "gain_lower_bound": 500000
         },
         {
-          "achieved_gains": 1043891437.649618,
-          "achieved_people": 827.9999999999999,
+          "achieved_gains": 1986680061.9444666,
+          "achieved_people": 1661.3333333333335,
           "age_lower_bound": 65,
           "gain_lower_bound": 1000000
         },
         {
-          "achieved_gains": 745826651.6845789,
-          "achieved_people": 266.66666666666663,
+          "achieved_gains": 5346873999.212776,
+          "achieved_people": 1614.2500000000002,
           "age_lower_bound": 65,
           "gain_lower_bound": 2000000
         },
         {
-          "achieved_gains": 4324159100.5194025,
-          "achieved_people": 371.66666666666663,
+          "achieved_gains": 3072603409.8652534,
+          "achieved_people": 305.0,
           "age_lower_bound": 65,
           "gain_lower_bound": 5000000
         },
         {
-          "achieved_gains": 96890033.37419386,
-          "achieved_people": 17025.886120477768,
+          "achieved_gains": 102074514.82040845,
+          "achieved_people": 16631.66912088175,
           "age_lower_bound": 75,
           "gain_lower_bound": 0
         },
         {
-          "achieved_gains": 307227041.1666558,
-          "achieved_people": 18123.99805534749,
+          "achieved_gains": 275485069.47462803,
+          "achieved_people": 16553.798636544212,
           "age_lower_bound": 75,
           "gain_lower_bound": 10000
         },
         {
-          "achieved_gains": 354435621.3311513,
-          "achieved_people": 9683.106170219691,
+          "achieved_gains": 295902615.7820982,
+          "achieved_people": 7856.948846354797,
           "age_lower_bound": 75,
           "gain_lower_bound": 25000
         },
         {
-          "achieved_gains": 698566366.7884479,
-          "achieved_people": 9011.867726275896,
+          "achieved_gains": 857717039.1324643,
+          "achieved_people": 11547.267560530336,
           "age_lower_bound": 75,
           "gain_lower_bound": 50000
         },
         {
-          "achieved_gains": 1405912845.1434011,
-          "achieved_people": 9049.977261772654,
+          "achieved_gains": 836765785.9864702,
+          "achieved_people": 6391.312421286021,
           "age_lower_bound": 75,
           "gain_lower_bound": 100000
         },
         {
-          "achieved_gains": 651500675.3400464,
-          "achieved_people": 1852.668287037037,
+          "achieved_gains": 874119656.3817453,
+          "achieved_people": 2510.0000000000005,
           "age_lower_bound": 75,
           "gain_lower_bound": 250000
         },
         {
-          "achieved_gains": 368410694.40280604,
-          "achieved_people": 600.0,
+          "achieved_gains": 489931529.24735224,
+          "achieved_people": 776.0016203703703,
           "age_lower_bound": 75,
           "gain_lower_bound": 500000
         },
         {
-          "achieved_gains": 668730104.0140224,
+          "achieved_gains": 694690419.7361801,
           "achieved_people": 466.66666666666663,
           "age_lower_bound": 75,
           "gain_lower_bound": 1000000
         },
         {
-          "achieved_gains": 0.0,
-          "achieved_people": 0.0,
+          "achieved_gains": 5308158142.507193,
+          "achieved_people": 1470.5578982597056,
           "age_lower_bound": 75,
           "gain_lower_bound": 2000000
         },
@@ -588,56 +588,56 @@
           "gain_lower_bound": 5000000
         },
         {
-          "achieved_gains": 19914480.8233647,
-          "achieved_people": 3583.076374271726,
+          "achieved_gains": 25076128.01338241,
+          "achieved_people": 3314.3561939665938,
           "age_lower_bound": 85,
           "gain_lower_bound": 0
         },
         {
-          "achieved_gains": 72974079.53753375,
-          "achieved_people": 3993.088996763754,
+          "achieved_gains": 68316150.21490632,
+          "achieved_people": 3719.338996763754,
           "age_lower_bound": 85,
           "gain_lower_bound": 10000
         },
         {
-          "achieved_gains": 223276221.78519708,
-          "achieved_people": 5972.074583415622,
+          "achieved_gains": 251153058.54495278,
+          "achieved_people": 7051.329106441938,
           "age_lower_bound": 85,
           "gain_lower_bound": 25000
         },
         {
-          "achieved_gains": 293399949.36225206,
-          "achieved_people": 3638.842379385965,
+          "achieved_gains": 235834720.42751077,
+          "achieved_people": 3752.64846666922,
           "age_lower_bound": 85,
           "gain_lower_bound": 50000
         },
         {
-          "achieved_gains": 370159155.38744617,
-          "achieved_people": 2690.6723300970875,
+          "achieved_gains": 187585078.74138135,
+          "achieved_people": 1172.0,
           "age_lower_bound": 85,
           "gain_lower_bound": 100000
         },
         {
-          "achieved_gains": 237623583.9481274,
-          "achieved_people": 533.3333333333334,
+          "achieved_gains": 544575226.9223268,
+          "achieved_people": 1366.6666666666667,
           "age_lower_bound": 85,
           "gain_lower_bound": 250000
         },
         {
-          "achieved_gains": 156712240.48687595,
+          "achieved_gains": 222830003.4274214,
           "achieved_people": 300.0,
           "age_lower_bound": 85,
           "gain_lower_bound": 500000
         },
         {
-          "achieved_gains": 252243550.6861679,
+          "achieved_gains": 326768792.02887374,
           "achieved_people": 200.0,
           "age_lower_bound": 85,
           "gain_lower_bound": 1000000
         },
         {
-          "achieved_gains": 240978850.96558243,
-          "achieved_people": 100.0,
+          "achieved_gains": 1042098795.0057731,
+          "achieved_people": 504.5,
           "age_lower_bound": 85,
           "gain_lower_bound": 2000000
         },
@@ -657,57 +657,57 @@
           "published_people": 1000.0
         },
         {
-          "achieved_gains": 20212728.419041716,
+          "achieved_gains": 15954357.698163591,
           "achieved_people": 1468.5769841269841,
           "age_lower_bound": 16,
           "published_gains": 319000000.0,
           "published_people": 4000.0
         },
         {
-          "achieved_gains": 1796002711.941436,
-          "achieved_people": 31189.132698180958,
+          "achieved_gains": 3445472480.0333815,
+          "achieved_people": 34467.30531722858,
           "age_lower_bound": 25,
           "published_gains": 2499000000.0,
           "published_people": 27000.0
         },
         {
-          "achieved_gains": 9493195045.256657,
-          "achieved_people": 67529.33683344329,
+          "achieved_gains": 21270318064.36324,
+          "achieved_people": 69839.85538287224,
           "age_lower_bound": 35,
           "published_gains": 11775000000.0,
           "published_people": 65000.0
         },
         {
-          "achieved_gains": 19347699454.820263,
-          "achieved_people": 93892.82120774212,
+          "achieved_gains": 20258040682.180397,
+          "achieved_people": 93513.57120774212,
           "age_lower_bound": 45,
           "published_gains": 28422000000.0,
           "published_people": 98000.0
         },
         {
-          "achieved_gains": 19678098039.405426,
-          "achieved_people": 146480.90237720037,
+          "achieved_gains": 24520520426.391415,
+          "achieved_people": 143647.4845701296,
           "age_lower_bound": 55,
           "published_gains": 38118000000.0,
           "published_people": 144000.0
         },
         {
-          "achieved_gains": 15270190503.055729,
-          "achieved_people": 127553.66411850642,
+          "achieved_gains": 19290463556.629272,
+          "achieved_people": 127225.83078517308,
           "age_lower_bound": 65,
           "published_gains": 24260000000.0,
           "published_people": 125000.0
         },
         {
-          "achieved_gains": 4551673381.560725,
-          "achieved_people": 65814.1702877972,
+          "achieved_gains": 9734844773.068539,
+          "achieved_people": 64204.222770893866,
           "age_lower_bound": 75,
           "published_gains": 11736000000.0,
           "published_people": 68000.0
         },
         {
-          "achieved_gains": 1867282112.9825473,
-          "achieved_people": 21011.087997267485,
+          "achieved_gains": 2904237953.3265285,
+          "achieved_people": 21380.839430508167,
           "age_lower_bound": 85,
           "published_gains": 2076000000.0,
           "published_people": 19000.0
@@ -871,568 +871,568 @@
           "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
           "vintage_tax_year": 2024
         },
-        "fallback_released_mass": 3155.79254084688,
+        "fallback_released_mass": 1736.5709273010634,
         "fallback_share_by_band": {
-          "0": 0.006275953933832107,
-          "10000": 0.0,
+          "0": 0.0,
+          "10000": 0.007226003675625173,
           "100000": 0.0,
-          "1000000": 0.10626938234040365,
-          "2000000": 0.0,
-          "25000": 0.010365432037093421,
-          "250000": 0.031373840375410425,
+          "1000000": 0.0,
+          "2000000": 0.030352209105407577,
+          "25000": 0.0,
+          "250000": 0.02355739344390322,
           "50000": 0.0,
-          "500000": 0.0,
+          "500000": 0.009188426432278443,
           "5000000": 0.0
         },
         "joint_rows": [
           {
-            "achieved_fallback": 871.8193069306931,
-            "achieved_pass1": 69041.72568557048,
+            "achieved_fallback": 0.0,
+            "achieved_pass1": 70780.60238564006,
             "gain_lower_bound": 0,
             "income_lower_bound": 0,
             "mean": 5830.985915492958,
             "mean_repaired": false,
-            "residual": 1055.0480234234942,
+            "residual": 187.9906302846066,
             "target_people": 70968.59301592466
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 12806.918078273022,
+            "achieved_pass1": 9212.069259536805,
             "gain_lower_bound": 0,
             "income_lower_bound": 37700,
             "mean": 5461.538461538462,
             "mean_repaired": false,
-            "residual": -137.17601982622182,
+            "residual": 3457.6727989099945,
             "target_people": 12669.7420584468
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 22839.629116262367,
+            "achieved_pass1": 24673.910503716943,
             "gain_lower_bound": 0,
             "income_lower_bound": 50000,
             "mean": 5565.217391304348,
             "mean_repaired": false,
-            "residual": 359.15221138973357,
+            "residual": -1475.1291760648419,
             "target_people": 23198.7813276521
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 4424.634725331063,
+            "achieved_pass1": 5219.919068052247,
             "gain_lower_bound": 0,
             "income_lower_bound": 100000,
             "mean": 5600.0,
             "mean_repaired": false,
-            "residual": 481.57187544931276,
+            "residual": -313.712467271871,
             "target_people": 4906.206600780376
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 9460.94806823174,
+            "achieved_pass1": 7225.1895676500235,
             "gain_lower_bound": 0,
             "income_lower_bound": 125140,
             "mean": 5750.0,
             "mean_repaired": false,
-            "residual": -1021.8109963114657,
+            "residual": 1213.9475042702516,
             "target_people": 8439.137071920275
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 19468.554811772417,
+            "achieved_pass1": 13494.824583415622,
             "gain_lower_bound": 0,
             "income_lower_bound": 200000,
             "mean": 5538.461538461538,
             "mean_repaired": false,
-            "residual": -6674.904018121624,
+            "residual": -701.173789764829,
             "target_people": 12793.650793650793
           },
           {
-            "achieved_fallback": 0.0,
-            "achieved_pass1": 70819.80609441097,
+            "achieved_fallback": 871.8193069306931,
+            "achieved_pass1": 68603.15166972563,
             "gain_lower_bound": 10000,
             "income_lower_bound": 0,
             "mean": 16597.222222222223,
             "mean_repaired": false,
-            "residual": 1148.3445696253038,
+            "residual": 2493.1796873799553,
             "target_people": 71968.15066403628
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 10294.032955660408,
+            "achieved_pass1": 10093.47958042702,
             "gain_lower_bound": 10000,
             "income_lower_bound": 37700,
             "mean": 16272.727272727272,
             "mean_repaired": false,
-            "residual": 426.51801687149964,
+            "residual": 627.0713921048882,
             "target_people": 10720.550972531908
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 21205.77317207548,
+            "achieved_pass1": 20350.252902863846,
             "gain_lower_bound": 10000,
             "income_lower_bound": 50000,
             "mean": 16736.842105263157,
             "mean_repaired": false,
-            "residual": -2041.5625101020014,
+            "residual": -1186.0422408903687,
             "target_people": 19164.210661973477
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 3673.0815071532998,
+            "achieved_pass1": 3859.0,
             "gain_lower_bound": 10000,
             "income_lower_bound": 100000,
             "mean": 16250.0,
             "mean_repaired": false,
-            "residual": 251.88377347100095,
+            "residual": 65.9652806243007,
             "target_people": 3924.9652806243007
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 7601.460538523732,
+            "achieved_pass1": 7897.928856964364,
             "gain_lower_bound": 10000,
             "income_lower_bound": 125140,
             "mean": 16333.333333333334,
             "mean_repaired": false,
-            "residual": -1272.1077345835256,
+            "residual": -1568.5760530241578,
             "target_people": 6329.352803940206
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 10431.586030179617,
+            "achieved_pass1": 8974.639405413005,
             "gain_lower_bound": 10000,
             "income_lower_bound": 200000,
             "mean": 16363.636363636364,
             "mean_repaired": false,
-            "residual": 393.8107952172086,
+            "residual": 1850.75741998382,
             "target_people": 10825.396825396825
           },
           {
-            "achieved_fallback": 535.75,
-            "achieved_pass1": 59187.15006580867,
+            "achieved_fallback": 0.0,
+            "achieved_pass1": 60902.06782199139,
             "gain_lower_bound": 25000,
             "income_lower_bound": 0,
             "mean": 35866.666666666664,
             "mean_repaired": false,
-            "residual": 250.55882088823273,
+            "residual": -928.6089352944837,
             "target_people": 59973.458886696906
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 9519.40780383116,
+            "achieved_pass1": 10020.956893619801,
             "gain_lower_bound": 25000,
             "income_lower_bound": 37700,
             "mean": 37875.0,
             "mean_repaired": false,
-            "residual": -1722.643460171591,
+            "residual": -2224.192549960232,
             "target_people": 7796.764343659569
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 13097.599464372412,
+            "achieved_pass1": 13240.253392425762,
             "gain_lower_bound": 25000,
             "income_lower_bound": 50000,
             "mean": 37071.42857142857,
             "mean_repaired": false,
-            "residual": 1023.3978655027804,
+            "residual": 880.7439374494297,
             "target_people": 14120.997329875192
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 6106.3167067307695,
+            "achieved_pass1": 3324.5,
             "gain_lower_bound": 25000,
             "income_lower_bound": 100000,
             "mean": 33666.666666666664,
             "mean_repaired": false,
-            "residual": -3162.592746262544,
+            "residual": -380.7760395317746,
             "target_people": 2943.7239604682254
           },
           {
-            "achieved_fallback": 500.5,
-            "achieved_pass1": 3465.0878563596493,
+            "achieved_fallback": 0.0,
+            "achieved_pass1": 4301.921189692983,
             "gain_lower_bound": 25000,
             "income_lower_bound": 125140,
             "mean": 39250.0,
             "mean_repaired": false,
-            "residual": 253.9806796004882,
+            "residual": -82.35265373284528,
             "target_people": 4219.5685359601375
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 7559.901418049775,
+            "achieved_pass1": 6392.93137614972,
             "gain_lower_bound": 25000,
             "income_lower_bound": 200000,
             "mean": 35500.0,
             "mean_repaired": false,
-            "residual": 313.1144549660976,
+            "residual": 1480.0844968661531,
             "target_people": 7873.015873015873
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 46677.119914665716,
+            "achieved_pass1": 46371.62773279722,
             "gain_lower_bound": 50000,
             "income_lower_bound": 0,
             "mean": 70204.54545454546,
             "mean_repaired": false,
-            "residual": -2696.58339775465,
+            "residual": -2391.091215886154,
             "target_people": 43980.53651691107
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 6134.296318116803,
+            "achieved_pass1": 6149.529957304367,
             "gain_lower_bound": 50000,
             "income_lower_bound": 37700,
             "mean": 69285.71428571429,
             "mean_repaired": false,
-            "residual": 687.8724825853196,
+            "residual": 672.6388433977563,
             "target_people": 6822.168800702123
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 12075.027170428946,
+            "achieved_pass1": 14466.272441592968,
             "gain_lower_bound": 50000,
             "income_lower_bound": 50000,
             "mean": 71307.69230769231,
             "mean_repaired": false,
-            "residual": 1037.3274930265889,
+            "residual": -1353.9177781374328,
             "target_people": 13112.354663455535
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 1611.0090460526317,
+            "achieved_pass1": 3154.2270241910865,
             "gain_lower_bound": 50000,
             "income_lower_bound": 100000,
             "mean": 65333.333333333336,
             "mean_repaired": false,
-            "residual": 1332.7149144155937,
+            "residual": -210.50306372286104,
             "target_people": 2943.7239604682254
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 5351.163276245847,
+            "achieved_pass1": 2970.0116158113733,
             "gain_lower_bound": 50000,
             "income_lower_bound": 125140,
             "mean": 76000.0,
             "mean_repaired": false,
-            "residual": -1131.5947402857091,
+            "residual": 1249.5569201487642,
             "target_people": 4219.5685359601375
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 4424.8049468791505,
+            "achieved_pass1": 10727.19617847219,
             "gain_lower_bound": 50000,
             "income_lower_bound": 200000,
             "mean": 72571.42857142857,
             "mean_repaired": false,
-            "residual": 2464.083942009738,
+            "residual": -3838.307289583301,
             "target_people": 6888.888888888889
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 29463.031687871255,
+            "achieved_pass1": 28980.369306649336,
             "gain_lower_bound": 100000,
             "income_lower_bound": 0,
             "mean": 154750.0,
             "mean_repaired": false,
-            "residual": -1475.4175407460316,
+            "residual": -992.755159524113,
             "target_people": 27987.614147125223
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 7675.475663064446,
+            "achieved_pass1": 7199.983120115376,
             "gain_lower_bound": 100000,
             "income_lower_bound": 37700,
             "mean": 152166.66666666666,
             "mean_repaired": false,
-            "residual": -1827.902405319769,
+            "residual": -1352.4098623706986,
             "target_people": 5847.573257744677
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 15654.74111670338,
+            "achieved_pass1": 11114.439567650024,
             "gain_lower_bound": 100000,
             "income_lower_bound": 50000,
             "mean": 153666.66666666666,
             "mean_repaired": false,
-            "residual": -3551.0291196675007,
+            "residual": 989.2724293858555,
             "target_people": 12103.71199703588
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 2726.0833333333335,
+            "achieved_pass1": 3743.004523026316,
             "gain_lower_bound": 100000,
             "income_lower_bound": 100000,
             "mean": 143666.66666666666,
             "mean_repaired": false,
-            "residual": 217.64062713489193,
+            "residual": -799.2805625580904,
             "target_people": 2943.7239604682254
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 2069.25,
+            "achieved_pass1": 4709.072659111722,
             "gain_lower_bound": 100000,
             "income_lower_bound": 125140,
             "mean": 179000.0,
             "mean_repaired": false,
-            "residual": 2150.3185359601375,
+            "residual": -489.5041231515843,
             "target_people": 4219.5685359601375
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 10437.288126616499,
+            "achieved_pass1": 6834.920020325204,
             "gain_lower_bound": 100000,
             "income_lower_bound": 200000,
             "mean": 156250.0,
             "mean_repaired": false,
-            "residual": -2564.272253600626,
+            "residual": 1038.0958526906688,
             "target_people": 7873.015873015873
           },
           {
-            "achieved_fallback": 329.00162037037035,
-            "achieved_pass1": 7348.750000000001,
+            "achieved_fallback": 535.75,
+            "achieved_pass1": 6982.083333333334,
             "gain_lower_bound": 250000,
             "income_lower_bound": 0,
             "mean": 343444.44444444444,
             "mean_repaired": false,
-            "residual": 1318.2672126341636,
+            "residual": 1478.185499671201,
             "target_people": 8996.018833004535
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 943.0016203703703,
+            "achieved_pass1": 2985.4805173073246,
             "gain_lower_bound": 250000,
             "income_lower_bound": 37700,
             "mean": 410500.0,
             "mean_repaired": false,
-            "residual": 1006.1894655445219,
+            "residual": -1036.2894313924323,
             "target_people": 1949.1910859148923
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 2755.834953703704,
+            "achieved_pass1": 6062.043871857066,
             "gain_lower_bound": 250000,
             "income_lower_bound": 50000,
             "mean": 383200.0,
             "mean_repaired": false,
-            "residual": 2287.378378394579,
+            "residual": -1018.8305397587828,
             "target_people": 5043.213332098283
           },
           {
-            "achieved_fallback": 280.25,
-            "achieved_pass1": 386.75,
+            "achieved_fallback": 0.0,
+            "achieved_pass1": 997.5,
             "gain_lower_bound": 250000,
             "income_lower_bound": 100000,
             "mean": 486000.0,
             "mean_repaired": false,
-            "residual": 314.2413201560752,
+            "residual": -16.258679843924824,
             "target_people": 981.2413201560752
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 3233.0,
+            "achieved_pass1": 1385.75,
             "gain_lower_bound": 250000,
             "income_lower_bound": 125140,
             "mean": 420000.0,
             "mean_repaired": false,
-            "residual": -1123.2157320199312,
+            "residual": 724.0342679800688,
             "target_people": 2109.7842679800688
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 4142.507876684853,
+            "achieved_pass1": 3793.7216135458166,
             "gain_lower_bound": 250000,
             "income_lower_bound": 200000,
             "mean": 333000.0,
             "mean_repaired": false,
-            "residual": 778.1270439500677,
+            "residual": 1126.913307089104,
             "target_people": 4920.6349206349205
           },
           {
-            "achieved_fallback": 0.0,
-            "achieved_pass1": 4866.666666666667,
+            "achieved_fallback": 153.0,
+            "achieved_pass1": 4300.0,
             "gain_lower_bound": 500000,
             "income_lower_bound": 0,
             "mean": 639000.0,
             "mean_repaired": false,
-            "residual": 131.12157389140793,
+            "residual": 544.7882405580749,
             "target_people": 4997.788240558075
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 1595.4166666666665,
+            "achieved_pass1": 1691.3183271011396,
             "gain_lower_bound": 500000,
             "income_lower_bound": 37700,
             "mean": 543500.0,
             "mean_repaired": false,
-            "residual": 353.77441924822574,
+            "residual": 257.8727588137526,
             "target_people": 1949.1910859148923
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 4885.98597359736,
+            "achieved_pass1": 2209.334953703704,
             "gain_lower_bound": 500000,
             "income_lower_bound": 50000,
             "mean": 830333.3333333334,
             "mean_repaired": false,
-            "residual": -1860.0579743383896,
+            "residual": 816.5930455552661,
             "target_people": 3025.92799925897
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 1303.25,
+            "achieved_pass1": 1338.8378563596493,
             "gain_lower_bound": 500000,
             "income_lower_bound": 100000,
             "mean": 715000.0,
             "mean_repaired": false,
-            "residual": -322.0086798439248,
+            "residual": -357.59653620357415,
             "target_people": 981.2413201560752
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 1402.0045230263158,
+            "achieved_pass1": 2394.5016203703703,
             "gain_lower_bound": 500000,
             "income_lower_bound": 125140,
             "mean": 612000.0,
             "mean_repaired": false,
-            "residual": 707.7797449537529,
+            "residual": -284.7173523903016,
             "target_people": 2109.7842679800688
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 3006.25,
+            "achieved_pass1": 4564.389405413005,
             "gain_lower_bound": 500000,
             "income_lower_bound": 200000,
             "mean": 665000.0,
             "mean_repaired": false,
-            "residual": 930.2579365079364,
+            "residual": -627.8814689050687,
             "target_people": 3936.5079365079364
           },
           {
-            "achieved_fallback": 638.4716135458167,
-            "achieved_pass1": 1566.6666666666665,
+            "achieved_fallback": 0.0,
+            "achieved_pass1": 2966.6666666666665,
             "gain_lower_bound": 1000000,
             "income_lower_bound": 0,
             "mean": 1357500.0,
             "mean_repaired": false,
-            "residual": -206.02298398925302,
+            "residual": -967.5513704434363,
             "target_people": 1999.1152962232302
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 300.0,
+            "achieved_pass1": 984.1666666666666,
             "gain_lower_bound": 1000000,
             "income_lower_bound": 37700,
             "mean": 1020000.0,
             "mean_repaired": true,
-            "residual": 674.5955429574461,
+            "residual": -9.571123709220501,
             "target_people": 974.5955429574461
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 800.0,
+            "achieved_pass1": 1280.8333333333333,
             "gain_lower_bound": 1000000,
             "income_lower_bound": 50000,
             "mean": 1427000.0,
             "mean_repaired": false,
-            "residual": 1217.2853328393132,
+            "residual": 736.45199950598,
             "target_people": 2017.2853328393132
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 366.66666666666663,
+            "achieved_pass1": 433.3333333333333,
             "gain_lower_bound": 1000000,
             "income_lower_bound": 100000,
             "mean": 1020000.0,
             "mean_repaired": true,
-            "residual": 614.5746534894085,
+            "residual": 547.9079868227418,
             "target_people": 981.2413201560752
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 166.66666666666666,
+            "achieved_pass1": 1408.0045230263158,
             "gain_lower_bound": 1000000,
             "income_lower_bound": 125140,
             "mean": 1507000.0,
             "mean_repaired": false,
-            "residual": 888.2254673233678,
+            "residual": -353.11238903628146,
             "target_people": 1054.8921339900344
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 2169.576984126984,
+            "achieved_pass1": 4358.416666666666,
             "gain_lower_bound": 1000000,
             "income_lower_bound": 200000,
             "mean": 1295666.6666666667,
             "mean_repaired": false,
-            "residual": 782.8039682539684,
+            "residual": -1406.0357142857138,
             "target_people": 2952.3809523809523
           },
           {
-            "achieved_fallback": 0.0,
-            "achieved_pass1": 566.6666666666666,
+            "achieved_fallback": 176.00162037037038,
+            "achieved_pass1": 533.3333333333333,
             "gain_lower_bound": 2000000,
             "income_lower_bound": 0,
             "mean": 2279000.0,
             "mean_repaired": false,
-            "residual": 432.89098144494847,
+            "residual": 290.2226944079115,
             "target_people": 999.5576481116151
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 0.0,
+            "achieved_pass1": 563.25,
             "gain_lower_bound": 2000000,
             "income_lower_bound": 37700,
             "mean": 3295400.0,
             "mean_repaired": false,
-            "residual": 238.07410696144447,
+            "residual": -325.1758930385555,
             "target_people": 238.07410696144447
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 366.66666666666663,
+            "achieved_pass1": 1617.6666666666665,
             "gain_lower_bound": 2000000,
             "income_lower_bound": 50000,
             "mean": 2882000.0,
             "mean_repaired": false,
-            "residual": 641.97599975299,
+            "residual": -609.0240002470099,
             "target_people": 1008.6426664196566
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 0.0,
+            "achieved_pass1": 343.5,
             "gain_lower_bound": 2000000,
             "income_lower_bound": 100000,
             "mean": 3295400.0,
             "mean_repaired": false,
-            "residual": 311.1601564493228,
+            "residual": -32.33984355067719,
             "target_people": 311.1601564493228
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 986.2499999999999,
+            "achieved_pass1": 1004.4999999999999,
             "gain_lower_bound": 2000000,
             "income_lower_bound": 125140,
             "mean": 2325000.0,
             "mean_repaired": false,
-            "residual": 68.6421339900345,
+            "residual": 50.392133990034495,
             "target_people": 1054.8921339900344
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 2450.75,
+            "achieved_pass1": 1560.3912315930388,
             "gain_lower_bound": 2000000,
             "income_lower_bound": 200000,
             "mean": 3570500.0,
             "mean_repaired": false,
-            "residual": -482.4960317460318,
+            "residual": 407.8627366609294,
             "target_people": 1968.2539682539682
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 0.0,
+            "achieved_pass1": 100.0,
             "gain_lower_bound": 5000000,
             "income_lower_bound": 0,
             "mean": 16158000.0,
             "mean_repaired": false,
-            "residual": 129.16675140840775,
+            "residual": 29.166751408407748,
             "target_people": 129.16675140840775
           },
           {
@@ -1447,12 +1447,12 @@
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 0.0,
+            "achieved_pass1": 266.66666666666663,
             "gain_lower_bound": 5000000,
             "income_lower_bound": 50000,
             "mean": 16158000.0,
             "mean_repaired": false,
-            "residual": 204.87468939159012,
+            "residual": -61.791977275076505,
             "target_people": 204.87468939159012
           },
           {
@@ -1467,22 +1467,22 @@
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 0.0,
+            "achieved_pass1": 552.9166666666666,
             "gain_lower_bound": 5000000,
             "income_lower_bound": 125140,
             "mean": 16158000.0,
             "mean_repaired": false,
-            "residual": 243.4517123189032,
+            "residual": -309.4649543477634,
             "target_people": 243.4517123189032
           },
           {
             "achieved_fallback": 0.0,
-            "achieved_pass1": 871.6666666666666,
+            "achieved_pass1": 2344.255663430421,
             "gain_lower_bound": 5000000,
             "income_lower_bound": 200000,
             "mean": 18739500.0,
             "mean_repaired": false,
-            "residual": 1096.5873015873017,
+            "residual": -376.0016951764528,
             "target_people": 1968.2539682539682
           }
         ],
@@ -1556,39 +1556,39 @@
       "published_taxpayer_mass": 551000.0,
       "region_rows": [
         {
-          "achieved_gains": 2021451053.9726052,
-          "achieved_people": 18760.24959250204,
+          "achieved_gains": 2835097239.914757,
+          "achieved_people": 20127.0967807661,
           "geography_id": "E12000001",
           "published_gains_individuals_basis": 1497797150.3974364,
           "published_people_individuals_basis": 11321.91780821918,
           "region": "NORTH_EAST"
         },
         {
-          "achieved_gains": 4393133057.545952,
-          "achieved_people": 54659.49190938511,
+          "achieved_gains": 8741978435.68757,
+          "achieved_people": 53786.90291262136,
           "geography_id": "E12000002",
           "published_gains_individuals_basis": 8790074083.38308,
           "published_people_individuals_basis": 41513.69863013699,
           "region": "NORTH_WEST"
         },
         {
-          "achieved_gains": 4316669361.1096525,
-          "achieved_people": 35998.42261904762,
+          "achieved_gains": 4470069110.67491,
+          "achieved_people": 31323.178571428576,
           "geography_id": "E12000003",
           "published_gains_individuals_basis": 6970985861.949795,
           "published_people_individuals_basis": 32078.767123287675,
           "region": "YORKSHIRE"
         },
         {
-          "achieved_gains": 3568308748.2802615,
-          "achieved_people": 28960.37293729373,
+          "achieved_gains": 4858649990.708072,
+          "achieved_people": 28088.553630363032,
           "geography_id": "E12000004",
           "published_gains_individuals_basis": 6299365751.358824,
           "published_people_individuals_basis": 31135.273972602743,
           "region": "EAST_MIDLANDS"
         },
         {
-          "achieved_gains": 3540739529.557967,
+          "achieved_gains": 3196962355.021439,
           "achieved_people": 38840.45,
           "geography_id": "E12000005",
           "published_gains_individuals_basis": 5890960774.765152,
@@ -1596,160 +1596,160 @@
           "region": "WEST_MIDLANDS"
         },
         {
-          "achieved_gains": 13120994047.97676,
-          "achieved_people": 72488.56810897434,
+          "achieved_gains": 12219129170.370926,
+          "achieved_people": 72877.63481570513,
           "geography_id": "E12000006",
           "published_gains_individuals_basis": 11545870966.728456,
           "published_people_individuals_basis": 58496.57534246576,
           "region": "EAST_OF_ENGLAND"
         },
         {
-          "achieved_gains": 12894925611.623016,
-          "achieved_people": 104223.75100401607,
+          "achieved_gains": 30624847436.288567,
+          "achieved_people": 109362.52643908969,
           "geography_id": "E12000007",
           "published_gains_individuals_basis": 32519714615.602127,
           "published_people_individuals_basis": 106614.72602739726,
           "region": "LONDON"
         },
         {
-          "achieved_gains": 14302326262.719093,
-          "achieved_people": 98493.90186403508,
+          "achieved_gains": 17879980243.012646,
+          "achieved_people": 100628.16091008772,
           "geography_id": "E12000008",
           "published_gains_individuals_basis": 25606804690.69088,
           "published_people_individuals_basis": 114162.67123287672,
           "region": "SOUTH_EAST"
         },
         {
-          "achieved_gains": 7427176588.355813,
-          "achieved_people": 38023.72703252033,
+          "achieved_gains": 6894835602.359964,
+          "achieved_people": 36901.64369918699,
           "geography_id": "E12000009",
           "published_gains_individuals_basis": 10341263627.509504,
           "published_people_individuals_basis": 60383.56164383562,
           "region": "SOUTH_WEST"
         },
         {
-          "achieved_gains": 1486696598.58305,
-          "achieved_people": 18506.10621821544,
+          "achieved_gains": 1375612554.009703,
+          "achieved_people": 17535.665857605178,
           "geography_id": "W92000004",
           "published_gains_individuals_basis": 2358632410.6946497,
           "published_people_individuals_basis": 16982.87671232877,
           "region": "WALES"
         },
         {
-          "achieved_gains": 3510095937.4420843,
-          "achieved_people": 38712.87367197875,
+          "achieved_gains": 3557584454.632905,
+          "achieved_people": 38704.09528552457,
           "geography_id": "S92000003",
           "published_gains_individuals_basis": 5680201325.83493,
           "published_people_individuals_basis": 34909.24657534247,
           "region": "SCOTLAND"
         },
         {
-          "achieved_gains": 1441837180.2755733,
-          "achieved_people": 7271.777546296296,
+          "achieved_gains": 4785105701.009483,
+          "achieved_people": 7571.777546296295,
           "geography_id": "N92000002",
           "published_gains_individuals_basis": 1757265449.747086,
           "published_people_individuals_basis": 9434.931506849316,
           "region": "NORTHERN_IRELAND"
         }
       ],
-      "remainder_mass": 11615447.309298793,
+      "remainder_mass": 11614639.315354384,
       "rows": [
         {
-          "achieved_gains": 761614653.277086,
-          "achieved_people": 138914.2297923718,
+          "achieved_gains": 781203409.2135231,
+          "achieved_people": 130606.5153680117,
           "gain_lower_bound": 0,
           "published_gains": 760000000.0,
           "published_people": 133000.0
         },
         {
-          "achieved_gains": 2129806816.8261342,
-          "achieved_people": 124025.74029800351,
+          "achieved_gains": 2052349848.2742074,
+          "achieved_people": 120650.27172232457,
           "gain_lower_bound": 10000,
           "published_gains": 2036000000.0,
           "published_people": 123000.0
         },
         {
-          "achieved_gains": 3598119153.663398,
-          "achieved_people": 99971.71331515245,
+          "achieved_gains": 3625718937.208212,
+          "achieved_people": 98182.63067387966,
           "gain_lower_bound": 25000,
           "published_gains": 3516000000.0,
           "published_people": 98000.0
         },
         {
-          "achieved_gains": 5632181903.845885,
-          "achieved_people": 76273.42067238907,
+          "achieved_gains": 5756400188.649738,
+          "achieved_people": 83838.8649501692,
           "gain_lower_bound": 50000,
           "published_gains": 5510000000.0,
           "published_people": 78000.0
         },
         {
-          "achieved_gains": 10481156153.625582,
-          "achieved_people": 68025.86992758891,
+          "achieved_gains": 9605119783.918766,
+          "achieved_people": 62581.78919687798,
           "gain_lower_bound": 100000,
           "published_gains": 9487000000.0,
           "published_people": 61000.0
         },
         {
-          "achieved_gains": 7191208439.92377,
-          "achieved_people": 19419.0960711293,
+          "achieved_gains": 8310337366.30493,
+          "achieved_people": 22742.32933604354,
           "gain_lower_bound": 250000,
           "published_gains": 8820000000.0,
           "published_people": 25000.0
         },
         {
-          "achieved_gains": 11861327338.710941,
-          "achieved_people": 17059.573829957008,
+          "achieved_gains": 10624064108.126213,
+          "achieved_people": 16651.38216294787,
           "gain_lower_bound": 500000,
           "published_gains": 11372000000.0,
           "published_people": 16000.0
         },
         {
-          "achieved_gains": 7556488262.361318,
-          "achieved_people": 6008.048597672802,
+          "achieved_gains": 15546767607.922485,
+          "achieved_people": 11431.421189692983,
           "gain_lower_bound": 1000000,
           "published_gains": 12806000000.0,
           "published_people": 9000.0
         },
         {
-          "achieved_gains": 13511791591.759457,
-          "achieved_people": 4370.333333333333,
+          "achieved_gains": 17410986177.358692,
+          "achieved_people": 5798.64285196341,
           "gain_lower_bound": 2000000,
           "published_gains": 16477000000.0,
           "published_people": 5000.0
         },
         {
-          "achieved_gains": 9300659663.448256,
-          "achieved_people": 871.6666666666665,
+          "achieved_gains": 27726904866.71418,
+          "achieved_people": 3263.8389967637536,
           "gain_lower_bound": 5000000,
           "published_gains": 48474000000.0,
           "published_people": 3000.0
         }
       ],
       "stage": "hmrc_cgt_gains_spine",
-      "taxpayer_mass": 554939.6925042649
+      "taxpayer_mass": 555747.6864486746
     },
     "hmrc_cgt_asset_type_spine": {
       "asset_type": {
         "achieved_gains": {
-          "agricultural_commercial_industrial_land_buildings": 1035962100.9304861,
-          "listed_shares": 5213229314.842445,
-          "other_financial_assets": 15617240358.44455,
-          "other_non_financial_assets": 549870271.4892848,
-          "unlisted_shares": 37296717344.69828
+          "agricultural_commercial_industrial_land_buildings": 5367719244.006749,
+          "listed_shares": 8789664916.529135,
+          "other_financial_assets": 24983572156.38508,
+          "other_non_financial_assets": 3265233042.0914893,
+          "unlisted_shares": 47362543678.05602
         },
         "achieved_gains_share": {
-          "agricultural_commercial_industrial_land_buildings": 0.0173490155330673,
-          "listed_shares": 0.08730473468035901,
-          "other_financial_assets": 0.26153827955573117,
-          "other_non_financial_assets": 0.009208549108766728,
-          "unlisted_shares": 0.6245994211220758
+          "agricultural_commercial_industrial_land_buildings": 0.05979497607246211,
+          "listed_shares": 0.09791454796292592,
+          "other_financial_assets": 0.2783104017527855,
+          "other_non_financial_assets": 0.03637383453705609,
+          "unlisted_shares": 0.5276062396747703
         },
         "achieved_people": {
-          "agricultural_commercial_industrial_land_buildings": 3816.668418021144,
-          "listed_shares": 125305.21310403396,
-          "other_financial_assets": 166463.65889924852,
-          "other_non_financial_assets": 1100.0,
-          "unlisted_shares": 55547.064139317976
+          "agricultural_commercial_industrial_land_buildings": 2479.812421286021,
+          "listed_shares": 142104.07414879504,
+          "other_financial_assets": 170404.98132626756,
+          "other_non_financial_assets": 1005.0,
+          "unlisted_shares": 37126.641095135674
         },
         "log_sigma": 1.5,
         "median_anchor_gbp": {
@@ -1759,8 +1759,8 @@
           "other_non_financial_assets": 143600.0,
           "unlisted_shares": 114879.31034482758
         },
-        "non_residential_gains_mass": 59713019390.405045,
-        "share_fit_iterations": 15,
+        "non_residential_gains_mass": 89768733037.06848,
+        "share_fit_iterations": 16,
         "target_gains_share": {
           "agricultural_commercial_industrial_land_buildings": 0.033817547937245784,
           "listed_shares": 0.0983647381090728,
@@ -1769,11 +1769,11 @@
           "unlisted_shares": 0.5530837552917739
         },
         "type_weights": {
-          "agricultural_commercial_industrial_land_buildings": 0.0026680301229656677,
-          "listed_shares": 0.5278100638339286,
-          "other_financial_assets": 0.40166930973725173,
-          "other_non_financial_assets": 0.0041812686632018755,
-          "unlisted_shares": 0.06367132764265217
+          "agricultural_commercial_industrial_land_buildings": 0.0012103598315847334,
+          "listed_shares": 0.6018115926519951,
+          "other_financial_assets": 0.36391418293152744,
+          "other_non_financial_assets": 0.001935169947305838,
+          "unlisted_shares": 0.031128694637586975
         }
       },
       "composition_by_band": [
@@ -1781,136 +1781,136 @@
           "agricultural_commercial_industrial_land_buildings_gains": 0.0,
           "agricultural_commercial_industrial_land_buildings_people": 0.0,
           "gain_lower_bound": 0,
-          "listed_shares_gains": 230937349.26106927,
-          "listed_shares_people": 41553.937275783675,
-          "other_financial_assets_gains": 144411836.56028488,
-          "other_financial_assets_people": 25351.644334272696,
+          "listed_shares_gains": 245598178.78264892,
+          "listed_shares_people": 39926.746521161724,
+          "other_financial_assets_gains": 101385837.47487067,
+          "other_financial_assets_people": 16906.99832781458,
           "other_non_financial_assets_gains": 0.0,
           "other_non_financial_assets_people": 0.0,
-          "residential_land_buildings_gains": 386265467.45573187,
-          "residential_land_buildings_people": 72008.6481823154,
-          "unlisted_shares_gains": 0.0,
-          "unlisted_shares_people": 0.0
+          "residential_land_buildings_gains": 426317139.39357954,
+          "residential_land_buildings_people": 72900.9512121047,
+          "unlisted_shares_gains": 7902253.562424122,
+          "unlisted_shares_people": 871.8193069306931
         },
         {
           "agricultural_commercial_industrial_land_buildings_gains": 0.0,
           "agricultural_commercial_industrial_land_buildings_people": 0.0,
           "gain_lower_bound": 10000,
-          "listed_shares_gains": 620260326.1787369,
-          "listed_shares_people": 35211.969438844084,
-          "other_financial_assets_gains": 600568343.4738226,
-          "other_financial_assets_people": 35260.19368272262,
+          "listed_shares_gains": 704315176.5823028,
+          "listed_shares_people": 42325.84479210067,
+          "other_financial_assets_gains": 439683083.60861886,
+          "other_financial_assets_people": 24533.445638293826,
           "other_non_financial_assets_gains": 0.0,
           "other_non_financial_assets_people": 0.0,
-          "residential_land_buildings_gains": 862828091.2378958,
-          "residential_land_buildings_people": 51010.105562890996,
-          "unlisted_shares_gains": 46150055.93567884,
-          "unlisted_shares_people": 2543.4716135458166
+          "residential_land_buildings_gains": 870330094.0188358,
+          "residential_land_buildings_people": 51912.981291930075,
+          "unlisted_shares_gains": 38021494.064449936,
+          "unlisted_shares_people": 1878.0
         },
         {
-          "agricultural_commercial_industrial_land_buildings_gains": 60876033.091679804,
-          "agricultural_commercial_industrial_land_buildings_people": 1579.0667067307693,
+          "agricultural_commercial_industrial_land_buildings_gains": 0.0,
+          "agricultural_commercial_industrial_land_buildings_people": 0.0,
           "gain_lower_bound": 25000,
-          "listed_shares_gains": 915076582.9477704,
-          "listed_shares_people": 25471.154783840786,
-          "other_financial_assets_gains": 1174584344.631288,
-          "other_financial_assets_people": 32710.559232244825,
+          "listed_shares_gains": 992272292.4007621,
+          "listed_shares_people": 26466.45334833131,
+          "other_financial_assets_gains": 1322746660.9433863,
+          "other_financial_assets_people": 35955.313260024865,
           "other_non_financial_assets_gains": 0.0,
           "other_non_financial_assets_people": 0.0,
-          "residential_land_buildings_gains": 1246032139.88504,
-          "residential_land_buildings_people": 34848.94883428799,
-          "unlisted_shares_gains": 201550053.10761964,
-          "unlisted_shares_people": 5361.983758048065
+          "residential_land_buildings_gains": 1221815544.767881,
+          "residential_land_buildings_people": 33524.86406552349,
+          "unlisted_shares_gains": 88884439.09618247,
+          "unlisted_shares_people": 2236.0
         },
         {
           "agricultural_commercial_industrial_land_buildings_gains": 0.0,
           "agricultural_commercial_industrial_land_buildings_people": 0.0,
           "gain_lower_bound": 50000,
-          "listed_shares_gains": 816686474.2472174,
-          "listed_shares_people": 10798.144577452966,
-          "other_financial_assets_gains": 2435222911.7566314,
-          "other_financial_assets_people": 34108.940201365695,
+          "listed_shares_gains": 1066179164.4293609,
+          "listed_shares_people": 16220.447737268198,
+          "other_financial_assets_gains": 2692927868.7252903,
+          "other_financial_assets_people": 38395.993260292,
           "other_non_financial_assets_gains": 0.0,
           "other_non_financial_assets_people": 0.0,
-          "residential_land_buildings_gains": 1573804928.117181,
-          "residential_land_buildings_people": 21448.40972622295,
-          "unlisted_shares_gains": 806467589.7248554,
-          "unlisted_shares_people": 9917.926167347476
-        },
-        {
-          "agricultural_commercial_industrial_land_buildings_gains": 155841914.46044192,
-          "agricultural_commercial_industrial_land_buildings_people": 732.0971882640587,
-          "gain_lower_bound": 100000,
-          "listed_shares_gains": 1558779709.3985791,
-          "listed_shares_people": 9894.25702811245,
-          "other_financial_assets_gains": 4571497325.248001,
-          "other_financial_assets_people": 29882.48649493897,
-          "other_non_financial_assets_gains": 83884933.41508885,
-          "other_non_financial_assets_people": 833.3333333333334,
-          "residential_land_buildings_gains": 2471738787.8557568,
-          "residential_land_buildings_people": 16231.39068422219,
-          "unlisted_shares_gains": 1639413483.247715,
-          "unlisted_shares_people": 10452.305198717908
-        },
-        {
-          "agricultural_commercial_industrial_land_buildings_gains": 473954147.26825404,
-          "agricultural_commercial_industrial_land_buildings_people": 1338.8378563596493,
-          "gain_lower_bound": 250000,
-          "listed_shares_gains": 861575375.0234234,
-          "listed_shares_people": 2075.75,
-          "other_financial_assets_gains": 1594263734.6256933,
-          "other_financial_assets_people": 3787.9182870370373,
-          "other_non_financial_assets_gains": 0.0,
-          "other_non_financial_assets_people": 0.0,
-          "residential_land_buildings_gains": 1214860039.7989383,
-          "residential_land_buildings_people": 3293.2516203703703,
-          "unlisted_shares_gains": 3046555143.2074594,
-          "unlisted_shares_people": 8923.33830736224
+          "residential_land_buildings_gains": 1603096776.4043665,
+          "residential_land_buildings_people": 23783.288230192942,
+          "unlisted_shares_gains": 394196379.09072024,
+          "unlisted_shares_people": 5439.135722416068
         },
         {
           "agricultural_commercial_industrial_land_buildings_gains": 0.0,
           "agricultural_commercial_industrial_land_buildings_people": 0.0,
-          "gain_lower_bound": 500000,
-          "listed_shares_gains": 209913497.78564832,
-          "listed_shares_people": 300.0,
-          "other_financial_assets_gains": 3198611375.842774,
-          "other_financial_assets_people": 4442.333333333333,
+          "gain_lower_bound": 100000,
+          "listed_shares_gains": 2045347196.7179098,
+          "listed_shares_people": 13413.273851673443,
+          "other_financial_assets_gains": 4562972263.314309,
+          "other_financial_assets_people": 30364.576928855968,
           "other_non_financial_assets_gains": 0.0,
           "other_non_financial_assets_people": 0.0,
-          "residential_land_buildings_gains": 1847546695.2206678,
-          "residential_land_buildings_people": 2700.0,
-          "unlisted_shares_gains": 6605255769.861854,
-          "unlisted_shares_people": 9617.240496623675
+          "residential_land_buildings_gains": 2018968369.5841582,
+          "residential_land_buildings_people": 13468.753371724848,
+          "unlisted_shares_gains": 977831954.3023885,
+          "unlisted_shares_people": 5335.185044623708
+        },
+        {
+          "agricultural_commercial_industrial_land_buildings_gains": 0.0,
+          "agricultural_commercial_industrial_land_buildings_people": 0.0,
+          "gain_lower_bound": 250000,
+          "listed_shares_gains": 1043119115.1432106,
+          "listed_shares_people": 2988.0578982597053,
+          "other_financial_assets_gains": 3976611404.4410443,
+          "other_financial_assets_people": 10606.94617847219,
+          "other_non_financial_assets_gains": 0.0,
+          "other_non_financial_assets_people": 0.0,
+          "residential_land_buildings_gains": 1224098077.2222378,
+          "residential_land_buildings_people": 3450.0059523809523,
+          "unlisted_shares_gains": 2066508769.498435,
+          "unlisted_shares_people": 5697.319306930693
+        },
+        {
+          "agricultural_commercial_industrial_land_buildings_gains": 667336040.5099885,
+          "agricultural_commercial_industrial_land_buildings_people": 1252.7545230263158,
+          "gain_lower_bound": 500000,
+          "listed_shares_gains": 0.0,
+          "listed_shares_people": 0.0,
+          "other_financial_assets_gains": 5611722553.900419,
+          "other_financial_assets_people": 8802.119876154497,
+          "other_non_financial_assets_gains": 51586913.1660083,
+          "other_non_financial_assets_people": 100.0,
+          "residential_land_buildings_gains": 1482107030.2600586,
+          "residential_land_buildings_people": 2277.3333333333335,
+          "unlisted_shares_gains": 2811311570.2897415,
+          "unlisted_shares_people": 4219.1744304337235
         },
         {
           "agricultural_commercial_industrial_land_buildings_gains": 0.0,
           "agricultural_commercial_industrial_land_buildings_people": 0.0,
           "gain_lower_bound": 1000000,
-          "listed_shares_gains": 0.0,
-          "listed_shares_people": 0.0,
-          "other_financial_assets_gains": 411654773.79068863,
-          "other_financial_assets_people": 366.66666666666663,
-          "other_non_financial_assets_gains": 247210436.0751779,
-          "other_non_financial_assets_people": 166.66666666666666,
-          "residential_land_buildings_gains": 931030450.2918248,
-          "residential_land_buildings_people": 694.6666666666666,
-          "unlisted_shares_gains": 5966592602.203626,
-          "unlisted_shares_people": 4780.048597672801
+          "listed_shares_gains": 376653673.34682786,
+          "listed_shares_people": 300.0,
+          "other_financial_assets_gains": 5839943102.837162,
+          "other_financial_assets_people": 4639.58785635965,
+          "other_non_financial_assets_gains": 0.0,
+          "other_non_financial_assets_people": 0.0,
+          "residential_land_buildings_gains": 1538458568.8604193,
+          "residential_land_buildings_people": 1042.3333333333333,
+          "unlisted_shares_gains": 7791712262.878076,
+          "unlisted_shares_people": 5449.500000000001
         },
         {
-          "agricultural_commercial_industrial_land_buildings_gains": 345290006.1101103,
-          "agricultural_commercial_industrial_land_buildings_people": 166.66666666666666,
+          "agricultural_commercial_industrial_land_buildings_gains": 4700383203.49676,
+          "agricultural_commercial_industrial_land_buildings_people": 1227.0578982597056,
           "gain_lower_bound": 2000000,
-          "listed_shares_gains": 0.0,
-          "listed_shares_people": 0.0,
-          "other_financial_assets_gains": 1486425712.5153658,
-          "other_financial_assets_people": 552.9166666666666,
-          "other_non_financial_assets_gains": 218774901.99901792,
-          "other_non_financial_assets_people": 100.0,
-          "residential_land_buildings_gains": 733042351.645127,
-          "residential_land_buildings_people": 266.66666666666663,
-          "unlisted_shares_gains": 10728258619.489836,
-          "unlisted_shares_people": 3284.083333333333
+          "listed_shares_gains": 2316180119.126112,
+          "listed_shares_people": 463.25,
+          "other_financial_assets_gains": 435579381.13997626,
+          "other_financial_assets_people": 200.0,
+          "other_non_financial_assets_gains": 1604102256.3929846,
+          "other_non_financial_assets_people": 700.0,
+          "residential_land_buildings_gains": 382952405.7785677,
+          "residential_land_buildings_people": 100.0,
+          "unlisted_shares_gains": 7971788811.424293,
+          "unlisted_shares_people": 3108.334953703703
         },
         {
           "agricultural_commercial_industrial_land_buildings_gains": 0.0,
@@ -1920,12 +1920,12 @@
           "listed_shares_people": 0.0,
           "other_financial_assets_gains": 0.0,
           "other_financial_assets_people": 0.0,
-          "other_non_financial_assets_gains": 0.0,
-          "other_non_financial_assets_people": 0.0,
-          "residential_land_buildings_gains": 1044185635.5286161,
-          "residential_land_buildings_people": 205.0,
-          "unlisted_shares_gains": 8256474027.91964,
-          "unlisted_shares_people": 666.6666666666666
+          "other_non_financial_assets_gains": 1609543872.5324965,
+          "other_non_financial_assets_people": 205.0,
+          "residential_land_buildings_gains": 902975250.3323679,
+          "residential_land_buildings_people": 166.66666666666666,
+          "unlisted_shares_gains": 25214385743.84931,
+          "unlisted_shares_people": 2892.1723300970875
         }
       ],
       "facts": {
@@ -1935,20 +1935,20 @@
         "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f"
       },
       "residential": {
-        "achieved_count": 202707.08794364324,
-        "achieved_gains": 12311334587.03678,
-        "achieved_rows": 319,
-        "count_bernoulli_sigma": 9838.140753882883,
+        "achieved_count": 202627.17745719035,
+        "achieved_gains": 11671119256.62247,
+        "achieved_rows": 316,
+        "count_bernoulli_sigma": 9739.17630041828,
         "count_target_individuals_basis": 202630.0578034682,
         "expected_count": 202630.0578034682,
-        "expected_gains": 12242481481.399796,
-        "gains_bernoulli_sigma": 2104239948.3671587,
+        "expected_gains": 12242481479.273712,
+        "gains_bernoulli_sigma": 2698633466.10057,
         "gains_target_individuals_basis": 12242481474.688189,
-        "liable_gains_mass": 72024353977.44182,
-        "liable_taxpayer_mass": 554939.6925042649,
-        "log_gain_centre": 10.353636453216993,
-        "logistic_intercept": -0.5973355037546677,
-        "logistic_slope": -0.370872042956762,
+        "liable_gains_mass": 101439852293.69095,
+        "liable_taxpayer_mass": 555747.6864486746,
+        "log_gain_centre": 10.473125800434474,
+        "logistic_intercept": -0.6314025446848628,
+        "logistic_slope": -0.46480415447149426,
         "max_liable_weight": 3266.6666666666665,
         "table8a_gains_total": 12914000000.0,
         "table8a_taxpayers_total": 205000.0,
@@ -1961,14 +1961,14 @@
       },
       "stage": "hmrc_cgt_asset_type_spine",
       "value_counts": {
-        "agricultural_commercial_industrial_land_buildings": 6,
-        "listed_shares": 226,
+        "agricultural_commercial_industrial_land_buildings": 3,
+        "listed_shares": 259,
         "none": 91945,
-        "other_financial_assets": 286,
-        "other_non_financial_assets": 3,
-        "residential_land_buildings": 319,
-        "sub_aea": 20674,
-        "unlisted_shares": 131
+        "other_financial_assets": 291,
+        "other_non_financial_assets": 4,
+        "residential_land_buildings": 316,
+        "sub_aea": 20677,
+        "unlisted_shares": 95
       }
     }
   }

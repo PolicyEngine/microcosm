@@ -17,6 +17,7 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     _band_plans,
     _joint_plans,
     _pareto_quantile,
+    _pareto_stratum_means,
     _rake_allocation_targets,
     _truncated_exponential_quantile,
     impute_uk_capital_gains,
@@ -238,6 +239,21 @@ class TestWithinBandDraws:
         assert np.median(draws) == pytest.approx(
             5_000_000.0 * 2.0 ** (1.0 / alpha), rel=5e-3
         )
+
+    def test_pareto_stratum_means_average_to_the_published_mean(self) -> None:
+        """A few dozen carriers still carry the open band's mean exactly."""
+        for n in (1, 7, 30, 300):
+            strata = np.arange(n, dtype=float)
+            means = _pareto_stratum_means(
+                strata / n, (strata + 1.0) / n, 5_000_000.0, 16_158_000.0
+            )
+            assert means.mean() == pytest.approx(16_158_000.0, rel=1e-9)
+            assert (np.diff(means) > 0).all() if n > 1 else True
+            assert means.min() >= 5_000_000.0
+        iid = _pareto_quantile(
+            np.random.default_rng(3).random(30), 5_000_000.0, 16_158_000.0
+        )
+        assert iid.mean() < 16_158_000.0
 
     def test_rejects_a_mean_outside_the_band(self) -> None:
         with pytest.raises(ValueError, match="does not sit inside"):
