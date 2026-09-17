@@ -667,17 +667,36 @@ machine at 0.41 GB free pages and 2,996 MB of 4,096 MB swap in use
 preparation file alone, then run it in one process behind a single other file that
 patches a sealed module function.
 
-```
-PAIR_PLACEHOLDER
-```
+$ pytest test_us_survey_population_preparation.py
+75 passed, 2 warnings in 94.29s (0:01:34)
 
-**What this does and does not settle.** It demonstrates the mechanism — that one
-file's patch is enough to make a later file's `_producer()` refuse — on this
-branch. Establishing that the same 41-file command fails the same way on the
-branch point needs the machine back, and it is the one loose end this lane hands
-over. Nothing in the brief's named gates depends on it: the four touched files
-pass 359/359 together, the preparation file passes 72/72 alone, and the graph
-suite passes 778/1 skipped.
+$ pytest test_us_child_property_income_graph_owner.py test_us_survey_population_preparation.py
+stopped by exact pid at 22:20 elapsed, having produced no summary
+
+
+**So neither control completed, and I am not going to dress that up.** The
+first line is the positive half and it is solid: the preparation file passes
+**75/75 on its own**. The second never produced a summary — two files took longer
+than all 41 had, which is itself consistent with refused producers forcing fixture
+rebuilds, but "consistent with" is not a measurement. I stopped it by exact pid at
+22:20 because it was holding a core on a machine with 0.4–2 GB of free pages while
+a required run waited for headroom, and because even finishing it would only have
+exercised this branch: the control it needs is the same pair on the branch point,
+which is a second run I did not have the machine for.
+
+**What is established, then, is the mechanism and not the control.** The
+mechanism is code, not inference: `_producer()` at
+`survey_population_preparation.py:707` requires `_live() == _LIVE`, `_live()`
+seals every module-level function across the nineteen modules `_modules()` names,
+and twelve of the 41 files patch exactly such functions. The counter-evidence to
+"this is my change" is that the preparation file passes 75/75 alone, the four
+touched files pass 359/359 together, the graph suite passes 778 with 1 skipped,
+and the 41-file run's **first** failure is in a file testing a module this branch
+does not touch.
+
+**This is the lane's one loose end and it is handed over named**: run the 41-file
+command on `5ff889814` and on this head, on a quiet machine, and compare. Nothing
+in the brief's named gates depends on it.
 
 ## 10. Questions for Max
 
