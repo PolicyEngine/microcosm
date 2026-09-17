@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from microcosm.build.uk_runtime.cgt_asset_type import (
+    UK_CGT_ASSET_TYPE_MASS_CONSERVATION_REASON,
+)
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_IMPUTATION_SEED,
     UK_CGT_IMPUTATION_STAGE_NAME,
@@ -175,6 +178,13 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
                 new_total=100.0,
                 declared_factor=1.0,
                 reason=UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+            ),
+            MassChangeRecord(
+                entity="household",
+                old_total=100.0,
+                new_total=100.0,
+                declared_factor=1.0,
+                reason=UK_CGT_ASSET_TYPE_MASS_CONSERVATION_REASON,
             ),
             MassChangeRecord(
                 entity="household",

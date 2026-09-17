@@ -31,8 +31,10 @@ Two declared mechanisms, in order:
    small relative to the whole (a fifth of the gains on a third of the
    taxpayers), which the negative slope carries. Flags are then realised by
    systematic sampling in ascending gain order with one seeded offset, so
-   the realised count sits within one person of the expected count and the
-   realised gains near it; both are reported. A flagged person's whole net
+   the realised count sits within one person of the expected count while
+   the realised gains carry the draw's sampling noise, reported as the
+   Bernoulli sigma of the flagged gains so the gate can bound it. A flagged
+   person's whole net
    gain is attributed to residential property (``capital_gains_residential_property``);
    a taxpayer with both residential and other disposals is not split.
 2. **Main asset type.** Every liable gainer not flagged residential draws
@@ -668,6 +670,11 @@ def assign_uk_cgt_asset_types(
     # Reporting.
     expected_count = float((liable_weights * probabilities).sum())
     expected_gains = float((liable_weights * liable_gains * probabilities).sum())
+    bernoulli = probabilities * (1.0 - probabilities)
+    count_sigma = float(np.sqrt((liable_weights**2 * bernoulli).sum()))
+    gains_sigma = float(
+        np.sqrt(((liable_weights * liable_gains) ** 2 * bernoulli).sum())
+    )
     achieved_count = float(person_weight[residential_rows].sum())
     achieved_gains = float(
         residential_gains[residential_rows].dot(person_weight[residential_rows])
@@ -680,6 +687,9 @@ def assign_uk_cgt_asset_types(
         "achieved_count": achieved_count,
         "achieved_gains": achieved_gains,
         "achieved_rows": int(residential_rows.size),
+        "max_liable_weight": float(liable_weights.max()),
+        "count_bernoulli_sigma": count_sigma,
+        "gains_bernoulli_sigma": gains_sigma,
         "logistic_intercept": float(a),
         "logistic_slope": float(b),
         "log_gain_centre": float(centre),
@@ -870,7 +880,8 @@ def cgt_asset_type_operation_parameters() -> dict[str, dict[str, Any]]:
             "realization": (
                 "systematic sampling in ascending gain order with one seeded "
                 "offset, so the realised weighted count sits within one person of "
-                "the expected count"
+                "the expected count; the realised gains carry the draw's sampling "
+                "noise, reported as the Bernoulli sigma of the flagged gains"
             ),
             "seed": CGT_RESIDENTIAL_FLAG_SEED,
             "seed_mixing": "seed combined with the build period",

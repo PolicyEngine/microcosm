@@ -573,10 +573,14 @@ def _cgt_asset_type_summary_gate(
     """The residential flag realised the Table 8a totals it was solved to.
 
     The stage solves the logistic exactly in expectation and realises it by
-    systematic sampling; this gate holds the realised weighted count and
-    gains to the reviewed relative tolerance of their individuals-basis
-    targets, requires every liable gainer to carry an asset type, and
-    requires the composition receipt to be finite (microcosm#725).
+    systematic sampling. This gate holds the solve to its targets, the
+    realised weighted count to within one person of the expectation (the
+    draw's deterministic bound), and the realised gains to the wider of the
+    reviewed relative band and the draw's own sampling noise (a multiple of
+    the Bernoulli sigma the stage reports), so a tiny frame is judged by its
+    noise floor and a production frame by the band. Every liable gainer must
+    carry an asset type and the composition receipt must be finite
+    (microcosm#725).
     """
 
     check = "cgt_asset_type_summary"
@@ -586,26 +590,51 @@ def _cgt_asset_type_summary_gate(
         parameters["maximum_relative_deviation"],
         label=f"{stage}.maximum_relative_deviation",
     )
+    max_sigma = _finite_number(
+        parameters["maximum_gains_sigma"], label=f"{stage}.maximum_gains_sigma"
+    )
+    max_solve_error = _finite_number(
+        parameters["maximum_solve_relative_error"],
+        label=f"{stage}.maximum_solve_relative_error",
+    )
     details: dict[str, object] = {}
+
+    def number(key: str) -> float:
+        return _finite_number(residential.get(key), label=f"{stage}.residential.{key}")
+
     for measure in ("count", "gains"):
-        target = _finite_number(
-            residential.get(f"{measure}_target_individuals_basis"),
-            label=f"{stage}.residential.{measure}_target_individuals_basis",
-        )
-        achieved = _finite_number(
-            residential.get(f"achieved_{measure}"),
-            label=f"{stage}.residential.achieved_{measure}",
-        )
+        target = number(f"{measure}_target_individuals_basis")
+        expected = number(f"expected_{measure}")
         if target <= 0.0:
             failures.append(f"{stage}: residential {measure} target is not positive.")
             continue
-        relative = abs(achieved - target) / target
-        details[f"residential_{measure}_relative_deviation"] = relative
-        if relative > max_relative:
+        solve_error = abs(expected - target) / target
+        details[f"residential_{measure}_solve_relative_error"] = solve_error
+        if solve_error > max_solve_error:
             failures.append(
-                f"{stage}: residential {measure} relative deviation {relative} "
-                f"exceeds {max_relative}."
+                f"{stage}: residential {measure} solve error {solve_error} "
+                f"exceeds {max_solve_error}."
             )
+    count_gap = abs(number("achieved_count") - number("expected_count"))
+    count_bound = number("max_liable_weight") * (1.0 + 1e-9)
+    details["residential_count_gap"] = count_gap
+    if count_gap > count_bound:
+        failures.append(
+            f"{stage}: residential count gap {count_gap} exceeds one person "
+            f"({count_bound})."
+        )
+    gains_target = number("gains_target_individuals_basis")
+    gains_gap = abs(number("achieved_gains") - number("expected_gains"))
+    gains_bound = max(
+        max_relative * gains_target, max_sigma * number("gains_bernoulli_sigma")
+    )
+    details["residential_gains_gap"] = gains_gap
+    details["residential_gains_bound"] = gains_bound
+    if gains_target > 0.0 and gains_gap > gains_bound:
+        failures.append(
+            f"{stage}: residential gains gap {gains_gap} exceeds {gains_bound} "
+            f"(the wider of {max_relative} relative and {max_sigma} sigma)."
+        )
     counts = _mapping(evidence.get("value_counts"), label=f"{stage}.value_counts")
     for value, rows in counts.items():
         if not isinstance(rows, int) or isinstance(rows, bool) or rows < 0:

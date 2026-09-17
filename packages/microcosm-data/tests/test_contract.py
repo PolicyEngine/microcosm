@@ -138,13 +138,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "3c0c798d6f1990e62ebb46b5776af315a497f473c6b5e48eb7edd07ecd037cf8"
+    "e9e1d955b4ab7dd4d9f6034cba7ed0b6a7d9d3cfc89efc83478178b9a47c549c"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "66536e4c391bf35cb624bac8f74ff0cc53892a1f84c3986e38514cf12427a641"
+    "ddc515599ab73344973f0056195f1423345043e1148b13743e6ebc62c4bb3b0a"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "e21d07e51b480bbfe54ccf677fbe31b1491e2747f408286ec5c58f51b49036b2"
+    "134270825d448ed3d371c009e39b22694c9ee7acd57b91bd52c15b08f548bc64"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -268,7 +268,7 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled", "enum_domain"),
     "uk_capital_gains_asset_type_enum_domain": (
         "enum_domain",
-        "assembled",
+        "transferred",
         "enum_domain",
     ),
     "uk_uc_deduction_combination_enum_domain": (

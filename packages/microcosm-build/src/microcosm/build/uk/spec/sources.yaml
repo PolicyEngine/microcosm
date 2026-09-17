@@ -2556,7 +2556,7 @@ stages:
     count_target: Table 8a 2024-25 total taxpayers reporting residential property disposals times the Table 8b 2024-25 individuals/all taxpayer share on the UK Property service
     gains_target: Table 8a 2024-25 total residential property gains times the Table 8b 2024-25 individuals/all gains share on the UK Property service
     basis_assumption: trusts hold the same share of the Self Assessment component as of the UK Property service, and a flagged person's whole net gain is attributed to residential property
-    realization: systematic sampling in ascending gain order with one seeded offset, so the realised weighted count sits within one person of the expected count
+    realization: systematic sampling in ascending gain order with one seeded offset, so the realised weighted count sits within one person of the expected count; the realised gains carry the draw's sampling noise, reported as the Bernoulli sigma of the flagged gains
     seed: 553
     seed_mixing: seed combined with the build period
     output_column: capital_gains_residential_property

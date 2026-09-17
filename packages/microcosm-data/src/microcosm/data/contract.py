@@ -416,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "3c0c798d6f1990e62ebb46b5776af315a497f473c6b5e48eb7edd07ecd037cf8"
+    "e9e1d955b4ab7dd4d9f6034cba7ed0b6a7d9d3cfc89efc83478178b9a47c549c"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "66536e4c391bf35cb624bac8f74ff0cc53892a1f84c3986e38514cf12427a641"
+    "ddc515599ab73344973f0056195f1423345043e1148b13743e6ebc62c4bb3b0a"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "e21d07e51b480bbfe54ccf677fbe31b1491e2747f408286ec5c58f51b49036b2"
+    "134270825d448ed3d371c009e39b22694c9ee7acd57b91bd52c15b08f548bc64"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -516,7 +516,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_take_up_signal": ("take_up_signal", "terminal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled"),
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled"),
-    "uk_capital_gains_asset_type_enum_domain": ("enum_domain", "assembled"),
+    "uk_capital_gains_asset_type_enum_domain": ("enum_domain", "transferred"),
     "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
@@ -756,10 +756,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "7f9f07e60ba300cc39cbc22d7df60804374664827a803856bf6d6b11d9045287"
+            "68e3adee3b86478cbc52541da3723e764af5ec251e555998a6fe9cec485f87e2"
         ),
         "policy_sha256": (
-            "7058df03511284046d89932747012908d731198359f2b779be9e478e33703364"
+            "c2f7acbfb32035153b297e4cd5890dd35dffd0a09c6da4d83ce51719015a6c83"
         ),
     },
     "calibration_seam": {
@@ -772,10 +772,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "1aaf29c5e95e70cdbd499fec3a06098478a925caf32e3f09f6fcf3b0ac32f436"
+            "7c7ac107dd7aa4197f8a4305df8f22d32e48f12836fb1dfb87dbee4ff42d9c11"
         ),
         "policy_sha256": (
-            "4a93792fb9d03da4401f1aa58d261af19677ead0afb56d93ae9f195203f68307"
+            "41bfdefe3718f02399ec3845b820576f7317bc255a56fd1980a63e7911b38030"
         ),
     },
 }

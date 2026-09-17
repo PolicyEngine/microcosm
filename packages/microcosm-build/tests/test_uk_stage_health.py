@@ -538,9 +538,14 @@ def _asset_type_evidence(**overrides: object) -> dict[str, object]:
         "residential": {
             "count_target_individuals_basis": 202_630.0,
             "gains_target_individuals_basis": 12.24e9,
+            "expected_count": 202_630.0,
+            "expected_gains": 12.24e9,
             "achieved_count": 202_620.0,
             "achieved_gains": 11.9e9,
             "achieved_rows": 3_377,
+            "max_liable_weight": 60.0,
+            "count_bernoulli_sigma": 2_000.0,
+            "gains_bernoulli_sigma": 0.15e9,
         },
         "asset_type": {
             "achieved_gains_share": {
@@ -566,6 +571,8 @@ def test_cgt_asset_type_summary_holds_the_residential_realisation() -> None:
         "stage": "hmrc_cgt_asset_type_spine",
         "check": "cgt_asset_type_summary",
         "maximum_relative_deviation": 0.05,
+        "maximum_gains_sigma": 3.0,
+        "maximum_solve_relative_error": 1e-6,
     }
 
     passed = uk_stage_health_gate(
@@ -575,7 +582,39 @@ def test_cgt_asset_type_summary_holds_the_residential_realisation() -> None:
         parameters=parameters,
     )
     assert passed.passed
-    assert passed.details["residential_count_relative_deviation"] < 1e-3
+    assert passed.details["residential_count_gap"] == 10.0
+    assert passed.details["residential_gains_bound"] == 0.05 * 12.24e9
+
+    # A small frame: the noise floor is wider than the band and governs.
+    noisy = _asset_type_evidence(
+        residential={
+            **_asset_type_evidence()["residential"],
+            "achieved_gains": 9.0e9,
+            "gains_bernoulli_sigma": 1.5e9,
+        }
+    )
+    assert uk_stage_health_gate(
+        stage="hmrc_cgt_asset_type_spine",
+        check="cgt_asset_type_summary",
+        evidence=noisy,
+        parameters=parameters,
+    ).passed
+
+    # A count more than one person off the expectation is a broken draw.
+    off_count = _asset_type_evidence(
+        residential={
+            **_asset_type_evidence()["residential"],
+            "achieved_count": 202_500.0,
+        }
+    )
+    failed = uk_stage_health_gate(
+        stage="hmrc_cgt_asset_type_spine",
+        check="cgt_asset_type_summary",
+        evidence=off_count,
+        parameters=parameters,
+    )
+    assert not failed.passed
+    assert any("count gap" in failure for failure in failed.failures)
 
     drifted = _asset_type_evidence(
         residential={
@@ -590,7 +629,7 @@ def test_cgt_asset_type_summary_holds_the_residential_realisation() -> None:
         parameters=parameters,
     )
     assert not failed.passed
-    assert any("gains relative deviation" in failure for failure in failed.failures)
+    assert any("gains gap" in failure for failure in failed.failures)
 
     bad_share = _asset_type_evidence(
         asset_type={"achieved_gains_share": {"listed_shares": 1.5}}
