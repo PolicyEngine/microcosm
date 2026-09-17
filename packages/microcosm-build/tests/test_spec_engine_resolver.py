@@ -118,7 +118,9 @@ def _valid_resources() -> dict[str, Any]:
                     "predictors": ["base"],
                     "max_targets_per_fit": 2,
                     "execution_contract": "late_profile",
-                    "targets": [_target("late_1", output_coverage_scope="whole_pool")],
+                    "targets": [
+                        _target("late_1", output_coverage_scope="whole_pool")
+                    ],
                 },
             ],
             "producer_graph": {

@@ -337,7 +337,9 @@ def test_stacked_asec_sources_own_reporters_across_operator_clones() -> None:
 
     reporter_source_ids = us_ssi_take_up_reporter_source_ids(frame)
     expected = frozenset(
-        f"{band}:{source_number}" for band in _AGES for source_number in (0, 6)
+        f"{band}:{source_number}"
+        for band in _AGES
+        for source_number in (0, 6)
     )
     assert reporter_source_ids == expected
 
@@ -348,11 +350,9 @@ def test_stacked_asec_sources_own_reporters_across_operator_clones() -> None:
         targets=_TARGETS,
     )
     assert diagnostics["reporter_anchor_lost_count"] == 0
-    assert (
-        result.table("person")
-        .loc[result.table("person")["person_source_id"].isin(expected), _OUTPUT]
-        .all()
-    )
+    assert result.table("person").loc[
+        result.table("person")["person_source_id"].isin(expected), _OUTPUT
+    ].all()
 
     person = frame.table("person").copy()
     asec_clone = person["person_support_channel"].eq("asec") & person[

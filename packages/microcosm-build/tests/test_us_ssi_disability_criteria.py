@@ -638,7 +638,9 @@ def test_summary_checks_harmonized_ssi_on_native_role() -> None:
     source_two = person["person_source_id"].eq(2)
     person.loc[native & source_two, "SSI_VAL"] = np.nan
     person.loc[native & source_two, "ssi_reported"] = 900.0
-    preserved_existing_anchor = (native & person["person_source_id"].eq(1)).to_numpy()
+    preserved_existing_anchor = (
+        native & person["person_source_id"].eq(1)
+    ).to_numpy()
     invalid = _replace_person(
         expanded,
         **{_OUTPUT: preserved_existing_anchor},

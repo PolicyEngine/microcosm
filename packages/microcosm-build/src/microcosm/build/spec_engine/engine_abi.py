@@ -440,7 +440,8 @@ def assert_engine_abi_lock_current(
         # path above, which stays fail-closed on any drift.
         if not lock_resource.is_file():
             raise SpecValidationError(
-                "engine_abi.lock.json is required for a bundle with a policy-engine ABI"
+                "engine_abi.lock.json is required for a bundle with a "
+                "policy-engine ABI"
             ) from None
         try:
             raw = lock_resource.read_bytes()

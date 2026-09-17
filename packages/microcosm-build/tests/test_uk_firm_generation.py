@@ -172,13 +172,15 @@ def test_generate_uk_firm_population_returns_experimental_firm_rows() -> None:
     assert 0.0 <= result.validation.overall <= 1.0
     assert result.calibration.final_loss <= result.calibration.initial_loss
     assert len(result.calibration.loss_trajectory) == config.n_iterations
-    assert (
-        result.target_diagnostics["target_name"].str.startswith(("hmrc_", "ons_")).all()
-    )
+    assert result.target_diagnostics["target_name"].str.startswith(
+        ("hmrc_", "ons_")
+    ).all()
     assert "initial_estimate" in result.target_diagnostics.columns
 
     base_firms = firms.iloc[: len(result.calibration.weights)].copy()
-    base_firms["employment_band"] = base_firms["employment"].apply(employment_band_name)
+    base_firms["employment_band"] = base_firms["employment"].apply(
+        employment_band_name
+    )
     weighted_employment = base_firms.groupby("employment_band")["firm_weight"].sum()
     diagnostics = result.target_diagnostics.set_index("target_name")
     for band in ("0-4", "5-9", "10-19", "20-49"):
@@ -702,7 +704,7 @@ def _source_frames() -> dict[str, pd.DataFrame]:
                 "£500k_to_£1m": 1,
                 "£1m_to_£10m": 0,
                 "Greater_than_£10m": 0,
-            },
+            }
         ]
     )
     hmrc_population_sector = pd.DataFrame(
@@ -735,7 +737,7 @@ def _source_frames() -> dict[str, pd.DataFrame]:
                 "£500k_to_£1m": 2.0,
                 "£1m_to_£10m": 0.0,
                 "Greater_than_£10m": 0.0,
-            },
+            }
         ]
     )
     hmrc_liability_sector = pd.DataFrame(

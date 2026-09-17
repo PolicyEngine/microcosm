@@ -409,7 +409,9 @@ def test_assemble_preserves_successful_version_2_delivery(
     capsys.readouterr()
     manifest = json.loads(
         (
-            assembler_inputs["out_dir"] / UK_NATIONAL_RELEASE_ID / "build_manifest.json"
+            assembler_inputs["out_dir"]
+            / UK_NATIONAL_RELEASE_ID
+            / "build_manifest.json"
         ).read_text()
     )
 

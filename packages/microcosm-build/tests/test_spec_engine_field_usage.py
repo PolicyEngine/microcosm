@@ -162,11 +162,15 @@ def test_spine_assembly_mass_share_fields_name_exact_adapter_sinks(
 ) -> None:
     for channel in ("acs", "asec"):
         field = field_ledger.field(
-            f"/authored/spec~1spine.yaml/assembly/household_mass_shares/{channel}"
+            "/authored/spec~1spine.yaml/assembly/household_mass_shares/"
+            f"{channel}"
         )
         assert field.mode is UsageMode.LEGACY_BEHAVIOR
         assert field.generation0_effect is Generation0Effect.LEGACY_BEHAVIOR
-        assert f"/spine_assembly/household_mass_shares/{channel}" in field.sink_pointers
+        assert (
+            f"/spine_assembly/household_mass_shares/{channel}"
+            in field.sink_pointers
+        )
 
 
 def test_copied_surfaces_cannot_rescue_a_missing_calibration_sink(
@@ -354,10 +358,14 @@ def test_mass_share_mutation_changes_the_named_adapter_surface(
     ledger = build_field_usage_ledger(mutated, legacy_payload=mutated_legacy)
     for channel in ("acs", "asec"):
         field = ledger.field(
-            f"/authored/spec~1spine.yaml/assembly/household_mass_shares/{channel}"
+            "/authored/spec~1spine.yaml/assembly/household_mass_shares/"
+            f"{channel}"
         )
         assert field.claim_id == "spine_assembly_household_mass_shares"
-        assert f"/spine_assembly/household_mass_shares/{channel}" in field.sink_pointers
+        assert (
+            f"/spine_assembly/household_mass_shares/{channel}"
+            in field.sink_pointers
+        )
 
 
 def test_geography_declaration_mutation_changes_checkpoint_identity(

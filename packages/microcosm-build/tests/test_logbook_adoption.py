@@ -277,7 +277,9 @@ def test_preflight_digest_and_atomic_write_json_are_canonical(tmp_path: Path) ->
     assert (
         preflight_digest("uk-frs-staging")
         == hashlib.sha256(
-            canonical_json_bytes({"pipeline": "uk-frs-staging", "state": "preflight"})
+            canonical_json_bytes(
+                {"pipeline": "uk-frs-staging", "state": "preflight"}
+            )
         ).hexdigest()
     )
 

@@ -60,7 +60,8 @@ EXAMPLE_GATES = {
                 "min_nonzero_records": 2,
             },
             "notes": (
-                "No imputed column may carry half its weighted mass in a single record."
+                "No imputed column may carry half its weighted mass in a "
+                "single record."
             ),
         },
         {

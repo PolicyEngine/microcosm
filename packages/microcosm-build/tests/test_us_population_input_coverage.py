@@ -247,7 +247,10 @@ def _input(report, name, entity="person"):
 
 
 def test_closed_profiles_match_manifest_without_changing_historical_default():
-    path = Path(profile.__file__).parents[1] / "us/release_input_coverage_manifest.json"
+    path = (
+        Path(profile.__file__).parents[1]
+        / "us/release_input_coverage_manifest.json"
+    )
     manifest = json.loads(path.read_text())
     expected = tuple(
         name for name, row in manifest["columns"].items() if row["status"] == "required"

@@ -241,7 +241,9 @@ def test_gate_checks_joint_categorical_distribution_not_only_marginals() -> None
         entity="person",
         family="source_operator_immigration",
         columns=("ssn_card_type", "immigration_status_str"),
-        joint_categorical_groups=(("ssn_card_type", "immigration_status_str"),),
+        joint_categorical_groups=(
+            ("ssn_card_type", "immigration_status_str"),
+        ),
     )
 
     result = spine_agreement_gate(frame, registry=(spec,))
@@ -253,18 +255,12 @@ def test_gate_checks_joint_categorical_distribution_not_only_marginals() -> None
         "categorical total-variation distance 1 exceeds 0.25.",
     )
     comparisons = result.details["comparisons"]
-    assert (
-        comparisons["person/source_operator_immigration/ssn_card_type/acs_vs_asec"][
-            "categorical_total_variation_distance"
-        ]
-        == 0.0
-    )
-    assert (
-        comparisons[
-            "person/source_operator_immigration/immigration_status_str/acs_vs_asec"
-        ]["categorical_total_variation_distance"]
-        == 0.0
-    )
+    assert comparisons[
+        "person/source_operator_immigration/ssn_card_type/acs_vs_asec"
+    ]["categorical_total_variation_distance"] == 0.0
+    assert comparisons[
+        "person/source_operator_immigration/immigration_status_str/acs_vs_asec"
+    ]["categorical_total_variation_distance"] == 0.0
     joint = comparisons[
         "person/source_operator_immigration/"
         "joint[ssn_card_type,immigration_status_str]/acs_vs_asec"
@@ -274,9 +270,9 @@ def test_gate_checks_joint_categorical_distribution_not_only_marginals() -> None
     assert result.details["checked_joint_categorical_groups"] == 1
     assert result.details["checked_spine_pairs"] == 3
     assert result.details["tested_spine_pairs"] == 3
-    assert (
-        result.details["tolerances"]["max_categorical_total_variation_distance"] == 0.25
-    )
+    assert result.details["tolerances"][
+        "max_categorical_total_variation_distance"
+    ] == 0.25
 
 
 def test_default_registry_rejects_403_shaped_ssi_spine_disagreement() -> None:

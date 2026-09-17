@@ -202,12 +202,15 @@ def _stacked_geography_assignment_contract(
     )
     crosswalk = _mapping(
         assignment.get("congressional_district_vintage_crosswalk"),
-        location=("geography/assignment/congressional_district_vintage_crosswalk"),
+        location=(
+            "geography/assignment/congressional_district_vintage_crosswalk"
+        ),
     )
     crosswalk_ref = _nonempty_string(
         crosswalk.get("source_ref"),
         location=(
-            "geography/assignment/congressional_district_vintage_crosswalk/source_ref"
+            "geography/assignment/congressional_district_vintage_crosswalk/"
+            "source_ref"
         ),
     )
     source_vintage_ref = _nonempty_string(
@@ -1197,7 +1200,9 @@ def project_stacked_checkpoint_base_identity(
             "fraction": attachment_fraction,
             "seed": attachment_seed_value,
         },
-        "geography_assignment": _stacked_geography_assignment_contract(spec, domains),
+        "geography_assignment": _stacked_geography_assignment_contract(
+            spec, domains
+        ),
         "stacked_authority": project_stacked_authority_receipt(spec),
         "pool_code": {
             "operator_order": deepcopy(

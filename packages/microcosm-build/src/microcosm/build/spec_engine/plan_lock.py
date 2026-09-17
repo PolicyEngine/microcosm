@@ -35,7 +35,9 @@ def plan_lock_payload(
     """Return and validate the complete emitted plan-lock projection."""
 
     payload = _compiled(value).to_wire()
-    (schema_registry or load_schema_registry()).validate(payload, PLAN_LOCK_SCHEMA_ID)
+    (schema_registry or load_schema_registry()).validate(
+        payload, PLAN_LOCK_SCHEMA_ID
+    )
     return payload
 
 
@@ -58,7 +60,9 @@ def emit_plan_lock(
     """Write the sole canonical byte representation of ``plan.lock.json``."""
 
     destination = Path(path)
-    destination.write_bytes(plan_lock_bytes(value, schema_registry=schema_registry))
+    destination.write_bytes(
+        plan_lock_bytes(value, schema_registry=schema_registry)
+    )
     return destination
 
 

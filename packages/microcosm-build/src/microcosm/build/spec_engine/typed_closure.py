@@ -172,7 +172,9 @@ def compile_producer_outputs(
     """
 
     imputation = _mapping(resources.get("imputation", {}), "imputation")
-    graph = _mapping(imputation.get("producer_graph", {}), "imputation/producer_graph")
+    graph = _mapping(
+        imputation.get("producer_graph", {}), "imputation/producer_graph"
+    )
     nodes = _array(graph.get("nodes", []), "imputation/producer_graph/nodes")
     nodes_by_id: dict[str, Mapping[str, object]] = {}
     for node_index, node_value in enumerate(nodes):
@@ -180,9 +182,7 @@ def compile_producer_outputs(
         node = _mapping(node_value, location)
         node_id = _string(node.get("id"), f"{location}/id")
         if node_id in nodes_by_id:
-            raise TypedClosureError(
-                f"{location}/id: duplicate producer node {node_id!r}"
-            )
+            raise TypedClosureError(f"{location}/id: duplicate producer node {node_id!r}")
         nodes_by_id[node_id] = node
 
     family_rows: dict[str, list[dict[str, object]]] = {}
@@ -290,9 +290,7 @@ def compile_producer_outputs(
                 f"imputation/producer_graph/nodes/{node_id}/outputs",
             )
         ):
-            location = (
-                f"imputation/producer_graph/nodes/{node_id}/outputs/{output_index}"
-            )
+            location = f"imputation/producer_graph/nodes/{node_id}/outputs/{output_index}"
             output = _mapping(output_value, location)
             key = (
                 _string(output.get("entity"), f"{location}/entity"),

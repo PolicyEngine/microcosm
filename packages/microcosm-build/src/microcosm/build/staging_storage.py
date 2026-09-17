@@ -136,7 +136,9 @@ class BestEffortUploadSession:
             self.storage.upload(local_path, path_in_repo)
         except Exception as error:
             self.consecutive_failures += 1
-            became_disabled = self.consecutive_failures >= self.max_consecutive_failures
+            became_disabled = (
+                self.consecutive_failures >= self.max_consecutive_failures
+            )
             if became_disabled:
                 self.enabled = False
             return UploadResult(

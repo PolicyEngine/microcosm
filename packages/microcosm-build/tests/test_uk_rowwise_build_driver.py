@@ -442,7 +442,9 @@ def test_build_uk_rowwise_dataset_ladder_route_records_gate_verdict(
         (),
         {
             "constituency_code": pd.Series(["E14000001", "W07000041"]).to_numpy(),
-            "local_authority_code": pd.Series(["E06000063", "W06000001"]).to_numpy(),
+            "local_authority_code": pd.Series(
+                ["E06000063", "W06000001"]
+            ).to_numpy(),
         },
     )()
     monkeypatch.setattr(builder, "load_uk_oa_ladder", lambda _path: ladder)
@@ -679,14 +681,14 @@ def test_build_uk_rowwise_dataset_rejects_overwriting_input(monkeypatch, tmp_pat
         "argv",
         [
             "build_uk_rowwise_dataset.py",
-            "--input-h5",
-            str(input_h5),
-            "--out",
-            str(tmp_path),
-            "--dataset-filename",
-            input_h5.name,
-        ],
-    )
+                "--input-h5",
+                str(input_h5),
+                "--out",
+                str(tmp_path),
+                "--dataset-filename",
+                input_h5.name,
+            ],
+        )
 
     with pytest.raises(ValueError, match="must differ"):
         builder.main()

@@ -174,7 +174,9 @@ def test_recipient_predictors_aggregate_person_entities_to_household() -> None:
         }
     )
     benunit = pd.DataFrame({"benunit_id": [100, 200], "benunit_household_id": [10, 20]})
-    household = pd.DataFrame({"household_id": [10, 20], "household_weight": [1.0, 1.0]})
+    household = pd.DataFrame(
+        {"household_id": [10, 20], "household_weight": [1.0, 1.0]}
+    )
     frame = uk_national_frame(
         person=person,
         benunit=benunit,

@@ -453,9 +453,7 @@ class TestReleaseManifestConverter:
 
     def test_self_url_recorded(self) -> None:
         node = _graph_node(self._tro())
-        assert node["pop:selfUrl"] == (
-            "https://microcosm.institute/trace/us-2024.jsonld"
-        )
+        assert node["pop:selfUrl"] == ("https://microcosm.institute/trace/us-2024.jsonld")
 
     def test_restricted_input_carried_through(self) -> None:
         node = _graph_node(self._tro())
