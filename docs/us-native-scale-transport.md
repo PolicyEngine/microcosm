@@ -354,12 +354,37 @@ is joined by an exhaustive float proof and a per-dtype sweep this lane adds.
 
 `#901` recorded that the shared executor has no retention mode, and that is
 still true at this head: there is no eviction, pruning or population dropping in
-`executor.py` or `store.py`, and the only occurrences of the name
-`population_retention` in the tree are historical notes in `experiments/` and
-`out.md` describing a dropped branch. The executor's own `populations` dict is
-keyed by **version**, not node, and a `StructuralDelta.NONE` node overwrites its
-entry (`:2769`), so the executor itself already retains one population per
-version; the per-node retention is entirely the observer's.
+`executor.py` or `store.py`. The executor's own `populations` dict is keyed by
+**version**, not node, and a `StructuralDelta.NONE` node overwrites its entry
+(`:2769`), so the executor itself already retains one population per version; the
+per-node retention is entirely the observer's.
+
+**One such mode was written and dropped, and it is not the one this work needs.**
+`run_graph(population_retention="lazy")` existed on PR #893's original branch,
+staged as layer 08 GRAPH-ATTACHMENT-METADATA: commit `6c0f24c77` "Add opt-in lazy
+population retention" adds `packages/microcosm-graph/src/microcosm/graph/attachments.py`
+(210 lines: `_StoredPopulation`, `_LazyPopulations(Mapping[str, PopulationView])`),
+81 lines of `executor.py`, 41 of `keys.py`, 31 of `manifest.py`, and
+`tests/test_population_retention.py` (528 lines). The #893 reconciliation dropped
+it (`experiments/893-reconciliation-amendments-19-20-20260912.md:192`) because
+"no call site outside the graph package passes `population_retention`; its only
+consumer was the branch's own `test_lazy_snapshot_metadata_integration.py`,
+dropped with it", and recorded the way back: "if it is wanted it is a
+self-contained later PR on top of piece B, which it imports."
+
+**Read what it actually did before reaching for it.** `attachments.py` imports
+`ContentStore`, `_write_frame` and `_payload_table` and its docstring says
+"Private, non-portable population attachments and execution lifetimes. These
+store references never enter node records or portable manifest identity." Its
+`_LazyPopulations` is a `Mapping[str, PopulationView]` — so it made the
+**manifest's attached population views**, one per structural version, lazy
+against the content store. That is a different target from the observer's
+per-node detached `Population` snapshots, and §3b's three store refusals are why:
+a `PopulationView` is a portable Frame that already goes through `put_frame`, and
+a detached snapshot is not. **Restoring layer 08 would not remove the nineteen
+pickles.** It is still worth restoring on its own terms, and it is still the
+closest existing shape for the keyword, but the work §3d describes is a second
+thing.
 
 A `population_retention` keyword would have to carry these, all of them
 established above:
