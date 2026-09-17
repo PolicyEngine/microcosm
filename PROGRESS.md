@@ -13,7 +13,9 @@ afterwards — check git/GitHub for current truth.
 
 ## State
 
-Reading the authorities and the code at this head. Nothing implemented.
+Design established and proved by running code at this head. The transport
+report's proposed mechanism for option (b) does not hold; the seal has to be
+purpose-built. Nothing implemented yet.
 
 ## Done
 
@@ -33,12 +35,42 @@ Reading the authorities and the code at this head. Nothing implemented.
 2. Discrimination battery (pre-change), then implement.
 3. 1/1000 cold + required replay; then the 1/15 run.
 
-## Open findings (provisional, to be proved)
+## Findings, proved by running code at this head
 
-- `_population_stamp` is documented as **not** comparable across
-  reconstructions (`survey_atomic_geography.py:230-237`): it folds masked
-  `_data` under nulls. `same_replayed_population` deliberately *permits* the
-  store's zeroed null backing (`survey_population_replay.py:79-82`,
-  `NONCANONICAL_NULL_BACKING`). So a stamp-equality seal would refuse runs the
-  object comparison accepts. The seal this lane needs is a **replay seal**, not
-  the stamp.
+**Neither existing seal is the seal.** The transport report's §10 question 2(b)
+says "`_population_stamp` already folds everything `same_replayed_population`
+compares except the *type* assertions". That sentence is wrong in **both**
+directions, and both halves are proved by scripts committed under
+`experiments/native-retention-seal/`:
+
+1. **`_population_stamp` is too strict.**
+   `probe_stamp_vs_comparison.py` builds a US_SCHEMA population, round-trips its
+   frame through `ContentStore.put_frame`/`load_frame`, and gets:
+   `same_replayed_population` **ACCEPTS** (the store zeroed `_data` under the
+   null mask, which `NONCANONICAL_NULL_BACKING`,
+   `survey_population_replay.py:79-82`, deliberately permits) while
+   `_population_stamp(expected) != _population_stamp(actual)`. So a
+   stamp-equality seal would **refuse a required replay**. Its own docstring
+   says so (`survey_atomic_geography.py:231-237`).
+2. **`_frame_identity` is too weak.** `probe_frame_identity_gaps.py` finds three
+   discriminations `same_replayed_frame` makes that `_frame_identity` does not:
+   float64 NaN **payload bits** (two quiet NaNs; `NATIVE_BITS`), quiet versus
+   signalling NaN (`NATIVE_BITS`), and
+   `DataFrame.flags.allows_duplicate_labels` (`TABLE_TYPE_OR_FLAGS`). `_cell`
+   maps every NaN to `None`, so `_frame_identity` spells all of them `null`.
+   It also cannot be applied to a non-US_SCHEMA frame at all (`FRAME_TYPE`).
+
+**Therefore the seal is purpose-built and lives in `survey_population_replay.py`,
+beside the comparison it replaces**, folding exactly the bytes each comparison
+compares — no more, no less.
+
+**A fourth gap, from pandas rather than from this repo.**
+`pd.DatetimeIndex._comparables == ['name', 'freq']`, and two DatetimeIndexes with
+equal values, dtype and name but different `freq` are **not** `identical()` while
+their bytes are equal. Any seal that folds only (class, dtype, name, bytes)
+misses it. The seal folds `type(index)._comparables` generically.
+
+**Admitted dtypes are narrow**, which bounds the problem: `_series` refuses
+`CategoricalDtype`, `Float64Dtype` and `DatetimeTZDtype` with
+`UNSUPPORTED_EXTENSION_DTYPE`; only masked integer/boolean, `StringDtype`,
+`object` and plain numpy dtypes get through.
