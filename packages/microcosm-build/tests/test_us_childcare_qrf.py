@@ -113,3 +113,86 @@ def test_real_canonical_model_gives_valid_row_order_invariant_schedules():
     assert set(map(tuple, first[0])).issubset(
         {(0.0, 0.0, 0.0), (1.0, 1.0, 1.0), (1.0, 2.0, 4.0)}
     )
+
+
+def _interval_fixture():
+    rows = _rows().assign(questionnaire_version=1)
+    rows["calendar_ece_days_lower"] = rows[DAYS]
+    rows["calendar_ece_days_upper"] = rows[DAYS]
+    rows["calendar_ece_hours_lower"] = rows[DAYS] * rows[HOURS]
+    rows["calendar_ece_hours_upper"] = rows[DAYS] * rows[HOURS]
+    missing = (
+        rows.iloc[[0]]
+        .copy()
+        .assign(
+            donor_id="u",
+            source_household_id="u",
+            attendance_status="partial_calendar",
+            child_weight=8.0,
+            calendar_ece_days_lower=1,
+            calendar_ece_days_upper=2,
+            calendar_ece_hours_lower=4.0,
+            calendar_ece_hours_upper=5.0,
+        )
+    )
+    missing[[MONTH, DAYS, HOURS]] = np.nan
+    return pd.concat([rows, missing], ignore_index=True)
+
+
+def test_interval_completion_preserves_bounds_weights_and_measured_rows(monkeypatch):
+    monkeypatch.setattr(module, "fit", lambda *a, **k: _FakeFit())
+    rows = _interval_fixture()
+    model = module.QRFChildcareSchedules(rows)
+    for tilt in (-1, 0, 1):
+        result, audit = module.interval_training_rows(rows, model, tilt=tilt)
+        pd.testing.assert_frame_equal(result.iloc[:4][rows.columns], rows.iloc[:4])
+        modeled = result.loc[result.attendance_status.eq("interval_model")]
+        assert len(modeled) == module.QRF_INTERVAL_DRAWS
+        assert modeled.child_weight.sum() == 8
+        assert (modeled[DAYS] == 2).all()
+        assert (modeled[HOURS] == 2).all()
+        assert audit["completed_training_children"] == 1
+        assert audit["design_weight_conserved"]
+        with pytest.raises(ValueError, match="opt-in"):
+            module.QRFChildcareSchedules(result)
+        module.QRFChildcareSchedules(result, allow_interval_training=True)
+
+
+def test_interval_completion_reports_unsupported_intervals_without_clipping(
+    monkeypatch,
+):
+    monkeypatch.setattr(module, "fit", lambda *a, **k: _FakeFit())
+    rows = _interval_fixture()
+    rows.loc[4, ["calendar_ece_hours_lower", "calendar_ece_hours_upper"]] = [100, 101]
+    model = module.QRFChildcareSchedules(rows)
+    result, audit = module.interval_training_rows(rows, model)
+    pd.testing.assert_frame_equal(result, rows)
+    assert audit["unsupported_training_children"] == 1
+    assert audit["unsupported_child_weight"] == 8
+
+
+def test_interval_completion_cannot_import_heldout_households(monkeypatch):
+    monkeypatch.setattr(module, "fit", lambda *a, **k: _FakeFit())
+    rows = _interval_fixture()
+    model = module.QRFChildcareSchedules(rows)
+    heldout = rows.copy()
+    heldout.loc[4, "source_household_id"] = "heldout"
+    with pytest.raises(ValueError, match="outside training"):
+        module.interval_training_rows(heldout, model)
+    heldout.loc[4, "donor_id"] = "heldout-child"
+    with pytest.raises(ValueError, match="outside training"):
+        module.interval_training_rows(heldout, model)
+
+
+def test_interval_completion_rejects_invalid_bounds_and_false_observations(monkeypatch):
+    monkeypatch.setattr(module, "fit", lambda *a, **k: _FakeFit())
+    rows = _interval_fixture()
+    model = module.QRFChildcareSchedules(rows)
+    bad = rows.copy()
+    bad.loc[4, "calendar_ece_hours_upper"] = np.nan
+    with pytest.raises(ValueError, match="finite and ordered"):
+        module.interval_training_rows(bad, model)
+    result, _ = module.interval_training_rows(rows, model)
+    result.loc[result.attendance_status.eq("interval_model"), HOURS] = 20
+    with pytest.raises(ValueError, match="violates measured bounds"):
+        module.QRFChildcareSchedules(result, allow_interval_training=True)

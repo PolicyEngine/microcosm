@@ -29,17 +29,11 @@ from microcosm.build.us_runtime.nsece_childcare_sibling_validation import (
 )
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--household-tsv", type=Path, required=True)
-    parser.add_argument("--calendar-tsv", type=Path, required=True)
-    parser.add_argument("--report", type=Path, required=True)
-    args = parser.parse_args()
-    if args.report.exists():
-        parser.error("Report path must be new")
-    source = load_nsece_childcare(args.household_tsv, args.calendar_tsv)
+def load_source_children(household_tsv, calendar_tsv):
+    """Verify source pins and add the declared common household predictors."""
+    source = load_nsece_childcare(household_tsv, calendar_tsv)
     raw = pd.read_csv(
-        args.household_tsv,
+        household_tsv,
         sep="\t",
         usecols=["HH4_METH_CASEID", "HH4_HHCOMP_MEMBERS", "HH4_HHCOMP_NUMPARENTS"],
     )
@@ -53,6 +47,18 @@ def main():
     children["resident_parent_count"] = children.source_household_id.map(
         raw.HH4_HHCOMP_NUMPARENTS
     )
+    return source, children
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--household-tsv", type=Path, required=True)
+    parser.add_argument("--calendar-tsv", type=Path, required=True)
+    parser.add_argument("--report", type=Path, required=True)
+    args = parser.parse_args()
+    if args.report.exists():
+        parser.error("Report path must be new")
+    source, children = load_source_children(args.household_tsv, args.calendar_tsv)
     records, folds, movements = [], [], []
     for fold, (train_mask, target_mask) in enumerate(
         _household_splits(children, seed=271828, validation_seed=None, partition="all")

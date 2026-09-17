@@ -23,6 +23,14 @@ reduces all-zero results from 31 jurisdictions to two (MD and NV). The
 the current population, sensitivity and model diagnostics. Older 1.819.0 reports
 remain historical; their receipts are not reused under the new runtime.
 
+The latest diagnostic keeps each child's selected donor fixed when varying
+modeled schedules. It flags IL and TN for irregular-care sensitivity, plus an OK
+day sensitivity of only about $2. An interval-informed QRF experiment uses the
+measured bounds of incomplete training calendars, but still underpredicts weekly
+hours for observed children with unresolved siblings by 37.7%. All three tested
+completion assumptions fail that subgroup's screens; none is integrated into
+the population candidate.
+
 ## Source and mapping
 
 The [2024 NSECE V1 release](https://www.childandfamilydataarchive.org/cfda/archives/cfda/studies/39466/datadocumentation)
@@ -237,14 +245,20 @@ uv run python tools/validate_us_childcare_sensitivity.py \
   --household-tsv /local/39466-0005-Data.tsv \
   --calendar-tsv /local/39466-0004-Data.tsv \
   --asec-source-cache /local/asec --seed 915 \
+  --candidate-checkpoint /local/attendance-checkpoint.h5 \
   --year 2026 --report /local/transport-sensitivity.json
 ```
 
 The alternatives remove modeled irregular hours or shift modeled attended days
 by one in either direction, subject to hours/day feasibility. Each preserves
-measured regular hours. All arms use the same source population, matching fields,
-weights and random seed; modified bridge donors are transferred again. These
-are assumption stress tests, not confidence intervals. The
+measured regular hours. All arms retain the same donor identities and population
+weights. Candidate donor labels must match the original donor values; measured
+recipient cells and measured-calendar donors remain unchanged. Inconsistent
+lineage or observed constraints cause the comparison to fail. Without an explicit
+checkpoint, the tool draws the baseline once before applying paired changes.
+The older reports re-sorted and transferred modified donors at fixed random ranks;
+those reports include donor reassignment as well as schedule changes. Both are
+assumption stress tests, not confidence intervals. The
 [declared diagnostic screens](../experiments/us-childcare-attendance/review-validation-criteria.txt)
 flag national changes above 10% or state changes above 20% against the candidate,
 and separately assess sibling schedule distributions. They were written before
@@ -258,6 +272,16 @@ Diagnostics include five-fold household cross-validation, instrument selection,
 income/age/work/region comparisons, masked-calendar reconstruction, sibling joint
 attendance, full target support, and all-state benefit comparisons. Development
 used these diagnostics; they are not an untouched external acceptance sample.
+
+`tools/validate_us_childcare_intervals.py` evaluates a separate training-only
+experiment. It conditions a QRF/empirical schedule distribution on incomplete
+calendars' bounds, divides each child's design weight over eight modeled rows,
+and refits once. Whole evaluation households are excluded from initial fitting,
+completion and refitting. Unsupported intervals stay unknown. Modeled rows carry
+`interval_model` status and require explicit experimental opt-in; they are never
+scored as observations. Lower- and higher-hours tilts expose sensitivity to the
+unidentified coarsening assumption. All arms retain the original subgroup screens
+and fail three of 18; this experiment does not alter the production matcher.
 
 Calendar selection remains unidentifiable for excluded ambiguous/partial cases.
 Conditional matching assumes their schedules resemble supported children with

@@ -27,6 +27,7 @@ from microcosm.build.us_runtime.nsece_childcare import (
     NSECE_CALENDAR_BLOCKS,
     NSECE_CHILD_INDICES,
     NSECE_PROVIDER_INDICES,
+    NSECEChildcareSource,
     assert_childcare_attendance_exportable,
     derive_nsece_childcare,
     load_nsece_childcare,
@@ -1195,3 +1196,109 @@ def test_schedule_sensitivity_preserves_measured_regular_hours(
         _source(), irregular_hours=False, day_shift=-1
     )
     assert_frame_equal(observed.children, _source().children)
+
+
+def _paired_sensitivity_fixture():
+    source = _source()
+    source.children["attendance_status"] = "summary_bridge"
+    source.children["regular_hours_per_week"] = 12.0
+    source.children["irregular_hours_per_week"] = 1.0
+    source.children[HOURS] = 13 / source.children[DAYS]
+    source.children["ece_hours_per_week"] = 13.0
+    child = source.children.iloc[0]
+    people = pd.DataFrame(
+        {"age": [child.age], **{c: [child[c]] for c in (MONTH, DAYS, HOURS)}}
+    )
+    for c in (MONTH, DAYS, HOURS):
+        people[f"{c}_source"] = f"donor:{child.donor_id}"
+    return people, source
+
+
+def test_paired_sensitivity_keeps_selected_donor_and_measured_hours():
+    from microcosm.build.us_runtime.childcare_sensitivity import (
+        noncalendar_sensitivity_source,
+        paired_noncalendar_attendance,
+    )
+
+    people, source = _paired_sensitivity_fixture()
+    original = people.copy(deep=True)
+    changed = noncalendar_sensitivity_source(source, day_shift=-1)
+    values, report = paired_noncalendar_attendance(people, source, changed)
+    assert values[0, 1] == people[DAYS].iloc[0] - 1
+    assert values[0, 1] * values[0, 2] == pytest.approx(13)
+    assert report["changed_people"] == 1
+    assert report["measured_calendar_assignments_changed"] == 0
+    assert_frame_equal(people, original)
+    # Row order in the donor source has no effect on the identity lookup.
+    reversed_source = NSECEChildcareSource(
+        changed.children.iloc[::-1], changed.weights, changed.source_receipt
+    )
+    np.testing.assert_array_equal(
+        values, paired_noncalendar_attendance(people, source, reversed_source)[0]
+    )
+
+
+@pytest.mark.parametrize(
+    "problem", ["unknown_donor", "mixed_donor", "wrong_value", "observed_conflict"]
+)
+def test_paired_sensitivity_rejects_invalid_lineage_and_observation_conflicts(problem):
+    from microcosm.build.us_runtime.childcare_sensitivity import (
+        noncalendar_sensitivity_source,
+        paired_noncalendar_attendance,
+    )
+
+    people, source = _paired_sensitivity_fixture()
+    changed = noncalendar_sensitivity_source(source, day_shift=-1)
+    if problem == "unknown_donor":
+        for c in (MONTH, DAYS, HOURS):
+            people[f"{c}_source"] = "donor:missing"
+    elif problem == "mixed_donor":
+        people[f"{HOURS}_source"] = "donor:another"
+    elif problem == "wrong_value":
+        people[HOURS] += 0.1
+    else:
+        people[f"{DAYS}_source"] = "observed"
+    with pytest.raises(ValueError):
+        paired_noncalendar_attendance(people, source, changed)
+
+
+def test_paired_sensitivity_does_not_reassign_measured_donors_when_care_order_changes():
+    from microcosm.build.us_runtime.childcare_sensitivity import (
+        noncalendar_sensitivity_source,
+        paired_noncalendar_attendance,
+    )
+    from microcosm.frame import WeightKind, Weights
+
+    people, source = _paired_sensitivity_fixture()
+    measured = source.children.copy().assign(
+        donor_id="measured",
+        attendance_status="complete",
+        regular_hours_per_week=5.0,
+        irregular_hours_per_week=0.0,
+        ece_hours_per_week=5.0,
+    )
+    measured[HOURS] = 1.0
+    combined = NSECEChildcareSource(
+        pd.concat([source.children, measured], ignore_index=True),
+        Weights(np.array([1.0, 1.0]), WeightKind.DESIGN),
+        source.source_receipt,
+    )
+    observed_recipient = people.copy()
+    observed_recipient[HOURS] = 1.0
+    for c in (MONTH, DAYS, HOURS):
+        observed_recipient[f"{c}_source"] = "donor:measured"
+    outside = people.copy()
+    outside["age"] = 30
+    for c in (MONTH, DAYS, HOURS):
+        outside[c] = 0.0
+        outside[f"{c}_source"] = "inherited_engine_baseline"
+    people = pd.concat([people, observed_recipient, outside], ignore_index=True)
+    alternative = noncalendar_sensitivity_source(combined, day_shift=-1)
+    before_order = combined.children.sort_values([DAYS, HOURS]).donor_id.tolist()
+    after_order = alternative.children.sort_values([DAYS, HOURS]).donor_id.tolist()
+    assert before_order == after_order[::-1]
+    result, audit = paired_noncalendar_attendance(people, combined, alternative)
+    assert result[0, 1] == 4
+    np.testing.assert_array_equal(result[1:], people.iloc[1:][[MONTH, DAYS, HOURS]])
+    assert audit["changed_people"] == 1
+    assert audit["bridge_assigned_people"] == 1

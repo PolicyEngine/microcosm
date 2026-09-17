@@ -5,12 +5,85 @@ from __future__ import annotations
 import gc
 
 import numpy as np
+import pandas as pd
 
 from microcosm.build.us_runtime.childcare_attendance import (
     US_CHILDCARE_ATTENDANCE_COLUMNS,
+    _ids,
+    _validate_attendance,
 )
 from microcosm.build.us_runtime.nsece_childcare import NSECEChildcareSource
 from microcosm.calibrate.geography_constants import US_STATE_NUMERIC_FIPS_TO_POSTAL
+
+
+def paired_noncalendar_attendance(people, source, alternative):
+    """Apply an assumption change to the same selected donor, preserving observations.
+
+    Quantile-coupled retransfers can change donor identities when schedules change
+    sort order. This contrast instead conditions on the realized donor assignment.
+    It is an assumption diagnostic, not a replacement population or receipt.
+    """
+    columns = list(US_CHILDCARE_ATTENDANCE_COLUMNS)
+    before = source.children.set_index("donor_id", drop=False).sort_index()
+    after = alternative.children.set_index("donor_id", drop=False).sort_index()
+    _ids(before, "donor_id", unique=True)
+    _ids(after, "donor_id", unique=True)
+    if not before.index.equals(after.index):
+        raise ValueError("Paired sensitivity requires the same donor identities.")
+    # These are the only reconstructed fields the scenario may change.
+    modeled = [*columns, "ece_hours_per_week", "irregular_hours_per_week"]
+    pd.testing.assert_frame_equal(
+        before.drop(columns=modeled, errors="ignore"),
+        after.drop(columns=modeled, errors="ignore"),
+        check_exact=True,
+    )
+    fixed = before.attendance_status.ne("summary_bridge")
+    pd.testing.assert_frame_equal(
+        before.loc[fixed, columns], after.loc[fixed, columns], check_exact=True
+    )
+    _validate_attendance(before, complete=False)
+    _validate_attendance(after, complete=False)
+    _validate_attendance(people, complete=False)
+    result = (
+        people.reindex(columns=columns).to_numpy(dtype=float, na_value=np.nan).copy()
+    )
+    original = result.copy()
+    labels = people.reindex(columns=[f"{c}_source" for c in columns]).astype("string")
+    selected = labels.apply(lambda col: col.str.startswith("donor:", na=False))
+    donor_ids = labels.where(selected).apply(lambda col: col.str.removeprefix("donor:"))
+    if donor_ids.nunique(axis=1).gt(1).any():
+        raise ValueError("Paired sensitivity found mixed donor lineage within a child.")
+    row_donor = donor_ids.bfill(axis=1).iloc[:, 0]
+    uses_donor = selected.any(axis=1).to_numpy()
+    if (uses_donor & ~people.age.between(0, 12).to_numpy()).any():
+        raise ValueError("Paired sensitivity found an out-of-domain donor assignment.")
+    if (
+        row_donor.loc[uses_donor].isna().any()
+        or not row_donor.loc[uses_donor].isin(before.index).all()
+    ):
+        raise ValueError("Paired sensitivity cannot resolve a selected donor.")
+    expected = before.reindex(row_donor).reindex(columns=columns).to_numpy(dtype=float)
+    changed = after.reindex(row_donor).reindex(columns=columns).to_numpy(dtype=float)
+    mask = selected.to_numpy(dtype=bool)
+    if not np.array_equal(original[mask], expected[mask]):
+        raise ValueError("Candidate attendance does not match its selected donor.")
+    # Observed/clone-inherited constraints must remain compatible with the donor.
+    constrained = uses_donor[:, None] & ~mask & np.isfinite(original)
+    if not np.array_equal(original[constrained], changed[constrained]):
+        raise ValueError("Paired scenario conflicts with observed attendance.")
+    result[mask] = changed[mask]
+    _validate_attendance(pd.DataFrame(result, columns=columns), complete=False)
+    modified = np.any(~np.isclose(result, original, equal_nan=True), axis=1)
+    bridge = row_donor.map(before.attendance_status).eq("summary_bridge").to_numpy()
+    if (modified & ~bridge).any():
+        raise ValueError("Paired scenario changed a measured-calendar assignment.")
+    return result, {
+        "donor_assigned_people": int(uses_donor.sum()),
+        "bridge_assigned_people": int(bridge.sum()),
+        "changed_people": int(modified.sum()),
+        "measured_calendar_assignments_changed": 0,
+        "donor_assignment": "held fixed and validated against candidate values",
+    }
 
 
 def noncalendar_sensitivity_source(source, *, irregular_hours=True, day_shift=0):

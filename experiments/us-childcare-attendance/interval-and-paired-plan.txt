@@ -1,0 +1,49 @@
+Interval-informed attendance and paired schedule sensitivity, 2026-09-16.
+Declared after the previous QRF and calendar-bound results, before these runs.
+Every previously inspected household remains development evidence.
+
+1. Isolate schedule sensitivity from reassignment. The prior experiment rebuilds
+   care-sorted donor CDFs after changing bridge schedules. A fixed random rank
+   can therefore select another donor. Add a paired contrast which retains the
+   candidate's selected donor identity and changes only that donor's modeled
+   bridge components. Validate candidate provenance against the original donor
+   values, preserve measured recipient cells and measured-calendar donors, and
+   reject ambiguous/mixed lineage or constraints inconsistent with the scenario.
+   Keep the previous quantile-coupled experiment as historical evidence; neither
+   coupling identifies the missing schedules. Do not change the 10% national or
+   20% state screens. Report absolute effects and the number of changed children.
+
+2. Use incomplete calendars' measured information in training, without making
+   their completed schedules into observations. Fit the existing canonical QRF
+   on complete training calendars. For each ambiguous/partial regular-instrument
+   training child, condition its predicted joint schedule distribution on the
+   child's measured lower/upper days and hours. Mix 90% QRF with 10% design-weighted
+   exact-age empirical schedules before conditioning, to retain empirical tail
+   support absent from the finite prediction grid. Exclude unsupported intervals
+   explicitly; never clip an incompatible schedule into its bounds.
+
+3. Represent each supported incomplete training child by eight midpoint-quantile
+   draws of that conditional distribution, each with one eighth of its design
+   weight. Label these interval_model, never complete. Keep complete children and
+   their weights unchanged. Refit the same 100-tree canonical QRF once. This is
+   conditional interval imputation, with a coarsening-at-random assumption given
+   the predictors and observed bounds; that assumption is not identified by the
+   survey. It is not an EM convergence claim or a completed population.
+
+4. Assess that assumption with fixed negative/positive exponential tilts of the
+   incomplete-child distribution: exp(-weekly_hours/40) and exp(weekly_hours/40),
+   applied only within supported bounds before the eight draws. Report all three
+   arms, rather than selecting the arm with the most passing checks. Forty hours
+   is a declared scale, not an estimated coefficient. No response-pattern flag or
+   held-out attendance/bounds enter the predictors or training completion.
+
+5. Use the existing five whole-household folds, same 7,460 observed children and
+   all 18 original child screens. Report conditional-mean and random-draw errors,
+   including the unresolved-sibling subgroup, plus completion support and weight
+   conservation in each fold. The evaluated child's household is absent from
+   initial fitting, completion and refitting. Any promising marginal result still
+   needs joint validation, target/bridge integration, grid stability, independent
+   evidence and a new candidate before adoption. Keep the current build unchanged.
+
+Parent work hours are not silently equated with the NSECE work/school/training
+summary, nor are source-only calendar response indicators given to targets.

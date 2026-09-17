@@ -1,9 +1,11 @@
-# NSECE attendance: calendar selection and current-runtime validation — 2026-09-16
+# NSECE attendance: interval training and paired sensitivity — 2026-09-16
 
 **PR #916 remains draft.** The population has now been rebuilt from the pinned
-parent under **PolicyEngine-US 2.2.1 / Core 3.32.5**. Two additional marginal
-models were tested, but neither resolves the observed-child selection problem;
-neither replaces the existing production-stage matcher. No population is
+parent under **PolicyEngine-US 2.2.1 / Core 3.32.5**. The latest experiment uses
+incomplete calendars' measured bounds in training, but still fails the three
+unresolved-sibling checks. The new sensitivity comparison holds donor identities
+fixed and flags three state comparisons, including one with a $2 effect. No
+experimental model replaces the production-stage matcher, no population is
 published, and all reports retain `production_ready: false`.
 
 ## Calendar information that can actually be recovered
@@ -73,6 +75,48 @@ missingness effect.
 - [QRF plan recorded before its results](qrf-calendar-plan.txt)
 - [QRF model, fold counts and marginal diagnostics](qrf-calendar-validation.json)
 
+## Using partial-calendar information in QRF training
+
+The next declared experiment conditions the complete-calendar QRF distribution
+on each incomplete training child's measured day/hour bounds. Before conditioning,
+it mixes 90% QRF and 10% design-weighted exact-age empirical schedules so finite
+prediction grids do not remove all observed tail support. Each supported child
+contributes eight deterministic midpoint-quantile schedules at one eighth of its
+design weight. These rows are labeled `interval_model`, never `complete`.
+Unsupported intervals remain unknown; schedules are not clipped into bounds.
+The canonical QRF is refitted once, using only training households.
+
+This assumes a conditional coarsening mechanism that the survey does not
+identify. Two declared alternatives tilt the conditional schedule probabilities
+by `exp(-weekly_hours / 40)` and `exp(weekly_hours / 40)`. The scale, mixture and
+number of draws were fixed before this run. These alternatives expose sensitivity
+to assumptions; they are not confidence limits or multiple-imputation uncertainty
+estimates. No held-out household's attendance or bounds enter completion or fitting.
+
+| Model | Overall weekly-hours mean | Overall conditional-mean hours MSE | Unresolved-sibling weekly-hours mean | Subgroup hours error | Failed child screens / 18 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Measured calendars | 14.240 | — | 23.830 | — | — |
+| Complete-only QRF | 14.285 | 495.370 | 15.047 | −36.9% | 3 |
+| Interval-informed QRF | 14.319 | 491.239 | 14.848 | −37.7% | 3 |
+| Lower-hours tilt | 14.048 | 500.343 | 14.464 | −39.3% | 3 |
+| Higher-hours tilt | 14.806 | 498.869 | 15.263 | −36.0% | 3 |
+
+All arms use the same five household folds and 7,460 observed children. The
+complete-only arm reproduces every earlier QRF comparison exactly. Across folds,
+793–838 incomplete training children have supported schedules; 27–31 do not.
+Supported children account for 94.9–96.2% of incomplete-calendar design weight.
+Total weight is conserved and all measured rows remain unchanged.
+
+The central model reduces overall hours MSE by 0.8% and subgroup hours MSE by
+3.0%. Subgroup participation error falls from 18.3 to 16.8 percentage points and
+days error from 30.0% to 28.2%, but mean-hours bias worsens. Every arm still fails
+all three unresolved-sibling checks, so none is adopted. A favorable aggregate
+or a selected tilt would not justify production integration. The remaining
+discrepancy cannot be removed by treating modeled completions as observations.
+
+- [Plan recorded before the interval and paired comparisons](interval-and-paired-plan.txt)
+- [All model arms, completion support and unchanged screens](interval-training-validation.json)
+
 ## Population rebuilt under PolicyEngine-US 2.2.1
 
 The current candidate contains **166,321 people, 57,240 households and 31,889
@@ -89,7 +133,7 @@ or caseload estimates. Positive benefits alone do not validate attendance.
 - [Current source-stage report](calendar-review-2.2.1-source-stage.json)
 - [Current population and all-state comparison](calendar-review-2.2.1-population.json)
 - [Current native-loader verification](calendar-review-2.2.1-verification.json)
-- [Current noncalendar sensitivity](calendar-review-2.2.1-sensitivity.json)
+- [Current paired noncalendar sensitivity](paired-identity-sensitivity.json)
 
 Both native loaders verify the saved attendance binding against the current
 recipe and runtime. Verification compares every attendance value, every original
@@ -98,25 +142,36 @@ string-storage backend is normalized for the comparison; values, missingness and
 other dtypes must match exactly. The source-stage exporter also verifies period
 preservation. No stale-receipt override is used.
 
-The noncalendar stress test preserves measured regular weekly hours and varies
-only reconstructed schedules, then repeats the transfer with the same seed and
-weights. Its baseline and candidate results match the population report exactly
-in every state, and both reports bind the same current recipe.
+The paired noncalendar stress test changes only the modeled bridge components of
+each child's already selected donor. It verifies those donor labels against the
+candidate's attendance values, preserves measured recipient constraints, and
+rejects inconsistent or mixed lineage. This isolates schedule assumptions from
+changes in donor identity. Measured-calendar assignments do not change in any
+arm. All 31,889 under-13 children have donor assignments, including 9,675 assigned
+bridge donors. The baseline and candidate results match the population report
+exactly in all 51 jurisdictions, with the same checkpoint hash and current recipe.
 
-| Noncalendar assumption | Annual potential benefits | Change from candidate |
-| --- | ---: | ---: |
-| No modeled irregular hours | $5.792 billion | −3.43% |
-| One fewer modeled day | $5.934 billion | −1.06% |
-| One more modeled day | $6.010 billion | +0.20% |
+| Noncalendar assumption | Children whose attendance changes | Annual potential benefits | Change from candidate |
+| --- | ---: | ---: | ---: |
+| No modeled irregular hours | 1,289 | $5.754 billion | −4.07% |
+| One fewer modeled day | 3,725 | $5.997 billion | −0.02% |
+| One more modeled day | 4,271 | $6.019 billion | +0.35% |
 
-All three national changes remain below the provisional 10% screen. Six state
-comparisons exceed 20%: TN (−36.0%, no irregular hours), IA (+60.0%), KS (−49.4%),
-MS (−69.6%) and OK (−40.0%) with one fewer day, and AR (+43.9%) with one more
-day. The OK flag represents only about $2 on a roughly $5 baseline; the report
-includes absolute changes so tiny denominators are visible. Days and daily-hour
-rates interact, so benefit changes need not follow the direction of the day
-change. These are assumption scenarios, not confidence intervals, and they do
-not resolve the underlying measurement gap.
+All three national changes remain below the unchanged provisional 10% screen.
+Three state comparisons exceed the unchanged 20% screen: removing irregular
+care changes IL by **−29.4% (−$57.9 million)** and TN by **−36.0% (−$43.3 million)**;
+one fewer day changes OK by **−40.0% (−$2.06)**. The OK denominator is only about
+$5, so the relative flag has little monetary significance. IL and TN remain
+materially sensitive to the unmeasured irregular-care assumption.
+
+The [previous quantile-coupled report](calendar-review-2.2.1-sensitivity.json)
+remains historical evidence. It re-sorted donors after changing their schedules,
+so holding random ranks fixed could select different donors. That experiment
+flagged six state comparisons; the paired experiment flags three, adding IL and
+removing the IA/KS/MS/AR day flags. These are different conditional comparisons,
+not a corrected confidence interval or proof that reassignment uncertainty is
+absent. Days and daily-hour rates interact, so benefit changes need not follow
+the direction of the day change. Neither experiment identifies missing schedules.
 
 ## Reproduction and remaining decision
 
@@ -131,6 +186,10 @@ uv run python tools/validate_us_childcare_qrf.py \
   --household-tsv /local/39466-0005-Data.tsv \
   --calendar-tsv /local/39466-0004-Data.tsv \
   --report /local/qrf-calendar.json
+uv run python tools/validate_us_childcare_intervals.py \
+  --household-tsv /local/39466-0005-Data.tsv \
+  --calendar-tsv /local/39466-0004-Data.tsv \
+  --report /local/interval-training.json
 ```
 
 Rebuild with `tools/prepare_us_childcare_attendance.py --production-stage
@@ -140,7 +199,9 @@ parent, both source files and the pinned ASEC cache. Then run
 `tools/validate_us_childcare_sensitivity.py`, and
 `tools/verify_us_childcare_candidate.py` on those explicit local artifacts.
 Each tool's `--help` lists the required file/hash arguments; no report is
-overwritten. Only aggregate reports are committed.
+overwritten. Supply `--candidate-checkpoint` to the sensitivity tool to reuse the
+verified candidate's assignments; otherwise it draws a baseline once and holds
+those assignments fixed. Only aggregate reports are committed.
 
 **Decision:** retain the draft and fail-closed release checks. The current-runtime
 rebuild closes the stale-runtime evidence gap. Calendar nonresponse and transport
@@ -154,12 +215,14 @@ and care outside ages 0–12 remain separate gaps.
 
 ## Code validation for this update
 
-All **1,048 distinct local regression checks** pass in their latest applicable
-run: 547 source, attendance, pooling, builder, coverage, export and serializer
-checks, plus the final 501-test QRF/architecture rerun. The initial architecture
-failure required making the QRF predictor selection explicit; the guard remains
-unchanged. The final real-source QRF replay reproduces every earlier metric
-exactly and records the final code hash.
+All **613 distinct local regression checks** for this update pass: 612 source,
+QRF, pooling and full source-spine architecture tests, followed by the additional
+donor-order reversal regression. Tests cover interval bounds, conserved weights,
+training-household exclusions, explicit modeled-row opt-in, and preservation of
+measured donors and recipient constraints under paired scenarios. The preceding
+calendar/runtime update passed 1,048 checks; it is historical validation for that
+update. The complete-only real-source arm reproduces the earlier QRF metrics
+exactly, and both new reports' code hashes match the checked-in code.
 
 Repository-wide ruff lint, changed-file formatting, tracked CI inventory and
 built-wheel source-byte checks pass. A repository-wide formatting check reports
