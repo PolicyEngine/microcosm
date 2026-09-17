@@ -4,12 +4,12 @@ Three pin families touch the four edited modules:
 
 1. ``graph_implementation_inventory.json``'s per-module ``contracts`` entry --
    ``imports``, ``unbound_uses_sha256`` and ``resource_accesses_sha256``,
-   re-derived through ``graph_implementation._dependency_contract`` against the
+   re-derived through ``graph_graph_implementation._dependency_contract`` against the
    module's own ``_covered_imports``, exactly as ``implementation_manifest``
    checks it. A constant's value is not an import, an unbound use or a resource
    access, so these are expected to hold; the point is to prove it rather than
    assume it.
-2. ``acs_native_coverage_binding._ACCEPTED``, which pins four ACS modules by
+2. ``acs_native_coverage_acs_native_coverage_binding._ACCEPTED``, which pins four ACS modules by
    whole-file sha256. ``acs_pums.py`` is one of them, so that pin moves.
 3. Each declared stage's ``implementation_manifest``, whose ``modules`` map is
    the same whole-file sha256 per inventoried module. These are computed, not
@@ -32,10 +32,13 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(path) for path in sorted((ROOT / "packages").glob("*/src"))]
 
-from microcosm.build.us_runtime import (  # noqa: E402
-    acs_native_coverage_binding as binding,
-)
-from microcosm.build.us_runtime import graph_implementation as implementation  # noqa: E402
+from microcosm.build.us_runtime import acs_native_coverage_binding, graph_implementation
+
+# The sys.path prelude above must win: a pin re-derived from some other checkout
+# would be worthless. Prove the modules resolved inside this tree.
+for _module in (acs_native_coverage_binding, graph_implementation):
+    if not pathlib.Path(_module.__file__).resolve().is_relative_to(ROOT):
+        raise SystemExit(f"{_module.__name__} resolved outside {ROOT}")
 
 US = ROOT / "packages/microcosm-build/src/microcosm/build/us_runtime"
 EDITED = (
@@ -54,10 +57,10 @@ def main() -> int:
     moved, checked = [], 0
     for name, expected in inventory["contracts"].items():
         package, relative = name.split("/", 1)
-        roots = implementation._package_roots()
+        roots = graph_implementation._package_roots()
         payload = (roots[package] / relative).read_bytes()
-        actual = implementation._dependency_contract(
-            payload, name, implementation._covered_imports(name, inventory)
+        actual = graph_implementation._dependency_contract(
+            payload, name, graph_implementation._covered_imports(name, inventory)
         )
         checked += 1
         if actual != expected:
@@ -65,7 +68,7 @@ def main() -> int:
 
     # 2. The ACS whole-file pin that names one of the edited modules.
     accepted = []
-    for name, expected in binding._ACCEPTED.items():
+    for name, expected in acs_native_coverage_binding._ACCEPTED.items():
         actual = hashlib.sha256((US / name).read_bytes()).hexdigest()
         accepted.append(
             {
@@ -79,8 +82,8 @@ def main() -> int:
 
     # 3. Every declared stage manifest, rebuilt through its generator.
     stages = {}
-    for stage in sorted(implementation.STAGE_DEPENDENCIES):
-        manifest = implementation.implementation_manifest(stage)
+    for stage in sorted(graph_implementation.STAGE_DEPENDENCIES):
+        manifest = graph_implementation.implementation_manifest(stage)
         stages[stage] = {
             "inventory_sha256": manifest["inventory_sha256"],
             "module_count": len(manifest["modules"]),
@@ -104,8 +107,8 @@ def main() -> int:
         },
         "inventory_contracts": {
             "generator": (
-                "graph_implementation._dependency_contract(payload, name, "
-                "graph_implementation._covered_imports(name, inventory))"
+                "graph_graph_implementation._dependency_contract(payload, name, "
+                "graph_graph_implementation._covered_imports(name, inventory))"
             ),
             "checked": checked,
             "moved": moved,
@@ -115,7 +118,7 @@ def main() -> int:
             "entries": accepted,
         },
         "stage_manifests": {
-            "generator": "graph_implementation.implementation_manifest(stage)",
+            "generator": "graph_graph_implementation.implementation_manifest(stage)",
             "built": len(stages),
             "stages": stages,
         },

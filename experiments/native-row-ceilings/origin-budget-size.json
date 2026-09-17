@@ -2,7 +2,7 @@
  "scope": "Encoder-measured size law for the origin-budget payload. Builds one faithful record through the module's own _reference and _json. Not a build, not a certification, not release eligible.",
  "release_eligible": false,
  "max_payload_bytes": 67108864,
- "max_groups": 1000000,
+ "max_groups": 7000000,
  "full_source_households": 1587376,
  "measurements": [
   {

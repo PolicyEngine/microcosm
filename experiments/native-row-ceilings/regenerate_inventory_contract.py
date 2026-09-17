@@ -18,7 +18,12 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(path) for path in sorted((ROOT / "packages").glob("*/src"))]
 
-from microcosm.build.us_runtime import graph_implementation as implementation  # noqa: E402
+from microcosm.build.us_runtime import graph_implementation
+
+# The sys.path prelude above must win: regenerating a pin from some other
+# checkout would write the wrong value into this one.
+if not pathlib.Path(graph_implementation.__file__).resolve().is_relative_to(ROOT):
+    raise SystemExit(f"graph_implementation resolved outside {ROOT}")
 
 INVENTORY = (
     ROOT
@@ -31,13 +36,13 @@ def main() -> int:
     write = "--write" in sys.argv[1:]
     raw = INVENTORY.read_text()
     inventory = json.loads(raw)
-    roots = implementation._package_roots()
+    roots = graph_implementation._package_roots()
     moved = []
     for name, expected in inventory["contracts"].items():
         package, relative = name.split("/", 1)
         payload = (roots[package] / relative).read_bytes()
-        actual = implementation._dependency_contract(
-            payload, name, implementation._covered_imports(name, inventory)
+        actual = graph_implementation._dependency_contract(
+            payload, name, graph_implementation._covered_imports(name, inventory)
         )
         if actual != expected:
             moved.append((name, expected, actual))

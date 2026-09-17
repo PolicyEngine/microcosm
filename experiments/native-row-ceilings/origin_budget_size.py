@@ -30,7 +30,7 @@ sys.path[:0] = [
     )
 ]
 
-from microcosm.build.us_runtime import survey_origin_budget as owner  # noqa: E402
+from microcosm.build.us_runtime import survey_origin_budget as owner
 
 FULL_SOURCE_HOUSEHOLDS = 1_587_376  # measured; see roster-census.json
 
@@ -62,7 +62,11 @@ def main() -> int:
     # Measure at household-id magnitudes a full-source build actually reaches, so
     # the integer widths in the encoded record are the real ones.
     for magnitude in (1_000, 1_000_000, FULL_SOURCE_HOUSEHOLDS, 3_174_752):
-        record = _record("2024HU%07d" % (magnitude % 10_000_000), magnitude, (magnitude, magnitude * 2))
+        record = _record(
+            f"2024HU{magnitude % 10_000_000:07d}",
+            magnitude,
+            (magnitude, magnitude * 2),
+        )
         encoded = len(owner._json(record))
         # ",": one separator per record after the first.
         # header ids/groups: two household ids and two group indices per group.
