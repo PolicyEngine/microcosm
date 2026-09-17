@@ -1014,24 +1014,35 @@ def impute_uk_capital_gains_with_report(
                     achieved_pass1[gi, ii, a, r] = achieved.get(gain_lower, 0.0)
 
     # Pass 2: the joint's shortfall is walked over each income band's
-    # pooled unassigned gainers, largest first.
+    # pooled unassigned gainers, largest first. Every cell walk rounds to
+    # whole persons, so some (band, cell) allotments overshoot by up to half
+    # a weight while others fall short; the pooled walk fills only the
+    # income band's net shortfall, apportioned to bands in proportion to
+    # their positive shortfalls, so the rounding of a hundred cell walks is
+    # not compounded into extra taxpayers.
     for ii, income_lower in enumerate(incomes):
         plans = {gain_lower: joint[(gain_lower, income_lower)] for gain_lower in gains}
-        shortfall = {
-            gain_lower: max(
-                0.0,
-                joint[(gain_lower, income_lower)].allocation_people
-                - float(achieved_pass1[gi, ii].sum()),
-            )
+        signed_shortfall = {
+            gain_lower: joint[(gain_lower, income_lower)].allocation_people
+            - float(achieved_pass1[gi, ii].sum())
             for gi, gain_lower in enumerate(gains)
         }
-        total_shortfall = sum(shortfall.values())
+        net_shortfall = sum(signed_shortfall.values())
+        positive = {
+            gain_lower: max(0.0, value)
+            for gain_lower, value in signed_shortfall.items()
+        }
+        positive_total = sum(positive.values())
         pool = is_gainer & (income_band == income_lower) & ~assigned
-        if total_shortfall <= 0.0 or not pool.any():
+        if net_shortfall <= 0.0 or positive_total <= 0.0 or not pool.any():
             continue
+        shortfall = {
+            gain_lower: value * net_shortfall / positive_total
+            for gain_lower, value in positive.items()
+        }
         ranked = _ranked(np.flatnonzero(pool), person_id=person_id, existing=existing)
         weights = person_weight[ranked]
-        scale = min(1.0, float(weights.sum()) / total_shortfall)
+        scale = min(1.0, float(weights.sum()) / net_shortfall)
         boundaries = [
             (gain_lower, shortfall[gain_lower] * scale)
             for gain_lower in reversed(gains)
@@ -1493,10 +1504,12 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             ),
             "shortfall_policy": (
                 "proportional scale-down inside a cell that holds less gainer "
-                "mass than its raked target; the remaining (gain band, income "
-                "band) shortfall is walked over the income band's pooled "
-                "unassigned gainers, scaled down proportionally when the pool "
-                "is short"
+                "mass than its raked target; the income band's net shortfall "
+                "after every cell walk, apportioned to gain bands in proportion "
+                "to their positive shortfalls, is walked over the income band's "
+                "pooled unassigned gainers, scaled down proportionally when the "
+                "pool is short, so cell-walk rounding overshoot is netted rather "
+                "than compounded"
             ),
             "minimum_allocation_people": int(_MINIMUM_ALLOCATION_PEOPLE),
             "weights": (

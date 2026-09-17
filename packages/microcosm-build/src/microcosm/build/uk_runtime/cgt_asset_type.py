@@ -30,11 +30,14 @@ Two declared mechanisms, in order:
    individuals-basis Table 8a totals: residential gainers are many and
    small relative to the whole (a fifth of the gains on a third of the
    taxpayers), which the negative slope carries. Flags are then realised by
-   systematic sampling in ascending gain order with one seeded offset, so
-   the realised count sits within one person of the expected count while
-   the realised gains carry the draw's sampling noise, reported as the
-   Bernoulli sigma of the flagged gains so the gate can bound it. A flagged
-   person's whole net
+   a weighted systematic walk in ascending gain order with one seeded
+   offset: the walk flags a person whenever the expected weight owed so far
+   reaches that person's weight, so the flagged weight tracks the expected
+   weight within one person's weight everywhere along the gains axis, and
+   both the realised count and the realised gains sit close to their
+   expectations on frames whose liable rows are few and heavy. The
+   Bernoulli sigma of each is reported as the envelope a gate can bound
+   with. A flagged person's whole net
    gain is attributed to residential property (``capital_gains_residential_property``);
    a taxpayer with both residential and other disposals is not split.
 2. **Main asset type.** Every liable gainer not flagged residential draws
@@ -479,16 +482,30 @@ def solve_residential_logistic(
     return a, b, centre
 
 
-def _systematic_flags(
-    probabilities: np.ndarray, order: np.ndarray, offset: float
+def _weighted_systematic_flags(
+    probabilities: np.ndarray,
+    weights: np.ndarray,
+    order: np.ndarray,
+    offset: float,
 ) -> np.ndarray:
-    """Systematic sampling with inclusion probabilities along ``order``."""
+    """Weighted systematic sampling along ``order``.
+
+    Walking the persons in order, the expected weight ``w * p`` accrues to a
+    running balance; a person is flagged when the balance reaches
+    ``(1 - offset)`` of their own weight, and their whole weight is then
+    drawn down. The balance therefore stays within one person's weight of
+    zero at every step, so the flagged weight tracks the expected weight
+    along the ordering rather than only in total.
+    """
 
     flags = np.zeros(probabilities.shape, dtype=bool)
-    cumulative = np.cumsum(probabilities[order]) + offset
-    crossings = np.floor(cumulative)
-    previous = np.concatenate(([math.floor(offset)], crossings[:-1]))
-    flags[order] = crossings > previous
+    owed = 0.0
+    for index in order:
+        weight = float(weights[index])
+        owed += weight * float(probabilities[index])
+        if owed >= (1.0 - offset) * weight:
+            flags[index] = True
+            owed -= weight
     return flags
 
 
@@ -626,7 +643,9 @@ def assign_uk_cgt_asset_types(
     probabilities = _logistic(np.log(liable_gains) - centre, a, b)
     rng_flag = np.random.default_rng((residential_seed, int(time_period)))
     order = np.lexsort((person_id[liable_index], liable_gains))
-    flags = _systematic_flags(probabilities, order, float(rng_flag.random()))
+    flags = _weighted_systematic_flags(
+        probabilities, liable_weights, order, float(rng_flag.random())
+    )
     residential_rows = liable_index[flags]
     asset_type[residential_rows] = CGT_ASSET_TYPE_RESIDENTIAL
     residential_gains = np.zeros(len(person))
@@ -878,10 +897,12 @@ def cgt_asset_type_operation_parameters() -> dict[str, dict[str, Any]]:
                 "attributed to residential property"
             ),
             "realization": (
-                "systematic sampling in ascending gain order with one seeded "
-                "offset, so the realised weighted count sits within one person of "
-                "the expected count; the realised gains carry the draw's sampling "
-                "noise, reported as the Bernoulli sigma of the flagged gains"
+                "weighted systematic sampling in ascending gain order with one "
+                "seeded offset: a person is flagged when the expected weight owed "
+                "so far reaches their own weight, so the flagged weight tracks the "
+                "expected weight within one person's weight along the gains axis "
+                "and the realised count and gains sit close to their expectations; "
+                "the Bernoulli sigma of each is reported as the envelope"
             ),
             "seed": CGT_RESIDENTIAL_FLAG_SEED,
             "seed_mixing": "seed combined with the build period",

@@ -130,7 +130,7 @@
           "band_order": "highest gain band first",
           "suppressed_cell_allocation": "count implied by the cell's published gains at the band-total mean",
           "column_reconciliation": "every income column rescales onto its published All-row taxpayer total",
-          "shortfall_policy": "proportional scale-down inside a cell that holds less gainer mass than its raked target; the remaining (gain band, income band) shortfall is walked over the income band's pooled unassigned gainers, scaled down proportionally when the pool is short",
+          "shortfall_policy": "proportional scale-down inside a cell that holds less gainer mass than its raked target; the income band's net shortfall after every cell walk, apportioned to gain bands in proportion to their positive shortfalls, is walked over the income band's pooled unassigned gainers, scaled down proportionally when the pool is short, so cell-walk rounding overshoot is netted rather than compounded",
           "minimum_allocation_people": 1,
           "weights": "household_weight mapped to persons; no person splits across bands",
           "cell_order": "income band ascending, age group ascending, region group ascending, gain bands highest first inside a cell; then the pooled walk per income band"

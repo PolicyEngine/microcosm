@@ -1651,7 +1651,7 @@
           "output_semantics": "the person's capital_gains where flagged residential, 0 otherwise",
           "parameter_solver": "nested bisection; the intercept matches the expected weighted count at each trial slope, the slope matches the expected weighted gains",
           "population": "persons with net capital gains above the annual exempt amount (the national taxpayer proxy)",
-          "realization": "systematic sampling in ascending gain order with one seeded offset, so the realised weighted count sits within one person of the expected count; the realised gains carry the draw's sampling noise, reported as the Bernoulli sigma of the flagged gains",
+          "realization": "weighted systematic sampling in ascending gain order with one seeded offset: a person is flagged when the expected weight owed so far reaches their own weight, so the flagged weight tracks the expected weight within one person's weight along the gains axis and the realised count and gains sit close to their expectations; the Bernoulli sigma of each is reported as the envelope",
           "seed": 553,
           "seed_mixing": "seed combined with the build period"
         },
@@ -1828,7 +1828,7 @@
           "kind": "rank_preserving_allocation",
           "minimum_allocation_people": 1,
           "ordering": "existing gains descending, person_id ascending on ties",
-          "shortfall_policy": "proportional scale-down inside a cell that holds less gainer mass than its raked target; the remaining (gain band, income band) shortfall is walked over the income band's pooled unassigned gainers, scaled down proportionally when the pool is short",
+          "shortfall_policy": "proportional scale-down inside a cell that holds less gainer mass than its raked target; the income band's net shortfall after every cell walk, apportioned to gain bands in proportion to their positive shortfalls, is walked over the income band's pooled unassigned gainers, scaled down proportionally when the pool is short, so cell-walk rounding overshoot is netted rather than compounded",
           "suppressed_cell_allocation": "count implied by the cell's published gains at the band-total mean",
           "weights": "household_weight mapped to persons; no person splits across bands",
           "within": "income band x age group x region group cell, then the income band's pooled unassigned gainers"
