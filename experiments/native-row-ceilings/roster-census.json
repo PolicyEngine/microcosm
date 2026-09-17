@@ -1,32 +1,78 @@
 {
  "artifact": "/Users/maxghenis/PolicyEngine/_recovered/pilot-runs/native19-required-20260912/run/financial-artifacts/preparation.json",
  "artifact_sha256": "34b362d85d2f06acd255390976d76343aff45114958ba382edb10ffa3789a8a0",
- "scope": "Census input only. Not a build, not a certification, not release eligible.",
+ "scope": "Census input for the row-count ceiling lane. Reads one recovered development artifact and writes one JSON summary. Not a build, not a certification, not release eligible.",
  "release_eligible": false,
- "fraction": [
-  1,
-  1000
- ],
- "supplied_households": 1587376,
- "selected_households": 1584,
- "excluded_households": 65,
- "cells": 5,
- "origin_household_rows": 1584,
- "origin_person_rows": 3464,
- "origin_entities": {
-  "family": 1594,
-  "household": 1584,
-  "marital_unit": 2774,
-  "person": 3464,
-  "spm_unit": 1585,
-  "tax_unit": 2128
+ "catalogue_reconciles_to_supplied_households": true,
+ "catalogues": {
+  "acs": {
+   "canonical_record_bytes": 374174650,
+   "canonical_record_sha256": "d200e4e16eb8c6baacc29244921c1f7b25f46aebd9129a4aa06049509c25e3f2",
+   "households": 1631969,
+   "institutional_gq": 84422,
+   "literal_batches": 35,
+   "noninstitutional_gq": 98784,
+   "occupied_hu": 1348408,
+   "people": 3422888,
+   "vacancies": 100355
+  },
+  "asec": {
+   "households": 55762,
+   "persons": 142125,
+   "unrepresented_households": 33170
+  }
  },
- "per_household": {
-  "family": 1.0063131313131313,
-  "household": 1.0,
-  "marital_unit": 1.7512626262626263,
-  "person": 2.186868686868687,
-  "spm_unit": 1.0006313131313131,
-  "tax_unit": 1.3434343434343434
+ "full_source": {
+  "derivation": "the catalogues themselves; a full-source selection supplies every selectable household in both, which the reconciliation above proves",
+  "acs_households": 1531614,
+  "acs_persons": 3422888,
+  "asec_households": 55762,
+  "asec_persons": 142125,
+  "stacked_households": 1587376,
+  "stacked_persons": 3565013,
+  "combined_clone_households": 3174752,
+  "combined_clone_persons": 7130026
+ },
+ "sample_at_one_thousandth": {
+  "fraction": [
+   1,
+   1000
+  ],
+  "selected_households": 1584,
+  "origin_household_rows": 1584,
+  "origin_person_rows": 3464,
+  "households_by_source": {
+   "acs": 1529,
+   "asec": 55
+  },
+  "persons_by_source": {
+   "acs": 3324,
+   "asec": 140
+  },
+  "origin_entities": {
+   "family": 1594,
+   "household": 1584,
+   "marital_unit": 2774,
+   "person": 3464,
+   "spm_unit": 1585,
+   "tax_unit": 2128
+  },
+  "entities_per_selected_household": {
+   "family": 1.0063131313131313,
+   "household": 1.0,
+   "marital_unit": 1.7512626262626263,
+   "person": 2.186868686868687,
+   "spm_unit": 1.0006313131313131,
+   "tax_unit": 1.3434343434343434
+  }
+ },
+ "one_tenth": {
+  "derivation": "the full-source counts above, times 1/10",
+  "stacked_households": 158737,
+  "acs_households": 153161,
+  "acs_persons": 342288,
+  "asec_persons": 14212,
+  "stacked_persons": 356501,
+  "combined_clone_persons": 713002
  }
 }
