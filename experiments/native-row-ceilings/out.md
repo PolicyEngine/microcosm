@@ -161,12 +161,14 @@ and `allocation_instructions` opens with
 instruction per selected household, so the group count *is* the selected
 household count: **1,587,376 at full source against a 1,000,000 bound.**
 
-Where it runs, stated rather than implied: it is reachable by import from
-`graph_atomic_survey_financial`, but **no node in the nineteen-node graph
-executes it** — the recovered run's `graph.json` lists all nineteen and none is a
-budget node — and none in the completion host does either.
-`survey_age_calibration` and `graph_survey_budget` execute it, over the same
-full-source selection, so the count and the verdict stand.
+Where it runs, stated precisely. **No node in the nineteen-node graph executes
+`freeze_survey_origin_budget`**, which is where `GROUP_COUNT_BOUND` is checked —
+the recovered run's `graph.json` lists all nineteen and none is a budget node,
+and the completion host has none either. `graph_atomic_survey_financial` does
+call into the module, but only for `_config_payload` and the `_live()` producer
+seal, neither of which reaches `_initial`. `survey_age_calibration` and
+`graph_survey_budget` are what execute it, over the same full-source selection,
+so the count and the verdict stand.
 
 ## 4. What moved
 

@@ -1,0 +1,19 @@
+{
+ "scope": "Encoder-measured size law for the current-survey household-roles projection, on a faithfully shaped invented table. Not a build, not a certification, not release eligible.",
+ "release_eligible": false,
+ "encoder": "table.reset_index().to_json(orient=\"table\", index=False).encode()",
+ "max_artifact_bytes": 67108864,
+ "max_persons_row_bound": 2097152,
+ "projection_bytes": {
+  "3": 1516,
+  "1203": 385615
+ },
+ "marginal_bytes_per_person_row": 320.08,
+ "persons_the_byte_cap_admits": 209661,
+ "persons_the_row_bound_admits": 2097152,
+ "byte_cap_is_tighter_by": 10.0,
+ "full_source_stacked_persons": 3565013,
+ "fraction_of_source_the_byte_cap_admits": 0.058810725234382036,
+ "fraction_of_source_the_row_bound_admits": 0.5882592854500109,
+ "conclusion": "The byte cap refuses first and by an order of magnitude, so raising MAX_PERSONS alone would move nothing. This bound takes the segmented-transport argument, not the row-ceiling rule."
+}

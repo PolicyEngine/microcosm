@@ -115,6 +115,15 @@ persons. A bound met per channel is met by 3,422,888, not by 3,565,013.
 Each refusal keeps its code, its exception type and its expression; only the
 number moves.
 
+**One consequence, named so a reader does not have to find it.**
+`MAX_SELECTED_ROWS` at 14,000,000 now sits *above* `MAX_ROWS` at 6,000,000 in the
+same module. That is not an inconsistency: `MAX_SELECTED_ROWS` bounds
+*caller-supplied* person keys, which can exceed what an archive holds, while
+`MAX_ROWS` bounds the archive's own rows. But it does mean the effective ceiling
+on that path is 6,000,000, by containment. Setting `MAX_SELECTED_ROWS = MAX_ROWS`
+would be tighter *and* provable rather than chosen — and it would make the rule
+two rules, which is why this note keeps one.
+
 | constant | refusal | raises |
 |---|---|---|
 | `MAX_EXACT_HOUSEHOLDS` | `"ACS exact selection requires bounded unique raw native keys."` | `ValueError` |
@@ -142,12 +151,14 @@ and `allocation_instructions` opens with
 instruction per selected household, so the group count *is* the selected
 household count: 1,587,376 at full source against a 1,000,000 bound.
 
-Two things about where it runs, stated rather than implied. It is reachable by
-import from `graph_atomic_survey_financial`, but **no node in the nineteen-node
-graph executes it** — the recovered run's `graph.json` lists all nineteen and
-none is a budget node — and none in the completion host does either.
-`survey_age_calibration` and `graph_survey_budget` execute it, over the same
-full-source selection, so the count and the verdict are unchanged.
+Where it runs, stated precisely rather than implied. **No node in the
+nineteen-node graph executes `freeze_survey_origin_budget`**, which is where
+`GROUP_COUNT_BOUND` is checked — the recovered run's `graph.json` lists all
+nineteen and none is a budget node, and the completion host has none either.
+`graph_atomic_survey_financial` does call into the module, but only for
+`_config_payload` and the `_live()` producer seal, neither of which reaches
+`_initial`. `survey_age_calibration` and `graph_survey_budget` are what execute
+it, over the same full-source selection, so the count and the verdict stand.
 
 ## 4. Why a bound stays a bound, and why some must not move at all
 
@@ -218,9 +229,14 @@ bound in front of a streaming digest has nothing behind it, and the rule applies
 | `current_survey_household_roles.MAX_PERSONS` | 2,097,152 | `_projection_bytes` is `table.reset_index().to_json(orient="table").encode()` — the whole per-person table in one string — under `graph_current_survey_household_roles.MAX_ARTIFACT_BYTES` = 64 MiB | materialises — transport's |
 | `current_child_property_income_source.MAX_ROWS` | 600,000 | `_json` is one `json.dumps(value)` under `MAX_PROJECTION_BYTES` = 64 MiB | materialises — transport's |
 
-The middle row is the clearest case for why the test matters: at roughly 200
-bytes of JSON per person, that 64 MiB cap admits a few hundred thousand persons,
-so raising the 2,097,152 row bound would move nothing at all.
+The middle row is the clearest case for why the test matters, and it is measured
+rather than reasoned: through the module's own encoder, a person row costs
+**320.08 bytes**, so that 64 MiB cap admits **209,661 persons — 5.88% of source**
+against a row bound that admits 58.8%. The byte cap refuses **ten times earlier**,
+so raising `MAX_PERSONS` alone would move nothing at all.
+`experiments/native-row-ceilings/roles_projection_size.py` measures it; the table
+it encodes is invented but faithfully shaped, and the per-row cost is a
+difference between two row counts so the fixed schema preamble cancels.
 
 A fourth bound needed the same test plus one more question, and passed both.
 `asec_demographic_source._MAX_PERSONS` (600,000) is enforced at five sites that
