@@ -12,6 +12,7 @@ from test_us_current_asec_demographics import _demographic_arguments
 from test_us_graph_atomic_survey_population import _support_payload
 
 from microcosm.build.us_runtime import graph_atomic_survey_financial as runner
+from microcosm.build.us_runtime import survey_population_preparation as preparation
 from microcosm.graph import ArtifactType, ArtifactValue, NumericScope
 from microcosm.graph.keys import opaque_artifact_key
 
@@ -52,6 +53,24 @@ def test_nineteen_node_financial_cold_and_required_replay(known_financial_run):
     case = known_financial_run
     assert case.cold.manifest.key == case.warm.manifest.key
     assert all(n.hit for n in case.warm.manifest.nodes.values())
+    # Each run's verification-epoch record, read off the manifests it returns:
+    # this runner's own epoch on the outer manifest, and the nested nine-node
+    # population epoch's on the prefix's. Both epochs close before their runner
+    # returns, so what a caller reads here is the closed record. Every capsule
+    # either epoch memoised was re-validated in full as it closed
+    # (`final_validations == capsules`), which is what leaves the memo without
+    # authority; drop the `_verification_epoch=` argument from either runner and
+    # the corresponding record is empty here. `to_json` still cannot see it, so
+    # no receipt byte moves. The counts themselves are asserted over the
+    # nine-node runner in `test_us_native_verify_once_epoch.py`
+    # (`test_a_real_run_records_its_epoch_in_the_manifest`); this pins the same
+    # record on the nineteen-node runner, at no extra run cost.
+    for run in (case.cold, case.warm):
+        for manifest in (run.manifest, run.prefix.manifest):
+            record = manifest.verification_epoch
+            assert record["protocol"] == preparation.PROTOCOL + "/verification-epoch/1"
+            assert record["final_validations"] == record["capsules"] >= 1
+            assert "verification_epoch" not in manifest.to_json()
     for run in (case.cold, case.warm):
         assert len(run.compiled.order) == 19
         edge = financial._geography_edge()

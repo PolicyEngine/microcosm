@@ -13,7 +13,13 @@ only changes are the ones a before/after comparison needs:
   so a stray editable install cannot silently measure the wrong source;
 * a resident-memory ceiling is enforced alongside the CPU ceiling;
 * the load average and the interpreter's third-party versions are recorded
-  with each run, because this machine carries other lanes' work.
+  with each run, because this machine carries other lanes' work;
+* the run's verification-epoch record is copied out of the manifest the runner
+  returns, so a measured run says how often it re-authenticated instead of
+  leaving that to a unit test. This line was added after the three measurement
+  files ``out.md`` quotes were written, so none of them carries the record; the
+  before tree has no such record to carry. It is a read, and it measures
+  nothing: the counted work is identical on either side of it.
 
 Sources are read by path and never written. Nothing here is a build, a
 certification or a release artifact.
@@ -271,7 +277,7 @@ else:
         }
 
 DONE = threading.Event()
-RESULT = {"status": "RUNNING"}
+RESULT = {"status": "RUNNING", "verification_epoch": None}
 # Sampling ledger, identical in shape to the pilot guard's: it never depends on
 # the wrappers, so a function-identity refusal cannot cost us the measurement.
 LEDGER = {}
@@ -356,6 +362,15 @@ def flush(status=None):
             "loadavg_now": os.getloadavg(),
             "versions": _versions(),
         },
+        # The run's own verification-epoch record, copied off the manifest the
+        # runner returns: capsules memoised, borrows answered from the memo,
+        # borrows that re-ran the whole validation, and the unconditional final
+        # re-validations that closed the epoch. `null` until the runner returns,
+        # so every mid-run flush and every ceiling exit carries `null`, and the
+        # before tree has no such record at all. It is read, never written, and
+        # it is outside the manifest key, its JSON and every receipt, so
+        # recording it moves nothing the run is identified by.
+        "verification_epoch": RESULT["verification_epoch"],
         "nesting_note": (
             "Rows marked [outer] enclose the unmarked rows beneath them, so "
             "their seconds overlap; share_of_process_cpu is per-row and these "
@@ -405,7 +420,7 @@ geography = survey_atomic_geography.AtomicSurveyReconstruction(
 )
 status = "COMPLETED_PREFIX"
 try:
-    graph_atomic_survey_population.run_atomic_survey_population(
+    run_values = graph_atomic_survey_population.run_atomic_survey_population(
         RUN / "sources",
         snapshot_root=PROBE / "snapshots",
         store_root=PROBE / "graph-store",
@@ -415,6 +430,11 @@ try:
         resume="auto",
         return_values=True,
     )
+    # Take the epoch's counts and drop the run values again immediately, so
+    # nothing this probe added stays resident while `flush` runs and peak RSS
+    # stays comparable with the runs that predate this line.
+    RESULT["verification_epoch"] = dict(run_values.manifest.verification_epoch)
+    del run_values
 except BaseException as error:  # noqa: BLE001 - the measurement records the class
     status = "STOPPED_" + type(error).__name__ + ": " + str(error)[:200]
 finally:
@@ -431,6 +451,7 @@ finally:
                 "peak_rss_bytes": payload["process"]["peak_rss_bytes"],
                 "loadavg_at_start": payload["machine"]["loadavg_at_start"],
                 "loadavg_at_end": payload["machine"]["loadavg_now"],
+                "verification_epoch": payload["verification_epoch"],
                 "top": [
                     {k: r[k] for k in ("code_chain", "cpu_seconds", "samples")}
                     for r in payload["sampled_cpu_ledger"][:8]

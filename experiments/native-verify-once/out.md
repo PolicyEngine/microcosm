@@ -135,6 +135,31 @@ signature miss re-runs the full validation, and this run had three. The counts
 come from a runner call over invented fixtures, not from the 19-node measured
 run: the measurement harness predates the record and captures nothing of it.
 
+Both runners are now pinned by a test, not only the nine-node one.
+`test_nineteen_node_financial_cold_and_required_replay` reads the record off
+both manifests the financial runner returns — its own epoch's on the outer
+manifest, the nested nine-node population epoch's on the prefix's — and asserts
+for the cold and the required-replay run that the protocol label is the epoch's,
+that every capsule either epoch memoised was re-validated in full as it closed
+(`final_validations == capsules >= 1`), and that `to_json` still cannot see any
+of it. Delete `_verification_epoch=` from either runner and that test fails. It
+asserts presence and closure, not counts: the counts are the nine-node test's,
+because the financial fixture is module-scoped and shared, and pinning literal
+hit and miss numbers there would bind an unrelated test's call pattern.
+
+The measured runs still carry no counts, and no measurement in this report was
+re-run to get them. What changed is the script:
+`experiments/native-verify-once/probe_verify_once.py` now copies the returned
+manifest's record into its output JSON and its console summary, as
+`verification_epoch` (`null` until the runner returns, so every mid-run flush
+and every ceiling exit carries `null`, and the before tree has no such record at
+all). The three measurement files quoted below were written before that line
+existed, so the next run of the committed probe is the first measured run that
+will say how often it re-authenticated. The line is a read of a field that is
+outside the manifest key, its JSON and every receipt, and the values are dropped
+again immediately, so it changes no counted work and nothing the run is
+identified by.
+
 **Probe level.** There is no per-mechanism before/after ratio for this
 mechanism, and the report does not manufacture one: the before probe stopped at
 its CPU ceiling inside source admission (file A below,
@@ -788,6 +813,29 @@ engine-free environment, the acceptance burndown, the before/after probe and the
 runner call sites, so the measurement they would repeat is the same measurement,
 and no measured number in this report was taken again.
 
+### After the second fix pass, 2026-09-17
+
+A second pass added the epoch-record assertions to the nineteen-node financial
+test and the epoch read to the committed probe. No `packages/*/src` file changed
+in it, so the two test files that cover the epoch record are the whole of what
+it could break:
+
+```
+$ uv run --no-sync pytest packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py -p no:cacheprovider   # rc 0
+7 passed in 119.98s (0:01:59)
+```
+
+```
+$ uv run --no-sync pytest packages/microcosm-build/tests/test_us_native_verify_once_epoch.py -p no:cacheprovider        # rc 0
+24 passed in 157.61s (0:02:37)
+```
+
+Both counts are unchanged — the new assertions went into an existing test rather
+than adding one — and the epoch file was re-run because it is the twin that owns
+the record's counts. `ruff check` and `ruff format --check` are clean on the two
+changed Python files. The probe itself has no test and was not run: running it
+is a measurement, and nothing here re-measures.
+
 ## Measurement
 
 All figures in this section were read from the files named in the "file"
@@ -937,6 +985,13 @@ lane's candidates, not this one's results.
   the cap, not the work. File A is reported because it is the one the lane
   named; this one is disclosed because a reader comparing files should not have
   to discover it.
+- **The committed probe is one line ahead of the measuring one.**
+  `experiments/native-verify-once/probe_verify_once.py` was a byte-identical
+  copy of `.measure/probe_verify_once.py` when every figure here was taken, and
+  it now carries the verification-epoch read described above as well, which is
+  why none of these JSONs has a `verification_epoch` field. Nothing else about
+  it moved: same prefix, same sample, same seed, same sampler, same ceilings,
+  same rows. The uncommitted `.measure/` scripts are left exactly as they ran.
 - **Scope.** These are descriptive measurements. They say nothing about dataset
   quality, calibration or release eligibility, and nothing here is a build or a
   certification.

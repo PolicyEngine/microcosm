@@ -89,6 +89,11 @@ returns, so the record a caller reads there is the closed one:
 `test_a_real_run_records_its_epoch_in_the_manifest` asserts that an actual
 nine-node run over invented sources reports memo hits, at least one signature
 miss, and one unconditional final re-validation for every capsule it memoised.
+`test_nineteen_node_financial_cold_and_required_replay` asserts the other
+runner, on both manifests it returns — its own epoch's record on the outer
+manifest and the nested population epoch's on the prefix's — for the cold run
+and the required replay alike: the epoch's protocol label, one final
+re-validation for every capsule memoised, and nothing of it in `to_json`.
 
 ## The five mechanisms
 
