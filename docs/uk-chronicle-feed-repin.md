@@ -19,8 +19,11 @@ regeneration tests accept a `CHRONICLE_UK_FACTS` override and skip only when
 neither is present.
 
 Verify both SHA-256 digests and the manifest's `facts_sha256`, row count, and
-schema version, then update `uk/chronicle_feed.json` and regenerate, in this
-order:
+schema version, then update `uk/chronicle_feed.json` and regenerate. Vendor
+the per-concern fact resources (step 5) before the national generator: the
+generator refuses to compile against a vendored resource whose feed identity
+differs from the pin, so on a fresh pin step 5 has to run first. The rest go in
+this order:
 
 1. the national references and membership with
    `tools/generate_uk_target_references.py` (pass the stable
@@ -60,4 +63,8 @@ and energy packages and unified the national and local pins into this one
 declaration; the `474a0ae` re-pin (#904, chronicle #263) moved the rows to
 `chronicle.consumer_fact.v2`, which carries the dimension and value labels the
 schema-8 target hierarchy completes from (141,400 rows, including chronicle #260's
-Universal Credit packages).
+Universal Credit packages); the `df35af7` re-pin (#929, chronicle #264 and #267)
+moved the rows to `chronicle.consumer_fact.v3`, which adds the publisher's
+`geography.name` to every fact (the label the hierarchy needs for constituencies
+and local authorities, microcosm#920) and brought the council taxbase packages
+for England, Wales and Scotland (266,390 rows); the `ec20085` re-pin (#890 PR-S, chronicle #269/#270 via PR #271) brought the domestic energy facts the energy stage levels and prices against (DESNZ Energy Trends domestic consumption, subnational consumption and meter counts, QEP average prices paid, NEED 2024, ONS 04.5 sub-classes) and the census central-heating tables (275,698 rows).

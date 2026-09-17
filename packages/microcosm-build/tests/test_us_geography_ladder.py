@@ -434,3 +434,50 @@ def _minimal_us_frame() -> Frame:
     }
     strata = pd.Series(["asec_2024", "asec_2024"], name="stratum")
     return Frame(tables, US_SCHEMA, weights, strata)
+
+
+def test_non_text_county_fips_failure_names_the_offending_types() -> None:
+    from microcosm.build.us_runtime.geography_ladder import (
+        non_text_county_fips_failure,
+    )
+
+    assert (
+        non_text_county_fips_failure(
+            pd.Series(["36061", np.str_("06037"), b"48001"]), column="county_fips"
+        )
+        is None
+    )
+    message = non_text_county_fips_failure(
+        pd.Series([36061, "06037", None, 48001.0], dtype=object),
+        column="county_fips",
+    )
+    assert message is not None
+    assert message.startswith("county_fips: values are carried as ")
+    assert "NoneType" in message and "float" in message and "int" in message
+    assert "str" not in message.split("rather than")[0]
+
+
+def test_gate_fails_when_county_fips_is_carried_as_integers() -> None:
+    household, weights = _gated_household()
+    household = household.assign(
+        county_fips=np.asarray([36061, 36001, 6037, 48001], dtype="int64")
+    )
+
+    result = us_geography_ladder_gate(household, weights)
+
+    assert not result.passed
+    assert any(
+        failure.startswith("county_fips: values are carried as int")
+        for failure in result.failures
+    ), result.failures
+
+
+def test_gate_accepts_numpy_str_county_fips() -> None:
+    household, weights = _gated_household()
+    household = household.assign(
+        county_fips=np.asarray(["36061", "36001", "06037", "48001"], dtype=np.str_)
+    )
+
+    result = us_geography_ladder_gate(household, weights)
+
+    assert result.passed, result.failures

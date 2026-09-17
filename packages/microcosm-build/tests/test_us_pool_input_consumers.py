@@ -57,7 +57,7 @@ NON_ENGINE_CONSUMER_ALLOWLIST: dict[str, _ReviewedNonEngineConsumer] = {
 
 _REVIEWED_WIC_CONSUMERS = {
     # WICYN identifies the adult-female reporter/carrier, not the beneficiary.
-    # These targets are reviewed from the six PolicyEngine-US 1.819.0 formulas;
+    # These targets are reviewed from the six PolicyEngine-US 2.2.1 formulas;
     # output entity alone is insufficient because Pell aggregates by tax unit
     # and Virginia reads people inside an SPM-unit aggregation. Values pin the
     # direct receiver and the enclosing aggregation entity, in that order.

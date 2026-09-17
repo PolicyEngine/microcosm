@@ -21,7 +21,7 @@ import tomllib
 from functools import cached_property
 from pathlib import Path
 
-LOCK_SHA256 = "14d7f749f14e1dc1fa32a064c13f50a76b73bf03ddd9b6c0534d9ede2d9ff44e"
+LOCK_SHA256 = "d035b9298250fa2380285a05cfbdf6601e6e8594197fea583c14d47ce8920b79"
 UPLOAD_ACTION_SHA = "ea165f8d65b6e75b540449e92b4886f43607fa02"
 CAPS = {
     "candidate-digests.json": 64 * 1024,
@@ -175,9 +175,13 @@ SEED_MODULES = (
 #: and second-lowest silver plan costs). The derive phase must import the
 #: engine, so these exact files -- and nothing else with a data suffix -- may
 #: be opened, and only when their bytes hash to the pin. The pins are the
-#: distribution's RECORD digests, verified against policyengine-us 1.819.0 on
-#: 2026-09-11. A distribution whose files differ fails closed before the
-#: boundary is armed (ENGINE_PARAMETER_PIN).
+#: distribution's RECORD digests, verified against policyengine-us 2.2.1 on
+#: 2026-09-17. 2.2.1 opens exactly this set and no other data file, measured
+#: by replaying the derive phase's imports under the same audit event this
+#: hook uses; every pinned file's bytes and RECORD digest are unchanged from
+#: the 1.819.0 attestation of 2026-09-11, so no pin value moved. A
+#: distribution whose files differ fails closed before the boundary is armed
+#: (ENGINE_PARAMETER_PIN).
 ENGINE_PUBLIC_PARAMETER_FILES_POLICY = "pinned_engine_public_parameter_files_v1"
 ENGINE_PUBLIC_PARAMETER_DISTRIBUTION = "policyengine-us"
 ENGINE_PUBLIC_PARAMETER_FILES = (

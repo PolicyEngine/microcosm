@@ -1024,7 +1024,7 @@
         "policyengine_us",
         "policyengine_us.data"
       ],
-      "resource_accesses_sha256": "b87a963f56b28cef5b93690cec90f1ff2e935075283e553fdf7af693f8bf3204",
+      "resource_accesses_sha256": "936ee8ffea3ee63419f2bb61eaca6179c79798fd09a243e67397ca78516710b4",
       "unbound_uses_sha256": "175c1d0a9621cee21f400b0c3e4618a40eb2fdb795adbf42b16488ea2dcf5b23"
     },
     "microcosm.frame/bundle.py": {

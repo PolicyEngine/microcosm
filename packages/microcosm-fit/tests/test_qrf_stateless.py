@@ -191,3 +191,113 @@ def test_stateless_replays_legacy_uniforms_across_all_regimes(model):
             recipient, quantiles=quantiles, sign_uniforms=signs
         )
         pd.testing.assert_frame_equal(expected, actual, check_exact=True)
+
+
+def test_positive_draw_matches_the_last_bin_of_the_sign_gate(model):
+    """A positive-regime draw is the amount forest at the row's quantile.
+
+    ``predict_from_uniforms`` with a sign uniform just below one lands in the
+    last CDF bin, which is the positive class when one exists; that is a
+    property of the sorted class order. The explicit method declares the same
+    draw as an API, so the two agree bit for bit on every positive-forest
+    regime.
+    """
+    recipient = pd.DataFrame({"x": np.arange(20, dtype=float)})
+    positive_targets = ["positive", "mixed", "inflated", "two_sign"]
+    n = len(recipient)
+    quantiles = {t: np.linspace(0, 0.99, n) for t in positive_targets}
+    full = fit(
+        pd.DataFrame(
+            {
+                "x": np.tile(np.arange(30, dtype=float), 6),
+                "positive": np.tile(np.arange(30, dtype=float), 6) + 1,
+                "mixed": np.tile([-2.0, 0.0, 3.0], 60),
+                "inflated": np.tile([0.0, 4.0], 90),
+                "two_sign": np.tile([-3.0, 4.0], 90),
+            }
+        ),
+        ["x"],
+        positive_targets,
+        weights="none",
+        n_estimators=4,
+        seed=7,
+    )
+    explicit = full.predict_positive_from_uniforms(recipient, quantiles=quantiles)
+    via_gate = full.predict_from_uniforms(
+        recipient,
+        quantiles=quantiles,
+        sign_uniforms={t: np.full(n, 1.0 - 1e-16) for t in positive_targets},
+    )
+    pd.testing.assert_frame_equal(explicit, via_gate)
+    assert (explicit["mixed"] == 3.0).all()
+    assert (explicit["inflated"] == 4.0).all()
+    assert (explicit["two_sign"] == 4.0).all()
+    assert (explicit["positive"] > 0).all()
+
+
+@pytest.mark.parametrize("target", ["negative", "zero", "negative_inflated"])
+def test_positive_draw_refuses_regimes_without_a_positive_forest(target):
+    x = np.tile(np.arange(30, dtype=float), 6)
+    donor = pd.DataFrame(
+        {
+            "x": x,
+            "negative": -x - 1,
+            "zero": np.zeros(len(x)),
+            "negative_inflated": np.tile([0.0, -4.0], len(x) // 2),
+        }
+    )
+    fitted = fit(donor, ["x"], [target], weights="none", n_estimators=4, seed=7)
+    with pytest.raises(ValueError, match="no positive-magnitude forest"):
+        fitted.predict_positive_from_uniforms(
+            pd.DataFrame({"x": [1.0, 2.0]}), quantiles={target: np.array([0.1, 0.5])}
+        )
+
+
+def test_positive_draw_validates_uniforms_and_leaves_rng_untouched(model):
+    recipient = pd.DataFrame({"x": np.arange(5, dtype=float)})
+    before = copy.deepcopy(model._rng.bit_generator.state)
+    with pytest.raises(ValueError, match="exactly the fitted targets"):
+        model.predict_positive_from_uniforms(
+            recipient, quantiles={"positive": np.zeros(5)}
+        )
+    with pytest.raises(ValueError, match="in \\[0, 1\\)"):
+        model.predict_positive_from_uniforms(
+            recipient, quantiles={t: np.full(5, 1.0) for t in model.targets}
+        )
+    assert model._rng.bit_generator.state == before
+
+
+def test_chain_step_exposes_a_fitted_one_target_view():
+    from microcosm.fit.qrf import RegimeGatedQRF
+
+    x = np.tile(np.arange(30, dtype=float), 6)
+    donor = pd.DataFrame(
+        {"x": x, "first": x + 1, "inflated": np.tile([0.0, 4.0], len(x) // 2)}
+    )
+    recipient = pd.DataFrame({"x": np.arange(10, dtype=float)})
+    qrf = RegimeGatedQRF(n_estimators=4, seed=7)
+    state = qrf.start_chain(donor, ["x"], ["first", "inflated"], weights="none")
+    raw = pd.DataFrame(index=recipient.index)
+    step_one = qrf.fit_draw_next(donor, recipient, raw, state=state, weights="none")
+    raw["first"] = step_one.raw_draw
+    step_two = qrf.fit_draw_next(
+        donor, recipient, raw, state=step_one.state, weights="none"
+    )
+
+    view = step_two.fitted
+    assert view is not None
+    assert view.targets == ["inflated"]
+    assert view.predictors == ["x", "first"]
+    assert view.regimes() == {"inflated": Regime.ZERO_INFLATED_POSITIVE}
+    augmented = recipient.assign(first=raw["first"].to_numpy())
+    positive = view.predict_positive_from_uniforms(
+        augmented, quantiles={"inflated": np.linspace(0, 0.99, len(recipient))}
+    )
+    assert (positive["inflated"] == 4.0).all()
+    # The view's own predict is reproducible and independent of the chain stream.
+    first = view.predict(augmented)
+    step_two_again = qrf.fit_draw_next(
+        donor, recipient, raw, state=step_one.state, weights="none"
+    )
+    pd.testing.assert_frame_equal(first, step_two_again.fitted.predict(augmented))
+    np.testing.assert_array_equal(step_two.raw_draw, step_two_again.raw_draw)

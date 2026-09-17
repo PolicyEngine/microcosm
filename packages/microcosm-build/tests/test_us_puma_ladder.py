@@ -640,3 +640,29 @@ def test_joint_assignment_rejects_wrong_census_vintage(tmp_path, layer) -> None:
     )
     with pytest.raises(ValueError, match="2020 Census county/tract"):
         load_us_puma_ladder(path)
+
+
+def test_gate_fails_when_county_fips_is_carried_as_integers() -> None:
+    household, weights = _gated_household()
+    household = household.assign(
+        county_fips=np.asarray([36061, 36001, 6037, 48001], dtype="int64")
+    )
+
+    result = us_puma_ladder_gate(household, weights)
+
+    assert not result.passed
+    assert any(
+        failure.startswith("county_fips: values are carried as int")
+        for failure in result.failures
+    ), result.failures
+
+
+def test_gate_accepts_numpy_str_county_fips() -> None:
+    household, weights = _gated_household()
+    household = household.assign(
+        county_fips=np.asarray(["36061", "36001", "06037", "48001"], dtype=np.str_)
+    )
+
+    result = us_puma_ladder_gate(household, weights)
+
+    assert result.passed, result.failures

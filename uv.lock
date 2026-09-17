@@ -788,7 +788,7 @@ requires-dist = [
     { name = "openpyxl", marker = "extra == 'uk'", specifier = ">=3.1" },
     { name = "pandas", specifier = ">=2" },
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.97.0" },
-    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.745.0,<2" },
+    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=2.2.1,<3" },
     { name = "pyarrow", specifier = ">=15" },
     { name = "pyyaml", specifier = ">=6" },
     { name = "referencing", specifier = ">=0.35,<1" },
@@ -862,7 +862,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.20" },
     { name = "packaging", specifier = ">=24" },
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.97.0" },
-    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.745.0,<2" },
+    { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=2.2.1,<3" },
 ]
 provides-extras = ["us", "uk"]
 
@@ -940,7 +940,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2" },
     { name = "pandas", specifier = ">=2.3" },
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.97.0" },
-    { name = "policyengine-us", marker = "extra == 'policyengine'", specifier = ">=1.745.0,<2" },
+    { name = "policyengine-us", marker = "extra == 'policyengine'", specifier = ">=2.2.1,<3" },
     { name = "tables", marker = "extra == 'axiom'", specifier = ">=3" },
 ]
 provides-extras = ["us", "policyengine", "uk", "axiom"]
@@ -1475,7 +1475,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-core"
-version = "3.31.0"
+version = "3.32.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dpath" },
@@ -1495,9 +1495,9 @@ dependencies = [
     { name = "standard-imghdr" },
     { name = "wheel" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a2/5e/227324f4c7b7fdce0e0eb0d6246afc6bb7d1fb2a61546f514fe698c20c29/policyengine_core-3.31.0.tar.gz", hash = "sha256:4e7811d9f1668cb198ee68a460d7383add3443db1f0e32d591dc92ed4e5b4319", size = 503277, upload-time = "2026-08-14T15:03:43.216Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/12/54/cfd2138584de9cddaa4459bba7fdc381101ca8b8ffd38356a1b256850d5f/policyengine_core-3.32.5.tar.gz", hash = "sha256:f051c269b538fe77ee7868f7cfbc0138551960b1b677a0ad6fdc1a93f1660460", size = 420112, upload-time = "2026-09-10T04:16:48.889Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fb/75/d30a9de4352d02e1c81135c7d7c1b64f6506af7cab3883d9a4d51c4599cb/policyengine_core-3.31.0-py3-none-any.whl", hash = "sha256:6537c2ecebd2a49a7a345dbe3d3d4f37fc3c3babc6bba1990a2eb99a9f55d67d", size = 245717, upload-time = "2026-08-14T15:03:41.571Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/d9/72c3707465e9fe77e6f7a55ea64b49a287cbf875b78f6e862d945df26975/policyengine_core-3.32.5-py3-none-any.whl", hash = "sha256:9d8c162d5fe5c784ae16c885da3ffbfc39a536add0e111133144d8edd555935f", size = 245925, upload-time = "2026-09-10T04:16:47.153Z" },
 ]
 
 [[package]]
@@ -1517,7 +1517,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-us"
-version = "1.819.0"
+version = "2.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
@@ -1527,9 +1527,9 @@ dependencies = [
     { name = "tables" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/46/74/49209575800c4f5fc3ef1be0072243820eeade215124611ebb90b44fc1a3/policyengine_us-1.819.0.tar.gz", hash = "sha256:6e0e41887358dc5e80b8229b49a9027104ad2e49f32c2a8f08ce19a138556d9f", size = 11759362, upload-time = "2026-08-23T11:11:17.944Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2c/09/763b21371a62635e15e62b53fb696e299f01460907c27313d40f63031eb2/policyengine_us-2.2.1.tar.gz", hash = "sha256:d5300c91f3eae2e47a61f485fdfde91a892b80e95db3e46ff2c4bbd417d76501", size = 11946510, upload-time = "2026-09-15T04:45:50.33Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/cc/cf126d6c14ea4cd5192b91e9810a680304694ce14f255d62cd09f565eb9a/policyengine_us-1.819.0-py3-none-any.whl", hash = "sha256:525bdf8b238c3eb11cd60c5f4f7a7b0c57bc7eea5c1cf4346c261241b061be45", size = 14639026, upload-time = "2026-08-23T11:10:57.547Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/09/86ac3968d2a18e28fce3ba1186fc21728e9f299b96a806d6f204f1e0aaed/policyengine_us-2.2.1-py3-none-any.whl", hash = "sha256:0993a6c73fcdfbe171a796aca9d302741bd8e00ab83388ad81c15a08740318c6", size = 14885537, upload-time = "2026-09-15T04:45:46.649Z" },
 ]
 
 [[package]]
@@ -2070,7 +2070,7 @@ wheels = [
 
 [[package]]
 name = "spm-calculator"
-version = "0.3.1"
+version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "census" },
@@ -2080,9 +2080,9 @@ dependencies = [
     { name = "requests" },
     { name = "us" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/54/3b/b805c7e3e18c5b5c00f61b60112f9690d084c910e2481bc020f35390d8fd/spm_calculator-0.3.1.tar.gz", hash = "sha256:41f2f4d00d8c03422a7d57b800052e7760b88e463a5884802f83ed58d35c18c1", size = 75945, upload-time = "2026-04-17T19:52:39.707Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c2/5e/3f28b212c401795990250bb3daec741f699a8c7dc2a23a3db7005df6feb6/spm_calculator-1.0.0.tar.gz", hash = "sha256:a99aac8c2c0bf81a9455105bbf872366f1ea9066a99cd793714881cd3db846dc", size = 7150825, upload-time = "2026-09-11T15:45:12.732Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/1b/29f705f8a96fc7f55f2c07dfcddbbae78efdc6f174d25d4a0560fc3f5cf9/spm_calculator-0.3.1-py3-none-any.whl", hash = "sha256:52c57ecc5a240ec941b0f2b0d93bc4fa437ef6250e233baed8e11916fa9c1150", size = 57826, upload-time = "2026-04-17T19:52:38.444Z" },
+    { url = "https://files.pythonhosted.org/packages/19/a0/c484f69a0ebf88a9b9fd0ac28176f8df66550f46714f1b0c5ec0b360824e/spm_calculator-1.0.0-py3-none-any.whl", hash = "sha256:e354937a5e1a4045d4966ed594a528d8b02866fabaac9bb5672017004b627305", size = 7395384, upload-time = "2026-09-11T15:45:10.492Z" },
 ]
 
 [[package]]

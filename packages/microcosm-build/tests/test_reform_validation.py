@@ -893,14 +893,12 @@ def test_state_reform_specs_shipped_config_loads():
     )
     # Federal rows score federal income tax against JCT/CBO published figures.
     assert all(
-        spec.budget_measure == "income_tax"
-        for spec in by_category["Federal reform"]
+        spec.budget_measure == "income_tax" for spec in by_category["Federal reform"]
     )
     # Mechanical rows measure the reform's own spending variable, so the
     # benchmark is an exact external anchor (population x amount).
     assert all(
-        spec.jct_score_type == "mechanical"
-        for spec in by_category["Mechanical check"]
+        spec.jct_score_type == "mechanical" for spec in by_category["Mechanical check"]
     )
 
 
@@ -1299,3 +1297,50 @@ def test_shipped_spm_poverty_config_well_formed():
     # Total-statistic rows keep the currency unit.
     payload = reform_validation_payload([], period=2024, simulate=None)
     assert payload["reforms"] == []
+
+
+def test_default_simulate_factory_declares_county_spm_selection(monkeypatch, tmp_path):
+    """Both release simulations name county SPM measurement explicitly.
+
+    PolicyEngine-US 2.0.0 stopped inferring SPM geography from an absent
+    county; the release H5 carries observed county FIPS, so the factory must
+    declare county measurement on the baseline and on every reform rather
+    than inherit whatever the engine default becomes.
+    """
+
+    import sys
+    import types
+
+    calls: list[dict[str, object]] = []
+
+    class _RecordingMicrosimulation:
+        def __init__(self, **kwargs: object) -> None:
+            calls.append(dict(kwargs))
+
+    class _RecordingDataset:
+        def __init__(self, *, file_path: str) -> None:
+            self.file_path = file_path
+
+    fake_engine = types.ModuleType("policyengine_us")
+    fake_engine.Microsimulation = _RecordingMicrosimulation
+    fake_data = types.ModuleType("policyengine_us.data")
+    fake_data.USSingleYearDataset = _RecordingDataset
+    fake_engine.data = fake_data
+    monkeypatch.setitem(sys.modules, "policyengine_us", fake_engine)
+    monkeypatch.setitem(sys.modules, "policyengine_us.data", fake_data)
+
+    dataset_path = tmp_path / "release.h5"
+    simulate = reform_validation_module.default_simulate_factory(dataset_path)
+
+    simulate(None)
+    simulate("a reform")
+
+    baseline, reformed = calls
+    expected = {"geography_kind": "county"}
+    assert reform_validation_module.US_RELEASE_SPM_SELECTION == expected
+    assert baseline["spm"] == expected
+    assert reformed["spm"] == expected
+    assert "reform" not in baseline
+    assert reformed["reform"] == "a reform"
+    assert baseline["dataset"].file_path == str(dataset_path)
+    assert reformed["dataset"].file_path == str(dataset_path)

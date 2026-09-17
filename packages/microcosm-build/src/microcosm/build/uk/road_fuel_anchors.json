@@ -4,9 +4,10 @@
   "kind": "uk_vendored_ledger_facts",
   "resource": "road_fuel_anchors.json",
   "purpose": "HMRC Hydrocarbon Oils Bulletin petrol and diesel quantities released for consumption by fiscal year; DESNZ annual average ULSP and ULSD pump prices; OBR fuel duty receipts by vehicle category; ONS mid-year UK population totals. Consumed by the LCFS donor litre-proxy uprating and the household-incidence fuel diagnostics.",
-  "consumers": [],
+  "consumers": [
+    "uk_runtime.lcfs_consumption"
+  ],
   "planned_consumers": [
-    "lcfs_consumption",
     "uk_aggregate_admin"
   ],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
@@ -16,12 +17,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "474a0ae100e9dbfa43c167e9e200ec07dcfc6643",
+    "source_commit": "ec200856c4e40e0d3fe97c4e17049cb48de02b85",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 141400,
-    "facts_sha256": "bb12d77a661ef1649c2907211bfd58bc031dcf7d41d2e5d39a09d63eb7266d3d",
-    "manifest_sha256": "c649b7fea9178e309574ed10851d30623bd7e6ca1335006fe7f5ae44d801e78d"
+    "fact_row_count": 275698,
+    "facts_sha256": "47612c481d9917c5f92ba50389c67e8d6a80b525ba06a8c64cbc0ce83ae81412",
+    "manifest_sha256": "c91fa9ff735ea83271e93de7a725fdcdfb65a664c4868412e374a795b8cc65c3"
   },
   "selections": [
     {
@@ -71,7 +72,7 @@
   "row_count": 69,
   "rows": [
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_1024691531eccd91055ab6d6",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_798730cf567dc462834413e1",
       "semantic_fact_key": "ledger_semantic_fact_v2_820771bf2fc2e2faad89d785",
       "source_record_id": "desnz.annual_road_fuel_prices.cy2023.united_kingdom.ulsd_price",
       "concept": "desnz.road_fuel.annual_ulsd_pump_price",
@@ -109,12 +110,12 @@
         "source_file": "table_411_413.xlsx",
         "source_sha256": "30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f",
         "vintage": "august_2026",
-        "raw_r2_key": "raw/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
+        "raw_r2_key": "raw/uk/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
       },
       "value": 158.18871125
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_0b086697caf839aa3fadf44c",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6b08c25025fd045e6b26cec2",
       "semantic_fact_key": "ledger_semantic_fact_v2_6befd685ffc73aa2354dd55a",
       "source_record_id": "desnz.annual_road_fuel_prices.cy2024.united_kingdom.ulsd_price",
       "concept": "desnz.road_fuel.annual_ulsd_pump_price",
@@ -152,12 +153,12 @@
         "source_file": "table_411_413.xlsx",
         "source_sha256": "30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f",
         "vintage": "august_2026",
-        "raw_r2_key": "raw/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
+        "raw_r2_key": "raw/uk/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
       },
       "value": 148.32888483333338
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_5d459cbdebedaea6efe3ece7",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4fd808191e64dc65a99d48e2",
       "semantic_fact_key": "ledger_semantic_fact_v2_f1aee4b5076694bca92abc24",
       "source_record_id": "desnz.annual_road_fuel_prices.cy2025.united_kingdom.ulsd_price",
       "concept": "desnz.road_fuel.annual_ulsd_pump_price",
@@ -195,12 +196,12 @@
         "source_file": "table_411_413.xlsx",
         "source_sha256": "30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f",
         "vintage": "august_2026",
-        "raw_r2_key": "raw/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
+        "raw_r2_key": "raw/uk/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
       },
       "value": 142.54857508333336
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_6fe2d9aed4e26a83b33044f7",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_30ba42e784bb76ba7b95c448",
       "semantic_fact_key": "ledger_semantic_fact_v2_e48615c5572de6494c4aaa93",
       "source_record_id": "desnz.annual_road_fuel_prices.cy2023.united_kingdom.ulsp_price",
       "concept": "desnz.road_fuel.annual_ulsp_pump_price",
@@ -238,12 +239,12 @@
         "source_file": "table_411_413.xlsx",
         "source_sha256": "30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f",
         "vintage": "august_2026",
-        "raw_r2_key": "raw/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
+        "raw_r2_key": "raw/uk/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
       },
       "value": 147.7463336284925
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_f0a3ea4d250c2c4d30729682",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_424390bc10f089d5804c7d67",
       "semantic_fact_key": "ledger_semantic_fact_v2_ff8030acb904adf6150b7064",
       "source_record_id": "desnz.annual_road_fuel_prices.cy2024.united_kingdom.ulsp_price",
       "concept": "desnz.road_fuel.annual_ulsp_pump_price",
@@ -281,12 +282,12 @@
         "source_file": "table_411_413.xlsx",
         "source_sha256": "30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f",
         "vintage": "august_2026",
-        "raw_r2_key": "raw/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
+        "raw_r2_key": "raw/uk/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
       },
       "value": 141.47766540670264
     },
     {
-      "aggregate_fact_key": "ledger_aggregate_fact_v2_7937b7e4f6fcc3494237e153",
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c7194bde6e6b36446b3cfd27",
       "semantic_fact_key": "ledger_semantic_fact_v2_91048ff4a6c7b325f5a8c3cb",
       "source_record_id": "desnz.annual_road_fuel_prices.cy2025.united_kingdom.ulsp_price",
       "concept": "desnz.road_fuel.annual_ulsp_pump_price",
@@ -324,7 +325,7 @@
         "source_file": "table_411_413.xlsx",
         "source_sha256": "30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f",
         "vintage": "august_2026",
-        "raw_r2_key": "raw/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
+        "raw_r2_key": "raw/uk/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
       },
       "value": 135.07221037199108
     },

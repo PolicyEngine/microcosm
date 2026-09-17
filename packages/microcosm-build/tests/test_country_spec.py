@@ -934,8 +934,7 @@ class TestUKCountryPackage:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
-            "need_energy_targets.json",
-            "lcfs_consumption_anchors.json",
+            "ofgem_region_crosswalk.json",
             "etb_policy_anchors.json",
             "etb_services_anchors.json",
             "dwp_uc_deduction_distributions.json",
@@ -981,6 +980,8 @@ class TestUKCountryPackage:
             "licensed_cars_fuel_type.json",
             "need_energy_facts.json",
             "ofgem_price_cap_facts.json",
+            "desnz_domestic_energy_facts.json",
+            "qep_energy_prices.json",
             "nts_bus_use_frequency.json",
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
@@ -1038,8 +1039,7 @@ class TestExistingPackagesGeneralize:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
-            "need_energy_targets.json",
-            "lcfs_consumption_anchors.json",
+            "ofgem_region_crosswalk.json",
             "etb_policy_anchors.json",
             "etb_services_anchors.json",
             "dwp_uc_deduction_distributions.json",
@@ -1085,6 +1085,8 @@ class TestExistingPackagesGeneralize:
             "licensed_cars_fuel_type.json",
             "need_energy_facts.json",
             "ofgem_price_cap_facts.json",
+            "desnz_domestic_energy_facts.json",
+            "qep_energy_prices.json",
             "nts_bus_use_frequency.json",
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
@@ -1096,8 +1098,10 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 603
-        )  # microcosm#905: 424 - 18 country rows + 189 region-tier cells
+            len(references) == 614
+        )  # microcosm#905: 424 - 18 country rows + 189 region-tier cells;
+        # microcosm#929: the 81 VOA region cells become 81 composed MHCLG
+        # cells and Wales gains ten country rows (bands A-I + total)
         assert references["obr.esa"].value_operation == "sum"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"
@@ -1333,6 +1337,7 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
+            "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -1424,6 +1429,7 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
+            "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -1475,10 +1481,17 @@ class TestUKGatesManifest:
         aggregate = params["uk_aggregate_admin"]
         assert aggregate["default_rtol"] == 0.15
         assert [anchor["name"] for anchor in aggregate["anchors"]] == [
-            "need_electricity_mean_spending",
-            "need_gas_mean_spending",
             "nhs_spending_total",
         ]
+        energy_rake = params["uk_stage_lcfs_consumption_energy_rake"]
+        assert energy_rake["check"] == "energy_rake"
+        assert list(energy_rake["margins"]) == [
+            "income",
+            "tenure",
+            "accommodation",
+            "region",
+        ]
+        assert energy_rake["maximum_relative_deviation"] == 0.025
 
     def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
