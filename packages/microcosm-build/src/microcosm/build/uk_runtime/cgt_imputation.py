@@ -1158,32 +1158,46 @@ def _draw_plan_amounts(
     *,
     person_id: np.ndarray,
     existing: np.ndarray,
+    weights: np.ndarray,
     rng: np.random.Generator,
     new_gains: np.ndarray,
 ) -> None:
-    """Draw one plan's amounts on stratified quantiles in prior-gain order.
+    """Draw one plan's amounts on weight-proportional quantile strata.
 
-    The ``n`` persons a (gain band, income band) plan received across every
-    cell take the quantile strata ``[k/n, (k+1)/n)`` in ascending prior-gain
-    order with one seeded jitter per plan, so the plan's realised mean sits
-    on its published mean instead of carrying the noise of ``n`` independent
-    draws; the open band takes each stratum's conditional mean.
+    The persons a (gain band, income band) plan received across every cell
+    take, in ascending prior-gain order, the quantile strata that partition
+    (0, 1) in proportion to their household weights, with one seeded jitter
+    per plan inside the stratum. The published mean is a people-weighted
+    mean, so the strata must be too: equal strata on unequal weights put the
+    tail's mass on whichever rows happen to be light and the plan's weighted
+    mean drifts (the GBP 5m+ band realised GBP 41bn of GBP 48bn on rows a
+    third of whose weight sat in the bottom strata). The open band takes each
+    stratum's conditional mean, so its weighted mean is the published mean
+    exactly; a bounded band takes the quantile inside each stratum, which
+    reproduces the mean to the width of the widest stratum.
     """
 
     if members.size == 0:
         return
     ordered = _ranked(members, person_id=person_id, existing=existing)[::-1]
-    n = ordered.size
-    strata = np.arange(n, dtype=float)
+    cumulative = np.cumsum(weights[ordered])
+    total = float(cumulative[-1])
+    if not total > 0.0:
+        raise ValueError("A CGT plan received members with no positive weight.")
+    upper_quantiles = cumulative / total
+    lower_quantiles = np.concatenate(([0.0], upper_quantiles[:-1]))
     jitter = float(rng.random())
     lower = plan.effective_lower_bound
     if np.isinf(plan.gain_upper_bound):
         amounts = _pareto_stratum_means(
-            strata / n, (strata + 1.0) / n, lower, plan.mean
+            lower_quantiles, upper_quantiles, lower, plan.mean
         )
     else:
         amounts = _truncated_exponential_quantile(
-            (strata + jitter) / n, lower, float(plan.gain_upper_bound), plan.mean
+            lower_quantiles + jitter * (upper_quantiles - lower_quantiles),
+            lower,
+            float(plan.gain_upper_bound),
+            plan.mean,
         )
     new_gains[ordered] = amounts
 
@@ -1390,6 +1404,7 @@ def impute_uk_capital_gains_with_report(
                 np.concatenate(chunks),
                 person_id=person_id,
                 existing=existing,
+                weights=person_weight,
                 rng=rng,
                 new_gains=new_gains,
             )
@@ -1909,18 +1924,21 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             ),
             "open_band_family": "Pareto with alpha = mean / (mean - lower bound)",
             "quantile_scheme": (
-                "stratified: the persons a (gain band, income band) plan "
-                "receives across every cell and the pooled walk take the "
-                "quantile strata [k/n, (k+1)/n) in ascending prior-gain order "
-                "with one seeded jitter per plan, so the plan's realised mean "
+                "stratified by weight: the persons a (gain band, income band) "
+                "plan receives across every cell and the pooled walk take the "
+                "quantile strata that partition (0, 1) in proportion to their "
+                "household weights, in ascending prior-gain order with one "
+                "seeded jitter per plan, so the plan's weighted realised mean "
                 "sits on its published mean rather than carrying n independent "
-                "draws"
+                "draws or the weight-rank mix of equal strata"
             ),
             "open_band_realization": (
                 "each open-band person takes the conditional mean of their "
-                "quantile stratum, which averages back to the published mean "
-                "exactly; an iid draw from a Pareto with infinite variance "
-                "sits well below it on a few dozen carriers"
+                "weight-proportional quantile stratum, which averages back to "
+                "the published mean exactly under the household weights; an iid "
+                "draw from a Pareto with infinite variance sits well below it on "
+                "a few dozen carriers, and equal strata on unequal weights put "
+                "the tail's mass on whichever rows happen to be light"
             ),
             "mean_repair_margin": _MEAN_MARGIN,
             "mean_repair_reason": (

@@ -15,6 +15,8 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
     UKCGTPolicyParameters,
     _band_plans,
+    _CellPlan,
+    _draw_plan_amounts,
     _joint_plans,
     _pareto_quantile,
     _pareto_stratum_means,
@@ -255,6 +257,55 @@ class TestWithinBandDraws:
             np.random.default_rng(3).random(30), 5_000_000.0, 16_158_000.0
         )
         assert iid.mean() < 16_158_000.0
+
+    def test_plan_amounts_carry_the_published_mean_under_unequal_weights(
+        self,
+    ) -> None:
+        """Strata are proportional to weight, so the weighted mean is the plan's."""
+        rng = np.random.default_rng(5)
+        n = 40
+        # Light rows hold the largest priors (the donors) and heavy rows the
+        # smallest: equal strata would hand the tail to the light rows and
+        # the weighted mean would fall far short of the published one.
+        existing = np.linspace(1.0, 2.0, n)
+        weights = np.where(existing > 1.5, 100.0, 900.0)
+        person_id = np.arange(n)
+        for plan, tolerance in (
+            (
+                _CellPlan(
+                    5_000_000, np.inf, 5_000_000.0, 3_000.0, 16_158_000.0, False, False
+                ),
+                1e-9,
+            ),
+            (
+                _CellPlan(
+                    1_000_000,
+                    2_000_000.0,
+                    1_000_000.0,
+                    9_000.0,
+                    1_420_000.0,
+                    False,
+                    False,
+                ),
+                0.02,
+            ),
+        ):
+            gains = np.zeros(n)
+            _draw_plan_amounts(
+                plan,
+                person_id,
+                person_id=person_id,
+                existing=existing,
+                weights=weights,
+                rng=rng,
+                new_gains=gains,
+            )
+            weighted_mean = float((gains * weights).sum() / weights.sum())
+            assert weighted_mean == pytest.approx(plan.mean, rel=tolerance)
+            # Rank order is preserved: a larger prior never draws less.
+            order = np.argsort(existing)
+            assert (np.diff(gains[order]) >= 0).all()
+            assert gains.min() >= plan.effective_lower_bound
 
     def test_rejects_a_mean_outside_the_band(self) -> None:
         with pytest.raises(ValueError, match="does not sit inside"):
