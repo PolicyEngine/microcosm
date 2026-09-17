@@ -4374,6 +4374,150 @@ def test_absent_observer_allocates_no_snapshot(tmp_path: Path, monkeypatch) -> N
     _run(_graph(), source, ContentStore(tmp_path / "store"), _registry())
 
 
+def test_a_seal_only_observer_allocates_no_snapshot(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """``_population_observer_detach=False`` skips the pickle round trip.
+
+    The detachment is one full independent population plus a temporary
+    serialized table buffer per reached node. An observer that only reads --
+    one that seals each population and keeps the seal -- needs none of it, and
+    this is the shape of ``test_absent_observer_allocates_no_snapshot`` with an
+    observer actually present.
+    """
+
+    def forbidden(population):
+        raise AssertionError("snapshot allocated for a seal-only observer")
+
+    monkeypatch.setattr(graph_executor, "_observer_snapshot", forbidden)
+    source = _source_path(tmp_path / "source")
+    seen: list[tuple[str, int]] = []
+    manifest = run_graph(
+        compile_graph(_graph()),
+        sources={"survey": source},
+        store=ContentStore(tmp_path / "store"),
+        kernels=_registry(),
+        _population_observer=lambda node_id, population: seen.append(
+            (node_id, population.frame.n("person"))
+        ),
+        _population_observer_detach=False,
+    )
+    assert [node_id for node_id, _ in seen] == list(manifest.nodes)
+    assert {n for _, n in seen} == {3}
+
+
+@pytest.mark.parametrize("warm", (False, True))
+def test_a_seal_only_observer_moves_no_key_receipt_or_store_object(
+    tmp_path: Path, warm: bool
+) -> None:
+    """A read-only observer in either mode is invisible to what a run exports."""
+    source = _source_path(tmp_path / "source")
+    compiled = compile_graph(_graph(leaf=False))
+    plain_store = ContentStore(tmp_path / "plain")
+    plain = run_graph(
+        compiled,
+        sources={"survey": source},
+        store=plain_store,
+        kernels=_registry(),
+    )
+    plain_objects = _object_bytes(plain_store)
+    store = ContentStore(tmp_path / "sealed")
+    if warm:
+        run_graph(
+            compiled, sources={"survey": source}, store=store, kernels=_registry()
+        )
+    seals: list[tuple[str, tuple]] = []
+
+    def observe(node_id, population):
+        seals.append(
+            (
+                node_id,
+                tuple(
+                    (entity, population.frame.n(entity))
+                    for entity in population.frame.entities
+                ),
+            )
+        )
+
+    sealed = run_graph(
+        compiled,
+        sources={"survey": source},
+        store=store,
+        kernels=_registry(),
+        _population_observer=observe,
+        _population_observer_detach=False,
+    )
+    assert [node_id for node_id, _ in seals] == list(sealed.nodes)
+    assert sealed.key == plain.key
+    assert {name: item.key for name, item in sealed.nodes.items()} == {
+        name: item.key for name, item in plain.nodes.items()
+    }
+    assert _object_bytes(store) == plain_objects
+
+
+def test_a_seal_only_observer_receives_the_live_population(tmp_path: Path) -> None:
+    """The mode's whole point, and the contract the caller is declaring.
+
+    In the default mode the observer receives an independent copy. Here it
+    receives the object the executor holds -- which is why the keyword is a
+    declaration that the observer will not retain or mutate it, and why the
+    default is unchanged.
+    """
+    source = _source_path(tmp_path / "source")
+    compiled = compile_graph(_graph(leaf=False))
+    detached: list[Population] = []
+    run_graph(
+        compiled,
+        sources={"survey": source},
+        store=ContentStore(tmp_path / "detached"),
+        kernels=_registry(),
+        _population_observer=lambda node_id, population: detached.append(population),
+    )
+    live: list[Population] = []
+    manifest = run_graph(
+        compiled,
+        sources={"survey": source},
+        store=ContentStore(tmp_path / "live"),
+        kernels=_registry(),
+        _population_observer=lambda node_id, population: live.append(population),
+        _population_observer_detach=False,
+    )
+    attached = manifest.populations["survey"]
+    assert any(
+        seen.frame.table(entity) is attached.table(entity)
+        for seen in live
+        for entity in attached.entities
+    )
+    assert not any(
+        seen.frame.table(entity) is attached.table(entity)
+        for seen in detached
+        for entity in attached.entities
+    )
+
+
+def test_the_detach_keyword_is_a_bool_and_does_nothing_without_an_observer(
+    tmp_path: Path,
+) -> None:
+    source = _source_path(tmp_path / "source")
+    with pytest.raises(TypeError, match="_population_observer_detach must be a bool"):
+        run_graph(
+            compile_graph(_graph()),
+            sources={"survey": source},
+            store=ContentStore(tmp_path / "typed"),
+            kernels=_registry(),
+            _population_observer_detach=0,
+        )
+    plain = _run(_graph(), source, ContentStore(tmp_path / "plain"), _registry())
+    alone = run_graph(
+        compile_graph(_graph()),
+        sources={"survey": source},
+        store=ContentStore(tmp_path / "alone"),
+        kernels=_registry(),
+        _population_observer_detach=False,
+    )
+    assert alone.key == plain.key
+
+
 def test_a_gate_reached_only_through_bytes_still_derives_the_tier(
     tmp_path: Path,
 ) -> None:
