@@ -90,6 +90,22 @@ the outermost close re-validates every capsule the memo still holds.
 pin both capsules by moving a source from a profile hook as that close's own
 validation returns; against the previous ordering both fail with DID NOT RAISE.
 
+Leaving the refusal to the next borrow is the whole answer only while a borrow
+can still follow. At the **outermost** close there is none: the memo is cleared
+as that close returns, so a source that moved inside its window — including one
+removed, after which no signature can be taken at all — would end the run
+without refusing. The outermost close therefore pays that deferred validation
+itself, in the same place and with the same error translation as the
+unconditional pass above, whenever its own signature moved or could not be
+taken. The refusal is the one that validation raises, never a code the close
+invents, and a close that leaves a clean signature — which is what a close
+leaves when nothing moved — runs nothing extra.
+`test_a_roster_file_removed_inside_the_outermost_close_refuses_at_the_close`
+and `test_a_native_source_removed_inside_the_outermost_close_refuses_at_the_close`
+pin both capsules by removing a source from the same kind of hook, and assert
+the close raises exactly what an unmemoised borrow raises for that removal:
+`SOURCE_ROSTER` and `NATIVE_BINDING_REFUSAL`.
+
 `verification_epoch()` yields the close's record: the protocol label, the
 capsule count, the number of memo hits, the number of signature misses and the
 number of unconditional final re-validations. It is filled in as the epoch runs

@@ -142,6 +142,31 @@ is the only way in). Run against the previous ordering, in this worktree, both
 fail with `Failed: DID NOT RAISE`; against this one the next borrow refuses
 with `SOURCE_STAT_CHANGED` and `SOURCE_FILE_CHANGED` respectively.
 
+**And the window at the outermost close, closed on 2026-09-17.** Recording
+nothing is the whole answer only while a borrow can still follow. That fix took
+the post-validation signature through a guarded helper, so a signature that
+could not be taken at all became `None` rather than an escaping error — right at
+an inner close, where the next borrow misses and pays the complete validation,
+and wrong at the **outermost** close, where `_MEMO` is cleared as the close
+returns and no borrow follows. A roster file removed after the outermost close's
+own `_validate` had returned — past every comparison, and past the point where
+a signature can be taken at all — therefore ended the run without refusing,
+where the previous head had failed it with a raw `FileNotFoundError` that the
+close's own docstring says must not escape. The outermost close now pays that
+deferred validation itself, inside the same translation block, whenever its
+signature moved or could not be taken: `_validate` re-reads the same roster, so
+it raises the refusal the next borrow's miss would have raised, with no code of
+the close's own, and a clean signature — which is what a close leaves behind
+when nothing moved — costs nothing extra. `_epoch_exit` is mirrored; it reaches
+the window by the other route, because `_path_stat` never raises, so a removed
+source moves its signature rather than making it unavailable.
+`test_a_roster_file_removed_inside_the_outermost_close_refuses_at_the_close` and
+`test_a_native_source_removed_inside_the_outermost_close_refuses_at_the_close`
+remove the file from the same kind of profile hook and assert the close raises
+exactly what an unmemoised borrow raises for the same removal, `SOURCE_ROSTER`
+and `NATIVE_BINDING_REFUSAL`. Against the swallowing behaviour, restored in
+place in this worktree, both fail with `Failed: DID NOT RAISE`.
+
 **Before/after CPU.** Unit level, from
 `test_an_epoch_validates_once_and_reuses_it`: six borrows of one preparation
 cost six complete validations before (one `_source_files` pass each — the whole
