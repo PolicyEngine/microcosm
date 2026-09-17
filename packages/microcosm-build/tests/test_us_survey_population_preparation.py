@@ -789,6 +789,37 @@ def test_roster_spill_refuses_a_symlinked_segment(tmp_path):
         owner._roster_payload(document, spill=tmp_path, name="preparation")
 
 
+def test_roster_payload_refuses_a_segment_table_that_does_not_name_its_bytes(
+    monkeypatch,
+):
+    """The last guard: the joined bytes must hash to the stream digest.
+
+    It cannot fire while the segment table and the segments agree, so it is
+    driven by a table that disagrees -- which is what a corrupted or
+    mis-ordered table looks like from inside the transport.
+    """
+    document = {"rows": [[i, "acs", i * 7] for i in range(200)]}
+    original = owner._roster_segments
+
+    def wrong_digest(*args, **kwargs):
+        segments, table, _digest, total = original(*args, **kwargs)
+        return segments, table, "0" * 64, total
+
+    monkeypatch.setattr(owner, "_roster_segments", wrong_digest)
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ROSTER_DIGEST"):
+        owner._roster_payload(document)
+
+    def wrong_order(value, **kwargs):
+        kwargs["segment"] = 64
+        segments, table, digest, total = original(value, **kwargs)
+        assert len(segments) > 1
+        return segments[::-1], table[::-1], digest, total
+
+    monkeypatch.setattr(owner, "_roster_segments", wrong_order)
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ROSTER_DIGEST"):
+        owner._roster_payload(document)
+
+
 def test_roster_spill_refuses_a_redirected_location(tmp_path):
     document = {"rows": [[i, "acs", i * 7] for i in range(200)]}
     elsewhere = tmp_path / "elsewhere"
