@@ -29,6 +29,7 @@ from microcosm.build.us_runtime import (
     acs_pums,
     asec_current_money,
     current_survey_geography,
+    graph_survey_population,
     survey_observed_age,
     survey_origin_budget,
 )
@@ -145,6 +146,13 @@ def test_the_origin_budget_byte_transport_is_left_for_the_other_argument():
     admitted = survey_origin_budget.MAX_PAYLOAD_BYTES // 764
     assert admitted < STACKED_HOUSEHOLDS // 10
     assert survey_origin_budget.MAX_GROUPS > STACKED_HOUSEHOLDS
+    # And it could not be raised here even if this lane wanted to: the shared
+    # encoder refuses any cap above 64 MiB before encoding a byte, so a larger
+    # number in this module would refuse the module rather than loosen it.
+    with pytest.raises(
+        graph_survey_population.SurveyPopulationGraphError, match="TRANSPORT_LIMIT"
+    ):
+        graph_survey_population._bounded_json({"a": 1}, 64 * 1024**2 + 1)
 
 
 def test_the_measured_counts_reconcile():

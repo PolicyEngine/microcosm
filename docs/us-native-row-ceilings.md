@@ -185,11 +185,44 @@ meets; it does not, and this note corrects that.**
 
 ## 5. What still binds, and whose argument it is
 
-The census in §6 found fourteen bounds a full-source build meets. Five are the
-row counts §3 moved. The rest are byte transports and byte-derived row
-pre-checks, and they belong to the transport lane's argument — a segmented
-stream under one explicit total — not to this one. The loudest is in a module
-this lane did touch, so it gets said plainly:
+The census in §6 found fourteen bounds a full-source build meets. Six are the
+row counts §3 moved. The rest belong to the transport lane's argument — a
+segmented stream under one explicit total — not to this one.
+
+### 5a. The test the rule applies
+
+Three of the remaining bounds *look* like row ceilings, and one of them was
+moved here after that test was applied to it. The test is a single question,
+answered from code rather than from the constant's name:
+
+> **Does the binding site materialise a per-row payload, or does it stream?**
+
+A bound in front of a materialised payload cannot be usefully raised on its own,
+because the payload's own byte cap refuses first and at a smaller number. A
+bound in front of a streaming digest has nothing behind it, and the rule applies.
+
+| bound | value | what is behind the binding site | verdict |
+|---|---:|---|---|
+| `current_survey_geography.MAX_HOUSEHOLDS` | 524,288 | `_projection_digest` streams one `_encode(values, maximum=4096)` at a time into a `hashlib.sha256`; the module's only bytes are a 64 KiB summary receipt | **streams — moved in §3** |
+| `current_survey_household_roles.MAX_PERSONS` | 2,097,152 | `_projection_bytes` is `table.reset_index().to_json(orient="table").encode()` — the whole per-person table in one string — under `graph_current_survey_household_roles.MAX_ARTIFACT_BYTES` = 64 MiB | materialises — transport's |
+| `current_child_property_income_source.MAX_ROWS` | 600,000 | `_json` is one `json.dumps(value)` under `MAX_PROJECTION_BYTES` = 64 MiB | materialises — transport's |
+
+The middle row is the clearest case for why the test matters: at roughly 200
+bytes of JSON per person, that 64 MiB cap admits a few hundred thousand persons,
+so raising the 2,097,152 row bound would move nothing at all.
+
+One further bound binds and is deliberately **not** decided here.
+`asec_demographic_source._MAX_PERSONS` (600,000) is enforced at five sites that
+count two different quantities — a fixed ASEC three-cohort roster of 432,523
+rows, and the retained ACS person roster, which a full-source build grows past
+three million — and its `_encode` builds a `struct`-packed binary payload rather
+than a streamed digest. One constant serving two quantities, in front of a
+binary encoding, is not a case the rule settles by itself. The lane report puts
+it to the owner rather than guessing.
+
+### 5b. The loudest one
+
+It is in a module this lane did touch, so it gets said plainly:
 
 > **`survey_origin_budget.MAX_PAYLOAD_BYTES` (64 MiB) admits 87,838 households —
 > 5.53% of source.** That is below one tenth, and below the 96,860-household
@@ -201,6 +234,18 @@ builds one faithful origin record through the module's own `_reference` and
 `_json` at full-source household-id widths and gets 764 bytes per group,
 including the two `household_ids` and two `group_indices` entries the header
 carries for each group's two clone roles.
+
+**It also cannot be raised on its own, and that is a structural fact rather
+than a preference.** `survey_origin_budget._json` is
+`graph._bounded_json(value, MAX_PAYLOAD_BYTES)`, and `_bounded_json` opens with
+
+```python
+_require(type(limit) is int and 0 < limit <= 64 * 1024**2, "TRANSPORT_LIMIT")
+```
+
+so the shared encoder refuses any cap above 64 MiB before it encodes a byte. A
+larger number in this module would not loosen the bound; it would refuse the
+module. The 64 MiB is the encoder's, and moving it is the transport change.
 
 The consequence for this lane is stated rather than glossed: **lifting
 `MAX_GROUPS` is necessary and not sufficient.** `GROUP_COUNT_BOUND` is checked
