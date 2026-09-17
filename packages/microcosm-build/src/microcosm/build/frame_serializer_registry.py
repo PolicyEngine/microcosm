@@ -180,6 +180,15 @@ HDF_WRITE_EXCLUSIONS = (
         reason="Copies Microcosm-owned root attributes only.",
     ),
     HdfWriteExclusion(
+        exclusion_id="nsece_childcare_native_receipt",
+        writer=HdfWriteSite(
+            "packages/microcosm-build/src/microcosm/build/us_runtime/"
+            "childcare_attendance_receipt.py",
+            "write_native_childcare_receipt",
+        ),
+        reason="Adds one JSON receipt key; never writes an entity table.",
+    ),
+    HdfWriteExclusion(
         exclusion_id="acs_transfer_raw_draw_bank",
         writer=HdfWriteSite(
             "packages/microcosm-build/src/microcosm/build/us_runtime/"

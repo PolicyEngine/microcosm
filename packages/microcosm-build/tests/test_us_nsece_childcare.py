@@ -772,7 +772,11 @@ def test_bridge_widens_a_thin_cell_instead_of_keeping_distant_donors():
     result = bridge_nsece_noncalendar_attendance(
         derive_nsece_childcare(hh, cal), seed=915
     )
-    child = result.children.iloc[11]
+    bridged = result.children.loc[
+        result.children.attendance_status.eq("summary_bridge")
+    ]
+    assert len(bridged) == 1
+    child = bridged.iloc[0]
     assert child.schedule_bridge_match == "age,parent_work_status,income_band"
     assert child[DAYS] == 5
     assert child[HOURS] == 8
@@ -951,9 +955,12 @@ def test_production_stage_refuses_unbound_existing_values(monkeypatch):
 
 def test_default_outside_domain_policy_fails_early_and_names_the_flag(monkeypatch):
     monkeypatch.setattr(stage, "load_nsece_childcare", lambda *args: _source())
+    frame = _asec_frame()
+    # The adult has no observed attendance, as on every production parent.
+    frame.table("person").loc[0, list(US_CHILDCARE_ATTENDANCE_COLUMNS)] = np.nan
     with pytest.raises(ValueError, match="inherit-outside-domain-baseline"):
         stage.with_us_childcare_attendance_inputs(
-            _asec_frame(),
+            frame,
             household_tsv="fake",
             calendar_tsv="fake",
             asec_source_cache=None,

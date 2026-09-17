@@ -7530,6 +7530,7 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
         schema = object()
         weighted_entities = ()
         strata = None
+        metadata = {"upstream_receipt": "preserved"}
 
         def table(self, entity):
             assert entity == "tax_unit"
@@ -7566,7 +7567,9 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
     monkeypatch.setattr(
         builder,
         "Frame",
-        lambda tables, schema, weights, strata: SimpleNamespace(tables=tables),
+        lambda tables, schema, weights, strata, *, metadata=None: SimpleNamespace(
+            tables=tables, metadata=metadata
+        ),
     )
 
     specs = (
@@ -7598,13 +7601,15 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
         ),
     )
 
-    builder._with_aca_marketplace_source_outputs(
+    result = builder._with_aca_marketplace_source_outputs(
         FakeFrame(),
         specs,
         seed=42,
         simulation=object(),
     )
 
+    # Upstream receipts (e.g. the attendance binding) must survive this stage.
+    assert result.metadata == {"upstream_receipt": "preserved"}
     assert captured["stage"] == builder.US_ACA_MARKETPLACE_STAGE
     assert captured["stop_after"] is None
     target_tables = captured["tables"]
