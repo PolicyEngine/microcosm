@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import fields, replace
 
 import numpy as np
 import pandas as pd
@@ -22,6 +22,10 @@ from microcosm.graph.population import MassRecord, Population
 from microcosm.graph.store import ContentStore
 
 _ERROR = "^SURVEY_POPULATION_REPLAY_"
+
+
+def _fields(record):
+    return {field.name: getattr(record, field.name) for field in fields(record)}
 
 
 def _verdict(call, *arguments):
@@ -815,3 +819,140 @@ def test_seal_identity_moves_with_the_seal_and_is_stable_without_it():
     assert seal_identity(replayed_population_seal(expected)) != seal_identity(
         replayed_population_seal(actual)
     )
+
+
+# --- Refusals where BOTH operands are equal ---
+#
+# These are the hardest half of the seal's obligation and the easiest to miss:
+# the comparison refuses a pair that is byte-identical, because it is asserting
+# something about ONE operand. A seal cannot carry them as content, so it must
+# assert them when it is built -- which is what ``_sealed_verdict`` above lets
+# this battery check. Each case below was found by probing the comparison
+# rather than by reading it.
+
+
+def test_a_mass_change_record_subclass_refuses_though_the_values_match():
+    class _Subclass(MassChangeRecord):
+        pass
+
+    frame = _frame()
+    record = frame.mass_log[0]
+    substituted = _rebuild(frame, mass_log=(_Subclass(**_fields(record)),))
+    assert (
+        _refuses_frames(substituted, substituted)
+        == "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
+    )
+
+
+def test_a_mass_record_subclass_refuses_though_the_values_match():
+    class _Subclass(MassRecord):
+        pass
+
+    substituted = _population(_frame())
+    record = substituted.mass_ledger[0]
+    object.__setattr__(substituted, "mass_ledger", (_Subclass(**_fields(record)),))
+    assert (
+        _refuses_populations(substituted, substituted)
+        == "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT"
+    )
+
+
+def test_a_population_subclass_refuses_though_the_content_matches():
+    class _Subclass(Population):
+        pass
+
+    expected = _population(_frame())
+    actual = _Subclass(
+        expected.frame,
+        expected.version,
+        dict(expected.owners),
+        dict(expected.weight_kind),
+        mass_ledger=expected.mass_ledger,
+        design_weights=dict(expected.design_weights),
+    )
+    assert (
+        _refuses_populations(expected, actual)
+        == "SURVEY_POPULATION_REPLAY_POPULATION_TYPE"
+    )
+
+
+@pytest.mark.parametrize("carrier", ["pyarrow", "sparse"])
+def test_a_non_pandas_masked_carrier_refuses_though_the_bytes_match(carrier):
+    """Only pandas' own ``_data``/``_mask`` storage is a reviewed profile."""
+    if carrier == "pyarrow":
+        pytest.importorskip("pyarrow")
+        values = pd.array([1, 2, 3], dtype="int64[pyarrow]")
+    else:
+        values = pd.arrays.SparseArray(np.array([1, 2, 3], dtype=np.int64))
+    frame = _frame()
+    unsupported = _with_column(frame, "object_value", values)
+    code = _refuses_frames(unsupported, unsupported)
+    assert code in (
+        "SURVEY_POPULATION_REPLAY_MASKED_STORAGE",
+        "SURVEY_POPULATION_REPLAY_UNSUPPORTED_EXTENSION_DTYPE",
+    ), code
+
+
+def test_a_degenerate_mask_dtype_refuses_though_both_sides_carry_it():
+    frame = _frame()
+    array = frame.person["nullable_integer"].array
+    object.__setattr__(array, "_mask", array._mask.astype(np.uint8))
+    assert _refuses_frames(frame, frame) == "SURVEY_POPULATION_REPLAY_MASKED_STORAGE"
+
+
+def test_an_ndarray_subclass_backing_refuses_though_both_sides_carry_it():
+    class _Subclass(np.ndarray):
+        pass
+
+    frame = _frame()
+    array = frame.person["nullable_integer"].array
+    object.__setattr__(array, "_data", array._data.view(_Subclass))
+    assert _refuses_frames(frame, frame) == "SURVEY_POPULATION_REPLAY_MASKED_STORAGE"
+
+
+def test_a_str_subclass_cell_refuses_though_the_characters_match():
+    """``np.str_`` arrives for free from a numpy array and is not ``str``."""
+    frame = _frame()
+    values = pd.array(["alpha", "beta", pd.NA], dtype=pd.StringDtype("python"))
+    substituted = _with_column(frame, "text", values)
+    backing = substituted.person["text"].array._ndarray
+    backing[0] = np.array(["alpha"])[0]
+    assert type(backing[0]) is not str and backing[0] == "alpha"
+    assert (
+        _refuses_frames(substituted, substituted)
+        == "SURVEY_POPULATION_REPLAY_STRING_VALUE"
+    )
+
+
+def test_metadata_key_order_is_part_of_the_comparison():
+    expected = _rebuild(_frame(), metadata={"first": 1, "second": 2})
+    actual = _rebuild(_frame(), metadata={"second": 2, "first": 1})
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
+
+
+def test_object_nan_sign_is_part_of_the_comparison():
+    bits = np.array([0x7FF8000000000000, 0xFFF8000000000000], dtype=np.uint64).view(
+        np.float64
+    )
+    frame = _frame()
+    frames = [
+        _with_column(
+            frame,
+            "object_value",
+            pd.Series([value, None, None], index=frame.person.index, dtype=object),
+        )
+        for value in bits
+    ]
+    assert _refuses_frames(*frames) == "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+
+
+def test_non_finite_metadata_keeps_its_sign_on_both_paths():
+    """``_encode_frame_metadata`` spells a float64 in hex, infinities included.
+
+    The seal folds the store codec's bytes, not ``graph_context``'s normative
+    JSON, which is the reason it can carry a value canonical JSON refuses.
+    """
+    expected = _rebuild(_frame(), metadata={"value": float("inf")})
+    _accepts_frames(expected, _rebuild(_frame(), metadata={"value": float("inf")}))
+    actual = _rebuild(_frame(), metadata={"value": float("-inf")})
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
