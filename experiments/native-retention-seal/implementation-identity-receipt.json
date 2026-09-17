@@ -1,0 +1,137 @@
+{
+  "moved_module_digests": {
+    "base->head": {
+      "acs_codec_2024": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740"
+        }
+      },
+      "acs_housing_universe_2024": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740"
+        }
+      },
+      "asec_codec_v4": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740"
+        }
+      },
+      "asec_prepared_v3": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740"
+        }
+      },
+      "assembly_harmonize": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740"
+        }
+      },
+      "assembly_prepare": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740"
+        }
+      },
+      "authenticated_survey_population_v1": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740"
+        }
+      },
+      "composed_asec_binding_v1": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740"
+        }
+      },
+      "composed_population_v1": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740"
+        }
+      },
+      "geography": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740"
+        }
+      }
+    },
+    "base->us_only": {}
+  },
+  "release_eligible": false,
+  "revisions": {
+    "base": "a64f7b733",
+    "head": "9bef866c5",
+    "us_only": "1b0b915b0"
+  },
+  "scope": "diagnostic only; not a build, certification or release artifact",
+  "stages": [
+    "acs_codec_2024",
+    "acs_housing_universe_2024",
+    "asec_codec_v4",
+    "asec_prepared_v3",
+    "assembly_harmonize",
+    "assembly_prepare",
+    "authenticated_survey_population_v1",
+    "composed_asec_binding_v1",
+    "composed_population_v1",
+    "geography"
+  ],
+  "working_tree_contract_acceptance": {
+    "acs_codec_2024": {
+      "accepted": true,
+      "inventory_sha256": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
+      "modules_sha256": "7a3339bbd2e236f48655def8c0f267aa7b2d71ec2ad10eb1fc2fa3c9231d3894"
+    },
+    "acs_housing_universe_2024": {
+      "accepted": true,
+      "inventory_sha256": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
+      "modules_sha256": "27e8545b52a341dd8895fd0c472351798a42bd6c47e99c09d660addcb120b100"
+    },
+    "asec_codec_v4": {
+      "accepted": true,
+      "inventory_sha256": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
+      "modules_sha256": "71fe9fca05e1ad5f381851e5fab5babe919b345c348aa99afad10dcee1d0385f"
+    },
+    "asec_prepared_v3": {
+      "accepted": true,
+      "inventory_sha256": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
+      "modules_sha256": "478819f81fe35322ff958258f85ed8d5e3aaa6bbfc7a4f15bd08a811a2b9684a"
+    },
+    "assembly_harmonize": {
+      "accepted": true,
+      "inventory_sha256": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
+      "modules_sha256": "69514bd1029e3570cbd31b6261402d507c9518f0c0815097b9fc21b49a5fc947"
+    },
+    "assembly_prepare": {
+      "accepted": true,
+      "inventory_sha256": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
+      "modules_sha256": "74a73bb5295a38a2614328c2c38e46cdb3adf3529cf8a758b3495a5987d5dd42"
+    },
+    "authenticated_survey_population_v1": {
+      "accepted": false,
+      "error": "ValueError('Unclassified US dependency/resource contract: microcosm.build/us_runtime/survey_population_preparation.py.')"
+    },
+    "composed_asec_binding_v1": {
+      "accepted": true,
+      "inventory_sha256": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
+      "modules_sha256": "2b9028a71b9515d396b20273951c900a0a4d0fb8593896f73e439f15821bd187"
+    },
+    "composed_population_v1": {
+      "accepted": true,
+      "inventory_sha256": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
+      "modules_sha256": "2caf3c5c46ada06f8662f838942c2439ef28786c524ea23005e44eb33873140f"
+    },
+    "geography": {
+      "accepted": true,
+      "inventory_sha256": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
+      "modules_sha256": "0f72e2751b3797d47d704cf17e7d9cb3d0f28d082e4b6c02d53440ba664b8966"
+    }
+  }
+}

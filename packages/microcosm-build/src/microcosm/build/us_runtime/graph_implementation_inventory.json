@@ -946,7 +946,7 @@
         "numpy",
         "pandas"
       ],
-      "resource_accesses_sha256": "ccfed1c1acff5a1c50b538424dc129930f69c374d9841e233b3fb593a440c3aa",
+      "resource_accesses_sha256": "0071f934801d15c14e4be66af12ff73daee5f65c89f61d655a23e462afdcd061",
       "unbound_uses_sha256": "d114117ca19e9b866982147e5497d601ed91ca603d0568730d4051bdd4005910"
     },
     "microcosm.frame/__init__.py": {
