@@ -80,7 +80,81 @@ principle double the retention — but it does not, because the replay loop assi
 per structural version plus the explicit `patch`/`base_expected`/`donor_columns`
 entries. The observer's nineteen independent pickles remain the dominant term.
 
-## 2. The design, in one page
+
+## 2. Before and after at 1/1000
+
+The after-run is the same harness at the same arguments against a cold store, on
+this branch's head, in its own worktree
+(`~/PolicyEngine/_worktrees/microcosm-native-scale-after`, detached at
+`5307249b3`, pid 54488 / pgid 54488, launched after the gate confirmed 85.5 GB
+available). It then replays the same graph with `resume="require"` — §2b. The two
+runs' cold phases, on the quantities the harness measures on both sides:
+
+| | baseline `5ff889814` | after `5307249b3` | delta | ratio |
+|---|---|---|---|---|
+| **runner call CPU s** | **2,026.78** | **1,907.58** | **−119.20** | **1.062×** |
+| runner call wall s | 2,045.91 | 1,975.99 | −69.92 | 1.035× |
+| financial node loop wall s (19 nodes) | 277.36 | 238.33 | −39.03 | 1.164× |
+| prefix node loop wall s (9 nodes) | 55.93 | 45.49 | −10.44 | 1.229× |
+| outside both node loops, wall s | 1,712.62 | 1,692.17 | −20.45 | 1.012× |
+| cold-phase peak current RSS | 13.16 GB | 12.42 GB | −0.74 GB | |
+| loadavg, start → end | 6.68 → 10.75 | 5.12 → 10.60 | | |
+
+**Read the CPU row and treat the wall rows as weaker.** `call_cpu_seconds` comes
+from `process_time` and is load-independent; the per-node figures are
+`perf_counter` wall times from the executor's own receipts and both runs shared
+the machine with other lanes, so a node can move either way on contention. One
+does: `survey_predictors.asec_design_donor` rose 66.88 → 73.19 s while its three
+siblings fell 12–19% each. That is why the report leads with 1,907.58 against
+2,026.78 and not with a per-node table.
+
+### 2a. The seal, measured in situ rather than on a bench
+
+The two sampler ledgers settle what the 119 CPU-s is. **Every one of the eight
+`update_cell <- _frame_identity <- …` chains in the baseline's 60-chain ledger is
+absent from the after-run's**, and they were 191.4 CPU-s:
+
+| CPU s | chain, innermost → outermost |
+|---|---|
+| 67.9 | `update_cell <- _frame_identity <- _population_stamp <- survey_atomic_geography.<genexpr>` |
+| 28.3 | … `<- reconstruct_atomic_survey_geography` |
+| 24.2 | … `<- run_atomic_survey_financial` |
+| 16.7 | … `<- run_atomic_survey_population` |
+| 16.3 | … `<- _node_population_stamp` |
+| 15.1 | … `<- survey_origin_budget._geography_binding` |
+| 10.0 | `update_cell <- _frame_identity <- survey_origin_budget._population_identity <- current_survey_predictors.<genexpr>` |
+| 6.7 | … `<- _geography_binding <- _initial` |
+| 6.2 | … `<- graph_atomic_survey_financial.observe` |
+
+What replaced them, above the after-run's 5.11 s cut, is **19.2 CPU-s**:
+`_float_cells <- _cells_blob <- _frame_identity <- _population_stamp` at 12.0 s
+and `_frame_identity <- _population_stamp <- <genexpr> <- reconstruct` at 7.2 s.
+**Both are upper bounds, and the reason matters**: the after-run's
+`sampled_cpu_ledger` is cumulative over the whole process, so it covers the cold
+run *and* the required replay, which re-derives the preparation and re-stamps
+every population. The 19.2 s therefore includes replay samples the baseline has no
+counterpart for, while the 191.4 s of vanished chains is absent from **both**
+phases combined — which is the stronger half of the comparison, not the weaker.
+
+So **the per-cell walker cost ~191 CPU-s and the per-column pass costs at most
+~19 in the same places — about 10× or better in situ**, against 7.68× on the
+synthetic bench, the difference being that the bench measures every dtype at
+1,000,000 rows per column while the ledger's cut hides the cheap remainder.
+
+Note the nine chains: the walker ran from **six** distinct callers, not only the
+observer the cost attribution named — `_population_stamp` from the geography
+genexpr, the geography reconstruction, both runners, `_node_population_stamp` and
+the observer, plus `survey_origin_budget`'s two own identity paths. That is why
+one change to `_frame_identity` moves more than the observer's share.
+
+Attribution here is statistical: a 0.25 s stack sampler, four frames per chain,
+top 60 chains, with cuts at 4.92 s (baseline) and 5.11 s (after). The 191 → ≤19
+figures are therefore a strong signal about where the time went and not a
+four-figure accounting of it; the load-independent total, **−119.20 CPU-s on the
+runner call**, is the number to quote, and it is measured between the call's own
+start and return so the replay cannot reach it.
+
+## 3. The design, in one page
 
 `docs/us-native-scale-transport.md` (421 lines) is the authority. Its shape:
 
@@ -138,9 +212,9 @@ strings by encoding each distinct value once, and `object`/`category` keeping th
 walk because `1`, `True` and `1.0` are equal and hash alike there while the
 encoder spells them three different ways.
 
-**The retention.** Designed, not implemented, and §5 below says why.
+**The retention.** Designed, not implemented, and section 6 says why.
 
-## 3. Pins re-derived
+## 4. Pins re-derived
 
 **No committed pin moves.** This was re-derived rather than assumed: every
 contract in `graph_implementation_inventory.json` was recomputed through
@@ -173,9 +247,9 @@ the PR body. Presence is decided by `lstat`, not `Path.exists()`: a broken
 symlink does not exist and the first draft of this code wrote straight through
 one, which its own test caught.
 
-## 4. The ceiling is gone
+## 5. The ceiling is gone, proven three ways
 
-### 4a. Through the repository's own encoder, on the pilot's own receipt
+### 5a. Through the repository's own encoder, on the pilot's own receipt
 
 `experiments/native-scale-transport/ceiling_receipt.py` replicates the recovered
 1/1000 preparation artifact's per-household and per-person lists to the household
@@ -202,14 +276,10 @@ encode spends reaching its refusal — so raising the ceiling costs about
 98 CPU-s at full source, which is what "a transport-shape decision, not a
 performance trade-off" means in numbers.
 
-### 4b. Through the graph, at 1/10
-
-Queued at the time of writing; section 7 says what it is waiting for, what it can
-add and what it cannot, and gives the prior for whether it completes inside the
-brief's 21,600 CPU-s.
+### 5b. Through the graph, at 1/10
 
 
-### 4c. The content did not move, checked on the real US frame
+### 5c. The content did not move, checked on the real US frame
 
 `experiments/native-scale-transport/receipt_parity.py` reassembles this branch's
 own 1/1000 preparation receipt from the roster spill's `header.json`, verifies
@@ -242,10 +312,10 @@ commit between that artifact and this head.
 per-column seal computes, are byte-identical across all of it, on the real US
 frame rather than on a fixture.** That is the strongest form the
 identity-equality proof can take: not "the seal agrees with an oracle on a
-constructed frame", which §2 also has, but "the seal produced the same 66-byte
+constructed frame", which section 3 also has, but "the seal produced the same 66-byte
 `frame_sha256` the build produced before any of this".
 
-## 5. Retention: what is implemented, what is not, and why
+## 6. Retention: what is implemented, what is not, and why
 
 **Implemented: the CPU half.** The attribution's item 1 names one callback as
 both the memory wall and 35–46% of full-source CPU, and the CPU inside it is
@@ -296,7 +366,7 @@ and this is the report's main negative result.**
    between the observation and the comparison — RAM (~290 GiB at full source) or
    disk (~285 GiB), and there is no third place** — unless the object comparison
    is replaced by a content seal. That is a change to a verification contract,
-   not an optimisation, and it is question 2 in §7.
+   not an optimisation, and it is question 2 in section 10.
 
 One correction to the arithmetic that would otherwise look worse:
 `population_ops.patch` deep-copies every entity table (`_copied_tables`,
@@ -337,7 +407,7 @@ store references never enter node records or portable manifest identity", and it
 `_LazyPopulations` is a `Mapping[str, PopulationView]`. So it made the
 **manifest's attached population views** — one per structural version — lazy
 against the content store. The observer retains one detached `Population` per
-*node*, and §5's three store refusals are precisely why the two are not
+*node*, and section 6's three store refusals are precisely why the two are not
 interchangeable: a `PopulationView` is a portable Frame that already goes through
 `put_frame`, and a detached snapshot is not. **Restoring layer 08 would not remove
 the nineteen pickles.** It is worth restoring on its own terms and it is the
@@ -351,7 +421,7 @@ output, not all 245 executor-observed snapshots" (`:638-639`), which makes the
 financial runner the outlier among the six and gives the shape the answer would
 take.
 
-## 6. What `run_graph(population_retention=...)` on main would need
+## 7. What `run_graph(population_retention=...)` on main would need
 
 `docs/us-native-scale-transport.md` §4 has it in full. In brief, five things,
 each established from the code rather than proposed:
@@ -378,7 +448,7 @@ each established from the code rather than proposed:
    no observations and no completion boundary (`:502-503`), which is the existing
    shape of "nothing retained, nothing to re-stamp".
 
-## 7. Still in flight at the time of writing
+## 8. Still in flight at the time of writing
 
 Two measurements were running when this report was written, and the report says
 so rather than leaving a gap that reads like a result.
@@ -390,7 +460,7 @@ baseline and then replays it against its own store with `resume="require"`,
 comparing manifest key, node keys, artifact identities, receipts and every store
 object's bytes between the cold run and the replay. Its cold phase had passed
 1,300 CPU-s against the baseline's 2,028.69 when this section was written. Its
-roster spill is already on disk and is what the parity table in section 4c was computed
+roster spill is already on disk and is what section 5c's parity table was computed
 from, so the content-preservation result does not depend on the run finishing.
 
 **The 1/10 graph run** is queued behind two gates in
@@ -402,7 +472,7 @@ during this session, which is exactly what the gate is for; the waiter refuses
 after six hours rather than starting a run that would make the machine swap.
 
 **What the 1/10 run can and cannot add.** The ceiling question is already
-answered, at full source rather than at 1/10, by §4a: the repository's own encoder
+answered, at full source rather than at 1/10, by section 5a: the repository's own encoder
 refuses `PAYLOAD_LIMIT` on the pilot's own receipt scaled to 158,400 and to
 1,587,168 households, and the segmented transport carries both. What the graph run
 adds is whether the *rest* of the 19-node path survives at that size, and the
@@ -418,7 +488,7 @@ the store's object count on every ten-second flush precisely so that a run the
 ceiling truncates still carries the evidence for the question it was launched to
 answer.
 
-## 8. Tests, as CI runs them — verbatim
+## 9. Tests, as CI runs them — verbatim
 
 ```
 $ uv run ruff check .
@@ -469,7 +539,7 @@ above is the superset of it that touches this change. The engine lanes
 engine-gated, and no test this branch adds or touches carries `requires_us` or
 `requires_uk`.
 
-## 9. Questions for Max
+## 10. Questions for Max
 
 **1. Which columnar format for the receipt bodies?** The transport as shipped
 uses the store's own existing shape — a `header.json` payload table plus
@@ -501,7 +571,7 @@ no new dependency; (b) is the better end state and is a deliberate re-pin, not a
 side effect of this lane.
 
 **2. Should the retention policy be a run option or the only behaviour — and is
-the object comparison negotiable?** §5 shows the real question is not the
+the object comparison negotiable?** Section 6 shows the real question is not the
 option's shape. Nineteen detached populations must exist between the observation
 and the replay comparison, in RAM or on disk, unless
 `same_replayed_population(expected[n], observed[n])` becomes a comparison of
@@ -523,7 +593,7 @@ content seals.
   not add it — and it is why the #893 reconciliation dropped the one that already
   existed (`6c0f24c77`, layer 08). Note that the dropped one made the *manifest's*
   attached population views lazy, not the observer's snapshots, so restoring it
-  does not answer this question; §5 has the reading.
+  does not answer this question; section 6 has the reading.
 
 My reading is that (b) is right and that it is your call, not mine, because it
 narrows what a run proves.
@@ -540,7 +610,7 @@ lane lift them as one change with one argument, or should each be lifted by the
 lane that meets it? I did not touch them, because none binds at 1/10 and each
 deserves its own reading.
 
-## 10. The pull request
+## 11. The pull request
 
 | | |
 |---|---|
@@ -550,7 +620,7 @@ deserves its own reading.
 | Head | what `git rev-parse native-scale-transport` returns; this table does not quote a sha it cannot have written |
 | Mergeable | `MERGEABLE` at the head this report was written against |
 | **`packages/microcosm-graph` hunks** | **zero** — so there is nothing in this PR to mark main-only. The executor changes the retention work would need are #938's neighbours, not this branch's. |
-| CI | does not run on this PR by design: `.github/workflows/test.yml` triggers on `pull_request: branches: [main]`, so only #893 reaches CI. The battery in §9 is the only gate this branch has. |
+| CI | does not run on this PR by design: `.github/workflows/test.yml` triggers on `pull_request: branches: [main]`, so only #893 reaches CI. The battery in section 9 is the only gate this branch has. |
 
 Files, against the base:
 
@@ -566,7 +636,7 @@ Files, against the base:
 | `pyproject.toml` | three per-file `F401` ignores, so the committed harnesses stay byte-identical to the ones that ran |
 | `PROGRESS-native-scale-transport.md` | the lane journal |
 
-## 11. What a reader should not take from this report
+## 12. What a reader should not take from this report
 
 - **Nothing here is a build, a certification or a release artifact.** Every
   measurement JSON carries `"release_eligible": false` and a scope line saying
