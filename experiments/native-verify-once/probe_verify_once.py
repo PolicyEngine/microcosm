@@ -433,7 +433,14 @@ try:
     # Take the epoch's counts and drop the run values again immediately, so
     # nothing this probe added stays resident while `flush` runs and peak RSS
     # stays comparable with the runs that predate this line.
-    RESULT["verification_epoch"] = dict(run_values.manifest.verification_epoch)
+    # Read with a default: a before-tree manifest has no such field, and this
+    # probe is run against both trees. `None` is the "this tree does not carry
+    # one" value the result starts at, so an absent field stays legible rather
+    # than looking like an epoch that counted nothing.
+    _epoch_record = getattr(run_values.manifest, "verification_epoch", None)
+    RESULT["verification_epoch"] = (
+        None if _epoch_record is None else dict(_epoch_record)
+    )
     del run_values
 except BaseException as error:  # noqa: BLE001 - the measurement records the class
     status = "STOPPED_" + type(error).__name__ + ": " + str(error)[:200]

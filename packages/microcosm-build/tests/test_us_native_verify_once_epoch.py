@@ -6,11 +6,14 @@ population, the ten-file source roster and every pure seal -- which is what made
 a native build spend most of its time re-reading source it had already read.
 
 Inside a ``verification_epoch`` an unchanged capsule is validated once and the
-expensive tier is then skipped, while the cheap tier (live authority, attached
-owner payloads, the producer encoding and the whole roster's stat identities)
-still runs on every borrow. Every test here asserts both halves: that the work
-really is skipped, and that the refusal still fires -- either at the borrow, or
-at the epoch's unconditional final re-validation.
+expensive tier is then skipped, while the cheap tier -- live authority,
+attached owner payloads and the producer encoding -- still refuses on every
+borrow. The source roster's stat identities are read on every borrow too, but
+into the memo *signature* rather than as a comparison of their own: a moved
+stat is a miss, and the complete validation that miss runs is what refuses,
+with the code it carries today. Every test here asserts both halves: that the
+work really is skipped, and that the refusal still fires -- either at the
+borrow, or at the epoch's unconditional final re-validation.
 
 Outside an epoch nothing changes, which every other test in this suite already
 proves by continuing to pass; the first test here pins it directly.
@@ -282,10 +285,10 @@ def test_a_signature_miss_outside_the_roster_re_runs_without_refusing(
 ):
     """A private snapshot copy is in the signature but not in the roster stats.
 
-    Touching one leaves the cheap tier's ``_file_stats`` comparison untouched
-    and moves the ACS catalogue's own path signature, so the borrow takes the
-    full validation again -- and passes, because the bytes are unchanged. That
-    is the shape of every memo miss: more work, never a refusal by itself.
+    Touching one moves the ACS catalogue's own path signature while the roster
+    stats stay put, so the borrow takes the full validation again -- and
+    passes, because the bytes are unchanged. That is the shape of every memo
+    miss: more work, never a refusal by itself.
     """
 
     arguments = fixture(tmp_path, monkeypatch)
@@ -588,8 +591,9 @@ def _rewrite_in_place(path):
     This is the strongest stat-preserving rewrite an unprivileged process can
     perform on APFS: only ``st_ctime_ns`` moves, and no interface restores it
     (``setattrlist(ATTR_CMN_CHGTIME)`` refuses with ``EPERM``). It is written
-    this way so the mutation is decided by the memo, never by a size or a
-    modification time the cheap tier compares for free.
+    this way so the mutation reaches the memo through the one stat field an
+    unprivileged process cannot restore, rather than through a size or a
+    modification time that would move the signature trivially.
     """
 
     path = Path(path)
@@ -627,16 +631,16 @@ def _acs_snapshot_copy(preparation):
 def test_a_changed_snapshot_copy_refuses_through_the_memoised_tier(
     tmp_path, monkeypatch
 ):
-    """The one path the cheap tier cannot see, so only the memo can refuse it.
+    """The one path no roster stat covers, so only the memo can refuse it.
 
     The ACS catalogue's private snapshot copies are inside the memo signature
     and outside ``_file_stats``, which covers the ten roster files and their
     three directories and nothing else. A byte written into a copy -- same
-    length, same inode, modification time restored -- therefore leaves the
-    cheap tier's comparison identical, and the refusal that arrives is the one
-    the complete validation raises on the signature miss. It is asserted to be
-    the same code an unmemoised borrow raises for the same mutation, which is
-    the claim the design note makes and the one nothing pinned before.
+    length, same inode, modification time restored -- therefore leaves every
+    roster stat identical, and the refusal that arrives is the one the complete
+    validation raises on the signature miss. It is asserted to be the same code
+    an unmemoised borrow raises for the same mutation, which is the claim the
+    design note makes and the one nothing pinned before.
     """
 
     # Today's code first, on its own fixture, so the epoch's fixture is the
@@ -661,8 +665,8 @@ def test_a_changed_snapshot_copy_refuses_through_the_memoised_tier(
 
     def mutate():
         _rewrite_in_place(copy)
-        # The cheap tier compares exactly this and nothing else, so it cannot
-        # be what refuses below.
+        # Every roster stat is identical across the mutation, so the part of
+        # the signature that covers them cannot be what refuses below.
         assert owner._file_stats(state.root) == roster
 
     borrow, closing = _refuses_at_the_borrow_and_at_the_close(

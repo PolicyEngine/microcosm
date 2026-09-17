@@ -1555,16 +1555,54 @@ Re-run, both rc 0: `7 passed in 119.98s (0:01:59)`
 `24 passed in 157.61s (0:02:37)` (`test_us_native_verify_once_epoch.py`), plus
 `ruff check` and `ruff format --check` clean on the two changed Python files.
 
+**Done (2026-09-17, third fix pass) — one medium and two low:** a second
+re-verification found that the 2026-09-16 refusal-code fix had weakened one
+at-borrow refusal, and three commits answer it and the two low findings.
+(1) `_finalize_epoch` recorded its memo signature *after* validating, so at an
+inner nested close — whose memo survives into the outer epoch — a roster file
+whose stat moved during the trailing part of `_validate` was absorbed as the
+new normal and the outer borrows were hits until the outermost close. Each
+close now takes the signature before validating and again after and records
+none when they differ, so the next borrow is a miss that refuses;
+`asec_2024_native_population._epoch_exit` had the same ordering and is fixed
+the same way. Two new tests move a source from a profile hook as that close's
+own validation returns and fail with `DID NOT RAISE` against the previous
+ordering. `_memoized_validate`'s signature handler also narrowed from
+`BaseException` to `Exception`, which is what its own comment describes.
+(2) `RunManifest.verification_epoch` and `run_graph(_verification_epoch=)` had
+no graph-shard test on either branch: `test_graph_verification_epoch.py` adds
+nine, and two build-shard tests cover the signature-cannot-be-taken handler and
+the `raise own from nested` branch. (3) The stale cheap-tier descriptions the
+2026-09-16 fix left behind — test-file docstrings, the module block comment, the
+design note and this report — now say what the code does, and `executor.py:2100`
+is corrected to `:2105`. Two `packages/*/src` files changed and no pin moved:
+`graph_implementation._dependency_contract` was re-run over both edited modules
+and `imports`, `resource_accesses_sha256` and `unbound_uses_sha256` are all
+unchanged.
+
+Re-run, all rc 0: `778 passed, 1 skipped in 37.72s`
+(`packages/microcosm-graph/tests`, up from 769 — the new
+`test_graph_verification_epoch.py` adds nine), `28 passed in 190.65s (0:03:10)`
+(`test_us_native_verify_once_epoch.py`, up from 24),
+`1607 passed, 38 warnings in 8311.33s (2:18:31)` (the 34 build test files naming
+either changed module), `8 passed in 0.68s`
+(`test_us_asec_prepared_resources.py`, which builds the stage implementation
+manifests), and `597 passed, 2 skipped in 17.75s` in the
+`graph-verify-once-main` worktree. Plus `ruff check .`, `ruff format --check` on
+all five changed Python files, `uv lock --check`, both `ci_test_groups` checks.
+
 **Next:** Max's rulings on the report's remaining open questions. Open question
 4 is answered and needs nothing further: the split is draft PR
 [#938](https://github.com/PolicyEngine/microcosm/pull/938), opened 2026-09-16
-and now at head `1884d7f2a` (base `main`, 6 files +1,124/−8, MERGEABLE, still
-draft; `gh pr view 938`, 2026-09-17 07:03 UTC). The graph-shard commits made
+and now at head `33f3150bb` (base `main`, 7 files +1,430/−8, MERGEABLE, still
+draft; `gh pr view 938`, 2026-09-17 07:43 UTC). The graph-shard commits made
 after the verification findings were mirrored into it on 2026-09-17 at
 06:45–06:46 UTC — the verification epoch on the manifest, the member-symlink
-follow, the native-order float cast and the docstring fix. Diffed the same
-morning, its five graph files differ from this branch's only by the documented
-`import struct` and exact-`float` hunks that belong to #893's base.
+follow, the native-order float cast and the docstring fix — and the third fix
+pass's new `test_graph_verification_epoch.py` followed as `33f3150bb`. Diffed
+the same morning, its five earlier graph files differ from this branch's only by
+the documented `import struct` and exact-`float` hunks that belong to #893's
+base.
 #935's body already carries the measurement table. Measured: nine-node prefix
 before 1,803.87 CPU s without completing (ceiling) against after 1,444.78 CPU s
 completing; nineteen-node 5,278.61 -> 2,010.07 CPU s (2.63x) against the v4 cold

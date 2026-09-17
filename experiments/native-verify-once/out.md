@@ -83,9 +83,12 @@ memoised at all.
 (2), `test_a_source_rewritten_in_place_mid_epoch_refuses_at_the_next_borrow`,
 `test_a_file_added_to_a_source_directory_mid_epoch_refuses`,
 `test_a_touched_source_refuses_on_its_stat_identity_alone`,
-`test_a_change_a_signature_cannot_see_refuses_when_the_epoch_closes`.
+`test_a_change_a_signature_cannot_see_refuses_when_the_epoch_closes` and, added
+for the 2026-09-17 re-verification,
+`test_a_roster_stat_moved_inside_an_inner_close_refuses_at_the_next_borrow`.
 Each asserts the refusal **twice** — at the borrow that follows the mutation,
-and again when the epoch declines to close over it — except the last, which
+and again when the epoch declines to close over it — except
+`test_a_change_a_signature_cannot_see_refuses_when_the_epoch_closes`, which
 asserts it once by design: that mutation is the one a signature cannot see, so
 the borrow after it is a memo hit and the close is the only refusal.
 
@@ -112,6 +115,32 @@ rewrites one byte in place, restoring the mode and the modification time and
 asserting `_file_stats(state.root)` is identical across the mutation, so only
 the memo can be what refuses; it refuses with `PREPARATION_VERIFICATION_REFUSED`
 at the borrow, again at the close, and identically to the unmemoised borrow.
+
+**The window that fix opened, closed on 2026-09-17.** Moving the roster stats
+out of the cheap tier removed the anchor that had made a touched roster file
+refuse at the next borrow, and `_finalize_epoch` recorded its signature *after*
+validating. At an inner nested close that memo survives into the outer epoch,
+so a roster file whose stat moved after `_validate`'s own `SOURCE_STAT_CHANGED`
+comparison and before the recording — a window containing the whole trailing
+`_pure_final` — became the new normal, and every outer borrow up to the
+outermost close was a hit. The refusal still fired, but at the end of the run,
+after intervening nodes had written store records: the class this report
+documents as mechanism 3's residual, reached here by a different route. Each
+close now takes the signature before validating and again after and records
+none when they differ, so the next borrow is a miss that pays the complete
+validation and refuses at that borrow; the entry stays, so the outermost close
+still re-validates it. Nothing is compared per borrow, so the `_file_stats`
+walk the fix removed does not come back.
+`asec_2024_native_population._epoch_exit` had the same ordering — present since
+the original head, never anchored by a cheap-tier check — and is fixed the same
+way. Both are pinned by
+`test_a_roster_stat_moved_inside_an_inner_close_refuses_at_the_next_borrow` and
+`test_a_native_source_moved_inside_an_inner_close_refuses_at_the_next_borrow`,
+which move a source from a profile hook as that close's own validation returns
+(rebinding a runtime callable refuses with `PRODUCER_CHANGED`, so observing it
+is the only way in). Run against the previous ordering, in this worktree, both
+fail with `Failed: DID NOT RAISE`; against this one the next borrow refuses
+with `SOURCE_STAT_CHANGED` and `SOURCE_FILE_CHANGED` respectively.
 
 **Before/after CPU.** Unit level, from
 `test_an_epoch_validates_once_and_reuses_it`: six borrows of one preparation
@@ -192,13 +221,19 @@ reaches a memo that never lists the roster. The capsule's epoch closes **before*
 its owner's: at the outermost close its memo is already cleared, so the owner's
 final validation reaches the complete file check; at an inner nested close the
 memo is live with a refreshed signature and the owner's validation is a memo
-hit, with nothing skipped in net because the capsule's own exit has just
-re-validated it in full.
+hit — unless a source moved while that close was validating, in which case the
+close records no signature and the owner's validation is a miss that re-runs the
+complete check. Nothing is skipped in net either way, because the capsule's own
+exit has just re-validated it in full.
 
 **Mutation tests.**
 `test_the_native_capsule_still_refuses_a_changed_source_inside_an_epoch`
-(`SOURCE_FILE_CHANGED` at the borrow, and again at the close) and, added for
-the verification findings,
+(`SOURCE_FILE_CHANGED` at the borrow, and again at the close);
+`test_a_native_source_moved_inside_an_inner_close_refuses_at_the_next_borrow`,
+added for the 2026-09-17 re-verification, which appends to a source from a
+profile hook as the inner close's own `_validate_state` returns and asserts
+`SOURCE_FILE_CHANGED` at the next borrow and again at the outer close; and,
+added for the 2026-09-16 verification findings,
 `test_the_native_capsule_refuses_a_rewritten_source_through_its_memo`: this
 capsule's cheap tier compares no file stat at all, so a byte rewritten in place
 with the length, the inode and the modification time preserved can only be
@@ -391,11 +426,18 @@ receipt field. `_validate`, `_validate_state` and `source_content_key` only
 compare live values against values frozen at issuance, so deferring a comparison
 cannot move a recorded value; `_validate` and `_validate_state` are themselves
 untouched, and the memo is opt-in and scoped, so outside a `verification_epoch()`
-the capsules behave byte for byte as they do today. The one new recorded thing,
-`RunManifest.source_identities`, is pinned not to move anything by
+the capsules behave byte for byte as they do today. Two new things are
+recorded, and each is pinned not to move anything.
+`RunManifest.source_identities` has
 `test_the_manifest_records_the_run_end_identities_without_moving_anything`,
 which asserts the manifest's key, its JSON and its content-addressed body are
-identical with and without it.
+identical with and without it. `RunManifest.verification_epoch` had no test in
+the graph shard at all until 2026-09-17 — only a single `not in to_json()` line
+in the build shard, which the graph-shard PR does not carry — and now has
+`packages/microcosm-graph/tests/test_graph_verification_epoch.py`, which
+asserts the same three identities both against a bare manifest and against a
+separate cold run with no record, plus the live-view property the field exists
+for and each of the three `__post_init__` refusals.
 
 **Proven by recomputation over the whole inventory.** Every contract in
 `graph_implementation_inventory.json` was recomputed through
@@ -435,7 +477,7 @@ for a style fix. A lane that consolidates them should do it as its own change,
 with those four pins re-derived and stated.
 
 The same argument applies to `_stat_identity`, which exists in both
-`survey_population_preparation.py:268` and `executor.py:2100`, but it lands on
+`survey_population_preparation.py:268` and `executor.py:2105`, but it lands on
 a different field. Those are different packages, so
 `from microcosm.graph.executor import _stat_identity` moves that module's
 pinned `imports` list rather than its `unbound_uses_sha256`: run through the
@@ -483,6 +525,17 @@ from memory; and
 …/graph_implementation_inventory.json` is exactly the two
 `unbound_uses_sha256` lines of rows two and three, with no other line changed in
 that file.
+
+**The third fix pass moves no pin either**, and this was re-derived rather than
+assumed: `graph_implementation._dependency_contract` was run over the edited
+bytes of both changed modules against `_covered_imports(name, inventory)`, and
+`imports`, `resource_accesses_sha256` and `unbound_uses_sha256` are all
+unchanged for `survey_population_preparation.py` and for
+`asec_2024_native_population.py`. The pass adds one module-level helper to each
+file and touches no import and no resource call, which is why. Neither file
+carries a byte digest anywhere else in the tree: `grep` for both filenames
+across `packages/*/src` returns only the inventory's own contract and roster
+entries.
 
 **One thing that does move, by design and not by this lane's choice.** Each US
 stage's `implementation_hash` is `_digest(module bytes)` over its whole module
@@ -836,6 +889,66 @@ the record's counts. `ruff check` and `ruff format --check` are clean on the two
 changed Python files. The probe itself has no test and was not run: running it
 is a measurement, and nothing here re-measures.
 
+### After the third fix pass, 2026-09-17
+
+The third pass changed two `packages/*/src` files —
+`survey_population_preparation.py` and `asec_2024_native_population.py` — so the
+selection is every build test file naming either of them, 34 files, plus the
+epoch file itself, the graph shard in full, and the new graph test file inside
+it. All rc 0:
+
+```
+$ uv run --no-sync pytest packages/microcosm-graph/tests -p no:cacheprovider                       # rc 0
+778 passed, 1 skipped in 37.72s
+```
+
+```
+$ uv run --no-sync pytest packages/microcosm-build/tests/test_us_native_verify_once_epoch.py -p no:cacheprovider   # rc 0
+28 passed in 190.65s (0:03:10)
+```
+
+```
+$ uv run --no-sync pytest $(the 34 build test files naming either changed module) -p no:cacheprovider   # rc 0
+1607 passed, 38 warnings in 8311.33s (2:18:31)
+```
+
+```
+$ uv run --no-sync pytest packages/microcosm-build/tests/test_us_asec_prepared_resources.py -p no:cacheprovider    # rc 0
+8 passed in 0.68s
+```
+
+```
+$ uv run --no-sync pytest packages/microcosm-graph/tests -p no:cacheprovider   # rc 0, in the graph-verify-once-main worktree
+597 passed, 2 skipped in 17.75s
+```
+
+The graph shard rises from 769 to 778 because
+`test_graph_verification_epoch.py` adds nine; the epoch file rises from 24 to 28
+because the pass adds two close-window tests and two branch tests. The 34-file
+selection is narrower than the second pass's 46 and the battery's 62 because
+this pass changed no graph-shard source at all — the only graph-shard change is
+the new test file, which runs inside the shard suite above and again in the
+mirror worktree, where `ruff check .` is also clean. `test_us_asec_prepared_resources.py`
+was added by hand: it is the file that builds the stage implementation
+manifests, and it does not name either changed module, so the mechanical
+selection misses it.
+
+Also clean at the same head: `uv run --no-sync ruff check .`
+(`All checks passed!`), `ruff format --check` on all five changed Python files
+(`5 files already formatted`), `uv lock --check`,
+`python3 tools/ci_test_groups.py --verify` (`verification=ok`, with the new
+graph file in `fast`, `engine` and `wheels` and not under `[defaulted]`), and
+`python3 -I -B -S packages/microcosm-build/tests/test_ci_test_groups.py`
+(`Ran 15 tests in 0.284s` / `OK`).
+
+One more line changed in the committed probe and was **not** run, for the same
+reason as last pass: `probe_verify_once.py` read `manifest.verification_epoch`
+unguarded, which would label an otherwise-complete before-tree run
+`STOPPED_AttributeError`, since that tree has no such field. It now reads with a
+`getattr(…, None)` default and keeps `None` as the "this tree carries no record"
+value. No quoted figure is affected — both before probes stopped at the CPU
+ceiling first — and nothing was re-measured.
+
 ## Measurement
 
 All figures in this section were read from the files named in the "file"
@@ -1043,13 +1156,13 @@ objects.
 
 **4. The main-only split — answered 2026-09-16, option (a); nothing is left
 open.** The graph-shard hunks (`executor.py`, `manifest.py`, `codecs.py` and the
-two new graph test files) depend on nothing in this stack, and they are
+three new graph test files) depend on nothing in this stack, and they are
 [#938](https://github.com/PolicyEngine/microcosm/pull/938): draft, base `main`,
-head `1884d7f2a3af96799457dd42021cd111220e1ffc`, 6 files, +1,124 / −8,
-`MERGEABLE` (`gh pr view 938`, 2026-09-17 07:03 UTC). It was opened on
-2026-09-16 at head `8ea48447c` with 6 files, +988 / −8; both figures are given
-because the earlier one is what this report carried while the mirror was still
-outstanding.
+head `33f3150bbe580d2742f8408eddc1ee93c1e247a1`, 7 files, +1,430 / −8,
+`MERGEABLE` (`gh pr view 938`, 2026-09-17 07:43 UTC). It was opened on
+2026-09-16 at head `8ea48447c` with 6 files, +988 / −8, and stood at
+`1884d7f2a` with 6 files, +1,124 / −8 before the third fix pass; the earlier
+figures are given because they are what this report carried at those heads.
 
 **The mirror landed 2026-09-17.** The four graph-shard changes this branch made
 after the verification findings are in #938, as four commits dated 06:45–06:46
@@ -1064,7 +1177,11 @@ rewrite test actually exercises (`1884d7f2a`). Diffed against this branch at
 `test_graph_executor_series_stream.py` differ only by the documented `import
 struct` and exact-`float` short-circuit hunks, which belong to #893's base and
 not to this lane. So the split carries the whole graph shard as this branch has
-it, and the open item this section previously handed to Max is closed.
+it, and the open item this section previously handed to Max is closed. The
+third fix pass added one more graph-shard file — the new
+`test_graph_verification_epoch.py` — and it was mirrored the same way, as
+`33f3150bb` on 2026-09-17, with `ruff check .` clean and
+`packages/microcosm-graph/tests` green in that worktree before the push.
 
 **5. Thirty-five build tests reach the graph shard but were never run here.**
 They import it as `from microcosm.graph import …` rather than by dotted module
@@ -1075,10 +1192,25 @@ up — `test_us_graph.py`, `test_us_survey_calibration.py`, `test_uk_graph.py`,
 already selected; `--collect-only` over the 35 reports **992 tests collected in
 20.03s**, and collection is the only thing that was run against them. (An
 earlier draft of this question said twenty-seven; that was the count against the
-62-file battery's selection, not this one.) (a) Run them now — serial hours on
-this machine, since several are cold graph runs against staged sources.
-(b) Run only the three named above. (c) Rely on CI once the stack reaches
-`main`, where the same files run across parallel shards.
+62-file battery's selection, not this one.) They were not run on this stacked
+branch in the third fix pass either, and nothing here claims otherwise.
+
+For the **graph-shard changes specifically** they are not uncovered: every
+graph-shard hunk this lane makes is also on [#938](https://github.com/PolicyEngine/microcosm/pull/938),
+whose base is `main`, and `.github/workflows/test.yml` triggers on
+`pull_request: branches: [main]`, so #938 runs the full matrix — `lint`,
+`fast`, `engine-shared`, `engine-us`, `engine-uk` and `wheels` — across
+parallel shards that include those 35 files. CI there is real but not yet
+complete: at 07:19 UTC on 2026-09-17, on the previous head `1884d7f2a`,
+`gh pr checks 938` reported 10 of 23 jobs `pass` and 13 `pending`; pushing
+`33f3150bb` restarted the matrix, and at 07:46 UTC it read 2 `pass` (`changes`,
+`lint`) and 21 `pending`. No green verdict is claimed here — what is claimed is
+that those files run there and do not run on this branch. What #938's CI does **not** cover is this
+branch's build-shard work, because #935's base is #893's branch and CI does not
+run there at all. (a) Run them now on this branch — serial hours on this
+machine, since several are cold graph runs against staged sources. (b) Run only
+the three named above. (c) Rely on #938's CI for the graph shard and on the
+stack reaching `main` for the rest.
 
 **6. `ruff format --check .` is red on 77 pre-existing files** in
 `spec_engine/`, `uk_runtime/`, `tools/` and `experiments/`, and CI never runs

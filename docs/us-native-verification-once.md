@@ -75,7 +75,22 @@ by `_checked`), and a touched roster file raises `SOURCE_STAT_CHANGED`.
 On leaving an epoch — and on leaving every nested epoch, so a run that ends
 early through an inner scope is still covered — every capsule the epoch
 validated is re-validated **in full, with the memo bypassed**, and the result
-is recorded. `verification_epoch()` yields that record: the protocol label, the
+is recorded. A close records a new signature only when nothing moved while it
+was validating: `_validate` compares the roster stats and then runs a whole
+trailing `_pure_final`, and at an **inner** nested close the memo it records
+survives into the outer epoch, so a signature taken after validating would
+absorb a file that moved in that window and answer every outer borrow up to the
+outermost close from the memo. Each close therefore takes the signature before
+validating and again after, and when the two differ it records no memo answer
+at all — the next borrow is a miss that pays the complete validation and
+refuses with the code that validation raises. The entry itself is kept, because
+the outermost close re-validates every capsule the memo still holds.
+`test_a_roster_stat_moved_inside_an_inner_close_refuses_at_the_next_borrow` and
+`test_a_native_source_moved_inside_an_inner_close_refuses_at_the_next_borrow`
+pin both capsules by moving a source from a profile hook as that close's own
+validation returns; against the previous ordering both fail with DID NOT RAISE.
+
+`verification_epoch()` yields the close's record: the protocol label, the
 capsule count, the number of memo hits, the number of signature misses and the
 number of unconditional final re-validations. It is filled in as the epoch runs
 and completed as the epoch closes; `epoch_record()` returns the innermost open
@@ -151,7 +166,9 @@ unconditional rather than conditional.
 
 **New cost class.** Per accessor use: O(modules) producer encoding + O(roster)
 `lstat` + O(columns) witness — microseconds. Per run: one full validation at
-first use plus one at each epoch exit, instead of one per accessor use.
+first use plus one at each epoch exit, instead of one per accessor use, plus
+two signature passes per memoised capsule at each exit, which bracket that
+exit's own validation and cost the same `lstat` walk a borrow pays.
 
 ### 2. `AuthenticatedAsec2024NativePopulation.frame`
 
@@ -180,8 +197,11 @@ the outermost epoch exits.
 The owner's own close runs after this capsule's. At the outermost close this
 capsule's memo is already cleared, so the owner's final validation reaches the
 complete file check; at an inner nested close the memo is still live with a
-refreshed signature, so the owner's validation is a memo hit — and nothing is
-skipped in net, because this capsule's exit has just re-validated it in full.
+refreshed signature, so the owner's validation is a memo hit — unless a source
+moved while this capsule's close was validating, in which case that close
+records no signature and the owner's validation is a miss that re-runs the
+complete check. Nothing is skipped in net either way, because this capsule's
+exit has just re-validated it in full.
 
 **Why the guarantee survives.** As in mechanism 1. The documented
 yield-tolerance pattern is preserved intact: a memo hit runs neither the file
@@ -189,7 +209,8 @@ loop nor the checks that bracket it, and a memo miss runs the whole of
 `_validate_state` unchanged, so the bracketing pair is never split.
 
 **New cost class.** Per access: O(modules) + seven `lstat`s + O(columns)
-witness. Per run: two full validations.
+witness. Per run: two full validations, each close's own bracketed by the two
+signature passes described above.
 
 ### 3. Per-node source content keys in the executor
 

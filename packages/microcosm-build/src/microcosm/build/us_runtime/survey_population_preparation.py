@@ -1005,13 +1005,16 @@ def _origins(frame, sources, selected, native_receipts):
 # Outside an epoch nothing below is reached and every capsule behaves exactly as
 # it did before: one complete validation per accessor use. Inside an epoch each
 # borrow still pays a cheap tier in full -- the live authority, the attached
-# owner payloads, the producer encoding and the whole source roster's stat
-# identities -- and the expensive tier is skipped only while a signature over
-# every file those checks read, and every live buffer they digest, is identical
-# to the signature recorded when that tier last ran in full. A signature that
-# moved is a memo miss, not a refusal: the complete validation runs and raises
-# whatever it would have raised. Leaving the epoch re-validates every capsule it
-# memoised, in full, with the memo bypassed.
+# owner payloads and the producer encoding -- and the expensive tier is skipped
+# only while a signature over every file those checks read, the whole source
+# roster's stat identities included, and every live buffer they digest, is
+# identical to the signature recorded when that tier last ran in full. The
+# roster's stat identities are read into that signature and are deliberately
+# not compared in the cheap tier: a signature that moved is a memo miss, not a
+# refusal, so the complete validation runs and raises whatever it would have
+# raised, with the same code, at the same borrow. Leaving the epoch re-validates
+# every capsule it memoised, in full, with the memo bypassed, and records no
+# memo answer for anything whose signature moved while that validation ran.
 # ---------------------------------------------------------------------------
 
 _EPOCHS = []
