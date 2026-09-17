@@ -17,9 +17,12 @@ appended section of `PROGRESS.md`.
 calibration or release eligibility. Every measurement is descriptive; none is a
 build, a certification or a release artifact.
 
-**Status, 2026-09-16.** **No test group failed.** Every pytest group of the
-CI-shaped battery below exits 0, including the 3 h 15 min serial run of the 62
-`microcosm-build` test files that name or import a touched module. One
+**Status, 2026-09-17.** **No test group failed**, in either round. Every pytest
+group of the CI-shaped battery below exits 0, including the 3 h 15 min serial
+run of the 62 `microcosm-build` test files that name or import a touched module;
+and every group re-run after the 2026-09-16 verification findings exits 0 as
+well, including a 3 h 07 min serial run of the 46 of those files that reach a
+module the findings commits changed (see "After the verification findings"). One
 non-test check does exit non-zero and is not softened here: `ruff format
 --check .` exits 1 with `77 files would be reformatted, 1110 files already
 formatted`. That condition is inherited, not earned by this branch — the
@@ -668,6 +671,123 @@ The same caution applies to the graph-suite figure quoted in mechanism 3
 (108.28 s → 71.81 s on one machine state; the same suite is 46.66 s here): the
 node counts are the durable part, the seconds are not.
 
+### After the verification findings, 2026-09-17
+
+An adversarial static verification of this branch on 2026-09-16 returned four
+medium and seven low findings and no high one. Nine commits resolve them, and
+one more restates this report; what follows is what was re-run afterwards, at
+the branch head those commits produce, on the base tip `363a9033b`. The
+invocations are the battery's, with the repo's own verbosity: the `addopts`
+`-q` makes an explicit `-q` into `-qq`, which prints no summary line at all.
+Logs are outside the worktree in
+`~/PolicyEngine/_recovered/scratch-backup/893/lanes/verify-once-tests-20260916/`.
+
+```
+$ PYTHONDONTWRITEBYTECODE=1 uv run --no-sync pytest packages/microcosm-graph/tests -p no:cacheprovider   # rc 0
+769 passed, 1 skipped in 44.56s
+```
+
+```
+$ PYTHONDONTWRITEBYTECODE=1 uv run --no-sync pytest \
+    packages/microcosm-build/tests/test_us_native_verify_once_epoch.py \
+    packages/microcosm-build/tests/test_us_acs_record_fence_scan.py \
+    packages/microcosm-graph/tests/test_graph_executor_series_stream.py \
+    packages/microcosm-graph/tests/test_graph_executor_source_identity.py -p no:cacheprovider   # rc 0
+128 passed in 188.39s (0:03:08)
+```
+
+The same four files one at a time, so each new test lands against a named file:
+
+```
+$ … pytest packages/microcosm-build/tests/test_us_native_verify_once_epoch.py -p no:cacheprovider      # rc 0
+24 passed in 168.66s (0:02:48)
+```
+
+```
+$ … pytest packages/microcosm-build/tests/test_us_acs_record_fence_scan.py -p no:cacheprovider         # rc 0
+52 passed in 0.48s
+```
+
+```
+$ … pytest packages/microcosm-graph/tests/test_graph_executor_series_stream.py -p no:cacheprovider     # rc 0
+34 passed in 0.27s
+```
+
+```
+$ … pytest packages/microcosm-graph/tests/test_graph_executor_source_identity.py -p no:cacheprovider   # rc 0
+18 passed in 0.32s
+```
+
+```
+$ PYTHONDONTWRITEBYTECODE=1 uv run --no-sync pytest <46 files under packages/microcosm-build/tests> -p no:cacheprovider   # rc 0
+1811 passed, 1 skipped, 38 warnings in 11200.54s (3:06:40)
+```
+
+```
+$ uv run --no-sync ruff check .                                      # rc 0
+All checks passed!
+```
+
+```
+$ uv run --no-sync ruff format --check $(git diff --name-only origin/microcosm-us-launch-integration-20260909...HEAD | grep -E '\.py$')   # rc 0
+17 files already formatted
+```
+
+```
+$ uv lock --check                                                    # rc 0
+Resolved 125 packages in 4ms
+```
+
+```
+$ python3 tools/ci_test_groups.py --verify                           # rc 0
+verification=ok
+```
+
+```
+$ python3 -I -B -S packages/microcosm-build/tests/test_ci_test_groups.py   # rc 0
+Ran 15 tests in 0.347s
+
+OK
+```
+
+**The 46-file selection** is every file under `packages/microcosm-build/tests`
+that names `survey_population_preparation`, `graph_atomic_survey_financial`,
+`graph_atomic_survey_population` or `verification_epoch`, or that imports
+`microcosm.graph.executor` or `microcosm.graph.manifest` by dotted path — that
+is, every build test that reaches a module the findings commits changed. It is a
+subset of the 62-file battery above and it contains
+`test_us_native_verify_once_epoch.py`. Files that reach the graph shard only
+through the package re-export are open question 5, unchanged.
+
+**The one skip** is `test_uk_uc_capital_coherence.py:345`, "requires
+policyengine-uk extra" — the same marker skip as the battery, confirmed by
+re-running that file alone with `-rs` (`12 passed, 1 skipped in 30.85s`). No
+other file skipped, because the two native-DE self-skips are in files this
+selection does not include.
+
+**Counts that moved, and why.** The graph suite is 769 / 1 against the battery's
+766 / 1: three new tests in `test_graph_executor_source_identity.py` for the
+member-symlink follow. That file is 18 rather than 15 for the same reason, and
+`test_us_native_verify_once_epoch.py` is 24 rather than 17: two tests that reach
+the memo-miss refusal itself, four parametrisations pinning that an in-epoch
+refusal carries the code an unmemoised borrow carries, and one that reads a real
+run's epoch record off its manifest. `test_us_acs_record_fence_scan.py` (52) and
+`test_graph_executor_series_stream.py` (34) are unchanged in count; the second
+re-ran because the float branch now casts to `np.float64`, and its byte-identity
+comparison passes with that cast as it did with `<f8`.
+
+**Wall times here are contended too.** The 46-file run shared the machine with
+this session's own work and with the 1-minute load average between 3.7 and 5.2
+throughout; 3 h 06 m of one serial process is not a clean-machine number, and CI
+splits the same files across parallel shards.
+
+**What was not re-run.** Everything above this section: the 62-file battery, the
+engine-free environment, the acceptance burndown, the before/after probe and the
+19-node harness. The findings commits changed three source files
+(`survey_population_preparation.py`, `executor.py`, `manifest.py`) and two
+runner call sites, so the measurement they would repeat is the same measurement,
+and no measured number in this report was taken again.
+
 ## Measurement
 
 All figures in this section were read from the files named in the "file"
@@ -883,11 +1003,17 @@ float cast in `_object_stream` (the endianness item #938's own author flagged),
 `RunManifest.verification_epoch`, and the `_verification_epoch` parameter on
 `run_graph`. The commits that carry them are listed in the lane's journal.
 
-**5. Twenty-seven build tests were not run.** They reach the graph shard through
-`from microcosm.graph import …` rather than by dotted module path, so the
-62-file selection missed them — `test_us_graph.py`,
-`test_us_survey_calibration.py`, `test_uk_graph.py` among them. (a) Run them now
-(serial hours on this machine, since the graph tests here are cold graph runs).
+**5. Thirty-five build tests reach the graph shard but were never run here.**
+They import it as `from microcosm.graph import …` rather than by dotted module
+path, so neither the 62-file battery nor the post-findings selection picked them
+up — `test_us_graph.py`, `test_us_survey_calibration.py`, `test_uk_graph.py`,
+`test_us_full_puf_enrichment.py` among them. Counted on 2026-09-16 by grepping
+`packages/microcosm-build/tests` for that import form and subtracting the files
+already selected; `--collect-only` over the 35 reports **992 tests collected in
+20.03s**, and collection is the only thing that was run against them. (An
+earlier draft of this question said twenty-seven; that was the count against the
+62-file battery's selection, not this one.) (a) Run them now — serial hours on
+this machine, since several are cold graph runs against staged sources.
 (b) Run only the three named above. (c) Rely on CI once the stack reaches
 `main`, where the same files run across parallel shards.
 

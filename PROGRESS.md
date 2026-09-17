@@ -1432,6 +1432,9 @@ measurement, the pins, the verbatim summaries and the open questions. The open
 work is the main-only split (its commits sit on
 `graph-verify-once-main-stale-20260916-0057`, unpushed) and Max's answers to the
 report's open questions.
+*(Historical as of 2026-09-17: the split is now draft PR #938, and an
+adversarial verification of this branch has since been resolved by ten further
+commits on a rebased branch — see "Done (2026-09-17, fourth session)" below.)*
 
 **Goal.** The 9/15 pilot v5 measurement
 (`~/PolicyEngine/_recovered/pilot-runs/native45-v5/out.md` §2) attributes ~79 %
@@ -1464,10 +1467,13 @@ without moving any digest value.
   now pins it. Graph suite 108 s -> 72 s.
 - **Mechanisms 1 and 2**: `survey_population_preparation.verification_epoch()`,
   an opt-in scoped memo. Cheap tier every borrow (live authority, attached
-  payloads, producer encoding, roster stat identities); expensive tier skipped
-  only while a signature over every path it reads and every live buffer it
-  digests is unchanged; unconditional full re-validation on leaving the epoch.
-  The two moved inventory contracts are re-derived (below).
+  payloads, producer encoding); expensive tier skipped only while a signature
+  over every path it reads — the roster stat identities among them — and every
+  live buffer it digests is unchanged; unconditional full re-validation on
+  leaving the epoch. The two moved inventory contracts are re-derived (below).
+  (The roster stat identities were compared in the cheap tier when this line
+  was first written; the fourth session moved them into the signature so a
+  memo miss raises the code an unmemoised borrow raises. See below.)
 
 **Done (2026-09-16, second session):**
 
@@ -1488,6 +1494,44 @@ without moving any digest value.
   resident ceiling alongside the CPU one. Baseline worktree
   `~/PolicyEngine/_worktrees/microcosm-verify-once-baseline` is detached at
   `f7bb88525`.
+
+**Done (2026-09-17, fourth session) — the verification findings:** an
+adversarial static verification of the branch returned four medium and seven low
+findings and no high one
+(`~/PolicyEngine/_recovered/scratch-backup/893/lanes/verify-once-findings-20260916.json`).
+Ten commits answer them, on a branch rebased onto the base tip `363a9033b`:
+
+- rebased onto `363a9033b` and force-pushed, so two-dot and three-dot diffs
+  agree again (26 files, +5,422 / −819);
+- a mutation test per memoised capsule that changes file **content** while the
+  cheap tier's view of it stays byte-identical, so the memo-miss branch itself
+  refuses rather than a stat comparison in front of it;
+- the roster stat identities moved out of the refusing cheap tier into the
+  signature, so an in-epoch refusal carries the code an unmemoised borrow
+  carries (behaviour, not documentation: the design note promised it and the
+  fix is smaller than the divergence, and it deletes a redundant `_file_stats`
+  walk per borrow);
+- `verification_epoch()`'s record is bound by both runners and attached to the
+  manifest as `RunManifest.verification_epoch` — outside the key, the JSON,
+  every node receipt and every cache record. A real nine-node run over invented
+  sources reports `{"capsules": 1, "hits": 20, "misses": 3,
+  "final_validations": 1}`;
+- `_source_stat_signature` follows a member symlink, as `_directory_identity`
+  does, so a target rewritten mid-run refuses at the next node rather than at
+  run end; `_object_stream` packs floats in native order, as the loop it
+  replaces does;
+- the dead `_stat_or_absent` is deleted; the four `_path_stat` copies and the
+  two `_stat_identity` definitions stay, with the pin cost of consolidating
+  them re-derived through the modules' own generator and stated in the report;
+- the design note's five inaccuracies are corrected, the nested finalizer
+  chains its refusal instead of dropping it, and the report's stale items are
+  historicized.
+
+Re-run afterwards, all rc 0: `769 passed, 1 skipped in 44.56s`
+(`packages/microcosm-graph/tests`), `128 passed in 188.39s` (the four new test
+files), `1811 passed, 1 skipped, 38 warnings in 11200.54s (3:06:40)` (the 46
+build test files that reach a changed module), plus `ruff check` clean,
+`17 files already formatted`, `uv lock --check`, both `ci_test_groups` checks.
 
 **Next:** Max's rulings on the report's remaining open questions. Open question
 4 is answered: the split is draft PR
