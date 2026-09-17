@@ -30,10 +30,14 @@ model is adopted, no population is published, and every report retains
   values. The User's Guide (HH-483) defines −1 as "No parents" and the measure as
   work attended in the week before the interview, the same concept as the ASEC
   side; income (HH-175) has a minimum of 0.
-- **Not changed.** The exact-k ladder wrapper cannot yet pass the NSECE flags.
-  Two early builder repair steps still drop frame metadata before the attendance
-  stage, so a receipted candidate reused as `--base-h5` is refused early instead
-  of being reused.
+- **Fiscal integration follow-up.** The exact-k wrapper accepts a
+  `childcare_attendance` configuration object, validates its TSVs against the
+  packaged source pins, and forwards the source paths and outside-domain policy.
+  The early Social Security and capital-gains repairs now preserve frame
+  metadata, allowing a receipted `--base-h5` to reach the reuse check. Synthetic
+  coverage exercises native ingress, both changed and unchanged repairs, receipt
+  reuse, engine export and native reload. These changes do not alter the source
+  recipe or the candidate and report hashes below.
 
 ## Bridge widening
 
@@ -119,13 +123,15 @@ update.
 ## Code checks for this update
 
 Repository-wide ruff lint, changed-file formatting and the tracked CI test
-inventory pass. New synthetic tests cover thin-cell widening, reserve codes, the
-early outside-domain failure, the pre-calibration refusal and content-only
-loading; two existing tests changed with the receipt payload and the recipe
-check. **The test suite was not run locally for this update**; GitHub CI is the
-first run. The production stage, native export, both native loaders and the
-three validation tools ran end to end on the licensed local inputs. The fiscal
-builder itself has still not been run end to end with attendance.
+inventory pass. The fiscal integration follow-up passes 37 targeted local tests,
+including launcher argument forwarding and source-pin refusal, native ingress,
+both changed and unchanged value repairs, attendance reuse, and native export
+and reload. The earlier four CI failures were fixed in `6863cefa`.
+
+The population rebuild used the production stage, native export, both native
+loaders and the three validation tools end to end on the licensed local inputs.
+The fiscal builder itself has still not been run end to end with attendance;
+the synthetic integration checks do not establish production readiness.
 
 ## Interval training and paired sensitivity — 2026-09-16
 

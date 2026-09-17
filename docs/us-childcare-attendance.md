@@ -200,7 +200,10 @@ Code hashes and environment versions accompany the aggregate preparation report.
 The receipt binds the source hashes, contract, recipe code, runtime versions,
 seed, matching/bridge settings, fitted dependence, and outside-domain policy to
 each person's ID, household link, age, and three attendance values. Both native
-US loaders and the fiscal builder's `--base-h5` loader restore and check it. A
+US loaders and the fiscal builder's `--base-h5` loader restore and check it. The
+builder's Social Security and capital-gains repairs preserve that metadata even
+when no rescaling is needed, so a prepared candidate can reach the attendance
+reuse check without losing its receipt. A
 missing or altered receipt fails at load. Recipe code and runtime versions are
 compared when a stage binds and when the fiscal build exports, not at read-only
 load, so a released file stays readable as a reference after a dependency bump.
@@ -235,7 +238,29 @@ Existing release input
 gates still apply; a build without required attendance inputs cannot substitute
 an engine default for a persisted input. A fiscal build given neither the TSV
 flags nor bound attendance is refused before calibration, and the
-exact-k ladder wrapper cannot yet pass these flags.
+exact-k ladder wrapper forwards these inputs from an optional top-level
+`childcare_attendance` object in its existing schema-v1 configuration:
+
+```json
+{
+  "childcare_attendance": {
+    "household_tsv": "/local/39466-0005-Data.tsv",
+    "calendar_tsv": "/local/39466-0004-Data.tsv",
+    "asec_source_cache": "/local/asec",
+    "inherit_outside_domain_baseline": true
+  }
+}
+```
+
+Add this object alongside `pool`, `ladder`, `targets`, `calibration`, and
+`release`; it is not a complete launcher configuration. Relative paths resolve
+against the config file. Both TSVs and an explicit boolean outside-domain policy
+are required when the object is present; the ASEC cache is optional. The launcher
+checks the TSVs against the packaged source hashes before invoking the builder,
+and the source stage checks them again when loading. Omit the object only when
+the input already carries attendance accepted by the production receipt checks.
+This wiring does not qualify a new survey origin or replace the full fiscal
+build and population validation.
 
 Unknown values outside ages 0–12 stay null in the source model. The explicit
 outside-domain export policy fills only these missing cells with the pinned

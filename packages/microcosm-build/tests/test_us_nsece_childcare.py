@@ -656,11 +656,32 @@ def test_asec_income_sidecar_checks_identity_and_preserves_raw_missingness(
 
 
 @pytest.mark.requires_us
-def test_registered_attendance_recipe_uses_real_transform_chain(monkeypatch, tmp_path):
+@pytest.mark.parametrize("repair_factor", [1.0, 2.0])
+def test_registered_attendance_recipe_uses_real_transform_chain(
+    monkeypatch, tmp_path, repair_factor
+):
+    import importlib.util
+    from pathlib import Path
+
     from microcosm.build.us_runtime import childcare_attendance_stage as stage
 
+    builder_path = (
+        Path(__file__).resolve().parents[3]
+        / "tools"
+        / "build_us_fiscal_refresh_release.py"
+    )
+    builder_spec = importlib.util.spec_from_file_location(
+        "attendance_fiscal_builder", builder_path
+    )
+    builder = importlib.util.module_from_spec(builder_spec)
+    builder_spec.loader.exec_module(builder)
     frame = _asec_frame()
     frame.table("household")["household_source_id"] = "family"
+    for column in (
+        *builder.US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES.values(),
+        "non_sch_d_capital_gains",
+    ):
+        frame.table("person")[column] = [1.0, 0.0]
     hh, cal = _raw()
     hh["HHC4_AGE_AT_USAGE_1"] = frame.table("person").loc[1, "age"] * 12
     hh["HH4_REGION"] = 1
@@ -723,6 +744,36 @@ def test_registered_attendance_recipe_uses_real_transform_chain(monkeypatch, tmp
     assert evidence["retained_people"] == 2
     assert "rows" not in evidence
     assert_bound_childcare_attendance(load_us_frame(path))
+
+    # Reusing a prepared native parent traverses these two repairs before the
+    # attendance stage. Both changed and unchanged repairs must retain lineage.
+    reused = builder._load_frame(path)
+    before = reused.table("person")[list(US_CHILDCARE_ATTENDANCE_COLUMNS)].copy()
+    ssa_targets = [
+        SimpleNamespace(metadata={"target_role": role}, value=100.0 * repair_factor)
+        for role in builder.US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES
+    ]
+    cgd_target = SimpleNamespace(
+        name="irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount",
+        metadata={"aged_to": "2024"},
+        value=100.0 * repair_factor,
+    )
+    for repair, targets in (
+        (builder._with_social_security_component_value_repair, ssa_targets),
+        (builder._with_non_sch_d_cgd_value_repair, [cgd_target]),
+    ):
+        reused, repair_receipt = repair(reused, targets)
+        assert repair_receipt["applied"] == (repair_factor != 1.0)
+        builder._require_bound_childcare_attendance(reused)
+    assert stage.with_us_childcare_attendance_inputs(reused, **options) is reused
+    repaired_path = tmp_path / "repaired.h5"
+    builder.PolicyEngineUSEngine().write_dataset(reused, repaired_path, period=2026)
+    stage.persist_native_childcare_receipt(repaired_path, reused)
+    reloaded = load_us_frame(repaired_path)
+    assert_bound_childcare_attendance(reloaded)
+    assert_frame_equal(
+        reloaded.table("person")[list(US_CHILDCARE_ATTENDANCE_COLUMNS)], before
+    )
 
 
 def test_bridge_retains_all_equally_near_donors():
