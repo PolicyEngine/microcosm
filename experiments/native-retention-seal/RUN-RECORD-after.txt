@@ -1,0 +1,24 @@
+native-retention-seal lane — 1/1000 after-run record
+launched: 2026-09-17T23:40:26Z (gate opened at 23:40:26Z, available 80.7 GB > 40 GB)
+pid:  82878
+pgid: 82878   (session leader; os.setsid() in setsid_exec.py, pid kept across the exec)
+command: /Users/maxghenis/PolicyEngine/_worktrees/microcosm-native-v5/.venv/bin/python -I -B -S \
+         /Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-after/.measure/harness19_after_with_required_replay.py
+harness: a byte-identical copy of the native-scale lane's committed
+         experiments/native-scale-transport/harness19_after_with_required_replay.py
+         (sha256 b020bec601b9aea7f99eb9675e7cbd879d48a7fad850e974aa2b9f34beb7d5da),
+         copied rather than edited, as the brief requires
+env: MEASURE_BASE=/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-after
+                  (throwaway worktree, detached at ad77fe3874d2cc5127bad7caf2f6a9cb05ed3ccb)
+     MEASURE_RUN=/Users/maxghenis/PolicyEngine/_recovered/pilot-runs/native45-v5/run  (read-only)
+     MEASURE_PROBE=.../microcosm-retention-after/.measure/after
+     MEASURE_LABEL=native-retention-seal-after-1-1000
+ceilings: RLIMIT_CPU hard 9060 s (setsid_exec), harness soft 9000 CPU-s,
+          12000 wall-s, 48 GiB RSS
+phases: cold 19-node run at 1/1000, seed 20260908, then the same graph with
+        resume="require" against the store the cold run just wrote
+machine at launch: the native-scale lane's own 1/10 run had already stopped
+        (see the report); the lane's completion-host pytest was running
+        concurrently on another core, which affects wall clock and not the
+        process_time CPU figures the report leads with
+kill, if ever needed: kill 82878   -- exact pid only, never a pattern kill
