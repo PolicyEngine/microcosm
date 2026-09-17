@@ -233,6 +233,7 @@ from microcosm.build.us_runtime import (  # noqa: E402
     asec_coverage_authentication,
     asec_current_money_source,
     graph_atomic_survey_financial,
+    graph_atomic_survey_population,
     survey_atomic_geography,
     survey_population_preparation,
 )
@@ -461,6 +462,15 @@ def _receipts():
         if spill.is_dir():
             result["segment_files_on_disk"] = len(
                 [path for path in spill.iterdir() if path.suffix == ".segment"]
+            )
+        # How far the graph got, for a measurement the CPU ceiling truncates:
+        # the store gains one directory per written object.
+        objects = PROBE / "graph-store/objects"
+        if objects.is_dir():
+            prefixes = [path for path in objects.iterdir() if path.is_dir()]
+            result["store_object_directories"] = sum(
+                len([child for child in prefix.iterdir() if child.is_dir()])
+                for prefix in prefixes
             )
     except BaseException as error:  # noqa: BLE001 - never fatal
         result["error"] = type(error).__name__ + ": " + str(error)[:200]
