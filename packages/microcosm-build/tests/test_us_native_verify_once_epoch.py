@@ -458,6 +458,81 @@ def test_a_native_source_moved_inside_an_inner_close_refuses_at_the_next_borrow(
 
 
 # --------------------------------------------------------------------------
+# The outermost close's own window: nothing comes after it, so it refuses
+# rather than deferring to a borrow that never happens.
+# --------------------------------------------------------------------------
+
+
+def test_a_roster_file_removed_inside_the_outermost_close_refuses_at_the_close(
+    tmp_path, monkeypatch
+):
+    """The window an inner close hands to the next borrow, where there is none.
+
+    An inner close that cannot take a signature after validating records none
+    and lets the borrow that follows pay the complete validation, which is what
+    refuses. The outermost close has no borrow after it -- ``_MEMO`` is cleared
+    as it returns -- so recording nothing there would end the run clean over a
+    roster file removed after that close's own ``_validate`` had returned: the
+    file is past every comparison and the signature cannot be taken at all. The
+    outermost close therefore pays that deferred validation itself, and what it
+    raises is the code an unmemoised borrow raises for the same removal, not
+    one of its own.
+    """
+
+    arguments = fixture(tmp_path, monkeypatch)
+    preparation = owner.prepare_authenticated_survey_population(**arguments)
+    state = owner._ISSUED[id(preparation)][2]
+    target = arguments["source_dir"] / "selection-request.json"
+    hook = _AtReturnOf(owner._validate, owner._finalize_epoch, target.unlink)
+    with hook:
+        with pytest.raises(owner.SurveyPopulationPreparationError) as closing:
+            with owner.verification_epoch():
+                _borrow(preparation)
+                # The next close is the outermost one.
+                hook.armed = True
+    # The removal landed inside that close's own validation, and after it no
+    # signature can be taken -- the branch that used to be swallowed.
+    assert hook.fired == 1
+    with pytest.raises(FileNotFoundError):
+        owner._memo_signature(state)
+    # No epoch is open now, so this borrow is the unmemoised one.
+    with pytest.raises(owner.SurveyPopulationPreparationError) as today:
+        _borrow(preparation)
+    assert str(closing.value) == str(today.value) == "SOURCE_ROSTER"
+    assert owner._MEMO == {}
+
+
+def test_a_native_source_removed_inside_the_outermost_close_refuses_at_the_close(
+    tmp_path, monkeypatch
+):
+    """The same window in the nested capsule's close, which has the same shape.
+
+    This capsule reaches it by the other route: ``_path_stat`` never raises, so
+    a removed source moves the signature rather than making it unavailable.
+    Either way the close recorded no memo answer and left the refusal to a
+    borrow, and at the outermost close there is no borrow. It pays the
+    validation instead, and raises what an unmemoised borrow raises.
+    """
+
+    from test_us_asec_2024_native_population import _fixture as asec_fixture
+
+    paths = asec_fixture(tmp_path, monkeypatch)
+    capsule = native.load_authenticated_asec_2024_native_population(**paths)
+    target = paths["parent_path"]
+    hook = _AtReturnOf(native._validate_state, native._epoch_exit, target.unlink)
+    with hook:
+        with pytest.raises(native.AsecNativePopulationError) as closing:
+            with native_epoch():
+                capsule.validate()
+                hook.armed = True
+    assert hook.fired == 1
+    with pytest.raises(native.AsecNativePopulationError) as today:
+        capsule.validate()
+    assert str(closing.value) == str(today.value) == "NATIVE_BINDING_REFUSAL"
+    assert native._MEMO == {}
+
+
+# --------------------------------------------------------------------------
 # The two branches of the memo that nothing reached.
 # --------------------------------------------------------------------------
 

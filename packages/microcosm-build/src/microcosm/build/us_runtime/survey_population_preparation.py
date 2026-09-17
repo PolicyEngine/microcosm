@@ -1187,7 +1187,8 @@ def _signature_or_none(state):
     ``None`` never equals a signature, so a close that cannot take one records
     no memo answer and the borrow that follows runs the complete validation --
     which is what refuses, with today's code, for whatever made the signature
-    unavailable.
+    unavailable. At the outermost close no borrow follows, so ``_finalize_epoch``
+    pays that validation itself rather than leaving it to one.
     """
 
     try:
@@ -1216,6 +1217,17 @@ def _finalize_epoch():
     roster file. The entry itself stays: the outermost close re-validates every
     capsule the memo still holds, and dropping it here would drop that pass for
     a capsule nothing borrows again.
+
+    Recording nothing is the whole answer only while a borrow can still follow.
+    At the **outermost** close there is none -- ``_MEMO`` is cleared as this
+    returns -- so leaving the deferred validation to the next borrow would end
+    the run without refusing at all. The outermost close therefore pays that
+    validation here, inside the same translation block, whenever the signature
+    moved or could not be taken: ``_validate`` re-reads the same roster and so
+    raises the same refusal the next borrow's miss would have raised, with no
+    code of this function's own. When it passes, nothing moved that the
+    complete validation can see, which is exactly the verdict a miss would have
+    reached, and the close continues.
     """
 
     for key, entry in list(_MEMO.items()):
@@ -1226,15 +1238,21 @@ def _finalize_epoch():
         before = _signature_or_none(entry[2])
         try:
             _validate(entry[2])
+            _EPOCH_RECORD["final_validations"] += 1
+            after = _signature_or_none(entry[2])
+            moved = before is None or after is None or after != before
+            if moved and not _EPOCHS:
+                # The outermost close: the borrow that would have paid for this
+                # never comes. Pay it here, so the run refuses on the way out
+                # instead of ending clean. Not counted as a final validation --
+                # that count is of the unconditional pass above.
+                _validate(entry[2])
         except SurveyPopulationPreparationError:
             raise
         except Exception:
             raise SurveyPopulationPreparationError(
                 "PREPARATION_VERIFICATION_REFUSED"
             ) from None
-        _EPOCH_RECORD["final_validations"] += 1
-        after = _signature_or_none(entry[2])
-        moved = before is None or after is None or after != before
         _MEMO[key] = (entry[0], None if moved else after, entry[2])
 
 

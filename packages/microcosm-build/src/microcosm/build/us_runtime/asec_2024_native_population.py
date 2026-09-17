@@ -543,7 +543,8 @@ def _signature_or_none(value, state):
 
     ``None`` never equals a signature, so a close that cannot take one records
     no memo answer and the borrow that follows re-runs ``_validate_state``,
-    which refuses with the code it raises today.
+    which refuses with the code it raises today. At the outermost close no
+    borrow follows, so ``_epoch_exit`` re-runs it itself.
     """
     try:
         return _memo_signature(value, state)
@@ -563,6 +564,12 @@ def _epoch_exit(failed):
     after, and when the two differ no memo answer is kept, so the next borrow
     is a miss and pays the complete validation. The entry stays, because the
     outermost close re-validates whatever the memo still holds.
+
+    At the **outermost** close no borrow follows -- ``_MEMO`` is cleared as this
+    returns -- so keeping no answer would end the run without refusing. There
+    the deferred validation is paid here instead, inside the same translation
+    block, so a source that moved while this close was validating refuses with
+    the code ``_validate_state`` raises rather than closing clean.
     """
     _EPOCH_DEPTH[0] -= 1
     try:
@@ -576,6 +583,11 @@ def _epoch_exit(failed):
             before = _signature_or_none(owner, entry[2])
             try:
                 _validate_state(entry[2])
+                after = _signature_or_none(owner, entry[2])
+                moved = before is None or after is None or after != before
+                if moved and not _EPOCH_DEPTH[0]:
+                    # The outermost close: no borrow follows to pay for this.
+                    _validate_state(entry[2])
             except AsecNativePopulationError:
                 raise
             except (
@@ -587,8 +599,6 @@ def _epoch_exit(failed):
                 OverflowError,
             ):
                 raise AsecNativePopulationError("NATIVE_BINDING_REFUSAL") from None
-            after = _signature_or_none(owner, entry[2])
-            moved = before is None or after is None or after != before
             _MEMO[key] = (entry[0], None if moved else after, entry[2])
     finally:
         if not _EPOCH_DEPTH[0]:
