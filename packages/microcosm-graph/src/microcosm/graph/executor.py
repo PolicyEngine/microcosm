@@ -506,11 +506,14 @@ def _object_stream(series: pd.Series) -> bytes | None:
     width = text.dtype.itemsize
     raw = np.frombuffer(text.tobytes(), dtype=np.uint8).reshape(rows, width)
     filled = raw != 0  # 'S' pads the short renderings on the right with NUL
-    lengths = filled.sum(axis=1).astype("<u8")
+    # The cast is the last step, not the first: a ufunc result carries the
+    # host's byte order whatever its operands carried, so casting the sum and
+    # then adding the type byte's length would emit big-endian prefixes on a
+    # big-endian host, while the loop this reproduces writes them with
+    # `int.to_bytes(8, "little")`. Casting the finished length pins the order.
+    lengths = (filled.sum(axis=1) + 1).astype("<u8")
     block = np.empty((rows, 9 + width), dtype=np.uint8)
-    block[:, :8] = np.frombuffer((lengths + 1).tobytes(), dtype=np.uint8).reshape(
-        rows, 8
-    )
+    block[:, :8] = np.frombuffer(lengths.tobytes(), dtype=np.uint8).reshape(rows, 8)
     block[:, 8] = ord("i")
     block[:, 9:] = raw
     keep = np.ones((rows, 9 + width), dtype=bool)
