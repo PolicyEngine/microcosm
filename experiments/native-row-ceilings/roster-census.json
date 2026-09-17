@@ -1,0 +1,32 @@
+{
+ "artifact": "/Users/maxghenis/PolicyEngine/_recovered/pilot-runs/native19-required-20260912/run/financial-artifacts/preparation.json",
+ "artifact_sha256": "34b362d85d2f06acd255390976d76343aff45114958ba382edb10ffa3789a8a0",
+ "scope": "Census input only. Not a build, not a certification, not release eligible.",
+ "release_eligible": false,
+ "fraction": [
+  1,
+  1000
+ ],
+ "supplied_households": 1587376,
+ "selected_households": 1584,
+ "excluded_households": 65,
+ "cells": 5,
+ "origin_household_rows": 1584,
+ "origin_person_rows": 3464,
+ "origin_entities": {
+  "family": 1594,
+  "household": 1584,
+  "marital_unit": 2774,
+  "person": 3464,
+  "spm_unit": 1585,
+  "tax_unit": 2128
+ },
+ "per_household": {
+  "family": 1.0063131313131313,
+  "household": 1.0,
+  "marital_unit": 1.7512626262626263,
+  "person": 2.186868686868687,
+  "spm_unit": 1.0006313131313131,
+  "tax_unit": 1.3434343434343434
+ }
+}
