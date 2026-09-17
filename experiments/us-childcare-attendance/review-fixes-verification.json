@@ -1,0 +1,39 @@
+{
+  "parent_sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+  "checkpoint_sha256": "5cb9aa418768b5a82ee351e8b737f58c8989212f1ffbee36d605c22887e989a5",
+  "native_sha256": "26e8811d2f6822ae555280fea06d1231d868c12764a20ab8e66086fec017f4db",
+  "source_stage_report_sha256": "eb1f20876a4b5d41d045b1fb65cc5a0029c0fad3b800e26e7d6e83833c6be743",
+  "verification_code_sha256": "3b4cd482f6465325f66d1d8e1b3d680b281073d7dcb6b4bbedc7899e16d27ed4",
+  "attendance_recipe": {
+    "code_sha256": {
+      "childcare_attendance.py": "da00ef1fb45232a731bd4a3b33d93cd0aeac0682b28d50e4d53cb79db12ce96e",
+      "childcare_attendance_receipt.py": "d93ecfe1725bef2c0b87a137eaab88856fa9a76e601227089ceb94daa4335865",
+      "childcare_attendance_stage.py": "c5243b7f23865c352acee8f5946bb8c7b578645c7b5e56c24632fa94dd9dbecb",
+      "childcare_population.py": "19fef5e4cc1838734783c2eb911f556596256cf093fb1063a403a6eadf49d04e",
+      "nsece_childcare.py": "e11eef389f47433a2d407aaf7c01214dbefccb702b3fefe8fa6502c7e947ab4d",
+      "nsece_childcare_bridge.py": "517b3c3ae02e2316b028fd15bc60a090e7962d716d46b80e3e73067f08d5ff29",
+      "nsece_childcare_dependence.py": "1c5123a77f84460ba517d2b4c6c3e04ae658bf36e9cf54ed69ddbcacc85efc09"
+    },
+    "contract_sha256": "ae648c6cb0e2838fdf142975e9c536eb0683d9630fd1738096d524222ffb01dc",
+    "runtime_versions": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "policyengine-us": "2.2.1"
+    }
+  },
+  "content_binding_sha256": "5a67c4cdbefa261a6ba7be056ef37afbf6a20755c649432c10020026a7f1e9a2",
+  "engine_version": "2.2.1",
+  "core_version": "3.32.5",
+  "people": 166321,
+  "households": 57240,
+  "under13_children": 31889,
+  "verified_native_loaders": [
+    "microcosm.build.us_runtime.h5_io.load_legacy_calibrated_us_h5",
+    "microcosm.build.us_runtime.l0_refit_export.load_us_frame"
+  ],
+  "all_original_columns_and_weights_preserved": true,
+  "all_attendance_values_preserved_on_native_reload": true,
+  "comparison": "exact values and dtypes, normalizing only pandas string storage backend",
+  "interpretation": "artifact integrity and preservation only; no statistical certification or publication",
+  "production_ready": false
+}

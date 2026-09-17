@@ -1,4 +1,135 @@
-# NSECE attendance: interval training and paired sensitivity — 2026-09-16
+# NSECE attendance: review hardening and rebuilt candidate — 2026-09-17
+
+**PR #916 remains draft.** A second code review found that the fiscal builder
+could not finish a build with attendance, and that the native receipt path could
+damage or over-share the release file. Those defects are fixed, the noncalendar
+bridge now widens thin matching cells, and the candidate was rebuilt from the
+pinned parent under **PolicyEngine-US 2.2.1 / Core 3.32.5**. No experimental
+model is adopted, no population is published, and every report retains
+`production_ready: false`.
+
+## What changed
+
+- **Receipt reaches the export.** The builder's ACA source-output step rebuilt
+  the frame without its metadata, so the final attendance check could never
+  pass. It now keeps the metadata.
+- **Receipt write and content.** The release file gets only a receipt key; the
+  person table is no longer rewritten. The key holds only the attendance context
+  and binding, never other frame metadata, and only those keys are restored.
+- **Recipe identity.** Code hashes and runtime versions are compared when a
+  stage binds and when the fiscal build exports. Read-only loads check content
+  only, so a released file stays readable as a reference after a dependency bump.
+- **Other ingress and egress.** The builder's `--base-h5` loader restores and
+  checks the receipt, and the L0 refit export carries it forward.
+- **Fail early.** A build with neither the NSECE files nor bound attendance is
+  refused before calibration. An unbound-attendance failure stays in the batched
+  gate report, so such a run keeps its weight evidence. The `require_observed`
+  outside-domain policy fails before the bridge and names the flag that fixes it.
+- **Source codes.** The loader rejects any region outside 1–4, any parent-work
+  code outside −1, 0, 1, 2, and negative income. The pinned files hold no other
+  values. The User's Guide (HH-483) defines −1 as "No parents" and the measure as
+  work attended in the week before the interview, the same concept as the ASEC
+  side; income (HH-175) has a minimum of 0.
+- **Not changed.** The exact-k ladder wrapper cannot yet pass the NSECE flags.
+  Two early builder repair steps still drop frame metadata before the attendance
+  stage, so a receipted candidate reused as `--base-h5` is refused early instead
+  of being reused.
+
+## Bridge widening
+
+A matching cell with fewer than ten donors kept every donor, however distant its
+regular hours, so the nearest-hours step did nothing in thin cells. Such a cell
+now widens to the next matching level. Of the 3,046 bridged source children,
+1,382 stay at the finest level, 1,287 drop region, 331 also drop income, and 46
+match on age alone.
+
+[Five whole-household masked-calendar splits](bridge-widening-masked-splits.json)
+compare the two implementations child by child
+([script](bridge_widening_masked_splits.py)). Regular weekly hours stay observed,
+as in the bridge itself.
+
+| Mean over five splits | Previous | Widened |
+| --- | ---: | ---: |
+| Mean days error | +0.077 | +0.076 |
+| Mean weekly-hours error | +0.281 | +0.258 |
+| Mean absolute days error | 0.922 | 0.831 |
+| Mean absolute days error, regular-care children | 1.476 | 1.215 |
+| Mean absolute weekly-hours error | 3.082 | 3.064 |
+| Mean absolute hours-per-day error, regular-care children | 2.872 | 2.274 |
+| Share above 12 hours per day (measured 4.2%) | 7.3% | 5.7% |
+
+On the single split that the source-stage report uses, the overall mean
+weekly-hours error rises from +0.06 to +0.79 hours, and the age-5 group mean
+from 17.5 to 25.0 hours against 15.8 measured. One child with a large weight
+draws a donor with 158 weekly irregular hours. Per-child days and hours-per-day
+errors still fall on that split. These splits were inspected after the change
+was made and are development evidence, not untouched validation. They test
+reconstruction where calendars exist, not the unobserved days or irregular care
+of the summer and fall instruments.
+
+## Rebuilt candidate
+
+The candidate again contains **166,321 people, 57,240 households and 31,889
+children ages 0–12**, with every under-13 attendance input resolved. Both native
+loaders verify the new receipt; every original value and weight is preserved,
+and attendance survives the native reload exactly.
+
+| Under-13 population, weighted | 2026-09-16 | 2026-09-17 |
+| --- | ---: | ---: |
+| Attendance share | 48.47% | 48.48% |
+| Days per week | 1.959 | 1.957 |
+| Hours per week | 14.08 | 14.10 |
+| Annual potential modeled benefits | $5.998 billion | $6.206 billion |
+
+The attendance-only counterfactual still reduces all-zero results from **31 to 2
+jurisdictions (MD and NV)**, and the baseline remains $2.254 billion. Benefits
+use 2026 policies on the parent's fixed ages and incomes, without aging or
+uprating; they are not calibrated spending or caseload estimates, and positive
+benefits do not validate attendance. Target-side matching levels are unchanged
+(31,152 / 576 / 161); only the bridged donors' schedules moved.
+
+| Paired assumption change | Children with changed attendance | Annual potential benefits | Change from candidate |
+| --- | ---: | ---: | ---: |
+| No modeled irregular hours | 1,429 | $5.985 billion | −3.56% |
+| One fewer modeled day | 3,815 | $6.203 billion | −0.04% |
+| One more modeled day | 4,404 | $6.235 billion | +0.48% |
+
+All three national changes stay below the unchanged provisional 10% screen. Five
+state comparisons exceed the unchanged 20% screen. Removing irregular care
+changes **SD by −49.7% (−$2.9 million)**, **TN by −36.0% (−$43.3 million)** and
+**WV by −31.1% (−$4.2 million)**. One more day changes **WV by +38.9%
+(+$5.3 million)**, and one fewer day changes OK by −40.0% (−$2.06). IL, flagged
+at −29.4% on September 16, is now −1.0%: its flag depended on which bridge donors
+a few heavily weighted children drew. TN is unchanged to the dollar. State
+results remain sensitive to single donor draws and to the unmeasured
+irregular-care assumption.
+
+- [Source-stage report](review-fixes-source-stage.json)
+- [Population and all-state comparison](review-fixes-population.json)
+- [Native-loader verification](review-fixes-verification.json)
+- [Paired noncalendar sensitivity](review-fixes-sensitivity.json)
+
+The four reports' code hashes match the checked-in files. The September 16
+reports below are historical: their receipts bind the previous recipe. The
+calendar-selection, QRF, interval, pooling and household-size experiments reject
+bridged rows and use measured calendars only, so the bridge change cannot move
+their results; they were not rerun and their recorded code hashes predate this
+update.
+
+## Code checks for this update
+
+Repository-wide ruff lint, changed-file formatting and the tracked CI test
+inventory pass. New synthetic tests cover thin-cell widening, reserve codes, the
+early outside-domain failure, the pre-calibration refusal and content-only
+loading; two existing tests changed with the receipt payload and the recipe
+check. **The test suite was not run locally for this update**; GitHub CI is the
+first run. The production stage, native export, both native loaders and the
+three validation tools ran end to end on the licensed local inputs. The fiscal
+builder itself has still not been run end to end with attendance.
+
+## Interval training and paired sensitivity — 2026-09-16
+
+This section and those below are historical.
 
 **PR #916 remains draft.** The population has now been rebuilt from the pinned
 parent under **PolicyEngine-US 2.2.1 / Core 3.32.5**. The latest experiment uses

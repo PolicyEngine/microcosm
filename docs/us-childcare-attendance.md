@@ -15,8 +15,9 @@ build inputs; CI does not download or redistribute survey records. This PR
 provides build integration and a local population candidate under review; it does
 not publish a replacement population or certify national CCDF spending.
 
-The September 16 candidate was rebuilt from the pinned parent under
-PolicyEngine-US 2.2.1 and Core 3.32.5. Both native loaders verify the new receipt;
+The September 17 candidate was rebuilt from the pinned parent under
+PolicyEngine-US 2.2.1 and Core 3.32.5, after the receipt, builder and bridge
+changes from the second review. Both native loaders verify the new receipt;
 all original values and weights are preserved. The new all-state comparison
 reduces all-zero results from 31 jurisdictions to two (MD and NV). The
 [aggregate experiment](../experiments/us-childcare-attendance/README.md) records
@@ -24,8 +25,10 @@ the current population, sensitivity and model diagnostics. Older 1.819.0 reports
 remain historical; their receipts are not reused under the new runtime.
 
 The latest diagnostic keeps each child's selected donor fixed when varying
-modeled schedules. It flags IL and TN for irregular-care sensitivity, plus an OK
-day sensitivity of only about $2. An interval-informed QRF experiment uses the
+modeled schedules. It flags SD, TN and WV for irregular-care sensitivity, WV for
+one more day, plus an OK day sensitivity of only about $2. The September 16
+flag for IL disappeared when the bridge change moved a few donor draws, so state
+flags are sensitive to single draws. An interval-informed QRF experiment uses the
 measured bounds of incomplete training calendars, but still underpredicts weekly
 hours for observed children with unresolved siblings by 37.7%. All three tested
 completion assumptions fail that subgroup's screens; none is integrated into
