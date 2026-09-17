@@ -4,11 +4,11 @@
   "kind": "uk_vendored_ledger_facts",
   "resource": "devolved_bus_finance.json",
   "purpose": "Scotland bus and coach statistics (2024 and 2025 editions: journeys, passenger revenue, operator revenue, government support components, fare index); Welsh local authority roads and transport revenue outturn public transport lines for the Wales total; Northern Ireland Transport Holding Company transactions with DfI; DfI Translink bus journeys and passenger receipts by service. Consumed by the devolved cells of the bus-fare and bus-support rakes and the country-leg bus targets.",
-  "consumers": [],
-  "planned_consumers": [
-    "lcfs_consumption",
-    "etb_services"
+  "consumers": [
+    "uk_runtime.lcfs_consumption",
+    "uk_runtime.etb_services"
   ],
+  "planned_consumers": [],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
   "generator": {
     "tool": "tools/vendor_uk_ledger_facts.py",
@@ -16,12 +16,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "df35af7e7ccf689ad2a5b6e47ce33e99b8c9d3fb",
+    "source_commit": "ec200856c4e40e0d3fe97c4e17049cb48de02b85",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 266390,
-    "facts_sha256": "3e7d5a4fe18be9e5a19e5475a6e9f91a5d5b0ab827faedccdc755584957e59e7",
-    "manifest_sha256": "51aab3411e803cac7b9bbd1b1bf9250a87cd43bfd0ba35d0cd653e31821d0364"
+    "fact_row_count": 275698,
+    "facts_sha256": "47612c481d9917c5f92ba50389c67e8d6a80b525ba06a8c64cbc0ce83ae81412",
+    "manifest_sha256": "c91fa9ff735ea83271e93de7a725fdcdfb65a664c4868412e374a795b8cc65c3"
   },
   "selections": [
     {

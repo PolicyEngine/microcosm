@@ -15,14 +15,14 @@ def test_national_feed_records_the_complete_merged_source_artifact():
     pin = load_uk_chronicle_feed()
     resource = files("microcosm.build.uk").joinpath("chronicle_feed.json")
     raw = resource.read_bytes()
-    assert pin.source_commit == "df35af7e7ccf689ad2a5b6e47ce33e99b8c9d3fb"
+    assert pin.source_commit == "ec200856c4e40e0d3fe97c4e17049cb48de02b85"
     assert pin.source_repo == "PolicyEngine/chronicle"
-    assert pin.fact_row_count == 266390
+    assert pin.fact_row_count == 275698
     assert pin.facts_sha256 == (
-        "3e7d5a4fe18be9e5a19e5475a6e9f91a5d5b0ab827faedccdc755584957e59e7"
+        "47612c481d9917c5f92ba50389c67e8d6a80b525ba06a8c64cbc0ce83ae81412"
     )
     assert pin.manifest_sha256 == (
-        "51aab3411e803cac7b9bbd1b1bf9250a87cd43bfd0ba35d0cd653e31821d0364"
+        "c91fa9ff735ea83271e93de7a725fdcdfb65a664c4868412e374a795b8cc65c3"
     )
     assert pin.artifact_schema_version == "policyengine_ledger.consumer_artifact.v2"
     assert pin.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)

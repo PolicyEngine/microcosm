@@ -612,6 +612,7 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
         "g018": 1 + rows.astype(int) % 3,
         "g019": rows.astype(int) % 3,
         "gorx": 1 + rows.astype(int) % 12,
+        "a124": rows.astype(int) % 4,
         "p389p": 100.0 + rows * 10.0,
         "p344p": 150.0 + rows * 10.0,
         "weighta": 1.0 + rows % 7 / 10.0,
@@ -643,6 +644,12 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
         start=1,
     ):
         household[source] = position + rows / 10.0
+    # A third of the diary households buy no bus fares, as the licensed diary
+    # does: the stage clips the recipient's fares to the donor's realised
+    # range with no allowance (María's Wales fence), so the synthetic donor
+    # must reach zero or every non-user recipient would clip low.
+    for source in BUS_FARE_LCFS_CODES:
+        household[source] = np.where(rows.astype(int) % 3 == 0, 0.0, household[source])
     person = pd.DataFrame(
         {
             "case": np.arange(1, _DONOR_ROWS + 1),
@@ -854,9 +861,6 @@ def _fixture_stages(
         elif stage.stage == "lcfs_consumption":
             stage = _replace_operation(
                 stage, "fit_weighted_qrf_chain", n_estimators=_QRF_ESTIMATORS
-            )
-            stage = _replace_operation(
-                stage, "bridge_donor_column_via_qrf", n_estimators=_QRF_ESTIMATORS
             )
         elif stage.stage == "hmrc_spi_income_spine":
             stage = _replace_operation(
@@ -1084,7 +1088,6 @@ def _build_implementations(
             engine=engine,
             lcfs_household=lcfs_household,
             lcfs_person=lcfs_person,
-            was_donor=was,
         ),
         "etb_vat": UKETBVATStageTransform(
             stage=stages["etb_vat"], engine=engine, donor=etb

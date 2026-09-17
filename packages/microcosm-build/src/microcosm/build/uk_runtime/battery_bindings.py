@@ -1437,6 +1437,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "require_partition_closure",
                 "support_bounds_resource",
                 "minimum_band_rows",
+                # #890 energy_rake check: NEED shape at the DESNZ level at
+                # design weights, with the published gas-connected share.
+                "margins",
+                "margins_period_value",
+                "maximum_connected_share_deviation",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

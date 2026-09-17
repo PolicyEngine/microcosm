@@ -806,22 +806,58 @@ def test_seam_never_modifies_data_variables(monkeypatch, tmp_path: Path):
     assert len(staged.mass_log) == len(source.mass_log) + 1
 
 
+def _manifest_with_small_anchor():
+    """The committed manifest plus one small (mean-convention) anchor.
+
+    The NEED mean-spend anchors left uk_aggregate_admin under microcosm#890
+    (they are checked at stage time now), so the carrier-mean convention is
+    exercised with a synthetic small anchor on a frame column.
+    """
+
+    from types import SimpleNamespace
+
+    committed = calibration_run._calibration_gate_manifest()
+    gates = []
+    for gate in committed.gates:
+        if gate.id == "uk_aggregate_admin":
+            anchors = [
+                *gate.parameters["anchors"],
+                {
+                    "name": "electricity_mean_spending",
+                    "entity": "household",
+                    "measure": "electricity_consumption",
+                    "value": 1.0,
+                    "period": "2024",
+                    "source": "test",
+                    "family": "test",
+                },
+            ]
+            gates.append(
+                SimpleNamespace(
+                    id=gate.id, parameters={**gate.parameters, "anchors": anchors}
+                )
+            )
+        else:
+            gates.append(gate)
+    return SimpleNamespace(gates=gates)
+
+
 def test_aggregate_admin_measurement_convention_and_refusals():
     frame = _frame()
-    manifest = calibration_run._calibration_gate_manifest()
+    manifest = _manifest_with_small_anchor()
 
     totals, receipt = calibration_run.uk_aggregate_admin_totals(frame, manifest)
 
-    # Small anchors (NEED means) measure as the weighted mean over carriers;
-    # the NHS total measures as the person total under mapped household
-    # weights: 4 persons x 50.0 x weight 10.0.
-    assert totals["need_electricity_mean_spending"] == pytest.approx(1.0)
-    assert totals["need_gas_mean_spending"] == pytest.approx(1.0)
+    # Small anchors measure as the weighted mean over carriers; the NHS total
+    # measures as the person total under mapped household weights: 4 persons
+    # x 50.0 x weight 10.0.
+    assert totals["electricity_mean_spending"] == pytest.approx(1.0)
     assert totals["nhs_spending_total"] == pytest.approx(2000.0)
+    assert "need_electricity_mean_spending" not in totals
     by_anchor = {row["anchor"]: row for row in receipt}
     assert by_anchor["nhs_spending_total"]["entity"] == "person"
     assert (
-        by_anchor["need_electricity_mean_spending"]["statistic_convention"]
+        by_anchor["electricity_mean_spending"]["statistic_convention"]
         == "assessed_by_anchor_magnitude"
     )
 
@@ -855,7 +891,6 @@ def test_nhs_anchor_composes_from_the_columns_the_spine_actually_carries():
     assert by_anchor["nhs_spending_total"]["composed_from"] == list(
         UK_NHS_SPENDING_COMPONENT_COLUMNS
     )
-    assert by_anchor["need_gas_mean_spending"]["composed_from"] == []
 
 
 def test_partly_carried_derived_anchor_refuses_and_names_the_missing_part():

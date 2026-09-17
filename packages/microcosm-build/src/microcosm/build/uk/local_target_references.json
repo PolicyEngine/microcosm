@@ -198,6 +198,10 @@
       "welshgov.council_tax_stock": {
         "provider_id": "welshgov",
         "label": "Council Tax dwelling stock"
+      },
+      "dwp.housing_benefit": {
+        "provider_id": "dwp",
+        "label": "Housing Benefit"
       }
     },
     "target_categories": {

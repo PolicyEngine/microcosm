@@ -22,7 +22,10 @@ from microcosm.build.target_reference_authoring import (
     target_references_resource,
 )
 from microcosm.build.uk_runtime.ledger_targets import UK_UPRATING_APPLIERS
-from microcosm.build.uk_runtime.uc_source_periods import uc_source_month_metadata
+from microcosm.build.uk_runtime.uc_source_periods import (
+    SOURCE_MONTH_FAMILIES,
+    uc_source_month_metadata,
+)
 from microcosm.calibrate.geography_constants import (
     UK_REGION_TIER,
     UK_REGION_TIER_ENUM,
@@ -562,8 +565,11 @@ def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]
         if binding.get("require_matching_fact_period"):
             metadata["source_period_policy"] = "exact_observation"
         if "source_months" in measurement:
-            if target.get("family") != "dwp_universal_credit":
-                raise ValueError("source_months is currently a UK UC-only declaration.")
+            if target.get("family") not in SOURCE_MONTH_FAMILIES:
+                raise ValueError(
+                    "source_months is declared only by the UK DWP monthly families "
+                    f"{sorted(SOURCE_MONTH_FAMILIES)}."
+                )
             metadata.update(
                 uc_source_month_metadata(
                     measurement["source_months"],

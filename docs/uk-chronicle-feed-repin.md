@@ -67,4 +67,4 @@ Universal Credit packages); the `df35af7` re-pin (#929, chronicle #264 and #267)
 moved the rows to `chronicle.consumer_fact.v3`, which adds the publisher's
 `geography.name` to every fact (the label the hierarchy needs for constituencies
 and local authorities, microcosm#920) and brought the council taxbase packages
-for England, Wales and Scotland (266,390 rows).
+for England, Wales and Scotland (266,390 rows); the `ec20085` re-pin (#890 PR-S, chronicle #269/#270 via PR #271) brought the domestic energy facts the energy stage levels and prices against (DESNZ Energy Trends domestic consumption, subnational consumption and meter counts, QEP average prices paid, NEED 2024, ONS 04.5 sub-classes) and the census central-heating tables (275,698 rows).

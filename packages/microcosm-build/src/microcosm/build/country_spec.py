@@ -160,6 +160,7 @@ _GATE_ENTRY_KEYS = frozenset(
         "parameters",
         "not_applicable",
         "evidence_absent_blocks",
+        "population_fact_check",
         "notes",
     }
 )
@@ -453,6 +454,11 @@ class GateSelectionSpec:
             in the report; only the enforcement changes. Meaningless on an
             excused entry, so mutually exclusive with ``not_applicable``.
         notes: Free-text rationale.
+        population_fact_check: When true, the gate checks the frame against
+            published population statistics (a NEED shape, a DESNZ level, a
+            published connection share); a synthetic smoke build records its
+            failure but does not block on it, because a synthetic fixture is
+            not the population the facts describe. Every other posture blocks.
     """
 
     id: str
@@ -462,6 +468,7 @@ class GateSelectionSpec:
     parameters: Mapping[str, Any] = field(default_factory=dict)
     not_applicable: str | None = None
     evidence_absent_blocks: bool = False
+    population_fact_check: bool = False
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -474,6 +481,11 @@ class GateSelectionSpec:
             raise TypeError(
                 "GateSelectionSpec evidence_absent_blocks must be a bool, got "
                 f"{type(self.evidence_absent_blocks).__name__}."
+            )
+        if not isinstance(self.population_fact_check, bool):
+            raise TypeError(
+                "GateSelectionSpec population_fact_check must be a bool, got "
+                f"{type(self.population_fact_check).__name__}."
             )
         object.__setattr__(
             self,
@@ -556,6 +568,12 @@ class GateSelectionSpec:
                 "are mutually exclusive — an excused entry never evaluates, "
                 "so demanding its absence block is a contradiction."
             )
+        population_fact_check = raw.get("population_fact_check", False)
+        if not isinstance(population_fact_check, bool):
+            raise ValueError(
+                f"gate {gate_id!r}: population_fact_check must be a JSON "
+                f"boolean, got {population_fact_check!r}."
+            )
         return cls(
             id=gate_id,
             gate=gate,
@@ -564,6 +582,7 @@ class GateSelectionSpec:
             parameters=dict(parameters),
             not_applicable=not_applicable,
             evidence_absent_blocks=evidence_absent_blocks,
+            population_fact_check=population_fact_check,
             notes=str(raw.get("notes", "")),
         )
 
