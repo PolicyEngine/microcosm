@@ -401,7 +401,34 @@ Item 1 is the whole memory wall and most of the avoidable CPU. It is main-only,
 it lands in `microcosm-graph`, and the executor hunks of PR #938 are its
 neighbours.
 
-## 5. Open, for the owner
+## 5. The ceilings this lane did not touch, and where they sit
+
+A transport ceiling is not the only kind. The 19-node path carries a second
+family — row-count and row-byte bounds — and this section records where each one
+sits so the next lane does not rediscover them one build at a time. The counts
+come from the recovered 1/1000 artifact's own rosters: 1,584 selected households
+carry 1,584 stacked households and 3,464 stacked persons, i.e. 2.187 persons per
+household, and the combined clone doubles both.
+
+| bound | value | binds at |
+|---|---|---|
+| `survey_population_domains.MAX_HOUSEHOLDS` | 100,000 | **never** — it bounds one `classify_households` batch, and `survey_catalogue_selection` streams batches of at most `_BATCH_HOUSEHOLDS = 10,000` households or `_BATCH_PEOPLE = 100,000` people (`:187`, `:197-201`) |
+| `survey_population_domains.MAX_TOTAL_MEMBERS` | 1,000,000 | **never**, for the same reason |
+| `survey_population_domains.MAX_MEMBERS` | 20 | per household, unrelated to the fraction |
+| `acs_person_coverage_columns.MAX_SELECTED_ROWS` | 1,000,000 | above 1/10; 347,137 stacked persons at 1/10, 3,471,383 at full source |
+| `asec_current_money.MAX_PERSONS` | 1,000,000 | above 1/10, same counts |
+| `acs_pums.MAX_EXACT_HOUSEHOLDS` / `MAX_EXACT_PERSON_ROWS` | 1,000,000 | above 1/10; 1,587,376 households at full source |
+| `survey_observed_age.MAX_ROWS` | 2,000,000 | above 1/10; ~694,000 cloned persons at 1/10, ~6,943,000 at full source |
+| `survey_origin_budget.MAX_GROUPS` | 1,000,000 | not established — the group count was not derived here |
+| `graph_survey_age_artifact.MAX_PEOPLE` | 10,000,000 | above full source's ~6.94M cloned persons, so not at all |
+
+**So a 1/10 build meets no ceiling this lane did not lift, and a full-source
+build meets at least four more** — all of them row counts rather than transport
+shapes, and all of them in the 1,000,000–2,000,000 range that a 1.59M-household
+source crosses by construction. They are a separate change with a separate
+argument, and this lane does not touch them.
+
+## 6. Open, for the owner
 
 1. **Columnar format for the receipt bodies.** This design uses the store's own
    existing shape — a `header.json` payload table plus content-addressed bodies,
