@@ -1,0 +1,105 @@
+{
+  "spill": "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-native-scale-after/.measure/after/snapshots/preparation",
+  "pilot_artifact": "/Users/maxghenis/PolicyEngine/_recovered/pilot-runs/native19-required-20260912/run/financial-artifacts/preparation.json",
+  "pilot_artifact_sha256": "34b362d85d2f06acd255390976d76343aff45114958ba382edb10ffa3789a8a0",
+  "header": {
+    "name": "preparation",
+    "protocol": "microcosm.us.survey-population-roster-transport.v1",
+    "segments": [
+      [
+        "ee8abf6ea8aa357991843dd18a53d5fc1eba1bb98465c146a69dad262e45d06b",
+        1135963
+      ]
+    ],
+    "sha256": "ee8abf6ea8aa357991843dd18a53d5fc1eba1bb98465c146a69dad262e45d06b",
+    "size": 1135963
+  },
+  "segments_verified": true,
+  "reassembled_bytes": 1135963,
+  "reassembled_sha256": "ee8abf6ea8aa357991843dd18a53d5fc1eba1bb98465c146a69dad262e45d06b",
+  "reassembled_matches_header": true,
+  "blocks": {
+    "catalogues": {
+      "run_bytes": 726,
+      "pilot_bytes": 726,
+      "identical": false
+    },
+    "context_sha256": {
+      "run_bytes": 66,
+      "pilot_bytes": 66,
+      "identical": true
+    },
+    "frame_sha256": {
+      "run_bytes": 66,
+      "pilot_bytes": 66,
+      "identical": true
+    },
+    "native": {
+      "run_bytes": 413,
+      "pilot_bytes": 413,
+      "identical": false
+    },
+    "origins": {
+      "run_bytes": 718800,
+      "pilot_bytes": 718800,
+      "identical": true
+    },
+    "producer": {
+      "run_bytes": 21035,
+      "pilot_bytes": 21135,
+      "identical": false
+    },
+    "protocol": {
+      "run_bytes": 47,
+      "pilot_bytes": 47,
+      "identical": true
+    },
+    "release_eligible": {
+      "run_bytes": 5,
+      "pilot_bytes": 5,
+      "identical": true
+    },
+    "request": {
+      "run_bytes": 168,
+      "pilot_bytes": 168,
+      "identical": true
+    },
+    "request_sha256": {
+      "run_bytes": 66,
+      "pilot_bytes": 66,
+      "identical": true
+    },
+    "selection": {
+      "run_bytes": 393395,
+      "pilot_bytes": 393395,
+      "identical": true
+    },
+    "source_files": {
+      "run_bytes": 1004,
+      "pilot_bytes": 1004,
+      "identical": false
+    }
+  },
+  "source_file_differences": [
+    {
+      "path": "source_files[5][2]",
+      "run": "9ebc0ef200d7760cfd0add3429c3a70a510cd406cc48833f0eb306a2e7f45c84",
+      "pilot": "5996dcddc844172dc00c391bd144dd73de509023f74ef7e75daa7fb739aec0e4"
+    }
+  ],
+  "modules_whose_bytes_differ": [
+    "microcosm.build.us_runtime.acs_native_coverage_binding",
+    "microcosm.build.us_runtime.acs_person_coverage_authentication",
+    "microcosm.build.us_runtime.acs_population_catalogue",
+    "microcosm.build.us_runtime.asec_2024_native_population",
+    "microcosm.build.us_runtime.asec_current_money_source",
+    "microcosm.build.us_runtime.asec_population_catalogue",
+    "microcosm.build.us_runtime.survey_population_preparation",
+    "microcosm.frame.weights",
+    "microcosm.graph.population"
+  ],
+  "modules_only_in_run": [],
+  "modules_only_in_pilot": [],
+  "release_eligible": false,
+  "scope": "Block-by-block parity of one run's preparation receipt against one recovered pilot artifact. Not a build, not a certification, not release eligible."
+}
