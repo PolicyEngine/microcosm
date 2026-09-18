@@ -37,6 +37,7 @@ import argparse
 import hashlib
 import json
 import sys
+import tempfile
 import time
 from importlib.metadata import version
 from pathlib import Path
@@ -65,14 +66,24 @@ def _sha256(path: Path) -> str:
 
 
 def _load_frame(path: Path):
-    """The release tool's own loader, so the check reads what a release reads."""
+    """The release tool's own loader, so the check reads what a release reads.
+
+    A Hugging Face cache blob is named by its digest with no suffix, and the
+    engine's dataset loader insists on ``.h5``; a symlink under a temporary
+    directory satisfies the loader without copying or touching the blob.
+    """
 
     tools = REPOSITORY_ROOT / "tools"
     if str(tools) not in sys.path:
         sys.path.insert(0, str(tools))
     import build_us_fiscal_refresh_release as release  # noqa: PLC0415
 
-    return release._load_frame(path)
+    if path.suffix == ".h5":
+        return release._load_frame(path)
+    with tempfile.TemporaryDirectory(prefix="spm-role-proof-") as scratch:
+        alias = Path(scratch) / f"{path.name}.h5"
+        alias.symlink_to(path)
+        return release._load_frame(alias)
 
 
 def _with_role(frame: Frame, role: np.ndarray) -> Frame:
