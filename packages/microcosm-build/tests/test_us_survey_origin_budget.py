@@ -560,3 +560,30 @@ def test_actual_replaced_preparation_entry_refuses_current_budget_borrow(
         assert owner.source._ISSUED[id(preparation)] is original
 
     _assert_final_mutation_refused(owner._initial, budget.checked_view, mutate, restore)
+
+
+def test_group_ceiling_refuses_at_its_own_number(tmp_path, monkeypatch):
+    """The refusal is `<= MAX_GROUPS`, whatever that number is.
+
+    One group per allocation instruction, and `allocation_instructions` requires
+    one instruction per selected household, so at full source the count is the
+    1,587,376 households the catalogues supply. The invented fixture has six, so
+    the boundary is driven there; `test_us_native_row_ceilings.py` carries the
+    separate assertion that the shipped number admits a full-source selection.
+
+    `MAX_GROUPS` is inside the module's own loaded contract, so a changed value
+    is PRODUCER_CHANGED before it can be GROUP_COUNT_BOUND. Re-sealing `_LIVE`
+    alongside the patch is what a module genuinely shipped with a different
+    number looks like, and leaves every other producer check in force.
+    """
+    arguments = _actual(tmp_path, monkeypatch)
+
+    monkeypatch.setattr(owner, "MAX_GROUPS", 6)
+    monkeypatch.setattr(owner, "_LIVE", owner._live())
+    budget = owner.freeze_survey_origin_budget(**arguments)
+    assert budget.checked_view().document["group_count"] == 6
+
+    monkeypatch.setattr(owner, "MAX_GROUPS", 5)
+    monkeypatch.setattr(owner, "_LIVE", owner._live())
+    with pytest.raises(owner.SurveyOriginBudgetError, match="GROUP_COUNT_BOUND"):
+        owner.freeze_survey_origin_budget(**arguments)

@@ -35,6 +35,16 @@ ignore = ["E501"]
 "experiments/native-scale-transport/harness19_base.py" = ["F401"]
 "experiments/native-scale-transport/harness19_tenth.py" = ["F401"]
 "experiments/native-scale-transport/harness19_after_with_required_replay.py" = ["F401"]
+# The row-ceiling lane's pin tools put the worktree's own packages on
+# sys.path before importing them, and assert beneath the import block that
+# each module resolved inside this tree -- a pin re-derived from another
+# checkout would be the wrong value. That ordering requires E402.
+"experiments/native-row-ceilings/repin.py" = ["E402"]
+"experiments/native-row-ceilings/regenerate_inventory_contract.py" = ["E402"]
+"experiments/native-row-ceilings/origin_budget_size.py" = ["E402"]
+"experiments/native-row-ceilings/selected_body_budget.py" = ["E402"]
+"experiments/native-row-ceilings/consumer_gap.py" = ["E402"]
+"experiments/native-row-ceilings/roles_projection_size.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 # microcosm is a PEP 420 namespace package (no top-level __init__.py), so

@@ -11,7 +11,12 @@ import pandas as pd
 
 RULE = "microcosm.us.observed-age-normalization.v1"
 AGE_CONVENTION = "observed_interview_age_completed_years"
-MAX_ROWS = 2_000_000
+# One channel's person rows at a time: _normalized_source_copy normalizes the
+# ACS and ASEC native frames separately, so the ceiling is met by the larger
+# channel. A full-source ACS channel carries 3,422,888 persons, and this is
+# four times that, rounded up to the next whole million.
+# See docs/us-native-row-ceilings.md.
+MAX_ROWS = 14_000_000
 MAX_EXACT_FLOAT64_INTEGER = 2**53
 
 

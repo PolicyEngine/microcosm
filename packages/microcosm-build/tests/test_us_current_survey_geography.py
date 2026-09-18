@@ -190,3 +190,26 @@ def test_detached_asec_projection_mutation_on_return_refuses(tmp_path, monkeypat
     finally:
         sys.setprofile(previous)
     assert fired == [True]
+
+
+def test_household_ceiling_refuses_at_its_own_number(monkeypatch):
+    """The refusal is `<= MAX_HOUSEHOLDS`, whatever that number is.
+
+    `_projection_digest` streams one bounded row encoding at a time into a hash,
+    so the bound guards a row count and not a materialised payload. Driven here
+    at a patched-down ceiling over a three-row projection;
+    `test_us_native_row_ceilings.py` carries the separate assertion that the
+    shipped number admits a full-source selection's 1,587,376 households.
+    """
+    table = pd.DataFrame(
+        {
+            column: pd.array(["x", "y", "z"], dtype=dtype_for_token("string"))
+            for column in geography.COLUMNS
+        },
+        index=pd.Index([1, 2, 3], name="household_id", dtype="int64"),
+    )
+    monkeypatch.setattr(geography, "MAX_HOUSEHOLDS", 3)
+    assert len(geography._projection_digest(table)) == 64
+    monkeypatch.setattr(geography, "MAX_HOUSEHOLDS", 2)
+    with pytest.raises(ValueError, match="PROJECTION_STORAGE"):
+        geography._projection_digest(table)

@@ -32,7 +32,7 @@ MAX_EVIDENCE_BYTES = 2 * 1024**2
 # Exact accepted direct AGEP -> A_AGE and AGEP -> age implementation, and owners.
 # A new transform/owner version requires explicit review of this successor.
 _ACCEPTED = {
-    "acs_pums.py": "6ecf79f0dfb0c0bc0ad0af6be5fa65bd8c2d1e1968009402e4c8dee347de70dc",
+    "acs_pums.py": "e79a2a4ecbc81e52b361918e7f391725a336274c74041387d71195cca46cb83c",
     "acs_inputs.py": "aa4a8aeaba63dfef2f3e04fb89de59766deb088ed7f4d290aeba0425739916da",
     "acs_housing_universe_source.py": "beb46a4a05a13580a868be423809a77946441dcafc3a0f57160561157e93e9a3",
     "acs_person_coverage_authentication.py": "9ec68721a4cf480ef412c51ab354db9000eb7a7989e35e6e09b1574d88e8e49f",

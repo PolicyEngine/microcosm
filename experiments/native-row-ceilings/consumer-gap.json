@@ -1,0 +1,26 @@
+{
+ "scope": "Constants and one committed transport-lane receipt. Runs nothing. Not a build, not a certification, not release eligible.",
+ "release_eligible": false,
+ "producer": {
+  "module": "survey_population_preparation",
+  "MAX_SEGMENT_BYTES": 67108864,
+  "MAX_ROSTER_BYTES": 4294967296,
+  "receipt_is_one_joined_payload": "_roster_payload returns b''.join(segments)"
+ },
+ "consumer": {
+  "module": "graph_survey_population",
+  "PREPARATION_MAX_BYTES": 67108864,
+  "checked_at": "_checked_preparation :305 PREPARATION_BYTES, :309 CONTEXT_BYTES; SurveyPopulationAllocationKernel.__init__ :577/:582",
+  "reached_from": "graph_survey_population :528, :655, :921, :1190; graph_atomic_survey_population :172; survey_age_calibration :467"
+ },
+ "gap": {
+  "producer_total_over_consumer_cap": 64.0,
+  "measured_tenth_roster_bytes": 109804304,
+  "producer_verdict_at_tenth": "accepted",
+  "tenth_over_consumer_cap": 1.636211633682251,
+  "measured_full_source_roster_bytes": 1099892722,
+  "full_source_over_consumer_cap": 16.38967874646187,
+  "households_the_consumer_cap_admits": 96839
+ },
+ "source_receipt": "../microcosm-native-scale/experiments/native-scale-transport/ceiling-receipt.json"
+}

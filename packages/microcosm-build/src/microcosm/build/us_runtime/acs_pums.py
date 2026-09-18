@@ -46,8 +46,14 @@ __all__ = [
 ACS_2024_1YR_SPINE = "acs_2024_1yr"
 ACS_2024_1YR_VINTAGE = 2024
 DEFAULT_CHUNKSIZE = 100_000
-MAX_EXACT_HOUSEHOLDS = 1_000_000
-MAX_EXACT_PERSON_ROWS = 1_000_000
+# Explicit resource ceilings, four times the measured full-source count of
+# exactly what each bounds, rounded up to the next whole million. A
+# full-source ACS selection is the 1,531,614 selectable households of the
+# 2024 catalogue, carrying 3,422,888 person rows. Neither is a statement
+# about the source file, which MAX_ROWS in acs_person_coverage_columns
+# still makes at 6,000,000. See docs/us-native-row-ceilings.md.
+MAX_EXACT_HOUSEHOLDS = 7_000_000
+MAX_EXACT_PERSON_ROWS = 14_000_000
 
 _HOUSEHOLD_REQUIRED = (
     "SERIALNO",
