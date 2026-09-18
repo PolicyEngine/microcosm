@@ -57,18 +57,52 @@ name it rather than infer it. The discrimination battery is 116 comparisons,
 **[PolicyEngine/microcosm#950](https://github.com/PolicyEngine/microcosm/pull/950)**
 — draft, base `native-scale-transport`, `MERGEABLE`. It stays draft.
 
+## Done (2026-09-17, second session)
+
+- **The 1/15 refusal is named from the run's own raises.** The measurement
+  refused with the catch-all; `harness19_diag_fifteenth.py` (the 1/15 harness
+  plus the committed `sys.monitoring` RAISE block, diffed both ways) re-ran it
+  and the trace ends in `ACSCoverageAuthenticationError: CANONICAL_SIZE` from
+  `issue_acs_native_coverage` with exactly two `visit` frames — the same guard
+  and signature as 1/10. The prediction committed before the run is confirmed.
+- Recorded a defect in the 1/15 harness's own receipt: `sample.fraction` and
+  the `scope` sentence were left as the tenth's while the call site ran
+  `Fraction(1, 15)`. The harness stays as it ran; the diagnostic corrects both.
+- Corrected the guard's citation: `acs_native_coverage_binding.py:563-565`,
+  not `:562-564`, in the report and the ceiling receipt's generator.
+- **Pinned five of the six refusal codes this change adds**, which had none,
+  and verified each of the three seal tests goes red against its own reverted
+  guard. `ATOMIC_OBSERVER_RETENTION` stays unpinned and both documents now say
+  why, including that its second conjunct is a self-comparison that cannot
+  fire. That is report question 7.
+- **`battery_receipt.py`** rebuilds the battery's receipt from its own rows and
+  reproduces the committed one exactly; the design note's stale 109 comparisons
+  and eleven accepted pairs are corrected to 116 and fourteen.
+- **The identity receipt now emits every ordered pair.** Section 7c had cited
+  `transport_after → us_only` for "the US half moves no key", and that row says
+  the opposite; `base → us_only` is the row, and it did not exist. Regenerating
+  at this head also re-ran the contract arm: ten of ten accepted.
+- Verified, rather than assumed: both measured trees carry `packages/*/src`
+  byte-identical to this head; §7a's table regenerates cell for cell; §7b's
+  replay proof and §7d's RSS phase split match the artifacts exactly; the §2
+  battery table matches the receipt row for row; and the base branch's
+  `bd511d92…` key is the one the brief quoted.
+- Report restructured to the brief's order — tests (9), PR (10), questions (11),
+  caveats (12) — and five wrong cross-references repointed, including §12's
+  claim that the committed 1/10 trace came from a round that patches the
+  catch-all. It came from the round that patches nothing.
+
 ## Next
 
-1. The 1/15 refusal diagnostic's trace (pid 47936, launched 2026-09-18T00:53:59Z
-   at 79.9 GB available), which turns the predicted `CANONICAL_SIZE` into an
-   observed one.
-2. The 21-file dependent battery, one pytest process per file, as CI runs them.
-3. An adversarial verification pass over the finished head, across six
+1. The 21-file dependent battery, one pytest process per file, as CI runs them.
+   Exactly two of the 21 files changed after it started, both test files; both
+   were re-run individually at the final head (122 passed; 13 passed in 144.61 s)
+   and the report says so rather than quoting a mixed-head run.
+2. An adversarial verification pass over the finished head, across six
    dimensions, each finding refuted or kept by two independent verifiers.
-4. Fold all of it into `experiments/native-retention-seal/out.md` and the PR
-   body, and fix the report's own section numbering, which runs 1..8, 10, 10a,
-   9, 11 with cross-references to both orderings.
-5. Max's rulings on the report's six open questions.
+3. The final CI-shaped verification at the finished head, and the PR body's
+   Runs section, which is still a placeholder.
+4. Max's rulings on the report's seven open questions.
 
 ## Inherited defect, repaired here (for the report and for Max)
 
