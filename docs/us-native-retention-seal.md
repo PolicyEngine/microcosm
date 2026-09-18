@@ -160,14 +160,16 @@ refuses `CategoricalDtype`, `Float64Dtype` and `DatetimeTZDtype` with
 `StringDtype`, `object` and plain numpy dtypes get through.
 
 The forty-four rows are a reading of the code, not a census of every mutation
-that can reach it: §5's battery drives **116** comparisons, over twenty of the
-twenty-two codes plus **fourteen** pairs both paths accept, and two codes are
+that can reach it: §5's battery drives **564** comparisons, over twenty of the
+twenty-two codes plus **42** pairs both paths accept, and two codes are
 unreachable (`FRAME_TYPE`, because `Population` validates its own frame;
 `STRING_POLICY`, because `StringDtype.__eq__` already compares storage and
 `na_value`, so `SERIES_DTYPE_OR_LENGTH` fires first). Those figures are the
 committed receipt's own
 (`experiments/native-retention-seal/battery-receipt.json`: `comparisons`,
-`agreements`, `by_verdict`), not a count taken by hand.
+`agreements`, `by_verdict`), not a count taken by hand; they were 116 and
+fourteen before the fix pass that closed three divergences in the object-axis
+fold, whose new cases mostly drive the agreement driver too.
 
 ## 2. Which of them `_population_stamp` already folds
 

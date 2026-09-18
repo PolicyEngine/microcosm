@@ -988,7 +988,11 @@ Ran 15 tests in 0.375s
 OK
 
 $ uv run python -m pytest packages/microcosm-graph/tests
-783 passed, 1 skipped in 44.46s
+783 passed, 1 skipped in 39.82s
+
+$ uv run python -m pytest \
+    packages/microcosm-build/tests/test_us_implementation_inventory_contracts.py
+135 passed in 0.79s
 
 $ uv run python experiments/native-retention-seal/battery_receipt.py \
     experiments/native-retention-seal/battery-receipt.json
