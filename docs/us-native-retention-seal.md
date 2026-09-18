@@ -144,11 +144,19 @@ the one predicate that is not symmetric.
 | S14 | `not isinstance(dtype, pd.api.extensions.ExtensionDtype)` | `UNSUPPORTED_EXTENSION_DTYPE` | unary |
 | S15 | `_array_bytes_equal(to_numpy(l), to_numpy(r))` — type, dtype, `not hasobject`, shape, bytes | `NATIVE_BITS` | unary + binary |
 
-Forty-four discriminations, eleven refusal codes. The admitted dtype set is
-narrow, which bounds the problem: `_series` refuses `CategoricalDtype`,
-`Float64Dtype` and `DatetimeTZDtype` with `UNSUPPORTED_EXTENSION_DTYPE`
-(measured), so only masked integer/boolean, `StringDtype`, `object` and plain
-numpy dtypes get through.
+Forty-four rows, under the **twenty-two** refusal codes
+`survey_population_replay.py` raises (counted off the module, not off this
+table). The admitted dtype set is narrow, which bounds the problem: `_series`
+refuses `CategoricalDtype`, `Float64Dtype` and `DatetimeTZDtype` with
+`UNSUPPORTED_EXTENSION_DTYPE` (measured), so only masked integer/boolean,
+`StringDtype`, `object` and plain numpy dtypes get through.
+
+The forty-four rows are a reading of the code, not a census of every mutation
+that can reach it: §5's battery drives 109 comparisons, over twenty of the
+twenty-two codes plus eleven pairs both paths accept, and two codes are
+unreachable (`FRAME_TYPE`, because `Population` validates its own frame;
+`STRING_POLICY`, because `StringDtype.__eq__` already compares storage and
+`na_value`, so `SERIES_DTYPE_OR_LENGTH` fires first).
 
 ## 2. Which of them `_population_stamp` already folds
 
@@ -324,10 +332,11 @@ also accept. A mutation the seal misses is a finding, not a test to delete.
 
 ## 6. Fail-closed after the change
 
-**Every refusal code that exists today still fires on the same defect.** The
-eleven codes of §1 are raised by the seal constructor (unary) or the seal
-comparison (binary), with the same `SURVEY_POPULATION_REPLAY_` prefix and the
-same suffix. No code is retired and none is added.
+**Every refusal code that exists today still fires on the same defect.** All
+twenty-two are raised by the seal constructor (one-sided) or the seal
+comparison (two-sided), with the same `SURVEY_POPULATION_REPLAY_` prefix and
+the same suffix. No code is retired and none is added, and §5's receipt records
+which comparison reached which.
 
 **`FINANCIAL_NODE_POPULATION_CHANGED` after the change** means: *for a node
 whose `Population` object the run still retains — the declared-consumer roster —
