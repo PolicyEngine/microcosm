@@ -10,8 +10,7 @@ runner compares its own replay against the executor's observation with
 `atomic.same_replayed_population(expected[n], observed[n])`
 (`graph_atomic_survey_financial.py:1796` and `:1948` **at the base**, now the
 two `same_replayed_population_seals` calls at `:1882` and `:2042`), and the
-replay cannot be
-built until `run_graph` has returned. So nineteen detached `Population` objects
+replay cannot be built until `run_graph` has returned. So nineteen detached `Population` objects
 must exist between observation and comparison — about 290 GiB at full source —
 unless the comparison becomes a comparison of content seals.
 
@@ -356,13 +355,12 @@ seal record is re-digested rather than merely re-read.
 
 **The declared-consumer roster.** `result.financial_population is
 observed[final_node]` (`graph_atomic_survey_financial.py:1897` at the base,
-`:1986` here) is an
-identity check, so the objects a caller holds must be the objects the observer saw. The
-base financial run declares three: the final node (`financial.ATTACH_NODE`, or
+`:1986` here) is an identity check, so the objects a caller holds must be the
+objects the observer saw. The base financial run declares three: the final node (`financial.ATTACH_NODE`, or
 `_tax_module().GATE_NODE` when the tax rebase is enabled),
-`financial.ATTACH_NODE` itself (`legacy_population`, `:1821`), and the property
+`financial.ATTACH_NODE` itself (`legacy_population`, `:1821` at the base), and the property
 population (`observed[final_node]` before the rebase moves `final_node`,
-`:1818`). Those three are retained as objects and stamped exactly as today.
+`:1818` at the base). Those three are retained as objects and stamped exactly as today.
 Every other observation is sealed on arrival and dropped.
 
 **The completion host is a consumer of the base run's whole roster, and this
