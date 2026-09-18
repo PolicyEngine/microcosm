@@ -1209,3 +1209,121 @@ class PolicyEngineUSEngine:
                 "Export round-trip verification failed; dtype changed on "
                 f"reload: {sorted(dtype_mismatches)}."
             )
+
+
+# ----------------------------------------------------------------------
+# Static aging support: the series PolicyEngine-US uprates by, and the
+# multi-year dataset a projected frame exports to.
+# ----------------------------------------------------------------------
+
+_POPULATION_SERIES = "calibration.gov.census.populations.total"
+_PER_CAPITA_SUFFIX = "_per_capita"
+
+
+def uprating_series(
+    columns: Iterable[str],
+    years: Iterable[int],
+    *,
+    system: Any | None = None,
+) -> tuple[dict[str, dict[int, float]], dict[str, dict[int, float]], dict[str, str]]:
+    """The series PolicyEngine-US uprates ``columns`` by, evaluated at ``years``.
+
+    Reads each variable's ``uprating`` parameter path. A path under the
+    calibration tree that names a national total (directly, or through a
+    ``<total>_per_capita`` series PolicyEngine-US derives) is returned as a
+    total, so static aging can solve its factor against the reweighted frame.
+    Any other path is a per-person rate or a price index and is returned as
+    an index. The population series that uprates the weights is skipped:
+    static aging carries the weights itself.
+
+    Args:
+        columns: Variable names to look up; unknown names and variables
+            without an uprating are skipped.
+        years: Years to evaluate every series at (include the base year).
+        system: A ``CountryTaxBenefitSystem``; the adapter's cached system
+            when ``None``.
+
+    Returns:
+        ``(totals, indices, column_series)``: two ``series -> {year: value}``
+        mappings and the ``column -> series`` mapping that uses them.
+    """
+    if system is None:
+        system = PolicyEngineUSEngine()._tax_benefit_system()
+    from policyengine_core.parameters.operations.get_parameter import get_parameter
+
+    years = tuple(int(year) for year in years)
+    totals: dict[str, dict[int, float]] = {}
+    indices: dict[str, dict[int, float]] = {}
+    column_series: dict[str, str] = {}
+    for column in columns:
+        variable = system.variables.get(column)
+        path = getattr(variable, "uprating", None) if variable is not None else None
+        if not path or path == _POPULATION_SERIES:
+            continue
+        parameter = get_parameter(system.parameters, path)
+        derived_from = getattr(parameter, "metadata", {}).get("derived_from")
+        if derived_from:
+            series_path, is_total = derived_from, True
+        elif path.startswith("calibration.gov.") and _PER_CAPITA_SUFFIX not in path:
+            series_path, is_total = path, True
+        else:
+            series_path, is_total = path, False
+        table = totals if is_total else indices
+        if series_path not in table:
+            series_parameter = get_parameter(system.parameters, series_path)
+            table[series_path] = {
+                year: float(series_parameter(f"{year}-01-01")) for year in years
+            }
+        column_series[column] = series_path
+    return totals, indices, column_series
+
+
+def multi_year_dataset(
+    bundle: Frame,
+    base_year: int,
+    years: Mapping[int, tuple[np.ndarray, Mapping[str, float]]],
+) -> Any:
+    """Build a ``USMultiYearDataset`` from a base-year bundle and its
+    projected years.
+
+    Args:
+        bundle: The base-year US-schema bundle.
+        base_year: The bundle's year.
+        years: ``year -> (household weights, column factors)`` for each
+            projected year, as static aging produces them.
+
+    Returns:
+        A ``policyengine_us.data.USMultiYearDataset`` holding the base year
+        and every projected year, with each year's household weights and
+        factored columns. The engine reads it as already extended and applies
+        no uprating of its own.
+    """
+    from policyengine_us.data import USMultiYearDataset
+
+    engine = PolicyEngineUSEngine()
+    base_tables = engine._engine_tables(bundle)
+    datasets = [engine._build_dataset(base_tables, base_year)]
+    for year in sorted(years):
+        weights, factors = years[year]
+        weights = np.asarray(weights, dtype=np.float64)
+        if len(weights) != len(base_tables["household"]):
+            raise ValueError(
+                f"{year}: {len(weights)} household weights for "
+                f"{len(base_tables['household'])} households."
+            )
+        tables = {name: table.copy() for name, table in base_tables.items()}
+        tables["household"]["household_weight"] = weights
+        for column, factor in factors.items():
+            owner = next(
+                (name for name, table in tables.items() if column in table.columns),
+                None,
+            )
+            if owner is None:
+                raise ValueError(
+                    f"{year}: factored column {column!r} is not in the bundle."
+                )
+            tables[owner][column] = tables[owner][column].to_numpy(dtype=float) * float(
+                factor
+            )
+        datasets.append(engine._build_dataset(tables, year))
+    return USMultiYearDataset(datasets=datasets)

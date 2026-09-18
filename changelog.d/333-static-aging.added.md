@@ -1,0 +1,1 @@
+Add static aging in microcosm-calibrate: per-year household weights fitted to projected population by age and sex, dollar factors solved against the reweighted frame so national totals are hit without counting population growth twice, program counts scored as predictions rather than targeted, and PolicyEngine-US helpers for the uprating series and a multi-year export (#333).
