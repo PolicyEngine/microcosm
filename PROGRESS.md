@@ -1591,3 +1591,27 @@ adversaries, T6 actual fixture validation and T7 GQ/zero-weight scientific fixtu
 remain open with concrete reasons in FINAL_REPORT.md. The independently confirmed
 old status/tax42 owner repair, inventories, CI/source closure, scientific/native
 capacity and release/default/PR893 decisions remain separately owned.
+
+## Stack reconcile after #938 — 2026-09-18
+
+Lane: bring `microcosm-us-launch-integration-20260909` (#893) level with
+`origin/main` 8c44daa52 (#938 verify-once merged 2026-09-17), then carry the
+merge down the stacked branches `native-verify-once` (#935),
+`native-scale-transport` (#945), `native-row-ceilings` (#949) and
+`native-retention-seal` (#950). Merges only, never rebases; pins regenerate
+through their generators. Report: `experiments/stack-reconcile-20260918/out.md`.
+
+State: worktree `_worktrees/microcosm-stack-reconcile`, local branches
+`reconcile/<remote-name>`, pushed with `git push origin HEAD:<remote-name>`.
+Starting heads: main 8c44daa52; integration 8a7e1b12d; native-verify-once
+0d04abfcf; native-scale-transport 6fca96f31 (one commit past the brief's
+886f777eb); native-row-ceilings c5ac78d2d; native-retention-seal db7c93871.
+
+Done: survey. Main's delta since the d1196af10 merge base is #938 alone:
+nine files, all under `packages/microcosm-graph/` plus one changelog fragment;
+uv.lock and every pyproject are unchanged, so the approved-lock digest does
+not move. `git merge-tree` predicts one textual conflict, an import-line clash
+in `graph/executor.py` (`import struct` on the branch, `import stat` on main).
+The four downstream merges preview conflict-free at today's heads.
+
+Next: step 1 merge, checks, push; then steps 2–4 in order; then the report.
