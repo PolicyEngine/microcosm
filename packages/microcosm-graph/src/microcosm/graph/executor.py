@@ -2613,6 +2613,7 @@ def run_graph(
                 written=written,
                 run_sources=run_sources,
                 _population_observer=_population_observer,
+                _population_observer_detach=_population_observer_detach,
                 _verification_epoch=_verification_epoch,
             )
         except BaseException as error:
@@ -2631,6 +2632,7 @@ def _execute_graph(
     written: set[str],
     run_sources: _RunSources,
     _population_observer: Callable[[str, Population], None] | None,
+    _population_observer_detach: bool,
     _verification_epoch: Mapping[str, object] | None,
 ) -> RunManifest:
     """One run, with ``written`` collecting every key it publishes.
