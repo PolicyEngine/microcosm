@@ -569,6 +569,13 @@ rows agree within 1%. This is the population-dependent-measure physics the plan 
 the pool's contributions; the engine on 55k rows resolves the council-tax band imputation and the private
 school flag differently.
 
+> **Erratum (2026-09-15, microcosm#929).** The seven VOA band rows were not diverging: `frozen_vs_recomputed` keyed the
+> incumbent-surface rows by `contract_target_id` and summed the Wales regional rollup into the England-pinned target
+> (band A: recomputed − frozen = 248,027 = the Wales band-A rollup to the unit; B 284,108, C 294,555 likewise). Without
+> Wales, frozen and recomputed agree exactly. The comparison now keys on bound rows only (#929), and the same evaluation
+> on the #929 candidate carries no VOA row over 1 %: max divergence 12.4 % → 6.2 %, the two remaining rows being
+> `isc.private_school_students` and `ons.land.corporate_land_value` as before.
+
 **50 downstream (uk-candidate-eval under 2.94.0; "incumbent" = R17's dense H5 on spine-m and the old feed, so
 input differences ride along):**
 
@@ -930,3 +937,7 @@ loan balance). **#731 scorecard (2.97.0):** population Q50f 69.97 / Q50 58.43 / 
 0.371 / 0.376. **T6 (uk-data venv, eFRS 1.57.3 as the comparison file):** Q50 autumn budget 807 ok / 485 flag (closer 25/37),
 RF UC 10/17 (closer 6/10), childcare 17/16 (closer 7/17), all "review"; Q50f's replays ran after 22:33Z (results in the
 evaluation page's T6 tables).
+
+> **Erratum (2026-09-15, microcosm#929).** The "+3 to +12 %" on the VOA council-tax bands is the same keying artifact
+> as above (the Wales rollup summed into the England-pinned target); corrected, no VOA row diverges and the maximum
+> divergence is 6.2 % (`isc.private_school_students`); see the erratum under the D2 frozen-versus-recomputed paragraph.

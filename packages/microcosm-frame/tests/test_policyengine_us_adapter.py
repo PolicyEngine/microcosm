@@ -683,3 +683,64 @@ class TestTakeUpContract:
         contract = adapter.take_up_contract()
         dead = [n for n, info in contract.items() if info["engine_class"] == "dead"]
         assert dead == [], f"unexpected dead take-up flags: {dead}"
+
+
+class _RecordingMicrosimulation:
+    """Stands in for ``policyengine_us.Microsimulation`` and records kwargs."""
+
+    calls: list[dict[str, object]] = []
+
+    def __init__(self, **kwargs: object) -> None:
+        type(self).calls.append(dict(kwargs))
+
+    def calculate(self, name: str, period: int) -> np.ndarray:  # noqa: ARG002
+        assert name == "household_net_income"
+        return np.zeros(2)
+
+
+class TestSpmSelection:
+    """The explicit SPM measurement selection reaches ``Microsimulation``.
+
+    PolicyEngine-US 2.0.0 stopped inferring SPM geography from an absent
+    county, so the adapter forwards a caller-declared selection verbatim and
+    otherwise leaves the engine default untouched.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _record(self, monkeypatch) -> None:
+        import policyengine_us
+
+        _RecordingMicrosimulation.calls = []
+        monkeypatch.setattr(
+            policyengine_us, "Microsimulation", _RecordingMicrosimulation
+        )
+
+    def test_none_keeps_the_engine_default_and_omits_the_kwarg(self, us_bundle) -> None:
+        engine = PolicyEngineUSEngine()
+
+        engine.materialize(us_bundle, ["household_net_income"], period=2024)
+
+        (call,) = _RecordingMicrosimulation.calls
+        assert "spm" not in call
+        assert set(call) == {"dataset"}
+
+    def test_mapping_is_forwarded_as_an_independent_copy(self, us_bundle) -> None:
+        selection: dict[str, object] = {"geography_kind": "national"}
+        engine = PolicyEngineUSEngine(spm=selection)
+        selection["geography_kind"] = "mutated after construction"
+
+        engine.materialize(us_bundle, ["household_net_income"], period=2024)
+
+        (call,) = _RecordingMicrosimulation.calls
+        assert call["spm"] == {"geography_kind": "national"}
+        assert call["spm"] is not engine._spm
+
+    def test_each_simulation_receives_its_own_copy(self, us_bundle) -> None:
+        engine = PolicyEngineUSEngine(spm={"geography_kind": "national"})
+
+        engine.materialize(us_bundle, ["household_net_income"], period=2024)
+        engine.materialize(us_bundle, ["household_net_income"], period=2024)
+
+        first, second = _RecordingMicrosimulation.calls
+        assert first["spm"] == second["spm"] == {"geography_kind": "national"}
+        assert first["spm"] is not second["spm"]

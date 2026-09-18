@@ -272,6 +272,18 @@ encoder spells them three different ways.
 
 ## 4. Pins re-derived
 
+**Correction, 2026-09-18 (historicised, not rewritten).** The table below was
+recomputed before `b6081efcb` and is stale at this branch's tip: that commit's
+spill hardening reads an already-present segment back with `read_bytes`, which
+`graph_implementation._RESOURCE_CALLS` tracks, so **one committed pin moves** —
+`graph_implementation_inventory.json` → `survey_population_preparation.py` →
+`resource_accesses_sha256`, `ccfed1c1acff5a1c…` → `0071f934801d15c1…`. The
+inventory found it (`test_authenticated_actual_allocation_context_and_rehashed_claim_refusals`
+refused with `Unclassified US dependency/resource contract`), it was re-derived
+through the module's own generator, and it is committed at `886f777eb`. Every
+other row still holds. The two lanes stacked on this branch (#949, #950) each
+re-derived the same value before that commit landed.
+
 **No committed pin moves.** This was re-derived rather than assumed: every
 contract in `graph_implementation_inventory.json` was recomputed through
 `graph_implementation._dependency_contract` against the module's own

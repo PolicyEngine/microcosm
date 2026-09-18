@@ -161,9 +161,9 @@ def test_consumer_receipts_capture_the_reference_receiver_entity(
         },
     )
 
-    direct, = index.consumers["direct_leaf"]
-    aggregated, = index.consumers["aggregated_leaf"]
-    grouped, = index.consumers["grouped_leaf"]
+    (direct,) = index.consumers["direct_leaf"]
+    (aggregated,) = index.consumers["aggregated_leaf"]
+    (grouped,) = index.consumers["grouped_leaf"]
     assert (direct.kind, direct.receiver_entity, direct.aggregation_entity) == (
         "entity_call",
         "person",
@@ -877,3 +877,108 @@ def test_list_append_and_extend_preserve_exact_members_and_provenance(
                 "parameter_add",
             )
         }
+
+
+@_REQUIRES_YAML
+def test_override_table_get_resolves_each_parameter_key_exactly(
+    tmp_path: Path,
+) -> None:
+    """``mapping.get(key, key)`` over a parameter loop stays exact.
+
+    This is ``snap_individual_utility_allowance``'s shape in policyengine-us
+    2.2.1: the SNAP utility-allowance rework maps each entry of the
+    parameter-backed ``utility_types`` list through a module-level override
+    table before reading it as an SPM-unit variable. Overridden entries must
+    resolve to the override alone and unlisted entries to themselves; neither
+    may widen to the whole table, and the unlisted default must not be lost.
+    """
+
+    index = _index(
+        tmp_path,
+        {
+            "override_get.py": _clean(
+                """
+                EXPENSE_VARIABLE_OVERRIDES = {
+                    "electricity_expense": "pre_subsidy_electricity_expense",
+                    "gas_and_fuel_expense": "has_gas_and_fuel_expense",
+                }
+
+                class utility_allowance(Variable):
+                    value_type = float
+                    entity = Person
+                    definition_period = YEAR
+
+                    def formula(person, period, parameters):
+                        expense_types = parameters(period).group.utility_types
+                        total = 0
+                        for expense in expense_types:
+                            variable = EXPENSE_VARIABLE_OVERRIDES.get(
+                                expense, expense
+                            )
+                            total += person(variable, period)
+                        return total
+                """
+            ),
+            "leaves.py": _variables(
+                "electricity_expense",
+                "pre_subsidy_electricity_expense",
+                "gas_and_fuel_expense",
+                "has_gas_and_fuel_expense",
+                "water_expense",
+                "unlisted_expense",
+            ),
+        },
+        parameters={
+            "group.utility_types": """
+                values:
+                  2020-01-01:
+                    - electricity_expense
+                    - gas_and_fuel_expense
+                    - water_expense
+            """,
+        },
+    )
+
+    assert _receipt_targets(index) == {
+        "pre_subsidy_electricity_expense",
+        "has_gas_and_fuel_expense",
+        "water_expense",
+    }
+    for target in _receipt_targets(index):
+        assert _receipt_identities(index, target) == {
+            (
+                "utility_allowance",
+                "variables/override_get.py",
+                "parameter_entity_call",
+            )
+        }
+    # The overridden keys are consumed only through their replacements, and a
+    # name that is merely a table value for another key is never widened in.
+    for absent in ("electricity_expense", "gas_and_fuel_expense", "unlisted_expense"):
+        assert index.consumers.get(absent, ()) == ()
+
+
+def test_single_argument_get_still_fails_closed(tmp_path: Path) -> None:
+    """``mapping.get(key)`` yields ``None`` on a miss, which is not modeled."""
+
+    with pytest.raises(RuntimeError, match="Unresolved dynamic"):
+        _index(
+            tmp_path,
+            {
+                "bare_get.py": _clean(
+                    """
+                    OVERRIDES = {"a": "leaf_a"}
+
+                    class bare_get_consumer(Variable):
+                        value_type = float
+                        entity = Person
+                        definition_period = YEAR
+
+                        def formula(person, period, parameters):
+                            key = person("selector", period)
+                            return person(OVERRIDES.get(key), period)
+                    """
+                ),
+                "leaves.py": _variables("leaf_a", "selector"),
+            },
+        )

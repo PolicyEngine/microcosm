@@ -1,3 +1,181 @@
+# US engine lock → policyengine-us 2.2.1
+
+Lane: `engine-lock-pe-us-2.2.1`, off `origin/main` at `51c3143829b88382270f5af0714ae28fba14f803`,
+in the worktree `~/PolicyEngine/_worktrees/microcosm-engine-bump`. Started 2026-09-15.
+Everything below the `---` rule at the end of this section is prior-lane
+history; see "Root journals are history, not state" in `CLAUDE.md`.
+
+## State
+
+In progress. Nothing pushed yet.
+
+## Goal
+
+Move the US engine lock from policyengine-us 1.819.0 / spm-calculator 0.3.1 /
+policyengine-core 3.31.0 to policyengine-us **2.2.1** / spm-calculator **1.0.0** /
+policyengine-core **3.32.5** — the trio inside the certified claim for
+`populace-us-2024-spm-20260915`. Not 2.5.0: the claim names 2.2.1.
+
+Every fail-closed pin re-derived by its own generator; never a hand-edited digest.
+
+## Plan
+
+1. Constraints (`microcosm-build`, `microcosm-data[us]`, `microcosm-frame[policyengine]`)
+   `>=1.745.0,<2` → `>=2.2.1,<3`; relock; verify the trio.
+2. Read policyengine-us CHANGELOG 1.819.0 → 2.2.1; enumerate every entry that
+   touches a variable microcosm reads/writes/seeds/scores.
+3. Re-derive the fail-closed pins: frame adapter generated-source audit, US
+   engine ABI lock, `ENGINE_PUBLIC_PARAMETER_FILES` RECORD digests, take-up
+   contract, per-test `version("policyengine-us")` literals, the release input
+   coverage manifest prose + artifact.
+4. The 2.0.0 SPM-area breaking change: per-call-site explicit selection.
+5. Identity re-pins downstream of the engine, through their generators.
+6. Tests exactly as CI runs them (`tools/ci_test_groups.py` shards) plus the
+   engine-free reproduction.
+7. Changelog fragment.
+8. Push + draft PR (root gates the merge).
+
+## Done
+
+- **Step 1 — constraints and lock** (`6aad4e1bd`). `policyengine-us>=1.745.0,<2`
+  → `>=2.2.1,<3` in `packages/microcosm-build/pyproject.toml`,
+  `packages/microcosm-data/pyproject.toml` (`us` extra) and
+  `packages/microcosm-frame/pyproject.toml` (`policyengine` extra); `uv.lock`
+  relocked. Resolved trio confirmed in the lane venv: policyengine-us 2.2.1,
+  spm-calculator 1.0.0, policyengine-core 3.32.5.
+- **Step 2 — changelog read, 1.819.0 → 2.2.1** (49 releases). Read from
+  `gh api repos/PolicyEngine/policyengine-us/contents/CHANGELOG.md`, not from
+  memory. The entries that touch a variable microcosm reads, writes, seeds or
+  scores:
+  - **2.0.0 (breaking) — SPM geography.** County FIPS required by default, or
+    an explicit national or fixed SPM area selection, for SPM measurement and
+    for resource calculations (household net income, benefits, marginal tax
+    rates) *only where a unit's housing assistance is positive*. Country
+    threshold extrapolation replaced by spm-calculator 1.0.0's canonical
+    2022–2035 amounts; unavailable years fail. Population datasets must supply
+    observed county inputs and source-backed SPM independence roles instead of
+    stored formula-owned SPM outputs, which the loader now rejects.
+  - **2.2.1 — housing-assistance valuation.** General household benefits and
+    CBO means-tested transfers count actual housing assistance rather than its
+    SPM-capped valuation (the cap stays inside SPM resources), so household
+    benefits, household net income, marginal tax rates and CBO transfer
+    aggregates rise for assisted households. Housing assistance and awarded
+    families' tenant contributions are allocated across a household's SPM units
+    by member share before each unit's resource cap, so SPM poverty and deep
+    poverty move for multi-SPM-unit households.
+  - **2.2.1 — loader rejections.** Derived poverty aliases such as `in_poverty`
+    are rejected from stored datasets; a `county_fips` input that is not a
+    five-digit string is rejected however it is spelled; the default dataset
+    content hash is verified.
+  - **1.822.1 + 2.0.6 — heating inputs.** Canonical `heating_type` enum
+    (default `UNSPECIFIED`) with derived `heating_expense`; new `wood_expense`
+    and `other_heating_fuel_expense` inputs; new `has_heating_expense` /
+    `has_cooling_expense` facts read by SNAP utility-allowance incurrence;
+    `heating_expense_person` and `heating_cooling_expense` deprecated as
+    heating-amount inputs; Illinois AABD reads `gas_expense` instead of the
+    deprecated `metered_gas_expense`.
+  - **1.824.5 — federal disability gates.** SNAP elderly-or-disabled member
+    qualifies by SSI receipt rather than the SSI disability criteria flag; SNAP
+    work/ABAWD/student rules recognise disability benefit receipt; the SSI
+    student earned income exclusion uses the SSI disability test; HUD
+    person-with-disabilities status recognises the SSI and SSDI paths.
+  - **1.820.0 — SNAP work-requirement surface.** New `is_snap_abawd_exempt`,
+    `is_subject_to_snap_abawd`, `has_snap_abawd_household_child`.
+  - **2.0.1 — deduction ordering.** Stable deduction order for person-level AGI
+    and student-loan-interest MAGI, removing process-dependent floating-point
+    results; any pinned golden number in that chain may move.
+  - **1.823.0 — removal.** The inert legacy New York `gov/hhs/ccdf` encoding
+    (market rates, county clusters, copay percentages and variables) is gone.
+  - State/parameter corrections with no microcosm input surface (1.820.1–1.825.2
+    Arkansas/NY/Washington/Michigan/Massachusetts/Maine/Minnesota/Montana, the
+    CCDF and CCAP rate tables, SNAP utility-allowance value corrections,
+    Medicaid ABD unit, Texas CEAP, state TANF unearned-income lists) change
+    computed outputs but no leaf microcosm supplies; they are scoring-surface
+    movement, not lock work.
+- **Step 3a — frame-adapter generated-variable audit** (`59608c332`). The
+  `_GENERATED_SOURCE_VERSION` / `_GENERATED_SOURCE_SHA256` audit in
+  `packages/microcosm-frame/src/microcosm/frame/adapters/policyengine_us.py`
+  re-derived through a new generator, `tools/refresh_us_generated_variable_audit.py`,
+  with the import-free AST inventory split out into
+  `adapters/_policyengine_us_source_index.py`.
+- **Step 3b — engine ABI lock and US pool engine contracts** (`4c6bce3d8`).
+  `packages/microcosm-build/src/microcosm/build/us/engine_abi.lock.json`
+  regenerated through `tools/generate_us_bundle_from_constants.py`; the
+  multispine pool contracts re-pinned through a new
+  `tools/repin_us_pool_engine_contracts.py`.
+
+- **Step 3c — `ENGINE_PUBLIC_PARAMETER_FILES` is not on this branch.** The
+  brief's `tools/spec_seed_identity_diagnostics.py` pin set exists only on
+  unmerged branches (first added in `a5a066f90`); `git cat-file -e
+  origin/main:tools/spec_seed_identity_diagnostics.py` fails and
+  `ENGINE_PUBLIC_PARAMETER_FILES` appears nowhere in this tree. The brief was
+  written against the #893 file inventory. No equivalent import-time parameter
+  pin exists on `main`, so this step has no target here and nothing was
+  invented in its place.
+- **Step 3d — take-up contract** (`afaffae26`). `asserted_engine.constraint`
+  → `>=2.2.1,<3`, `inventory_built_against` → `2.2.1`, and the ACA
+  `engine_state_note` version. The repository's own fail-closed check,
+  `assert_take_up_contract_current()`, passes against the installed 2.2.1
+  engine: all seventeen `takes_up_*` flags present, no addition, no removal,
+  no entity/value_type/default/engine_class drift. No new
+  `populace_treatment` decision and no rate was introduced. `aca_take_up_seed`
+  is still absent from the whole 2.2.1 source tree, so the note's claim holds.
+- **Step 3f (partial) — source-stage and parity prose** (`afaffae26`). Each
+  mechanism claim re-verified against 2.2.1 through microcosm's own static
+  consumer index before its version string moved:
+  `is_incapable_of_self_care` 33 receipts (SNAP work registration and general
+  work requirements, federal and AR Medicaid work requirements, CDCC, many
+  state dependent-care deductions); `health_insurance_premiums` read by
+  exactly the five named state/local formulas; the 162(l) chain unchanged;
+  Early Head Start still `age < 3 | is_pregnant`; `uncapped_ssi` still the
+  SSI-eligible current-benefit candidate. Frozen generation-0 digests moved
+  with their files (`source_stages.json` dc58a0d7→7935d891,
+  `take_up_contract.json` a9e70fb3→282dbc4c; `support_spine.json` unchanged);
+  US bundle `spec_sha256` a521bf1934d799beef056a1bb999be91e7a2af5c15b124cf13725a837a100f20.
+
+- **Step 3e/3g — engine-pinned test facts and remaining literals** (`325680a7d`).
+  Every `version("policyengine-us")` literal moved only after its surrounding
+  fact was re-checked and the file run; all twenty-six changed test files pass
+  against 2.2.1. Two pinned quantities genuinely moved, both from 1.824.5's
+  disability-gate realignment (SSI closure input leaves 55 → 54,
+  `materialized_pool_input_surface` 32 → 31) and one from the 2.x input-registry
+  delta (924 → 925). Two `1.819.0` strings deliberately remain: the
+  financial-assistance documentation-drift comment and — until step 5 rewrote
+  it — the multispine pool-tool comment narrating a past re-pin.
+- **Step 3f — release input-coverage manifest** (`93ae078a5`). Prose re-verified
+  through microcosm's own consumer index, then the manifest regenerated by its
+  own tool (163 required, 7 reviewed exclusions, 41 probes — unchanged). The
+  `1.777.0` and `1.764.6` references deliberately stay: they date an artifact
+  and a measurement, not a live mechanism.
+- **Step 4 — SPM-area selection** (`36e6c411b`). Measured, not assumed. Under
+  2.2.1 `household_net_income` and `household_benefits` compute identically with
+  and without `county_fips` on a household with positive housing assistance;
+  only `spm_unit_capped_housing_subsidy`, `spm_unit_spm_threshold` and
+  `in_poverty` raise `SPMInputError(SPM_GEOGRAPHY_REQUIRED)`. **2.0.0's
+  changelog line about resource calculations no longer describes 2.2.1**, whose
+  housing-valuation change moved general household benefits off the SPM-capped
+  path. A second, unlisted fail-closed arm also exists: one SPM unit with no
+  classified adult raises `SPM_COMPOSITION_REQUIRED` for the whole population's
+  SPM measurement. Selections are recorded per call site in the lane report.
+  The county ladder gates now reject a non-text `county_fips`.
+- **Step 5 — identity re-pins** (`78add8f33`, pool pins to follow). Six
+  `EXPECTED_HASHES` values, the loader golden, the frozen generation-0 digests
+  and the multispine pool-tool identities, each recomputed by its documented
+  path. `spec_engine_coverage.py --check` is green at 41/41 inventory checks and
+  42,156/42,156 configuration fields.
+
+## Next
+
+- Finish the CI-faithful test run (all four US engine groups plus `rest`,
+  `shared-spec` and the engine-free reproduction), then push and open the
+  draft PR. The root gates the merge; this lane never marks it ready.
+- Owner questions in the lane report: whether to add a release-H5 precondition
+  gate for `SPM_COMPOSITION_REQUIRED` (zero-adult SPM units), and whether the
+  SNAP elderly-or-disabled population shift from 1.824.5 needs a seeding
+  response.
+
+---
+
 # Publisher compatibility range at source-enrichment certification
 
 Lane: `max/certify-compatible-model-range-20260914`, off `origin/main` at
@@ -1621,3 +1799,26 @@ committed report; this lane's report goes to
 `experiments/native-verify-once/out.md`. The v5 cold run (`run_v5.py`, pid
 81194) is live on this machine, so probe runs wait for the window the lane
 brief allows (`pgrep -f run_v5.py` empty, or > 40 GB free).
+## Stack reconcile after #938 — 2026-09-18
+
+Lane: bring `microcosm-us-launch-integration-20260909` (#893) level with
+`origin/main` 8c44daa52 (#938 verify-once merged 2026-09-17), then carry the
+merge down the stacked branches `native-verify-once` (#935),
+`native-scale-transport` (#945), `native-row-ceilings` (#949) and
+`native-retention-seal` (#950). Merges only, never rebases; pins regenerate
+through their generators. Report: `experiments/stack-reconcile-20260918/out.md`.
+
+State: worktree `_worktrees/microcosm-stack-reconcile`, local branches
+`reconcile/<remote-name>`, pushed with `git push origin HEAD:<remote-name>`.
+Starting heads: main 8c44daa52; integration 8a7e1b12d; native-verify-once
+0d04abfcf; native-scale-transport 6fca96f31 (one commit past the brief's
+886f777eb); native-row-ceilings c5ac78d2d; native-retention-seal db7c93871.
+
+Done: survey. Main's delta since the d1196af10 merge base is #938 alone:
+nine files, all under `packages/microcosm-graph/` plus one changelog fragment;
+uv.lock and every pyproject are unchanged, so the approved-lock digest does
+not move. `git merge-tree` predicts one textual conflict, an import-line clash
+in `graph/executor.py` (`import struct` on the branch, `import stat` on main).
+The four downstream merges preview conflict-free at today's heads.
+
+Next: step 1 merge, checks, push; then steps 2–4 in order; then the report.

@@ -1340,7 +1340,8 @@
         "W07000110": "W92000004",
         "W07000111": "W92000004",
         "W07000112": "W92000004"
-      }
+      },
+      "code_aliases": {}
     },
     "local_authority": {
       "ledger_geography_level": "local_authority",
@@ -2109,6 +2110,22 @@
         "W06000022": "W92000004",
         "W06000023": "W92000004",
         "W06000024": "W92000004"
+      },
+      "code_aliases": {
+        "E08000016": {
+          "alias_codes": [
+            "E08000038"
+          ],
+          "alias_vintage": "lad_2025",
+          "note": "Barnsley, recoded E08000038 in the April 2025 ONS LAD layer."
+        },
+        "E08000019": {
+          "alias_codes": [
+            "E08000039"
+          ],
+          "alias_vintage": "lad_2025",
+          "note": "Sheffield, recoded E08000039 in the April 2025 ONS LAD layer."
+        }
       }
     }
   }

@@ -126,7 +126,7 @@ US_RELEASE_INPUT_COVERAGE_RESOURCE = "release_input_coverage_manifest.json"
 
 # The SHA-pinned incumbent predates the verified PolicyEngine-US 1.777.0 WIC
 # input rename. Preserve its historical evidence bytes while projecting the
-# retired name onto the live 1.819.0 input leaf for the current release gate.
+# retired name onto the live 2.2.1 input leaf for the current release gate.
 REFERENCE_ECPS_LAYER_RENAMES = {
     "would_claim_wic": "takes_up_wic_if_eligible",
 }

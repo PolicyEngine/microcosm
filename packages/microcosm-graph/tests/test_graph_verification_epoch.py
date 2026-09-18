@@ -300,6 +300,75 @@ def test_a_mapping_proxy_is_kept_as_it_is_given(tmp_path: Path) -> None:
     assert manifest.verification_epoch["capsules"] == 3
 
 
+class _EpochRecord(Mapping):
+    """A caller's own record type: a ``Mapping``, and not a ``dict``.
+
+    A runtime that scopes verification around a run need not hand back a plain
+    dict -- the natural shape is an object the scope keeps writing into and
+    that reads as a mapping. The live-view contract has to hold for it too.
+    """
+
+    def __init__(self, backing: dict[str, object]) -> None:
+        self._backing = backing
+
+    def __getitem__(self, name: str) -> object:
+        return self._backing[name]
+
+    def __iter__(self):
+        return iter(self._backing)
+
+    def __len__(self) -> int:
+        return len(self._backing)
+
+
+def test_a_custom_mapping_is_held_live_exactly_as_a_dict_is(tmp_path: Path) -> None:
+    """The contract is the caller's mapping, not the caller's dict.
+
+    Wrapped rather than copied: ``dict(...)`` here would have frozen the
+    record at construction and reported a final validation count of zero,
+    which is the failure the live view exists to prevent -- silently, and only
+    for callers whose record is not a ``dict``.
+    """
+
+    backing: dict[str, object] = {
+        "protocol": "toy/verification-epoch/1",
+        "hits": 0,
+        "final_validations": 0,
+    }
+    manifest = _run(tmp_path / "run", _EpochRecord(backing))
+    assert manifest.verification_epoch["hits"] == 0
+
+    # The caller's scope closes here, after `run_graph` returned.
+    backing["hits"] = 18
+    backing["final_validations"] = 2
+    backing["capsules"] = 2
+
+    assert manifest.verification_epoch["hits"] == 18
+    assert manifest.verification_epoch["final_validations"] == 2
+    assert dict(manifest.verification_epoch) == backing
+    assert isinstance(manifest.verification_epoch, MappingProxyType)
+    with pytest.raises(TypeError):
+        manifest.verification_epoch["hits"] = 0  # type: ignore[index]
+
+
+def test_a_mapping_that_cannot_be_held_live_is_refused_not_copied() -> None:
+    """Fail-closed: a snapshot that looks live is worse than a refusal.
+
+    A type registered as a ``Mapping`` without implementing the subscript
+    protocol passes ``isinstance`` and cannot be wrapped. Copying it would
+    produce a manifest whose field reads like every other one and silently
+    stops tracking, so it is refused instead.
+    """
+
+    @Mapping.register
+    class _NotSubscriptable:
+        def items(self):
+            return iter((("hits", 1),))
+
+    with pytest.raises(TypeError, match="live view rather than a copy"):
+        RunManifest(country="toy", nodes={}, verification_epoch=_NotSubscriptable())
+
+
 # --------------------------------------------------------------------------
 # A malformed record is refused, not carried.
 # --------------------------------------------------------------------------

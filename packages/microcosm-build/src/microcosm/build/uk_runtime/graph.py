@@ -107,7 +107,7 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_education": ("frs",),
     "frs_legacy_proxies": ("frs",),
     "was_wealth": ("was",),
-    "lcfs_consumption": ("lcfs_household", "lcfs_person", "was"),
+    "lcfs_consumption": ("lcfs_household", "lcfs_person"),
     "etb_vat": ("etb",),
     "etb_services": ("etb",),
     "frs_hmrc_spine_leaves": ("frs",),
@@ -175,8 +175,12 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "child_benefit_reported",
             "pension_credit_reported",
             "universal_credit_reported",
+            # The Universal Credit draw's population: units with an adult
+            # under State Pension age (#882).
+            "age",
         )
-    ),
+    )
+    | frozenset({("benunit", "is_married")}),
     "frs_person_draws": frozenset({("person", "age")}),
     "frs_household_draws": frozenset(),
     "frs_brma": None,
@@ -278,6 +282,7 @@ _ROOT_PERSON_BOOL = {
     "is_benunit_head",
     "is_parent",
     "is_uc_claimant",
+    "would_claim_carers_allowance",
 }
 _ROOT_PERSON_INT = {"age"}
 _ROOT_PERSON_FLOAT: set[str] = set()
@@ -436,6 +441,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "would_claim_extended_childcare",
                 "would_claim_universal_childcare",
                 "would_claim_targeted_childcare",
+                "would_claim_uc_childcare",
             ),
             "bool",
         ),
@@ -655,6 +661,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
     "is_severely_disabled_for_benefits",
+    # #882: the carer take-up flag follows the refilled Carer's Allowance
+    # receipt on the SPI-redrawn rows.
+    "would_claim_carers_allowance",
 )
 _STAGE_CELLS = {
     **_STAGE_CELLS,

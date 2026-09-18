@@ -1346,7 +1346,7 @@ def test_ssi_static_dependency_closure_matches_pinned_engine_graph() -> None:
 
     assert closure.engine_version == POOL_SSI_DEPENDENCY_CONTRACT.engine_version
     assert closure.root == "ssi"
-    assert len(closure.input_leaves) == 55
+    assert len(closure.input_leaves) == 54
     assert len(closure.formula_nodes) == 63
     assert len(closure.edges) == 187
     assert closure.sha256 == POOL_SSI_DEPENDENCY_CONTRACT.sha256
@@ -1362,7 +1362,6 @@ def test_ssi_static_dependency_closure_matches_pinned_engine_graph() -> None:
         "gi_cash_assistance",
         "immigration_status_str",
         "is_blind",
-        "is_disabled",
         "is_full_time_college_student",
         "is_separated",
         "keogh_distributions",
@@ -1538,12 +1537,12 @@ def test_remaining_stage_manifest_provisions_every_ssi_leaf_by_seed() -> None:
         entry for entry in manifest if entry.consumer == "ssi_static_dependency_closure"
     ]
 
-    assert len(leaves) == 55
+    assert len(leaves) == 54
     assert tuple(sorted(entry.variable for entry in leaves)) == closure.input_leaves
     assert Counter(entry.provision for entry in leaves) == Counter(
         {
             "assembled_native_person_input": 1,
-            "materialized_pool_input_surface": 32,
+            "materialized_pool_input_surface": 31,
             "seed_stage_program_contract": 1,
             "declared_deferred_null_input": 3,
             "declared_absent_engine_input": 18,
@@ -1562,8 +1561,12 @@ def test_remaining_stage_manifest_provisions_every_ssi_leaf_by_seed() -> None:
         entry.provision == "seed_stage_program_contract" for entry in leaves
     )
     seeded_absent = len(leaves) - seeded_complete - deferred
-    assert (transferred_complete, deferred, transferred_absent) == (33, 3, 19)
-    assert (seeded_complete, deferred, seeded_absent) == (34, 3, 18)
+    # 32/33 rather than 33/34 since policyengine-us 1.824.5: the SSI student
+    # earned-income exclusion reads meets_ssi_disability_criteria instead of the
+    # generic is_disabled flag, so is_disabled - a materialized pool input -
+    # left the SSI closure. is_disabled remains an engine input elsewhere.
+    assert (transferred_complete, deferred, transferred_absent) == (32, 3, 19)
+    assert (seeded_complete, deferred, seeded_absent) == (33, 3, 18)
     assert all(
         entry.fallback is not None
         for entry in leaves
@@ -1585,7 +1588,9 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
         entry for entry in manifest if entry.consumer == "_simulation_projection"
     ]
 
-    assert len(projection) == POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count == 924
+    assert (
+        len(projection) == POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count == 925
+    )
     assert {(entry.entity, entry.variable) for entry in projection} == {
         (index.variable_metadata(variable).entity, variable)
         for variable in index.variables()
@@ -1599,7 +1604,7 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
             "frame_structural_engine_input": 10,
             "preserved_stacked_engine_input": 4,
             "derived_schedule_d_input": 1,
-            "declared_absent_engine_input": 762,
+            "declared_absent_engine_input": 763,
         }
     )
     preserved = {
@@ -1637,9 +1642,9 @@ def test_simulation_projection_defaults_match_pinned_engine_surface() -> None:
     receipt = pool_engine_input_projection_receipt(PolicyEngineUSEngine())
 
     assert receipt == {
-        "engine_version": "1.819.0",
-        "input_count": 924,
-        "default_count": 924,
+        "engine_version": "2.2.1",
+        "input_count": 925,
+        "default_count": 925,
         "defaults_sha256": (POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256),
     }
 
@@ -1669,9 +1674,9 @@ def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
         "simulate": 991,
     }
     assert receipt["engine_input_projection_contract"] == {
-        "engine_version": "1.819.0",
-        "input_count": 924,
-        "default_count": 924,
+        "engine_version": "2.2.1",
+        "input_count": 925,
+        "default_count": 925,
         "sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.sha256,
         "defaults_sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256,
     }

@@ -38,17 +38,17 @@ def test_pipr_2025_surface_activates_available_calendar_year_averages() -> None:
     target = _membership()["targets"]["ons.rent.private_rent"]
     candidates = target["geography_levels"]["local_authority"]["candidates"]
     assert len(candidates) == 361
-    assert sum(row["status"] == "active" for row in candidates) == 314
+    assert sum(row["status"] == "active" for row in candidates) == 316
     assert (
         sum(row["status"] == "no_fact_at_or_before_period" for row in candidates) == 0
     )
-    assert sum(row["status"] == "no_fact_for_area" for row in candidates) == 47
+    assert sum(row["status"] == "no_fact_for_area" for row in candidates) == 45
     references = [
         row
         for row in _references()
         if row["metadata"]["contract_target_id"] == "ons.rent.private_rent"
     ]
-    assert len(references) == 314
+    assert len(references) == 316
     assert {row["value_operation"] for row in references} == {"calendar_year_average"}
     assert {row["metadata"]["fact_aggregation"] for row in references} == {"time_mean"}
     assert all(
@@ -70,8 +70,6 @@ def test_pipr_three_signed_absence_reasons_pin_crosswalk_measurements() -> None:
     }
     assert rows["private_rent_pipr_english_lad_absent"]["area_ids"] == [
         "E06000053",
-        "E08000016",
-        "E08000019",
         "E09000001",
     ]
     assert len(rows["private_rent_pipr_scotland_brma_grain"]["area_ids"]) == 32

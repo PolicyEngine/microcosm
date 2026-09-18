@@ -135,13 +135,20 @@ def _graph() -> Graph:
 
 def _registry(
     *,
+    before_source: Callable[[Path], None] | None = None,
     on_source: Callable[[Path], None] | None = None,
     on_follower: Callable[[], None] | None = None,
 ) -> KernelRegistry:
     def source(context: KernelContext) -> KernelResult:
-        frame = _source_frame(context.sources["survey"])
+        path = context.sources["survey"]
+        # `before_source` runs ahead of the read, so the kernel's result is
+        # computed from the rewritten bytes; `on_source` runs after it, so the
+        # kernel saw the bytes the run started with.
+        if before_source is not None:
+            before_source(path)
+        frame = _source_frame(path)
         if on_source is not None:
-            on_source(context.sources["survey"])
+            on_source(path)
         return KernelResult(frame=frame, receipt={"rows": frame.n("person")})
 
     def follower(context: KernelContext) -> KernelResult:
@@ -173,12 +180,19 @@ def _registry(
     return registry
 
 
-def _run(source: Path, store: ContentStore, registry: KernelRegistry):
+def _run(
+    source: Path,
+    store: ContentStore,
+    registry: KernelRegistry,
+    *,
+    resume: str = "auto",
+):
     return run_graph(
         compile_graph(_graph()),
         sources={"survey": source},
         store=store,
         kernels=registry,
+        resume=resume,
     )
 
 
@@ -274,6 +288,313 @@ def test_a_rewritten_source_still_refuses_when_only_its_bytes_moved(
 
     with pytest.raises(NodeRejected, match="source"):
         _run(source, store, _registry(on_source=rewrite))
+
+
+# --------------------------------------------------------------------------
+# The residual: a rewrite the signature cannot see, and what the run took back.
+# --------------------------------------------------------------------------
+
+
+def _four_field_identity(info: object) -> tuple[int, int, int, int]:
+    """A file identity whose ``st_ctime_ns`` does not discriminate a rewrite.
+
+    No unprivileged process can hold ``st_ctime_ns`` still on the filesystem
+    these tests run on, which is why
+    ``test_a_rewritten_source_still_refuses_when_only_its_bytes_moved``
+    refuses at the node rather than at run end. Dropping that one field models
+    a host where it does not move. The other four do here exactly what they do
+    anywhere: an in-place same-length rewrite leaves device, inode and size
+    alone, and ``os.utime`` puts the modification time back.
+    """
+
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+
+
+def _same_length_rewrite(target: Path) -> Callable[[Path], None]:
+    stamp = target.stat()
+
+    def rewrite(_path: Path) -> None:
+        target.write_text("7", encoding="utf-8")  # one byte, as "0" is
+        os.utime(target, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+
+    return rewrite
+
+
+def test_a_stat_identical_rewrite_refuses_at_run_end_and_takes_the_run_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The one rewrite the per-node check answers out of the cache.
+
+    Every stat field this host discriminates is identical across it, so the
+    node's check is a signature hit and the node persists: its columns, its
+    frame, its weights and its cache record all reach the store, keyed on the
+    source identity the run started with, while the kernel read the rewritten
+    bytes. The refusal therefore lands after persistence, not before it. What
+    the run persisted is evicted before that refusal propagates, so the store
+    ends exactly where it started.
+    """
+
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    before = _stored_objects(store)
+    monkeypatch.setattr(graph_executor, "_stat_identity", _four_field_identity)
+    rewrite = _same_length_rewrite(source / "value.txt")
+
+    with pytest.raises(NodeRejected, match="Run changed source 'survey'"):
+        _run(source, store, _registry(before_source=rewrite))
+    assert _stored_objects(store) == before
+
+
+def test_the_record_a_stat_identical_rewrite_left_is_not_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Why the eviction is the fix and the refusal alone is not.
+
+    The refused run's cache record is keyed on the pre-rewrite source identity
+    and holds artifacts computed from the rewritten bytes. Put the original
+    bytes back and the next run derives that same identity, and that same node
+    key: a record left behind is a hit, and the run returns ages the source on
+    disk does not imply. It misses and reruns instead.
+    """
+
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    target = source / "value.txt"
+    monkeypatch.setattr(graph_executor, "_stat_identity", _four_field_identity)
+
+    with pytest.raises(NodeRejected, match="Run changed source"):
+        _run(source, store, _registry(before_source=_same_length_rewrite(target)))
+
+    target.write_text("0", encoding="utf-8")
+    manifest = _run(source, store, _registry(), resume="auto")
+    assert manifest.nodes["survey"].hit is False
+    ages = manifest.populations["survey"].table("person")["age"]
+    assert list(ages) == [10, 20, 30]  # the bytes on disk, not the refused run's
+
+
+def test_a_source_free_node_refusal_also_takes_back_what_the_run_wrote(
+    tmp_path: Path,
+) -> None:
+    """The other route to the run-end refusal evicts the same way.
+
+    Here the node that ran while the source moved declares no source, so both
+    nodes persisted before the run-end pass looked. Nothing is left behind for
+    a later run to find, whichever route reached the refusal.
+    """
+
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    before = _stored_objects(store)
+
+    def rewrite() -> None:
+        (source / "value.txt").write_text("9", encoding="utf-8")
+
+    with pytest.raises(NodeRejected, match="Run changed source 'survey'"):
+        _run(source, store, _registry(on_follower=rewrite))
+    assert _stored_objects(store) == before
+
+
+def test_a_refusal_that_cannot_evict_still_refuses_and_names_what_stayed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fail-closed: a store that will not give an object up does not soften it."""
+
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+
+    def refuse(self: ContentStore, key: str) -> bool:
+        raise OSError(13, "Permission denied")
+
+    monkeypatch.setattr(ContentStore, "evict", refuse)
+
+    def rewrite() -> None:
+        (source / "value.txt").write_text("9", encoding="utf-8")
+
+    with pytest.raises(NodeRejected) as refusal:
+        _run(source, store, _registry(on_follower=rewrite))
+    assert "Run changed source 'survey' while executing." in str(refusal.value)
+    assert "could not be evicted" in str(refusal.value)
+    assert _stored_objects(store)  # the refusal did not pretend they were gone
+
+
+class _KernelFailedError(RuntimeError):
+    """A follower kernel's own failure, distinct from any executor refusal."""
+
+
+def _failing_follower(error: BaseException) -> Callable[[], None]:
+    def fail() -> None:
+        raise error
+
+    return fail
+
+
+def test_a_later_failure_after_a_stat_identical_rewrite_takes_the_run_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The run-end pass is not the only way out of a poisoned run.
+
+    The source node reads rewritten bytes and persists under the pre-rewrite
+    identity, exactly as above, and then the follower's kernel raises. That
+    exception leaves ``run_graph`` without ever reaching the run-end pass, so
+    the same re-derivation runs on the way out and evicts what the run wrote.
+    The kernel failure still reaches the caller, with the eviction noted on it.
+    """
+
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    before = _stored_objects(store)
+    monkeypatch.setattr(graph_executor, "_stat_identity", _four_field_identity)
+    rewrite = _same_length_rewrite(source / "value.txt")
+
+    with pytest.raises(NodeRejected) as failure:
+        _run(
+            source,
+            store,
+            _registry(
+                before_source=rewrite,
+                on_follower=_failing_follower(_KernelFailedError("follower broke")),
+            ),
+        )
+    assert "Run changed source" not in str(failure.value)  # not the run-end route
+    assert any(
+        "evicted, because source 'survey' changed while it ran" in note
+        for note in getattr(failure.value, "__notes__", [])
+    )
+    assert _stored_objects(store) == before
+
+
+def test_the_record_a_failed_poisoned_run_left_is_not_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The same reuse the run-end eviction prevents, reached by the other exit."""
+
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    target = source / "value.txt"
+    monkeypatch.setattr(graph_executor, "_stat_identity", _four_field_identity)
+
+    with pytest.raises(NodeRejected):
+        _run(
+            source,
+            store,
+            _registry(
+                before_source=_same_length_rewrite(target),
+                on_follower=_failing_follower(_KernelFailedError("follower broke")),
+            ),
+        )
+
+    target.write_text("0", encoding="utf-8")
+    manifest = _run(source, store, _registry(), resume="auto")
+    assert manifest.nodes["survey"].hit is False
+    ages = manifest.populations["survey"].table("person")["age"]
+    assert list(ages) == [10, 20, 30]
+
+
+def test_an_interrupt_after_a_stat_identical_rewrite_takes_the_run_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An interrupt is not an ``Exception``, and it is settled the same way."""
+
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    before = _stored_objects(store)
+    monkeypatch.setattr(graph_executor, "_stat_identity", _four_field_identity)
+    rewrite = _same_length_rewrite(source / "value.txt")
+
+    with pytest.raises(KeyboardInterrupt) as interrupt:
+        _run(
+            source,
+            store,
+            _registry(
+                before_source=rewrite,
+                on_follower=_failing_follower(KeyboardInterrupt()),
+            ),
+        )
+    assert any("evicted" in note for note in getattr(interrupt.value, "__notes__", []))
+    assert _stored_objects(store) == before
+
+
+def test_a_failed_run_whose_sources_held_still_keeps_its_work_for_resume(
+    tmp_path: Path,
+) -> None:
+    """The re-derivation is what lets a failure stay cheap.
+
+    Nothing moved, so the source node's objects are correct and stay: the next
+    run resumes from them instead of recomputing. Evicting on every failure
+    would be safe and would throw this away.
+    """
+
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+
+    with pytest.raises(NodeRejected) as failure:
+        _run(
+            source,
+            store,
+            _registry(
+                on_follower=_failing_follower(_KernelFailedError("follower broke"))
+            ),
+        )
+    assert not getattr(failure.value, "__notes__", [])
+    kept = _stored_objects(store)
+    assert kept
+
+    manifest = _run(source, store, _registry(), resume="auto")
+    assert manifest.nodes["survey"].hit is True
+    assert kept <= _stored_objects(store)
+
+
+def test_a_failed_run_whose_sources_cannot_be_re_derived_is_taken_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unverifiable is treated as moved: the store is not left to chance."""
+
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    before = _stored_objects(store)
+
+    def remove_then_fail() -> None:
+        (source / "value.txt").unlink()
+        source.rmdir()
+        raise _KernelFailedError("follower broke")
+
+    with pytest.raises(NodeRejected) as failure:
+        _run(source, store, _registry(on_follower=remove_then_fail))
+    assert any(
+        "its sources could not be re-derived" in note
+        for note in getattr(failure.value, "__notes__", [])
+    )
+    assert _stored_objects(store) == before
+
+
+def test_a_run_end_refusal_is_not_re_derived_a_second_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The run-end pass already decided; the failure path must not repeat it."""
+
+    source = _source_path(tmp_path / "source")
+    store = ContentStore(tmp_path / "store")
+    derived: list[str] = []
+    original = graph_executor._SourceIdentities.derive
+
+    def counted(self, name, path):
+        derived.append(name)
+        return original(self, name, path)
+
+    monkeypatch.setattr(graph_executor._SourceIdentities, "derive", counted)
+
+    def rewrite() -> None:
+        (source / "value.txt").write_text("9", encoding="utf-8")
+
+    with pytest.raises(NodeRejected, match="Run changed source 'survey'") as refusal:
+        _run(source, store, _registry(on_follower=rewrite))
+    assert not getattr(refusal.value, "__notes__", [])
+    run_end_only = derived.count("survey")
+
+    derived.clear()
+    clean = tmp_path / "clean"
+    _run(_source_path(clean), ContentStore(tmp_path / "clean-store"), _registry())
+    assert run_end_only == derived.count("survey")
 
 
 # --------------------------------------------------------------------------

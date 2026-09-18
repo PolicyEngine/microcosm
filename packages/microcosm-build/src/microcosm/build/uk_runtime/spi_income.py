@@ -658,6 +658,7 @@ def impute_uk_spi_income_support(
     person.loc[spi_people, "savings_interest_income"] = taxable_interest_draw + tax_free
     person = derive_hmrc_income_auxiliaries(person, row_mask=spi_people)
     person = _refresh_disability_derived_inputs(person, spi_people=spi_people)
+    person = _refresh_carer_take_up_input(person, spi_people=spi_people)
     return UKSPIIncomeImputationResult(
         person=person,
         fit_weight_records=(
@@ -1301,6 +1302,34 @@ def _refresh_disability_derived_inputs(
             derived[column].to_numpy(),
             default=default,
         )
+    return person
+
+
+def _refresh_carer_take_up_input(
+    person: pd.DataFrame, *, spi_people: pd.Series
+) -> pd.DataFrame:
+    """Keep would_claim_carers_allowance coherent with the refilled receipt.
+
+    The root stage sets the flag from reported Carer's Allowance; the SPI
+    fill re-imputes that receipt on the redrawn rows, so the flag is
+    re-derived here from the refilled amount. A stale flag would pay the
+    allowance to a redrawn 35-hour carer whose refilled receipt is zero, or
+    withhold it from one whose refilled receipt is positive (#882).
+    """
+
+    if "would_claim_carers_allowance" not in person.columns:
+        return person
+    refilled = (
+        pd.to_numeric(
+            person.loc[spi_people, "carers_allowance_reported"], errors="coerce"
+        )
+        .fillna(0.0)
+        .to_numpy()
+        > 0.0
+    )
+    _assign_spi_values(
+        person, spi_people, "would_claim_carers_allowance", refilled, default=False
+    )
     return person
 
 
