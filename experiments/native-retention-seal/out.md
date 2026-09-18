@@ -554,6 +554,56 @@ invent a mechanism for it. What can be said:
 What would settle it is a repeat on a quiet machine, or the same comparison at
 a fraction where nineteen snapshots are not noise. §11 question 5 asks for it.
 
+### 7e. The RSS slope the brief asked for, in the only form the artifacts support
+
+**The harness records each node's duration and not its absolute start**
+(`node_wall_times` is nineteen `[name, seconds]` pairs), so nodes cannot be
+aligned to the one-second RSS series and **a true per-node slope cannot be
+fitted** from the committed artifacts. Saying so is part of the answer. What
+they do support is the trajectory across the runner call, which brackets the
+whole node loop, from
+`experiments/native-retention-seal/rss_slope_table.py`:
+
+| | entry GB | return GB | growth GB | growth/node MB | in-call peak GB | `ru_maxrss` GB |
+|---|---|---|---|---|---|---|
+| baseline `5ff889814` | 0.40 | 5.91 | 5.51 | 290 | 13.16 | 13.16 |
+| transport after `5307249b3` | 0.40 | 6.45 | 6.05 | 318 | 12.42 | 12.42 |
+| **retention seal (this lane)** | 0.40 | **8.69** | **8.29** | **436** | **13.49** | 17.86 |
+
+`growth/node` is the growth across the call divided by nineteen — **an average
+over the call, not a fitted slope**, and not all of it is node work.
+
+**This points against the change, and that is the finding.** At the same point
+in the run — the runner call's return, before the replay — this head holds
+**2.24 GB more** than the transport after-run and 2.78 GB more than the
+baseline, where what the change removes is about **0.31 GiB** of retention at
+1/1000. The in-call peak moves the same way, 13.49 against 12.42. I am not
+going to invent a mechanism for it; §7d sets out what can and cannot be said,
+and the one candidate there — that this run had 67–80 GB free throughout where
+the base branch's runs shared a machine holding 43–62 GB, and pages are
+returned under pressure and retained without it — is a plausible reading and
+**not** a measurement.
+
+**What this does to the memory argument.** It removes the 1/1000 run as
+evidence for it, in either direction: the retention removed is an order of
+magnitude below the difference, so nothing here confirms or refutes the saving.
+The memory argument rests on two things that are measured rather than inferred:
+
+1. **The record's size.** `test_the_seal_is_proportional_to_columns_and_not_to_rows`
+   seals the same frame at 8, 8,000 and 800,000 rows and requires the three
+   pickled records to differ by under 128 bytes. A seal does not grow with rows;
+   a population does.
+2. **The count of retained objects, on a real nineteen-node run.**
+   `test_the_base_run_retains_its_declared_consumers_and_seals_the_rest` counts
+   them: **19 `Population` objects before, 1 after**, 18 sealed, and
+   `run.financial_population` still the retained object. That is an object-count
+   fact about the shipped code, independent of what any allocator does with the
+   pages.
+
+The fraction where the saving would show in RSS is above the ceiling of §8, so
+it cannot be run today. §11 question 5 asks whether to chase the +2.24 GB on a
+quiet machine first.
+
 ## 8. The 1/15 run, and the ceiling that stops it
 
 **The base branch's own 1/10 run failed while this lane was working, and
@@ -897,10 +947,14 @@ that branch lifted, and in no census. Two separate calls:
 My reading: **(b)** for the lift, and yes for the amendment — the sentence is
 the kind that gets quoted later.
 
-**5. The replay phase's peak RSS went up and I cannot say why — do you want it
-chased?** §7d: 17.83 GB against the base branch's 11.71 GB, on a comparison
-where the retention this change removes is about 0.31 GiB, an order of
-magnitude below the difference. Options: **(a)** repeat the 1/1000 after-run on
+**5. Resident memory went up at every point this run measures it, and I cannot
+say why — do you want it chased?** §7d: the replay phase peaks at 17.83 GB
+against the base branch's 11.71 GB. §7e: at the runner call's *return*, before
+any replay, this head holds 8.69 GB against 6.45 GB, and the in-call peak is
+13.49 against 12.42. The retention this change removes is about 0.31 GiB, an
+order of magnitude below any of those differences, so the comparison is not
+evidence about retention in either direction — but three figures moving the
+same way is worth a sentence better than the one I can give. Options: **(a)** repeat the 1/1000 after-run on
 a quiet machine, which is about an hour and settles whether it is allocator
 behaviour under no memory pressure; **(b)** leave it until a fraction where
 nineteen snapshots are not noise, which needs the ceiling of §8 lifted first;
