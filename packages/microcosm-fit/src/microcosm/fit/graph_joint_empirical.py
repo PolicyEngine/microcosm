@@ -41,7 +41,11 @@ PROTOCOL = "microcosm.fit.graph-joint-empirical.v1"
 MODEL_TYPE = ArtifactType("microcosm.fit.joint_empirical_model", 1)
 MODEL_METADATA_TYPE = ArtifactType("microcosm.fit.joint_empirical_metadata", 1)
 DRAW_TYPE = ArtifactType("microcosm.fit.joint_empirical_draw", 1)
-MAX_DRAW_BYTES = 64 * 1024**2
+# The draw document carries one row per recipient. Its producer in the US
+# runtime materialises it once under a whole-roster ceiling of 64 accumulations
+# of 64 MiB (graph_child_property_income.MAX_ROSTER_BYTES); this decoder's
+# ceiling on the same bytes is that number.
+MAX_DRAW_BYTES = 64 * 64 * 1024**2
 MAX_RECIPIENTS = 1_048_576
 
 

@@ -146,13 +146,22 @@ def test_the_origin_budget_byte_transport_is_left_for_the_other_argument():
 
     See experiments/native-row-ceilings/origin-budget-size.json.
     """
+    # The byte-transport lane took it (docs/us-native-byte-transports.md):
+    # MAX_PAYLOAD_BYTES is unchanged as the accumulation ceiling, and the
+    # document is now a segmented stream under MAX_ROSTER_BYTES. The numbers
+    # above stay as the record of why.
     assert survey_origin_budget.MAX_PAYLOAD_BYTES == 64 * 1024**2
     admitted = survey_origin_budget.MAX_PAYLOAD_BYTES // 764
     assert admitted < STACKED_HOUSEHOLDS // 10
     assert survey_origin_budget.MAX_GROUPS > STACKED_HOUSEHOLDS
-    # And it could not be raised here even if this lane wanted to: the shared
-    # encoder refuses any cap above 64 MiB before encoding a byte, so a larger
-    # number in this module would refuse the module rather than loosen it.
+    assert (
+        survey_origin_budget.MAX_ROSTER_BYTES
+        == 64 * survey_origin_budget.MAX_PAYLOAD_BYTES
+    )
+    assert 764 * STACKED_HOUSEHOLDS <= survey_origin_budget.MAX_ROSTER_BYTES
+    # The shared encoder still refuses any single cap above 64 MiB before
+    # encoding a byte; a whole-roster document goes through the segmented
+    # sibling instead of a larger number.
     with pytest.raises(
         graph_survey_population.SurveyPopulationGraphError, match="TRANSPORT_LIMIT"
     ):
@@ -187,14 +196,23 @@ def test_the_preparation_receipt_ceiling_is_still_enforced_by_its_consumer():
 
     See experiments/native-row-ceilings/consumer-gap.json.
     """
+    # The byte-transport lane closed the gap (docs/us-native-byte-transports.md):
+    # the consumer's ceiling on the receipt is now the producer's own total,
+    # and PREPARATION_MAX_BYTES stays the ceiling on the context document.
     assert survey_population_preparation.MAX_ROSTER_BYTES == 64 * 64 * 1024**2
     assert graph_survey_population.PREPARATION_MAX_BYTES == 64 * 1024**2
     assert (
-        survey_population_preparation.MAX_ROSTER_BYTES
+        graph_survey_population.PREPARATION_ROSTER_BYTES
+        == survey_population_preparation.MAX_ROSTER_BYTES
         == 64 * graph_survey_population.PREPARATION_MAX_BYTES
     )
     measured_tenth_roster_bytes = 109_804_304
+    measured_full_source_roster_bytes = 1_099_892_722
     assert measured_tenth_roster_bytes > graph_survey_population.PREPARATION_MAX_BYTES
+    assert (
+        measured_full_source_roster_bytes
+        <= graph_survey_population.PREPARATION_ROSTER_BYTES
+    )
 
 
 def test_the_acs_body_budget_is_the_tightest_ceiling_on_the_path():
@@ -214,6 +232,10 @@ def test_the_acs_body_budget_is_the_tightest_ceiling_on_the_path():
 
     See experiments/native-row-ceilings/selected-body-budget.json.
     """
+    # The byte-transport lane lifted it first (docs/us-native-byte-transports.md):
+    # the charge now bounds the NDJSON line the body holds and is checked against
+    # the body's own whole-roster ceiling; MAX_BODY_BYTES is unchanged as the
+    # accumulation ceiling. The old charge stays here as the record of why.
     assert acs_person_coverage_authentication.MAX_BODY_BYTES == 64 * 1024**2
     measured_charge_per_row = 5197
     admitted = (
@@ -221,3 +243,12 @@ def test_the_acs_body_budget_is_the_tightest_ceiling_on_the_path():
     )
     assert admitted < ACS_PERSONS // 100
     assert acs_person_coverage_columns.MAX_SELECTED_ROWS > ACS_PERSONS
+    assert (
+        acs_person_coverage_authentication.MAX_ROSTER_BYTES
+        == 64 * acs_person_coverage_authentication.MAX_BODY_BYTES
+    )
+    measured_full_source_body_bytes = 308_941_698
+    assert (
+        measured_full_source_body_bytes
+        <= acs_person_coverage_authentication.MAX_ROSTER_BYTES
+    )

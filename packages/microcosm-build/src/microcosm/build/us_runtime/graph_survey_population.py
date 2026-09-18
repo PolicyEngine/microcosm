@@ -66,6 +66,14 @@ ALLOCATION_MAX_BYTES = 64 * 1024**2
 # ALLOCATION_MAX_BYTES stays the per-segment ceiling, unchanged; the total is a
 # separate, explicit resource ceiling.
 ALLOCATION_ROSTER_BYTES = 64 * ALLOCATION_MAX_BYTES
+# The preparation receipt is materialised once by its producer under
+# survey_population_preparation.MAX_ROSTER_BYTES, 64 accumulations of 64 MiB;
+# this consumer re-checked the same bytes against PREPARATION_MAX_BYTES, so the
+# ceiling that lane lifted was still enforced here, at 96,839 households (6.10%
+# of source). The consumer's ceiling on the receipt is the producer's own.
+# PREPARATION_MAX_BYTES stays the ceiling on the frame-context document and the
+# largest accumulation. See docs/us-native-byte-transports.md.
+PREPARATION_ROSTER_BYTES = 64 * PREPARATION_MAX_BYTES
 STAGE = "authenticated_survey_population_v1"
 STAGE_DEPENDENCIES = (
     "numpy",
@@ -281,6 +289,66 @@ def _bounded_json(value, limit):
     return bytes(result)
 
 
+def _canonical_pieces(value, segment):
+    """The UTF-8 tokens of ``_bounded_json``'s stream, each bounded by ``segment``."""
+    _require(type(segment) is int and 0 < segment <= 64 * 1024**2, "TRANSPORT_LIMIT")
+    encoder = json.JSONEncoder(
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    )
+    try:
+        for piece in encoder.iterencode(value):
+            # The same pre-encoding bound _bounded_json applies: characters
+            # never outnumber bytes, so this refuses an unexpected string
+            # before it is encoded.
+            _require(len(piece) <= segment, "TRANSPORT_LIMIT")
+            encoded = piece.encode("utf-8")
+            _require(len(encoded) <= segment, "TRANSPORT_LIMIT")
+            yield encoded
+    except SurveyPopulationGraphError:
+        raise
+    except (TypeError, ValueError, UnicodeError):
+        raise SurveyPopulationGraphError("TRANSPORT_ENCODING") from None
+
+
+def _segmented_json(value, *, segment, maximum):
+    """``_bounded_json(value, maximum)`` accumulated in segments no larger than ``segment``.
+
+    A whole-roster document -- one that carries a record per row of a roster
+    the selection grows -- outgrows the 64 MiB a single accumulation may hold
+    at a fraction of the source. Its bytes are unchanged here, and so is every
+    digest and key derived from them: the same tokens in the same order, closed
+    into segments before one would pass ``segment`` and joined once under the
+    explicit ``maximum``. ``TRANSPORT_LIMIT`` keeps its code on the condition a
+    segmented stream can still reach, one token larger than one segment; the
+    total refuses ``TRANSPORT_ROSTER_LIMIT``.
+    """
+    _require(type(maximum) is int and segment <= maximum, "TRANSPORT_ROSTER_LIMIT")
+    segments, current, total = [], bytearray(), 0
+    for encoded in _canonical_pieces(value, segment):
+        if current and len(current) + len(encoded) > segment:
+            segments.append(bytes(current))
+            current = bytearray()
+        _require(len(current) + len(encoded) <= segment, "TRANSPORT_LIMIT")
+        _require(total + len(encoded) <= maximum, "TRANSPORT_ROSTER_LIMIT")
+        current.extend(encoded)
+        total += len(encoded)
+    segments.append(bytes(current))
+    payload = b"".join(segments)
+    _require(len(payload) == total <= maximum, "TRANSPORT_ROSTER_LIMIT")
+    return payload
+
+
+def _json_sha256(value, *, segment=64 * 1024**2, maximum):
+    """``_sha(_bounded_json(value, maximum))`` without holding the bytes."""
+    _require(type(maximum) is int and segment <= maximum, "TRANSPORT_ROSTER_LIMIT")
+    digest, total = hashlib.sha256(), 0
+    for encoded in _canonical_pieces(value, segment):
+        _require(total + len(encoded) <= maximum, "TRANSPORT_ROSTER_LIMIT")
+        digest.update(encoded)
+        total += len(encoded)
+    return digest.hexdigest()
+
+
 def _source_owner():
     # The owner remains independent of this graph adapter. Declaration-only
     # imports do not load source capture owners or their runtime resources.
@@ -302,7 +370,7 @@ def _checked_preparation(preparation):
     view = owner.AuthenticatedSurveyPopulationPreparation.checked_view(preparation)
     payload, context = view.payload, view.context
     _require(
-        type(payload) is bytes and 0 < len(payload) <= PREPARATION_MAX_BYTES,
+        type(payload) is bytes and 0 < len(payload) <= PREPARATION_ROSTER_BYTES,
         "PREPARATION_BYTES",
     )
     _require(
@@ -574,7 +642,7 @@ class SurveyPopulationAllocationKernel(_Kernel):
         )
         _require(
             type(preparation_bytes) is bytes
-            and 0 < len(preparation_bytes) <= PREPARATION_MAX_BYTES,
+            and 0 < len(preparation_bytes) <= PREPARATION_ROSTER_BYTES,
             "PREPARATION_BYTES",
         )
         _require(

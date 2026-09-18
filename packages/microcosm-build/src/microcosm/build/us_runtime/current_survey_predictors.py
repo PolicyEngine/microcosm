@@ -505,7 +505,11 @@ def qualify_current_survey_predictors(
     matrix = model_input.encode_recipient_matrix(
         features.loc[pids[acs]], entity="person", entity_ids=pids[acs].astype("<i8")
     )
-    projection = host.survey_graph._bounded_json(
+    # "origins" carries one row per stacked person -- 24 bytes each at
+    # full-source widths, 85,702,912 bytes at full source against the 64 MiB a
+    # single accumulation held -- so the projection is a whole-roster stream:
+    # the same bytes, accumulated in segments under the owner's total.
+    projection = host.survey_graph._segmented_json(
         {
             **evidence,
             "origins": origins.loc[
@@ -515,7 +519,8 @@ def qualify_current_survey_predictors(
             "native_money_sha256": codec.sha(money.to_numpy(dtype="<f8").tobytes()),
             "recipient_matrix_sha256": codec.sha(matrix),
         },
-        source.MAX_PAYLOAD_BYTES,
+        segment=source.MAX_PAYLOAD_BYTES,
+        maximum=source.MAX_ROSTER_BYTES,
     )
     result = QualifiedSurveyPredictors(
         projection,

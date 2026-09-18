@@ -587,3 +587,66 @@ def test_group_ceiling_refuses_at_its_own_number(tmp_path, monkeypatch):
     monkeypatch.setattr(owner, "_LIVE", owner._live())
     with pytest.raises(owner.SurveyOriginBudgetError, match="GROUP_COUNT_BOUND"):
         owner.freeze_survey_origin_budget(**arguments)
+
+
+def test_budget_document_is_the_single_accumulation_at_every_segment_size(
+    tmp_path, monkeypatch
+):
+    """MAX_PAYLOAD_BYTES is now the size of one accumulation; the bytes are unchanged.
+
+    The document's pieces are the encoded keys, the origin records, the two
+    header lists streamed element by element and the remaining header values.
+    Below the longest piece the refusal is the one a single accumulation made,
+    TRANSPORT_LIMIT; the total has its own code. Both constants are inside the
+    module's loaded contract, so each patch re-seals `_LIVE` the way
+    `test_group_ceiling_refuses_at_its_own_number` does.
+    """
+    arguments = _actual(tmp_path, monkeypatch)
+    baseline = owner.freeze_survey_origin_budget(**arguments).checked_view().payload
+    document = json.loads(baseline)
+    pieces = [owner._json(key) + b":" for key in document]
+    pieces += [owner._json(record) for record in document["origins"]]
+    pieces += [
+        owner._json(value)
+        for key in ("household_ids", "group_indices")
+        for value in document[key]
+    ]
+    pieces += [
+        owner._json(document[key])
+        for key in document
+        if key not in ("origins", "household_ids", "group_indices")
+    ]
+    longest = max(map(len, pieces))
+    assert longest < len(baseline)
+    for segment in (longest, longest + 1, 2 * longest, len(baseline)):
+        monkeypatch.setattr(owner, "MAX_PAYLOAD_BYTES", segment)
+        monkeypatch.setattr(owner, "_LIVE", owner._live())
+        issued = owner.freeze_survey_origin_budget(**arguments).checked_view().payload
+        assert issued == baseline
+    monkeypatch.setattr(owner, "MAX_PAYLOAD_BYTES", longest - 1)
+    monkeypatch.setattr(owner, "_LIVE", owner._live())
+    with pytest.raises(ValueError, match="TRANSPORT_LIMIT"):
+        owner.freeze_survey_origin_budget(**arguments)
+    monkeypatch.setattr(owner, "MAX_PAYLOAD_BYTES", 64 * 1024**2)
+    monkeypatch.setattr(owner, "MAX_ROSTER_BYTES", len(baseline))
+    monkeypatch.setattr(owner, "_LIVE", owner._live())
+    assert (
+        owner.freeze_survey_origin_budget(**arguments).checked_view().payload
+        == baseline
+    )
+    monkeypatch.setattr(owner, "MAX_ROSTER_BYTES", len(baseline) - 1)
+    monkeypatch.setattr(owner, "_LIVE", owner._live())
+    with pytest.raises(owner.SurveyOriginBudgetError, match="TRANSPORT_ROSTER_LIMIT"):
+        owner.freeze_survey_origin_budget(**arguments)
+
+
+def test_selection_digest_is_the_single_encodings_digest(tmp_path, monkeypatch):
+    """selection_sha256 is streamed; it equals the digest of the whole encoding."""
+    arguments = _actual(tmp_path, monkeypatch)
+    view = arguments["preparation"].checked_view()
+    selection = view.receipt["selection"]
+    payload = owner.freeze_survey_origin_budget(**arguments).checked_view().payload
+    assert json.loads(payload)["selection_sha256"] == owner._sha(owner._json(selection))
+    assert json.loads(payload)["selection_sha256"] == graph._json_sha256(
+        selection, maximum=owner.MAX_ROSTER_BYTES
+    )

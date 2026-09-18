@@ -42,7 +42,15 @@ from . import survey_age_activation as age_activation
 BOUNDS_TYPE = ArtifactType("microcosm.us.survey_calibration_numeric_bounds", 1)
 BOUNDS_PROTOCOL = "microcosm.us.survey-calibration-numeric-bounds.v1"
 MAX_BYTES = 64 * 1024**2
-MAX_ROWS = MAX_BYTES // 128
+# The numeric-bounds document carries five entries per clone row, 76 bytes per
+# row at full-source widths, so a full-source document is 241,233,530 bytes;
+# MAX_BYTES stays the largest accumulation its producer holds, and the
+# document's total is 64 accumulations. MAX_ROWS is the same //128 form the
+# allocation pre-check uses (graph_survey_population.py); at 524,288 it refused
+# a full-source clone of 3,174,752 rows before any byte did. See
+# docs/us-native-byte-transports.md.
+MAX_ROSTER_BYTES = 64 * MAX_BYTES
+MAX_ROWS = MAX_ROSTER_BYTES // 128
 CALIBRATION_NODE = "survey.age_calibration"
 _FIELDS = frozenset(
     {
@@ -102,7 +110,7 @@ class NumericSurveyBounds:
 
 
 def decode_numeric_survey_bounds(payload: bytes) -> NumericSurveyBounds:
-    _require(type(payload) is bytes and 0 < len(payload) <= MAX_BYTES, "PAYLOAD")
+    _require(type(payload) is bytes and 0 < len(payload) <= MAX_ROSTER_BYTES, "PAYLOAD")
     try:
         document = json.loads(payload)
     except (ValueError, UnicodeError):

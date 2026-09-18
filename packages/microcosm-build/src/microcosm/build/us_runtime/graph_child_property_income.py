@@ -77,13 +77,44 @@ KEY_COLUMNS = (
 )
 SUFFIX = ("child-property-v1",)
 MAX_ARTIFACT_BYTES = 64 * 1024**2
-MAX_ORIGINALS = 600_000
+# The draw document carries one row per eligible child, 273 bytes each, so a
+# single 64 MiB accumulation admitted 245,820 children; every other artifact
+# this module encodes is fixed-shape. MAX_ARTIFACT_BYTES stays the largest
+# accumulation; the total a process will materialise for one artifact is 64
+# accumulations, and the fit adapter's MAX_DRAW_BYTES, which decodes the same
+# bytes, is that number. See docs/us-native-byte-transports.md.
+MAX_ROSTER_BYTES = 64 * MAX_ARTIFACT_BYTES
+# The original-recipient roster is the stacked person roster, 3,565,013 at full
+# source: four times that, rounded up to the next whole million.
+MAX_ORIGINALS = 15_000_000
 require = child.require
 
 
 def _json(value):
-    payload = adapter._json(value)
-    require(len(payload) <= MAX_ARTIFACT_BYTES, "GRAPH_ARTIFACT_SIZE")
+    """``adapter._json(value)``, accumulated in segments no larger than MAX_ARTIFACT_BYTES.
+
+    The same encoder settings through ``iterencode`` produce the same bytes
+    ``json.dumps`` does, closed into segments and joined once under
+    ``MAX_ROSTER_BYTES``. GRAPH_ARTIFACT_SIZE keeps its code on the condition a
+    segmented stream can still reach, one token larger than one accumulation;
+    the total refuses GRAPH_ARTIFACT_LIMIT.
+    """
+    segments, current, total = [], bytearray(), 0
+    encoder = json.JSONEncoder(sort_keys=True, separators=(",", ":"), allow_nan=False)
+    for piece in encoder.iterencode(value):
+        encoded = piece.encode()
+        if current and len(current) + len(encoded) > MAX_ARTIFACT_BYTES:
+            segments.append(bytes(current))
+            current = bytearray()
+        require(
+            len(current) + len(encoded) <= MAX_ARTIFACT_BYTES, "GRAPH_ARTIFACT_SIZE"
+        )
+        require(total + len(encoded) <= MAX_ROSTER_BYTES, "GRAPH_ARTIFACT_LIMIT")
+        current.extend(encoded)
+        total += len(encoded)
+    segments.append(bytes(current))
+    payload = b"".join(segments)
+    require(len(payload) == total <= MAX_ROSTER_BYTES, "GRAPH_ARTIFACT_LIMIT")
     return payload
 
 
@@ -195,6 +226,7 @@ def _live():
             KEY_COLUMNS,
             SUFFIX,
             MAX_ARTIFACT_BYTES,
+            MAX_ROSTER_BYTES,
             MAX_ORIGINALS,
             SOURCE_NAME,
             adapter.PROTOCOL,

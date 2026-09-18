@@ -710,3 +710,50 @@ def test_target_sampling_digest_does_not_change_full_donor_projection_or_model()
             ).to_bytes()
         )
     assert models[0] == models[1]
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {"a": [1.5, 2.0, -0.0, 1e-9], "z": "\u00e9", "n": None, "t": True},
+        {
+            "protocol": "invented/draw",
+            "rows": [
+                {
+                    "support_id": str(3_565_013 - i),
+                    "coordinate": [["str", "acs"], ["int", 2024]],
+                    "values": [i / 7, 0.0],
+                    "pattern": i % 4,
+                    "donor_key": None,
+                }
+                for i in range(300)
+            ],
+        },
+    ],
+)
+def test_graph_json_is_the_adapter_encoding_at_every_segment_size(
+    monkeypatch, document
+):
+    """The draw document is a whole-roster stream; its bytes are json.dumps's."""
+    whole = graph.adapter._json(document)
+    assert graph._json(document) == whole
+    encoder = json.JSONEncoder(sort_keys=True, separators=(",", ":"), allow_nan=False)
+    longest = max(len(piece.encode()) for piece in encoder.iterencode(document))
+    assert longest < len(whole)
+    for segment in sorted({longest, longest + 1, 4096, len(whole)}):
+        monkeypatch.setattr(graph, "MAX_ARTIFACT_BYTES", segment)
+        assert graph._json(document) == whole
+    monkeypatch.setattr(graph, "MAX_ARTIFACT_BYTES", longest - 1)
+    with pytest.raises(ValueError, match="GRAPH_ARTIFACT_SIZE"):
+        graph._json(document)
+    monkeypatch.setattr(graph, "MAX_ARTIFACT_BYTES", 64 * 1024**2)
+    monkeypatch.setattr(graph, "MAX_ROSTER_BYTES", len(whole))
+    assert graph._json(document) == whole
+    monkeypatch.setattr(graph, "MAX_ROSTER_BYTES", len(whole) - 1)
+    with pytest.raises(ValueError, match="GRAPH_ARTIFACT_LIMIT"):
+        graph._json(document)
+
+
+def test_the_draw_decoder_ceiling_is_the_producers_total():
+    assert graph.adapter.MAX_DRAW_BYTES == graph.MAX_ROSTER_BYTES
+    assert graph.MAX_ROSTER_BYTES == 64 * graph.MAX_ARTIFACT_BYTES

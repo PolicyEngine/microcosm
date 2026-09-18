@@ -32,6 +32,11 @@ PROTOCOL = "microcosm.us.child-property-source.v1"
 TARGETS = (PROPERTY_COMPONENTS[0], PROPERTY_COMPONENTS[2])
 DONOR_AGES = (15, 16, 17)
 MAX_ROWS = 600_000
+# The recipient axis is the stacked person roster, 3,565,013 at full source;
+# MAX_ROWS bounds the ASEC source's own rows and stays where it is. Four times
+# the measured full-source count, rounded up to the next whole million
+# (docs/us-native-row-ceilings.md).
+MAX_RECIPIENT_ROWS = 15_000_000
 MAX_PROJECTION_BYTES = 64 * 1024**2
 _ORDINARY_STATUSES = ("known_receipt", "known_nonreceipt", "observed_zero_component")
 _DIVIDEND_STATUSES = ("known_receipt", "known_nonreceipt")
@@ -106,6 +111,7 @@ def _live():
             TARGETS,
             DONOR_AGES,
             MAX_ROWS,
+            MAX_RECIPIENT_ROWS,
             MAX_PROJECTION_BYTES,
             _ORDINARY_STATUSES,
             _DIVIDEND_STATUSES,
@@ -390,7 +396,7 @@ def project_child_property_recipients(
         required <= set(table)
         and table.person_id.dtype == np.dtype("int64")
         and table.person_id.is_unique
-        and len(table) <= MAX_ROWS,
+        and len(table) <= MAX_RECIPIENT_ROWS,
         "RECIPIENT_AXIS",
     )
     expected = pd.Index(table.person_id, name="person_id")

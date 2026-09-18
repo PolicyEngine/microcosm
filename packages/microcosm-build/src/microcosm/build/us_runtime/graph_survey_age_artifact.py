@@ -30,7 +30,12 @@ from . import national_age_activation as activation
 
 COUNTS_TYPE = ArtifactType("microcosm.us.survey_household_age_counts", 1)
 MAGIC = b"MCUSAGE1\n"
-MAX_BYTES = 64 * 1024**2
+# One 152-byte row per clone household in a numpy body that exists whole before
+# this bound sees it, so there is nothing to segment: a full-source artifact is
+# 482,562,851 bytes (3,174,752 rows), and 64 MiB admitted 441,074 rows. Four
+# times the measured full-source bytes, rounded up to the next power of two.
+# See docs/us-native-byte-transports.md.
+MAX_BYTES = 2 * 1024**3
 MAX_HEADER_BYTES = 65_536
 MAX_PEOPLE = 10_000_000
 _COLUMNS = tuple(b.column for b in activation.NATIONAL_AGE_ACTIVATION.bands)

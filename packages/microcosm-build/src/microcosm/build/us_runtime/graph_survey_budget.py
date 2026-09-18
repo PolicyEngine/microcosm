@@ -48,7 +48,7 @@ def _sha(payload):
 
 def _document(payload):
     _require(
-        type(payload) is bytes and 0 < len(payload) <= budgets.MAX_PAYLOAD_BYTES,
+        type(payload) is bytes and 0 < len(payload) <= budgets.MAX_ROSTER_BYTES,
         "PAYLOAD",
     )
     try:
@@ -139,7 +139,11 @@ def numeric_survey_budget_payload(payload: bytes) -> bytes:
         _require(roles == {0, 1}, "COMPLETE_ROLES")
         upper.append(record.get("upper_float64_hex"))
     _require(seen == set(ids), "COMPLETE_MEMBERSHIP")
-    output = graph._bounded_json(
+    # Five lists over the clone rows, 152 bytes per group at full-source
+    # widths: a whole-roster document, accumulated in segments no larger than
+    # numeric.MAX_BYTES and joined once under numeric.MAX_ROSTER_BYTES. The
+    # bytes are the single accumulation's.
+    output = graph._segmented_json(
         {
             "protocol": numeric.BOUNDS_PROTOCOL,
             "budget_sha256": _sha(payload),
@@ -150,9 +154,10 @@ def numeric_survey_budget_payload(payload: bytes) -> bytes:
             "row_upper_hex": row_upper,
             "incoming_hex": incoming,
         },
-        numeric.MAX_BYTES,
+        segment=numeric.MAX_BYTES,
+        maximum=numeric.MAX_ROSTER_BYTES,
     )
-    _require(len(output) <= numeric.MAX_BYTES, "NUMERIC_LIMIT")
+    _require(len(output) <= numeric.MAX_ROSTER_BYTES, "NUMERIC_LIMIT")
     numeric.decode_numeric_survey_bounds(output)
     return output
 

@@ -52,12 +52,19 @@ SUCCESSOR_PROTOCOL = "microcosm.us.sampling-origin-weight-only-successor.v1"
 BUDGET_TYPE = ArtifactType("microcosm.us.sampling_origin_budget", 1)
 SUCCESSOR_TYPE = ArtifactType("microcosm.us.sampling_origin_weight_only_successor", 1)
 MAX_PAYLOAD_BYTES = 64 * 1024**2
+# The budget document carries one origin record per selected household plus
+# two header entries per clone row, measured at 742 bytes per household at
+# full-source widths, so a full-source document is 1,177,832,992 bytes and a
+# single 64 MiB accumulation admitted 90,443 households (5.7% of source).
+# MAX_PAYLOAD_BYTES stays what one accumulation may hold and what one piece
+# may be; the total a process will materialise for the document is 64
+# accumulations, the same multiple survey_population_preparation uses. See
+# docs/us-native-byte-transports.md.
+MAX_ROSTER_BYTES = 64 * MAX_PAYLOAD_BYTES
 # One group per allocation instruction, and allocation_instructions requires
 # one instruction per selected household, so a full-source budget has the
 # 1,587,376 households the catalogues supply. Four times that, rounded up to
-# the next whole million. MAX_PAYLOAD_BYTES above is a byte transport, not a
-# row count, and is deliberately left alone: it takes the segmented transport
-# argument, not this one. See docs/us-native-row-ceilings.md.
+# the next whole million. See docs/us-native-row-ceilings.md.
 MAX_GROUPS = 7_000_000
 MAX_SCALAR_CHARS = 4096
 PRESCRIPTION = (
@@ -189,6 +196,7 @@ def _live():
         (BUDGET_TYPE.name, BUDGET_TYPE.schema_version),
         (SUCCESSOR_TYPE.name, SUCCESSOR_TYPE.schema_version),
         MAX_PAYLOAD_BYTES,
+        MAX_ROSTER_BYTES,
         MAX_GROUPS,
         MAX_SCALAR_CHARS,
         PRESCRIPTION,
@@ -592,7 +600,11 @@ def _document(
         "source_producer": view.receipt["producer"],
         "source_native": view.receipt["native"],
         "source_catalogues": view.receipt["catalogues"],
-        "selection_sha256": _sha(_json(view.receipt["selection"])),
+        # One row per supplied household: digested from the stream, never
+        # held whole. The digest equals _sha(_json(...)) wherever _json admits.
+        "selection_sha256": graph._json_sha256(
+            view.receipt["selection"], maximum=MAX_ROSTER_BYTES
+        ),
         "allocation_sha256": _sha(allocation),
         "producer": producer,
         "allocated_frame_sha256": source._frame_identity(allocated.frame),
@@ -605,12 +617,33 @@ def _document(
     if geography_binding is not None:
         header["atomic_geography"] = json.loads(geography_binding)
     # Stream one bounded origin record at a time; never materialize an unbounded
-    # list of origin dictionaries before the transport cap is checked.
-    payload = bytearray()
+    # list of origin dictionaries before the transport cap is checked. The
+    # pieces accumulate in segments no larger than MAX_PAYLOAD_BYTES and are
+    # joined once under MAX_ROSTER_BYTES; the bytes are the same ones a single
+    # accumulation produced. TRANSPORT_LIMIT keeps its code on the condition a
+    # segmented stream can still reach: one piece larger than one accumulation.
+    segments, payload, total = [], bytearray(), 0
 
     def append(piece):
+        nonlocal payload, total
+        if payload and len(payload) + len(piece) > MAX_PAYLOAD_BYTES:
+            segments.append(bytes(payload))
+            payload = bytearray()
         _require(len(piece) <= MAX_PAYLOAD_BYTES - len(payload), "TRANSPORT_LIMIT")
+        _require(total + len(piece) <= MAX_ROSTER_BYTES, "TRANSPORT_ROSTER_LIMIT")
         payload.extend(piece)
+        total += len(piece)
+
+    def append_list(values):
+        # One entry per clone row; streamed element by element so no single
+        # piece approaches the accumulation ceiling. Byte-identical to
+        # _json(values).
+        append(b"[")
+        for position, value in enumerate(values):
+            if position:
+                append(b",")
+            append(_json(value))
+        append(b"]")
 
     append(b"{")
     keys = sorted((*header, "origins"))
@@ -625,12 +658,17 @@ def _document(
                     append(b",")
                 append(_json(record))
             append(b"]")
+        elif key in ("household_ids", "group_indices"):
+            append_list(header[key])
         else:
             append(_json(header[key]))
     append(b"}")
+    segments.append(bytes(payload))
+    document = b"".join(segments)
+    _require(len(document) == total <= MAX_ROSTER_BYTES, "TRANSPORT_ROSTER_LIMIT")
     constraint = group_bounds.GroupedUpperBounds(ids, groups, bounds)
     constraint.check(clone_weights, positive=False)
-    return bytes(payload), constraint
+    return document, constraint
 
 
 @dataclass(frozen=True)
@@ -927,9 +965,7 @@ def freeze_survey_origin_budget(
     geography_config=None,
 ):
     _require(type(candidate) is bytes or candidate is None, "CANDIDATE_TYPE")
-    _require(
-        candidate is None or len(candidate) <= MAX_PAYLOAD_BYTES, "CANDIDATE_LIMIT"
-    )
+    _require(candidate is None or len(candidate) <= MAX_ROSTER_BYTES, "CANDIDATE_LIMIT")
     _require(
         type(preparation) is source.AuthenticatedSurveyPopulationPreparation,
         "ISSUED_PREPARATION_REQUIRED",

@@ -350,6 +350,58 @@ def test_allocation_transport_streams_canonical_exact_rows_and_refuses_before_ov
         graph._allocation_payload(instructions, **kwargs)
 
 
+def _roster_documents():
+    return [
+        {"z": "\u00e9", "a": [0, 1], "n": None, "t": [True, False]},
+        {
+            "households": [
+                {"id": 3_174_752 - i, "hex": float(137 * (1 + i / 7)).hex()}
+                for i in range(200)
+            ],
+            "ids": list(range(1_587_376 - 400, 1_587_376)),
+            "k": "\U0001f600",
+        },
+    ]
+
+
+@pytest.mark.parametrize("document", _roster_documents())
+def test_segmented_json_is_the_bounded_encoding_at_every_segment_size(document):
+    """_segmented_json and _json_sha256 carry _bounded_json's exact byte stream."""
+    whole = graph._bounded_json(document, 64 * 1024**2)
+    longest = max(map(len, graph._canonical_pieces(document, 64 * 1024**2)))
+    assert longest < len(whole)
+    for segment in sorted({longest, longest + 1, 17, 4096, len(whole)}):
+        if segment >= longest:
+            assert (
+                graph._segmented_json(document, segment=segment, maximum=len(whole))
+                == whole
+            )
+    assert graph._json_sha256(document, maximum=len(whole)) == graph._sha(whole)
+    # TRANSPORT_LIMIT keeps its code on the condition a segmented stream can
+    # still reach: one token larger than one segment. The total is its own code.
+    with pytest.raises(graph.SurveyPopulationGraphError, match="TRANSPORT_LIMIT"):
+        graph._segmented_json(document, segment=longest - 1, maximum=len(whole))
+    with pytest.raises(
+        graph.SurveyPopulationGraphError, match="TRANSPORT_ROSTER_LIMIT"
+    ):
+        graph._segmented_json(document, segment=longest, maximum=len(whole) - 1)
+    with pytest.raises(
+        graph.SurveyPopulationGraphError, match="TRANSPORT_ROSTER_LIMIT"
+    ):
+        graph._json_sha256(document, maximum=len(whole) - 1)
+    # The accumulation ceiling does not move: no segment may exceed 64 MiB.
+    with pytest.raises(graph.SurveyPopulationGraphError, match="TRANSPORT_LIMIT"):
+        graph._segmented_json(document, segment=64 * 1024**2 + 1, maximum=2**40)
+
+
+def test_the_preparation_consumer_ceiling_is_the_producers_own():
+    """One number for the receipt in both modules; the context keeps 64 MiB."""
+    owner = graph._source_owner()
+    assert graph.PREPARATION_ROSTER_BYTES == owner.MAX_ROSTER_BYTES
+    assert graph.PREPARATION_ROSTER_BYTES == 64 * graph.PREPARATION_MAX_BYTES
+    assert graph.PREPARATION_MAX_BYTES == 64 * 1024**2
+
+
 def test_allocation_payload_is_byte_identical_to_the_unsegmented_stream():
     """The predecessor accumulation, verbatim, against the shipped transport."""
     plan, origins = plan_and_origins()
