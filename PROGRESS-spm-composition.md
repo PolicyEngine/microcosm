@@ -4,6 +4,11 @@ Branch `spm-composition-preflight`, cut from `origin/main` at `d1196af10`.
 
 ## State
 
+> Historical note (2026-09-18): the state and "Next" sections below describe
+> the first session. Part 2's design note shipped in PR #948
+> (`docs/us-spm-role-for-a-fresh-base.md`); Max chose its Option 1 (shape b)
+> on 2026-09-18. The current state is in "Step 2" at the end of this file.
+
 Part 1 complete and tested. Part 2 (design note) in progress. PR open as draft.
 
 ## Measured on the phase-2 base (read-only, `~/PolicyEngine/_buildq-runtime/out/base-q3/`)
@@ -68,8 +73,46 @@ Part 1 complete and tested. Part 2 (design note) in progress. PR open as draft.
       (55 passed, was 42); `ci_test_groups.py --verify` = ok, new file in
       `us-qs`, not `[defaulted]`; changelog fragment; ruff clean.
 
+## Next (historical, superseded 2026-09-18)
+
+1. Part 2 design note `docs/us-spm-role-for-a-fresh-base.md`. — shipped in #948.
+2. Decide (a) declared-parent generalisation vs (b) source stage; implement (a)
+   in this PR if it closes without a decision from Max. — Max chose (b) on
+   2026-09-18; implemented on branch `us-spm-role-stage` (see Step 2 below).
+
+# Step 2 — the role as a build-stage input leaf (2026-09-18)
+
+Branch `us-spm-role-stage`, cut from `spm-composition-preflight` at
+`0e4b20de7` (PR #948's head, CI green on run 35346454375, mergeable).
+
+## State
+
+Step 1 (make #948 green) was already complete on arrival: the first session's
+`0e4b20de7` fixed the seven red jobs' one cause (the gate-failure test's fake
+frame lacked a schema; repaired in the fake, not the guard), and the rerun is
+green on every job. Step 2 design reading done; proof scripts written; design
+note next, then the stage.
+
+## Done
+
+- [x] Verified `gh pr checks 948` all pass on head `0e4b20de7`; mergeable.
+- [x] Read at this head: `spm_role_source.py` (byte-identical to main),
+      `asec_pool.py`, `relationship_inputs.py`, `education_inputs.py` (sidecar
+      pattern), the adapter's two classification paths, the engine's
+      `DATASET_SOURCE_INPUTS` declaration, the enrichment lane's pins, the
+      coverage manifest generator, the bundle generator's frozen digests, the
+      raw ASEC inputs' columns (no vintage carries `SPM_HEAD`; only 2024
+      carries `A_FAMTYP`/`A_FAMREL`).
+- [x] Located every artifact the proofs need on disk: the three pinned Census
+      person CSVs (`~/.cache/microcosm/cps/asec_education/`), the Build P
+      parent (HF blob named by its pinned digest), the certified reference
+      evidence CSV (digest matches pin 5).
+- [x] `experiments/spm_role_stage_proof.py` written (base + buildp receipts).
+
 ## Next
 
-1. Part 2 design note `docs/us-spm-role-for-a-fresh-base.md`.
-2. Decide (a) declared-parent generalisation vs (b) source stage; implement (a)
-   in this PR if it closes without a decision from Max.
+1. Run the two proofs (foreground), commit receipts.
+2. `docs/us-spm-role-stage.md`.
+3. Stage module + manifest + registries + adapter carve-out + coverage manifest
+   + export list + base/release tool wiring; regenerate every moved pin through
+   its generator; tests; changelog; draft PR.
