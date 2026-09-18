@@ -880,6 +880,51 @@ are this lane's, and every other test in that package is unchanged and green.
 
 *(in flight)*
 
+### 9b. What this session re-derived rather than trusted
+
+A report's numbers are worth what their re-derivation is worth, so every
+figure below was recomputed at this head from the committed artifacts, and the
+ones that did not match were fixed rather than explained.
+
+| claim | how it was checked | result |
+|---|---|---|
+| §7a's whole before/after table | re-ran `before_after_table.py` | every cell identical |
+| §7b's replay proof | read `required_replay` out of the measurement JSON | key, roster, projection, store bytes, 5,869 objects — all as quoted |
+| §7d's phase peaks | split each run's `rss_series` at its replay boundary | 13.16 / 12.42–11.71 / 13.49–17.83, as quoted |
+| §2's battery table | recomputed from `battery-receipt.json` | all 21 rows and the 116 total match |
+| the battery receipt itself | wrote `battery_receipt.py` and regenerated it | every tally identical; rows differ only in order |
+| §5's re-pin values | `git diff` of the inventory JSON | the only changed field, old and new as quoted |
+| §5's headline refusal | re-ran the manifest call in the branch-point worktree, `__file__` asserted | refuses with exactly the quoted error |
+| §6 and §7c's identity claims | regenerated the receipt with **every** ordered pair | `base → us_only` empty; §7c's citation was wrong and is fixed |
+| the design note's 44 field rows | counted the ids in its own §1 tables | 44: 11 P, 13 F, 5 A, 15 S |
+| the note's "narrow admitted dtype set" | ran ten dtypes through `_series` | the three extension dtypes refuse; the other seven are admitted |
+| the 22 pre-existing refusal codes | diffed the code sets at `a64f7b733` and this head | 22 → 25, **none lost**, three added |
+| §1's two probe outputs | re-ran both committed probes | byte-for-byte as quoted |
+| "both runs measured this head" | `git diff` of `packages/*/src` against each measured tree | **no source file differs**; only two test files, added afterwards |
+| the executor half's four tests | grepped each name; read the whole 19-line diff | all four exist; the diff is opt-in, default unchanged, no US import |
+| nineteen retained before | read the base observer at `a64f7b733` | `observed[node_id] = population` for every node |
+| eleven line citations | re-derived each at this head | seven were wrong and are fixed (§9c) |
+
+### 9c. The citations that were wrong
+
+`survey_population_replay.py` gained `import hashlib` at line 10, so every line
+from there on moved by **one** against the base, and citations taken at the base
+read one line early. The design note's §1 headers (four of them) and one in the
+report were in that class. Two more had moved with this change's own edits and
+pointed at unrelated code: the recursive base call that sets the retention flag
+is `:1356-1371`, not `:1339-1357` — where the lines are the property-tax and
+household-roles flag requires — and the executor's detachment is
+`executor.py:373` inside `_observer_snapshot` at `:356`, with the per-node call
+at `:2787-2791`, not `:2773-2774`, which is receipt-mass normalisation. The
+identity check `result.financial_population is observed[final_node]` is `:1986`,
+not `:1897`, and the ACS guard is `acs_native_coverage_binding.py:563-565`, not
+`:562-564`.
+
+Re-derived and found correct, so left alone: `graph_survey_completion_host.py`
+`:781-794`, `:543-545`, `:572` and `:814-816`; `graph_context.py:130-143`;
+`survey_atomic_geography.py:230-268` and `:231-237`; and the design note's two
+seal call sites `:1882` and `:2042`.
+
 ## 10. The pull request
 
 **[PolicyEngine/microcosm#950](https://github.com/PolicyEngine/microcosm/pull/950)**
