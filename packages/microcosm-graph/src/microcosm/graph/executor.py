@@ -2460,11 +2460,22 @@ def run_graph(
     observer that only reads. ``_population_observer_detach=False`` is that
     observer's declaration that it will neither retain nor mutate what it is
     given: no snapshot is allocated and the live admitted population is passed
-    instead. The declaration is the caller's, not the executor's -- in this
-    mode the executor no longer enforces that an observer cannot reach
-    execution state, so a mutating observer in it would corrupt the run. The
-    default is unchanged and still enforces it. The keyword enters no key, no
-    receipt and no cache record, and is meaningless without an observer.
+    instead. The declaration is the caller's, not the executor's.
+
+    Both halves of the paragraph above are withdrawn in this mode, and the
+    second one matters more than the first. The executor no longer enforces
+    that an observer cannot alter **execution**: a mutating observer corrupts
+    the run it is in. It no longer enforces that an observer cannot alter
+    **persistence** either, and that damage outlives the run -- a mutation
+    before the node is persisted can leave the store holding bytes that are
+    not the content the node key names, with the payload digest rewritten to
+    match, so every later run sharing that store serves them as a cache hit
+    under an unchanged node key and nothing afterwards can detect it. Pass
+    this keyword only for an observer whose whole body is a read.
+
+    The default is unchanged and still enforces both. The keyword enters no
+    key, no receipt and no cache record, and is meaningless without an
+    observer.
 
     The private verification-epoch record is a caller's own counts mapping --
     a country runtime that scopes source verification around the whole run

@@ -4462,11 +4462,18 @@ def test_a_seal_only_observer_receives_the_live_population(tmp_path: Path) -> No
     receives the object the executor holds -- which is why the keyword is a
     declaration that the observer will not retain or mutate it, and why the
     default is unchanged.
+
+    Both arms compare WITHIN their own run. An earlier version of this test
+    compared the default run's snapshots against the seal-only run's frames,
+    and no object from one ``run_graph`` call can ever be ``is``-identical to
+    one from another, so that arm passed whatever the default did. An
+    adversarial pass found it; it is a real assertion now, and reducing
+    ``_observer_snapshot`` to ``lambda population: population`` turns it red.
     """
     source = _source_path(tmp_path / "source")
     compiled = compile_graph(_graph(leaf=False))
     detached: list[Population] = []
-    run_graph(
+    detached_manifest = run_graph(
         compiled,
         sources={"survey": source},
         store=ContentStore(tmp_path / "detached"),
@@ -4488,10 +4495,11 @@ def test_a_seal_only_observer_receives_the_live_population(tmp_path: Path) -> No
         for seen in live
         for entity in attached.entities
     )
+    default_attached = detached_manifest.populations["survey"]
     assert not any(
-        seen.frame.table(entity) is attached.table(entity)
+        seen.frame.table(entity) is default_attached.table(entity)
         for seen in detached
-        for entity in attached.entities
+        for entity in default_attached.entities
     )
 
 

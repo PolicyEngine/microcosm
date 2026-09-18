@@ -16,6 +16,9 @@ from microcosm.build.us_runtime.survey_population_replay import (
     _axis,
     _axis_seal,
     _same_axis_seal,
+    _same_series_seal,
+    _series,
+    _series_seal,
     replayed_frame_seal,
     replayed_population_seal,
     same_replayed_frame,
@@ -793,20 +796,44 @@ _DTYPE_CENSUS = (
 )
 
 
-def test_the_dtype_token_is_faithful_to_the_predicate_it_replaces():
-    """Token equality must be exactly ``type(a) is type(b) and a == b``.
+def test_the_dtype_head_is_faithful_to_the_predicate_it_replaces():
+    """The retained ``(type(dtype), dtype)`` head, driven through both paths.
 
-    ``str(dtype)`` alone is not enough: ``StringDtype("python")`` and
-    ``StringDtype("pyarrow")`` both spell ``string``.
+    An adversarial pass found the earlier version of this test proving nothing
+    about the seal: it compared ``type(a) is type(b) and a == b`` against
+    ``(type(a), a) == (type(b), b)``, which is the same predicate written
+    twice, and it never called a seal function. It now runs every ordered pair
+    of the census through ``_series`` and through the seal and requires the
+    same verdict with the same code, which is what the rest of the battery
+    does. ``str(dtype)`` alone would not be enough for either:
+    ``StringDtype("python")`` and ``StringDtype("pyarrow")`` both spell
+    ``string``, and they must not be interchangeable.
     """
     dtypes = [pd.Series([], dtype=name).dtype for name in _DTYPE_CENSUS]
     dtypes += [pd.StringDtype("python"), pd.StringDtype("pyarrow")]
     dtypes += [pd.StringDtype("python", na_value=np.nan)]
+    disagreements = []
     for left in dtypes:
         for right in dtypes:
-            predicate = type(left) is type(right) and left == right
-            token = (type(left), left) == (type(right), right)
-            assert predicate == token, (left, right, predicate, token)
+            one = pd.Series([], dtype=left)
+            other = pd.Series([], dtype=right)
+            direct = _verdict(_series, one, other)
+            try:
+                sealed = _verdict(
+                    _same_series_seal, _series_seal(one), _series_seal(other)
+                )
+            except ValueError as error:
+                sealed = str(error)
+            if direct != sealed:
+                disagreements.append((str(left), str(right), direct, sealed))
+            # The head is the thing under test, so where both refuse it must
+            # be for the dtype and not for something downstream of it.
+            if direct is not None and left != right:
+                assert direct in (
+                    "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH",
+                    "SURVEY_POPULATION_REPLAY_UNSUPPORTED_EXTENSION_DTYPE",
+                ), (left, right, direct)
+    assert not disagreements, disagreements
 
 
 def test_the_seal_is_proportional_to_columns_and_not_to_rows():
@@ -1423,3 +1450,58 @@ def test_a_masked_integer_axis_is_exact_above_two_to_the_fifty_three():
         )
         assert expected.person.index.identical(actual.person.index) is False
         assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_AXIS"
+
+
+def test_a_non_finite_axis_name_refuses_on_both_paths_under_different_codes():
+    """The one unary assertion whose code MOVES, pinned rather than left latent.
+
+    The design note's §4 item 2 says the unary assertions now fire when a seal
+    is built "with the same code". For a non-finite axis name that is not
+    quite true and an adversarial pass caught it: ``_axis`` evaluates
+    ``identical`` before ``_name_bytes``, and ``nan != nan``, so the
+    comparison refuses ``AXIS`` first; the seal calls ``_name_seal`` while
+    building each operand, so the store grammar's refusal of a non-finite name
+    fires first and it refuses ``UNSUPPORTED_AXIS_NAME``. Both refuse -- the
+    run is not weakened -- so this is the one-sided-precedence class of §4
+    item 3, and the parametrisation above misses it because for those names
+    ``identical`` passes and the comparison reaches ``_name_bytes`` too.
+    """
+    frame = _frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["household"].index = tables["household"].index.rename(float("nan"))
+    unsupported = _rebuild(frame, tables=tables)
+    direct = _verdict(same_replayed_frame, unsupported, unsupported)
+    sealed = _sealed_verdict(
+        replayed_frame_seal, same_replayed_frame_seals, unsupported, unsupported
+    )
+    assert direct == "SURVEY_POPULATION_REPLAY_AXIS"
+    assert sealed == "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME"
+
+
+def test_the_canonical_null_disjunction_is_per_column_and_not_frame_wide():
+    """§3(c)'s argument for a per-column disjunction, made falsifiable.
+
+    The note argues that a single population-wide canonical flag would not
+    reproduce today's predicate, because the disjunction is evaluated per
+    column and one non-canonical column must not force whole-frame byte
+    equality on the others. Every other masked case in this battery is
+    accepted or refused identically under both designs, so nothing
+    distinguished them -- an adversarial pass caught that too.
+
+    This pair does: ``nullable_integer`` is canonically zeroed beneath its
+    nulls on the actual side only, which the per-column disjunction accepts,
+    while ``nullable_boolean`` carries non-canonical backing that is
+    byte-identical on both sides, which it also accepts. A frame-wide flag
+    would be False here -- one column is not canonical -- and would force byte
+    equality on ``nullable_integer``, whose hidden bytes differ, so it would
+    refuse.
+    """
+    expected, actual = _frame(), _frame()
+    # Non-canonical, and equal on both sides.
+    for frame in (expected, actual):
+        frame.person["nullable_boolean"].array._data[1:] = [True, True]
+    # Canonical on the actual side only, with different hidden bytes.
+    actual.person["nullable_integer"].array._data[1:] = 0
+    assert expected.person["nullable_integer"].array._data[1:].tolist() == [71, 73]
+    assert actual.person["nullable_integer"].array._data[1:].tolist() == [0, 0]
+    _accepts_frames(expected, actual)

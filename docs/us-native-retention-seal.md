@@ -234,10 +234,14 @@ one side:
   equal bytes, and a different dtype **class**. A token keyed on spellings
   would accept that pair; this refuses it `SERIES_DTYPE_OR_LENGTH`.
   `CategoricalDtype`, whose `__eq__` is not an equivalence relation, never
-  reaches here because S14 refuses it. `test_the_dtype_token_is_faithful_to_
-  the_predicate_it_replaces` sweeps the admitted dtype census and asserts the
-  equivalence on `(type(dtype), dtype)`; it is named for the token this note
-  used to describe, and the name is now the only trace of it.
+  reaches here because S14 refuses it.
+  `test_the_dtype_head_is_faithful_to_the_predicate_it_replaces` sweeps every
+  ordered pair of the admitted dtype census through `_series` **and** through
+  the seal and requires the same verdict with the same code. Its earlier
+  version asserted `type(a) is type(b) and a == b` against
+  `(type(a), a) == (type(b), b)` — the same predicate written twice, calling no
+  seal function — which an adversarial pass caught; replacing the retained head
+  with `str(dtype)` now turns it red.
 * **A1/A2, `type(...)` and `Index.identical`.** `_axis_seal` retains the
   **class object** `type(index)`, the `_comparables` names, the raw comparable
   **values**, the dtype object, the value fold and the name seal.
