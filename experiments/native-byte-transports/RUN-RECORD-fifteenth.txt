@@ -1,0 +1,62 @@
+native-byte-transports lane -- 1/15 run record
+launched: 2026-09-18T22:24:11Z (a first launch at 22:23:15Z died at parse time:
+          the launch script's venv-argument line carried an apostrophe inside a
+          ${VAR:?message} expansion, fixed in 703c9d5fe before this launch)
+harness pid: 90568 / pgid 90568 / session leader (the waiter shell exec'd into
+             setsid_exec.py, which exec'd into the harness, so the pid the shell
+             printed is the harness's own)
+kill, if ever needed: kill 90568   -- exact pid only, never a pattern kill
+gate: available memory > 45 GB, open at launch (72.4 GB); no after-run to wait for
+source tree: /Users/maxghenis/PolicyEngine/_worktrees/microcosm-byte-transports-fifteenth
+             detached at 9af56aa8a7a210e18674d484b11d36f417de6759 (git status clean;
+             packages/ byte-identical to the lane worktree at that head, verified
+             by diff -rq; the two later lane commits touch experiments/ only)
+venv: that tree's own .venv, built from the merged lock with
+      `uv sync --all-packages --locked --extra us` (policyengine-us 2.2.1)
+sources: /Users/maxghenis/PolicyEngine/_worktrees/native-scale-runs/run-fifteenth,
+         the retention lane's staged 1/15 clone (selection-request.json carries
+         fraction [1,15]); read only -- the harness writes only under
+         .measure/fifteenth (TMPDIR included)
+harness: .measure/harness19_fifteenth.py, byte-identical to the committed
+         experiments/native-byte-transports/fifteenth/harness19_fifteenth.py,
+         which is the retention lane's committed harness19_fifteenth.py with
+         three named edits: the venv is an argument (this tree's lock moved),
+         and the two receipt fields that lane found stale (sample.fraction and
+         the scope sentence) say 1/15. Nothing measured changes.
+ceilings, as set and never lowered: RLIMIT_CPU hard 21,660 s (setsid_exec),
+         harness soft 21,600 CPU-s, 43,200 wall-s, 48 GiB RSS
+label: native-byte-transports-1-15
+disk at launch: 28 GiB free on the data volume. Estimated need: ~3.7 GB of
+         fixed ACS captures plus a graph store that scales from the 1/1000
+         run's 127 MB (~8-9 GB at 1/15) plus temporaries -- about 12-13 GB.
+         Recorded as a risk, not a gate.
+concurrency: this lane's 57-file dependent pytest battery (4 processes) runs on
+         other cores during the run; the ceilings are byte and row comparisons
+         and cannot turn on load, the CPU and wall figures can, and the report
+         does not lead with them.
+
+--- prediction on record BEFORE the outcome ---
+At 1/15 (105,825 selected households; about 102,151 ACS households, 228,192
+ACS persons, 237,667 stacked persons), no byte transport on the nineteen-node
+path refuses at this head:
+  selected SERIALNO list       ~1.63 MB   under coverage.MAX_ROSTER_BYTES (4 GiB);
+                                          refused at 1 MiB on the base branch
+  coverage body charge         ~25.8 MB   (113 B/person bound) under 4 GiB;
+                                          the base charge was 6*len(raw)+1024
+                                          against 64 MiB, refusing above 12,911
+  coverage body                ~20.6 MB   one 64 MiB accumulation
+  raw_person_keys digest       ~4.6 MB    streamed
+  issuance receipt             ~1.6 MB    under 4 GiB; refused at 2 MiB before
+  preparation receipt          ~83 MB     two 64 MiB segments, under 4 GiB
+                                          (PREPARATION_ROSTER_BYTES on the
+                                          consumer side, 64 MiB before)
+  allocation payload           ~33 MB     one segment
+  predictor projection origins ~5.7 MB    one segment
+and every row-count ceiling the row lane lifted sits above these counts. So the
+run is expected to pass the point where the retention lane's 1/15 refused
+(605 CPU-s, CANONICAL_SIZE in issue_acs_native_coverage), write
+snapshots/preparation/header.json, and execute all nineteen nodes and the
+replay within the 21,600 CPU-s ceiling. If it refuses, the harness's receipt
+names PREPARATION_ISSUANCE_REFUSED at most, because the catch-all chain is only
+visible in a traceback; the diagnostic harness (sys.monitoring RAISE observer)
+recovers the cause without changing a byte of the measured tree.
