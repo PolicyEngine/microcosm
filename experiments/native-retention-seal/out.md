@@ -121,20 +121,20 @@ seal misses fails there.
 ```
 $ MICROCOSM_BATTERY_RECEIPT=... uv run python -m pytest \
     packages/microcosm-build/tests/test_us_survey_population_replay.py
-112 passed in 0.82s
+119 passed in 0.99s
 ```
 
-**109 comparisons, 109 agreements, 0 disagreements**, over twenty distinct
-refusal codes and eleven pairs both paths accept. The receipt is committed at
+**116 comparisons, 116 agreements, 0 disagreements**, over twenty distinct
+refusal codes and 14 pairs both paths accept. The receipt is committed at
 `experiments/native-retention-seal/battery-receipt.json`; the hook that writes
 it is off unless the environment variable is set and changes no assertion.
 
 | verdict both paths reached | comparisons |
 |---|---|
+| `AXIS` | 16 |
+| **accepted by both** | **14** |
 | `NATIVE_BITS` | 13 |
-| `AXIS` | 12 |
 | `POPULATION_CONTEXT` | 12 |
-| **accepted by both** | **11** |
 | `FRAME_CONTEXT` | 9 |
 | `OBJECT_VALUE` | 9 |
 | `NONCANONICAL_NULL_BACKING` | 7 |
@@ -156,7 +156,7 @@ at this pin, so `SERIES_DTYPE_OR_LENGTH` fires first — measured, not assumed.
 `STRATA_NAME` is reachable only by renaming the strata after construction,
 because `Frame` normalises that name to `"stratum"`.
 
-**The eleven accepted pairs are the half that matters most.** A purpose-built
+**The 14 accepted pairs are the half that matters most.** A purpose-built
 seal is much more likely to be *stricter* than the predicate it replaces than
 weaker, and a stricter seal turns a green run red. They include the store round
 trip of §1; the object-scalar equivalences (`np.int64(7)` for `7`,
