@@ -47,6 +47,7 @@ def score_uk_national_candidate(
     measure_resolver_factory: Callable[[Path, Any], Any] | None = None,
     candidate_label: str | None = None,
     incumbent_label: str = "enhanced_frs_2024_25",
+    band_edge_registry: TargetRegistry | None = None,
 ) -> dict[str, Any]:
     """Return the #578 rule-1 score block on a shared target registry.
 
@@ -64,10 +65,18 @@ def score_uk_national_candidate(
     candidate_pin = _verify_artifact("candidate", candidate_h5, candidate_sha256)
     incumbent_pin = _verify_artifact("incumbent", incumbent_h5, incumbent_sha256)
     candidate_frame, candidate_resolution = _scored_frame(
-        candidate_h5, target_registry, calibration_year, measure_resolver_factory
+        candidate_h5,
+        target_registry,
+        calibration_year,
+        measure_resolver_factory,
+        band_edge_registry=band_edge_registry,
     )
     incumbent_frame, incumbent_resolution = _scored_frame(
-        incumbent_h5, target_registry, calibration_year, measure_resolver_factory
+        incumbent_h5,
+        target_registry,
+        calibration_year,
+        measure_resolver_factory,
+        band_edge_registry=band_edge_registry,
     )
     candidate = score_targets(
         candidate_frame,
@@ -227,11 +236,17 @@ def _scored_frame(
     registry: TargetRegistry,
     calibration_year: int,
     factory: Callable[[Path, Any], Any] | None,
+    *,
+    band_edge_registry: TargetRegistry | None = None,
 ) -> tuple[Any, Any]:
     frame, _provenance = load_uk_national_frame(h5_path)
     resolver = None if factory is None else factory(Path(h5_path), frame)
     return prepare_uk_target_frame(
-        frame, registry, period=calibration_year, measure_resolver=resolver
+        frame,
+        registry,
+        period=calibration_year,
+        measure_resolver=resolver,
+        band_edge_registry=band_edge_registry,
     )
 
 
@@ -306,6 +321,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Override the incumbent/reference label.",
     )
     parser.add_argument(
+        "--band-edge-registry-json",
+        type=Path,
+        help=(
+            "Full compiled contract register supplying banded fan-out edges "
+            "when --registry-json is a pruned scoring surface (#803: a "
+            "pruned surface must never redraw its own band edges)."
+        ),
+    )
+    parser.add_argument(
         "--no-measure-resolution",
         action="store_true",
         help=(
@@ -316,6 +340,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     registry = _load_registry(args.registry_json)
+    band_edge_registry = (
+        None
+        if args.band_edge_registry_json is None
+        else _load_registry(args.band_edge_registry_json)
+    )
     calibration_year = args.calibration_year
     if calibration_year is None:
         from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
@@ -338,6 +367,7 @@ def main(argv: list[str] | None = None) -> int:
         measure_resolver_factory=factory,
         candidate_label=args.candidate_label,
         incumbent_label=args.incumbent_label,
+        band_edge_registry=band_edge_registry,
     )
     _write_json(args.output_json, {"score_vs_enhanced_frs": score})
     return 0
