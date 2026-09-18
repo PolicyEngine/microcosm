@@ -22,3 +22,25 @@ sources: /Users/maxghenis/PolicyEngine/_worktrees/native-scale-runs/run-tenth
 harness: experiments/native-scale-transport/harness19_tenth.py, copied unedited
 ceilings: RLIMIT_CPU hard 21660 s, harness soft 21600 CPU-s, 43200 wall-s, 64 GiB
 kill, if ever needed: kill 65093   -- exact pid only, never a pattern kill
+
+--- round 1 (pid 65093), result ---
+STOPPED_SurveyPopulationPreparationError: PREPARATION_ISSUANCE_REFUSED:
+  microcosm.build.us_runtime.acs_native_coverage_binding.ACSNativeCoverageBindingError:
+  NATIVE_ISSUANCE_REFUSED
+i.e. the cause is itself a catch-all. There are three nested ones on this path,
+each `raise ... from None`.
+
+--- round 2 (pid 54592), refused before it started, and the refusal is the finding ---
+Patching the other catch-alls (acs_native_coverage_binding,
+acs_person_coverage_authentication, acs_population_catalogue) refused in 3 CPU-s
+with ACSNativeCoverageBindingError: UNREVIEWED_PREPARATION, because
+`acs_native_coverage_binding._producer()` pins the sha256 of four named ACS
+module files (`_ACCEPTED`, `:232-237`). Those modules cannot be instrumented at
+all. The patches were reverted.
+
+--- round 3 (pid 64817), non-invasive ---
+harness19_diag.py is harness19_tenth.py plus one block that installs a
+`sys.monitoring` RAISE callback and writes every non-routine raise it sees to
+`raises.json` at exit. It changes no byte of the measured tree, so no source
+pin moves and no producer refuses. It is a diagnostic harness, not a source
+change, and it is committed alongside the record so the result is reproducible.
